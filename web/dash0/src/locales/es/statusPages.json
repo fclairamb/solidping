@@ -76,7 +76,27 @@
     "deleteDescription": "¿Eliminar esta sección y todas sus asignaciones de recursos? Las comprobaciones en sí no se verán afectadas.",
     "deleted": "Sección eliminada",
     "deleteFailed": "Error al eliminar la sección",
-    "empty": "Aún no hay comprobaciones en esta sección"
+    "empty": "Aún no hay comprobaciones en esta sección",
+    "membership": {
+      "title": "Composición",
+      "manual": "Manual",
+      "all": "Todas las comprobaciones",
+      "labels": "Por etiqueta",
+      "hint": {
+        "manual": "Usted añade a mano cada componente de esta sección.",
+        "all": "Todas las comprobaciones de esta organización se listan automáticamente, incluidas las creadas más adelante.",
+        "labels": "Toda comprobación que lleve todas estas etiquetas se lista automáticamente, incluidas las creadas más adelante."
+      },
+      "labelsField": "Etiquetas requeridas",
+      "labelsHint": "Una comprobación debe llevar todas estas etiquetas para aparecer. Los valores son exactos.",
+      "publicWarningTitle": "Esta sección está en una página pública",
+      "publicWarningAll": "Todas las comprobaciones actuales y futuras de esta organización aparecerán en esta página pública, incluidas las creadas más adelante. Considere usar una etiqueta como public=true para que cada comprobación se incorpore de forma explícita.",
+      "publicWarningLabels": "Todas las comprobaciones actuales y futuras con estas etiquetas aparecerán en esta página pública, incluidas las creadas más adelante.",
+      "autoBadge": "auto",
+      "autoTooltip": "Añadido automáticamente por la regla de composición de esta sección. Edite la regla para cambiarlo.",
+      "truncated": "Mostrando {{shown}} de {{total}} comprobaciones coincidentes. Acote la regla con etiquetas para ver el resto.",
+      "labelsRequired": "Añada al menos una etiqueta"
+    }
   },
   "resources": {
     "add": "Añadir componente",

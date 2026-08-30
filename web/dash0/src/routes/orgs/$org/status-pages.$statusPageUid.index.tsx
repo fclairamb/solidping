@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { StatusPageTvCard } from "@/components/shared/status-page-tv-card";
 import {
+  AlertTriangle,
   ArrowLeft,
   Eye,
   ExternalLink,
@@ -89,6 +90,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckPicker } from "@/components/shared/check-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  SectionMembership,
+  membershipFromSelector,
+  membershipIsComplete,
+  selectorFromMembership,
+  type SectionMembershipValue,
+} from "@/components/shared/section-membership";
 import { ApiError } from "@/api/client";
 
 export const Route = createFileRoute("/orgs/$org/status-pages/$statusPageUid/")(
@@ -165,27 +174,39 @@ function VisibilityDot({
 function AddSectionDialog({
   org,
   statusPageUid,
+  visibility,
 }: {
   org: string;
   statusPageUid: string;
+  visibility?: string;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  // Manual is the only default a section may be created with: auto-inclusion
+  // has to be an explicit act, never something a form arrives at by itself.
+  const [membership, setMembership] = useState<SectionMembershipValue>({
+    mode: "manual",
+    labels: {},
+  });
   const createSection = useCreateSection(org, statusPageUid);
 
   const handleSubmit = async () => {
     try {
+      const selector = selectorFromMembership(membership);
       await createSection.mutateAsync({
         name,
         slug: slug || slugify(name),
+        // Omitted rather than null: on CREATE there is nothing to clear.
+        ...(selector ? { selector } : {}),
       });
       toast.success(t("statusPages:sections.created"));
       setName("");
       setSlug("");
       setSlugManuallyEdited(false);
+      setMembership({ mode: "manual", labels: {} });
       setOpen(false);
     } catch (err) {
       toast.error(
@@ -242,6 +263,12 @@ function AddSectionDialog({
               placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
+          <SectionMembership
+            org={org}
+            value={membership}
+            onChange={setMembership}
+            visibility={visibility}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -249,7 +276,12 @@ function AddSectionDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!name || createSection.isPending}
+            disabled={
+              !name ||
+              !membershipIsComplete(membership) ||
+              createSection.isPending
+            }
+            data-testid="section-create-submit"
           >
             {t("statusPages:sections.create")}
           </Button>
@@ -266,23 +298,35 @@ function EditSectionDialog({
   org,
   statusPageUid,
   section,
+  visibility,
   open,
   onOpenChange,
 }: {
   org: string;
   statusPageUid: string;
   section: StatusPageSection;
+  visibility?: string;
   open: boolean;
   onOpenChange: (next: boolean) => void;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [name, setName] = useState(section.name);
   const [slug, setSlug] = useState(section.slug);
+  const [membership, setMembership] = useState<SectionMembershipValue>(() =>
+    membershipFromSelector(section.selector),
+  );
   const updateSection = useUpdateSection(org, statusPageUid, section.uid);
 
   const handleSubmit = async () => {
     try {
-      await updateSection.mutateAsync({ name, slug: slug || slugify(name) });
+      // `selector: null` is load-bearing on update — it is what turns a
+      // dynamic section back into a hand-curated one (and removes the
+      // components the rule owned). Omitting the key would leave it in place.
+      await updateSection.mutateAsync({
+        name,
+        slug: slug || slugify(name),
+        selector: selectorFromMembership(membership),
+      });
       toast.success(t("statusPages:sections.updated"));
       onOpenChange(false);
     } catch (err) {
@@ -320,6 +364,12 @@ function EditSectionDialog({
               placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
+          <SectionMembership
+            org={org}
+            value={membership}
+            onChange={setMembership}
+            visibility={visibility}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -327,7 +377,12 @@ function EditSectionDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!name || updateSection.isPending}
+            disabled={
+              !name ||
+              !membershipIsComplete(membership) ||
+              updateSection.isPending
+            }
+            data-testid="section-edit-submit"
           >
             {t("statusPages:sections.save")}
           </Button>
@@ -693,6 +748,7 @@ function ResourceRow({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteResource = useDeleteResource(org, statusPageUid, sectionUid);
   const updateResource = useUpdateResource(org, statusPageUid, sectionUid);
+  const managed = resource.managedBySelector === true;
 
   const handleDelete = async () => {
     try {
@@ -752,37 +808,49 @@ function ResourceRow({
         isDragging && "opacity-60 shadow-md bg-background relative z-10",
       )}
     >
-      <button
-        type="button"
-        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-        aria-label="Drag to reorder"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <div className="flex flex-col -space-y-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-4 w-4 p-0"
-          disabled={index === 0 || updateResource.isPending}
-          onClick={() => move(-1)}
-          aria-label="Move up"
+      {/*
+        A selector-owned row has no reorder or delete affordance: the section's
+        membership rule decides both, and any change made here would be undone
+        by the next reconcile. Offering a control that silently reverts is
+        worse than not offering it. The spacer keeps the rows aligned.
+      */}
+      {managed ? (
+        <div className="w-4" aria-hidden="true" />
+      ) : (
+        <button
+          type="button"
+          className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
         >
-          <ChevronUp className="h-3 w-3" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-4 w-4 p-0"
-          disabled={index === total - 1 || updateResource.isPending}
-          onClick={() => move(1)}
-          aria-label="Move down"
-        >
-          <ChevronDown className="h-3 w-3" />
-        </Button>
-      </div>
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      {!managed && (
+        <div className="flex flex-col -space-y-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-4 w-4 p-0"
+            disabled={index === 0 || updateResource.isPending}
+            onClick={() => move(-1)}
+            aria-label="Move up"
+          >
+            <ChevronUp className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-4 w-4 p-0"
+            disabled={index === total - 1 || updateResource.isPending}
+            onClick={() => move(1)}
+            aria-label="Move down"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
       <StatusDot status={resource.check?.status} />
       <span className="flex-1 text-sm" data-testid="resource-row-name">
         {resource.publicName ||
@@ -808,6 +876,22 @@ function ResourceRow({
             {resource.check.type}
           </Badge>
         )
+      )}
+      {managed && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge
+              variant="outline"
+              className="text-xs"
+              data-testid="resource-row-auto-badge"
+            >
+              {t("statusPages:sections.membership.autoBadge")}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t("statusPages:sections.membership.autoTooltip")}
+          </TooltipContent>
+        </Tooltip>
       )}
       {resource.check?.status && <StatusBadge status={resource.check.status} />}
       {resource.checkUid ? (
@@ -836,23 +920,27 @@ function ResourceRow({
           </Link>
         )
       )}
-      <EditResourceTargetDialog
-        org={org}
-        statusPageUid={statusPageUid}
-        sectionUid={sectionUid}
-        resource={resource}
-        existingCheckUids={existingCheckUids}
-        existingGroupUids={existingGroupUids}
-      />
+      {!managed && (
+        <EditResourceTargetDialog
+          org={org}
+          statusPageUid={statusPageUid}
+          sectionUid={sectionUid}
+          resource={resource}
+          existingCheckUids={existingCheckUids}
+          existingGroupUids={existingGroupUids}
+        />
+      )}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-destructive"
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
+        {!managed && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        )}
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -878,10 +966,12 @@ function SectionCard({
   section,
   org,
   statusPageUid,
+  visibility,
 }: {
   section: StatusPageSection;
   org: string;
   statusPageUid: string;
+  visibility?: string;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -915,6 +1005,13 @@ function SectionCard({
       .map((r) => r.checkGroupUid)
       .filter((uid): uid is string => Boolean(uid)),
   );
+
+  // Manual rows always sort first, so the up/down bounds are over that prefix
+  // only — the last manual row must not offer "move down" into managed rows it
+  // cannot displace.
+  const manualResourceCount = (section.resources || []).filter(
+    (r) => !r.managedBySelector,
+  ).length;
 
   // Pointer sensor with a small activation distance so click-and-release on
   // the drag handle doesn't get hijacked as a drag (matters for keyboard /
@@ -1034,18 +1131,37 @@ function SectionCard({
         org={org}
         statusPageUid={statusPageUid}
         section={section}
+        visibility={visibility}
         open={editOpen}
         onOpenChange={setEditOpen}
       />
-      <CardContent>
+      <CardContent className="space-y-3">
+        {section.selectorTruncated && (
+          <Alert variant="warning" data-testid="section-selector-truncated">
+            <AlertTriangle />
+            <AlertDescription>
+              {t("statusPages:sections.membership.truncated", {
+                shown: section.resources?.length ?? 0,
+                total: section.selectorMatchTotal ?? 0,
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
         {section.resources && section.resources.length > 0 ? (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
+            {/*
+              Only MANUAL rows are sortable. A managed row's position is
+              rewritten by the reconciler, so letting it into the sortable set
+              would produce a drag that visibly springs back.
+            */}
             <SortableContext
-              items={section.resources.map((r) => r.uid)}
+              items={section.resources
+                .filter((r) => !r.managedBySelector)
+                .map((r) => r.uid)}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-1">
@@ -1054,7 +1170,7 @@ function SectionCard({
                     key={resource.uid}
                     resource={resource}
                     index={idx}
-                    total={section.resources?.length ?? 0}
+                    total={manualResourceCount}
                     neighbors={section.resources ?? []}
                     org={org}
                     statusPageUid={statusPageUid}
@@ -1303,7 +1419,11 @@ function StatusPageDetailPage() {
         <h2 className="text-xl font-semibold">
           {t("statusPages:detail.sections")}
         </h2>
-        <AddSectionDialog org={org} statusPageUid={statusPageUid} />
+        <AddSectionDialog
+          org={org}
+          statusPageUid={statusPageUid}
+          visibility={page.visibility}
+        />
       </div>
 
       {page.sections && page.sections.length > 0 ? (
@@ -1323,6 +1443,7 @@ function StatusPageDetailPage() {
                   section={section}
                   org={org}
                   statusPageUid={statusPageUid}
+                  visibility={page.visibility}
                 />
               ))}
             </div>
@@ -1332,7 +1453,11 @@ function StatusPageDetailPage() {
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             <p className="mb-2">{t("statusPages:detail.noSections")}</p>
-            <AddSectionDialog org={org} statusPageUid={statusPageUid} />
+            <AddSectionDialog
+              org={org}
+              statusPageUid={statusPageUid}
+              visibility={page.visibility}
+            />
           </CardContent>
         </Card>
       )}

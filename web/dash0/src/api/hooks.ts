@@ -2583,11 +2583,34 @@ export interface StatusPage {
   createdAt?: string;
 }
 
+/**
+ * A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of the
+ * two shapes: `{ all: true }` or `{ labels: { k: v, ... } }` (AND, exact
+ * values). Absent means the section is hand-curated, which is the default and
+ * what every existing section keeps — a selector is never applied implicitly.
+ */
+export interface StatusPageSectionSelector {
+  all?: boolean;
+  labels?: Record<string, string>;
+}
+
 export interface StatusPageSection {
   uid: string;
   name: string;
   slug: string;
   position: number;
+  /**
+   * Returned on AUTHENTICATED responses only — the public page payload omits
+   * it, because a selector spells out the org's internal label taxonomy.
+   */
+  selector?: StatusPageSectionSelector;
+  /** How many checks the selector matches in total. Authenticated only. */
+  selectorMatchTotal?: number;
+  /**
+   * True when the match count exceeds the per-section cap and the section is
+   * showing a stable alphabetical prefix. Authenticated only.
+   */
+  selectorTruncated?: boolean;
   resources?: StatusPageResource[];
   createdAt?: string;
 }
@@ -2609,6 +2632,12 @@ export interface StatusPageResource {
    * absent means "inherit the page", which is NOT the same as false.
    */
   autoPublish?: boolean;
+  /**
+   * True when the row was materialized by the section's selector and is owned
+   * by it (spec 2026-08-29-11): it cannot be deleted or re-targeted here —
+   * change the selector, or add the check manually, which always wins.
+   */
+  managedBySelector?: boolean;
   position: number;
   check?: {
     name?: string;
@@ -2683,12 +2712,20 @@ export interface CreateSectionRequest {
   name: string;
   slug: string;
   position?: number;
+  /** Optional membership rule. Omit for a normal hand-curated section. */
+  selector?: StatusPageSectionSelector;
 }
 
 export interface UpdateSectionRequest {
   name?: string;
   slug?: string;
   position?: number;
+  /**
+   * Three-state, matching the API: omit the key to leave the rule alone, send
+   * an object to replace it, or send `null` to clear it (which also removes
+   * the components the selector owned).
+   */
+  selector?: StatusPageSectionSelector | null;
 }
 
 /**

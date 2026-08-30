@@ -76,7 +76,27 @@
     "deleteDescription": "Delete this section and all its resource assignments? The checks themselves will not be affected.",
     "deleted": "Section deleted",
     "deleteFailed": "Failed to delete section",
-    "empty": "No checks in this section yet"
+    "empty": "No checks in this section yet",
+    "membership": {
+      "title": "Membership",
+      "manual": "Manual",
+      "all": "All checks",
+      "labels": "By label",
+      "hint": {
+        "manual": "You add each component to this section by hand.",
+        "all": "Every check in this organization is listed automatically, including checks created later.",
+        "labels": "Every check carrying all of these labels is listed automatically, including checks created later."
+      },
+      "labelsField": "Required labels",
+      "labelsHint": "A check must carry all of these labels to appear. Values are exact.",
+      "publicWarningTitle": "This section is on a public page",
+      "publicWarningAll": "Every current and future check in this organization will appear on this public page, including checks created later. Consider using a label such as public=true instead, so each check opts in.",
+      "publicWarningLabels": "Every current and future check with these labels will appear on this public page, including checks created later.",
+      "autoBadge": "auto",
+      "autoTooltip": "Added automatically by this section's membership rule. Edit the rule to change it.",
+      "truncated": "Showing {{shown}} of {{total}} matching checks. Narrow the rule with labels to see the rest.",
+      "labelsRequired": "Add at least one label"
+    }
   },
   "resources": {
     "add": "Add Component",
