@@ -48,6 +48,7 @@ func (s *Server) registerSupportRepliers(
 
 	if s.config.WhatsApp.Active() {
 		svc.RegisterReplier(models.SupportChannelWhatsApp, s.whatsAppReplier)
+		svc.RegisterReadReceipt(models.SupportChannelWhatsApp, s.whatsAppReadReceipt)
 	}
 
 	if s.config.Telegram.Configured() {
@@ -89,6 +90,24 @@ func (s *Server) whatsAppReplier(
 	}
 
 	return client.SendText(ctx, thread.ChannelIdentity, body)
+}
+
+// whatsAppReadReceipt marks externalID — and, cumulatively, every earlier
+// message in the same WhatsApp conversation — read on Meta's Cloud API. This
+// is the only thing that puts the double BLUE check on the sender's phone;
+// see whatsapp.Client.MarkRead's doc comment for the cumulative-receipt
+// caveat. thread is accepted only to satisfy support.ReadReceiptFunc — the
+// Cloud API call needs nothing from it beyond the message id already
+// resolved by the caller.
+func (s *Server) whatsAppReadReceipt(
+	ctx context.Context, _ *models.SupportThread, externalID string,
+) error {
+	client, err := whatsapp.NewClientFromConfig(&s.config.WhatsApp)
+	if err != nil {
+		return err
+	}
+
+	return client.MarkRead(ctx, externalID)
 }
 
 // telegramReplier sends a plain-text Telegram message.
