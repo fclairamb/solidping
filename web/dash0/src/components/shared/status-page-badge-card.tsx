@@ -122,11 +122,20 @@ export function StatusPageBadgeCard({
         </div>
 
         <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
-          <img
-            src={badgePath}
-            alt={`${pageName} status`}
-            data-testid="status-page-badge-preview"
-          />
+          <a
+            href={`/status0/${org}/${pageSlug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={tStatusPages("viewPublic")}
+            aria-label={tStatusPages("viewPublic")}
+            data-testid="status-page-badge-preview-link"
+          >
+            <img
+              src={badgePath}
+              alt={`${pageName} status`}
+              data-testid="status-page-badge-preview"
+            />
+          </a>
         </div>
 
         <div className="space-y-2">
