@@ -65,6 +65,7 @@ func TestCLICoverage_IncidentLifecycle(t *testing.T) {
 	now := time.Now()
 	incident := &models.Incident{
 		UID:             incUIDStr,
+		Kind:            models.IncidentKindCheck,
 		OrganizationUID: cliCovOrgUID,
 		CheckUID:        checkUID,
 		Title:           &title,

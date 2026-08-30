@@ -73,6 +73,7 @@ func setupIncidentsTestData(ctx context.Context, t *testing.T, ts *TestServer) {
 	incidents := []*models.Incident{
 		{
 			UID:             testIncidentUID1,
+			Kind:            models.IncidentKindCheck,
 			OrganizationUID: "10000000-0000-0000-0000-000000000001",
 			CheckUID:        testIncidentCheckUID1,
 			Title:           &title1,
@@ -84,6 +85,7 @@ func setupIncidentsTestData(ctx context.Context, t *testing.T, ts *TestServer) {
 		},
 		{
 			UID:             testIncidentUID2,
+			Kind:            models.IncidentKindCheck,
 			OrganizationUID: "10000000-0000-0000-0000-000000000001",
 			CheckUID:        testIncidentCheckUID1,
 			Title:           &title2,
@@ -96,6 +98,7 @@ func setupIncidentsTestData(ctx context.Context, t *testing.T, ts *TestServer) {
 		},
 		{
 			UID:             testIncidentUID3,
+			Kind:            models.IncidentKindCheck,
 			OrganizationUID: "10000000-0000-0000-0000-000000000001",
 			CheckUID:        testIncidentCheckUID2,
 			Title:           &title3,
