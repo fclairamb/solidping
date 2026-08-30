@@ -5,6 +5,7 @@
 // safely. Keeping it static (vs. a dynamic import()) keeps the single-flight
 // behavior synchronous-enough to unit test without extra await hops.
 import { refreshAccessToken } from "@/lib/token-refresh";
+import { isOrgPublicRoute } from "@/lib/org-public-routes";
 
 const TOKEN_KEY = "solidping_session_token";
 const REFRESH_TOKEN_KEY = "solidping_refresh_token";
@@ -182,10 +183,17 @@ export function isOrgDeleted(org: string | null): boolean {
 
 /**
  * Sends the browser to the org login page with `session_expired=true` and a
- * `returnTo` back to the current page. Idempotent (no-ops if already on the
- * login page) so it's safe to call from multiple failure paths without
- * coordinating who "owns" the redirect — both `handleResponse` below and
- * token-refresh.ts's immediate-escalation cases call this.
+ * `returnTo` back to the current page. Idempotent (no-ops if already on a
+ * public org route — login or register) so it's safe to call from multiple
+ * failure paths without coordinating who "owns" the redirect — both
+ * `handleResponse` below and token-refresh.ts's immediate-escalation cases
+ * call this.
+ *
+ * Defense in depth: this is not the fix for a stray authenticated call firing
+ * on a public route (that call should simply be gated with `enabled`, e.g.
+ * spec 2026-08-29-12) — it just keeps any *future* one from being
+ * user-visible instead of a silent no-op, the same way it already is on
+ * `/login`.
  *
  * When the org in play is one this tab just deleted, there is no login page to
  * send anyone to: the slug 404s, and its SSO buttons render a raw
@@ -194,7 +202,7 @@ export function isOrgDeleted(org: string | null): boolean {
  */
 export function redirectToExpiredLogin(): void {
   const currentPath = window.location.pathname;
-  if (currentPath.endsWith("/login")) return;
+  if (isOrgPublicRoute(currentPath)) return;
 
   const basepath = import.meta.env.VITE_BASE_URL || "";
   const pathOrg = extractOrgFromPath(currentPath);

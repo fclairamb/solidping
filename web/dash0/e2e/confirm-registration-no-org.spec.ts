@@ -27,25 +27,14 @@ test.describe("Confirm registration with no matching org", () => {
     const email = `confirm-no-org-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
-    // Pre-existing, unrelated bug (found while writing this test, not part
-    // of spec 2026-08-29-06): OrgLayout ($org.tsx) calls useFeatures()
-    // unconditionally, even for the public login/register pages
-    // (isLoginPage is computed right above it and never used to gate the
-    // call). GET /api/v1/features requires auth, so an unauthenticated
-    // visitor to /orgs/:org/register 401s on that background call and gets
-    // silently bounced to /login?session_expired=true before they can even
-    // see the form — redirectToExpiredLogin() only no-ops when the CURRENT
-    // path already ends in "/login", not for other public pages. Stubbed
-    // here the same way bug-report.spec.ts stubs this endpoint; a separate
-    // task flags the underlying bug.
-    await page.route("**/api/v1/features", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ bugReport: false }),
-      }),
-    );
-
+    // A pre-existing, unrelated bug found while writing this test (not part
+    // of spec 2026-08-29-06) used to bounce an unauthenticated visitor here
+    // straight to /login before the form ever rendered — OrgLayout called
+    // useFeatures() unconditionally, including on this public route, and its
+    // 401 triggered the "session expired" redirect. Fixed by spec
+    // 2026-08-29-12 (useFeatures is now gated by isLoginPage), so no stub is
+    // needed here any more; register-page-stays-public coverage for that bug
+    // lives in login.spec.ts's "Register: public route stays public".
     await page.goto("orgs/test/register");
     await page.waitForLoadState("networkidle");
 

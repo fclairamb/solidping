@@ -3980,11 +3980,12 @@ export interface FeaturesResponse {
   bugReport: boolean;
 }
 
-export function useFeatures() {
+export function useFeatures(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["features"],
     queryFn: () => apiFetch<FeaturesResponse>("/api/v1/features"),
     staleTime: 5 * 60 * 1000,
+    enabled: opts?.enabled ?? true,
   });
 }
 

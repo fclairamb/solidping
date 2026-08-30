@@ -974,7 +974,7 @@ function OrgLayout() {
   const isLoginPage = isOrgPublicRoute(location.pathname);
   const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const { data: features } = useFeatures();
+  const { data: features } = useFeatures({ enabled: !isLoginPage });
   const feedback = useFeedback({ enabled: features?.bugReport === true, org });
 
   // Auto switch-org on cross-org navigation. Org access is enforced by
