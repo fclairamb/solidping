@@ -313,7 +313,9 @@
   },
   "wand": {
     "prefill": "Préremplir pour moi",
-    "loadChecksFailed": "Impossible de charger la liste complète des contrôles"
+    "loadChecksFailed": "Impossible de charger la liste complète des contrôles",
+    "createForMe": "Créer une page de statut pour moi",
+    "createFailed": "Échec de la création de la page de statut"
   },
   "tvMode": {
     "title": "Mode TV",

@@ -313,7 +313,9 @@
   },
   "wand": {
     "prefill": "Prefill for me",
-    "loadChecksFailed": "Couldn't load the full check list"
+    "loadChecksFailed": "Couldn't load the full check list",
+    "createForMe": "Create a status page for me",
+    "createFailed": "Failed to create status page"
   },
   "tvMode": {
     "title": "TV mode",

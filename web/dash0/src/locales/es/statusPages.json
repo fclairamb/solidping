@@ -313,7 +313,9 @@
   },
   "wand": {
     "prefill": "Rellenar por mí",
-    "loadChecksFailed": "No se pudo cargar la lista completa de comprobaciones"
+    "loadChecksFailed": "No se pudo cargar la lista completa de comprobaciones",
+    "createForMe": "Crear una página de estado por mí",
+    "createFailed": "No se pudo crear la página de estado"
   },
   "tvMode": {
     "title": "Modo TV",

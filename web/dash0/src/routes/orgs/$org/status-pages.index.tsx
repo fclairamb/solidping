@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -6,13 +6,24 @@ import {
   Search,
   RefreshCw,
   ExternalLink,
+  Loader2,
   Pencil,
   Trash2,
   Star,
   Globe,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useStatusPages, useDeleteStatusPage, type StatusPage } from "@/api/hooks";
+import {
+  useStatusPages,
+  useDeleteStatusPage,
+  useCreateStatusPage,
+  useInfiniteChecks,
+  type StatusPage,
+  type Check,
+} from "@/api/hooks";
+import { useAuth } from "@/contexts/AuthContext";
+import { buildStatusPageWandAutoCreatePayload } from "@/lib/onboarding-wand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -188,6 +199,63 @@ function StatusPagesIndexPage() {
   } = useStatusPages(org);
 
   const deleteStatusPage = useDeleteStatusPage(org);
+  const createStatusPage = useCreateStatusPage(org);
+  const { organizations } = useAuth();
+  const orgName = organizations.find((entry) => entry.slug === org)?.name;
+
+  // Full check list, for the "Create a status page for me" wand (attach
+  // every check). Same auto-page-through pattern as status-pages.new.tsx's
+  // form wand — the whole point is the ORG total, so stopping at the list
+  // endpoint's first 100-row page would quietly under-attach an org with
+  // more checks than that.
+  const {
+    data: checksPages,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isLoading: isLoadingChecks,
+    isError: isChecksError,
+  } = useInfiniteChecks(org, { limit: 100 });
+
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  useEffect(() => {
+    if (isChecksError) {
+      toast.error(t("statusPages:wand.loadChecksFailed"));
+    }
+  }, [isChecksError, t]);
+
+  const allChecks: Check[] = useMemo(
+    () => (checksPages?.pages ?? []).flatMap((page) => page.data ?? []),
+    [checksPages],
+  );
+  // Loaded means "no more pages to fetch" — an error stops the retry loop
+  // too, so the wand still becomes usable with whatever was fetched so far
+  // rather than spinning forever.
+  const allChecksLoaded =
+    !isLoadingChecks && (hasNextPage === false || isChecksError);
+  const wandPending = createStatusPage.isPending;
+
+  const handleWandCreate = async () => {
+    try {
+      const page = await createStatusPage.mutateAsync(
+        buildStatusPageWandAutoCreatePayload(orgName, allChecks),
+      );
+      toast.success(t("statusPages:toast.created"));
+      navigate({
+        to: "/orgs/$org/status-pages/$statusPageUid",
+        params: { org, statusPageUid: page.uid },
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("statusPages:wand.createFailed"),
+      );
+    }
+  };
 
   const filteredPages =
     pages?.filter((page) => {
@@ -217,12 +285,30 @@ function StatusPagesIndexPage() {
         description={t("statusPages:subtitle")}
         docsHref="/docs/features/status-pages"
         actions={
-          <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              {t("statusPages:newStatusPage")}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleWandCreate}
+              disabled={!allChecksLoaded || wandPending}
+              data-testid="wand-create-status-page"
+              aria-label={t("statusPages:wand.createForMe")}
+            >
+              {!allChecksLoaded || wandPending ? (
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+              ) : (
+                <Wand2 className="h-4 w-4 sm:mr-2" />
+              )}
+              <span className="hidden sm:inline">
+                {t("statusPages:wand.createForMe")}
+              </span>
             </Button>
-          </Link>
+            <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                {t("statusPages:newStatusPage")}
+              </Button>
+            </Link>
+          </div>
         }
         className="flex-wrap"
       />
@@ -300,6 +386,19 @@ function StatusPagesIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("statusPages:noStatusPagesHint")}
           </p>
+          <Button
+            variant="outline"
+            onClick={handleWandCreate}
+            disabled={!allChecksLoaded || wandPending}
+            data-testid="wand-create-status-page-empty"
+          >
+            {!allChecksLoaded || wandPending ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Wand2 className="h-4 w-4 mr-2" />
+            )}
+            {t("statusPages:wand.createForMe")}
+          </Button>
         </div>
       )}
 

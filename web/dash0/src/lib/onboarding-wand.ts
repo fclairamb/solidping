@@ -1,8 +1,10 @@
 import type { TFunction } from "i18next";
 
+import { slugify } from "@/lib/utils";
 import type {
   CreateIntegrationRequest,
   CreateReportScheduleRequest,
+  CreateStatusPageRequest,
 } from "@/api/hooks";
 
 /**
@@ -66,6 +68,38 @@ export function buildStatusPageWandPrefill(
 ): { name: string; checkUids: string[] } {
   return {
     name: orgName ?? "",
+    checkUids: checks.map((check) => check.uid),
+  };
+}
+
+/**
+ * Payload for the status-pages LIST page's "Create a status page for me"
+ * wand (POST /orgs/:org/status-pages) — spec 2026-08-30-10. Unlike
+ * `buildStatusPageWandPrefill` (which only seeds the create form for the
+ * operator to review), this creates the page outright, so every field must
+ * match what the create form would submit if the operator opened it, clicked
+ * "Prefill for me", and hit Create without touching anything else — see
+ * status-page-form.tsx's initial state for each default (visibility
+ * "public", autoPublish on, 90-day history, etc.). The slug uses the same
+ * `slugify` the form's name -> slug effect uses.
+ */
+export function buildStatusPageWandAutoCreatePayload(
+  orgName: string | undefined,
+  checks: readonly { uid: string }[],
+): CreateStatusPageRequest {
+  const name = orgName ?? "";
+  return {
+    name,
+    slug: slugify(name),
+    visibility: "public",
+    isDefault: false,
+    showAvailability: true,
+    showResponseTime: true,
+    historyPeriod: "90d",
+    hideBranding: false,
+    autoPublish: true,
+    autoPublishDelaySeconds: 60,
+    autoResolve: "if_untouched",
     checkUids: checks.map((check) => check.uid),
   };
 }

@@ -313,7 +313,9 @@
   },
   "wand": {
     "prefill": "Für mich vorausfüllen",
-    "loadChecksFailed": "Die vollständige Liste der Prüfungen konnte nicht geladen werden"
+    "loadChecksFailed": "Die vollständige Liste der Prüfungen konnte nicht geladen werden",
+    "createForMe": "Eine Statusseite für mich erstellen",
+    "createFailed": "Erstellen der Statusseite fehlgeschlagen"
   },
   "tvMode": {
     "title": "TV-Modus",
