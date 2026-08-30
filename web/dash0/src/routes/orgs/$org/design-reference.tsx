@@ -54,6 +54,7 @@ import {
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
+import { CommentBody } from "@/components/shared/comment-body";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import {
   isValidStatusPattern,
@@ -224,6 +225,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "data-display", label: "Data display" },
   { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
+  { id: "comment-bubble", label: "Comment bubble" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
   { id: "dns-record-row", label: "DNS record row" },
@@ -277,6 +279,7 @@ function DesignReferencePage() {
       <DataDisplaySection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
+      <CommentBubbleSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
       <DnsRecordRowSection />
@@ -4292,6 +4295,37 @@ function ListSurfaceSection() {
           importLine={`// Icon tile — a squircle behind a row-leading glyph\n<span className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60" />\n\n// Ordinal pip — position in an ordered list (escalation steps, rotation order)\n<span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary" />\n\n// Mono ref chip — incident numbers, short ids\n<span className="font-mono text-xs font-semibold text-muted-foreground px-1.5 py-0.5 rounded bg-muted" />`}
         />
       </div>
+    </Section>
+  );
+}
+
+function CommentBubbleSection() {
+  return (
+    <Section
+      id="comment-bubble"
+      title="Comment bubble"
+      description="Each incident comment renders through CommentBody: autolinked URLs, `inline code`, and fenced code blocks over React elements only — never dangerouslySetInnerHTML, since comments arrive from untrusted sources (dash0, Slack, Telegram, API). The bubble itself uses bg-muted (full opacity, not the /30 used elsewhere) so it visibly separates from the surrounding bg-card panel in both themes — muted sits a step lighter than card in dark mode and a step darker in light mode."
+    >
+      <ExampleRow
+        preview={
+          <ul className="w-full space-y-3">
+            <li className="flex flex-col gap-1 rounded-md border bg-muted p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">Alice</span>
+                <span className="text-xs text-muted-foreground">
+                  2 minutes ago
+                </span>
+              </div>
+              <CommentBody
+                text={
+                  "Seeing timeouts on the health check, see https://status.acme.com/incidents/42 for context.\n\nRepro:\n```\ncurl -I https://api.acme.com/health\n```\nLooks like `connect: connection refused` on the pod."
+                }
+              />
+            </li>
+          </ul>
+        }
+        importLine={`import { CommentBody } from "@/components/shared/comment-body";\n\n// The li owns the bubble surface — bg-muted (full opacity) against the\n// Card's bg-card, verified in both light and dark mode.\n<li className="rounded-md border bg-muted p-3">\n  <CommentBody text={comment.text} />\n</li>`}
+      />
     </Section>
   );
 }

@@ -106,6 +106,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CollapsibleCode } from "@/components/shared/copyable-code";
+import { CommentBody } from "@/components/shared/comment-body";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { notificationStatusVariant, sourceLabel } from "@/lib/notifications";
 import { channelTypeLabel } from "@/lib/channel-labels";
@@ -677,7 +678,7 @@ function CommentsCard({
             {items.map((c) => (
               <li
                 key={c.uid}
-                className="flex flex-col gap-1 rounded-md border bg-muted/30 p-3"
+                className="flex flex-col gap-1 rounded-md border bg-muted p-3"
                 data-testid="incident-comment"
               >
                 <div className="flex flex-wrap items-center gap-2">
@@ -704,9 +705,7 @@ function CommentsCard({
                     )}
                   </span>
                 </div>
-                <p className="whitespace-pre-wrap break-words text-sm">
-                  {getCommentText(c)}
-                </p>
+                <CommentBody text={getCommentText(c)} />
               </li>
             ))}
           </ul>
