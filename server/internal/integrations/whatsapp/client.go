@@ -266,6 +266,11 @@ type textContent struct {
 // messageTypeText is the Cloud API message type for a free-form text message.
 const messageTypeText = "text"
 
+// messagingProduct is the fixed value every Cloud API request body carries —
+// shared so the string literal is not repeated across the send and mark-read
+// payloads.
+const messagingProduct = "whatsapp"
+
 // ErrEmptyText is returned when a free-form send has nothing to say.
 var ErrEmptyText = errors.New("whatsapp: message body is empty")
 
@@ -287,7 +292,7 @@ func (c *Client) SendText(ctx context.Context, to, body string) (string, error) 
 	}
 
 	return c.postMessage(ctx, &textPayload{
-		MessagingProduct: "whatsapp",
+		MessagingProduct: messagingProduct,
 		RecipientType:    "individual",
 		To:               normalizeRecipient(recipient),
 		Type:             messageTypeText,
@@ -389,7 +394,7 @@ func (c *Client) MarkRead(ctx context.Context, messageID string) error {
 	}
 
 	respBody, err := c.post(ctx, &markReadPayload{
-		MessagingProduct: "whatsapp",
+		MessagingProduct: messagingProduct,
 		Status:           "read",
 		MessageID:        id,
 	})
@@ -490,7 +495,7 @@ func buildTemplatePayload(msg *TemplateMessage) (*templatePayload, error) {
 	}
 
 	return &templatePayload{
-		MessagingProduct: "whatsapp",
+		MessagingProduct: messagingProduct,
 		RecipientType:    "individual",
 		To:               normalizeRecipient(recipient),
 		Type:             "template",
