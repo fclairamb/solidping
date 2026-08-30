@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -2681,6 +2682,10 @@ func mergeChecksByUID(first, second []*models.Check) []*models.Check {
 // effect (the phase stagger) is an input to the phase formula but is not stored
 // on the job row, so it cannot be detected by comparing job columns.
 //
+// Syncing the dispatch payload (config, secrets, plan weight) and re-levelling
+// the schedule are two separate decisions — see the scheduleChanged /
+// contentChanged split below (spec 2026-08-29-09).
+//
 //nolint:cyclop,gocognit,nestif,funlen // Reconciliation handles multiple update paths
 func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, relevel bool) error {
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
@@ -2797,26 +2802,36 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 	// period); the spread staggers their phases.
 	for _, region := range targetRegions {
 		if existing, ok := existingByRegion[region]; ok {
-			// Update period, config, type, and plan weight if changed, or if
-			// the region set changed (an add/remove elsewhere shifts this
-			// job's own index even though nothing on this row directly
-			// changed) — D2.
-			needsUpdate := relevel ||
+			// Two independent reasons to touch the row, deliberately kept
+			// apart (spec 2026-08-29-09):
+			//
+			//   scheduleChanged — something that feeds the phase formula moved
+			//     (period, region set, an explicit relevel) or the check
+			//     changed type. Only these may rewrite scheduled_at.
+			//   contentChanged — the dispatch payload drifted (config, secrets,
+			//     plan weight). These must reach the job row, but must NOT
+			//     shift when it runs: a config edit that also re-levelled the
+			//     phase would silently drift the check's execution timing on
+			//     every unrelated edit.
+			//
+			// Before the split, a stale config could only be repaired as a
+			// side effect of "we decided to reschedule", so any miss in the
+			// comparison stranded the job's config forever.
+			scheduleChanged := relevel ||
 				existing.Period != check.Period ||
 				existing.Type != check.Type ||
-				existing.PlanWeight != planWeight ||
-				!configEqual(existing.Config, check.Config) ||
-				!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
-				!optStrEqual(existing.ConfigSealed, check.ConfigSealed) ||
 				regionSetChanged
 
-			if needsUpdate {
-				regionCopy := region
-				scheduledAt := scheduling.NextAligned(
-					time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
-				)
+			contentChanged := existing.PlanWeight != planWeight ||
+				!configEqual(existing.Config, check.Config) ||
+				!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
+				!optStrEqual(existing.ConfigPrivateKeys, check.ConfigPrivateKeys) ||
+				!optStrEqual(existing.ConfigSealed, check.ConfigSealed)
 
-				if _, err := s.db.DB().NewUpdate().
+			if scheduleChanged || contentChanged {
+				regionCopy := region
+
+				query := s.db.DB().NewUpdate().
 					Model((*models.CheckJob)(nil)).
 					Set("period = ?", check.Period).
 					Set("type = ?", check.Type).
@@ -2830,11 +2845,19 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 					Set("config_sealed = ?", check.ConfigSealed).
 					Set("encrypted = ?", check.ConfigPrivate != nil).
 					Set("plan_weight = ?", planWeight).
-					Set("scheduled_at = ?", scheduledAt).
-					Set("effective_scheduled_at = ?", scheduledAt).
 					Set("updated_at = ?", time.Now()).
-					Where("uid = ?", existing.UID).
-					Exec(ctx); err != nil {
+					Where("uid = ?", existing.UID)
+
+				if scheduleChanged {
+					scheduledAt := scheduling.NextAligned(
+						time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
+					)
+					query = query.
+						Set("scheduled_at = ?", scheduledAt).
+						Set("effective_scheduled_at = ?", scheduledAt)
+				}
+
+				if _, err := query.Exec(ctx); err != nil {
 					return fmt.Errorf("failed to update check job: %w", err)
 				}
 			}
@@ -2877,24 +2900,41 @@ func optStrEqual(a, b *string) bool {
 	return *a == *b
 }
 
-// configEqual compares two JSONMap configs for equality.
+// configEqual reports whether two JSONMap configs are the SAME config as a
+// worker would see it — that is, whether they serialize to identical JSON.
+//
+// It used to compare values with fmt.Sprintf("%v", …), which is type-blind:
+// []any{float64(200), float64(403)} and []any{"200", "403"} both render as
+// "[200 403]", so a PATCH that fixed a config's value *types* was judged
+// "equal" and never reached check_jobs.config. The job then kept dispatching
+// the broken snapshot forever while the check's own config column looked
+// correct (spec 2026-08-29-09). "true" vs true is the same trap.
+//
+// Both sides are decoded-JSON values (float64 / string / bool / map / slice),
+// so canonical JSON equality is exactly "would the worker see a different
+// config". encoding/json sorts map keys, so key order is not a false
+// difference (pinned by TestConfigEqualKeyOrderIsNotADifference). A marshal
+// error is treated as "not equal", which errs towards re-syncing the job.
 func configEqual(configA, configB models.JSONMap) bool {
 	if len(configA) != len(configB) {
 		return false
 	}
 
-	for key, valA := range configA {
-		valB, ok := configB[key]
-		if !ok {
-			return false
-		}
-
-		if fmt.Sprintf("%v", valA) != fmt.Sprintf("%v", valB) {
-			return false
-		}
+	// Both empty (or nil): equal. Handled before marshaling because a nil map
+	// encodes as "null" and an empty one as "{}", which are not byte-equal
+	// even though neither carries any configuration.
+	if len(configA) == 0 {
+		return true
 	}
 
-	return true
+	rawA, errA := json.Marshal(map[string]any(configA))
+	rawB, errB := json.Marshal(map[string]any(configB))
+
+	if errA != nil || errB != nil {
+		return false
+	}
+
+	return bytes.Equal(rawA, rawB)
 }
 
 // convertCheckToResponse converts a database Check model to a CheckResponse.

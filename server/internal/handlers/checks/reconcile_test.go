@@ -474,3 +474,146 @@ func TestStartupReconcileFixesStaleSplitPeriodJobs(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// TestReconcileTypeOnlyConfigEditReachesCheckJobs is the end-to-end regression
+// test for spec 2026-08-29-09: a PATCH that changes only the *types* of config
+// values must still be copied onto the denormalized check_jobs.config.
+//
+// The production incident, replayed here through the public API: a check's
+// expectedStatusCodes were patched to JSON numbers (the HTTP checker requires
+// strings, so every run failed to parse), then patched back to strings. The
+// check's own config column was correct both times, but configEqual compared
+// values with fmt.Sprintf("%v", …) — which renders [200 403] identically for
+// numbers and strings — so needsUpdate stayed false and the job kept
+// dispatching the broken snapshot forever. Only disable/enable (which deletes
+// and recreates the jobs) could unstick it.
+//
+// The same edits must NOT move scheduled_at: config is dispatch payload, not
+// schedule input, so syncing it must never drift when the check runs.
+func TestReconcileTypeOnlyConfigEditReachesCheckJobs(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newReconcileTestService(t)
+
+	resp, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type: "http",
+		Config: map[string]any{
+			"url":                 "https://acme.com",
+			"expectedStatusCodes": []any{"200", "403"},
+		},
+		Regions: []string{"default", "eu-2"},
+		Period:  strPtr("00:01:00"),
+	})
+	r.NoError(err)
+
+	jobsBefore, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsBefore, 2)
+
+	scheduleBefore := make(map[string]time.Time, len(jobsBefore))
+	for _, j := range jobsBefore {
+		r.NotNil(j.ScheduledAt)
+		scheduleBefore[j.UID] = *j.ScheduledAt
+	}
+
+	// Step 1 — break it exactly as production did: same two status codes, now
+	// as JSON numbers. Nothing but the value types changed.
+	numeric := map[string]any{"url": "https://acme.com", "expectedStatusCodes": []any{200, 403}}
+	_, err = svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{Config: &numeric})
+	r.NoError(err)
+
+	jobsNumeric, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsNumeric, 2)
+
+	for _, j := range jobsNumeric {
+		r.Equal([]any{float64(200), float64(403)}, j.Config["expectedStatusCodes"],
+			"a type-only config edit must reach check_jobs.config")
+		r.NotNil(j.ScheduledAt)
+		r.True(scheduleBefore[j.UID].Equal(*j.ScheduledAt),
+			"a config-only edit must not re-level the job's schedule")
+	}
+
+	// Step 2 — the fix the operator applied, and the edit that used to be
+	// swallowed: back to strings, again a pure type change.
+	stringed := map[string]any{"url": "https://acme.com", "expectedStatusCodes": []any{"200", "403"}}
+	_, err = svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{Config: &stringed})
+	r.NoError(err)
+
+	jobsFixed, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsFixed, 2)
+
+	for _, j := range jobsFixed {
+		r.Equal([]any{"200", "403"}, j.Config["expectedStatusCodes"],
+			"the repair PATCH must reach check_jobs.config — this is the bug")
+		r.Equal("https://acme.com", j.Config["url"], "the merged config's other keys survive")
+		r.NotNil(j.ScheduledAt)
+		r.True(scheduleBefore[j.UID].Equal(*j.ScheduledAt),
+			"a config-only edit must not re-level the job's schedule")
+	}
+}
+
+// TestReconcileNoOpConfigEditTouchesNothing is the positive control for the
+// test above: a comparison that simply always reported "different" would fix
+// the regression while rewriting every job row on every edit. A PATCH that
+// re-sends the identical config must still short-circuit — no schedule reset,
+// and no write at all (updated_at unchanged).
+func TestReconcileNoOpConfigEditTouchesNothing(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newReconcileTestService(t)
+
+	config := map[string]any{
+		"url":                 "https://acme.com",
+		"expectedStatusCodes": []any{"200", "403"},
+		"headers":             map[string]any{"X-Acme": "1"},
+	}
+
+	resp, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Type:    "http",
+		Config:  config,
+		Regions: []string{"default", "eu-2"},
+		Period:  strPtr("00:01:00"),
+	})
+	r.NoError(err)
+
+	jobsBefore, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsBefore, 2)
+
+	type snapshot struct {
+		scheduledAt time.Time
+		updatedAt   time.Time
+	}
+
+	before := make(map[string]snapshot, len(jobsBefore))
+	for _, j := range jobsBefore {
+		r.NotNil(j.ScheduledAt)
+		before[j.UID] = snapshot{scheduledAt: *j.ScheduledAt, updatedAt: j.UpdatedAt}
+	}
+
+	same := map[string]any{
+		"url":                 "https://acme.com",
+		"expectedStatusCodes": []any{"200", "403"},
+		"headers":             map[string]any{"X-Acme": "1"},
+	}
+	_, err = svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{Config: &same})
+	r.NoError(err)
+
+	jobsAfter, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)
+	r.NoError(err)
+	r.Len(jobsAfter, 2)
+
+	for _, j := range jobsAfter {
+		snap, ok := before[j.UID]
+		r.True(ok, "job UIDs must be stable across a no-op edit")
+		r.NotNil(j.ScheduledAt)
+		r.True(snap.scheduledAt.Equal(*j.ScheduledAt), "a no-op config edit must not re-level the schedule")
+		r.True(snap.updatedAt.Equal(j.UpdatedAt), "a no-op config edit must not write the job row at all")
+	}
+}
