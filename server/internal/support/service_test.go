@@ -416,6 +416,252 @@ func TestReply_NoAdapterIsRefusedNotCrashed(t *testing.T) {
 	r.ErrorIs(err, support.ErrNoReplier)
 }
 
+// receiptCall records one invocation of a fake read-receipt hook.
+type receiptCall struct {
+	threadUID  string
+	externalID string
+}
+
+// fakeReceipts is a registerable support.ReadReceiptFunc that records every
+// call it receives, optionally failing them on demand.
+type fakeReceipts struct {
+	mu       sync.Mutex
+	calls    []receiptCall
+	failWith error
+}
+
+func (f *fakeReceipts) hook(_ context.Context, thread *models.SupportThread, externalID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.calls = append(f.calls, receiptCall{threadUID: thread.UID, externalID: externalID})
+
+	return f.failWith
+}
+
+func (f *fakeReceipts) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return len(f.calls)
+}
+
+func (f *fakeReceipts) last() receiptCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.calls[len(f.calls)-1]
+}
+
+func TestMarkRead_FiresReceiptOnceOnTheUnreadToReadTransition(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000001",
+		ExternalID: "wamid.FIRST", Body: "hi",
+	})
+	r.NoError(err)
+	r.Equal(1, thread.UnreadCount)
+
+	// A second inbound message on the SAME thread — the receipt must target
+	// this one, not the first, because Meta's receipts are cumulative and
+	// marking the newest is what covers both.
+	_, _, err = h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000001",
+		ExternalID: "wamid.SECOND", Body: "still there?",
+	})
+	r.NoError(err)
+
+	// Re-load: Capture mutates its own copy, not the one already held here.
+	thread, err = h.svc.GetThread(t.Context(), thread.UID)
+	r.NoError(err)
+	r.Equal(2, thread.UnreadCount)
+
+	r.NoError(h.svc.MarkRead(t.Context(), thread))
+	r.Equal(0, thread.UnreadCount, "MarkRead updates the caller's copy in place")
+	r.Equal(1, receipts.count())
+	r.Equal("wamid.SECOND", receipts.last().externalID, "targets the NEWEST inbound external id")
+
+	// Re-opening an already-read thread must not re-call Meta: this is the
+	// idempotency gate the spec calls out by name.
+	r.NoError(h.svc.MarkRead(t.Context(), thread))
+	r.Equal(1, receipts.count(), "re-opening an already-read thread must not fire again")
+}
+
+func TestMarkRead_NoReceiptWhenAlreadyRead(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000002",
+		ExternalID: "wamid.ONE", Body: "hi",
+	})
+	r.NoError(err)
+
+	r.NoError(h.svc.MarkRead(t.Context(), thread))
+	r.Equal(1, receipts.count())
+
+	// UnreadCount is already 0 on this copy — a caller that (incorrectly)
+	// calls MarkRead again without a fresh unread message must be a no-op.
+	r.NoError(h.svc.MarkRead(t.Context(), thread))
+	r.Equal(1, receipts.count())
+}
+
+func TestMarkRead_NoReceiptWithoutARegisteredHook(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	// Deliberately no RegisterReadReceipt call — Discord has none in v1.
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelDiscord, Identity: "d1", ExternalID: "d1:1", Body: "hi",
+	})
+	r.NoError(err)
+	r.Equal(1, thread.UnreadCount)
+
+	// Must not error or panic despite no hook being registered for the channel.
+	r.NoError(h.svc.MarkRead(t.Context(), thread))
+	r.Equal(0, thread.UnreadCount)
+}
+
+func TestMarkRead_NoReceiptWhenThreadHasNoInboundExternalID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+
+	// No ExternalID on the inbound message — captureInbound did not persist a
+	// provider id (e.g. a raw type it stored a placeholder for).
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000003", Body: "hi",
+	})
+	r.NoError(err)
+	r.Equal(1, thread.UnreadCount)
+
+	r.NoError(h.svc.MarkRead(t.Context(), thread))
+	r.Zero(receipts.count(), "nothing to target a receipt at")
+}
+
+func TestMarkRead_HookErrorLeavesMarkReadSucceeding(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{failWith: errProviderExploded}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000004",
+		ExternalID: "wamid.ONE", Body: "hi",
+	})
+	r.NoError(err)
+
+	r.NoError(h.svc.MarkRead(t.Context(), thread), "a failing hook must not fail MarkRead")
+	r.Equal(0, thread.UnreadCount)
+	r.Equal(1, receipts.count())
+}
+
+func TestReply_FiresReceiptOnSuccessfulSendWithUnreadMessages(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+	h.svc.RegisterReplier(models.SupportChannelWhatsApp,
+		func(_ context.Context, _ *models.SupportThread, _ string) (string, error) {
+			return "wamid.OUT", nil
+		})
+
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000005",
+		ExternalID: "wamid.IN", Body: "help",
+	})
+	r.NoError(err)
+	r.Equal(1, thread.UnreadCount)
+
+	_, err = h.svc.Reply(t.Context(), thread.UID, "on it", newAdmin(t, h))
+	r.NoError(err)
+
+	r.Equal(1, receipts.count())
+	r.Equal("wamid.IN", receipts.last().externalID)
+
+	// The reply already zeroed the counter (touchThreadOutbound) — a
+	// subsequent GetThread/MarkRead on the same thread must not fire again.
+	reloaded, err := h.svc.GetThread(t.Context(), thread.UID)
+	r.NoError(err)
+	r.Equal(0, reloaded.UnreadCount)
+	r.NoError(h.svc.MarkRead(t.Context(), reloaded))
+	r.Equal(1, receipts.count(), "the reply already marked it read; opening it again must not re-fire")
+}
+
+func TestReply_FailedSendDoesNotFireReceipt(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+	h.svc.RegisterReplier(models.SupportChannelWhatsApp,
+		func(_ context.Context, _ *models.SupportThread, _ string) (string, error) {
+			return "", errProviderExploded
+		})
+
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000006",
+		ExternalID: "wamid.IN", Body: "help",
+	})
+	r.NoError(err)
+
+	_, err = h.svc.Reply(t.Context(), thread.UID, "on it", newAdmin(t, h))
+	r.Error(err, "a failed provider send must still surface as a Reply error")
+
+	r.Zero(receipts.count(), "a failed send must never blue-check the sender's message")
+}
+
+func TestReply_HookErrorLeavesReplySucceeding(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	receipts := &fakeReceipts{failWith: errProviderExploded}
+	h.svc.RegisterReadReceipt(models.SupportChannelWhatsApp, receipts.hook)
+	h.svc.RegisterReplier(models.SupportChannelWhatsApp,
+		func(_ context.Context, _ *models.SupportThread, _ string) (string, error) {
+			return "wamid.OUT", nil
+		})
+
+	thread, _, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel: models.SupportChannelWhatsApp, Identity: "+33600000007",
+		ExternalID: "wamid.IN", Body: "help",
+	})
+	r.NoError(err)
+
+	msg, err := h.svc.Reply(t.Context(), thread.UID, "on it", newAdmin(t, h))
+	r.NoError(err, "a failing read-receipt hook must not fail a successful reply")
+	r.Equal(models.SupportDirectionOutbound, msg.Direction)
+	r.Equal(1, receipts.count())
+}
+
 func TestMirror_MarkersThrottleAndFailureIsolation(t *testing.T) {
 	t.Parallel()
 

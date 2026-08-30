@@ -427,6 +427,77 @@ func TestSendTemplate_ValidatesInput(t *testing.T) {
 	r.Equal("15551234567", fake.body["to"])
 }
 
+func TestMarkRead_PayloadShapeAndSuccess(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeGraph(t, http.StatusOK, `{"success":true}`)
+	client := newTestClient(t, fake)
+
+	err := client.MarkRead(context.Background(), "wamid.INBOUND123")
+	r.NoError(err)
+
+	// Same endpoint as sends: /{api_version}/{phone_number_id}/messages
+	r.Equal("/v23.0/1234567890/messages", fake.path)
+	r.Equal("Bearer test-token", fake.auth)
+	r.Equal("application/json", fake.ctype)
+
+	r.Equal("whatsapp", fake.body["messaging_product"])
+	r.Equal("read", fake.body["status"])
+	r.Equal("wamid.INBOUND123", fake.body["message_id"])
+	// The mark-read payload has no "to" / "type" / "recipient_type" — it is
+	// not a message send.
+	r.NotContains(fake.body, "to")
+	r.NotContains(fake.body, "type")
+}
+
+func TestMarkRead_SuccessFalseIsAFailure(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Graph returned 2xx but the body says the mark-read did not take —
+	// this must not be silently treated as success.
+	fake := newFakeGraph(t, http.StatusOK, `{"success":false}`)
+	client := newTestClient(t, fake)
+
+	err := client.MarkRead(context.Background(), "wamid.INBOUND123")
+	r.ErrorIs(err, whatsapp.ErrRequestFailed)
+}
+
+func TestMarkRead_RequiresAMessageID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeGraph(t, http.StatusOK, `{"success":true}`)
+	client := newTestClient(t, fake)
+
+	err := client.MarkRead(context.Background(), "   ")
+	r.ErrorIs(err, whatsapp.ErrMissingMessageID)
+}
+
+func TestMarkRead_ClassifiesGraphErrorsThroughTheSameSentinels(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	fake := newFakeGraph(t, http.StatusUnauthorized,
+		`{"error":{"message":"Error validating access token","code":190,`+
+			`"error_subcode":463,"type":"OAuthException"}}`)
+	client := newTestClient(t, fake)
+
+	err := client.MarkRead(context.Background(), "wamid.INBOUND123")
+	r.Error(err)
+	r.ErrorIs(err, whatsapp.ErrTokenExpired)
+	r.Equal("whatsapp_token_expired", whatsapp.FailureReason(err))
+
+	var apiErr *whatsapp.APIError
+	r.ErrorAs(err, &apiErr)
+	r.Equal(http.StatusUnauthorized, apiErr.StatusCode)
+}
+
 func TestNewClient_NotConfigured(t *testing.T) {
 	t.Parallel()
 
