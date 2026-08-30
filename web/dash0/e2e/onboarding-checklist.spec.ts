@@ -163,11 +163,13 @@ test.describe("Getting-started checklist", () => {
       "false",
     );
 
-    // Every step links somewhere; the status-page one carries the check to
-    // pre-attach (spec 2026-08-28-16).
+    // Every step links somewhere; the status-page one lands on the list, not
+    // the blank create form (spec 2026-08-30-10) — the list carries its own
+    // "create a page for me" wand, so dropping the user into an empty form
+    // skips the better entry point.
     await expect(
       page.getByTestId("onboarding-step-statusPage-cta"),
-    ).toHaveAttribute("href", /\/status-pages\/new\?checkUid=/);
+    ).toHaveAttribute("href", /\/status-pages$/);
   });
 
   test("the alerting step is derived: it flips when a channel appears, with nothing stored", async ({

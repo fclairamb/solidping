@@ -2,8 +2,9 @@ import { test, expect, API_BASE, type Page } from "./fixtures";
 
 // Spec 2026-08-29-03: the Getting Started steps each land the user on an
 // empty form. This exercises the one-click "magic wand" default on each of
-// the three pages that offer one — DIRECT CREATE for alerts and the weekly
-// report, PREFILL ONLY for the status page.
+// the pages that offer one — DIRECT CREATE for alerts, the weekly report,
+// and (spec 2026-08-30-10) the status-pages LIST; PREFILL ONLY for the
+// status-page CREATE FORM itself.
 //
 // Every test works from a throwaway org created through the real POST
 // /api/v1/orgs by a freshly seeded zero-org user (mirrors
@@ -384,6 +385,184 @@ test.describe("Magic wand defaults", () => {
       `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}`,
       { headers: auth },
     );
+  });
+
+  test("status pages LIST wand: creates a page outright with every check and the create-form defaults", async ({
+    page,
+  }) => {
+    const { orgSlug, auth, orgName, checkNames } = await seedOrg(page, 2);
+
+    await page.goto(`orgs/${orgSlug}/status-pages`);
+    await page.waitForLoadState("networkidle");
+
+    const wand = page.getByTestId("wand-create-status-page");
+    await expect(wand).toBeVisible();
+    await expect(wand).toBeEnabled({ timeout: 10000 });
+
+    await wand.click();
+    await expect(page.getByText("Status page created successfully")).toBeVisible();
+
+    // Unlike the form's prefill-only wand, this one creates outright and
+    // navigates straight to the detail route — never the create form.
+    await page.waitForURL(/\/status-pages\/(?!new)[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    const pageUid = page.url().split("/status-pages/")[1];
+
+    const detailResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}?with=sections`,
+      { headers: auth },
+    );
+    expect(detailResp.status()).toBe(200);
+    const detail = (await detailResp.json()) as {
+      name: string;
+      visibility: string;
+      autoPublish: boolean;
+      autoPublishDelaySeconds: number;
+      autoResolve: string;
+      historyPeriod: string;
+      showAvailability: boolean;
+      showResponseTime: boolean;
+      hideBranding: boolean;
+      isDefault: boolean;
+      sections?: { resources?: { checkUid?: string }[] }[];
+    };
+    // Name and every check mirror what the form's "Prefill for me" wand +
+    // submit-untouched would have produced.
+    expect(detail.name).toBe(orgName);
+    const resources = (detail.sections ?? []).flatMap(
+      (section) => section.resources ?? [],
+    );
+    expect(resources).toHaveLength(checkNames.length);
+    // Every other field is the create form's own default — see
+    // status-page-form.tsx's initial state / buildStatusPageWandAutoCreatePayload.
+    expect(detail.visibility).toBe("public");
+    expect(detail.isDefault).toBe(false);
+    expect(detail.showAvailability).toBe(true);
+    expect(detail.showResponseTime).toBe(true);
+    expect(detail.hideBranding).toBe(false);
+    expect(detail.historyPeriod).toBe("90d");
+    expect(detail.autoPublish).toBe(true);
+    expect(detail.autoPublishDelaySeconds).toBe(60);
+    expect(detail.autoResolve).toBe("if_untouched");
+
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}`,
+      { headers: auth },
+    );
+  });
+
+  test("status pages LIST wand: attaches every check even when the org has more than 100", async ({
+    page,
+  }) => {
+    // Guards the auto-page-through fetch in status-pages.index.tsx: an org
+    // with more checks than the list endpoint's single-page cap must not be
+    // silently under-attached. 105 checks created via the real API (not
+    // mocked) so this exercises the actual useInfiniteChecks pagination the
+    // wand relies on, not just the pure payload builder (see
+    // onboarding-wand.test.ts for that unit-level guard).
+    const CHECK_COUNT = 105;
+    const { orgSlug, auth } = await seedOrg(page, 0);
+
+    await Promise.all(
+      Array.from({ length: CHECK_COUNT }, (_, i) =>
+        page.request.post(`${API_BASE}/api/v1/orgs/${orgSlug}/checks`, {
+          headers: auth,
+          data: {
+            name: `Acme bulk site ${i + 1}`,
+            slug: `acme-bulk-site-${i + 1}`,
+            type: "http",
+            enabled: false,
+            config: { url: "https://acme.com" },
+          },
+        }),
+      ),
+    ).then((responses) => {
+      for (const resp of responses) expect(resp.status()).toBe(201);
+    });
+
+    await page.goto(`orgs/${orgSlug}/status-pages`);
+    await page.waitForLoadState("networkidle");
+
+    const wand = page.getByTestId("wand-create-status-page");
+    await expect(wand).toBeVisible();
+    // Disabled while useInfiniteChecks is still paging through — 105 checks
+    // means at least 2 pages at the wand's limit:100 request size.
+    await expect(wand).toBeEnabled({ timeout: 20000 });
+
+    await wand.click();
+    await page.waitForURL(/\/status-pages\/(?!new)[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    const pageUid = page.url().split("/status-pages/")[1];
+
+    const detailResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}?with=sections`,
+      { headers: auth },
+    );
+    expect(detailResp.status()).toBe(200);
+    const detail = (await detailResp.json()) as {
+      sections?: { resources?: { checkUid?: string }[] }[];
+    };
+    const resources = (detail.sections ?? []).flatMap(
+      (section) => section.resources ?? [],
+    );
+    // The whole point: every one of the 105 checks got attached, not just
+    // the first page's worth.
+    expect(resources).toHaveLength(CHECK_COUNT);
+
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages/${pageUid}`,
+      { headers: auth },
+    );
+  });
+
+  test("status pages LIST wand: a colliding slug surfaces an error instead of inventing a suffix", async ({
+    page,
+  }) => {
+    // Mirrors web/dash0/src/lib/utils.ts's slugify — the wand derives the new
+    // page's slug from the org name the same way the create form does.
+    const slugify = (name: string) =>
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 100);
+
+    const { orgSlug, auth, orgName } = await seedOrg(page, 1);
+    const collidingSlug = slugify(orgName);
+
+    // Pre-create a status page occupying the exact slug the wand would try
+    // to use, so its POST hits a real CONFLICT from the API.
+    const preCreateResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages`,
+      {
+        headers: auth,
+        data: { name: "Existing page", slug: collidingSlug },
+      },
+    );
+    expect(preCreateResp.status()).toBe(201);
+
+    await page.goto(`orgs/${orgSlug}/status-pages`);
+    await page.waitForLoadState("networkidle");
+
+    const wand = page.getByTestId("wand-create-status-page");
+    await expect(wand).toBeEnabled({ timeout: 10000 });
+    await wand.click();
+
+    // Error toast, and the wand does NOT retry with an invented suffix — it
+    // stays on the list with no second page created.
+    await expect(page.getByText(/already|conflict|slug/i)).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page).toHaveURL(/\/status-pages$/);
+
+    const listResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/status-pages`,
+      { headers: auth },
+    );
+    const items = ((await listResp.json()) as { data?: { slug: string }[] })
+      .data ?? [];
+    expect(items.filter((p) => p.slug === collidingSlug)).toHaveLength(1);
   });
 
   test("integrations page stays usable at mobile width with both wand and New buttons", async ({
