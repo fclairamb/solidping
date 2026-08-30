@@ -12,7 +12,7 @@ import (
 
 // --- Page-level uptime aggregate (spec 2026-08-29-08) -----------------------
 //
-// `overallAvailabilityPct` is the number a wallboard renders a metre high, so
+// `overallAvailabilityPct` is the number a wallboard renders a meter high, so
 // the two ways of getting it wrong both matter: computing a *different* number
 // from the rows printed beneath it, and printing a confident number for
 // resources that have never reported anything.
@@ -137,7 +137,7 @@ func seedCheckWithResults(
 func buildAggregatePage(
 	ctx context.Context, t *testing.T, svc *Service, org *models.Organization,
 	showAvailability bool,
-) StatusPageResponse {
+) {
 	t.Helper()
 
 	r := require.New(t)
@@ -177,8 +177,6 @@ func buildAggregatePage(
 	r.NoError(svc.db.CreateCheck(ctx, silent))
 	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: silent.UID})
 	r.NoError(err)
-
-	return page
 }
 
 // TestPageOverallAvailabilityIsTheMeanOfItsRows drives the real view: the

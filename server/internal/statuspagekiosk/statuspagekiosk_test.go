@@ -45,7 +45,7 @@ func requestCtx(token string) context.Context {
 }
 
 // TestGenerateProducesFreshHighEntropyTokens — the token has no rate limiter in
-// front of it (a wallboard polls constantly), so entropy is the whole defence.
+// front of it (a wallboard polls constantly), so entropy is the whole defense.
 func TestGenerateProducesFreshHighEntropyTokens(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -98,6 +98,21 @@ func TestDecideMatrix(t *testing.T) {
 	token, hash, err := statuspagekiosk.Generate()
 	require.NoError(t, err)
 
+	// Aliases keep the table one row per case; the whole point of the table is
+	// that a reader can compare the "no token" and "wrong token" rows at a
+	// glance and see that they land on the same decision.
+	const (
+		pub  = models.StatusPageVisibilityPublic
+		priv = models.StatusPageVisibilityPrivate
+		pwd  = models.StatusPageVisibilityPassword
+	)
+
+	var (
+		allow    = statuspagekiosk.DecisionAllow
+		notFound = statuspagekiosk.DecisionNotFound
+		locked   = statuspagekiosk.DecisionLocked
+	)
+
 	testCases := []struct {
 		name       string
 		visibility string
@@ -107,17 +122,17 @@ func TestDecideMatrix(t *testing.T) {
 		unlocked   bool
 		want       statuspagekiosk.Decision
 	}{
-		{"public page, no token", models.StatusPageVisibilityPublic, "", "", true, false, statuspagekiosk.DecisionAllow},
-		{"private page, no token", models.StatusPageVisibilityPrivate, "", "", true, false, statuspagekiosk.DecisionNotFound},
-		{"private page, valid token", models.StatusPageVisibilityPrivate, hash, token, true, false, statuspagekiosk.DecisionAllow},
-		{"private page, wrong token", models.StatusPageVisibilityPrivate, hash, "wrong", true, false, statuspagekiosk.DecisionNotFound},
-		{"private page, revoked token", models.StatusPageVisibilityPrivate, "", token, true, false, statuspagekiosk.DecisionNotFound},
-		{"password page, no token", models.StatusPageVisibilityPassword, "", "", true, false, statuspagekiosk.DecisionLocked},
-		{"password page, valid token", models.StatusPageVisibilityPassword, hash, token, true, false, statuspagekiosk.DecisionAllow},
-		{"password page, wrong token", models.StatusPageVisibilityPassword, hash, "wrong", true, false, statuspagekiosk.DecisionLocked},
-		{"password page, unlock cookie", models.StatusPageVisibilityPassword, "", "", true, true, statuspagekiosk.DecisionAllow},
-		{"disabled public page beats a valid token", models.StatusPageVisibilityPublic, hash, token, false, false, statuspagekiosk.DecisionNotFound},
-		{"disabled private page beats a valid token", models.StatusPageVisibilityPrivate, hash, token, false, false, statuspagekiosk.DecisionNotFound},
+		{"public page, no token", pub, "", "", true, false, allow},
+		{"private page, no token", priv, "", "", true, false, notFound},
+		{"private page, valid token", priv, hash, token, true, false, allow},
+		{"private page, wrong token", priv, hash, "wrong", true, false, notFound},
+		{"private page, revoked token", priv, "", token, true, false, notFound},
+		{"password page, no token", pwd, "", "", true, false, locked},
+		{"password page, valid token", pwd, hash, token, true, false, allow},
+		{"password page, wrong token", pwd, hash, "wrong", true, false, locked},
+		{"password page, unlock cookie", pwd, "", "", true, true, allow},
+		{"disabled public page beats a valid token", pub, hash, token, false, false, notFound},
+		{"disabled private page beats a valid token", priv, hash, token, false, false, notFound},
 	}
 
 	for _, testCase := range testCases {

@@ -64,13 +64,13 @@ const tokenBytes = 32
 // Generate mints a new kiosk token, returning the plaintext to show the
 // operator ONCE and the hash to store. The plaintext is never persisted, never
 // logged and never re-derivable — regenerating is the only way to get one.
-func Generate() (token, hash string, err error) {
+func Generate() (string, string, error) {
 	raw := make([]byte, tokenBytes)
-	if _, err = rand.Read(raw); err != nil {
+	if _, err := rand.Read(raw); err != nil {
 		return "", "", err
 	}
 
-	token = base64.RawURLEncoding.EncodeToString(raw)
+	token := base64.RawURLEncoding.EncodeToString(raw)
 
 	return token, Hash(token), nil
 }
@@ -129,7 +129,7 @@ func FromRequest(req *http.Request) Grant {
 
 // WithRequestGrant installs the request's own kiosk grant on its context.
 // Anything reached WITHOUT it — the MCP tools, a background job, a unit test —
-// gets the deny-by-default behaviour of Allows, which is the correct answer
+// gets the deny-by-default behavior of Allows, which is the correct answer
 // for a caller that presented no token.
 func WithRequestGrant(req *http.Request) *http.Request {
 	return req.WithContext(WithGrant(req.Context(), FromRequest(req)))
@@ -181,7 +181,7 @@ const (
 //  3. Otherwise the ordinary visibility gate applies, unchanged.
 //
 // Because step 2 is a plain boolean, an invalid or revoked token produces
-// byte-identical behaviour to no token at all.
+// byte-identical behavior to no token at all.
 func Decide(ctx context.Context, page *models.StatusPage) Decision {
 	if page == nil || !page.Enabled {
 		return DecisionNotFound

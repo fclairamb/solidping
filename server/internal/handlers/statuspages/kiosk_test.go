@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
-	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
@@ -43,7 +42,7 @@ func kioskCtx(ctx context.Context, token string) context.Context {
 	return statuspagekiosk.WithGrant(ctx, statuspagekiosk.FromRequest(req))
 }
 
-// noKioskCtx is the reference behaviour every negative case must match: a
+// noKioskCtx is the reference behavior every negative case must match: a
 // request that carried no `kiosk` parameter at all.
 func noKioskCtx(ctx context.Context) context.Context {
 	req := httptest.NewRequestWithContext(
@@ -63,18 +62,6 @@ func mintKioskToken(ctx context.Context, t *testing.T, svc *Service) string {
 	require.True(t, result.HasKioskToken)
 
 	return result.Token
-}
-
-// setVisibility flips a seeded page's visibility directly, for the cases where
-// going through UpdateStatusPage would demand a password it does not need.
-func setVisibility(ctx context.Context, t *testing.T, dbService db.Service, orgUID, visibility string) {
-	t.Helper()
-
-	page, err := dbService.GetStatusPageBySlug(ctx, orgUID, testPublicSlug)
-	require.NoError(t, err)
-	require.NoError(t, dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{
-		Visibility: &visibility,
-	}))
 }
 
 // TestKioskTokenOpensAPasswordPage — a wallboard must not need somebody to
@@ -267,7 +254,7 @@ func TestDisabledPageStaysHiddenFromKiosk(t *testing.T) {
 }
 
 // TestKioskTokenIsScopedToOnePage — a token minted for one page must not open
-// its neighbour, or "per-page revocation" would be a fiction.
+// its neighbor, or "per-page revocation" would be a fiction.
 func TestKioskTokenIsScopedToOnePage(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

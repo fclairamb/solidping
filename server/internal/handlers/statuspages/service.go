@@ -2066,8 +2066,8 @@ func (s *Service) ViewStatusPage(
 	// KNOWN to exist and answers 401, and a valid kiosk token overrides both
 	// for the one screen holding it. An invalid token is byte-identical to no
 	// token.
-	if err := publicAccessError(ctx, page); err != nil {
-		return StatusPageResponse{}, err
+	if accessErr := publicAccessError(ctx, page); accessErr != nil {
+		return StatusPageResponse{}, accessErr
 	}
 
 	response := convertPageToResponse(page)
@@ -2221,8 +2221,8 @@ func (s *Service) viewStatusPageSummary(
 		return StatusPageSummary{}, ErrStatusPageNotFound
 	}
 
-	if err := publicAccessError(ctx, page); err != nil {
-		return StatusPageSummary{}, err
+	if accessErr := publicAccessError(ctx, page); accessErr != nil {
+		return StatusPageSummary{}, accessErr
 	}
 
 	sections, err := s.loadSectionsWithResources(ctx, page.UID)
@@ -2547,7 +2547,7 @@ func (s *Service) enrichWithAvailability(
 // period.
 //
 // The mean, not a time-weighted union of every probe. Both are defensible; the
-// mean wins on the one property that matters for a number printed a metre high
+// mean wins on the one property that matters for a number printed a meter high
 // on an office wall — a reader can verify it. Every per-resource percentage is
 // on the page directly under it, and their average is a sum a person can do in
 // their head. A union ("any resource down = the page is down") is stricter and
