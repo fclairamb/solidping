@@ -35,7 +35,7 @@
     "typescript": "~6.0.0"
   },
   "overrides": {
-    "webpack": "5.110.1"
+    "webpack": "5.110.2"
   },
   "browserslist": {
     "production": [">0.5%", "not dead", "not op_mini all"],
