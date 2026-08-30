@@ -5208,9 +5208,40 @@ func (s *Service) UpdateStatusPageSection(
 		query = query.Set("position = ?", *update.Position)
 	}
 
+	// SetSelector is what distinguishes "leave the membership rule alone" from
+	// "clear it" — a nil Selector with SetSelector true turns a dynamic section
+	// back into a hand-curated one.
+	if update.SetSelector {
+		query = query.Set("selector = ?", update.Selector)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// ListSelectorSectionPageUIDs returns the UIDs of every live status page in the
+// organization that owns at least one live selector-bearing section — the set
+// the reconciler has to revisit after a check write. Pages with no dynamic
+// section are never loaded, which is what keeps a check create cheap in the
+// overwhelmingly common case of an org that uses none.
+func (s *Service) ListSelectorSectionPageUIDs(ctx context.Context, orgUID string) ([]string, error) {
+	var pageUIDs []string
+
+	err := s.db.NewSelect().
+		Model((*models.StatusPageSection)(nil)).
+		ColumnExpr("DISTINCT status_page_section.status_page_uid").
+		Join("JOIN status_pages AS sp ON sp.uid = status_page_section.status_page_uid").
+		Where("sp.organization_uid = ?", orgUID).
+		Where("sp.deleted_at IS NULL").
+		Where("status_page_section.selector IS NOT NULL").
+		Where("status_page_section.deleted_at IS NULL").
+		Scan(ctx, &pageUIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return pageUIDs, nil
 }
 
 // DeleteStatusPageSection soft-deletes a section.

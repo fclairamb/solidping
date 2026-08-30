@@ -3,6 +3,28 @@
 -- 017_v0_21_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: status-page-section-selector
+--
+-- Dropping the columns turns every selector section back into a plain
+-- hand-curated one. The materialized rows are deliberately LEFT IN PLACE: a
+-- downgraded binary has never heard of selectors, and silently emptying a
+-- customer's status page is a far worse outcome than leaving a snapshot of
+-- what the selector had last resolved to. They simply become manual rows.
+-- ==========================================================================
+
+drop index if exists status_page_sections_selector_idx;
+
+--bun:split
+
+alter table status_page_resources drop column if exists managed_by_selector;
+
+--bun:split
+
+alter table status_page_sections drop column if exists selector;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: status-page-kiosk-token
 --
 -- Dropping the column revokes every outstanding kiosk token, which is the
