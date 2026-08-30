@@ -28,7 +28,7 @@ type EscalationPolicy struct {
 	OrganizationUID    string     `bun:"organization_uid,notnull"`
 	Name               string     `bun:"name,notnull"`
 	Description        *string    `bun:"description"`
-	RepeatMax          int        `bun:"repeat_max,notnull,default:0"`
+	RepeatMax          int        `bun:"repeat_max,notnull"`
 	RepeatAfterSeconds *int       `bun:"repeat_after_seconds"`
 	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
@@ -97,7 +97,7 @@ type EscalationPolicyTarget struct {
 	StepUID    string               `bun:"step_uid,notnull"`
 	TargetType EscalationTargetType `bun:"target_type,notnull"`
 	TargetUID  *string              `bun:"target_uid"`
-	Position   int                  `bun:"position,notnull,default:0"`
+	Position   int                  `bun:"position,notnull"`
 }
 
 // NewEscalationPolicyTarget builds a target row with a fresh UID.

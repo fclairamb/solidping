@@ -140,7 +140,7 @@ type IncidentPublication struct {
 	// AutoCreated marks a publication minted by the auto-publish pipeline.
 	// Only auto-created rows are candidates for auto-resolve and relapse
 	// reopen; a hand-authored publication is always the human's to close.
-	AutoCreated bool `bun:"auto_created,notnull,default:false"`
+	AutoCreated bool `bun:"auto_created,notnull"`
 	// HumanTouchedAt is stamped the first time a person edits the publication
 	// or posts an update on it. It is the whole basis of the `if_untouched`
 	// auto-resolve policy.
@@ -151,7 +151,7 @@ type IncidentPublication struct {
 	// subscriber storm cap: at most N fan-out waves per rolling hour. Internal
 	// bookkeeping — never serialized publicly.
 	NotifyWindowStart *time.Time `bun:"notify_window_start"`
-	NotifyWindowCount int        `bun:"notify_window_count,notnull,default:0"`
+	NotifyWindowCount int        `bun:"notify_window_count,notnull"`
 	CreatedAt         time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt         time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt         *time.Time `bun:"deleted_at"`

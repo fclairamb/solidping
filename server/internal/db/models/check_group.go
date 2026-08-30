@@ -13,7 +13,7 @@ type CheckGroup struct {
 	Name            string  `bun:"name,notnull"`
 	Slug            string  `bun:"slug,notnull"`
 	Description     *string `bun:"description"`
-	SortOrder       int16   `bun:"sort_order,notnull,default:0"`
+	SortOrder       int16   `bun:"sort_order,notnull"`
 	// Optional escalation policy. NULL = no group-level policy.
 	EscalationPolicyUID *string    `bun:"escalation_policy_uid"`
 	CreatedAt           time.Time  `bun:"created_at,notnull,default:current_timestamp"`

@@ -77,24 +77,36 @@ func ValidStatusPageVisibility(v string) bool {
 
 // StatusPage represents a public status page for an organization.
 type StatusPage struct {
-	UID              string  `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID  string  `bun:"organization_uid,notnull"`
-	Name             string  `bun:"name,notnull"`
-	Slug             string  `bun:"slug,notnull"`
-	Description      *string `bun:"description"`
-	Visibility       string  `bun:"visibility,notnull,default:'public'"`
-	IsDefault        bool    `bun:"is_default,notnull,default:false"`
-	Enabled          bool    `bun:"enabled,notnull,default:true"`
-	ShowAvailability bool    `bun:"show_availability,notnull,default:true"`
-	ShowResponseTime bool    `bun:"show_response_time,notnull,default:true"`
-	HistoryDays      int     `bun:"history_days,notnull,default:90"`
-	HistoryPeriod    string  `bun:"history_period,notnull,default:'90d'"`
-	Language         *string `bun:"language"`
+	UID             string  `bun:"uid,pk,type:varchar(36)"`
+	OrganizationUID string  `bun:"organization_uid,notnull"`
+	Name            string  `bun:"name,notnull"`
+	Slug            string  `bun:"slug,notnull"`
+	Description     *string `bun:"description"`
+	Visibility      string  `bun:"visibility,notnull"`
+	IsDefault       bool    `bun:"is_default,notnull"`
+	// Enabled, ShowAvailability and ShowResponseTime all default to TRUE in the
+	// DDL and all three are legal as `false` on create, so none of them may
+	// carry a `default:` clause here — see the AutoPublishDelaySeconds note
+	// below for why the tag would make the zero value unwritable. NewStatusPage
+	// supplies the true-by-default, and the DDL default still covers rows
+	// inserted outside the application (spec 2026-08-30-04).
+	Enabled          bool `bun:"enabled,notnull"`
+	ShowAvailability bool `bun:"show_availability,notnull"`
+	ShowResponseTime bool `bun:"show_response_time,notnull"`
+	// HistoryDays is the deprecated back-compat column; HistoryPeriod is the
+	// source of truth and NewStatusPage sets both. Its `default:90` was dropped
+	// with the rest rather than kept as the one surviving exception: nothing
+	// writes 0 here, so the tag bought nothing, and keeping it would mean
+	// carrying a permanent allowlist entry in the guard test below for a
+	// deprecated column (spec 2026-08-30-04, "open question" — decided: drop).
+	HistoryDays   int     `bun:"history_days,notnull"`
+	HistoryPeriod string  `bun:"history_period,notnull"`
+	Language      *string `bun:"language"`
 	// AutoPublish turns the incident auto-publication pipeline on for this
 	// page. The DDL default is FALSE so that upgrading an existing
 	// installation never makes yesterday's internal blips public; NEW pages
 	// opt in through NewStatusPage instead (spec 2026-08-19-08).
-	AutoPublish bool `bun:"auto_publish,notnull,default:false"`
+	AutoPublish bool `bun:"auto_publish,notnull"`
 	// AutoPublishDelaySeconds debounces publication: an incident must still be
 	// open this long after it opened before customers hear about it.
 	//
@@ -108,7 +120,7 @@ type StatusPage struct {
 	AutoPublishDelaySeconds int `bun:"auto_publish_delay_seconds,notnull"`
 	// AutoResolve decides what an auto-created publication does when its
 	// incident resolves: always | if_untouched | never.
-	AutoResolve string `bun:"auto_resolve,notnull,default:'if_untouched'"`
+	AutoResolve string `bun:"auto_resolve,notnull"`
 	// CustomCSS is operator-authored CSS injected into the public status page
 	// as a <style> text node (never dangerouslySetInnerHTML). nil = none.
 	// Capped at 64 KB and @import-free by API validation; unlike the
@@ -132,18 +144,20 @@ type StatusPage struct {
 	// CustomDomainGraceAfterFailures the domain enters `grace` (still served);
 	// only at CustomDomainHardDemoteAfterFailures is the verification cleared
 	// (domain release/takeover protection).
-	CustomDomainFailures int `bun:"custom_domain_failures,notnull,default:0"`
+	CustomDomainFailures int `bun:"custom_domain_failures,notnull"`
 	// CustomDomainState is the explicit lifecycle state — one of the
 	// CustomDomainState* constants. It exists because a single failure counter
 	// was doing two jobs ("flaky right now" and "gone for good"), which made a
 	// DNS blip indistinguishable from a domain transfer and took status pages
-	// dark permanently (spec 2026-08-23-03).
-	CustomDomainState string `bun:"custom_domain_state,notnull,default:'none'"`
+	// dark permanently (spec 2026-08-23-03). NewStatusPage sets it — the tag
+	// must not carry the DDL's `default:'none'`, or bun would drop any state
+	// the Go side sets to its zero value from the INSERT entirely.
+	CustomDomainState string `bun:"custom_domain_state,notnull"`
 	// CustomDomainSuccesses counts consecutive SUCCESSFUL re-verifications. It
 	// is the counter re-promotion is earned with: a demoted domain needs
 	// CustomDomainRepromoteSuccesses of them in a row (plus a still-valid
 	// certificate) before the sweep trusts it again.
-	CustomDomainSuccesses int `bun:"custom_domain_successes,notnull,default:0"`
+	CustomDomainSuccesses int `bun:"custom_domain_successes,notnull"`
 	// CustomDomainGraceSince is when the domain last entered `grace`. nil
 	// outside grace. Makes "how long has this been degrading" readable instead
 	// of inferred from a counter times a job interval.
@@ -210,8 +224,12 @@ func NewStatusPage(orgUID, name, slug string) *StatusPage {
 		AutoPublish:             true,
 		AutoPublishDelaySeconds: DefaultAutoPublishDelaySeconds,
 		AutoResolve:             string(AutoResolveIfUntouched),
-		CreatedAt:               now,
-		UpdatedAt:               now,
+		// Explicit rather than inherited from the DDL: the column's
+		// `default:'none'` is no longer declared on the bun tag, so a page
+		// created here must name its own starting lifecycle state.
+		CustomDomainState: CustomDomainStateNone,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 }
 
@@ -548,7 +566,7 @@ type StatusPageSection struct {
 	StatusPageUID string `bun:"status_page_uid,notnull"`
 	Name          string `bun:"name,notnull"`
 	Slug          string `bun:"slug,notnull"`
-	Position      int    `bun:"position,notnull,default:0"`
+	Position      int    `bun:"position,notnull"`
 	// Selector is the section's dynamic-membership rule, or nil for a
 	// hand-curated section (the default, and what every pre-existing section
 	// stays). Never defaulted to anything non-nil: auto-inclusion has to be an
@@ -617,8 +635,8 @@ type StatusPageResource struct {
 	//
 	// The inverse — a MANUAL row — is never touched by the reconciler, which
 	// is what makes "manual placement wins" true rather than a race.
-	ManagedBySelector bool      `bun:"managed_by_selector,notnull,default:false"`
-	Position          int       `bun:"position,notnull,default:0"`
+	ManagedBySelector bool      `bun:"managed_by_selector,notnull"`
+	Position          int       `bun:"position,notnull"`
 	CreatedAt         time.Time `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt         time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }

@@ -39,9 +39,9 @@ type UserIntegrationIdentity struct {
 	ExternalID string `bun:"external_id,notnull"`
 	// DisplayName is the provider-side display name captured at match time.
 	// Purely cosmetic — used for the admin UI and for the plain-text fallback.
-	DisplayName string `bun:"display_name,notnull,default:''"`
+	DisplayName string `bun:"display_name,notnull"`
 	// Source is IdentitySourceAuto or IdentitySourceManual.
-	Source    string    `bun:"source,notnull,default:'auto'"`
+	Source    string    `bun:"source,notnull"`
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }

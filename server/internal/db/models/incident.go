@@ -49,11 +49,11 @@ type Incident struct {
 	// into a chat on a phone, so every human-facing surface addresses an
 	// incident by this instead. Assigned once at creation and never reused —
 	// soft-deleted incidents keep theirs.
-	Number          int64         `bun:"number,notnull,default:0"`
+	Number          int64         `bun:"number,notnull"`
 	OrganizationUID string        `bun:"organization_uid,notnull"`
 	CheckUID        string        `bun:"check_uid,notnull"`
 	Region          *string       `bun:"region"`
-	State           IncidentState `bun:"state,notnull,default:1"`
+	State           IncidentState `bun:"state,notnull"`
 	StartedAt       time.Time     `bun:"started_at,notnull"`
 	ResolvedAt      *time.Time    `bun:"resolved_at"`
 	ResolvedBy      *string       `bun:"resolved_by"`
@@ -64,14 +64,14 @@ type Incident struct {
 	SnoozedUntil    *time.Time    `bun:"snoozed_until"`
 	SnoozedBy       *string       `bun:"snoozed_by"`
 	SnoozeReason    *string       `bun:"snooze_reason"`
-	FailureCount    int           `bun:"failure_count,notnull,default:1"`
-	RelapseCount    int           `bun:"relapse_count,notnull,default:0"`
+	FailureCount    int           `bun:"failure_count,notnull"`
+	RelapseCount    int           `bun:"relapse_count,notnull"`
 	// FlapLevel is the check's FlapCount at the moment this incident opened
 	// or last reopened (spec 2026-08-24-05) — the "at what flap level did
 	// this page fire" record. 0 = not flapping (first outage in the rolling
 	// window). Unlike checks.flap_count this is a point-in-time snapshot, not
 	// a live value, so it never needs lazy-reset handling.
-	FlapLevel      int        `bun:"flap_level,notnull,default:0"`
+	FlapLevel      int        `bun:"flap_level,notnull"`
 	LastReopenedAt *time.Time `bun:"last_reopened_at"`
 	Title          *string    `bun:"title"`
 	Description    *string    `bun:"description"`
@@ -81,9 +81,9 @@ type Incident struct {
 	// CausedByIncidentUID points to the root-cause incident this one was rolled up under.
 	CausedByIncidentUID *string `bun:"caused_by_incident_uid"`
 	// PagingSuppressed gates notifications and escalation: TRUE = skip.
-	PagingSuppressed bool `bun:"paging_suppressed,notnull,default:false"`
+	PagingSuppressed bool `bun:"paging_suppressed,notnull"`
 	// Kind is IncidentKindCheck or IncidentKindSLOBurn.
-	Kind string `bun:"kind,notnull,default:'check'"`
+	Kind string `bun:"kind,notnull"`
 	// SLOUID / SLOAlertPolicyUID bind a burn incident to what produced it.
 	// Both are NULL on a check incident. Both are `on delete set null`: losing
 	// the SLO must not erase the record of the pages it sent.
@@ -150,14 +150,17 @@ type IncidentUpdate struct {
 
 // IncidentMemberCheck tracks a single check's state inside a group incident.
 type IncidentMemberCheck struct {
-	IncidentUID      string     `bun:"incident_uid,pk"`
-	CheckUID         string     `bun:"check_uid,pk"`
-	JoinedAt         time.Time  `bun:"joined_at,notnull,default:current_timestamp"`
-	FirstFailureAt   time.Time  `bun:"first_failure_at,notnull"`
-	LastFailureAt    time.Time  `bun:"last_failure_at,notnull"`
-	LastRecoveryAt   *time.Time `bun:"last_recovery_at"`
-	FailureCount     int        `bun:"failure_count,notnull,default:1"`
-	CurrentlyFailing bool       `bun:"currently_failing,notnull,default:true"`
+	IncidentUID    string     `bun:"incident_uid,pk"`
+	CheckUID       string     `bun:"check_uid,pk"`
+	JoinedAt       time.Time  `bun:"joined_at,notnull,default:current_timestamp"`
+	FirstFailureAt time.Time  `bun:"first_failure_at,notnull"`
+	LastFailureAt  time.Time  `bun:"last_failure_at,notnull"`
+	LastRecoveryAt *time.Time `bun:"last_recovery_at"`
+	FailureCount   int        `bun:"failure_count,notnull"`
+	// No `default:true` on the tag even though the column has one — see the
+	// StatusPage.AutoPublishDelaySeconds note. A member row that is inserted
+	// already recovered is legal, and the tag silently rewrote it to failing.
+	CurrentlyFailing bool `bun:"currently_failing,notnull"`
 }
 
 // IncidentMemberUpdate represents fields that can be updated on a member row.

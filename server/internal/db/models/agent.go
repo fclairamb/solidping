@@ -41,7 +41,7 @@ type Agent struct {
 	// OrganizationUID is nil exactly for system agents.
 	OrganizationUID *string `bun:"organization_uid"`
 	// Kind is AgentKindOrg or AgentKindSystem.
-	Kind string `bun:"kind,notnull,default:'org'"`
+	Kind string `bun:"kind,notnull"`
 	// Region is the region slug the agent is bound to; all its claims are
 	// hard-scoped to it. Fully-qualified `@<org>/<region>` for an org agent, a
 	// plain cloud region slug for a system agent.
@@ -55,7 +55,7 @@ type Agent struct {
 	X25519PublicKey string `bun:"x25519_public_key,notnull"`
 	// Fingerprint is a short hash of the Ed25519 key, shown in UI/logs.
 	Fingerprint string     `bun:"fingerprint,notnull"`
-	Status      string     `bun:"status,notnull,default:'active'"`
+	Status      string     `bun:"status,notnull"`
 	LastSeenAt  *time.Time `bun:"last_seen_at"`
 	EnrolledAt  time.Time  `bun:"enrolled_at,notnull,default:current_timestamp"`
 	RevokedAt   *time.Time `bun:"revoked_at"`
@@ -127,7 +127,7 @@ type AgentEnrollmentToken struct {
 	// OrganizationUID is nil exactly for system tokens.
 	OrganizationUID *string `bun:"organization_uid"`
 	// Kind is AgentKindOrg or AgentKindSystem.
-	Kind string `bun:"kind,notnull,default:'org'"`
+	Kind string `bun:"kind,notnull"`
 	// Region is the region the enrolled agent will be bound to:
 	// `@<org>/<region>` for an org token, a cloud region slug for a system one.
 	Region string `bun:"region,notnull"`

@@ -14,7 +14,7 @@ type MaintenanceWindow struct {
 	Description     *string    `bun:"description"`
 	StartAt         time.Time  `bun:"start_at,notnull"`
 	EndAt           time.Time  `bun:"end_at,notnull"`
-	Recurrence      string     `bun:"recurrence,notnull,default:'none'"`
+	Recurrence      string     `bun:"recurrence,notnull"`
 	RecurrenceEnd   *time.Time `bun:"recurrence_end"`
 	CreatedBy       *string    `bun:"created_by"`
 	CreatedAt       time.Time  `bun:"created_at,notnull"`

@@ -105,9 +105,13 @@ type Integration struct {
 	OrganizationUID string         `bun:"organization_uid,notnull"`
 	Type            ConnectionType `bun:"type,notnull"`
 	Name            string         `bun:"name,notnull"`
-	Enabled         bool           `bun:"enabled,notnull,default:true"`
-	IsDefault       bool           `bun:"is_default,notnull,default:false"`
-	Settings        JSONMap        `bun:"settings,type:jsonb,notnull"`
+	// No `default:true` on the tag even though the column has one — see the
+	// StatusPage.AutoPublishDelaySeconds note: it made an integration
+	// impossible to CREATE disabled (spec 2026-08-30-04). NewIntegration
+	// supplies the enabled-by-default.
+	Enabled   bool    `bun:"enabled,notnull"`
+	IsDefault bool    `bun:"is_default,notnull"`
+	Settings  JSONMap `bun:"settings,type:jsonb,notnull"`
 	// SettingsPrivate / SettingsPrivateKeys mirror the credential-encryption
 	// shape used on Check.Config. Tokens, webhook URLs, API keys live here
 	// as an AES-GCM envelope at rest.

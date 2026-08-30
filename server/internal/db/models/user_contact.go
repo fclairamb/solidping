@@ -69,7 +69,7 @@ type UserContact struct {
 	// code; nil when no verification is pending or after a successful confirm.
 	VerifyCodeHash  *string    `bun:"verify_code_hash"`
 	VerifyExpiresAt *time.Time `bun:"verify_expires_at"`
-	VerifyAttempts  int        `bun:"verify_attempts,notnull,default:0"`
+	VerifyAttempts  int        `bun:"verify_attempts,notnull"`
 	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt       *time.Time `bun:"deleted_at,soft_delete"`
@@ -96,14 +96,17 @@ func NewUserContact(userUID, orgUID, contactType, value, label string) *UserCont
 type UserNotificationRoute struct {
 	bun.BaseModel `bun:"table:user_notification_routes"`
 
-	UID        string    `bun:"uid,pk,type:varchar(36)"`
-	UserUID    string    `bun:"user_uid,notnull,type:varchar(36)"`
-	OrgUID     string    `bun:"org_uid,notnull,type:varchar(36)"`
-	ContactUID string    `bun:"contact_uid,notnull,type:varchar(36)"`
-	Enabled    bool      `bun:"enabled,notnull,default:true"`
-	Position   int       `bun:"position,notnull,default:0"`
-	CreatedAt  time.Time `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt  time.Time `bun:"updated_at,notnull,default:current_timestamp"`
+	UID        string `bun:"uid,pk,type:varchar(36)"`
+	UserUID    string `bun:"user_uid,notnull,type:varchar(36)"`
+	OrgUID     string `bun:"org_uid,notnull,type:varchar(36)"`
+	ContactUID string `bun:"contact_uid,notnull,type:varchar(36)"`
+	// No `default:true` on the tag even though the column has one — see the
+	// StatusPage.AutoPublishDelaySeconds note: it made a route impossible to
+	// CREATE disabled. NewUserNotificationRoute supplies the default.
+	Enabled   bool      `bun:"enabled,notnull"`
+	Position  int       `bun:"position,notnull"`
+	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 
 	Contact *UserContact `bun:"rel:belongs-to,join:contact_uid=uid"`
 }

@@ -32,5 +32,5 @@ type OrgUsageCounter struct {
 	OrganizationUID string `bun:"organization_uid,pk"`
 	Kind            string `bun:"kind,pk"`
 	PeriodStart     string `bun:"period_start,pk"`
-	Count           int    `bun:"count,notnull,default:0"`
+	Count           int    `bun:"count,notnull"`
 }
