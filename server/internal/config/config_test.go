@@ -1598,3 +1598,74 @@ func TestBaseURLHost(t *testing.T) {
 		})
 	}
 }
+
+// TestBaseURLOrigin proves BaseURLOrigin keeps the scheme and port —
+// BaseURLHost strips both, but the Origin header a browser sends is exactly
+// scheme://host[:port], so a comparison against it needs the full thing.
+func TestBaseURLOrigin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		baseURL string
+		want    string
+	}{
+		{name: "plain host", baseURL: "https://app.example.com", want: "https://app.example.com"},
+		{name: "port kept", baseURL: "http://localhost:4000", want: "http://localhost:4000"},
+		{name: "path dropped", baseURL: "https://app.example.com/dash0/", want: "https://app.example.com"},
+		{name: "lowercased", baseURL: "https://APP.Example.COM", want: "https://app.example.com"},
+		{name: "surrounding space", baseURL: "  https://app.example.com  ", want: "https://app.example.com"},
+		{name: "empty", baseURL: "", want: ""},
+		{name: "scheme only", baseURL: "https://", want: ""},
+		{name: "unparseable", baseURL: "://nope", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &Config{}
+			cfg.Server.BaseURL = tt.baseURL
+			require.Equal(t, tt.want, cfg.BaseURLOrigin())
+		})
+	}
+}
+
+// TestResolvedCORSAllowedOrigins proves an operator who never sets
+// Server.CORSAllowedOrigins still gets a working default (the app's own
+// public origin, so a same-origin dashboard needs no configuration), and that
+// an explicit allowlist always wins over that default.
+func TestResolvedCORSAllowedOrigins(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := &Config{}
+	cfg.Server.BaseURL = "https://solidping.io:8443/ignored/path"
+	r.Equal([]string{"https://solidping.io:8443"}, cfg.ResolvedCORSAllowedOrigins())
+
+	cfg.Server.CORSAllowedOrigins = []string{"https://self-hosted-front-end.example"}
+	r.Equal([]string{"https://self-hosted-front-end.example"}, cfg.ResolvedCORSAllowedOrigins())
+
+	unparseable := &Config{}
+	unparseable.Server.BaseURL = "://nope"
+	r.Nil(unparseable.ResolvedCORSAllowedOrigins())
+}
+
+// TestApplyServerEnv_CORSAllowedOrigins proves the multi-word koanf key is
+// read via applyServerEnv (koanf's env loader would collapse
+// server.cors_allowed_origins to server.cors.allowed.origins and bind
+// nothing — see project_koanf_env_quirk), with the SP_SERVER_-prefixed name
+// preferred over the shorter documented one.
+func TestApplyServerEnv_CORSAllowedOrigins(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_CORS_ALLOWED_ORIGINS", "https://a.example.com, https://b.example.com")
+	cfg := &ServerConfig{}
+	applyServerEnv(cfg)
+	r.Equal([]string{"https://a.example.com", "https://b.example.com"}, cfg.CORSAllowedOrigins)
+
+	t.Setenv("SP_SERVER_CORS_ALLOWED_ORIGINS", "https://c.example.com")
+	cfg = &ServerConfig{}
+	applyServerEnv(cfg)
+	r.Equal([]string{"https://c.example.com"}, cfg.CORSAllowedOrigins, "SP_SERVER_ prefix wins over the shorter name")
+}

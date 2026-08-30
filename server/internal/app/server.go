@@ -2198,9 +2198,9 @@ func initSentry(cfg config.SentryConfig) error {
 	return nil
 }
 
-// publicCORSPathPrefixes lists request-path prefixes that are genuinely
-// public, credential-free surfaces: public status pages and their assets, the
-// embeddable widget, and the PostHog ingest proxy. A request under one of
+// isPublicCORSPath reports whether path falls under a genuinely public,
+// credential-free surface: public status pages and their assets, the
+// embeddable widget, or the PostHog ingest proxy. A request under one of
 // these always answers Access-Control-Allow-Origin: "*" with NO
 // Access-Control-Allow-Credentials, regardless of the configured allowlist —
 // the domains that embed them (a customer's own site, a marketing site
@@ -2208,16 +2208,15 @@ func initSentry(cfg config.SentryConfig) error {
 // allowlist, and none of these surfaces ever need a SolidPing session to
 // answer. Everything else goes through the allowlist (see corsMiddleware).
 // Spec 2026-08-30-09.
-var publicCORSPathPrefixes = []string{
-	config.PostHogProxyPath + "/",
-	"/embed/",
-	statuspageassets.PublicPathPrefix,
-	"/api/v1/status-pages/",
-}
-
-// isPublicCORSPath reports whether path is one of publicCORSPathPrefixes.
 func isPublicCORSPath(path string) bool {
-	for _, prefix := range publicCORSPathPrefixes {
+	prefixes := [...]string{
+		config.PostHogProxyPath + "/",
+		"/embed/",
+		statuspageassets.PublicPathPrefix,
+		"/api/v1/status-pages/",
+	}
+
+	for _, prefix := range prefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
