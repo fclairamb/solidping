@@ -479,14 +479,29 @@ func strPtr(s string) *string { return &s }
 // test for spec 2026-08-29-09: a PATCH that changes only the *types* of config
 // values must still be copied onto the denormalized check_jobs.config.
 //
-// The production incident, replayed here through the public API: a check's
-// expectedStatusCodes were patched to JSON numbers (the HTTP checker requires
-// strings, so every run failed to parse), then patched back to strings. The
-// check's own config column was correct both times, but configEqual compared
-// values with fmt.Sprintf("%v", …) — which renders [200 403] identically for
-// numbers and strings — so needsUpdate stayed false and the job kept
-// dispatching the broken snapshot forever. Only disable/enable (which deletes
-// and recreates the jobs) could unstick it.
+// The production incident: a check's expectedStatusCodes ended up as JSON
+// numbers (the HTTP checker requires strings, so every run failed to parse),
+// then got fixed back to strings. The check's own config column was correct
+// both times, but configEqual compared values with fmt.Sprintf("%v", …) —
+// which renders [200 403] identically for numbers and strings — so
+// needsUpdate stayed false and the job kept dispatching the broken snapshot
+// forever. Only disable/enable (which deletes and recreates the jobs) could
+// unstick it.
+//
+// Spec 2026-08-29-10 (this branch) closed the write path that produced this
+// exact state through the API — UpdateCheck now runs checker.Validate on the
+// merged config, so a PATCH to numeric expectedStatusCodes is rejected before
+// it reaches the config column. That does not make configEqual's type
+// blindness moot: a row can still carry mismatched types some other way (a
+// pre-fix write, direct DB surgery, an import/migration path that bypasses
+// this validation) — spec 2026-08-29-10's own non-goals call this out
+// explicitly: existing malformed rows are out of scope for a data fixer and
+// "keep failing at the worker until re-PATCHed, which the new validation then
+// catches." Step 1 below simulates exactly that: the malformed value is
+// written straight to the DB (never through UpdateCheck), and reconcile is
+// then triggered via a same-value period PATCH that leaves req.Config nil —
+// exercising reconcileCheckJobs' comparison logic against the already-broken
+// stored config, without going through checker.Validate.
 //
 // The same edits must NOT move scheduled_at: config is dispatch payload, not
 // schedule input, so syncing it must never drift when the check runs.
@@ -519,9 +534,13 @@ func TestReconcileTypeOnlyConfigEditReachesCheckJobs(t *testing.T) {
 	}
 
 	// Step 1 — break it exactly as production did: same two status codes, now
-	// as JSON numbers. Nothing but the value types changed.
-	numeric := map[string]any{"url": "https://acme.com", "expectedStatusCodes": []any{200, 403}}
-	_, err = svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{Config: &numeric})
+	// as JSON numbers. Nothing but the value types changed. Written directly
+	// to the DB (UpdateCheck would now reject this — see the doc comment
+	// above), then reconcile is triggered via a config-less PATCH.
+	numeric := models.JSONMap{"url": "https://acme.com", "expectedStatusCodes": []any{200, 403}}
+	r.NoError(dbSvc.UpdateCheck(ctx, resp.UID, &models.CheckUpdate{Config: &numeric}))
+
+	_, err = svc.UpdateCheck(ctx, org.Slug, resp.UID, &checks.UpdateCheckRequest{Period: strPtr("00:01:00")})
 	r.NoError(err)
 
 	jobsNumeric, err := dbSvc.ListCheckJobsByCheckUID(ctx, resp.UID)

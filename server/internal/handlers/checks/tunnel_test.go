@@ -210,8 +210,10 @@ func TestTunnelChainingIsRejected(t *testing.T) {
 	r.Contains(err.Error(), "chained tunnels are not supported")
 }
 
-// UpdateCheck never calls checker.Validate, so the service-level rule is the
-// ONLY gate on the PATCH path — a dangling reference must not sneak in there.
+// The tunnel-reference rule is a shared config validator (configValidationErrors),
+// enforced on the PATCH path independently of checker.Validate (spec
+// 2026-08-29-10 added that one too, for per-type structural rules) — a
+// dangling reference must not sneak in through either gate.
 func TestUpdateCheckValidatesTunnel(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -225,8 +227,14 @@ func TestUpdateCheckValidatesTunnel(t *testing.T) {
 	})
 	r.NoError(err)
 
+	// url must stay present: PATCH config replaces the whole map (a key
+	// absent from the request is dropped, not preserved), and since spec
+	// 2026-08-29-10 the merged config now also goes through checker.Validate
+	// — an absent url would 400 with "url: is required" before the tunnel
+	// reference is even looked at, which is not what this test is about.
 	_, err = svc.UpdateCheck(ctx, org.Slug, *created.Slug, &checks.UpdateCheckRequest{
 		Config: &map[string]any{
+			"url":                              "https://example.com",
 			checkerdef.TunnelCheckUIDConfigKey: "00000000-0000-0000-0000-000000000000",
 		},
 	})
