@@ -8,6 +8,7 @@ package emailpreview
 
 import (
 	"net/http"
+	"regexp"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -18,6 +19,22 @@ import (
 // previewPathPrefix is the route prefix the index echoes back so the dashboard
 // does not rebuild the URL shape by hand.
 const previewPathPrefix = "/api/mgmt/email-preview/"
+
+// darkMediaQueryRE matches the dark-mode media query base.html ships, in the
+// shape premailer re-serializes it to (it normalizes whitespace around the
+// query, so this is deliberately tolerant of both spellings).
+var darkMediaQueryRE = regexp.MustCompile(`@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)`)
+
+// forceDarkScheme makes the template's dark block unconditional.
+//
+// An <iframe> cannot be told to report prefers-color-scheme: dark to the
+// document it hosts, so the preview page has no way to see the dark rendering
+// on its own. Rewriting the media query to `@media all` activates EXACTLY the
+// CSS a dark-mode client would apply — the preview stays a view of the shipped
+// template rather than a second palette that can silently drift from it.
+func forceDarkScheme(html string) string {
+	return darkMediaQueryRE.ReplaceAllLiteralString(html, "@media all")
+}
 
 // Handler serves GET /api/mgmt/email-preview and
 // GET /api/mgmt/email-preview/{template}.
@@ -37,7 +54,13 @@ func NewHandler(formatter email.Formatter, cfg *config.Config) *Handler {
 }
 
 // Preview renders a template with fixture data.
-// GET /api/mgmt/email-preview/{template}?format=html|text (default html).
+// GET /api/mgmt/email-preview/{template}?format=html|text (default html)
+// &colorScheme=light|dark (default light).
+//
+// colorScheme only affects the HTML format: `dark` activates the template's
+// own prefers-color-scheme block (see forceDarkScheme) so the dashboard can
+// review the dark rendering inside an iframe. The plaintext part has no
+// styling to switch, and is served unchanged either way.
 func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 	templateName := httpx.Param(req, "template")
 
@@ -57,8 +80,22 @@ func (h *Handler) Preview(writer http.ResponseWriter, req *http.Request) error {
 		format = "html"
 	}
 
+	colorScheme := req.URL.Query().Get("colorScheme")
+	if colorScheme == "" {
+		colorScheme = "light"
+	}
+
+	if colorScheme != "light" && colorScheme != "dark" {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"colorScheme must be 'light' or 'dark'")
+	}
+
 	switch format {
 	case "html":
+		if colorScheme == "dark" {
+			html = forceDarkScheme(html)
+		}
+
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.Header().Set("Cache-Control", "no-store")
 		writer.WriteHeader(http.StatusOK)

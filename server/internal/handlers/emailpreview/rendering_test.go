@@ -2,6 +2,8 @@ package emailpreview_test
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -126,6 +128,124 @@ func TestPreview_PinsLightRendering(t *testing.T) {
 	require.Contains(t, body, `name="color-scheme" content="light only"`)
 	require.Contains(t, body, `name="supported-color-schemes" content="light only"`)
 	require.Contains(t, body, `name="x-apple-disable-message-reformatting"`)
+	require.Contains(t, body, "color-scheme: light only")
+
+	// The negative half, and the point of this test now that base.html also
+	// ships a designed dark palette: shipping dark styles is NOT a licence to
+	// un-pin. Flipping any of the three declarations to "light dark" hands the
+	// mail to Gmail's auto-darkening algorithm — a separate, human-gated
+	// decision written up in wiki/features/email-dark-mode.md. The trio is one
+	// declaration in three places; each spelling is asserted so a partial flip
+	// (which would leave the clients disagreeing about the same mail) fails
+	// just as loudly as a full one.
+	require.NotContains(t, body, "light dark")
+	require.NotContains(t, body, `content="dark"`)
+	// Newline-anchored: the :root declaration starts a line in premailer's
+	// output, which "prefers-color-scheme: dark" (always preceded by "@media (")
+	// never does — so this catches a flipped :root without tripping on the
+	// dark block's own media query.
+	require.NotContains(t, body, "\ncolor-scheme: dark")
+	require.NotContains(t, body, "\nsupported-color-schemes: dark")
+}
+
+// TestPreview_ShipsADarkPalette pins the dark block onto every rendered mail.
+//
+// base.html is the single stylesheet all 24 templates dress themselves from, so
+// a template can only lose the dark palette by losing the wrapper — which this
+// catches. It asserts on the RENDERED output rather than the source file
+// because premailer is what decides whether a media block survives inlining at
+// all: rules it cannot inline stay in a <style> block (with !important added,
+// which is what lets them beat the inlined light values). A premailer upgrade
+// that started dropping media blocks would silently ship light-only mail again.
+func TestPreview_ShipsADarkPalette(t *testing.T) {
+	t.Parallel()
+
+	router := newTestRouter(t)
+
+	for _, tmpl := range shippedTemplates(t) {
+		t.Run(tmpl, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			rec := doGet(t, router, "/api/mgmt/email-preview/"+tmpl)
+			r.Equal(http.StatusOK, rec.Code)
+
+			body := rec.Body.String()
+			r.Contains(body, "prefers-color-scheme: dark",
+				"%s renders without the dark block — it will glare white in a dark inbox", tmpl)
+			r.Contains(body, "#141e28",
+				"%s carries the media query but not the dark card surface", tmpl)
+		})
+	}
+}
+
+// darkBlockRE captures the whole @media (prefers-color-scheme: dark) { ... }
+// block out of base.html's SOURCE, brace-matched by the closing brace at the
+// block's own indentation.
+var darkBlockRE = regexp.MustCompile(`(?s)@media \(prefers-color-scheme: dark\) \{.*?\n        \}`)
+
+// gradientDeclRE captures one background-image gradient declaration.
+var gradientDeclRE = regexp.MustCompile(`background-image:\s*linear-gradient`)
+
+// TestDarkPalette_EveryGradientKeepsASolidFallback is the dark-block twin of
+// TestPreview_EveryGradientKeepsASolidFallback.
+//
+// That test walks the INLINED style attributes of a rendered mail, which by
+// construction can never contain a media-block rule: premailer leaves those in
+// the <style> element. So the dark block's own gradients — .quote,
+// .btn-secondary, td.label, .metric, .footer — are invisible to it, and the
+// exact Outlook failure it guards (a gradient with no solid fallback renders as
+// nothing) would sail straight through. This reads base.html itself, rule by
+// rule, and requires the pairing the file's own comment promises.
+func TestDarkPalette_EveryGradientKeepsASolidFallback(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	source, err := os.ReadFile(filepath.Join("..", "..", "email", "templates", "base.html"))
+	r.NoError(err)
+
+	block := darkBlockRE.FindString(string(source))
+	r.NotEmpty(block, "base.html has no dark-mode block, or it is no longer brace-matched at its own indentation")
+
+	for _, line := range strings.Split(block, "\n") {
+		if !gradientDeclRE.MatchString(line) {
+			continue
+		}
+
+		r.Contains(line, "background-color:",
+			"a dark-mode gradient has no solid fallback — it renders as nothing in Outlook: %s", strings.TrimSpace(line))
+	}
+}
+
+// TestDarkPalette_LeavesTheSaturatedChromeAlone pins the deliberate omissions.
+//
+// The header is already dark navy and the status banners are saturated
+// mid-tones that read correctly on a dark card — recoloring the banner is
+// precisely the damage the light pin exists to prevent, so the dark block must
+// not touch either. Same for the primary/success buttons. This is a real
+// tripwire rather than a restatement: the natural instinct when extending the
+// block is to "finish the job" and give every surface a dark value.
+func TestDarkPalette_LeavesTheSaturatedChromeAlone(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	source, err := os.ReadFile(filepath.Join("..", "..", "email", "templates", "base.html"))
+	r.NoError(err)
+
+	block := darkBlockRE.FindString(string(source))
+	r.NotEmpty(block)
+
+	for _, selector := range []string{
+		".header", ".accent-bar", ".status-banner", ".status-down", ".status-recovered",
+		".status-escalated", ".status-reopened", ".status-comment", ".status-acknowledged",
+		".btn-primary", ".btn-success", ".cta",
+	} {
+		r.NotContains(block, selector+" ",
+			"the dark block restyles %s — it is deliberately left on its light value", selector)
+	}
 }
 
 // TestPreview_DetailRowsUseStyledCells keeps the two-column fact grid intact.

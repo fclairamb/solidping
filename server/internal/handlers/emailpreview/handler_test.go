@@ -108,6 +108,84 @@ func TestPreview_InvalidFormat400s(t *testing.T) {
 	r.Equal(http.StatusBadRequest, rec.Code)
 }
 
+// TestPreview_ColorSchemeDarkActivatesTheDarkBlock is what makes the dashboard's
+// Light/Dark toggle honest.
+//
+// An <iframe> cannot be told to report prefers-color-scheme: dark to the page it
+// hosts, so the endpoint rewrites the template's own media query to `@media all`
+// — the dark CSS a capable client applies becomes unconditional, with no second
+// palette to drift from the shipped one. Both halves are asserted: the query is
+// gone (otherwise the block still would not fire in the iframe) AND the dark
+// declarations are still there (otherwise the "dark" preview is just the light
+// one with the block deleted, which would look like a working toggle).
+func TestPreview_ColorSchemeDarkActivatesTheDarkBlock(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	router := newTestRouter(t)
+
+	rec := doGet(t, router, "/api/mgmt/email-preview/incident-created.html?colorScheme=dark")
+	r.Equal(http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	r.NotContains(body, "prefers-color-scheme", "the media query survived — the dark block never fires in an iframe")
+	r.Contains(body, "@media all")
+	r.Contains(body, "background-color: #141e28", "the dark card surface is gone, so this is not a dark preview at all")
+
+	// The light pin is NOT rewritten: the preview only unconditionalizes the
+	// media block, it does not simulate un-pinning the mail.
+	r.Contains(body, `name="color-scheme" content="light only"`)
+}
+
+// TestPreview_DefaultsToTheUntouchedTemplate is the positive control for the
+// test above: without the param — and with an explicit colorScheme=light — the
+// endpoint must serve byte-identical bytes to what the mailer sends, media
+// query and all. Without this, a rewrite that fired unconditionally would still
+// pass the dark test.
+func TestPreview_DefaultsToTheUntouchedTemplate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	router := newTestRouter(t)
+
+	plain := doGet(t, router, "/api/mgmt/email-preview/incident-created.html")
+	r.Equal(http.StatusOK, plain.Code)
+	r.Contains(plain.Body.String(), "@media (prefers-color-scheme: dark)")
+	r.NotContains(plain.Body.String(), "@media all")
+
+	light := doGet(t, router, "/api/mgmt/email-preview/incident-created.html?colorScheme=light")
+	r.Equal(http.StatusOK, light.Code)
+	r.Equal(plain.Body.String(), light.Body.String())
+}
+
+// TestPreview_ColorSchemeDoesNotTouchThePlaintextPart — the plaintext
+// alternative has no styling to switch, and the rewrite is scoped to the HTML
+// branch. A shared post-processing step applied before the format switch would
+// be caught here.
+func TestPreview_ColorSchemeDoesNotTouchThePlaintextPart(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	router := newTestRouter(t)
+
+	plain := doGet(t, router, "/api/mgmt/email-preview/welcome.html?format=text")
+	dark := doGet(t, router, "/api/mgmt/email-preview/welcome.html?format=text&colorScheme=dark")
+
+	r.Equal(http.StatusOK, plain.Code)
+	r.Equal(http.StatusOK, dark.Code)
+	r.Equal(plain.Body.String(), dark.Body.String())
+}
+
+func TestPreview_InvalidColorScheme400s(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	router := newTestRouter(t)
+
+	rec := doGet(t, router, "/api/mgmt/email-preview/welcome.html?colorScheme=sepia")
+	r.Equal(http.StatusBadRequest, rec.Code)
+}
+
 // TestEveryShippedTemplateHasFixture is the "no template ships unpreviewable"
 // guard the spec asks for: every file in server/internal/email/templates/
 // except base.html must have a preview fixture. Adding a template without one
