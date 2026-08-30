@@ -129,12 +129,18 @@ Private and password-protected pages carry no such risk, and no warning.
 ### How it behaves
 
 - **Manual placement wins.** A check you added by hand anywhere on the page is
-  never duplicated by a rule. Remove the manual component and the rule adopts
-  the check on its next pass.
+  never duplicated by a rule. Adding one by hand for a check the rule already
+  placed in that section takes the component over, keeping your public name.
+  Remove the manual component and the rule adopts the check again on its next
+  pass.
 - **Automatic components are owned by the rule.** They carry an `auto` badge and
-  cannot be deleted or reordered individually — change the rule instead. They
-  are otherwise ordinary components: same status, same uptime history, same
-  behaviour on the public page.
+  cannot be deleted, reordered or repositioned individually — the dashboard
+  hides those controls and the API answers `409 CONFLICT`, because such an edit
+  would be undone on the next pass and a change that reports success then
+  silently reverts is worse than a refusal. Change the rule instead. Their
+  public name and explanation *are* still editable. They are otherwise ordinary
+  components: same status, same uptime history, same behaviour on the public
+  page.
 - **Order is stable.** Manual components keep their positions and come first;
   automatic ones follow in alphabetical order. Two page loads never shuffle.
 - **Removal is immediate.** Remove the label, or delete the check, and the

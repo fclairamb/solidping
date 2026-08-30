@@ -508,7 +508,9 @@ func (h *Handler) ReorderResources(writer http.ResponseWriter, req *http.Request
 			})
 		}
 
-		return h.handleSectionError(writer, req, err)
+		// Resource mapper: a reorder that tries to move a selector-owned row
+		// answers 409, like every other attempt to edit one.
+		return h.handleResourceError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -555,10 +557,15 @@ func (h *Handler) DeleteResource(writer http.ResponseWriter, req *http.Request) 
 	sectionIdentifier := httpx.Param(req, "sectionUid")
 	resourceUID := httpx.Param(req, "resourceUid")
 
+	// handleResourceError, not handleSectionError: the delete path can fail
+	// with ErrResourceManagedBySelector, and only the resource mapper turns
+	// that into the 409 the API documents. Routing it through the section
+	// mapper answered 500 INTERNAL_ERROR instead — a refusal reported as a
+	// server fault (spec 2026-08-29-11).
 	if err := h.svc.DeleteResource(
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID,
 	); err != nil {
-		return h.handleSectionError(writer, req, err)
+		return h.handleResourceError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)

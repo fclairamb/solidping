@@ -1953,6 +1953,18 @@ func (s *Service) CreateResource(
 	resource.Explanation = req.Explanation
 	resource.AutoPublish = req.AutoPublish
 
+	// "Manual placement wins" has to work even when the selector got there
+	// first: a managed row for the same check in the SAME section would
+	// otherwise trip the (section_uid, check_uid) unique index and the
+	// operator's perfectly reasonable "pin this component" would come back as
+	// a constraint failure. Dropping the managed row hands ownership over —
+	// the reconciler then skips the check, because it is manual now.
+	if checkUID != nil {
+		if errDrop := s.dropManagedRowForCheck(ctx, section.UID, *checkUID); errDrop != nil {
+			return StatusPageResourceResponse{}, errDrop
+		}
+	}
+
 	if err := s.db.CreateStatusPageResource(ctx, resource); err != nil {
 		return StatusPageResourceResponse{}, fmt.Errorf("failed to create resource: %w", err)
 	}
@@ -1963,6 +1975,33 @@ func (s *Service) CreateResource(
 	s.reconcilePageBestEffort(ctx, org.UID, page.UID)
 
 	return convertResourceToResponse(resource), nil
+}
+
+// assertResourceEditable refuses the parts of an update the section's selector
+// owns (spec 2026-08-29-11).
+//
+// Re-targeting or repositioning a selector-owned row would be undone on the
+// next reconcile, so both are refused rather than accepted-then-silently-
+// reverted. The cosmetic fields (publicName, explanation, autoPublish) are
+// deliberately still writable: the reconciler never touches them, so an
+// operator's edit there has nothing to fight with.
+func (s *Service) assertResourceEditable(
+	ctx context.Context, sectionUID, resourceUID string, req UpdateResourceRequest,
+) error {
+	if req.CheckUID == nil && req.CheckGroupUID == nil && req.Position == nil {
+		return nil
+	}
+
+	// A lookup failure is deliberately NOT reported here: this function only
+	// decides whether the row is off-limits, and the update path below
+	// produces the proper not-found answer for a row that isn't there. Failing
+	// closed instead would turn "resource not found" into a confusing 409.
+	existing, errGet := s.db.GetStatusPageResource(ctx, sectionUID, resourceUID)
+	if errGet == nil && existing != nil && existing.ManagedBySelector {
+		return ErrResourceManagedBySelector
+	}
+
+	return nil
 }
 
 // UpdateResource updates a resource. Supplying checkUid or checkGroupUid
@@ -1995,14 +2034,11 @@ func (s *Service) UpdateResource(
 		Position:       req.Position,
 	}
 
-	if req.CheckUID != nil || req.CheckGroupUID != nil {
-		// Re-targeting a selector-owned row would be undone on the next
-		// reconcile, so it is refused rather than silently reverted.
-		existing, errGet := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
-		if errGet == nil && existing != nil && existing.ManagedBySelector {
-			return StatusPageResourceResponse{}, ErrResourceManagedBySelector
-		}
+	if errManaged := s.assertResourceEditable(ctx, section.UID, resourceUID, req); errManaged != nil {
+		return StatusPageResourceResponse{}, errManaged
+	}
 
+	if req.CheckUID != nil || req.CheckGroupUID != nil {
 		checkUID, groupUID, errTarget := s.resolveResourceTarget(
 			ctx, org.UID, derefOrEmpty(req.CheckUID), derefOrEmpty(req.CheckGroupUID),
 		)
@@ -2066,7 +2102,64 @@ func (s *Service) ReorderResources(
 		seen[uid] = struct{}{}
 	}
 
+	if errManaged := assertManagedOrderPreserved(existing, orderedUIDs); errManaged != nil {
+		return errManaged
+	}
+
 	return s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs)
+}
+
+// assertManagedOrderPreserved refuses a reorder that would move a
+// selector-owned row (spec 2026-08-29-11).
+//
+// A blanket "no reordering in a dynamic section" would be wrong: such a section
+// may hold manual rows too, and those stay freely reorderable. The rule that
+// makes "the selector owns its rows" true without taking anything away from the
+// operator is narrower — managed rows must stay AFTER every manual row, and
+// keep their current relative order among themselves, which is exactly the
+// arrangement the reconciler maintains.
+//
+// Without this the API accepted the renumbering, answered 204, and the next
+// reconcile silently undid it. An edit that reports success and then reverts is
+// a worse answer than a refusal, and the docs promise the refusal.
+func assertManagedOrderPreserved(existing []*models.StatusPageResource, orderedUIDs []string) error {
+	managedRank := make(map[string]int, len(existing))
+	rank := 0
+
+	for _, resource := range existing {
+		if resource.ManagedBySelector {
+			managedRank[resource.UID] = rank
+			rank++
+		}
+	}
+
+	if len(managedRank) == 0 {
+		return nil
+	}
+
+	seenManaged := false
+	previousRank := -1
+
+	for _, uid := range orderedUIDs {
+		currentRank, managed := managedRank[uid]
+		if !managed {
+			// A manual row after a managed one means the managed block moved.
+			if seenManaged {
+				return ErrResourceManagedBySelector
+			}
+
+			continue
+		}
+
+		if currentRank != previousRank+1 {
+			return ErrResourceManagedBySelector
+		}
+
+		seenManaged = true
+		previousRank = currentRank
+	}
+
+	return nil
 }
 
 // ReorderSections rewrites the page's sections so that orderedUIDs[i] gets

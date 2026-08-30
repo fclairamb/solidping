@@ -12,13 +12,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -743,4 +748,275 @@ func TestSelector_CapsManagedRowsPerSection(t *testing.T) {
 	r.Len(sections, 1)
 	r.True(sections[0].SelectorTruncated)
 	r.Equal(maxManagedResourcesPerSection+overflow, sections[0].SelectorMatchTotal)
+}
+
+// --- The selector owns its rows: refusals, at the HTTP boundary ---
+//
+// These assert the STATUS CODE, not just the error value. A service-level
+// assertion cannot see which mapper the handler routed the error through, and
+// that gap is exactly how the delete path came to answer 500 INTERNAL_ERROR —
+// a deliberate refusal reported as a server fault — while a green service test
+// said the refusal worked.
+
+// newResourceRequest builds an httptest request with the chi route params the
+// real router sets for the section-resource endpoints.
+func newResourceRequest(
+	method, orgSlug, pageUID, sectionUID, resourceUID, body string,
+) (*http.Request, *httptest.ResponseRecorder) {
+	target := "/api/v1/orgs/" + orgSlug + "/status-pages/" + pageUID +
+		"/sections/" + sectionUID + "/resources/" + resourceUID
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), method, target, strings.NewReader(body),
+	)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("org", orgSlug)
+	rctx.URLParams.Add("statusPageUid", pageUID)
+	rctx.URLParams.Add("sectionUid", sectionUID)
+	rctx.URLParams.Add("resourceUid", resourceUID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	return req, httptest.NewRecorder()
+}
+
+// seedManagedRow builds a page whose single section selects everything, plus
+// one manual row and one managed row, and returns both.
+func seedManagedRow(
+	ctx context.Context, t *testing.T, svc *Service, org *models.Organization,
+) (StatusPageResponse, string, *models.StatusPageResource, *models.StatusPageResource) {
+	t.Helper()
+
+	r := require.New(t)
+
+	var manual, managed *models.StatusPageResource
+
+	page, section := seedSelectorPage(ctx, t, svc, org, models.SectionSelector{All: true})
+
+	pinned := seedLabeledCheck(ctx, t, svc, org.UID, "Aaa pinned", nil)
+	seedLabeledCheck(ctx, t, svc, org.UID, "Zzz auto", nil)
+
+	_, err := svc.CreateResource(ctx, org.Slug, page.UID, section.UID,
+		CreateResourceRequest{CheckUID: pinned.UID})
+	r.NoError(err)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	resources, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(resources, 2)
+
+	for _, resource := range resources {
+		if resource.ManagedBySelector {
+			managed = resource
+		} else {
+			manual = resource
+		}
+	}
+
+	r.NotNil(manual)
+	r.NotNil(managed)
+
+	return page, section.UID, manual, managed
+}
+
+// TestDeleteManagedResource_AnswersConflict pins the HTTP status of the
+// refusal. The 409 branch lives in handleResourceError; the delete handler
+// used to route through handleSectionError, which has no case for it, so the
+// documented 409 was unreachable and clients saw a 500.
+func TestDeleteManagedResource_AnswersConflict(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+	page, sectionUID, manual, managed := seedManagedRow(ctx, t, svc, org)
+
+	handler := NewHandler(svc, &config.Config{})
+
+	req, rec := newResourceRequest(http.MethodDelete, org.Slug, page.UID, sectionUID, managed.UID, "")
+	r.NoError(handler.DeleteResource(rec, req))
+	r.Equal(http.StatusConflict, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "CONFLICT")
+
+	// And the row really is still there — a refusal that quietly deleted
+	// anyway would be worse than the 500 it replaced.
+	resources, err := svc.db.ListStatusPageResources(ctx, sectionUID)
+	r.NoError(err)
+	r.Len(resources, 2)
+
+	// Positive control: the MANUAL row on the same section still deletes, so
+	// the guard is about ownership rather than about dynamic sections.
+	//
+	// The returned error is deliberately not asserted here: the 204 path calls
+	// WriteJSON(StatusNoContent, nil), and net/http refuses a body on a 204.
+	// That is pre-existing behavior shared by every DELETE handler and is
+	// invisible over the real router; the status code is what this test is
+	// about.
+	req, rec = newResourceRequest(http.MethodDelete, org.Slug, page.UID, sectionUID, manual.UID, "")
+	_ = handler.DeleteResource(rec, req)
+	r.Equal(http.StatusNoContent, rec.Code, rec.Body.String())
+}
+
+// TestUpdateManagedResource_PositionAnswersConflict pins that a bare position
+// write on a managed row is refused. It self-corrected on the next reconcile
+// before, which means the API said 200 and then silently undid the change.
+func TestUpdateManagedResource_PositionAnswersConflict(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+	page, sectionUID, manual, managed := seedManagedRow(ctx, t, svc, org)
+
+	handler := NewHandler(svc, &config.Config{})
+
+	req, rec := newResourceRequest(
+		http.MethodPatch, org.Slug, page.UID, sectionUID, managed.UID, `{"position":1}`)
+	r.NoError(handler.UpdateResource(rec, req))
+	r.Equal(http.StatusConflict, rec.Code, rec.Body.String())
+
+	stored, err := svc.db.GetStatusPageResource(ctx, sectionUID, managed.UID)
+	r.NoError(err)
+	r.Equal(managed.Position, stored.Position)
+
+	// The cosmetic fields stay writable — the reconciler never touches them,
+	// so there is nothing for the operator's edit to fight with.
+	req, rec = newResourceRequest(
+		http.MethodPatch, org.Slug, page.UID, sectionUID, managed.UID, `{"publicName":"Checkout"}`)
+	r.NoError(handler.UpdateResource(rec, req))
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	// Positive control: repositioning the MANUAL row is still allowed.
+	req, rec = newResourceRequest(
+		http.MethodPatch, org.Slug, page.UID, sectionUID, manual.UID, `{"position":3}`)
+	r.NoError(handler.UpdateResource(rec, req))
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+}
+
+// TestReorderResources_RefusesMovingAManagedRow pins the narrow rule: manual
+// rows stay freely reorderable inside a dynamic section, but an order that
+// moves a managed row out of the reconciler's arrangement is refused rather
+// than accepted-then-reverted.
+func TestReorderResources_RefusesMovingAManagedRow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, section := seedSelectorPage(ctx, t, svc, org, models.SectionSelector{All: true})
+
+	// Two manual rows and two managed ones, so both halves are exercised.
+	first := seedLabeledCheck(ctx, t, svc, org.UID, "Aaa manual one", nil)
+	second := seedLabeledCheck(ctx, t, svc, org.UID, "Bbb manual two", nil)
+	seedLabeledCheck(ctx, t, svc, org.UID, "Yyy auto one", nil)
+	seedLabeledCheck(ctx, t, svc, org.UID, "Zzz auto two", nil)
+
+	for _, check := range []*models.Check{first, second} {
+		_, err := svc.CreateResource(ctx, org.Slug, page.UID, section.UID,
+			CreateResourceRequest{CheckUID: check.UID})
+		r.NoError(err)
+	}
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	resources, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(resources, 4)
+
+	uids := make([]string, len(resources))
+	for i, resource := range resources {
+		uids[i] = resource.UID
+	}
+
+	r.False(resources[0].ManagedBySelector)
+	r.False(resources[1].ManagedBySelector)
+	r.True(resources[2].ManagedBySelector)
+	r.True(resources[3].ManagedBySelector)
+
+	handler := NewHandler(svc, &config.Config{})
+
+	reorder := func(order []string) *httptest.ResponseRecorder {
+		body, marshalErr := json.Marshal(ReorderResourcesRequest{UIDs: order})
+		r.NoError(marshalErr)
+
+		target := "/api/v1/orgs/" + org.Slug + "/status-pages/" + page.UID +
+			"/sections/" + section.UID + "/resources/reorder"
+		req := httptest.NewRequestWithContext(
+			context.Background(), http.MethodPost, target, strings.NewReader(string(body)))
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("org", org.Slug)
+		rctx.URLParams.Add("statusPageUid", page.UID)
+		rctx.URLParams.Add("sectionUid", section.UID)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		rec := httptest.NewRecorder()
+		// Same 204-with-no-body caveat as DeleteResource above; the status
+		// code is the assertion.
+		_ = handler.ReorderResources(rec, req)
+
+		return rec
+	}
+
+	// Hoisting a managed row above the manual ones: refused.
+	rec := reorder([]string{uids[2], uids[0], uids[1], uids[3]})
+	r.Equal(http.StatusConflict, rec.Code, rec.Body.String())
+
+	// Swapping the two managed rows among themselves: also refused — the
+	// selector decides their order, not the client.
+	rec = reorder([]string{uids[0], uids[1], uids[3], uids[2]})
+	r.Equal(http.StatusConflict, rec.Code, rec.Body.String())
+
+	// Positive control: swapping the two MANUAL rows, which is what the
+	// dashboard's drag-and-drop actually sends, still works.
+	rec = reorder([]string{uids[1], uids[0], uids[2], uids[3]})
+	r.Equal(http.StatusNoContent, rec.Code, rec.Body.String())
+
+	reordered, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Equal(uids[1], reordered[0].UID)
+	r.Equal(uids[0], reordered[1].UID)
+}
+
+// TestSelector_ManualAddOverAManagedRow pins the other direction of
+// "manual placement wins": pinning a check the selector has ALREADY
+// materialized in that section must succeed and hand ownership over.
+//
+// It used to fail on the (section_uid, check_uid) unique index — the operator
+// asked to pin a component and got a database constraint error back.
+func TestSelector_ManualAddOverAManagedRow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, section := seedSelectorPage(ctx, t, svc, org, models.SectionSelector{All: true})
+
+	check := seedLabeledCheck(ctx, t, svc, org.UID, "Checkout", nil)
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	resources, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(resources, 1)
+	r.True(resources[0].ManagedBySelector, "precondition: the selector got there first")
+
+	name := "Checkout (pinned)"
+	created, err := svc.CreateResource(ctx, org.Slug, page.UID, section.UID,
+		CreateResourceRequest{CheckUID: check.UID, PublicName: &name})
+	r.NoError(err)
+	r.False(created.ManagedBySelector)
+
+	// Exactly one row, and it is the operator's.
+	resources, err = svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(resources, 1)
+	r.False(resources[0].ManagedBySelector)
+	r.Equal(name, *resources[0].PublicName)
+
+	// And a further reconcile leaves it alone rather than re-adopting.
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	resources, err = svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(resources, 1)
+	r.False(resources[0].ManagedBySelector)
 }

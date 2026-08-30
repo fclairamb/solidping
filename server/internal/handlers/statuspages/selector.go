@@ -119,6 +119,18 @@ func (m *selectorReconcileMarks) invalidate(pageUID string) {
 // It is the entry point the checks handler calls after a check is created,
 // updated (labels are replaced wholesale there) or deleted.
 func (s *Service) ReconcileOrgSelectors(ctx context.Context, orgUID string) {
+	// The contract this method advertises is "cannot fail the caller's write".
+	// Swallowing errors only delivers that for errors; a nil map or a slice
+	// bound anywhere below would still panic up through an already-committed
+	// check create and surface as a 500 on a request that actually succeeded.
+	// The recover closes that gap, and logs loudly rather than silently.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.ErrorContext(ctx, "Panic while reconciling status page selectors",
+				"panic", recovered, "orgUid", orgUID)
+		}
+	}()
+
 	pageUIDs, err := s.db.ListSelectorSectionPageUIDs(ctx, orgUID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to list selector-bearing status pages",
@@ -480,4 +492,28 @@ func selectorValidationError(err error) bool {
 		errors.Is(err, models.ErrSelectorTooManyLabels) ||
 		errors.Is(err, models.ErrSelectorLabelKeyInvalid) ||
 		errors.Is(err, models.ErrSelectorLabelValueInvalid)
+}
+
+// dropManagedRowForCheck removes the selector-owned row for a check in one
+// section, if there is one. Called before a MANUAL resource is inserted for
+// the same check: the two cannot coexist (a partial unique index on
+// (section_uid, check_uid) forbids it), and between the two the manual row is
+// the one that wins.
+func (s *Service) dropManagedRowForCheck(ctx context.Context, sectionUID, checkUID string) error {
+	resources, err := s.db.ListStatusPageResources(ctx, sectionUID)
+	if err != nil {
+		return err
+	}
+
+	for _, resource := range resources {
+		if !resource.ManagedBySelector || resource.CheckUID == nil || *resource.CheckUID != checkUID {
+			continue
+		}
+
+		if errDelete := s.db.DeleteStatusPageResource(ctx, resource.UID); errDelete != nil {
+			return errDelete
+		}
+	}
+
+	return nil
 }

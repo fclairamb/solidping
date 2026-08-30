@@ -12288,12 +12288,21 @@ components:
           type: boolean
           description: >-
             True when the row was materialized by the section's selector and is
-            owned by it (spec 2026-08-29-11). Such a row cannot be deleted or
-            re-targeted through the API — change the selector instead, or add
-            the check manually, which always wins. Absent means a normal manual
-            resource. AUTHENTICATED responses only — the public payload omits
-            it, because a materialized component renders exactly like a manual
-            one and how it got there is operator context.
+            owned by it (spec 2026-08-29-11). Deleting it, re-targeting it,
+            writing its `position`, or reordering it away from the arrangement
+            the reconciler maintains all answer `409 CONFLICT` — those edits
+            would be undone on the next reconcile, and a write that reports
+            success and then silently reverts is worse than a refusal. Change
+            the selector instead, or add the check manually (which always wins,
+            and takes over the managed row in place). Its `publicName`,
+            `explanation` and `autoPublish` stay editable — the reconciler
+            never touches them. Manual resources in the same section remain
+            freely deletable and reorderable.
+
+            Absent means a normal manual resource. AUTHENTICATED responses only
+            — the public payload omits it, because a materialized component
+            renders exactly like a manual one and how it got there is operator
+            context.
         position:
           type: integer
         createdAt:

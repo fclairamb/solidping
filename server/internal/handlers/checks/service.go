@@ -4012,6 +4012,12 @@ func (s *Service) CloneCheck(
 		}
 	}
 
+	// A clone is a new check with the source's labels, so it can match a
+	// status page selector the instant it exists. Without this it would wait
+	// for the page-view backstop — the same "new service, silently missing
+	// from the board" gap dynamic sections exist to close (spec 2026-08-29-11).
+	s.reconcileStatusPageSelectors(ctx, org.UID)
+
 	return response, nil
 }
 
