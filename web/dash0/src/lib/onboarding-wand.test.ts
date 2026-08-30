@@ -16,6 +16,7 @@ import statusPagesEs from "@/locales/es/statusPages.json";
 
 import {
   buildEmailAlertsWandPayload,
+  buildStatusPageWandAutoCreatePayload,
   buildStatusPageWandPrefill,
   buildWeeklyReportWandPayload,
 } from "./onboarding-wand";
@@ -146,6 +147,46 @@ describe("buildStatusPageWandPrefill", () => {
   });
 });
 
+describe("buildStatusPageWandAutoCreatePayload", () => {
+  it("matches the create form's defaults (prefill wand + submit untouched)", () => {
+    const payload = buildStatusPageWandAutoCreatePayload("Acme Corp", [
+      { uid: "c1" },
+      { uid: "c2" },
+    ]);
+    expect(payload).toEqual({
+      name: "Acme Corp",
+      slug: "acme-corp",
+      visibility: "public",
+      isDefault: false,
+      showAvailability: true,
+      showResponseTime: true,
+      historyPeriod: "90d",
+      hideBranding: false,
+      autoPublish: true,
+      autoPublishDelaySeconds: 60,
+      autoResolve: "if_untouched",
+      checkUids: ["c1", "c2"],
+    });
+  });
+
+  it("falls back to an empty name/slug when the org name is unknown", () => {
+    const payload = buildStatusPageWandAutoCreatePayload(undefined, []);
+    expect(payload.name).toBe("");
+    expect(payload.slug).toBe("");
+    expect(payload.checkUids).toEqual([]);
+  });
+
+  it("attaches every check regardless of how many pages it took to fetch them", () => {
+    // Guards the >100-check auto-page-through: the builder itself must not
+    // silently cap or reorder whatever list it's handed — the paging lives
+    // in the route, not here.
+    const checks = Array.from({ length: 137 }, (_, i) => ({ uid: `c${i}` }));
+    const payload = buildStatusPageWandAutoCreatePayload("Acme", checks);
+    expect(payload.checkUids).toHaveLength(137);
+    expect(payload.checkUids).toEqual(checks.map((c) => c.uid));
+  });
+});
+
 // The wand renders entirely from locale keys — a missing one does not fall
 // back gracefully, it prints the raw dotted key path (or, worse, gets sent
 // to the backend as a resource name). Every key the wand code paths touch
@@ -166,6 +207,8 @@ describe("wand locale parity", () => {
   const STATUS_PAGES_KEYS = [
     "wand.prefill",
     "wand.loadChecksFailed",
+    "wand.createForMe",
+    "wand.createFailed",
     "form.removeCheck",
   ];
 
