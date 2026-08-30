@@ -364,6 +364,56 @@ test.describe("Getting-started checklist", () => {
     await other.close();
   });
 
+  test("clicking a step row's body (not the CTA button) navigates to the step's route", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOrgWithCheck(page);
+
+    await openDashboard(page, orgSlug);
+
+    // The "team" step's own CTA links to the members page; clicking the
+    // row's status icon (well away from the CTA button) must navigate the
+    // same way the CTA itself would, proving the whole row is one stretched
+    // click target rather than just the small button on the right.
+    await page.getByTestId("onboarding-step-team-status").click();
+    await expect(page).toHaveURL(/\/organization\/members$/);
+  });
+
+  test("clicking the test-alert button fires the test alert without navigating away", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOrgWithCheck(page);
+
+    await page.route("**/api/v1/orgs/*/integrations/*/test", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          statusCode: 0,
+          durationMs: 12,
+          detail: "Delivered to alice@acme.com",
+        }),
+      }),
+    );
+
+    await openDashboard(page, orgSlug);
+    const dashboardUrl = page.url();
+
+    // The alerts row nests a second interactive element (the test-alert
+    // button) inside the row's stretched navigation target. Clicking it must
+    // fire the test alert and must NOT trigger the row's own navigation to
+    // the integrations page — this is the load-bearing assertion that the
+    // nested-interactive handling (stopPropagation / z-index layering)
+    // actually works, not just that the button is clickable in isolation.
+    await page.getByTestId("onboarding-test-alert").click();
+    await expect(
+      page.getByText("Delivered to alice@acme.com"),
+    ).toBeVisible();
+    expect(page.url()).toBe(dashboardUrl);
+    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
+  });
+
   test("stays usable at mobile width", async ({ page }) => {
     const { orgSlug } = await seedOrgWithCheck(page);
 
