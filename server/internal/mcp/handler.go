@@ -142,6 +142,10 @@ func NewHandler(
 		dbService:       dbService,
 	}
 
+	// A check created over MCP has to land on a dynamic status page section
+	// exactly like one created from the dashboard (spec 2026-08-29-11).
+	handler.checksSvc.SetStatusPageReconciler(handler.statusPagesSvc)
+
 	handler.registerTools()
 
 	return handler

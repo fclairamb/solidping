@@ -1636,6 +1636,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// A hard demotion reached through the synchronous Verify button alerts the
 	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
 	statusPagesService.SetJobsService(s.services.Jobs)
+	// Selector-driven status page sections (spec 2026-08-29-11) re-materialize
+	// after any check write. Best-effort by construction — ReconcileOrgSelectors
+	// returns nothing, so a status page can never fail a check create — with the
+	// page-view backstop as the safety net.
+	checksService.SetStatusPageReconciler(statusPagesService)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService

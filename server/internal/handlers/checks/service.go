@@ -458,6 +458,40 @@ type Service struct {
 	// boundary instead of racing a live wall clock. Defaults to time.Now in
 	// NewService; only tests override it, via SetRegionHealthNowForTest.
 	now func() time.Time
+	// statusPageReconciler keeps selector-driven status page sections in sync
+	// after a check write (spec 2026-08-29-11). nil = not wired (the MCP
+	// handler, most unit tests), in which case nothing is reconciled here and
+	// the page-view backstop is the only mechanism — which is exactly the
+	// fallback it exists to be.
+	statusPageReconciler StatusPageReconciler
+}
+
+// StatusPageReconciler re-materializes the org's selector-driven status page
+// sections. It is an interface rather than a direct dependency for the obvious
+// reason (statuspages already reads checks) and for a less obvious one: the
+// signature returns NOTHING, which makes it structurally impossible for a
+// status page reconcile to fail a check write. A new check must never be
+// rejected because somebody's status page selector could not be updated; the
+// page-view backstop picks that up.
+type StatusPageReconciler interface {
+	ReconcileOrgSelectors(ctx context.Context, orgUID string)
+}
+
+// SetStatusPageReconciler wires the status page selector reconciler. Optional:
+// without it, dynamic sections still self-heal on the next page view.
+func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
+	s.statusPageReconciler = reconciler
+}
+
+// reconcileStatusPageSelectors notifies the status page layer that the org's
+// check set (or a check's labels) changed. Best-effort and non-failing by
+// construction — see StatusPageReconciler.
+func (s *Service) reconcileStatusPageSelectors(ctx context.Context, orgUID string) {
+	if s.statusPageReconciler == nil {
+		return
+	}
+
+	s.statusPageReconciler.ReconcileOrgSelectors(ctx, orgUID)
 }
 
 // NewService creates a new checks service. entSvc enforces the MaxChecks
@@ -1503,6 +1537,11 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// (IPv6, headless Chrome) is reported, never enforced.
 	response.Warnings = s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
 
+	// A brand-new check that matches a status page selector has to appear on
+	// that page with no manual action — that is the entire point of dynamic
+	// sections (spec 2026-08-29-11).
+	s.reconcileStatusPageSelectors(ctx, org.UID)
+
 	return response, nil
 }
 
@@ -1900,6 +1939,11 @@ func (s *Service) UpdateCheck(
 		}
 		response.Labels = labelMap
 	}
+
+	// Labels are replaced wholesale by UpdateCheck (SetCheckLabels), so this is
+	// also the label attach/detach trigger: adding `public=true` must put the
+	// check on the matching section, and removing it must take it off.
+	s.reconcileStatusPageSelectors(ctx, org.UID)
 
 	return response, nil
 }
@@ -2319,6 +2363,9 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
 	}
+
+	// A deleted check's managed row must disappear from every dynamic section.
+	s.reconcileStatusPageSelectors(ctx, org.UID)
 
 	return nil
 }
