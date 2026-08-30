@@ -16,9 +16,11 @@ import {
   daysSince,
   durationParts,
   elapsedMs,
+  failingResources,
   lastResolvedAt,
   recentResolved,
   resolveTvState,
+  type FailingResource,
   type TvState,
 } from "@/lib/tv-board";
 
@@ -45,6 +47,12 @@ import {
 
 /** How many active incidents are shown at once before the board starts cycling. */
 const ACTIVE_INCIDENTS_PER_PAGE = 2;
+/**
+ * How many failing resources are named at once before the board starts
+ * cycling. Higher than the incident allowance because these are one-line rows,
+ * not cards — five still read cleanly from across a room.
+ */
+const FAILING_PER_PAGE = 5;
 /** How long each cycle page is held, in ms. */
 const CYCLE_MS = 10_000;
 /** How many resolved incidents the footer strip recalls. */
@@ -223,6 +231,54 @@ function ActiveIncidentCard({
 }
 
 /**
+ * One named failing check.
+ *
+ * Deliberately a row rather than a card: this panel exists to answer "what
+ * broke?" at a glance, and the ambient tint has already answered "how bad?".
+ * The status is spelled out in words next to the name, so the row never leans
+ * on the surface colour alone to carry meaning.
+ */
+function FailingResourceRow({
+  resource,
+  cardClass,
+}: {
+  resource: FailingResource;
+  cardClass: string;
+}) {
+  const { t } = useTranslation();
+  const style = statusStyle(resource.status);
+
+  return (
+    <article
+      data-testid="tv-failing-resource"
+      data-resource-status={resource.status}
+      className={`flex items-baseline justify-between gap-4 rounded-2xl border px-5 py-3 sm:px-6 sm:py-4 ${cardClass}`}
+    >
+      <div className="min-w-0">
+        <h3
+          className="truncate text-2xl font-semibold sm:text-3xl"
+          data-testid="tv-failing-resource-name"
+        >
+          {resource.name || t("unknown")}
+        </h3>
+        {resource.section && (
+          <p className="truncate text-lg opacity-70 sm:text-xl">
+            {resource.section}
+          </p>
+        )}
+      </div>
+      <span
+        className="shrink-0 rounded-full border border-current/30 px-3 py-0.5 text-base font-medium uppercase tracking-wide opacity-90 sm:text-lg"
+        data-testid="tv-failing-resource-status"
+        translate="no"
+      >
+        {t(style.labelKey)}
+      </span>
+    </article>
+  );
+}
+
+/**
  * The board.
  *
  * `page` may be undefined while a poll is in flight and the board is already
@@ -254,9 +310,21 @@ export function TvBoard({
   const style = tvStyle(state);
   const Icon = STATE_ICON[state];
 
+  // Only ever computed for a board that is NOT green. A healthy page keeps
+  // its "days since last incident" panel untouched — this is a fallback for an
+  // unexplained non-green board, not a new permanent fixture.
+  const failing = useMemo(
+    () => (liveState === "operational" ? [] : failingResources(page)),
+    [liveState, page],
+  );
+
   const cycling = active.length > ACTIVE_INCIDENTS_PER_PAGE;
-  const tick = useCycleTick(CYCLE_MS, cycling);
+  // Only one of the two middle panels is ever mounted, so both share a single
+  // timer rather than racing two of them at the same cadence.
+  const failingCycling = active.length === 0 && failing.length > FAILING_PER_PAGE;
+  const tick = useCycleTick(CYCLE_MS, cycling || failingCycling);
   const visibleActive = cycleWindow(active, ACTIVE_INCIDENTS_PER_PAGE, tick);
+  const visibleFailing = cycleWindow(failing, FAILING_PER_PAGE, tick);
 
   const history = useMemo(() => incidents ?? [], [incidents]);
   const resolved = useMemo(
@@ -351,6 +419,32 @@ export function TvBoard({
             {cycling && (
               <p className="text-lg opacity-60" data-testid="tv-cycling-note">
                 {t("tv.cycling", { count: active.length })}
+              </p>
+            )}
+          </div>
+        ) : visibleFailing.length > 0 ? (
+          /* The board is not green but nothing is published yet — which is the
+             normal state for the first `autoPublishDelaySeconds` of every
+             outage, and the permanent state when auto-publish is off. Name the
+             checks that are actually failing instead of leaving the room to
+             stare at an unexplained red screen. */
+          <div className="space-y-3" data-testid="tv-failing-resources">
+            <h2 className="text-xl uppercase tracking-wide opacity-70 sm:text-2xl">
+              {t("tv.affectedTitle")}
+            </h2>
+            {visibleFailing.map((resource) => (
+              <FailingResourceRow
+                key={resource.uid}
+                resource={resource}
+                cardClass={style.tvCard}
+              />
+            ))}
+            {failingCycling && (
+              <p
+                className="text-lg opacity-60"
+                data-testid="tv-failing-cycling"
+              >
+                {t("tv.affectedCycling", { count: failing.length })}
               </p>
             )}
           </div>

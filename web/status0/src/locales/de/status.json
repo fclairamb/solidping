@@ -91,6 +91,8 @@
     "daysSinceLastIncident_other": "{{count}} Tage seit dem letzten Vorfall",
     "noIncidentsRecorded": "Keine Vorfälle erfasst",
     "cycling": "Wechselt zwischen {{count}} aktiven Vorfällen",
+    "affectedTitle": "Betroffene Dienste",
+    "affectedCycling": "Wechselt durch {{count}} betroffene Dienste",
     "lockedTitle": "Dieser Bildschirm benötigt ein Kiosk-Token",
     "lockedDescription": "Öffnen Sie die Statusseite im Dashboard, erzeugen Sie ein TV-Modus-Token und verwenden Sie die angezeigte URL.",
     "pickAPageTitle": "Der TV-Modus benötigt eine Statusseite",

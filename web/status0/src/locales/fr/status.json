@@ -91,6 +91,8 @@
     "daysSinceLastIncident_other": "{{count}} jours depuis le dernier incident",
     "noIncidentsRecorded": "Aucun incident enregistré",
     "cycling": "Défilement de {{count}} incidents actifs",
+    "affectedTitle": "Services affectés",
+    "affectedCycling": "Défilement de {{count}} services affectés",
     "lockedTitle": "Cet écran nécessite un jeton kiosque",
     "lockedDescription": "Ouvrez la page de statut dans le tableau de bord, générez un jeton mode TV, puis utilisez l'URL fournie.",
     "pickAPageTitle": "Le mode TV nécessite une page de statut",

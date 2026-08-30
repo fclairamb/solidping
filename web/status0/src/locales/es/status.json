@@ -91,6 +91,8 @@
     "daysSinceLastIncident_other": "{{count}} días desde el último incidente",
     "noIncidentsRecorded": "Sin incidentes registrados",
     "cycling": "Alternando entre {{count}} incidentes activos",
+    "affectedTitle": "Servicios afectados",
+    "affectedCycling": "Alternando entre {{count}} servicios afectados",
     "lockedTitle": "Esta pantalla necesita un token de quiosco",
     "lockedDescription": "Abra la página de estado en el panel, genere un token de modo TV y use la URL que le indique.",
     "pickAPageTitle": "El modo TV necesita una página de estado",

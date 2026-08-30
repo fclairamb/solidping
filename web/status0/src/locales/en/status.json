@@ -91,6 +91,8 @@
     "daysSinceLastIncident_other": "{{count}} days since the last incident",
     "noIncidentsRecorded": "No incidents recorded",
     "cycling": "Cycling through {{count}} active incidents",
+    "affectedTitle": "Affected services",
+    "affectedCycling": "Cycling through {{count}} affected services",
     "lockedTitle": "This screen needs a kiosk token",
     "lockedDescription": "Open the status page in the dashboard, generate a TV mode token, and use the URL it gives you.",
     "pickAPageTitle": "TV mode needs a status page",

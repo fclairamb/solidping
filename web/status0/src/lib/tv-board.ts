@@ -7,7 +7,7 @@
  * Pure functions can be tested against the exact minute an incident opens.
  */
 
-import type { PublicIncident } from "@/api/hooks";
+import type { PublicIncident, StatusPage } from "@/api/hooks";
 
 /**
  * The ambient state the whole board is tinted by. `stale` is not a page state
@@ -239,4 +239,94 @@ export function cycleWindow<T>(items: T[], perPage: number, tick: number): T[] {
   const start = (tick % pages) * perPage;
 
   return items.slice(start, start + perPage);
+}
+
+/**
+ * One non-operational resource, flattened out of the page's sections so the
+ * board can name it.
+ *
+ * `name` is best-effort and may be empty: the i18n fallback belongs to the
+ * component, not here, so this stays a pure derivation with no translator.
+ */
+export interface FailingResource {
+  /** Resource uid — the render key. */
+  uid: string;
+  /** What the page calls this publicly. */
+  name: string;
+  /** Owning section, for when two sections both have an "API". */
+  section: string;
+  /** Raw check status, rendered through statusStyle() for its label. */
+  status: string;
+}
+
+/**
+ * How loudly a status argues for being named on the wall. Higher sorts first;
+ * 0 means "never name it".
+ */
+function resourceRank(status: string): number {
+  switch (status) {
+    case "error":
+    case "down":
+      return 3;
+    case "degraded":
+    case "warning":
+      return 2;
+    case "ok":
+    case "up":
+    case "operational":
+      return 0;
+    default:
+      // "abandoned", "unknown", and any status the server grows later. Worth
+      // naming — the board is not green and this resource is not claiming to
+      // be fine — but always beneath a real failure.
+      return 1;
+  }
+}
+
+/**
+ * The resources responsible for a non-green board, worst first.
+ *
+ * This exists because the board's ambient colour and its explanation come from
+ * two DIFFERENT sources that move at different speeds. `overallStatus` is
+ * recomputed from live check data on every poll, so the screen turns red the
+ * instant a probe fails; `activeIncidents` are publications, which auto-publish
+ * only after the page's `autoPublishDelaySeconds` (and never at all when
+ * auto-publish is off). In that gap the old board showed a full red screen
+ * whose only text was "N days since the last incident" — a flat contradiction,
+ * and useless to the person who just looked up at it. Naming the failing checks
+ * closes the gap with data the board already has in hand.
+ *
+ * Checks inside a maintenance window are deliberately excluded: they are down
+ * on purpose, and "Database — Outage" on the wall during a migration everyone
+ * agreed to is how a wallboard loses its audience.
+ */
+export function failingResources(
+  page: StatusPage | undefined,
+): FailingResource[] {
+  const ranked: Array<{ rank: number; resource: FailingResource }> = [];
+
+  for (const section of page?.sections ?? []) {
+    for (const resource of section.resources ?? []) {
+      if (resource.check?.inMaintenance) continue;
+
+      const status = resource.check?.status ?? "unknown";
+      const rank = resourceRank(status);
+      if (rank === 0) continue;
+
+      ranked.push({
+        rank,
+        resource: {
+          uid: resource.uid,
+          name: resource.publicName || resource.check?.name || "",
+          section: section.name,
+          status,
+        },
+      });
+    }
+  }
+
+  // Worst first. Ties keep the page's own section/resource ordering — Array
+  // .sort is stable, so this is the order the operator arranged and the order
+  // the ordinary public page renders them in.
+  return ranked.sort((a, b) => b.rank - a.rank).map((entry) => entry.resource);
 }

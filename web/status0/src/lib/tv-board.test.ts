@@ -5,13 +5,18 @@ import {
   daysSince,
   durationParts,
   elapsedMs,
+  failingResources,
   isStale,
   lastResolvedAt,
   pollIntervalMs,
   recentResolved,
   resolveTvState,
 } from "./tv-board";
-import type { PublicIncident } from "@/api/hooks";
+import type {
+  PublicIncident,
+  StatusPage,
+  StatusPageResource,
+} from "@/api/hooks";
 
 function incident(partial: Partial<PublicIncident>): PublicIncident {
   return {
@@ -269,5 +274,144 @@ describe("cycleWindow", () => {
     }
 
     expect([...seen].sort()).toEqual(items);
+  });
+});
+
+/** Builds a resource with just the fields failingResources() reads. */
+function resource(
+  uid: string,
+  status: string,
+  extra: Partial<StatusPageResource> = {},
+): StatusPageResource {
+  return {
+    uid,
+    position: 0,
+    check: { type: "http", status, ...(extra.check ?? {}) },
+    ...extra,
+  } as StatusPageResource;
+}
+
+/** Builds a page out of `[sectionName, resources]` pairs. */
+function pageWith(
+  ...sections: Array<[string, StatusPageResource[]]>
+): StatusPage {
+  return {
+    uid: "page",
+    name: "Page",
+    slug: "page",
+    visibility: "public",
+    isDefault: true,
+    enabled: true,
+    showAvailability: true,
+    showResponseTime: true,
+    historyDays: 90,
+    historyPeriod: "90d",
+    sections: sections.map(([name, resources], index) => ({
+      uid: `sec-${index}`,
+      name,
+      slug: name,
+      position: index,
+      resources,
+    })),
+  } as StatusPage;
+}
+
+describe("failingResources", () => {
+  // The bug this whole derivation exists for: `overallStatus` goes red the
+  // instant a probe fails, but `activeIncidents` only fills in after the page's
+  // autoPublishDelaySeconds. For that window the board had a red screen whose
+  // only text was "N days since the last incident".
+  test("names the check behind an unexplained red board", () => {
+    const page = pageWith([
+      "Core",
+      [resource("a", "up"), resource("b", "down", { publicName: "Checkout" })],
+    ]);
+
+    expect(failingResources(page)).toEqual([
+      { uid: "b", name: "Checkout", section: "Core", status: "down" },
+    ]);
+  });
+
+  test("healthy resources are never named", () => {
+    const page = pageWith([
+      "Core",
+      [resource("a", "up"), resource("b", "ok"), resource("c", "operational")],
+    ]);
+
+    expect(failingResources(page)).toEqual([]);
+  });
+
+  test("worst first: a hard failure outranks a degradation", () => {
+    const page = pageWith([
+      "Core",
+      [
+        resource("warn", "warning", { publicName: "Warn" }),
+        resource("unk", "unknown", { publicName: "Unk" }),
+        resource("dead", "down", { publicName: "Dead" }),
+        resource("deg", "degraded", { publicName: "Deg" }),
+      ],
+    ]);
+
+    expect(failingResources(page).map((r) => r.name)).toEqual([
+      "Dead",
+      "Warn",
+      "Deg",
+      "Unk",
+    ]);
+  });
+
+  test("ties keep the page's own section and resource order", () => {
+    const page = pageWith(
+      ["First", [resource("a", "down", { publicName: "A" })]],
+      ["Second", [resource("b", "down", { publicName: "B" })]],
+    );
+
+    expect(failingResources(page).map((r) => r.name)).toEqual(["A", "B"]);
+  });
+
+  // A planned migration must not put "Database — Outage" on the office wall.
+  test("a check inside a maintenance window is never named", () => {
+    const page = pageWith([
+      "Core",
+      [
+        resource("m", "down", {
+          publicName: "Database",
+          check: { type: "tcp", status: "down", inMaintenance: true },
+        }),
+      ],
+    ]);
+
+    expect(failingResources(page)).toEqual([]);
+  });
+
+  test("falls back through publicName -> check name -> empty", () => {
+    const page = pageWith([
+      "Core",
+      [
+        resource("a", "down", { publicName: "Public" }),
+        resource("b", "down", { check: { type: "http", status: "down", name: "Internal" } }),
+        resource("c", "down"),
+      ],
+    ]);
+
+    expect(failingResources(page).map((r) => r.name)).toEqual([
+      "Public",
+      "Internal",
+      "",
+    ]);
+  });
+
+  test("a resource with no check at all reads as unknown, not as healthy", () => {
+    const page = pageWith(["Core", [{ uid: "x", position: 0 } as StatusPageResource]]);
+
+    expect(failingResources(page)).toEqual([
+      { uid: "x", name: "", section: "Core", status: "unknown" },
+    ]);
+  });
+
+  test("an absent page, absent sections and absent resources are all empty", () => {
+    expect(failingResources(undefined)).toEqual([]);
+    expect(failingResources({} as StatusPage)).toEqual([]);
+    expect(failingResources(pageWith(["Empty", []]))).toEqual([]);
   });
 });
