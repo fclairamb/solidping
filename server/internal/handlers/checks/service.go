@@ -2682,7 +2682,7 @@ func mergeChecksByUID(first, second []*models.Check) []*models.Check {
 // effect (the phase stagger) is an input to the phase formula but is not stored
 // on the job row, so it cannot be detected by comparing job columns.
 //
-// Syncing the dispatch payload (config, secrets, plan weight) and re-levelling
+// Syncing the dispatch payload (config, secrets, plan weight) and re-leveling
 // the schedule are two separate decisions — see the scheduleChanged /
 // contentChanged split below (spec 2026-08-29-09).
 //
@@ -2810,7 +2810,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 			//     changed type. Only these may rewrite scheduled_at.
 			//   contentChanged — the dispatch payload drifted (config, secrets,
 			//     plan weight). These must reach the job row, but must NOT
-			//     shift when it runs: a config edit that also re-levelled the
+			//     shift when it runs: a config edit that also re-leveled the
 			//     phase would silently drift the check's execution timing on
 			//     every unrelated edit.
 			//
