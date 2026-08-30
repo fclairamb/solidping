@@ -47,16 +47,23 @@ import (
 // zero value, and a loaded gun for whoever changes the DDL default next), and
 // 20 were non-zero enum/counter defaults already supplied by the model's Go
 // constructor, which is now their single source.
-var allowedDefaultTags = map[string]string{
-	// "StatusPage.Example": "why this one column must keep its DDL default",
+func allowedDefaultTags() map[string]string {
+	return map[string]string{
+		// "StatusPage.Example": "why this one column must keep its DDL default",
+	}
 }
 
 // zeroLiterals are the SQL default literals that AGREE with a Go zero value.
 // A `default:` carrying one of these is harmless at insert time (bun writes
 // DEFAULT, the DDL writes the same value the Go zero would have) — it is still
 // removed on sight, but it is not what this test fails on.
-var zeroLiterals = map[string]bool{
-	"0": true, "false": true, "''": true, `""`: true, "0.0": true,
+func isZeroLiteral(def string) bool {
+	switch def {
+	case "0", "false", "''", `""`, "0.0":
+		return true
+	default:
+		return false
+	}
 }
 
 type taggedField struct {
@@ -84,7 +91,7 @@ func TestNoBunDefaultTagShadowsAZeroValue(t *testing.T) {
 		}
 
 		key := f.structName + "." + f.fieldName
-		if reason, allowed := allowedDefaultTags[key]; allowed {
+		if reason, allowed := allowedDefaultTags()[key]; allowed {
 			r.NotEmpty(reason, "allowlist entry %s must carry a reason", key)
 
 			continue
@@ -92,7 +99,7 @@ func TestNoBunDefaultTagShadowsAZeroValue(t *testing.T) {
 
 		if def == "current_timestamp" {
 			// Deliberate and correct: a zero time.Time falling back to the DDL
-			// default is exactly the wanted behaviour for created_at/updated_at.
+			// default is exactly the wanted behavior for created_at/updated_at.
 			// It is only correct on a time field, though — on anything else the
 			// column would be unwritable for the same reason as the rest.
 			r.Truef(isTimeType(f.typeExpr),
@@ -103,7 +110,7 @@ func TestNoBunDefaultTagShadowsAZeroValue(t *testing.T) {
 			continue
 		}
 
-		r.Truef(zeroLiterals[def],
+		r.Truef(isZeroLiteral(def),
 			"%s (%s): bun tag declares `default:%s`, which differs from the Go zero value of %s.\n"+
 				"bun emits the literal DEFAULT for a zero-valued field with a `default:` clause, so this "+
 				"column CANNOT be created with its zero value by any code path — the DDL default wins "+
@@ -124,7 +131,7 @@ func TestNoInertBunDefaultTagsRemain(t *testing.T) {
 
 	for _, f := range bunTaggedFields(t) {
 		def, ok := defaultClause(f.bunTag)
-		if !ok || !zeroLiterals[def] {
+		if !ok || !isZeroLiteral(def) {
 			continue
 		}
 

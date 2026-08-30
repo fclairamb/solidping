@@ -36,9 +36,9 @@ type Job struct {
 	OrganizationUID *string    `bun:"organization_uid"                               json:"organizationUid"`
 	Type            string     `bun:"type,notnull"                                   json:"type"`
 	Config          JSONMap    `bun:"config,type:jsonb,nullzero"                     json:"config"`
-	RetryCount      int        `bun:"retry_count,notnull"                  json:"retryCount"`
+	RetryCount      int        `bun:"retry_count,notnull"                            json:"retryCount"`
 	ScheduledAt     time.Time  `bun:"scheduled_at,notnull,default:current_timestamp" json:"scheduledAt"`
-	Status          JobStatus  `bun:"status,notnull"               json:"status"`
+	Status          JobStatus  `bun:"status,notnull"                                 json:"status"`
 	Output          JSONMap    `bun:"output,type:jsonb,nullzero"                     json:"output"`
 	PreviousJobUID  *string    `bun:"previous_job_uid"                               json:"previousJobUid"`
 	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"   json:"createdAt"`
