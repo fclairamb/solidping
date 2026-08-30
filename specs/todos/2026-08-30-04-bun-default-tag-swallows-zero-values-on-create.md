@@ -154,9 +154,12 @@ and record the reason in the tag comment either way.
   `internal/db/{postgres,sqlite}/migrations/`, and the single `NewCreateTable()` call
   (`internal/db/migrationguard/migrationguard.go:327`) targets `checksumRow`, which lives
   outside `internal/db/models/`. So the DDL defaults are untouched by this change.
-- **There are no CHECK constraints** in either dialect's migrations. An enum column
-  that loses its `default:` tag and gains no Go-side default would be silently written as
-  `''` rather than erroring — so every tag dropped here must have a Go-side default.
+- **CHECK constraints exist but do not cover every enum column** (83 in the Postgres
+  migrations, 93 in the SQLite ones — they guard slugs, roles, provider types and a few
+  status domains). An enum column that loses its `default:` tag and gains no Go-side
+  default is therefore silently written as `''` wherever no CHECK covers it, so every tag
+  dropped here must have a Go-side default; the ones that ARE covered fail loudly, which
+  is what `make test` is for.
 - **Only two production paths create a `StatusPage`**: `service.go:1270` via
   `models.NewStatusPage`, and the test-mode seed literal at
   `test/testdata/testdata.go:319`, which already sets `Enabled`, `ShowAvailability` and

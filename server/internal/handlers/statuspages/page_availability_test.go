@@ -143,25 +143,13 @@ func buildAggregatePage(
 	r := require.New(t)
 
 	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
-		Name:          "Public",
-		Slug:          testPublicSlug,
-		HistoryPeriod: strPtr("24h"),
+		Name:             "Public",
+		Slug:             testPublicSlug,
+		HistoryPeriod:    strPtr("24h"),
+		ShowAvailability: &showAvailability,
 	})
 	r.NoError(err)
-
-	// Turned off through UPDATE rather than CREATE on purpose: bun omits a
-	// zero-valued field whose column tag declares a `default:`, so
-	// `showAvailability: false` on create never reaches the database at all
-	// (the same trap documented on StatusPage.AutoPublishDelaySeconds). That
-	// is a pre-existing bug in the create path, not this spec's, and going
-	// through the update path keeps this fixture honest about which state it
-	// is actually testing.
-	if !showAvailability {
-		_, err = svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{
-			ShowAvailability: &showAvailability,
-		})
-		r.NoError(err)
-	}
+	r.Equal(showAvailability, page.ShowAvailability)
 
 	dropDefaultSections(ctx, t, svc, page.UID)
 
