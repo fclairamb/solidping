@@ -118,6 +118,22 @@ test.describe("Status page TV mode", () => {
     }
   });
 
+  // /{org}/tv addresses the org's DEFAULT page — the shape an operator reaches
+  // for first ("point the TV at us"). It has its own route file, so nothing
+  // about the slug route proves it works.
+  test("the org-level URL renders the default page's board", async ({
+    page,
+  }) => {
+    await page.goto(`/status0/test/tv`);
+
+    const board = page.getByTestId("tv-board");
+    await expect(board).toBeVisible({ timeout: 30000 });
+    // The seeded default page, resolved without naming it in the URL.
+    await expect(page.getByTestId("tv-page-name")).toHaveText(
+      "Test Status Page",
+    );
+  });
+
   test("an active incident flips the ambient state and shows a ticking duration", async ({
     authenticatedPage,
   }) => {
