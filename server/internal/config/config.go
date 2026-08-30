@@ -694,6 +694,34 @@ func (c *Config) BaseURLHost() string {
 	return strings.ToLower(parsed.Hostname())
 }
 
+// BaseURLOrigin returns the scheme + host[:port] of Server.BaseURL — the
+// exact value a browser sends as an Origin header for a same-origin request —
+// or "" when BaseURL is unset or unparseable.
+func (c *Config) BaseURLOrigin() string {
+	parsed, err := url.Parse(strings.TrimSpace(c.Server.BaseURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+
+	return strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host)
+}
+
+// ResolvedCORSAllowedOrigins returns the configured CORS allowlist
+// (Server.CORSAllowedOrigins), or a single-entry list carrying the instance's
+// own public origin (BaseURLOrigin) when unset. Never empty unless BaseURL
+// itself is unset or unparseable.
+func (c *Config) ResolvedCORSAllowedOrigins() []string {
+	if len(c.Server.CORSAllowedOrigins) > 0 {
+		return c.Server.CORSAllowedOrigins
+	}
+
+	if origin := c.BaseURLOrigin(); origin != "" {
+		return []string{origin}
+	}
+
+	return nil
+}
+
 // CustomDomainCNAMEMode resolves the configured CNAME verification mode,
 // falling back to domainverify.ModeShared for an empty or unrecognized value
 // (Validate rejects unrecognized values at startup, so a bad value never
@@ -1234,6 +1262,21 @@ type ServerConfig struct {
 	MaxRequestDuration time.Duration   `koanf:"max_request_duration"`
 	RateLimiting       RateLimitConfig `koanf:"rate_limiting"` // Per-IP HTTP rate and concurrency limits
 	Redirects          []RedirectRule  `koanf:"-"`             // Parsed from SP_REDIRECTS env var
+	// CORSAllowedOrigins lists the exact origins (scheme://host[:port]) that
+	// may make a CREDENTIALED cross-origin request — echoed back as
+	// Access-Control-Allow-Origin with Access-Control-Allow-Credentials: true.
+	// Empty defaults to the app's own public origin (derived from BaseURL), so
+	// a same-origin dashboard keeps working out of the box; a self-hoster adds
+	// a separately-hosted front end here. Resolve through
+	// Config.ResolvedCORSAllowedOrigins(), never this field directly.
+	//
+	// Genuinely public, credential-free surfaces (status pages, the embed
+	// widget, the PostHog ingest proxy) do NOT consult this list — they always
+	// answer "*" with no credentials (spec 2026-08-30-09), since the domains
+	// that embed them can never be enumerated here. Multi-word koanf key →
+	// read via applyServerEnv (SP_CORS_ALLOWED_ORIGINS /
+	// SP_SERVER_CORS_ALLOWED_ORIGINS, comma-separated), not the auto env loader.
+	CORSAllowedOrigins []string `koanf:"-"`
 	// DocsHost is the Host header that serves the embedded docs site (docsres)
 	// at the host root, e.g. "docs.solidping.io". Empty disables host-served
 	// docs. Multi-word koanf key → read via applyServerEnv (SP_DOCS_HOST /
@@ -2047,6 +2090,12 @@ func applyServerEnv(cfg *ServerConfig) {
 		cfg.ExitWithParent = v == envTrue || v == "1"
 	} else if v := os.Getenv("SP_EXIT_WITH_PARENT"); v != "" {
 		cfg.ExitWithParent = v == envTrue || v == "1"
+	}
+
+	if v := os.Getenv("SP_SERVER_CORS_ALLOWED_ORIGINS"); v != "" {
+		cfg.CORSAllowedOrigins = splitAndTrim(v)
+	} else if v := os.Getenv("SP_CORS_ALLOWED_ORIGINS"); v != "" {
+		cfg.CORSAllowedOrigins = splitAndTrim(v)
 	}
 }
 
