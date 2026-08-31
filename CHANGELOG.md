@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/fclairamb/solidping/compare/v0.21.0...v0.21.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* restore the docs API Reference sidebar label and the container changelog page ([#291](https://github.com/fclairamb/solidping/issues/291)) ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
+
 ## [0.21.0](https://github.com/fclairamb/solidping/compare/v0.20.0...v0.21.0) (2026-08-31)
 
 
