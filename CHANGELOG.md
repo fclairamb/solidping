@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0](https://github.com/fclairamb/solidping/compare/v0.20.0...v0.21.0) (2026-08-31)
+
+
+### Features
+
+* TV wallboard mode, dynamic status-page sections, Slack /solidping commands, CORS allowlist ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+
+
+### Bug Fixes
+
+* **deps:** update module filippo.io/age to v1.3.2 ([#286](https://github.com/fclairamb/solidping/issues/286)) ([316a448](https://github.com/fclairamb/solidping/commit/316a44876c6032d15ec6ebd87bb502c70ade0a7e))
+
 ## [0.20.0](https://github.com/fclairamb/solidping/compare/v0.19.1...v0.20.0) (2026-08-29)
 
 
