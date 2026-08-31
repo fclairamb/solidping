@@ -231,6 +231,16 @@ nssm start SolidPing
 
 Run PowerShell as Administrator when installing the service or modifying Program Files.
 
+## File Storage
+
+Alongside the database, SolidPing writes a handful of blobs — org logos,
+status-page assets, incident screenshots — under `SP_FILESTORAGE_LOCAL_ROOT`
+(default `./data/files`, relative to the working directory). With the service
+setup above, that resolves under the persistent `AppDirectory`, so there is
+nothing extra to configure here — this only matters for containerized
+deployments. See [File Storage](/configuration/file-storage) for the S3
+backend, useful once you run more than one node.
+
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options

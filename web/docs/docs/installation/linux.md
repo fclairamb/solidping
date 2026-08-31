@@ -229,6 +229,17 @@ sudo mv /tmp/solidping /usr/local/bin/solidping
 sudo systemctl start solidping
 ```
 
+## File Storage
+
+Alongside the database, SolidPing writes a handful of blobs — org logos,
+status-page assets, incident screenshots — under `SP_FILESTORAGE_LOCAL_ROOT`
+(default `./data/files`, relative to the working directory). With the systemd
+setup above, that resolves under the persistent `WorkingDirectory`
+(`/opt/solidping`), which `ReadWritePaths` already covers, so there is nothing
+extra to mount here — this only matters for containerized deployments. See
+[File Storage](/configuration/file-storage) for the S3 backend, useful once
+you run more than one node.
+
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options
