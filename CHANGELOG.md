@@ -5,7 +5,8 @@
 
 ### Bug Fixes
 
-* restore the docs API Reference sidebar label and the container changelog page ([#291](https://github.com/fclairamb/solidping/issues/291)) ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
+* **docs:** the documentation sidebar names the API reference "API Reference" again, instead of listing it as the raw folder name `api`. The sidebar is generated from the folder layout, so a section's display name has to come from a `_category_.json` file inside it — that file was already accounted for in the repository's ignore rules, with a comment saying the label is kept, but it had never actually been committed, so the site fell back to the directory name ([#291](https://github.com/fclairamb/solidping/issues/291)) ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
+* **docs:** `/docs/changelog` lists the real release history again instead of reading "No changelog available yet.". The page is generated at build time from this file, but the container build never copied `CHANGELOG.md` into the stage that builds the documentation, so the generator hit its fallback and every published image shipped an empty changelog page. Local documentation builds were unaffected — the file is simply there on a developer's machine — which is why it went unnoticed ([#291](https://github.com/fclairamb/solidping/issues/291)) ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
 
 ## [0.21.0](https://github.com/fclairamb/solidping/compare/v0.20.0...v0.21.0) (2026-08-31)
 
