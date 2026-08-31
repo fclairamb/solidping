@@ -85,6 +85,11 @@ RUN bun install --frozen-lockfile
 # available at that location in this stage.
 COPY server/internal/app/openapi/openapi.yaml /build/server/internal/app/openapi/openapi.yaml
 
+# The changelog page is generated at build time from the root CHANGELOG.md via
+# the relative path ../../../CHANGELOG.md (see scripts/gen-changelog.ts) — make
+# it available at that location in this stage.
+COPY CHANGELOG.md /build/CHANGELOG.md
+
 # Copy docs source
 COPY web/docs/ ./
 

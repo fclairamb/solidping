@@ -6,6 +6,10 @@
 *.md
 wiki/
 
+# ...except the root CHANGELOG.md, which the docs-builder stage copies in to
+# generate the /docs/changelog page (see scripts/gen-changelog.ts).
+!CHANGELOG.md
+
 # IDE
 .vscode/
 .idea/
