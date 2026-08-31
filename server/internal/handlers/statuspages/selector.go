@@ -216,7 +216,7 @@ func (s *Service) loadPageState(ctx context.Context, pageUID string) ([]sectionS
 // care HOW a check ended up elsewhere, only THAT it did.
 func claimedElsewhereBySection(
 	states []sectionState, sectionUID string, matched []*models.Check,
-) (count int, claimantName string) {
+) (int, string) {
 	if len(matched) == 0 || len(states) == 0 {
 		return 0, ""
 	}

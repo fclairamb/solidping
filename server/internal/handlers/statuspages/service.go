@@ -1800,20 +1800,33 @@ func (s *Service) GetSection(
 	}
 
 	response := convertSectionToAdminResponse(section)
-
-	// Only a dynamic section needs the rest of the page's state — a
-	// hand-curated one has no claimed-elsewhere tally to compute.
-	if section.Selector != nil {
-		states, stateErr := s.loadPageState(ctx, page.UID)
-		if stateErr != nil {
-			slog.ErrorContext(ctx, "Failed to load page state for selector enrichment",
-				"error", stateErr, "orgUid", page.OrganizationUID, "statusPageUid", page.UID)
-		} else {
-			s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, section, states)
-		}
-	}
+	s.enrichSelectorCountsIfDynamic(ctx, page.OrganizationUID, page.UID, &response, section)
 
 	return response, nil
+}
+
+// enrichSelectorCountsIfDynamic loads the page's section+resource state and
+// enriches response's selector fields, but only for a dynamic section — a
+// hand-curated one has no claimed-elsewhere tally to compute, so this is a
+// no-op for it (and skips the extra loadPageState query). Best-effort like
+// enrichSelectorCounts itself: a failed load is logged and leaves the fields
+// at zero.
+func (s *Service) enrichSelectorCountsIfDynamic(
+	ctx context.Context, orgUID, pageUID string, response *StatusPageSectionResponse, section *models.StatusPageSection,
+) {
+	if section.Selector == nil {
+		return
+	}
+
+	states, err := s.loadPageState(ctx, pageUID)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load page state for selector enrichment",
+			"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
+
+		return
+	}
+
+	s.enrichSelectorCounts(ctx, orgUID, response, section, states)
 }
 
 // UpdateSection updates an existing section.
@@ -1880,16 +1893,7 @@ func (s *Service) UpdateSection(
 	}
 
 	response := convertSectionToAdminResponse(updated)
-
-	if updated.Selector != nil {
-		states, stateErr := s.loadPageState(ctx, page.UID)
-		if stateErr != nil {
-			slog.ErrorContext(ctx, "Failed to load page state for selector enrichment",
-				"error", stateErr, "orgUid", page.OrganizationUID, "statusPageUid", page.UID)
-		} else {
-			s.enrichSelectorCounts(ctx, page.OrganizationUID, &response, updated, states)
-		}
-	}
+	s.enrichSelectorCountsIfDynamic(ctx, page.OrganizationUID, page.UID, &response, updated)
 
 	return response, nil
 }
