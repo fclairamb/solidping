@@ -54,6 +54,18 @@ const RENDERED_KEYS = [
 
 const RENDERED_HINT_KEYS = ["manual", "all", "labels"];
 
+// The claimed-elsewhere hint (spec 2026-08-31-01) is rendered by
+// SelectorClaimedElsewhereAlert, mounted next to `truncated` on the section
+// card — a sibling of this file's own component, not this component itself,
+// but the same "every key the picker/card renders" umbrella `truncated`
+// already sits under above.
+const RENDERED_CLAIMED_ELSEWHERE_KEYS = [
+  "full_one",
+  "full_other",
+  "partial_one",
+  "partial_other",
+];
+
 /**
  * Keys whose translation is legitimately identical to the English, per locale.
  *
@@ -92,6 +104,13 @@ describe("section membership locales", () => {
 
     const hint = en.hint as Record<string, string>;
     expect(RENDERED_HINT_KEYS.filter((key) => !hint?.[key])).toEqual([]);
+
+    const claimedElsewhere = en.claimedElsewhere as Record<string, string>;
+    expect(
+      RENDERED_CLAIMED_ELSEWHERE_KEYS.filter(
+        (key) => !claimedElsewhere?.[key],
+      ),
+    ).toEqual([]);
   });
 
   const flatEn = flatten(en);
@@ -116,6 +135,12 @@ describe("section membership locales", () => {
     it(`${name} keeps the interpolation placeholders`, () => {
       expect(flat.truncated).toContain("{{shown}}");
       expect(flat.truncated).toContain("{{total}}");
+
+      expect(flat["claimedElsewhere.full_one"]).toContain("{{section}}");
+      expect(flat["claimedElsewhere.full_other"]).toContain("{{count}}");
+      expect(flat["claimedElsewhere.full_other"]).toContain("{{section}}");
+      expect(flat["claimedElsewhere.partial_one"]).toContain("{{count}}");
+      expect(flat["claimedElsewhere.partial_other"]).toContain("{{count}}");
     });
   }
 });
