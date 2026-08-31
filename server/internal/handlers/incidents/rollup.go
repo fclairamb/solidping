@@ -400,7 +400,7 @@ func (s *Service) hardAncestorGatesConfirmation(
 
 		for _, uid := range hardParents {
 			ancestor, ok := ancestors[uid]
-			if !ok {
+			if !ok || ancestor == nil {
 				continue
 			}
 
