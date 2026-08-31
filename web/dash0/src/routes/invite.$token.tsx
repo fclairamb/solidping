@@ -8,10 +8,11 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
-import { AlertCircle, Loader2, Mail } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Mail, RotateCw } from "lucide-react";
 import { ApiError, getToken } from "@/api/client";
 import { useInviteInfo, useAcceptInvite } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { isInviteInvalidError } from "@/lib/invite-error";
 
 export const Route = createFileRoute("/invite/$token")({
   component: AcceptInvitePage,
@@ -21,7 +22,13 @@ function AcceptInvitePage() {
   const { t } = useTranslation(["auth", "common"]);
   const { token } = Route.useParams();
   const navigate = useNavigate();
-  const { data: inviteInfo, isLoading: infoLoading, error: infoError } = useInviteInfo(token);
+  const {
+    data: inviteInfo,
+    isLoading: infoLoading,
+    error: infoError,
+    isRefetching: infoRefetching,
+    refetch: refetchInviteInfo,
+  } = useInviteInfo(token);
   const acceptInvite = useAcceptInvite();
   const { acceptInviteSession } = useAuth();
 
@@ -84,6 +91,39 @@ function AcceptInvitePage() {
         <Card className="w-full max-w-md border-t-4 border-t-brand">
           <CardContent className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Only a genuinely dead token (404 NOT_FOUND / 410 EXPIRED) means "invalid
+  // or expired". A 429, a 5xx, or a network failure is transient — telling
+  // someone their perfectly valid invitation has expired when the server
+  // merely rate-limited them is a dead end they cannot recover from, so those
+  // get a distinct, retryable state instead.
+  if (infoError && !isInviteInvalidError(infoError)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md border-t-4 border-t-brand">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              <AlertTriangle className="h-12 w-12 text-destructive" />
+            </div>
+            <CardTitle className="text-2xl">{t("auth:invite.temporaryError")}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <p className="text-muted-foreground">
+              {t("auth:invite.temporaryErrorDescription")}
+            </p>
+            <Button onClick={() => void refetchInviteInfo()} disabled={infoRefetching}>
+              {infoRefetching ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCw className="mr-2 h-4 w-4" />
+              )}
+              {t("common:retry")}
+            </Button>
           </CardContent>
         </Card>
       </div>
