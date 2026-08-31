@@ -38,14 +38,28 @@ services:
     environment:
       SP_DB_TYPE: postgres
       SP_DB_URL: postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      SP_FILESTORAGE_LOCAL_ROOT: /data/files
       LOG_LEVEL: debug
+    volumes:
+      - solidping-files:/data/files
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres-data:
+  solidping-files:
 ```
+
+:::warning Don't skip the `solidping-files` volume
+SolidPing also stores a handful of blobs (org logos, status-page assets,
+incident screenshots) outside the database, at `SP_FILESTORAGE_LOCAL_ROOT`.
+Without a mounted volume there, every upload is destroyed the next time the
+container is recreated — silently. See
+[File Storage](/configuration/file-storage) for the S3 alternative, which has
+no such constraint and is the only option once you run more than one
+`solidping` replica.
+:::
 
 ## Production Setup
 
@@ -84,13 +98,17 @@ services:
       SP_EMAIL_USERNAME: ${SMTP_USERNAME}
       SP_EMAIL_PASSWORD: ${SMTP_PASSWORD}
       SP_EMAIL_FROM: ${SMTP_FROM}
+      SP_FILESTORAGE_LOCAL_ROOT: /data/files
       LOG_LEVEL: info
+    volumes:
+      - solidping-files:/data/files
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres-data:
+  solidping-files:
 ```
 
 Create a `.env` file with your secrets:
@@ -166,6 +184,9 @@ services:
     environment:
       SP_DB_TYPE: postgres
       SP_DB_URL: postgresql://solidping:${POSTGRES_PASSWORD}@postgres:5432/solidping?sslmode=disable
+      SP_FILESTORAGE_LOCAL_ROOT: /data/files
+    volumes:
+      - solidping-files:/data/files
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.solidping.rule=Host(`monitoring.example.com`)"
@@ -178,6 +199,7 @@ services:
 
 volumes:
   postgres-data:
+  solidping-files:
   letsencrypt:
 ```
 
@@ -225,4 +247,5 @@ Notes:
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options
+- [File Storage](/configuration/file-storage) - Local volume vs. S3 for uploaded blobs
 - [Kubernetes Deployment](/installation/kubernetes) - For larger deployments
