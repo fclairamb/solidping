@@ -1929,6 +1929,7 @@ paths:
       operationId: viewDefaultStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/KioskTokenQuery"
       responses:
         "200":
           description: The default status page
@@ -1967,6 +1968,7 @@ paths:
           description: Status page slug
           schema:
             type: string
+        - $ref: "#/components/parameters/KioskTokenQuery"
       responses:
         "200":
           description: The status page
@@ -2001,6 +2003,7 @@ paths:
           description: Status page slug
           schema:
             type: string
+        - $ref: "#/components/parameters/KioskTokenQuery"
       responses:
         "200":
           description: The status page summary
@@ -2134,6 +2137,7 @@ paths:
           description: When "true", returns only incidents that are not resolved.
           schema:
             type: boolean
+        - $ref: "#/components/parameters/KioskTokenQuery"
       responses:
         "200":
           description: The page's public incidents
@@ -4807,6 +4811,70 @@ paths:
       responses:
         "204":
           description: Status page deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token:
+    post:
+      tags: [StatusPages]
+      summary: Mint or regenerate a status page's kiosk (TV mode) token
+      description: >-
+        Mints the page's single kiosk token — a long-lived, revocable, per-page
+        secret a wallboard presents as a `kiosk` query parameter so an office
+        TV can render a `password` or `private` page unattended. It grants READ-ONLY
+        view of this one page and nothing else.
+
+
+        The plaintext is returned HERE AND NOWHERE ELSE: only its sha256 is
+        stored, so an operator who loses it regenerates rather than recovers.
+        Calling this on a page that already has a token REPLACES it, which
+        immediately invalidates the screen using the old one.
+      operationId: generateStatusPageKioskToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "201":
+          description: The newly minted token (shown once)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, hasKioskToken]
+                properties:
+                  token:
+                    type: string
+                    description: >-
+                      The plaintext kiosk token. Append it to the TV URL as
+                      the `kiosk` query parameter.
+                  hasKioskToken:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [StatusPages]
+      summary: Revoke a status page's kiosk token
+      description: >-
+        Clears the stored hash. Any screen still presenting the old token falls
+        straight back to the page's ordinary visibility rules — 401 for a
+        `password` page, 404 for a `private` one — with no distinguishable
+        "revoked" answer. Idempotent: revoking a page that has no token
+        succeeds.
+      operationId: revokeStatusPageKioskToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/StatusPageUidPath"
+      responses:
+        "204":
+          description: Token revoked (or there was none)
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -8069,6 +8137,21 @@ components:
         format: uuid
       description: Discovery scan job UID
 
+    KioskTokenQuery:
+      name: kiosk
+      in: query
+      required: false
+      schema:
+        type: string
+      description: >-
+        A page's kiosk (TV mode) token. A valid one grants read-only view of
+        this one page: it bypasses the `password` unlock and makes a `private`
+        page viewable, and the response is served `private, no-store` like an
+        unlocked one. An invalid, revoked or absent token behaves IDENTICALLY —
+        401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so
+        the parameter is never an oracle for whether a page or a token exists.
+        A disabled page stays 404 regardless.
+
     StatusPageUidPath:
       name: statusPageUid
       in: path
@@ -11319,6 +11402,12 @@ components:
           description: >-
             Whether an unlock password is stored. The hash itself is never
             serialized.
+        hasKioskToken:
+          type: boolean
+          description: >-
+            Whether a kiosk (TV mode) token is minted for this page. ADMIN
+            payloads only — the public views strip it, and the token itself is
+            returned exactly once, by the POST that mints it.
         hideBranding:
           type: boolean
           description: >-
@@ -11490,6 +11579,17 @@ components:
             never reach this payload.
           items:
             $ref: "#/components/schemas/PublicIncident"
+        overallAvailabilityPct:
+          type: number
+          format: double
+          description: >-
+            PAGE-level uptime over the page's own historyPeriod: the
+            arithmetic mean of the per-resource
+            `availability.overallAvailabilityPct` values, with resources that
+            have no data excluded from the mean (never counted as 0 or 100).
+            Omitted when `showAvailability` is false, when no resource has any
+            data, and on the authenticated admin payloads. Public view paths
+            only, like overallStatus.
 
     PublicIncident:
       type: object
@@ -11758,6 +11858,14 @@ components:
           enum: [operational, degraded, down, maintenance, unknown]
         counts:
           $ref: "#/components/schemas/StatusCounts"
+        overallAvailabilityPct:
+          type: number
+          format: double
+          description: >-
+            Page-level uptime over the page's historyPeriod — the same number,
+            by the same definition, as the full page view's field of this
+            name. Omitted when the page hides availability or nothing has
+            reported yet.
         page:
           type: object
           required: [name, slug, url]
@@ -12033,6 +12141,25 @@ components:
           type: string
         position:
           type: integer
+        selector:
+          allOf:
+            - $ref: "#/components/schemas/StatusPageSectionSelector"
+          description: >-
+            The section's dynamic-membership rule, absent on a hand-curated
+            section. Returned on AUTHENTICATED responses only — the public page
+            payload omits it, since a selector spells out the organization's
+            internal label taxonomy.
+        selectorMatchTotal:
+          type: integer
+          description: >-
+            How many checks the selector matches in total. Authenticated
+            responses only.
+        selectorTruncated:
+          type: boolean
+          description: >-
+            True when the match count exceeds the per-section cap (200) and the
+            section is therefore showing a stable alphabetical prefix.
+            Authenticated responses only.
         resources:
           type: array
           items:
@@ -12040,6 +12167,38 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    StatusPageSectionSelector:
+      type: object
+      description: >-
+        A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of
+        `all` / `labels` is set; `{}` and an empty `labels` object are both
+        rejected, because "select everything" has to be typed out rather than
+        implied. Unknown keys are rejected too: a mistyped rule that silently
+        matches nothing forever is the exact failure dynamic sections exist to
+        remove.
+
+        The system MATERIALIZES the matching checks as real resources
+        (`managedBySelector: true`), so a check created later appears with no
+        manual action, and one that stops matching is removed. Internal checks
+        are never matched. A check already placed MANUALLY anywhere on the same
+        page is skipped — manual placement always wins.
+
+        On a `public` page this means every current AND future matching check
+        becomes publicly visible. Prefer a label opt-in such as
+        `{"labels": {"public": "true"}}`, which puts the publish decision on the
+        check itself.
+      properties:
+        all:
+          type: boolean
+          description: Select every non-internal check in the organization.
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: >-
+            Select checks carrying ALL of these exact key=value labels (AND).
+            Values are exact — there is no existence-only ("*") matching.
 
     StatusPageSectionListResponse:
       type: object
@@ -12065,6 +12224,12 @@ components:
             collision returns VALIDATION_ERROR instead.
         position:
           type: integer
+        selector:
+          allOf:
+            - $ref: "#/components/schemas/StatusPageSectionSelector"
+          description: >-
+            Optional dynamic-membership rule. Omit it for a normal hand-curated
+            section — a selector is never a default.
 
     UpdateStatusPageSectionRequest:
       type: object
@@ -12075,6 +12240,15 @@ components:
           type: string
         position:
           type: integer
+        selector:
+          allOf:
+            - $ref: "#/components/schemas/StatusPageSectionSelector"
+          nullable: true
+          description: >-
+            Three-state. Omit the key to leave the membership rule alone, send
+            an object to replace it, or send `null` to clear it — which turns
+            the section back into a hand-curated one and removes the resources
+            the selector owned.
 
     StatusPageResource:
       type: object
@@ -12110,6 +12284,25 @@ components:
             page setting", which is NOT the same as an explicit false — a page
             can therefore be flipped on or off without rewriting every
             resource's intent.
+        managedBySelector:
+          type: boolean
+          description: >-
+            True when the row was materialized by the section's selector and is
+            owned by it (spec 2026-08-29-11). Deleting it, re-targeting it,
+            writing its `position`, or reordering it away from the arrangement
+            the reconciler maintains all answer `409 CONFLICT` — those edits
+            would be undone on the next reconcile, and a write that reports
+            success and then silently reverts is worse than a refusal. Change
+            the selector instead, or add the check manually (which always wins,
+            and takes over the managed row in place). Its `publicName`,
+            `explanation` and `autoPublish` stay editable — the reconciler
+            never touches them. Manual resources in the same section remain
+            freely deletable and reorderable.
+
+            Absent means a normal manual resource. AUTHENTICATED responses only
+            — the public payload omits it, because a materialized component
+            renders exactly like a manual one and how it got there is operator
+            context.
         position:
           type: integer
         createdAt:

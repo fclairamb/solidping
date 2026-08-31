@@ -52,6 +52,15 @@ type Handler struct {
 	svc        *Service
 	cfg        *config.Config
 	supervisor *SlackSocketSupervisor
+
+	// respond, when set, redirects sendMentionResponse away from posting via
+	// chat.postMessage and hands the reply back to this func instead. Used
+	// only by the /solidping slash-command adapter (solidping_command.go) to
+	// reuse handleMentionCommand's router while answering ephemerally in the
+	// synchronous HTTP response, rather than posting in-channel. A Handler
+	// built via NewHandler (the real app_mention path) never sets this, so
+	// that transport's behavior is unchanged.
+	respond func(msg *MessageResponse) error
 }
 
 // NewHandler creates a new Slack handler.

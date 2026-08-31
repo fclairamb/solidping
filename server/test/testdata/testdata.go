@@ -327,8 +327,14 @@ func createTestStatusPage(ctx context.Context, dbService db.Service, orgUID stri
 		ShowAvailability: true,
 		ShowResponseTime: true,
 		HistoryDays:      90,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		// Spelled out rather than inherited from the column defaults: the bun
+		// tags no longer declare `default:` for these, so a literal-built page
+		// has to name every value it wants (spec 2026-08-30-04).
+		HistoryPeriod:     string(models.StatusPagePeriod90d),
+		AutoResolve:       string(models.AutoResolveIfUntouched),
+		CustomDomainState: models.CustomDomainStateNone,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if err := dbService.CreateStatusPage(ctx, page); err != nil {

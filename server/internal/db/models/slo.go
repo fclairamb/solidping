@@ -24,7 +24,7 @@ type SLO struct {
 	// TargetPct is the objective, e.g. 99.9. 0 < TargetPct <= 100.
 	TargetPct float64 `bun:"target_pct,notnull"`
 	// Timezone is the IANA zone the calendar month is resolved in.
-	Timezone string `bun:"timezone,notnull,default:'UTC'"`
+	Timezone string `bun:"timezone,notnull"`
 	// ExcludeMaintenance subtracts probes tagged results.maintenance from this
 	// SLO's denominator. It affects nothing outside the SLO read path.
 	ExcludeMaintenance bool       `bun:"exclude_maintenance,notnull"`

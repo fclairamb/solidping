@@ -4860,6 +4860,8 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 func applyStatusPageAccessColumns(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
 ) *bun.UpdateQuery {
+	query = applyStatusPageKioskColumn(query, update)
+
 	if update.PasswordHash == nil {
 		return query
 	}
@@ -4872,6 +4874,25 @@ func applyStatusPageAccessColumns(
 	}
 
 	return query.Set("password_hash = ?", *update.PasswordHash)
+}
+
+// applyStatusPageKioskColumn writes the kiosk token hash (spec 2026-08-29-08).
+// Same three-state contract as the password hash above, and NULL for the empty
+// string for the same reason: a ” hash would match nothing yet read back as
+// "this page has a kiosk token", leaving an operator staring at a revoke
+// button for a credential that does not exist.
+func applyStatusPageKioskColumn(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
+	if update.KioskTokenHash == nil {
+		return query
+	}
+
+	if *update.KioskTokenHash == "" {
+		return query.Set("kiosk_token_hash = NULL")
+	}
+
+	return query.Set("kiosk_token_hash = ?", *update.KioskTokenHash)
 }
 
 // UpdateStatusPage updates a status page by UID.
@@ -5187,9 +5208,40 @@ func (s *Service) UpdateStatusPageSection(
 		query = query.Set("position = ?", *update.Position)
 	}
 
+	// SetSelector is what distinguishes "leave the membership rule alone" from
+	// "clear it" — a nil Selector with SetSelector true turns a dynamic section
+	// back into a hand-curated one.
+	if update.SetSelector {
+		query = query.Set("selector = ?", update.Selector)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// ListSelectorSectionPageUIDs returns the UIDs of every live status page in the
+// organization that owns at least one live selector-bearing section — the set
+// the reconciler has to revisit after a check write. Pages with no dynamic
+// section are never loaded, which is what keeps a check create cheap in the
+// overwhelmingly common case of an org that uses none.
+func (s *Service) ListSelectorSectionPageUIDs(ctx context.Context, orgUID string) ([]string, error) {
+	var pageUIDs []string
+
+	err := s.db.NewSelect().
+		Model((*models.StatusPageSection)(nil)).
+		ColumnExpr("DISTINCT status_page_section.status_page_uid").
+		Join("JOIN status_pages AS sp ON sp.uid = status_page_section.status_page_uid").
+		Where("sp.organization_uid = ?", orgUID).
+		Where("sp.deleted_at IS NULL").
+		Where("status_page_section.selector IS NOT NULL").
+		Where("status_page_section.deleted_at IS NULL").
+		Scan(ctx, &pageUIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return pageUIDs, nil
 }
 
 // DeleteStatusPageSection soft-deletes a section.

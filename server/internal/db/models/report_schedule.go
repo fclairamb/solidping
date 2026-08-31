@@ -31,8 +31,8 @@ type ReportSchedule struct {
 	UID             string `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string `bun:"organization_uid,notnull"`
 	Name            string `bun:"name,notnull"`
-	Frequency       string `bun:"frequency,notnull,default:'monthly'"`
-	Timezone        string `bun:"timezone,notnull,default:'UTC'"`
+	Frequency       string `bun:"frequency,notnull"`
+	Timezone        string `bun:"timezone,notnull"`
 	// Recipients is PII, held to the same bar as status-page subscriber
 	// addresses: never logged, never emitted into events, only ever read back
 	// to the org's own admins.

@@ -225,5 +225,11 @@
       "none": "Las llamadas de alerta no están disponibles — no hay proveedor de voz configurado."
     },
     "addOwn": "Usar mi propia cuenta de Twilio"
+  },
+  "wand": {
+    "createEmailAlerts": "Configurar alertas por correo por mí",
+    "defaultName": "Alertas por correo",
+    "created": "Alertas por correo creadas",
+    "createFailed": "No se pudieron configurar las alertas por correo"
   }
 }

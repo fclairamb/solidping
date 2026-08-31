@@ -182,11 +182,12 @@ func (h *Handler) GetThread(writer http.ResponseWriter, req *http.Request) error
 	}
 
 	// Opening a thread is reading it. Best-effort: a failed counter reset must
-	// not stop an operator from seeing the conversation.
+	// not stop an operator from seeing the conversation. MarkRead takes the
+	// loaded thread rather than a bare uid so it can gate the read-receipt
+	// hook on the SAME "was it unread" fact this handler already has, without
+	// re-querying, and updates thread.UnreadCount in place once persisted.
 	if thread.UnreadCount > 0 {
-		_ = h.svc.MarkRead(req.Context(), thread.UID)
-
-		thread.UnreadCount = 0
+		_ = h.svc.MarkRead(req.Context(), thread)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, h.toThread(req.Context(), thread))

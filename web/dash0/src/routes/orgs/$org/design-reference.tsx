@@ -22,6 +22,7 @@ import {
   Building2,
   KeyRound,
   Layers,
+  Loader2,
   LogOut,
   Moon,
   Monitor,
@@ -38,6 +39,7 @@ import {
   Sun,
   Trash2,
   Upload,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -52,6 +54,7 @@ import {
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { RecipientsInput } from "@/components/shared/recipients-input";
+import { CommentBody } from "@/components/shared/comment-body";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import {
   isValidStatusPattern,
@@ -74,6 +77,10 @@ import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
+import {
+  SectionMembership,
+  type SectionMembershipValue,
+} from "@/components/shared/section-membership";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
@@ -218,6 +225,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "data-display", label: "Data display" },
   { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
+  { id: "comment-bubble", label: "Comment bubble" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
   { id: "dns-record-row", label: "DNS record row" },
@@ -227,6 +235,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "stepper", label: "Stepper" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
+  { id: "section-membership", label: "Section membership" },
   { id: "faceted-filter", label: "Faceted filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
   { id: "check-group-picker", label: "Check group picker" },
@@ -241,6 +250,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "swatch-legend-chips", label: "Swatch-legend chips" },
   { id: "paging-coverage", label: "Paging coverage" },
   { id: "onboarding-checklist", label: "Onboarding checklist" },
+  { id: "magic-wand", label: "Magic wand" },
 ];
 
 function DesignReferencePage() {
@@ -269,6 +279,7 @@ function DesignReferencePage() {
       <DataDisplaySection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
+      <CommentBubbleSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
       <DnsRecordRowSection />
@@ -279,6 +290,7 @@ function DesignReferencePage() {
       <StepperSection />
       <FeedbackSection />
       <LabelFilterSection />
+      <SectionMembershipSection />
       <FacetedFilterSection />
       <CheckMultiPickerSection />
       <CheckGroupPickerSection />
@@ -294,6 +306,7 @@ function DesignReferencePage() {
       <SwatchLegendChipsSection />
       <PagingCoverageSection />
       <OnboardingChecklistSection />
+      <MagicWandSection />
     </div>
   );
 }
@@ -1640,16 +1653,16 @@ function ButtonsBadgesSection() {
           </code>{" "}
           means "not reported yet" and must <strong>never</strong> be rendered
           as{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>
-          . Rendered as a single icon with no label text — a second text badge
-          next to IPv6 would crowd the region picker — so the state lives in
-          the icon's color and the tooltip. The value is a hint only: it never
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">no</code>.
+          Rendered as a single icon with no label text — a second text badge
+          next to IPv6 would crowd the region picker — so the state lives in the
+          icon's color and the tooltip. The value is a hint only: it never
           hides, disables or filters a region. Use{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             hideUnknown
           </code>{" "}
-          on dense inline surfaces (the region picker) — "no" always renders,
-          so a missing icon can never be misread as a negative.
+          on dense inline surfaces (the region picker) — "no" always renders, so
+          a missing icon can never be misread as a negative.
         </p>
         <ExampleRow
           preview={
@@ -1941,10 +1954,9 @@ function ButtonsBadgesSection() {
 
         <h3 className="text-sm font-medium">Server version indicator</h3>
         <p className="text-sm text-muted-foreground">
-          Also mounted in the sidebar footer utility row (spec
-          2026-08-28-01). Discreet in the common case: just the current
-          server version, small and muted. The loaded version is captured
-          once, from the first{" "}
+          Also mounted in the sidebar footer utility row (spec 2026-08-28-01).
+          Discreet in the common case: just the current server version, small
+          and muted. The loaded version is captured once, from the first{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             /api/mgmt/version
           </code>{" "}
@@ -1953,16 +1965,16 @@ function ButtonsBadgesSection() {
             useVersion()
           </code>{" "}
           polls the live server every 15 minutes and on window
-          focus/visibilitychange. Since dash0 is embedded in the Go binary,
-          a poll returning a different version than the loaded baseline
-          means the server was redeployed after this page loaded — the row
-          then adds the loaded version and a red reload icon (
+          focus/visibilitychange. Since dash0 is embedded in the Go binary, a
+          poll returning a different version than the loaded baseline means the
+          server was redeployed after this page loaded — the row then adds the
+          loaded version and a red reload icon (
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             location.reload()
           </code>
-          ). The live instance below reflects this tab's actual state, so
-          it normally shows the muted form — the icon only appears after a
-          real redeploy.
+          ). The live instance below reflects this tab's actual state, so it
+          normally shows the muted form — the icon only appears after a real
+          redeploy.
         </p>
         <ExampleRow
           preview={<ServerVersionIndicator />}
@@ -2429,9 +2441,8 @@ function FormsSection() {
           renders as one row: a fixed-size preview tile with a{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">lucide</code>{" "}
           placeholder icon, then <em>one</em> of two mutually-exclusive
-          affordances for the source, then an outline{" "}
-          <strong>Upload</strong>/<strong>Replace</strong> button driving a
-          hidden{" "}
+          affordances for the source, then an outline <strong>Upload</strong>/
+          <strong>Replace</strong> button driving a hidden{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             &lt;input type="file"&gt;
           </code>
@@ -2445,7 +2456,9 @@ function FormsSection() {
           so it never overflows.
         </p>
         <p className="text-sm text-muted-foreground">
-          <strong>Never feed a stored value into the URL input sight-unseen.</strong>{" "}
+          <strong>
+            Never feed a stored value into the URL input sight-unseen.
+          </strong>{" "}
           If the current value can also come from an upload (a relative,
           server-generated path rather than a URL the user typed), track the
           source in state instead of overloading one{" "}
@@ -2466,10 +2479,10 @@ function FormsSection() {
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             type="url"
           </code>{" "}
-          input fails native constraint validation and silently blocks the
-          whole form's submit — this pattern exists to rule that out
-          structurally. Last-action-wins: a successful upload always switches
-          back to the badge view. Shipped in{" "}
+          input fails native constraint validation and silently blocks the whole
+          form's submit — this pattern exists to rule that out structurally.
+          Last-action-wins: a successful upload always switches back to the
+          badge view. Shipped in{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">
             components/shared/org-profile-card.tsx
           </code>
@@ -2561,7 +2574,11 @@ function ImageFieldExample() {
               className="min-w-0 flex-1"
             />
           )}
-          <Button type="button" variant="outline" onClick={() => setUploaded(true)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setUploaded(true)}
+          >
             <Upload className="mr-2 h-4 w-4" />
             {previewUrl ? "Replace" : "Upload"}
           </Button>
@@ -2986,9 +3003,7 @@ function ResponsiveDemoTable() {
                   <span className="min-w-0 truncate">{row.name}</span>
                 </div>
               </TableCell>
-              <TableCell className="hidden sm:table-cell">
-                {row.type}
-              </TableCell>
+              <TableCell className="hidden sm:table-cell">{row.type}</TableCell>
               <TableCell className="hidden max-w-[220px] truncate font-mono text-xs text-muted-foreground md:table-cell">
                 {row.target}
               </TableCell>
@@ -3019,42 +3034,45 @@ function ResponsiveTableSection() {
       />
       <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
         <li>
-          <strong className="text-foreground">Always the head/cell pair.</strong>{" "}
+          <strong className="text-foreground">
+            Always the head/cell pair.
+          </strong>{" "}
           Apply the exact same <code>hidden &lt;bp&gt;:table-cell</code> class
           to the <code>TableHead</code> AND every matching{" "}
-          <code>TableCell</code> in that column. A mismatched pair doesn't
-          error — it silently shifts every following column under the wrong
-          header, and only at the breakpoint where it applies, so it's easy
-          to ship and hard to notice in review.
+          <code>TableCell</code> in that column. A mismatched pair doesn't error
+          — it silently shifts every following column under the wrong header,
+          and only at the breakpoint where it applies, so it's easy to ship and
+          hard to notice in review.
         </li>
         <li>
-          <strong className="text-foreground">Tier by importance, not by width.</strong>{" "}
-          Identity (name/title, ideally with its status dot folded in), the
-          one live/primary signal, and row actions stay visible at every
-          width. The widest or most redundant columns — a status badge next
-          to a dot that already conveys it, a "check" column that duplicates
-          the row's own title — fold away first, at{" "}
-          <code>sm</code> then <code>md</code>.
+          <strong className="text-foreground">
+            Tier by importance, not by width.
+          </strong>{" "}
+          Identity (name/title, ideally with its status dot folded in), the one
+          live/primary signal, and row actions stay visible at every width. The
+          widest or most redundant columns — a status badge next to a dot that
+          already conveys it, a "check" column that duplicates the row's own
+          title — fold away first, at <code>sm</code> then <code>md</code>.
         </li>
         <li>
           <strong className="text-foreground">
             Hiding columns alone doesn't stop overflow.
           </strong>{" "}
           A remaining cell whose content can't shrink — a long check name, an
-          incident title, a UUID — still forces the page wider even after
-          every secondary column is gone. Give that <code>TableCell</code>{" "}
+          incident title, a UUID — still forces the page wider even after every
+          secondary column is gone. Give that <code>TableCell</code>{" "}
           <code>max-w-0</code> and its content <code>truncate</code> (add an
-          explicit <code>max-w-[…]</code> when the cell holds more than one
-          flex child, as in the incidents title cell's dot + badges + title).
-          When the truncated element is itself a flex item (inside a{" "}
-          <code>flex</code> row, not just a plain block), it also needs its
-          own <code>min-w-0</code> — a flex item's default{" "}
+          explicit <code>max-w-[…]</code> when the cell holds more than one flex
+          child, as in the incidents title cell's dot + badges + title). When
+          the truncated element is itself a flex item (inside a{" "}
+          <code>flex</code> row, not just a plain block), it also needs its own{" "}
+          <code>min-w-0</code> — a flex item's default{" "}
           <code>min-width: auto</code> stops <code>truncate</code> from ever
           shrinking it below its content size, so the class is present but
           silently does nothing. A badge cluster in the same cell needs{" "}
-          <code>flex-wrap</code> too, or a badge-heavy row overflows
-          regardless of column hiding. Verify
-          against <code>document.documentElement.scrollWidth {"<="} clientWidth</code>{" "}
+          <code>flex-wrap</code> too, or a badge-heavy row overflows regardless
+          of column hiding. Verify against{" "}
+          <code>document.documentElement.scrollWidth {"<="} clientWidth</code>{" "}
           at 375px — the real invariant, not just "the columns look hidden."
         </li>
       </ul>
@@ -3430,7 +3448,8 @@ function FeedbackSection() {
         <p className="text-sm text-muted-foreground">
           An org-level entitlement breach that is silently costing the customer
           something — here, check executions dropped by the per-minute rate
-          gate. It is an amber <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          gate. It is an amber{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
           Alert, never destructive: nothing is permanently lost and the remedy
           is the customer&apos;s to choose. It renders nothing when the org is
           inside its cap, so a page can mount it unconditionally.
@@ -3452,8 +3471,8 @@ function FeedbackSection() {
         <p className="text-sm text-muted-foreground">
           A quota bar on a page that <em>edits</em> what fills it. The saved
           figure is struck through and the draft figure follows an arrow, so the
-          consequence of an unsaved change is legible before anything is
-          written — a bar showing only the saved number turns such a page into a
+          consequence of an unsaved change is legible before anything is written
+          — a bar showing only the saved number turns such a page into a
           guessing game. Over the cap it goes amber, matching the over-limit
           banner it sits with; red is reserved for destructive states. An absent
           limit means unlimited: the figure stays, the bar goes away, because
@@ -4280,6 +4299,37 @@ function ListSurfaceSection() {
   );
 }
 
+function CommentBubbleSection() {
+  return (
+    <Section
+      id="comment-bubble"
+      title="Comment bubble"
+      description="Each incident comment renders through CommentBody: autolinked URLs, `inline code`, and fenced code blocks over React elements only — never dangerouslySetInnerHTML, since comments arrive from untrusted sources (dash0, Slack, Telegram, API). The bubble itself uses bg-muted (full opacity, not the /30 used elsewhere) so it visibly separates from the surrounding bg-card panel in both themes — muted sits a step lighter than card in dark mode and a step darker in light mode."
+    >
+      <ExampleRow
+        preview={
+          <ul className="w-full space-y-3">
+            <li className="flex flex-col gap-1 rounded-md border bg-muted p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">Alice</span>
+                <span className="text-xs text-muted-foreground">
+                  2 minutes ago
+                </span>
+              </div>
+              <CommentBody
+                text={
+                  "Seeing timeouts on the health check, see https://status.acme.com/incidents/42 for context.\n\nRepro:\n```\ncurl -I https://api.acme.com/health\n```\nLooks like `connect: connection refused` on the pod."
+                }
+              />
+            </li>
+          </ul>
+        }
+        importLine={`import { CommentBody } from "@/components/shared/comment-body";\n\n// The li owns the bubble surface — bg-muted (full opacity) against the\n// Card's bg-card, verified in both light and dark mode.\n<li className="rounded-md border bg-muted p-3">\n  <CommentBody text={comment.text} />\n</li>`}
+      />
+    </Section>
+  );
+}
+
 function ElevationSection() {
   return (
     <Section
@@ -4360,6 +4410,54 @@ function LabelFilterSection() {
     >
       <ExampleRow
         preview={<LabelFilter org={org} value={labels} onChange={setLabels} />}
+        importLine={snippet}
+      />
+    </Section>
+  );
+}
+
+function SectionMembershipSection() {
+  const { org } = Route.useParams();
+  const [membership, setMembership] = useState<SectionMembershipValue>({
+    mode: "labels",
+    labels: { public: "true" },
+  });
+  const snippet = `import {
+  SectionMembership,
+  membershipFromSelector,
+  membershipIsComplete,
+  selectorFromMembership,
+  type SectionMembershipValue,
+} from "@/components/shared/section-membership";
+
+// Mode picker for content that is either hand-curated or rule-driven.
+// SegmentedControl for the mode + the matching editor underneath, and a
+// warning whenever the rule would publish future items to a PUBLIC surface.
+// selectorFromMembership() returns null for "manual" — send that null on an
+// update to CLEAR an existing rule (omitting the key leaves it in place).
+<SectionMembership
+  org={org}
+  value={membership}
+  onChange={setMembership}
+  visibility={page.visibility}
+/>`;
+  return (
+    <Section
+      id="section-membership"
+      title="Section membership"
+      description="Manual / rule-driven mode picker for a status page section (spec 2026-08-29-11). The mode sits in a SegmentedControl with a one-line hint; the label mode reuses LabelInput. Switch to All checks or By label below to see the public-page warning — it fires on any non-manual mode when the page is public, with stronger copy for All checks, because auto-inclusion there means every future check reaches the public internet the moment it is created. Private and password pages show nothing."
+    >
+      <ExampleRow
+        preview={
+          <div className="w-full max-w-md">
+            <SectionMembership
+              org={org}
+              value={membership}
+              onChange={setMembership}
+              visibility="public"
+            />
+          </div>
+        }
         importLine={snippet}
       />
     </Section>
@@ -4638,8 +4736,10 @@ const AVAILABILITY_STRIP_SAMPLE = (() => {
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     let total = 60;
     let successful = 60;
-    if (i === 22 || i === 23) total = 0; // most recent hours: not measured yet
-    else if (i === 10) successful = 12; // a bad hour
+    if (i === 22 || i === 23)
+      total = 0; // most recent hours: not measured yet
+    else if (i === 10)
+      successful = 12; // a bad hour
     else if (i === 11) successful = 59; // one failed probe: degraded, not red
     const hasData = total > 0;
     return {
@@ -5312,7 +5412,7 @@ function OnboardingChecklistSection() {
 
 // Container: derives every step from real resources and reads/writes the
 // per-user dismissal (\`onboarding.<org>\` ui-state) itself.
-<OnboardingChecklist org={org} totalChecks={stats.total} firstCheckUid={checks[0]?.uid} />
+<OnboardingChecklist org={org} totalChecks={stats.total} />
 
 // Presentation only, for a surface that already has the data:
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
@@ -5341,8 +5441,71 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
             />
           </div>
         }
-        importLine={'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'}
+        importLine={
+          'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'
+        }
       />
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function MagicWandSection() {
+  const snippet = `import { Wand2 } from "lucide-react";
+
+// One-click sensible default, next to the page's primary "New …" action.
+// Visible only while the derivation helper says the step is unsatisfied —
+// it disappears the instant the resource it offers to create exists.
+<Button
+  variant="outline"
+  onClick={onWandClick}
+  disabled={createMutation.isPending}
+  data-testid="wand-create-email-alerts"
+  aria-label={t("wand.createEmailAlerts")}
+>
+  {createMutation.isPending ? (
+    <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+  ) : (
+    <Wand2 className="h-4 w-4 sm:mr-2" />
+  )}
+  <span className="hidden sm:inline">{t("wand.createEmailAlerts")}</span>
+</Button>`;
+
+  return (
+    <Section
+      id="magic-wand"
+      title="Magic wand"
+      description="One-click sensible default for a Getting Started step (spec 2026-08-29-03). Two flavors: DIRECT CREATE for a private, reversible resource whose default is exactly what the backend already seeds (alerts, report) — one click and the resource exists; PREFILL ONLY for a public-facing artifact with a slug (the status page) — the wand fills the form and the operator still clicks Create. Always outline variant with the Wand2 icon, icon-only on mobile. Visibility is derived the same way the checklist itself derives step completion — never a stored flag — so the wand vanishes the moment its step is satisfied, from any source (wand click, manual creation, or an org that was seeded from the start)."
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Direct create (enabled, ready to click)
+          </p>
+          <Button variant="outline" data-testid="wand-create-email-alerts">
+            <Wand2 className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Set up email alerts for me</span>
+          </Button>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Pending (mutation in flight)
+          </p>
+          <Button variant="outline" disabled>
+            <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+            <span className="hidden sm:inline">Set up email alerts for me</span>
+          </Button>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Prefill only (status page — form still needs Create)
+          </p>
+          <Button variant="outline" data-testid="wand-prefill-status-page">
+            <Wand2 className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Prefill for me</span>
+          </Button>
+        </div>
+      </div>
       <CodeSnippet code={snippet} />
     </Section>
   );

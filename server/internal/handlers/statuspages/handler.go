@@ -31,6 +31,7 @@ const visibilityPublic = "public"
 
 const (
 	fieldSlug           = "slug"
+	fieldSelector       = "selector"
 	fieldBody           = "body"
 	fieldCustomDomain   = "customDomain"
 	fieldVisibility     = "visibility"
@@ -507,7 +508,9 @@ func (h *Handler) ReorderResources(writer http.ResponseWriter, req *http.Request
 			})
 		}
 
-		return h.handleSectionError(writer, req, err)
+		// Resource mapper: a reorder that tries to move a selector-owned row
+		// answers 409, like every other attempt to edit one.
+		return h.handleResourceError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -554,10 +557,15 @@ func (h *Handler) DeleteResource(writer http.ResponseWriter, req *http.Request) 
 	sectionIdentifier := httpx.Param(req, "sectionUid")
 	resourceUID := httpx.Param(req, "resourceUid")
 
+	// handleResourceError, not handleSectionError: the delete path can fail
+	// with ErrResourceManagedBySelector, and only the resource mapper turns
+	// that into the 409 the API documents. Routing it through the section
+	// mapper answered 500 INTERNAL_ERROR instead — a refusal reported as a
+	// server fault (spec 2026-08-29-11).
 	if err := h.svc.DeleteResource(
 		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, resourceUID,
 	); err != nil {
-		return h.handleSectionError(writer, req, err)
+		return h.handleResourceError(writer, req, err)
 	}
 
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
@@ -597,10 +605,15 @@ func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Re
 // StatusPageSummaryResponse is the lightweight "is it up?" public response
 // (spec 2026-08-08-06).
 type StatusPageSummaryResponse struct {
-	Status      string                    `json:"status"`
-	Counts      StatusCountsResponse      `json:"counts"`
-	Page        StatusPageSummaryPageInfo `json:"page"`
-	GeneratedAt time.Time                 `json:"generatedAt"`
+	Status string               `json:"status"`
+	Counts StatusCountsResponse `json:"counts"`
+	// OverallAvailabilityPct is the page-level uptime over the page's own
+	// history period (spec 2026-08-29-08): the mean of the per-resource
+	// percentages, resources with no data excluded. Omitted when the page
+	// hides availability or nothing has reported yet.
+	OverallAvailabilityPct *float64                  `json:"overallAvailabilityPct,omitempty"`
+	Page                   StatusPageSummaryPageInfo `json:"page"`
+	GeneratedAt            time.Time                 `json:"generatedAt"`
 }
 
 // StatusPageSummaryPageInfo identifies the page a summary belongs to.
@@ -637,6 +650,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 			Maintenance: summary.Counts.Maintenance,
 			Unknown:     summary.Counts.Unknown,
 		},
+		OverallAvailabilityPct: summary.OverallAvailabilityPct,
 		Page: StatusPageSummaryPageInfo{
 			Name: summary.PageName,
 			Slug: summary.PageSlug,
@@ -976,6 +990,8 @@ func (h *Handler) handleCreateSectionError(writer http.ResponseWriter, request *
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case selectorValidationError(err):
+		return h.writeSelectorError(writer, err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1000,6 +1016,8 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, request *
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case selectorValidationError(err):
+		return h.writeSelectorError(writer, err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -1024,9 +1042,25 @@ func (h *Handler) handleResourceError(writer http.ResponseWriter, request *http.
 			writer, request, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
 	case errors.Is(err, ErrResourceTargetInvalid):
 		return h.writeResourceTargetError(writer)
+	case errors.Is(err, ErrResourceManagedBySelector):
+		return h.WriteErrorErr(
+			writer, request, http.StatusConflict, base.ErrorCodeConflict,
+			"This component is managed by the section's selector. "+
+				"Change the section's membership rule, or add the check manually — a manual entry always wins.",
+			err)
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// writeSelectorError renders a rejected section selector as a
+// VALIDATION_ERROR on the `selector` field. Every selector failure is a client
+// mistake, and a mistyped rule has to be loud: a selector that quietly matches
+// nothing is the very silent-omission failure dynamic sections exist to remove.
+func (h *Handler) writeSelectorError(writer http.ResponseWriter, err error) error {
+	return h.WriteValidationError(writer, "Invalid section selector", []base.ValidationErrorField{
+		{Name: fieldSelector, Message: err.Error()},
+	})
 }
 
 // resourceTargetMsg names BOTH fields so the caller can see which pair is

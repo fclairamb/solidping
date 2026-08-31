@@ -195,6 +195,12 @@
       "cancel": "Abbrechen",
       "deleted": "Berichtsplan gelöscht",
       "failed": "Berichtsplan konnte nicht gelöscht werden"
+    },
+    "wand": {
+      "create": "Wöchentlichen Verfügbarkeitsbericht für mich erstellen",
+      "defaultName": "Wöchentlicher Verfügbarkeitsbericht",
+      "created": "Wöchentlicher Verfügbarkeitsbericht erstellt",
+      "createFailed": "Erstellen des wöchentlichen Verfügbarkeitsberichts fehlgeschlagen"
     }
   }
 }

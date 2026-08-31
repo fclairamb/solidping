@@ -94,7 +94,7 @@ type Check struct {
 	ConfigSealed *string            `bun:"config_sealed,type:text,nullzero"`
 	Regions      []string           `bun:"regions,type:text[],array"`
 	Enabled      bool               `bun:"enabled,notnull"`
-	Internal     bool               `bun:"internal,notnull,default:false"`
+	Internal     bool               `bun:"internal,notnull"`
 	Period       timeutils.Duration `bun:"period,notnull"`
 
 	// RegionSpread is the optional inter-region scheduling offset ("spread")
@@ -110,12 +110,14 @@ type Check struct {
 	// count-based thresholds per spec
 	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
 	// `0` means "open / resolve immediately on the first opposite signal".
-	ConfirmationPeriodSeconds int `bun:"confirmation_period_seconds,notnull,default:0"`
-	RecoveryPeriodSeconds     int `bun:"recovery_period_seconds,notnull,default:0"`
+	ConfirmationPeriodSeconds int `bun:"confirmation_period_seconds,notnull"`
+	RecoveryPeriodSeconds     int `bun:"recovery_period_seconds,notnull"`
 	// EscalationThreshold remains streak-based for now — it gates the *second*
 	// notification step, not the incident open. Will be re-modeled when the
-	// escalation-severity primitive ships.
-	EscalationThreshold int `bun:"escalation_threshold,notnull,default:3"`
+	// escalation-severity primitive ships. No `default:` clause even though
+	// the column has one — see the StatusPage.AutoPublishDelaySeconds note:
+	// `default:3` made `escalation_threshold: 0` unwritable on create.
+	EscalationThreshold int `bun:"escalation_threshold,notnull"`
 	// FirstFailureAt is set on the result that flips the streak from 0 to 1
 	// on a failing check (no active incident yet). Cleared on the next success.
 	// The incident opens when now - FirstFailureAt >= ConfirmationPeriod.
@@ -138,15 +140,22 @@ type Check struct {
 	// before auto-resolving grows per flap, bounded by a cap. Off-by-default-
 	// equivalent: FlapBackoffFactor==1 or FlappingWindowSeconds==0 reproduces
 	// the constant RecoveryPeriodSeconds behavior.
-	FlappingWindowSeconds int `bun:"flapping_window_seconds,notnull,default:21600"`
-	FlapBackoffFactor     int `bun:"flap_backoff_factor,notnull,default:2"`
-	MaxRecoveryMultiplier int `bun:"max_recovery_multiplier,notnull,default:8"`
+	//
+	// Which is precisely why none of the three carries a `default:` clause,
+	// even though all three columns have one — see the
+	// StatusPage.AutoPublishDelaySeconds note. With `default:21600` on the tag,
+	// `flappingWindowSeconds: 0` never reached the database, so flapping could
+	// not be turned off at creation time (spec 2026-08-30-04). NewCheck
+	// supplies the 21600/2/8 defaults instead.
+	FlappingWindowSeconds int `bun:"flapping_window_seconds,notnull"`
+	FlapBackoffFactor     int `bun:"flap_backoff_factor,notnull"`
+	MaxRecoveryMultiplier int `bun:"max_recovery_multiplier,notnull"`
 
 	// Flap state, updated only on the rare incident-open/reopen (never per
 	// result). FlapCount is the number of outages accumulated inside the
 	// rolling flapping window; LastOutageAt is the wall-clock of the most
 	// recent outage onset and gates the window reset.
-	FlapCount    int        `bun:"flap_count,notnull,default:0"`
+	FlapCount    int        `bun:"flap_count,notnull"`
 	LastOutageAt *time.Time `bun:"last_outage_at"`
 
 	// Optional escalation policy. Falls back to the check_group's policy
@@ -169,8 +178,8 @@ type Check struct {
 	TracerouteOnFailure *bool `bun:"traceroute_on_failure"`
 
 	// Status tracking
-	Status          CheckStatus `bun:"status,notnull,default:0"`
-	StatusStreak    int         `bun:"status_streak,notnull,default:0"`
+	Status          CheckStatus `bun:"status,notnull"`
+	StatusStreak    int         `bun:"status_streak,notnull"`
 	StatusChangedAt *time.Time  `bun:"status_changed_at"`
 
 	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`

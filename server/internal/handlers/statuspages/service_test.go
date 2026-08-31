@@ -397,6 +397,49 @@ func TestGetCheckInfo_InMaintenanceFlag(t *testing.T) {
 	}
 }
 
+// TestGetCheckInfo_StatusChangedAt verifies that getCheckInfo surfaces the
+// check's StatusChangedAt on the public payload, which is what lets a status
+// page say "down for 12m" rather than just "down".
+//
+// A nil StatusChangedAt (a check that has never transitioned) must stay nil
+// rather than becoming a zero time — the board omits a duration it does not
+// know instead of claiming the outage started in year 1.
+func TestGetCheckInfo_StatusChangedAt(t *testing.T) {
+	t.Parallel()
+
+	t.Run("populated when the check has transitioned", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		ctx, svc, org := setupStatusPagesTest(t)
+
+		changed := time.Now().Add(-12 * time.Minute).UTC().Truncate(time.Second)
+		check := models.NewCheck(org.UID, "chk-changed", "http")
+		check.StatusChangedAt = &changed
+		r.NoError(svc.db.CreateCheck(ctx, check))
+
+		info, _, err := svc.getCheckInfo(ctx, org.UID, check.UID)
+		r.NoError(err)
+		r.NotNil(info.StatusChangedAt)
+		r.WithinDuration(changed, *info.StatusChangedAt, time.Second)
+	})
+
+	t.Run("stays nil for a check that never transitioned", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		ctx, svc, org := setupStatusPagesTest(t)
+
+		check := models.NewCheck(org.UID, "chk-fresh", "http")
+		check.StatusChangedAt = nil
+		r.NoError(svc.db.CreateCheck(ctx, check))
+
+		info, _, err := svc.getCheckInfo(ctx, org.UID, check.UID)
+		r.NoError(err)
+		r.Nil(info.StatusChangedAt)
+	})
+}
+
 // --- 24h hourly history period (spec 2026-06-30-03) ---
 
 // TestStatusPagePeriodInfo pins the period→(bucketType, count, duration) mapping,

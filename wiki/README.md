@@ -58,6 +58,7 @@ the relevant code.
 - [features/showcase-media.md](features/showcase-media.md) — Regenerable product screenshots & video: the `web/dash0/showcase/` Playwright pipeline, `make showcase`, AV1 post-processing, which assets are committed, where they're surfaced, and the marketing (`solidping-website`) hand-off.
 - [features/config-as-code.md](features/config-as-code.md) — Declarative checks: export → edit → `sp apply` loop, the `solidping.io/managed` scope, reconcile plan (create/update/delete/unmanaged/rename), `${env:}`/`${param:}` secret references, prune + deletion cap, admin gating.
 - [features/platform-watchdog.md](features/platform-watchdog.md) — The hourly `platform_watchdog` job: how the platform reports on ITSELF. Three independent detectors (dark region with assigned work, fleet execution collapse, frozen active incidents), transition-based anti-flood, delivery through the operators' own notification routes, and the out-of-band `solidping_watchdog_*` gauges.
+- [features/email-dark-mode.md](features/email-dark-mode.md) — How transactional email renders in a dark inbox: the per-client support matrix, the `light only` pin (why it stays), the designed `prefers-color-scheme` palette in `base.html`, the `?colorScheme=dark` preview, and the still-open, human-gated Gmail un-pin decision plus its device-matrix template.
 - [features/results-aggregation.md](features/results-aggregation.md) — The raw → hour → day → month results rollup: per-org job, tier boundaries, transactional compaction, pure-Go aggregate math (warning-counts-as-up, degraded promotion, metric suffixes), retention config, consumers (uptimebar, badges, results-API fallback), failure-mode history.
 
 ## Conventions
@@ -76,6 +77,7 @@ Project-wide standards and naming rules.
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 - [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions
 - [conventions/generated-client.md](conventions/generated-client.md) — `pkg/client` regeneration cadence (once per batch/release) and ownership; how CI catches a regeneration that doesn't compile
+- [conventions/changelog.md](conventions/changelog.md) — Writing CHANGELOG.md entries as user-facing prose for the generated `/docs/changelog` page; the scope-label lookup table; checking the render before a release ships
 
 ## Runbooks
 
@@ -83,6 +85,7 @@ Operational procedures for diagnosing the running system.
 
 - [runbooks/memory-profiling.md](runbooks/memory-profiling.md) — Memory profiling & leak detection: pprof heap/alloc/goroutine/block profiles per role, base-diffing, the off-heap (cgo/SQLite) rule, the `/api/mgmt/memory` snapshot + Prometheus surfaces, baseline/soak procedure, GC levers (`GOMEMLIMIT`/`GOGC`).
 - [runbooks/custom-domain-tls.md](runbooks/custom-domain-tls.md) — Custom-domain TLS: single-CNAME verification modes (`shared`/`token`), in-server ACME (`acme.*`) vs. an external TLS proxy, the four edge options (SNI passthrough, dedicated LB, chained instances, external proxy), config reference, acceptance checklist, troubleshooting, and the 2026-08-23 investigation of *intermittent* re-verification failure while `dig` succeeds (class: resolver/transport fault, infra-side).
+- [runbooks/invite-link-invalid-or-expired.md](runbooks/invite-link-invalid-or-expired.md) — The 2026-08-31 "invitation link invalid or expired" report was reporter error, not a defect — what to check before re-opening the hunt, and the two lasting fixes that came out of it anyway (error-conflation split, E2E coverage).
 
 ## Testing
 

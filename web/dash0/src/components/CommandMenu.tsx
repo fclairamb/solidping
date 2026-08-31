@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { Command } from "cmdk";
 import {
   LayoutDashboard,
@@ -31,6 +32,8 @@ import {
   Wrench,
 } from "lucide-react";
 import { useChecks, useStatusPages, useEscalationPolicies, useSlos } from "@/api/hooks";
+import { useAuth } from "@/contexts/AuthContext";
+import { ApiError } from "@/api/client";
 
 type GroupKey = "actions" | "pages" | "account" | "organization";
 
@@ -99,7 +102,13 @@ const pages: PageEntry[] = [
     group: "organization",
     testId: "command-menu-report-schedules",
   },
-  { titleKey: "settings", path: "/orgs/$org/organization/settings", icon: Settings, group: "organization" },
+  {
+    titleKey: "command.organizationSettings",
+    path: "/orgs/$org/organization/settings",
+    icon: Settings,
+    group: "organization",
+    testId: "command-menu-organization-settings",
+  },
 ];
 
 const groupOrder: GroupKey[] = ["actions", "pages", "account", "organization"];
@@ -131,7 +140,8 @@ export interface CommandMenuProps {
 }
 
 export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuProps = {}) {
-  const { t } = useTranslation("nav");
+  const { t } = useTranslation(["nav", "account"]);
+  const { organizations, switchOrg } = useAuth();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
@@ -206,6 +216,22 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     navigate({ to: path, params: { org } });
   }
 
+  // Mirrors AppSidebar's handleSwitchOrg (AppSidebar.tsx:163): switch first,
+  // then navigate to the dashboard under the new slug. Always lands on the
+  // dashboard rather than the current path — the same path under another org
+  // frequently 404s, since entities are org-scoped.
+  async function handleSwitchOrg(slug: string) {
+    setOpen(false);
+    try {
+      await switchOrg(slug);
+      navigate({ to: "/orgs/$org", params: { org: slug } });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("account:organizations.switchFailed")
+      );
+    }
+  }
+
   const enrichedPages = pages.map((p) => ({
     ...p,
     title: t(p.titleKey),
@@ -245,6 +271,15 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
         .filter((s) => matchesSearch(debouncedSearch, s.name, s.slug))
         .slice(0, ENTITY_GROUP_LIMIT)
     : [];
+
+  // Other organizations the user belongs to (excludes the one currently in
+  // the URL, mirroring AppSidebar.tsx:145). Sourced from AuthContext, not a
+  // fetch, so filtering uses the live `search` value (like the static pages
+  // above) rather than the debounced one used for entity queries.
+  const otherOrgs = organizations.filter((o) => o.slug !== org);
+  const filteredOrgs = search
+    ? otherOrgs.filter((o) => matchesSearch(search, o.name, o.slug))
+    : otherOrgs;
 
   // Only mount the dialog when open. Keeps a single source of truth for
   // visibility and prevents stale instances from accumulating across HMR
@@ -318,6 +353,26 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
             ))}
           </Command.Group>
         ))}
+
+        {filteredOrgs.length > 0 && (
+          <Command.Group heading={t("command.groupSwitchOrg")} className={groupHeadingClassName}>
+            {filteredOrgs.map((o) => (
+              <Command.Item
+                key={o.slug}
+                value={`${o.name || o.slug} ${o.slug} switchOrg`}
+                onSelect={() => handleSwitchOrg(o.slug)}
+                data-testid={`command-menu-switch-org-${o.slug}`}
+                className={commandItemClassName}
+              >
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <span>{o.name || o.slug}</span>
+                {o.name && (
+                  <span className="text-xs text-muted-foreground">{o.slug}</span>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
 
         {checks && checks.length > 0 && (
           <Command.Group heading={t("command.groupChecks")} className={groupHeadingClassName}>

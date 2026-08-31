@@ -133,6 +133,10 @@
       "formatLabel": "Vorschauformat",
       "formatHtml": "HTML",
       "formatText": "Text",
+      "schemeLabel": "Vorschau-Farbschema",
+      "schemeLight": "Hell",
+      "schemeDark": "Dunkel",
+      "schemeDarkHint": "Aktiviert den prefers-color-scheme-Block der Vorlage — das, was Apple Mail und Thunderbird im Dunkelmodus zeigen. Gmail unterstützt ihn nicht und bleibt hell.",
       "refresh": "Aktualisieren",
       "retry": "Erneut versuchen",
       "loading": "Wird geladen…",
@@ -152,9 +156,11 @@
     "groupStatusPages": "Statusseiten",
     "groupEscalationPolicies": "Eskalationsrichtlinien",
     "groupSlos": "SLOs",
+    "groupSwitchOrg": "Organisation wechseln",
     "newCheck": "Neue Prüfung",
     "newCheckDescription": "Eine neue Monitoring-Prüfung erstellen",
-    "aiDescription": "KI-Assistenten über MCP verbinden"
+    "aiDescription": "KI-Assistenten über MCP verbinden",
+    "organizationSettings": "Organisationseinstellungen"
   },
   "security": "Sicherheit",
   "slos": "SLOs",

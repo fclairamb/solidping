@@ -135,6 +135,10 @@
       "formatLabel": "Format d'aperçu",
       "formatHtml": "HTML",
       "formatText": "Texte",
+      "schemeLabel": "Thème d'aperçu",
+      "schemeLight": "Clair",
+      "schemeDark": "Sombre",
+      "schemeDarkHint": "Active le bloc prefers-color-scheme du modèle — ce qu'affichent Apple Mail et Thunderbird en mode sombre. Gmail ne le gère pas et reste en clair.",
       "refresh": "Rafraîchir",
       "retry": "Réessayer",
       "loading": "Chargement…",
@@ -154,9 +158,11 @@
     "groupStatusPages": "Pages de statut",
     "groupEscalationPolicies": "Politiques d'escalade",
     "groupSlos": "SLO",
+    "groupSwitchOrg": "Changer d'organisation",
     "newCheck": "Nouveau contrôle",
     "newCheckDescription": "Créer un nouveau contrôle de monitoring",
-    "aiDescription": "Connecter des assistants IA via MCP"
+    "aiDescription": "Connecter des assistants IA via MCP",
+    "organizationSettings": "Paramètres de l'organisation"
   },
   "security": "Sécurité",
   "slos": "SLO",

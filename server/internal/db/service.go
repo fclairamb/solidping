@@ -949,6 +949,12 @@ type Service interface {
 	MaxStatusPageSectionPosition(ctx context.Context, pageUID string) (int, error)
 	UpdateStatusPageSection(ctx context.Context, uid string, update *models.StatusPageSectionUpdate) error
 	DeleteStatusPageSection(ctx context.Context, uid string) error
+	// ListSelectorSectionPageUIDs returns the UIDs of the org's live status
+	// pages owning at least one live selector-bearing section (spec
+	// 2026-08-29-11) — the set the reconciler revisits after a check write.
+	// An org with no dynamic section gets an empty slice and pays one indexed
+	// lookup, which is why reconcile-on-write is affordable.
+	ListSelectorSectionPageUIDs(ctx context.Context, orgUID string) ([]string, error)
 
 	// StatusPageResource operations
 	CreateStatusPageResource(ctx context.Context, resource *models.StatusPageResource) error

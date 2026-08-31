@@ -1804,7 +1804,8 @@ export function useChartWindowResults(
      * see spec 2026-08-25-03. Once both passes have genuinely settled with
      * nothing, this is `false` and the empty state is honest.
      */
-    isEmptyPending: data.data.length === 0 && (rollup.isPending || raw.isPending),
+    isEmptyPending:
+      data.data.length === 0 && (rollup.isPending || raw.isPending),
   };
 }
 
@@ -2555,6 +2556,12 @@ export interface StatusPage {
   whiteLabelAllowed?: boolean;
   /** True when the page is password-protected. The hash is never returned. */
   hasPassword?: boolean;
+  /**
+   * Whether a kiosk (TV mode) token is minted for this page (spec
+   * 2026-08-29-08). Admin payloads only — the public views strip it, and the
+   * token itself is only ever returned by the POST that mints it.
+   */
+  hasKioskToken?: boolean;
   // Custom-domain fields are only present on the authenticated org endpoints.
   customDomain?: string;
   customDomainStatus?: CustomDomainStatus;
@@ -2576,11 +2583,47 @@ export interface StatusPage {
   createdAt?: string;
 }
 
+/**
+ * A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of the
+ * two shapes: `{ all: true }` or `{ labels: { k: v, ... } }` (AND, exact
+ * values). Absent means the section is hand-curated, which is the default and
+ * what every existing section keeps — a selector is never applied implicitly.
+ */
+export interface StatusPageSectionSelector {
+  all?: boolean;
+  labels?: Record<string, string>;
+}
+
 export interface StatusPageSection {
   uid: string;
   name: string;
   slug: string;
   position: number;
+  /**
+   * Returned on AUTHENTICATED responses only — the public page payload omits
+   * it, because a selector spells out the org's internal label taxonomy.
+   */
+  selector?: StatusPageSectionSelector;
+  /** How many checks the selector matches in total. Authenticated only. */
+  selectorMatchTotal?: number;
+  /**
+   * True when the match count exceeds the per-section cap and the section is
+   * showing a stable alphabetical prefix. Authenticated only.
+   */
+  selectorTruncated?: boolean;
+  /**
+   * How many of the selector's matched checks are already displayed by
+   * resource rows OUTSIDE this section — an earlier selector section or a
+   * manual placement (spec 2026-08-31-01). Authenticated only. Absent/0 means
+   * nothing is claimed elsewhere.
+   */
+  selectorClaimedElsewhere?: number;
+  /**
+   * Name of the section holding the most of `selectorClaimedElsewhere`'s
+   * checks, for the "already shown in '{{section}}'" copy. Authenticated
+   * only; absent when `selectorClaimedElsewhere` is 0/absent.
+   */
+  selectorClaimedSectionName?: string;
   resources?: StatusPageResource[];
   createdAt?: string;
 }
@@ -2602,6 +2645,12 @@ export interface StatusPageResource {
    * absent means "inherit the page", which is NOT the same as false.
    */
   autoPublish?: boolean;
+  /**
+   * True when the row was materialized by the section's selector and is owned
+   * by it (spec 2026-08-29-11): it cannot be deleted or re-targeted here —
+   * change the selector, or add the check manually, which always wins.
+   */
+  managedBySelector?: boolean;
   position: number;
   check?: {
     name?: string;
@@ -2676,12 +2725,20 @@ export interface CreateSectionRequest {
   name: string;
   slug: string;
   position?: number;
+  /** Optional membership rule. Omit for a normal hand-curated section. */
+  selector?: StatusPageSectionSelector;
 }
 
 export interface UpdateSectionRequest {
   name?: string;
   slug?: string;
   position?: number;
+  /**
+   * Three-state, matching the API: omit the key to leave the rule alone, send
+   * an object to replace it, or send `null` to clear it (which also removes
+   * the components the selector owned).
+   */
+  selector?: StatusPageSectionSelector | null;
 }
 
 /**
@@ -2768,6 +2825,54 @@ export function useUpdateStatusPage(org: string, uid: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
       queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+    },
+  });
+}
+
+/**
+ * The one and only time a kiosk token is readable (spec 2026-08-29-08). Only
+ * its sha256 is stored, so an operator who loses it regenerates rather than
+ * recovers — the same contract as an API token.
+ */
+export interface KioskTokenResponse {
+  token: string;
+  hasKioskToken: boolean;
+}
+
+/**
+ * Mints or REGENERATES the page's kiosk token. Regenerating replaces the
+ * stored hash, so the screen still using the old URL stops working the moment
+ * this resolves — which is why the UI asks before calling it on a page that
+ * already has one.
+ */
+export function useGenerateKioskToken(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<KioskTokenResponse>(
+        `/api/v1/orgs/${org}/status-pages/${uid}/kiosk-token`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+/** Revokes the page's kiosk token. Idempotent server-side. */
+export function useRevokeKioskToken(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(`/api/v1/orgs/${org}/status-pages/${uid}/kiosk-token`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
     },
   });
 }
@@ -3304,9 +3409,12 @@ export function useConfirmRegistration() {
       // Login-shaped response — the backend mints a full session (refresh
       // token + expiry included) just like password/OAuth login, so both
       // fields must be captured here and passed to setSession, not dropped
-      // (2026-07-08 funnel audit).
+      // (2026-07-08 funnel audit). accessToken is optional in the type
+      // (not just in practice): applyConfirmRegistrationHandoff treats its
+      // absence as a failure path rather than assuming the string always
+      // shows up (spec 2026-08-29-06).
       apiFetch<{
-        accessToken: string;
+        accessToken?: string;
         refreshToken?: string;
         expiresIn?: number;
         user: {
@@ -3885,11 +3993,12 @@ export interface FeaturesResponse {
   bugReport: boolean;
 }
 
-export function useFeatures() {
+export function useFeatures(opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["features"],
     queryFn: () => apiFetch<FeaturesResponse>("/api/v1/features"),
     staleTime: 5 * 60 * 1000,
+    enabled: opts?.enabled ?? true,
   });
 }
 
@@ -4669,10 +4778,7 @@ export interface UpdateEscalationPolicyRequest {
   steps?: EscalationPolicyStep[];
 }
 
-export function useEscalationPolicies(
-  org: string,
-  opts?: ListQueryOptions,
-) {
+export function useEscalationPolicies(org: string, opts?: ListQueryOptions) {
   return useQuery({
     queryKey: ["escalationPolicies", org],
     queryFn: async () => {

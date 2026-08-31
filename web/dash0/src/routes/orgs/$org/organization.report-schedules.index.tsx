@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Mail, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Mail, Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
 import {
+  useCreateReportSchedule,
   useDeleteReportSchedule,
   useReportSchedules,
   type ReportSchedule,
@@ -16,6 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TimeAgo } from "@/components/ui/time-ago";
+import { useAuth } from "@/contexts/AuthContext";
+import { hasEnabledReportSchedule } from "@/lib/onboarding-checklist";
+import { buildWeeklyReportWandPayload } from "@/lib/onboarding-wand";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +48,33 @@ function ReportSchedulesIndexPage() {
   const { org } = Route.useParams();
   const { data: schedules, isLoading, error, refetch } = useReportSchedules(org);
   const deleteSchedule = useDeleteReportSchedule(org);
+  const createSchedule = useCreateReportSchedule(org);
+  const { user } = useAuth();
   const [pendingDelete, setPendingDelete] = useState<ReportSchedule | null>(null);
+
+  // Visible only once we know the org actually lacks an enabled schedule —
+  // guarding on isLoading avoids a flash-then-disappear for an org that
+  // already has one.
+  const showWand = !isLoading && !hasEnabledReportSchedule(schedules);
+
+  const onWandClick = () => {
+    if (!user?.email) return;
+    createSchedule.mutate(
+      buildWeeklyReportWandPayload(
+        t,
+        user.email,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
+      {
+        onSuccess: () =>
+          toast.success(t("reports.wand.created", "Weekly uptime report created")),
+        onError: () =>
+          toast.error(
+            t("reports.wand.createFailed", "Failed to create the weekly uptime report"),
+          ),
+      },
+    );
+  };
 
   if (error) {
     return <QueryErrorView error={error} org={org} onRetry={() => refetch()} />;
@@ -58,13 +88,34 @@ function ReportSchedulesIndexPage() {
         description={t("reports.subtitle")}
         docsHref="/docs/features/slos#uptime-reports"
         actions={
-          <Button asChild data-testid="report-new">
-            <Link to="/orgs/$org/organization/report-schedules/new" params={{ org }}>
-              <Plus className="mr-1 h-4 w-4" />
-              {t("reports.new")}
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {showWand && (
+              <Button
+                variant="outline"
+                onClick={onWandClick}
+                disabled={createSchedule.isPending}
+                data-testid="wand-create-weekly-report"
+                aria-label={t("reports.wand.create", "Create a weekly uptime report for me")}
+              >
+                {createSchedule.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                ) : (
+                  <Wand2 className="h-4 w-4 sm:mr-2" />
+                )}
+                <span className="hidden sm:inline">
+                  {t("reports.wand.create", "Create a weekly uptime report for me")}
+                </span>
+              </Button>
+            )}
+            <Button asChild data-testid="report-new">
+              <Link to="/orgs/$org/organization/report-schedules/new" params={{ org }}>
+                <Plus className="mr-1 h-4 w-4" />
+                {t("reports.new")}
+              </Link>
+            </Button>
+          </div>
         }
+        className="flex-wrap"
       />
 
       {isLoading ? (

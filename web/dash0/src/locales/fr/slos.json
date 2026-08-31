@@ -195,6 +195,12 @@
       "cancel": "Annuler",
       "deleted": "Rapport planifié supprimé",
       "failed": "Échec de la suppression du rapport planifié"
+    },
+    "wand": {
+      "create": "Créer un rapport de disponibilité hebdomadaire pour moi",
+      "defaultName": "Rapport de disponibilité hebdomadaire",
+      "created": "Rapport de disponibilité hebdomadaire créé",
+      "createFailed": "Échec de la création du rapport de disponibilité hebdomadaire"
     }
   }
 }

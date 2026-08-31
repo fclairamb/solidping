@@ -131,6 +131,18 @@ func (h *Handler) handleLinkShared(ctx context.Context, event *Event) error {
 	return nil
 }
 
+// App Home links to the hosted service's public pages. These are the pages the
+// Slack Marketplace review requires the App Home tab to surface (support and
+// pricing), and they describe the hosted offering, so they stay absolute rather
+// than deriving from Server.BaseURL the way the dashboard link does.
+const (
+	slackAppGuideURL = "https://www.solidping.io/saas/slack"
+	pricingURL       = "https://www.solidping.io/pricing"
+	supportURL       = "https://www.solidping.io/saas/support"
+	privacyURL       = "https://www.solidping.io/saas/privacy"
+	supportEmail     = "contact@solidping.io"
+)
+
 // buildAppHomeView builds the App Home view.
 func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 	return &AppHomeView{
@@ -179,7 +191,7 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 							Text: "View Dashboard",
 						},
 						ActionID: "view_dashboard",
-						URL:      "https://solidping.io/dashboard",
+						URL:      h.svc.cfg.Server.BaseURL + "/dashboard",
 					},
 				},
 			},
@@ -187,11 +199,23 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 				Type: "divider",
 			},
 			{
+				Type: BlockTypeSection,
+				Text: &Text{
+					Type: BlockTypeMrkdwn,
+					Text: "*Help, pricing and support*\n" +
+						"• `@SolidPing help` — every command the bot understands\n" +
+						"• <" + slackAppGuideURL + "|How the Slack app works>\n" +
+						"• <" + pricingURL + "|Plans and pricing>\n" +
+						"• <" + supportURL + "|Support> — or email <mailto:" + supportEmail + "|" + supportEmail + ">\n" +
+						"• <" + privacyURL + "|Privacy policy>",
+				},
+			},
+			{
 				Type: BlockTypeContext,
 				Elements: []any{
 					ContextElement{
 						Type: BlockTypeMrkdwn,
-						Text: "Use `/check <url>` to quickly create a new check",
+						Text: "Use `/solidping check <url>` to quickly create a new check",
 					},
 				},
 			},

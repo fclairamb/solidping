@@ -52,8 +52,10 @@ type Service struct {
 	now        func() time.Time
 
 	// Per-org rate limiters for ReserveCheckExecution. Lazily built on
-	// first use; cleared on Set so admin overrides take effect
-	// immediately. Keyed by org UID.
+	// first use; cleared on Set so admin overrides take effect immediately in
+	// THIS process, and reconciled against the freshly resolved capacity on
+	// every limiterFor call so a change made by another process (billing push,
+	// superadmin editor) reaches the deported workers too. Keyed by org UID.
 	limitersMu sync.Mutex
 	limiters   map[string]*tokenBucket
 
@@ -398,9 +400,18 @@ func isProvisionedSource(source models.EntitlementSource) bool {
 	}
 }
 
-// limiterFor returns (creating if needed) the token bucket for orgUID.
-// Capacity is taken at first construction; later changes are honored by
-// Set, which clears the cache.
+// limiterFor returns (creating if needed) the token bucket for orgUID,
+// reconciling a cached bucket's capacity with the freshly resolved one.
+//
+// The reconciliation is the fix for a production pathology (spec
+// 2026-08-29-10): capacity used to be frozen at construction and refreshed only
+// by Set, which clears the cache. Set runs in the process that performs the
+// write — the API server. Every OTHER process holding a bucket for that org (the
+// deported check workers, each with its own in-process service fed by DB reads)
+// resolved the new limit correctly but kept refilling at the OLD capacity/60
+// rate until it restarted, while the QuotaError it emitted reported the NEW
+// limit. An org raised from 10 to 100 checks/min kept skipping ~2-4 executions
+// per minute per worker, indefinitely.
 //
 // Scope: the bucket lives in THIS process's memory, so the cap is enforced
 // per process, not per organization across the fleet. An org whose checks
@@ -420,7 +431,14 @@ func (s *Service) limiterFor(orgUID string, capacity int) *tokenBucket {
 	if !ok {
 		bucket = newTokenBucket(capacity, s.now())
 		s.limiters[orgUID] = bucket
+
+		return bucket
 	}
+
+	// Cheap no-op when nothing changed (the overwhelming majority of calls on
+	// the dispatch hot path): setCapacity takes the bucket's own mutex and
+	// returns immediately when the capacity already matches.
+	bucket.setCapacity(capacity, s.now())
 
 	return bucket
 }
@@ -638,21 +656,74 @@ func newTokenBucket(capacity int, now time.Time) *tokenBucket {
 	}
 }
 
+// setCapacity reconciles a cached bucket with a newly resolved capacity, in
+// place, so a live entitlements change takes effect without restarting the
+// process that holds the bucket (spec 2026-08-29-10).
+//
+// In place rather than "replace the bucket in the map" so that a caller already
+// holding the *tokenBucket pointer (limiterFor returns one, and the reserve
+// path uses it after releasing limitersMu) cannot end up metering against an
+// orphaned bucket, and so the accrual accumulated since the last call is not
+// silently discarded.
+//
+// Both mutations are performed under b.mu — the same lock allow() takes — so
+// capacity and tokens can never be read half-updated by a concurrent reserve.
+// Lock ordering is limitersMu → b.mu everywhere (allow takes b.mu alone,
+// Set takes limitersMu alone), so there is no cycle.
+func (b *tokenBucket) setCapacity(capacity int, now time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if capacity == b.capacity {
+		return
+	}
+
+	// Settle what accrued at the OLD rate first, so the switch neither forgives
+	// nor invents refill for the interval that already elapsed.
+	b.refillLocked(now)
+
+	delta := capacity - b.capacity
+	b.capacity = capacity
+
+	if delta > 0 {
+		// A raise takes effect immediately: hand over the added headroom rather
+		// than making the org wait a full minute at the new rate to feel it. A
+		// one-time burst on change is far better than an indefinitely wrong rate.
+		b.tokens += float64(delta)
+	}
+
+	// Clamp in both directions: this is what stops a lowered cap from letting
+	// the pre-change surplus burst past the new limit.
+	if b.tokens > float64(capacity) {
+		b.tokens = float64(capacity)
+	}
+	if b.tokens < 0 {
+		b.tokens = 0
+	}
+}
+
+// refillLocked credits the tokens accrued since b.last at the current capacity's
+// rate (capacity/60 per second), clamped to the burst. Caller must hold b.mu.
+func (b *tokenBucket) refillLocked(now time.Time) {
+	elapsed := now.Sub(b.last).Seconds()
+	if elapsed <= 0 {
+		return
+	}
+
+	b.tokens += elapsed * (float64(b.capacity) / 60.0)
+	if b.tokens > float64(b.capacity) {
+		b.tokens = float64(b.capacity)
+	}
+	b.last = now
+}
+
 // allow consumes one token if available. Returns false when the bucket
 // is empty.
 func (b *tokenBucket) allow(now time.Time) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	rate := float64(b.capacity) / 60.0
-	elapsed := now.Sub(b.last).Seconds()
-	if elapsed > 0 {
-		b.tokens += elapsed * rate
-		if b.tokens > float64(b.capacity) {
-			b.tokens = float64(b.capacity)
-		}
-		b.last = now
-	}
+	b.refillLocked(now)
 
 	if b.tokens >= 1 {
 		b.tokens--

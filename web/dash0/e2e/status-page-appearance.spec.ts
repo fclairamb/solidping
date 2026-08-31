@@ -349,6 +349,16 @@ test.describe("Status page appearance editor", () => {
       timeout: 15000,
     });
 
+    // The preview is clickable — it opens the public status page, matching
+    // the badge's own purpose (a link-bearing embed), not a dead image.
+    const previewLink = page.getByTestId("status-page-badge-preview-link");
+    await expect(previewLink).toHaveAttribute(
+      "href",
+      `/status0/test/${slug}`,
+    );
+    await expect(previewLink).toHaveAttribute("target", "_blank");
+    await expect(previewLink).toHaveAttribute("rel", "noopener noreferrer");
+
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain(`/api/v1/status-pages/test/${slug}/badge`);
 
@@ -359,6 +369,19 @@ test.describe("Status page appearance editor", () => {
 
     const htmlText = await page.getByTestId("badge-embed-html").textContent();
     expect(htmlText).toContain(`src="${urlText}"`);
+
+    // Spec 2026-08-31-03: a badge whose entire purpose is "click here to see
+    // whether we are up" must not paste as a bare, unlinked image. Both
+    // snippets wrap the badge in a link to the public status page, using the
+    // same absolute origin as the badge URL itself.
+    const pageUrl = new URL(`/status0/test/${slug}`, page.url()).toString();
+    const pageName = `e2e-appearance-${suffix}`;
+    expect(markdownText).toBe(
+      `[![${pageName} status](${urlText})](${pageUrl})`,
+    );
+    expect(htmlText).toBe(
+      `<a href="${pageUrl}" target="_blank" rel="noopener noreferrer"><img src="${urlText}" alt="${pageName} status" /></a>`,
+    );
 
     // The URL is live: it 200s with a real SVG carrying the rollup status —
     // a freshly-created page has no resources, so it rolls up to "unknown".
@@ -498,6 +521,17 @@ test.describe("Status page appearance editor", () => {
       }
     });
 
+    const previewIframe = page.locator(
+      '[data-testid="status-page-widget-preview"]',
+    );
+    // The iframe allows the widget's own popup navigation to escape the
+    // sandbox — without this, a click on an <a> pill inside it is silently
+    // swallowed (no popup permission, no navigation).
+    await expect(previewIframe).toHaveAttribute(
+      "sandbox",
+      "allow-scripts allow-popups allow-popups-to-escape-sandbox",
+    );
+
     const previewFrame = page.frameLocator(
       '[data-testid="status-page-widget-preview"]',
     );
@@ -512,6 +546,17 @@ test.describe("Status page appearance editor", () => {
     await expect(previewLabel).toHaveText("All systems operational");
     // No link target: the preview never has real page data to link to.
     expect(await previewPill.evaluate((el) => el.tagName)).toBe("SPAN");
+
+    // The link checkbox does not change this: the preview always renders via
+    // data-force-status, which the widget deliberately short-circuits to a
+    // null href (zero network calls, works before the page is even
+    // published) regardless of data-link. So the preview pill stays a <span>
+    // whether the checkbox is on or off — asserting it becomes an <a> here
+    // would assert something the widget never actually does in preview mode.
+    await page.getByTestId("status-page-widget-link-toggle").click();
+    await expect(previewPill).toBeVisible({ timeout: 30000 });
+    expect(await previewPill.evaluate((el) => el.tagName)).toBe("SPAN");
+    await page.getByTestId("status-page-widget-link-toggle").click();
 
     // Preview-state picker switches the rendered pill without a save.
     await page.getByTestId("status-page-widget-preview-status").click();

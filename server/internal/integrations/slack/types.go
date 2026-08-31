@@ -12,8 +12,14 @@ const (
 	BlockTypeContext   = "context"
 	BlockTypeButton    = "button"
 
-	// ResponseTypeEphemeral is the Slack ephemeral response type.
+	// ResponseTypeEphemeral is the Slack ephemeral response type — visible
+	// only to the invoking user.
 	ResponseTypeEphemeral = "ephemeral"
+	// ResponseTypeInChannel is the Slack in-channel response type — visible
+	// to everyone in the channel, used for a response_url follow-up that
+	// should be as visible as the old bot-token chat.postMessage confirmation
+	// was.
+	ResponseTypeInChannel = "in_channel"
 
 	// ActionAddCheck is the action ID for the "Add Check" button.
 	ActionAddCheck = "add_check"

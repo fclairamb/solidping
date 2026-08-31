@@ -77,5 +77,34 @@
   "unlockPasswordLabel": "Password",
   "unlockSubmit": "View status page",
   "unlockSubmitting": "Checking…",
-  "unlockGenericError": "Could not check the password. Please try again."
+  "unlockGenericError": "Could not check the password. Please try again.",
+  "tv": {
+    "stale": "Data Unavailable",
+    "staleSince": "No update received since {{time}}",
+    "updatedAt": "updated {{time}}",
+    "ongoingFor": "ongoing for {{duration}}",
+    "resolvedAgo": "{{ago}} ago",
+    "resolvedAgoFor": "{{ago}} ago · lasted {{duration}}",
+    "durationMinutes": "{{minutes}}m",
+    "durationHoursMinutes": "{{hours}}h {{minutes}}m",
+    "durationDaysHours": "{{days}}d {{hours}}h",
+    "daysSinceLastIncident_one": "{{count}} day since the last incident",
+    "daysSinceLastIncident_other": "{{count}} days since the last incident",
+    "noIncidentsRecorded": "No incidents recorded",
+    "cycling": "Cycling through {{count}} active incidents",
+    "affectedTitle": "Affected services",
+    "affectedCycling": "Cycling through {{count}} affected services",
+    "failingFor": "for {{duration}}",
+    "failingSectionFor": "{{section}} · for {{duration}}",
+    "lockedTitle": "This screen needs a kiosk token",
+    "lockedDescription": "Open the status page in the dashboard, generate a TV mode token, and use the URL it gives you.",
+    "pickAPageTitle": "TV mode needs a status page",
+    "pickAPageDescription": "Use /{organization}/tv for the default page, or /{organization}/{page}/tv for a specific one.",
+    "uptimeWindow": {
+      "24h": "24-hour uptime",
+      "7d": "7-day uptime",
+      "30d": "30-day uptime",
+      "90d": "90-day uptime"
+    }
+  }
 }

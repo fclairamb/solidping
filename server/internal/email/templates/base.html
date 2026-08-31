@@ -8,13 +8,27 @@
     <!-- Stops clients auto-linking incident ids, durations and dates as phone
          numbers / addresses, which turns them blue-underlined mid-sentence. -->
     <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
-    <!-- Dark mode is out of scope by design (see the spec), but "no dark styles"
-         is NOT the same as "renders in light": Apple Mail, Outlook.com and
-         Gmail's Android app auto-INVERT a light-only email, which turns the
-         white card grey, the navy header washed-out, and — worst — recolors the
-         status banner that carries the whole meaning of an incident alert.
-         Declaring light-only opts out of that forced inversion, so the design
-         below is what actually reaches the reader. -->
+    <!-- The light pin. "No dark styles" is NOT the same as "renders in light":
+         Apple Mail, Outlook.com and Gmail's Android app auto-INVERT a
+         light-only email, which turns the white card grey, the navy header
+         washed-out, and — worst — recolors the status banner that carries the
+         whole meaning of an incident alert. Declaring light-only opts out of
+         that forced inversion, so the design below is what actually reaches
+         the reader.
+
+         This pin STAYS even though the stylesheet now ships a designed dark
+         palette (see the prefers-color-scheme block at the bottom of <style>).
+         The two are not in conflict: the pin is what keeps Gmail — which does
+         not support the media query at all — on the designed light rendering
+         instead of its own auto-darkening, while the media query is evaluated
+         from the OS/app setting by the clients that support it. Worst case a
+         client honours the pin so strictly that the dark block never fires,
+         which is exactly today's rendering.
+
+         These two metas and the :root rule below are ONE declaration in three
+         places — change them together or not at all. Flipping them to
+         "light dark" is the separate, human-gated Gmail decision written up in
+         wiki/features/email-dark-mode.md; it is deliberately not made here. -->
     <meta name="color-scheme" content="light only">
     <meta name="supported-color-schemes" content="light only">
     <title>SolidPing</title>
@@ -24,9 +38,10 @@
            reserved for chrome) #DA1D69, ink #0F1A24, wash #F0F4F8, border
            #DDE2E7, muted text #55606B — flattened to hex because email
            clients have neither CSS custom properties nor oklch().
-           Dark mode is deliberately out of scope (see the spec): there is no
-           prefers-color-scheme block here on purpose — the color-scheme
-           declarations above pin the light rendering instead. */
+           The light design below is the baseline every client gets; the
+           prefers-color-scheme block at the bottom of this stylesheet layers a
+           designed dark palette on top of it for the clients that evaluate the
+           media query. */
         :root { color-scheme: light only; supported-color-schemes: light only; }
         /* text-size-adjust: iOS/Windows Phone bump small text up on their own,
            which breaks the label/value column widths in .details-table.
@@ -140,6 +155,72 @@
         .footer p { margin: 0 0 8px; }
         .footer-brand { display: block; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eef2f6; color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
         .footer p:last-child { margin: 0; }
+        /* ------------------------------------------------------------------
+           Designed dark palette.
+
+           Who sees this: Apple Mail (iOS/macOS), Outlook for Mac/iOS and
+           Thunderbird evaluate prefers-color-scheme inside an embedded
+           <style>. Gmail (Android/iOS/web) does NOT support the media query at
+           all — it stays on the light design above, which is the whole point
+           of keeping the light pin in <head>. Outlook for Windows renders
+           through the Word engine, which ignores media queries outright: it
+           never sees a single declaration in this block and gets the light
+           design, exactly as today.
+
+           This block therefore only ADDS a rendering; nothing above it changes.
+
+           Scope: only the near-white surfaces and the dark text on them. The
+           header (already navy), the accent bar, the status banners and the
+           saturated primary/success buttons are left alone — they read
+           correctly on a dark card as designed, and re-tinting the banner is
+           precisely the failure mode the light pin exists to prevent.
+
+           Same discipline as the light rules: every background-image gradient
+           is paired with the background-color it degrades to.
+           ------------------------------------------------------------------ */
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #0d151d; color: #cbd5e1; }
+            .wrapper { background-color: #0d151d; }
+            .container { background-color: #141e28; border-color: #243141; box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 12px 28px -8px rgba(0,0,0,0.6), 0 4px 10px -4px rgba(0,0,0,0.4); }
+            .content { color: #cbd5e1; }
+            .content h1 { color: #f1f5f9; }
+            .content h2 { color: #f1f5f9; }
+            .content a { color: #5cb0f5; }
+            .content h2.section-title { color: #f1f5f9; border-left-color: #2b9bf4; }
+            .content p.eyebrow { color: #94a3b8; }
+            .quote { background-color: #18222d; background-image: linear-gradient(180deg, #1b2733 0%, #16202b 100%); border-left-color: #2b9bf4; color: #cbd5e1; }
+            /* Only the white/near-white button needs a dark surface; the
+               primary and success variants are saturated and already legible. */
+            .btn-secondary td { background-color: #1e2b38; background-image: linear-gradient(180deg, #24323f 0%, #1a2632 100%); border-color: #3a4a5c; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+            .btn-secondary a.btn { color: #e2e8f0 !important; }
+            .details-table { border-color: #243141; }
+            .details-table td { border-bottom-color: #1f2b37; }
+            .details-table td.label { color: #94a3b8; background-color: #18222d; background-image: linear-gradient(180deg, #1b2733 0%, #161f2a 100%); border-right-color: #1f2b37; }
+            .details-table td.value { color: #e2e8f0; }
+            .details-table th { color: #94a3b8; background-color: #18222d; border-bottom-color: #1f2b37; border-right-color: #1f2b37; }
+            .metric { border-color: #243141; background-color: #18222d; background-image: linear-gradient(180deg, #1c2833 0%, #151f2a 100%); box-shadow: inset 0 1px 0 #243141; }
+            .metric-value { color: #f1f5f9; }
+            /* The state colors are lightened, not swapped: the same red/green/
+               amber reading, at a luminance that works on a dark card. */
+            .metric-value.is-bad { color: #f87171; }
+            .metric-value.is-good { color: #4ade80; }
+            .metric-value.is-warn { color: #fbbf24; }
+            .metric-label { color: #94a3b8; }
+            /* Pastel pills become dark tints of the same hue with light text —
+               a light pastel on a dark card is a glare of its own. */
+            .badge-ok { background-color: #0f3d24; color: #86efac; }
+            .badge-warn { background-color: #43300c; color: #fcd34d; }
+            .badge-bad { background-color: #4a1a1a; color: #fca5a5; }
+            .badge-neutral { background-color: #1f2b37; color: #cbd5e1; }
+            .mono { color: #94a3b8; }
+            .fallback { background-color: #18222d; border-color: #243141; color: #cbd5e1; }
+            .meta { color: #94a3b8; }
+            .content p.footnote { color: #7c8b9c; border-top-color: #243141; }
+            .content p.footnote .mono { color: #7c8b9c; }
+            .footer { background-color: #101a23; background-image: linear-gradient(180deg, #141e28 0%, #0e1720 100%); color: #94a3b8; border-top-color: #243141; }
+            .footer a { color: #cbd5e1; }
+            .footer-brand { color: #7c8b9c; border-top-color: #243141; }
+        }
         @media (max-width: 480px) {
             .content { padding: 24px 20px; }
             .header { padding: 18px 20px; }

@@ -178,6 +178,40 @@ test.describe("Login Flow", () => {
   });
 });
 
+test.describe("Register: public route stays public", () => {
+  // Regression e2e for spec 2026-08-29-12: OrgLayout ($org.tsx) computed
+  // isOrgPublicRoute but never used it to gate useFeatures(), so an
+  // unauthenticated visitor to /orgs/:org/register triggered a 401 on
+  // GET /api/v1/features and was silently bounced to
+  // /login?session_expired=true before ever seeing the sign-up form.
+  // redirectToExpiredLogin's own no-op guard only covered "/login", not
+  // "/register", so the redirect was fully user-visible there. Must prove
+  // the negative: settle on /register (not /login), no session_expired
+  // param, and the form itself rendered — not just "navigation didn't
+  // happen yet".
+  test("an unauthenticated visitor stays on /register and sees the sign-up form", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/register");
+    await page.waitForLoadState("networkidle");
+
+    // Give the buggy background call a chance to fire and redirect before
+    // asserting the negative.
+    await page.waitForTimeout(1000);
+
+    const url = new URL(page.url());
+    expect(url.pathname).toContain("/orgs/test/register");
+    expect(url.pathname).not.toContain("/login");
+    expect(url.searchParams.get("session_expired")).toBeNull();
+
+    await expect(page.locator("#email")).toBeVisible();
+    await expect(page.locator("#password")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create account" }),
+    ).toBeVisible();
+  });
+});
+
 test.describe("Login: deep-link returnTo", () => {
   test("returns the user to the original deep link (with query string) after login", async ({
     page,

@@ -105,6 +105,7 @@ func TestAvailability_PostgresParity(t *testing.T) {
 	incEnd1 := now.Add(-4 * time.Hour)
 	r.NoError(dbSvc.CreateIncident(ctx, &models.Incident{
 		UID: randUID(), OrganizationUID: orgUID, CheckUID: checkUID,
+		Kind:  models.IncidentKindCheck,
 		State: models.IncidentStateResolved, StartedAt: now.Add(-5 * time.Hour),
 		ResolvedAt: &incEnd1, CreatedAt: now, UpdatedAt: now,
 	}))
@@ -113,6 +114,7 @@ func TestAvailability_PostgresParity(t *testing.T) {
 	incEnd2 := now.Add(-5*24*time.Hour + 2*time.Hour)
 	r.NoError(dbSvc.CreateIncident(ctx, &models.Incident{
 		UID: randUID(), OrganizationUID: orgUID, CheckUID: checkUID,
+		Kind:  models.IncidentKindCheck,
 		State: models.IncidentStateResolved, StartedAt: now.Add(-5 * 24 * time.Hour),
 		ResolvedAt: &incEnd2, CreatedAt: now, UpdatedAt: now,
 	}))

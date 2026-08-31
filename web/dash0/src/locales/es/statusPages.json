@@ -44,7 +44,8 @@
     "language": "Idioma",
     "willInclude": "Incluirá:",
     "createStatusPage": "Crear página de estado",
-    "saveChanges": "Guardar cambios"
+    "saveChanges": "Guardar cambios",
+    "removeCheck": "Quitar"
   },
   "detail": {
     "configuration": "Configuración",
@@ -75,7 +76,33 @@
     "deleteDescription": "¿Eliminar esta sección y todas sus asignaciones de recursos? Las comprobaciones en sí no se verán afectadas.",
     "deleted": "Sección eliminada",
     "deleteFailed": "Error al eliminar la sección",
-    "empty": "Aún no hay comprobaciones en esta sección"
+    "empty": "Aún no hay comprobaciones en esta sección",
+    "membership": {
+      "title": "Composición",
+      "manual": "Manual",
+      "all": "Todas las comprobaciones",
+      "labels": "Por etiqueta",
+      "hint": {
+        "manual": "Usted añade a mano cada componente de esta sección.",
+        "all": "Todas las comprobaciones de esta organización se listan automáticamente, incluidas las creadas más adelante.",
+        "labels": "Toda comprobación que lleve todas estas etiquetas se lista automáticamente, incluidas las creadas más adelante."
+      },
+      "labelsField": "Etiquetas requeridas",
+      "labelsHint": "Una comprobación debe llevar todas estas etiquetas para aparecer. Los valores son exactos.",
+      "publicWarningTitle": "Esta sección está en una página pública",
+      "publicWarningAll": "Todas las comprobaciones actuales y futuras de esta organización aparecerán en esta página pública, incluidas las creadas más adelante. Considere usar una etiqueta como public=true para que cada comprobación se incorpore de forma explícita.",
+      "publicWarningLabels": "Todas las comprobaciones actuales y futuras con estas etiquetas aparecerán en esta página pública, incluidas las creadas más adelante.",
+      "autoBadge": "auto",
+      "autoTooltip": "Añadido automáticamente por la regla de composición de esta sección. Edite la regla para cambiarlo.",
+      "truncated": "Mostrando {{shown}} de {{total}} comprobaciones coincidentes. Acote la regla con etiquetas para ver el resto.",
+      "claimedElsewhere": {
+        "full_one": "La comprobación coincidente ya se muestra en «{{section}}». Una comprobación solo aparece una vez por página; mueva esta sección más arriba o restrinja la regla de la otra sección para mostrarla aquí.",
+        "full_other": "Las {{count}} comprobaciones coincidentes ya se muestran en «{{section}}». Una comprobación solo aparece una vez por página; mueva esta sección más arriba o restrinja la regla de la otra sección para mostrarlas aquí.",
+        "partial_one": "{{count}} comprobación coincidente adicional ya se muestra en otra parte de esta página.",
+        "partial_other": "{{count}} comprobaciones coincidentes adicionales ya se muestran en otra parte de esta página."
+      },
+      "labelsRequired": "Añada al menos una etiqueta"
+    }
   },
   "resources": {
     "add": "Añadir componente",
@@ -289,5 +316,29 @@
     "passwordPlaceholder": "Al menos 6 caracteres",
     "passwordKeepPlaceholder": "Déjalo vacío para conservar la contraseña actual",
     "passwordFieldHint": "Compártela con quienes deban ver la página. Cambiarla cierra el acceso a todos de inmediato."
+  },
+  "wand": {
+    "prefill": "Rellenar por mí",
+    "loadChecksFailed": "No se pudo cargar la lista completa de comprobaciones",
+    "createForMe": "Crear una página de estado por mí",
+    "createFailed": "No se pudo crear la página de estado"
+  },
+  "tvMode": {
+    "title": "Modo TV",
+    "description": "Una presentación a pantalla completa de esta página para un televisor de oficina: una sola vista sin desplazamiento, tipografía grande y ningún elemento interactivo.",
+    "publicNote": "Esta página es pública, así que la URL del modo TV funciona tal cual: apunte una pantalla a ella y déjela funcionando.",
+    "restrictedNote": "Esta página no es pública, por lo que una pantalla no puede abrirla sin intervención. Genere un token de quiosco para dar a una pantalla acceso de solo lectura; omite la petición de contraseña y hace visible una página privada.",
+    "generate": "Generar token de quiosco",
+    "regenerate": "Regenerar",
+    "revoke": "Revocar",
+    "tokenLabel": "token de quiosco",
+    "tokenShownOnce": "Cópielo ahora: se muestra una sola vez y no se puede recuperar después.",
+    "tokenGenerated": "Token de quiosco generado",
+    "tokenRevoked": "Token de quiosco revocado",
+    "tokenFailed": "No se pudo actualizar el token de quiosco",
+    "regenerateTitle": "¿Regenerar el token de quiosco?",
+    "regenerateDescription": "Cualquier pantalla que siga usando la URL actual dejará de funcionar de inmediato. Tendrá que actualizarla con la nueva.",
+    "revokeTitle": "¿Revocar el token de quiosco?",
+    "revokeDescription": "Todas las pantallas que lo usen dejarán de funcionar de inmediato, y esta página volverá a sus reglas de visibilidad normales."
   }
 }

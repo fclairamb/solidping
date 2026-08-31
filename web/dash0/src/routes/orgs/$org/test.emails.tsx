@@ -26,10 +26,19 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { cn } from "@/lib/utils";
 
 type PreviewFormat = "html" | "text";
+/**
+ * Which rendering of the template to preview. An <iframe> cannot be told to
+ * report `prefers-color-scheme: dark` to the document it hosts, so "dark" is
+ * served by the endpoint instead: it rewrites the template's own dark media
+ * query to `@media all`. What is on screen is therefore the shipped CSS, not a
+ * preview-only palette.
+ */
+type PreviewScheme = "light" | "dark";
 
 interface EmailsSearch {
   template?: string;
   format?: PreviewFormat;
+  colorScheme?: PreviewScheme;
 }
 
 export const Route = createFileRoute("/orgs/$org/test/emails")({
@@ -39,6 +48,7 @@ export const Route = createFileRoute("/orgs/$org/test/emails")({
         ? search.template
         : undefined,
     format: search.format === "text" ? "text" : undefined,
+    colorScheme: search.colorScheme === "dark" ? "dark" : undefined,
   }),
   component: EmailTemplatesTab,
 });
@@ -48,8 +58,16 @@ function displayName(template: string): string {
   return template.replace(/\.html$/, "");
 }
 
-function previewUrl(template: string, format: PreviewFormat): string {
-  return `/api/mgmt/email-preview/${template}?format=${format}`;
+function previewUrl(
+  template: string,
+  format: PreviewFormat,
+  scheme: PreviewScheme = "light",
+): string {
+  const base = `/api/mgmt/email-preview/${template}?format=${format}`;
+
+  // Only appended for dark: the light URL stays the one the endpoint serves
+  // untouched, so "no param" remains the exact bytes the mailer sends.
+  return scheme === "dark" ? `${base}&colorScheme=dark` : base;
 }
 
 /**
@@ -89,6 +107,9 @@ function EmailTemplatesTab() {
   // so local state is the source of truth and the URL is kept in step.
   const [picked, setPicked] = useState<string | undefined>(search.template);
   const [format, setFormat] = useState<PreviewFormat>(search.format ?? "html");
+  const [scheme, setScheme] = useState<PreviewScheme>(
+    search.colorScheme ?? "light",
+  );
 
   // Derived, not synced through an effect: the selection falls back to the
   // first template until the user picks one, and also when the URL named a
@@ -114,6 +135,11 @@ function EmailTemplatesTab() {
   const selectFormat = (next: PreviewFormat) => {
     setFormat(next);
     writeThrough({ format: next === "text" ? "text" : undefined });
+  };
+
+  const selectScheme = (next: PreviewScheme) => {
+    setScheme(next);
+    writeThrough({ colorScheme: next === "dark" ? "dark" : undefined });
   };
 
   const current = templates.find((row) => row.template === selected);
@@ -150,7 +176,7 @@ function EmailTemplatesTab() {
             {t("test.emails.description")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <SegmentedControl<PreviewFormat>
             aria-label={t("test.emails.formatLabel")}
             value={format}
@@ -168,6 +194,28 @@ function EmailTemplatesTab() {
               },
             ]}
           />
+          {/* Only meaningful for the HTML part — the plaintext alternative has
+              no styling to switch. */}
+          {format === "html" && (
+            <SegmentedControl<PreviewScheme>
+              aria-label={t("test.emails.schemeLabel")}
+              value={scheme}
+              onValueChange={selectScheme}
+              options={[
+                {
+                  value: "light",
+                  label: t("test.emails.schemeLight"),
+                  testId: "email-preview-scheme-light",
+                },
+                {
+                  value: "dark",
+                  label: t("test.emails.schemeDark"),
+                  tooltip: t("test.emails.schemeDarkHint"),
+                  testId: "email-preview-scheme-dark",
+                },
+              ]}
+            />
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -245,7 +293,7 @@ function EmailTemplatesTab() {
                 )}
                 <a
                   className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                  href={previewUrl(current.template, format)}
+                  href={previewUrl(current.template, format, scheme)}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -268,13 +316,21 @@ function EmailTemplatesTab() {
               <Skeleton className="h-[480px] w-full" />
             ) : format === "html" ? (
               <iframe
-                key={`${current.template}-html`}
+                key={`${current.template}-html-${scheme}`}
                 title={t("test.emails.iframeTitle", {
                   template: current.template,
                 })}
                 data-testid="email-preview-frame"
-                src={previewUrl(current.template, "html")}
-                className="h-[70vh] min-h-[420px] w-full rounded-md border bg-white"
+                data-scheme={scheme}
+                src={previewUrl(current.template, "html", scheme)}
+                // The surround is part of the test: a dark card judged against a
+                // white pane reads far better than it does in a real dark inbox.
+                // Hard-coded rather than themed — this mirrors the mail client's
+                // own backdrop, not the dashboard's theme.
+                className={cn(
+                  "h-[70vh] min-h-[420px] w-full rounded-md border",
+                  scheme === "dark" ? "bg-[#0d151d]" : "bg-white",
+                )}
               />
             ) : (
               <pre

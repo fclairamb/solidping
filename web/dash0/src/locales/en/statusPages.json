@@ -44,7 +44,8 @@
     "language": "Language",
     "willInclude": "Will include:",
     "createStatusPage": "Create Status Page",
-    "saveChanges": "Save Changes"
+    "saveChanges": "Save Changes",
+    "removeCheck": "Remove"
   },
   "detail": {
     "configuration": "Configuration",
@@ -75,7 +76,33 @@
     "deleteDescription": "Delete this section and all its resource assignments? The checks themselves will not be affected.",
     "deleted": "Section deleted",
     "deleteFailed": "Failed to delete section",
-    "empty": "No checks in this section yet"
+    "empty": "No checks in this section yet",
+    "membership": {
+      "title": "Membership",
+      "manual": "Manual",
+      "all": "All checks",
+      "labels": "By label",
+      "hint": {
+        "manual": "You add each component to this section by hand.",
+        "all": "Every check in this organization is listed automatically, including checks created later.",
+        "labels": "Every check carrying all of these labels is listed automatically, including checks created later."
+      },
+      "labelsField": "Required labels",
+      "labelsHint": "A check must carry all of these labels to appear. Values are exact.",
+      "publicWarningTitle": "This section is on a public page",
+      "publicWarningAll": "Every current and future check in this organization will appear on this public page, including checks created later. Consider using a label such as public=true instead, so each check opts in.",
+      "publicWarningLabels": "Every current and future check with these labels will appear on this public page, including checks created later.",
+      "autoBadge": "auto",
+      "autoTooltip": "Added automatically by this section's membership rule. Edit the rule to change it.",
+      "truncated": "Showing {{shown}} of {{total}} matching checks. Narrow the rule with labels to see the rest.",
+      "claimedElsewhere": {
+        "full_one": "The matching check is already shown in \"{{section}}\". A check appears only once per page; move this section higher or narrow the other section's rule to show it here.",
+        "full_other": "All {{count}} matching checks are already shown in \"{{section}}\". A check appears only once per page; move this section higher or narrow the other section's rule to show them here.",
+        "partial_one": "{{count}} more matching check is already shown elsewhere on this page.",
+        "partial_other": "{{count}} more matching checks are already shown elsewhere on this page."
+      },
+      "labelsRequired": "Add at least one label"
+    }
   },
   "resources": {
     "add": "Add Component",
@@ -289,5 +316,29 @@
     "passwordPlaceholder": "At least 6 characters",
     "passwordKeepPlaceholder": "Leave empty to keep the current password",
     "passwordFieldHint": "Share this with the people who should see the page. Changing it signs everyone out immediately."
+  },
+  "wand": {
+    "prefill": "Prefill for me",
+    "loadChecksFailed": "Couldn't load the full check list",
+    "createForMe": "Create a status page for me",
+    "createFailed": "Failed to create status page"
+  },
+  "tvMode": {
+    "title": "TV mode",
+    "description": "A full-screen wallboard rendering of this page for an office TV: one non-scrolling view, big type, and no interactive elements.",
+    "publicNote": "This page is public, so the TV URL works as-is — point a screen at it and leave it there.",
+    "restrictedNote": "This page is not public, so a screen cannot open it unattended. Generate a kiosk token to grant one screen read-only access; it bypasses the password prompt and makes a private page viewable.",
+    "generate": "Generate kiosk token",
+    "regenerate": "Regenerate",
+    "revoke": "Revoke",
+    "tokenLabel": "kiosk token",
+    "tokenShownOnce": "Copy this now — it is shown once and cannot be retrieved later.",
+    "tokenGenerated": "Kiosk token generated",
+    "tokenRevoked": "Kiosk token revoked",
+    "tokenFailed": "Could not update the kiosk token",
+    "regenerateTitle": "Regenerate the kiosk token?",
+    "regenerateDescription": "Any screen still using the current URL stops working immediately. You will need to update it with the new one.",
+    "revokeTitle": "Revoke the kiosk token?",
+    "revokeDescription": "Every screen using it stops working immediately, and this page goes back to its normal visibility rules."
   }
 }

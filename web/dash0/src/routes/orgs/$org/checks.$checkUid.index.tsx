@@ -1002,10 +1002,6 @@ function CheckDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
 
-          {/* Deep link into the docs section for *this* check's type, so the
-              page's own protocol reference is one click away. */}
-          <DocsLink href={docsHrefForType(check.type)} />
-
           {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
           <div className="flex items-center gap-2">
             <Button
@@ -1123,6 +1119,10 @@ function CheckDetailPage() {
               </span>
             </Button>
           </div>
+
+          {/* Deep link into the docs section for *this* check's type, so the
+              page's own protocol reference is one click away. */}
+          <DocsLink href={docsHrefForType(check.type)} />
 
           {/* Triggerless, controlled delete dialog */}
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

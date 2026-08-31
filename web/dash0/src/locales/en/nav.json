@@ -136,6 +136,10 @@
       "formatLabel": "Preview format",
       "formatHtml": "HTML",
       "formatText": "Text",
+      "schemeLabel": "Preview color scheme",
+      "schemeLight": "Light",
+      "schemeDark": "Dark",
+      "schemeDarkHint": "Activates the template's own prefers-color-scheme block — what Apple Mail and Thunderbird show in dark mode. Gmail does not support it and stays light.",
       "refresh": "Refresh",
       "retry": "Retry",
       "loading": "Loading…",
@@ -155,9 +159,11 @@
     "groupStatusPages": "Status pages",
     "groupEscalationPolicies": "Escalation policies",
     "groupSlos": "SLOs",
+    "groupSwitchOrg": "Switch organization",
     "newCheck": "New Check",
     "newCheckDescription": "Create a new monitoring check",
-    "aiDescription": "Connect AI assistants via MCP"
+    "aiDescription": "Connect AI assistants via MCP",
+    "organizationSettings": "Organization Settings"
   },
   "slos": "SLOs",
   "reportSchedules": "Uptime reports",

@@ -43,6 +43,7 @@ func setupIncidentNotificationRows(t *testing.T, ts *TestServer) string {
 	title := "Notification Test Incident"
 	incident := &models.Incident{
 		UID:             "40000000-0000-0000-0000-000000000002",
+		Kind:            models.IncidentKindCheck,
 		OrganizationUID: orgUID,
 		CheckUID:        check.UID,
 		Title:           &title,

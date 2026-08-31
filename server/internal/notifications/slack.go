@@ -249,6 +249,32 @@ func incidentRefPrefix(incident *models.Incident) string {
 	return fmt.Sprintf("#%d · ", incident.Number)
 }
 
+// incidentRefLink renders the short per-org incident reference as a link to the
+// incident's detail page ("#42 · ", clickable), falling back to plain text when
+// incidentURL is empty (same fallback slackLink already does), and to "" when the
+// incident has no number to anchor on — same absence case as incidentRefPrefix.
+// This is what makes the incident, not the check, the thing a reader taps from an
+// ack/unack/comment/resolved/reopened thread reply.
+func incidentRefLink(incident *models.Incident, incidentURL string) string {
+	if incident == nil || incident.Number <= 0 {
+		return ""
+	}
+
+	return slackLink(incidentURL, fmt.Sprintf("#%d", incident.Number)) + " · "
+}
+
+// checkNameLink links the check name to the check's own page — unless the
+// incident has no number (incidentRefLink then renders nothing), in which case
+// the check name becomes the notice's only incident link, so a thread reply
+// always carries some way back to the incident detail page.
+func checkNameLink(checkURL, incidentURL, checkName string, incident *models.Incident) string {
+	if incident == nil || incident.Number <= 0 {
+		return slackLink(incidentURL, checkName)
+	}
+
+	return slackLink(checkURL, checkName)
+}
+
 // checkDashURL builds the SolidPing dashboard URL for a check's detail page.
 // Built from the check's UID rather than its slug: the UID never changes, so
 // the link keeps working after a check rename, and it never hits the
@@ -573,10 +599,12 @@ func (s *SlackSender) buildIncidentActionButtons(incidentUID string) slack.Block
 func (s *SlackSender) buildAckThreadReply(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 
 	text := fmt.Sprintf(
 		":white_check_mark: %s%s — %s. Escalation stopped; the incident is still open.",
-		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName), ackSentence(payload),
+		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
+		ackSentence(payload),
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -590,10 +618,11 @@ func (s *SlackSender) buildAckThreadReply(payload *Payload) *slack.MessageRespon
 func (s *SlackSender) buildUnackThreadReply(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 
 	text := fmt.Sprintf(
 		":warning: %s%s — %s. %s",
-		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
 		unackSentence(payload), unackCallToAction,
 	)
 
@@ -719,18 +748,21 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 
 	if burn := BurnInfoFor(payload.Incident); burn != nil {
 		return &slack.MessageResponse{Text: fmt.Sprintf(
 			":large_green_circle: %s%s stopped burning after %s — now %s, %s budget remaining.",
-			incidentRefPrefix(payload.Incident), burn.SLOName, duration,
+			incidentRefLink(payload.Incident, incidentURL), burn.SLOName, duration,
 			burn.RateText(), burn.BudgetRemainingText(),
 		)}
 	}
 
+	refLink := incidentRefLink(payload.Incident, incidentURL)
+	nameLink := checkNameLink(checkURL, incidentURL, checkName, payload.Incident)
 	text := fmt.Sprintf(
 		":large_green_circle: %s%s — incident resolved after %s.",
-		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName), duration,
+		refLink, nameLink, duration,
 	)
 
 	return &slack.MessageResponse{Text: text}
@@ -841,11 +873,14 @@ func (s *SlackSender) buildIncidentEscalatedBlocks(payload *Payload, checkName s
 func (s *SlackSender) buildCommentThreadReply(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	author := commentAuthor(payload.Comment)
+	refLink := incidentRefLink(payload.Incident, incidentURL)
+	nameLink := checkNameLink(checkURL, incidentURL, checkName, payload.Incident)
 
 	header := fmt.Sprintf(
 		":speech_balloon: *%s* commented on %s%s",
-		author, incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+		author, refLink, nameLink,
 	)
 
 	if label := commentSourceLabel(payload.Comment); label != "" {
@@ -1064,10 +1099,11 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 	relapseCount := payload.Incident.RelapseCount
 	checkName := getCheckName(payload.Check)
 	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	text := fmt.Sprintf(
 		":repeat: %s%s — incident reopened (relapse #%d). "+
 			"Recovery requires the check to stay up for %d seconds.",
-		incidentRefPrefix(payload.Incident), slackLink(checkURL, checkName),
+		incidentRefLink(payload.Incident, incidentURL), checkNameLink(checkURL, incidentURL, checkName, payload.Incident),
 		relapseCount, payload.Check.RecoveryPeriodSeconds,
 	)
 

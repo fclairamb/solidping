@@ -178,6 +178,10 @@ type Service struct {
 	// notification entirely — the feature stays off as a whole, deliberately.
 	replyTo  string
 	repliers map[string]replier
+	// readReceipts holds each channel's read-receipt notifier, registered the
+	// same way as repliers (see RegisterReadReceipt). A channel absent from
+	// this map is a silent no-op — v1 registers WhatsApp only.
+	readReceipts map[string]ReadReceiptFunc
 
 	messagesPerThread  *windowCounter
 	threadsPerIdentity *windowCounter
@@ -214,6 +218,7 @@ func NewService(dbSvc db.Service, opts Options) *Service {
 		baseURL:            strings.TrimRight(opts.BaseURL, "/"),
 		replyTo:            opts.ReplyTo,
 		repliers:           make(map[string]replier),
+		readReceipts:       make(map[string]ReadReceiptFunc),
 		messagesPerThread:  newWindowCounter(time.Hour, DefaultMessagesPerThreadPerHour),
 		threadsPerIdentity: newWindowCounter(24*time.Hour, DefaultThreadsPerIdentityPerDay),
 		mirrorsPerHour:     newWindowCounter(time.Hour, DefaultMirrorsPerHour),
@@ -246,6 +251,28 @@ func (s *Service) RegisterRoutedReplier(channel string, fn ReplyFunc, route Rout
 	}
 
 	s.repliers[channel] = replier{send: fn, route: route}
+}
+
+// ReadReceiptFunc notifies the channel that a human has read (or answered)
+// the conversation carrying externalID — the newest inbound message on the
+// thread that has one. Mirrors ReplyFunc's registration pattern for the same
+// reason: internal/support is a leaf package and cannot import the channel
+// integrations, so the adapter is registered from server.go instead (see
+// registerSupportRepliers in server/internal/app/support_wiring.go).
+type ReadReceiptFunc func(ctx context.Context, thread *models.SupportThread, externalID string) error
+
+// RegisterReadReceipt wires a channel's read-receipt notifier. A channel with
+// none registered is a silent no-op: fireReadReceipt only ever calls a
+// registered hook, never fabricates one. v1 registers WhatsApp only — a
+// future WhatsApp command dispatcher calls whatsapp.Client.MarkRead directly
+// instead of going through this hook, because its policy (mark read on
+// receipt, not on operator read) is different.
+func (s *Service) RegisterReadReceipt(channel string, fn ReadReceiptFunc) {
+	if s == nil || fn == nil {
+		return
+	}
+
+	s.readReceipts[channel] = fn
 }
 
 // ReplyRouteFor answers, for ONE thread, whether a reply can be routed.
@@ -682,6 +709,15 @@ func (s *Service) Reply(
 
 	externalID, sendErr := entry.send(ctx, thread, body)
 
+	// Captured BEFORE touchThreadOutbound below, which always zeroes
+	// UnreadCount on the thread in place (successful or failed send alike) —
+	// this is the one place that still knows whether the thread genuinely
+	// transitioned from unread, which is the same idempotency gate MarkRead
+	// uses. If the operator already opened the thread (GetThread → MarkRead
+	// already fired the hook), UnreadCount is already 0 here and this is a
+	// no-op.
+	wasUnread := thread.UnreadCount > 0
+
 	occurredAt := s.now()
 	msg := models.NewSupportMessage(thread.UID, thread.Channel, models.SupportDirectionOutbound, body, occurredAt)
 
@@ -711,6 +747,14 @@ func (s *Service) Reply(
 	if err := s.touchThreadOutbound(ctx, thread, occurredAt); err != nil {
 		s.log.WarnContext(ctx, "failed to update support thread after reply",
 			"threadUid", thread.UID, "error", err)
+	}
+
+	// Replying does not implicitly mark read on WhatsApp, and a reply sent via
+	// the API or an automation may never hit the GetThread→MarkRead path — so
+	// this fires independently, gated on the SAME "was it actually unread"
+	// check, and only after a send that genuinely reached the provider.
+	if sendErr == nil && wasUnread {
+		s.fireReadReceipt(ctx, thread)
 	}
 
 	if sendErr != nil {
@@ -1082,15 +1126,109 @@ func (s *Service) UpdateThread(
 	return thread, nil
 }
 
-// MarkRead zeroes a thread's unread counter.
-func (s *Service) MarkRead(ctx context.Context, uid string) error {
+// MarkRead zeroes a thread's unread counter and, on the unread→read
+// transition, fires the channel's registered read-receipt hook (see
+// RegisterReadReceipt) best-effort.
+//
+// thread must already be loaded by the caller (GetThread) — this reads only
+// its UID, Channel and UnreadCount and takes it instead of a bare uid so a
+// caller that renders the inbox on every open does not have to re-query just
+// to know what to pass. thread.UnreadCount is set to 0 in place once the
+// write lands, keeping the caller's copy consistent with what was persisted.
+//
+// The check "was UnreadCount > 0 before this call" IS the idempotency gate:
+// re-opening an already-read thread is a genuine no-op, not a second call to
+// Meta's mark-as-read API.
+func (s *Service) MarkRead(ctx context.Context, thread *models.SupportThread) error {
+	if thread == nil {
+		return nil
+	}
+
+	wasUnread := thread.UnreadCount > 0
+
 	_, err := s.bun().NewUpdate().Model((*models.SupportThread)(nil)).
 		Set("unread_count = 0").
 		Set("updated_at = ?", s.now()).
-		Where("uid = ?", uid).
+		Where("uid = ?", thread.UID).
 		Exec(ctx)
+	if err != nil {
+		return err
+	}
 
-	return err
+	thread.UnreadCount = 0
+
+	if wasUnread {
+		s.fireReadReceipt(ctx, thread)
+	}
+
+	return nil
+}
+
+// fireReadReceipt notifies the channel's registered read-receipt hook,
+// best-effort, that thread has just transitioned from unread to read.
+//
+// It targets the newest inbound message on the thread that carries an
+// ExternalID. WhatsApp's read receipts are cumulative (see
+// whatsapp.Client.MarkRead's doc comment), so marking the newest one read is
+// sufficient — it also blue-checks every earlier message in the conversation.
+//
+// A channel with no registered hook, or a thread with no inbound ExternalID
+// at all, is a silent no-op. Any failure — the lookup or the hook itself — is
+// logged at WARN with the thread uid and message id ONLY (never a phone
+// number) and dropped: this must never turn a successful MarkRead or Reply
+// into a failure, and it never retries in a loop.
+func (s *Service) fireReadReceipt(ctx context.Context, thread *models.SupportThread) {
+	hook, ok := s.readReceipts[thread.Channel]
+	if !ok || hook == nil {
+		return
+	}
+
+	externalID, err := s.newestInboundExternalID(ctx, thread.UID)
+	if err != nil {
+		s.log.WarnContext(ctx, "failed to look up message for read receipt",
+			"threadUid", thread.UID, "error", err)
+
+		return
+	}
+
+	if externalID == "" {
+		return
+	}
+
+	if err := hook(ctx, thread, externalID); err != nil {
+		s.log.WarnContext(ctx, "failed to send read receipt",
+			"threadUid", thread.UID, "messageId", externalID, "error", err)
+	}
+}
+
+// newestInboundExternalID returns the ExternalID of the newest inbound
+// message on the thread, or "" when none carries one. This is the inverse of
+// findMessageByExternalID: that resolves an incoming provider id to our
+// stored message, this resolves a thread to the id a read receipt should
+// target.
+func (s *Service) newestInboundExternalID(ctx context.Context, threadUID string) (string, error) {
+	msg := new(models.SupportMessage)
+
+	err := s.bun().NewSelect().Model(msg).
+		Where("thread_uid = ?", threadUID).
+		Where("direction = ?", models.SupportDirectionInbound).
+		Where("external_id is not null").
+		Order("created_at DESC").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, errNoRows) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	if msg.ExternalID == nil {
+		return "", nil
+	}
+
+	return *msg.ExternalID, nil
 }
 
 // PurgeClosedBefore deletes closed threads last touched before `before`, and

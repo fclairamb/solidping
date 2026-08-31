@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "start": "docusaurus start",
+    "start": "bun run gen-changelog && docusaurus start",
     "gen-api-docs": "docusaurus gen-api-docs all",
+    "gen-changelog": "bun scripts/gen-changelog.ts",
     "clean-api-docs": "docusaurus clean-api-docs all",
-    "build": "docusaurus gen-api-docs all && docusaurus build",
+    "build": "bun run gen-changelog && docusaurus gen-api-docs all && docusaurus build",
     "swizzle": "docusaurus swizzle",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",

@@ -223,6 +223,52 @@ func TestSlackUnackRevertsTheAlertMessageInPlace(t *testing.T) {
 	r.Equal("1700000000.000100", reply.Body["thread_ts"])
 }
 
+// TestSlackSender_buildUnackThreadReply_IncidentIsThePrimaryLink asserts the
+// unack thread reply links the #42 reference to the incident (primary) and
+// keeps the check name linked to the check page (secondary).
+func TestSlackSender_buildUnackThreadReply_IncidentIsThePrimaryLink(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := unackPayload(models.ConnectionTypeSlack, models.JSONMap{
+		"access_token": "xoxb-test", "channel_id": "C1",
+	}, &AckInfo{ActorName: "alice", Via: "web"})
+
+	msg := (&SlackSender{}).buildUnackThreadReply(payload)
+	r.NotNil(msg)
+
+	incidentLink := "<" + payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug +
+		"/incidents/" + payload.Incident.UID + "|#42>"
+	checkLink := "<" + payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug +
+		"/checks/" + payload.Check.UID + "|" + *payload.Check.Name + ">"
+	r.Contains(msg.Text, incidentLink, "the #42 reference must link to the incident (primary link)")
+	r.Contains(msg.Text, checkLink, "the check name must still link to the check page (secondary link)")
+}
+
+// TestSlackSender_buildUnackThreadReply_LinksCheckNameToIncidentWhenNoNumber
+// covers the incident.Number <= 0 fallback for unack: with no "#42" to anchor
+// on, the check name becomes the notice's only incident link.
+func TestSlackSender_buildUnackThreadReply_LinksCheckNameToIncidentWhenNoNumber(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	payload := unackPayload(models.ConnectionTypeSlack, models.JSONMap{
+		"access_token": "xoxb-test", "channel_id": "C1",
+	}, &AckInfo{ActorName: "alice", Via: "web"})
+	payload.Incident.Number = 0
+
+	msg := (&SlackSender{}).buildUnackThreadReply(payload)
+	r.NotNil(msg)
+
+	incidentURL := payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug + "/incidents/" + payload.Incident.UID
+	checkLink := "<" + payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug +
+		"/checks/" + payload.Check.UID + "|" + *payload.Check.Name + ">"
+	incidentNameLink := "<" + incidentURL + "|" + *payload.Check.Name + ">"
+
+	r.NotContains(msg.Text, checkLink, "the check name must not link to the check page in this fallback")
+	r.Contains(msg.Text, incidentNameLink, "the check name must link to the incident instead")
+}
+
 // An unack with no recorded alert in the channel has nothing to revert and
 // nothing to thread under, so it must post nothing at all rather than orphan a
 // bare "acknowledgment withdrawn" and steal the incident's thread mapping.

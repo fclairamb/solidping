@@ -1208,6 +1208,10 @@ func (m *mockDBService) ListStatusPageSections(_ context.Context, _ string) ([]*
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListSelectorSectionPageUIDs(_ context.Context, _ string) ([]string, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) MaxStatusPageSectionPosition(_ context.Context, _ string) (int, error) {
 	panic("not implemented")
 }
@@ -2096,6 +2100,7 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 		AppBaseURL: baseURL,
 		Incident: &models.Incident{
 			UID:        "incident-1",
+			Number:     42,
 			StartedAt:  resolvedAt.Add(-28 * time.Minute),
 			ResolvedAt: &resolvedAt,
 		},
@@ -2115,7 +2120,11 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 	r.Equal(1, strings.Count(msg.Text, "incident resolved after"),
 		"status line must render exactly once")
 
-	// Self-contained: monitor named and linked.
+	// The incident is the PRIMARY link: the #42 reference itself is clickable.
+	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/incident-1|#42>"
+	r.Contains(msg.Text, incidentLink, "resolved reply must link the incident reference")
+
+	// Self-contained: monitor named and linked as a SECONDARY link.
 	r.Contains(msg.Text, checkName, "resolved reply must name the monitor")
 	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "resolved reply must link the monitor to its dashboard page")
@@ -2151,6 +2160,80 @@ func TestSlackSender_buildIncidentResolvedThreadReply_NamesMonitorWithoutBaseURL
 	r.NotContains(msg.Text, "<http", "no link wrapper when base URL is absent")
 }
 
+// TestSlackSender_buildAckThreadReply_LinksCheckNameToIncidentWhenNoNumber
+// covers the incident.Number <= 0 fallback: with no "#42" to anchor an
+// incident link on, the check NAME becomes the notice's only incident link,
+// so the notice never ships without some way back to the incident.
+func TestSlackSender_buildAckThreadReply_LinksCheckNameToIncidentWhenNoNumber(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const (
+		baseURL = "https://app.example.com"
+		orgSlug = "acme"
+		checkID = "chk-api-health"
+	)
+	checkName := "API Health"
+	ackedAt := time.Now()
+	payload := &Payload{
+		EventType:  eventTypeIncidentAcknowledged,
+		OrgSlug:    orgSlug,
+		AppBaseURL: baseURL,
+		Incident: &models.Incident{
+			UID:            "incident-1",
+			Number:         0,
+			StartedAt:      ackedAt.Add(-10 * time.Minute),
+			AcknowledgedAt: &ackedAt,
+		},
+		Check:          &models.Check{UID: checkID, Name: &checkName},
+		Acknowledgment: &AckInfo{ActorName: "alice", Via: "web"},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildAckThreadReply(payload)
+	r.NotNil(msg)
+
+	r.NotContains(msg.Text, "#", "no incident number means no #N reference to render")
+
+	incidentURL := baseURL + "/dash0/orgs/" + orgSlug + "/incidents/incident-1"
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
+	incidentNameLink := "<" + incidentURL + "|" + checkName + ">"
+
+	r.NotContains(msg.Text, checkLink, "the check name must not link to the check page in this fallback")
+	r.Contains(msg.Text, incidentNameLink, "the check name must link to the incident instead")
+}
+
+// TestSlackSender_buildAckThreadReply_FallsBackToPlainTextWhenNoBaseURL covers
+// the empty-incidentDashURL fallback: with no AppBaseURL/OrgSlug, both URL
+// builders return "", so slackLink degrades every link to plain text — the
+// same fallback slackLink already provides.
+func TestSlackSender_buildAckThreadReply_FallsBackToPlainTextWhenNoBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	checkName := "API Health"
+	ackedAt := time.Now()
+	payload := &Payload{
+		EventType: eventTypeIncidentAcknowledged,
+		Incident: &models.Incident{
+			UID:            "incident-1",
+			Number:         42,
+			StartedAt:      ackedAt.Add(-10 * time.Minute),
+			AcknowledgedAt: &ackedAt,
+		},
+		Check:          &models.Check{Name: &checkName},
+		Acknowledgment: &AckInfo{ActorName: "alice", Via: "web"},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildAckThreadReply(payload)
+	r.NotNil(msg)
+
+	r.Contains(msg.Text, "#42", "the reference still renders as plain text")
+	r.Contains(msg.Text, checkName, "the check name still renders as plain text")
+	r.NotContains(msg.Text, "<http", "no link wrapper when no base URL is configured")
+}
+
 // TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce pins the Defect A
 // fix for reopened messages: single top-level render, no duplicating attachment,
 // monitor named + linked, warning cue kept.
@@ -2170,6 +2253,7 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 		AppBaseURL: baseURL,
 		Incident: &models.Incident{
 			UID:          "incident-1",
+			Number:       42,
 			StartedAt:    time.Now().Add(-5 * time.Minute),
 			RelapseCount: 2,
 		},
@@ -2187,9 +2271,13 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 	r.Equal(1, strings.Count(msg.Text, "incident reopened"),
 		"status line must render exactly once")
 
+	// The incident is the PRIMARY link: the #42 reference itself is clickable.
+	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/incident-1|#42>"
+	r.Contains(msg.Text, incidentLink, "reopened reply must link the incident reference")
+
 	r.Contains(msg.Text, checkName, "reopened reply must name the monitor")
 	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
-	r.Contains(msg.Text, checkLink, "reopened reply must link the monitor to its dashboard page")
+	r.Contains(msg.Text, checkLink, "reopened reply must link the monitor to its dashboard page as a SECONDARY link")
 
 	// Aligned with the dash0 registry's 🔁 for incident.reopened.
 	r.Contains(msg.Text, ":repeat:")
@@ -2844,6 +2932,38 @@ func TestSlackSender_buildCommentThreadReply(t *testing.T) {
 	// Every line of a multi-line comment is quoted, not just the first.
 	r.Contains(msg.Text, "> central DNS looks down")
 	r.Contains(msg.Text, "> checking resolvers")
+}
+
+// TestSlackSender_buildCommentThreadReply_IncidentIsThePrimaryLink asserts the
+// #42 reference links to the incident (primary) while the check name keeps
+// its own link (secondary) — the shape every ack/unack/comment/resolved/
+// reopened thread reply now shares.
+func TestSlackSender_buildCommentThreadReply_IncidentIsThePrimaryLink(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const (
+		baseURL = "https://app.example.com"
+		orgSlug = "acme"
+		checkID = "chk-api-health"
+	)
+	name := "api-health"
+	payload := &Payload{
+		EventType:  eventTypeIncidentComment,
+		OrgSlug:    orgSlug,
+		AppBaseURL: baseURL,
+		Incident:   &models.Incident{UID: "inc-1", Number: 42},
+		Check:      &models.Check{UID: checkID, Name: &name},
+		Comment:    &CommentInfo{Text: "central DNS looks down", AuthorName: "Ada", Source: "slack"},
+	}
+
+	msg := (&SlackSender{}).buildMessage(payload)
+	r.NotNil(msg)
+
+	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/inc-1|#42>"
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + name + ">"
+	r.Contains(msg.Text, incidentLink, "the #42 reference must link to the incident (primary link)")
+	r.Contains(msg.Text, checkLink, "the check name must still link to the check page (secondary link)")
 }
 
 // TestCommentAuthor_FallsBackToNeutralLabel keeps an unresolved author from

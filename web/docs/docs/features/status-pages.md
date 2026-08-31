@@ -25,6 +25,11 @@ A status page is organized into **sections** and **resources**:
 - **Sections** group related services (for example, "API", "Database", "Frontend"). Sections are ordered and can be reordered.
 - **Resources** are the components inside a section. A resource targets **either one check or one check group** — never both. Each resource can have a public display name and an explanation that override the internal name, so you control exactly what visitors see.
 
+A section's contents are hand-curated by default. It can instead carry a
+membership rule — "all checks", or "every check labelled `public=true`" — so
+services created later appear on their own; see [Dynamic
+sections](#dynamic-sections).
+
 ## Group components
 
 A single host is often probed several times over — TCP, HTTP, TLS, RDP. Publishing all four checks tells your visitors far more about your internal monitoring topology than they need to know, and it quadruples the length of your page.
@@ -74,6 +79,112 @@ From the CLI:
 ```bash
 sp status-pages resources create public core --check-group web-frontend
 ```
+
+## Dynamic sections
+
+By default a section is **hand-curated**: you add each component yourself, and
+that is exactly what happens for every section that already exists. The problem
+with a hand-curated page is silent: a new service ships, its check is created,
+the check goes down — and the page (or the office wallboard reading it) stays
+**green**, because nobody remembered to attach it. A board that lies green is
+worse than no board.
+
+A section can instead carry a **membership rule**, and SolidPing keeps its
+components in sync for you. Two rules are available:
+
+| Rule | Meaning |
+|---|---|
+| **All checks** | Every check in the organization, now and in the future |
+| **By label** | Every check carrying **all** of the given `key=value` labels |
+
+Label matching is AND, and values are exact — a check labelled `env=staging`
+does not match `env=prod`. There is no wildcard.
+
+Internal checks are never matched by either rule.
+
+### Recommended: label opt-in
+
+Prefer **By label** with a label you control, such as `public=true`:
+
+```bash
+sp checks update payments-api --label public=true
+```
+
+This inverts the risk. With **All checks**, every check you create is published
+unless you remember to stop it. With a label, a check is private until someone
+deliberately adds the label — the publish decision lives on the check, next to
+the person who knows whether the service is safe to name.
+
+### On a public page, read this twice
+
+A membership rule on a **public** page means every current **and future**
+matching check appears on the public internet, including checks created later.
+A scratch check named `pg-primary-eu-west-1.internal` becomes visible the moment
+you create it. The dashboard shows a warning whenever you enable a rule on a
+public page, with stronger wording for **All checks** — it is there because this
+is genuinely easy to get wrong.
+
+Private and password-protected pages carry no such risk, and no warning.
+
+### How it behaves
+
+- **Manual placement wins.** A check you added by hand anywhere on the page is
+  never duplicated by a rule. Adding one by hand for a check the rule already
+  placed in that section takes the component over, keeping your public name.
+  Remove the manual component and the rule adopts the check again on its next
+  pass.
+- **Automatic components are owned by the rule.** They carry an `auto` badge and
+  cannot be deleted, reordered or repositioned individually — the dashboard
+  hides those controls and the API answers `409 CONFLICT`, because such an edit
+  would be undone on the next pass and a change that reports success then
+  silently reverts is worse than a refusal. Change the rule instead. Their
+  public name and explanation *are* still editable. They are otherwise ordinary
+  components: same status, same uptime history, same behaviour on the public
+  page.
+- **Order is stable.** Manual components keep their positions and come first;
+  automatic ones follow in alphabetical order. Two page loads never shuffle.
+- **Removal is immediate.** Remove the label, or delete the check, and the
+  component goes away.
+- **Sections mix freely.** One page can hold a hand-curated "Core" section and a
+  dynamic "Everything else" section.
+- **Check groups are untouched.** A rule only ever adds individual checks; a
+  group component stays exactly as you configured it.
+- **Large rules are capped** at 200 automatic components per section. Above that
+  the section shows a stable alphabetical prefix and the dashboard tells you how
+  many are hidden — narrow the rule with labels to see the rest.
+
+Two things keep the page honest: a rule is re-applied immediately after any
+check is created, updated or deleted, and re-applied again when the page is
+viewed, so a component can never quietly go missing.
+
+### Via the API
+
+`selector` is a field on a section:
+
+```bash
+# Every check labelled public=true
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Services","slug":"services","selector":{"labels":{"public":"true"}}}' \
+  'https://solidping.io/api/v1/orgs/acme/status-pages/public/sections'
+
+# Every check in the organization
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"selector":{"all":true}}' \
+  'https://solidping.io/api/v1/orgs/acme/status-pages/public/sections/services'
+
+# Back to hand-curated (removes the components the rule owned)
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"selector":null}' \
+  'https://solidping.io/api/v1/orgs/acme/status-pages/public/sections/services'
+```
+
+Omitting `selector` on a `PATCH` leaves the rule alone; sending `null` clears it.
+Unknown keys are rejected, and so are `{}`, an empty `labels` object, and setting
+both `all` and `labels` — a rule that quietly matches nothing forever is the
+failure this feature exists to remove, so a typo is a `VALIDATION_ERROR` rather
+than an empty section.
+
+Automatic components are marked `managedBySelector: true` in the API response.
 
 ## Configuration
 
@@ -167,6 +278,24 @@ Two things worth knowing:
 
 Wrong-password attempts are rate-limited, so the password does not have to be
 long enough to survive a brute-force script on its own.
+
+## TV mode
+
+Any status page can be put on an office television by adding `/tv` to its URL:
+a single non-scrolling view with big type, one dominant state signal, a live
+uptime number and ticking incident durations. Nothing to configure — it reuses
+this page's curation, branding and thresholds.
+
+A non-public page needs a **kiosk token** so an unattended screen can render it
+(the 12-hour password unlock cannot survive a night; a private page 404s). See
+[TV Mode](status-page-tv-mode.md).
+
+Combine it with a [dynamic section](#dynamic-sections) for a wallboard nobody
+has to maintain: a **private** page, a section set to **All checks**, and a
+kiosk token on the television. Every check the team creates is on the screen
+from the moment it exists, and because the page is private there is nothing to
+disclose — which is what makes **All checks** the right rule here and the wrong
+one on a public page.
 
 ## Caching
 

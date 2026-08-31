@@ -62,7 +62,7 @@ type User struct {
 	EmailVerifiedAt   *time.Time `bun:"email_verified_at"`
 	SuperAdmin        bool       `bun:"super_admin"`
 	TOTPSecret        *string    `bun:"totp_secret"`
-	TOTPEnabled       bool       `bun:"totp_enabled,notnull,default:false"`
+	TOTPEnabled       bool       `bun:"totp_enabled,notnull"`
 	TOTPRecoveryCodes []string   `bun:"totp_recovery_codes,type:jsonb"`
 	// MustChangePassword forces a password rotation before the account can do
 	// anything else. It is a GENERAL user-level capability, not a property of
@@ -78,7 +78,7 @@ type User struct {
 	//
 	// Defaults to false, which is what keeps OAuth/SSO/LDAP users — who may
 	// carry a nil PasswordHash and could not satisfy a rotation — unaffected.
-	MustChangePassword bool       `bun:"must_change_password,notnull,default:false"`
+	MustChangePassword bool       `bun:"must_change_password,notnull"`
 	LastActiveAt       *time.Time `bun:"last_active_at"`
 	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
@@ -334,11 +334,11 @@ type UserPasskey struct {
 	CredentialID      []byte     `bun:"credential_id,notnull"`
 	PublicKey         []byte     `bun:"public_key,notnull"`
 	AAGUID            *string    `bun:"aaguid"`
-	SignCount         uint32     `bun:"sign_count,notnull,default:0"`
+	SignCount         uint32     `bun:"sign_count,notnull"`
 	Transports        []string   `bun:"transports,type:jsonb,nullzero"`
-	BackupEligible    bool       `bun:"backup_eligible,notnull,default:false"`
-	BackupState       bool       `bun:"backup_state,notnull,default:false"`
-	UserVerified      bool       `bun:"user_verified,notnull,default:false"`
+	BackupEligible    bool       `bun:"backup_eligible,notnull"`
+	BackupState       bool       `bun:"backup_state,notnull"`
+	UserVerified      bool       `bun:"user_verified,notnull"`
 	AttestationFormat *string    `bun:"attestation_format"`
 	LastUsedAt        *time.Time `bun:"last_used_at"`
 	CreatedAt         time.Time  `bun:"created_at,notnull,default:current_timestamp"`

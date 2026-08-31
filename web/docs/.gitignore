@@ -23,3 +23,7 @@ yarn-error.log*
 # ../../server/internal/app/openapi/openapi.yaml. The category label is kept.
 /docs/api/*
 !/docs/api/_category_.json
+
+# Generated changelog page — regenerated at build from ../../CHANGELOG.md,
+# see scripts/gen-changelog.ts.
+/docs/changelog.md

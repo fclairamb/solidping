@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	clockpkg "github.com/fclairamb/solidping/server/internal/utils/clock"
 )
@@ -1262,15 +1263,17 @@ func (s *Service) ViewPublicIncidents(
 		return PublicIncidentsView{}, ErrStatusPageNotFound
 	}
 
-	// Identical gate to statuspages.ViewStatusPage: not enabled, or private,
-	// is indistinguishable from not existing.
-	if !statuspagelock.Visible(page) {
+	// Identical gate to statuspages.ViewStatusPage — literally the same
+	// function, so the two cannot drift: not enabled, or private, is
+	// indistinguishable from not existing; a password page's incident history
+	// is part of what the password buys; and a kiosk token (spec
+	// 2026-08-29-08) covers both, because the TV board renders this history.
+	switch statuspagekiosk.Decide(ctx, page) {
+	case statuspagekiosk.DecisionNotFound:
 		return PublicIncidentsView{}, ErrStatusPageNotFound
-	}
-
-	// A password page's incident history is part of what the password buys.
-	if !statuspagelock.Allows(ctx, page) {
+	case statuspagekiosk.DecisionLocked:
 		return PublicIncidentsView{}, statuspagelock.ErrLocked
+	case statuspagekiosk.DecisionAllow:
 	}
 
 	incidents, err := s.ListPublicIncidents(ctx, page, activeOnly)

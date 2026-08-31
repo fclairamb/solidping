@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -457,6 +458,40 @@ type Service struct {
 	// boundary instead of racing a live wall clock. Defaults to time.Now in
 	// NewService; only tests override it, via SetRegionHealthNowForTest.
 	now func() time.Time
+	// statusPageReconciler keeps selector-driven status page sections in sync
+	// after a check write (spec 2026-08-29-11). nil = not wired (the MCP
+	// handler, most unit tests), in which case nothing is reconciled here and
+	// the page-view backstop is the only mechanism — which is exactly the
+	// fallback it exists to be.
+	statusPageReconciler StatusPageReconciler
+}
+
+// StatusPageReconciler re-materializes the org's selector-driven status page
+// sections. It is an interface rather than a direct dependency for the obvious
+// reason (statuspages already reads checks) and for a less obvious one: the
+// signature returns NOTHING, which makes it structurally impossible for a
+// status page reconcile to fail a check write. A new check must never be
+// rejected because somebody's status page selector could not be updated; the
+// page-view backstop picks that up.
+type StatusPageReconciler interface {
+	ReconcileOrgSelectors(ctx context.Context, orgUID string)
+}
+
+// SetStatusPageReconciler wires the status page selector reconciler. Optional:
+// without it, dynamic sections still self-heal on the next page view.
+func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
+	s.statusPageReconciler = reconciler
+}
+
+// reconcileStatusPageSelectors notifies the status page layer that the org's
+// check set (or a check's labels) changed. Best-effort and non-failing by
+// construction — see StatusPageReconciler.
+func (s *Service) reconcileStatusPageSelectors(ctx context.Context, orgUID string) {
+	if s.statusPageReconciler == nil {
+		return
+	}
+
+	s.statusPageReconciler.ReconcileOrgSelectors(ctx, orgUID)
 }
 
 // NewService creates a new checks service. entSvc enforces the MaxChecks
@@ -1502,6 +1537,11 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// (IPv6, headless Chrome) is reported, never enforced.
 	response.Warnings = s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
 
+	// A brand-new check that matches a status page selector has to appear on
+	// that page with no manual action — that is the entire point of dynamic
+	// sections (spec 2026-08-29-11).
+	s.reconcileStatusPageSelectors(ctx, org.UID)
+
 	return response, nil
 }
 
@@ -1899,6 +1939,11 @@ func (s *Service) UpdateCheck(
 		}
 		response.Labels = labelMap
 	}
+
+	// Labels are replaced wholesale by UpdateCheck (SetCheckLabels), so this is
+	// also the label attach/detach trigger: adding `public=true` must put the
+	// check on the matching section, and removing it must take it off.
+	s.reconcileStatusPageSelectors(ctx, org.UID)
 
 	return response, nil
 }
@@ -2319,6 +2364,9 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
 	}
 
+	// A deleted check's managed row must disappear from every dynamic section.
+	s.reconcileStatusPageSelectors(ctx, org.UID)
+
 	return nil
 }
 
@@ -2681,6 +2729,10 @@ func mergeChecksByUID(first, second []*models.Check) []*models.Check {
 // effect (the phase stagger) is an input to the phase formula but is not stored
 // on the job row, so it cannot be detected by comparing job columns.
 //
+// Syncing the dispatch payload (config, secrets, plan weight) and re-leveling
+// the schedule are two separate decisions — see the scheduleChanged /
+// contentChanged split below (spec 2026-08-29-09).
+//
 //nolint:cyclop,gocognit,nestif,funlen // Reconciliation handles multiple update paths
 func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, relevel bool) error {
 	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
@@ -2797,26 +2849,36 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 	// period); the spread staggers their phases.
 	for _, region := range targetRegions {
 		if existing, ok := existingByRegion[region]; ok {
-			// Update period, config, type, and plan weight if changed, or if
-			// the region set changed (an add/remove elsewhere shifts this
-			// job's own index even though nothing on this row directly
-			// changed) — D2.
-			needsUpdate := relevel ||
+			// Two independent reasons to touch the row, deliberately kept
+			// apart (spec 2026-08-29-09):
+			//
+			//   scheduleChanged — something that feeds the phase formula moved
+			//     (period, region set, an explicit relevel) or the check
+			//     changed type. Only these may rewrite scheduled_at.
+			//   contentChanged — the dispatch payload drifted (config, secrets,
+			//     plan weight). These must reach the job row, but must NOT
+			//     shift when it runs: a config edit that also re-leveled the
+			//     phase would silently drift the check's execution timing on
+			//     every unrelated edit.
+			//
+			// Before the split, a stale config could only be repaired as a
+			// side effect of "we decided to reschedule", so any miss in the
+			// comparison stranded the job's config forever.
+			scheduleChanged := relevel ||
 				existing.Period != check.Period ||
 				existing.Type != check.Type ||
-				existing.PlanWeight != planWeight ||
-				!configEqual(existing.Config, check.Config) ||
-				!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
-				!optStrEqual(existing.ConfigSealed, check.ConfigSealed) ||
 				regionSetChanged
 
-			if needsUpdate {
-				regionCopy := region
-				scheduledAt := scheduling.NextAligned(
-					time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
-				)
+			contentChanged := existing.PlanWeight != planWeight ||
+				!configEqual(existing.Config, check.Config) ||
+				!optStrEqual(existing.ConfigPrivate, check.ConfigPrivate) ||
+				!optStrEqual(existing.ConfigPrivateKeys, check.ConfigPrivateKeys) ||
+				!optStrEqual(existing.ConfigSealed, check.ConfigSealed)
 
-				if _, err := s.db.DB().NewUpdate().
+			if scheduleChanged || contentChanged {
+				regionCopy := region
+
+				query := s.db.DB().NewUpdate().
 					Model((*models.CheckJob)(nil)).
 					Set("period = ?", check.Period).
 					Set("type = ?", check.Type).
@@ -2830,11 +2892,19 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 					Set("config_sealed = ?", check.ConfigSealed).
 					Set("encrypted = ?", check.ConfigPrivate != nil).
 					Set("plan_weight = ?", planWeight).
-					Set("scheduled_at = ?", scheduledAt).
-					Set("effective_scheduled_at = ?", scheduledAt).
 					Set("updated_at = ?", time.Now()).
-					Where("uid = ?", existing.UID).
-					Exec(ctx); err != nil {
+					Where("uid = ?", existing.UID)
+
+				if scheduleChanged {
+					scheduledAt := scheduling.NextAligned(
+						time.Now(), basePeriod, basePeriod, check.UID, &regionCopy, targetRegions, spread,
+					)
+					query = query.
+						Set("scheduled_at = ?", scheduledAt).
+						Set("effective_scheduled_at = ?", scheduledAt)
+				}
+
+				if _, err := query.Exec(ctx); err != nil {
 					return fmt.Errorf("failed to update check job: %w", err)
 				}
 			}
@@ -2877,24 +2947,41 @@ func optStrEqual(a, b *string) bool {
 	return *a == *b
 }
 
-// configEqual compares two JSONMap configs for equality.
+// configEqual reports whether two JSONMap configs are the SAME config as a
+// worker would see it — that is, whether they serialize to identical JSON.
+//
+// It used to compare values with fmt.Sprintf("%v", …), which is type-blind:
+// []any{float64(200), float64(403)} and []any{"200", "403"} both render as
+// "[200 403]", so a PATCH that fixed a config's value *types* was judged
+// "equal" and never reached check_jobs.config. The job then kept dispatching
+// the broken snapshot forever while the check's own config column looked
+// correct (spec 2026-08-29-09). "true" vs true is the same trap.
+//
+// Both sides are decoded-JSON values (float64 / string / bool / map / slice),
+// so canonical JSON equality is exactly "would the worker see a different
+// config". encoding/json sorts map keys, so key order is not a false
+// difference (pinned by TestConfigEqualKeyOrderIsNotADifference). A marshal
+// error is treated as "not equal", which errs towards re-syncing the job.
 func configEqual(configA, configB models.JSONMap) bool {
 	if len(configA) != len(configB) {
 		return false
 	}
 
-	for key, valA := range configA {
-		valB, ok := configB[key]
-		if !ok {
-			return false
-		}
-
-		if fmt.Sprintf("%v", valA) != fmt.Sprintf("%v", valB) {
-			return false
-		}
+	// Both empty (or nil): equal. Handled before marshaling because a nil map
+	// encodes as "null" and an empty one as "{}", which are not byte-equal
+	// even though neither carries any configuration.
+	if len(configA) == 0 {
+		return true
 	}
 
-	return true
+	rawA, errA := json.Marshal(map[string]any(configA))
+	rawB, errB := json.Marshal(map[string]any(configB))
+
+	if errA != nil || errB != nil {
+		return false
+	}
+
+	return bytes.Equal(rawA, rawB)
 }
 
 // convertCheckToResponse converts a database Check model to a CheckResponse.
@@ -3925,6 +4012,12 @@ func (s *Service) CloneCheck(
 		}
 	}
 
+	// A clone is a new check with the source's labels, so it can match a
+	// status page selector the instant it exists. Without this it would wait
+	// for the page-view backstop — the same "new service, silently missing
+	// from the board" gap dynamic sections exist to close (spec 2026-08-29-11).
+	s.reconcileStatusPageSelectors(ctx, org.UID)
+
 	return response, nil
 }
 
@@ -4206,6 +4299,12 @@ func (s *Service) applyConfigUpdate(
 	oldSealed := check.ConfigSealed
 	oldPrivateKeys := check.ConfigPrivateKeys
 
+	// Sealed-only (spec 2026-07-16-02): the server cannot decrypt this row's
+	// secrets, so loadDecryptedConfig below returns the public config only and
+	// `merged` will lack them too. Captured now, before applyEncryption
+	// changes check.ConfigPrivate — see validatePatchedConfig.
+	wasSealedOnly := oldSealed != nil && check.ConfigPrivate == nil
+
 	merged, mergeErr := s.applyConfigPatch(ctx, check, patch)
 	if mergeErr != nil {
 		return mergeErr
@@ -4213,12 +4312,19 @@ func (s *Service) applyConfigUpdate(
 
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
-	// wholesale and wipe unrelated keys. This is also the only validation the
-	// config gets on the PATCH path (UpdateCheck never calls checker.Validate),
-	// so its *ConfigError surfaces as a 400.
+	// wholesale and wipe unrelated keys.
 	merged, normErr := normalizeCheckConfig(check.Type, merged)
 	if normErr != nil {
 		return normErr
+	}
+
+	// The checker's own Validate — the same per-type structural rules create
+	// and the dry-run validate endpoint enforce (e.g. HTTP's
+	// expectedStatusCodes must be strings, method must be a known verb).
+	// Runs first so a malformed type never reaches the shared validators
+	// below. See validatePatchedConfig for the sealed-only handling.
+	if cfgErr := s.validatePatchedConfig(check.Type, merged, wasSealedOnly, oldPrivateKeys); cfgErr != nil {
+		return cfgErr
 	}
 
 	// The shared config validators — the uniform timeout cap, the
@@ -4259,6 +4365,106 @@ func (s *Service) applyConfigUpdate(
 	}
 
 	return nil
+}
+
+// placeholderSecretValue stands in for an ordinary secret field (password,
+// token, apiKey, a basicAuth blob, …) that a sealed-only check's merged
+// config can't carry — see validatePatchedConfig. It is a plain non-empty
+// string, so it satisfies both a "must be a string" type check and a
+// "must be non-empty" presence check. It is only ever fed to a throwaway
+// checker.Validate call on a deep copy — never persisted.
+const placeholderSecretValue = "solidping-sealed-secret-placeholder"
+
+// placeholderPrivateKeyPEM stands in for a config key literally named
+// "private_key". checksftp and checkssh's Validate (via their shared
+// validatePrivateKey helper in config.go) runs pem.Decode on it and rejects
+// with "invalid PEM format" when that fails — the generic string placeholder
+// above would trip that and falsely reject an unrelated PATCH on a
+// sealed-only check whose secret is a private key rather than a password.
+// Once pem.Decode succeeds, both checkers swallow every further x509 parse
+// failure ("Accept anyway — golang.org/x/crypto/ssh can parse OpenSSH format
+// keys") and return nil regardless of the key's actual content, so a
+// syntactically valid but content-empty PEM block is enough — it never needs
+// to look like a real key, and real key parsing only happens later, at
+// Execute, on the real (non-placeholder) secret.
+const placeholderPrivateKeyPEM = "-----BEGIN PLACEHOLDER-----\n" +
+	"c29saWRwaW5nLXNlYWxlZC1zZWNyZXQtcGxhY2Vob2xkZXI=\n" +
+	"-----END PLACEHOLDER-----\n"
+
+// validatePatchedConfig runs the checker's own Validate against a PATCH's
+// merged effective config — the validation applyConfigUpdate used to skip
+// entirely (this is the fix). Unknown check types pass through unchanged:
+// the registry doesn't know them, so there is nothing to validate, same as
+// today's behavior.
+//
+// The checker gets a deep copy, never merged itself: HTTP autogenerates
+// name/slug from the URL and heartbeat/email autogenerate a token when
+// absent, and none of that may leak into the stored row — mirrors the
+// offline document validator's use of deepCopyConfig.
+//
+// wasSealedOnly gates placeholder injection: a sealed-only check's merged
+// config is missing its own secret values (the server cannot decrypt what it
+// never held — spec 2026-07-16-02), so every name in oldPrivateKeys absent
+// from the copy gets a placeholder, letting an unrelated PATCH (rename,
+// timeout bump) pass the checker's presence/type checks without the real
+// secret. This must NOT run for a plaintext/AES-envelope row: there, a
+// secret key absent from merged means the request explicitly cleared it
+// (mergePatchConfig honors an explicit null/empty), and a real "is required"
+// rejection is the correct outcome — injecting a placeholder there would
+// silently mask it.
+func (s *Service) validatePatchedConfig(
+	checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
+) error {
+	checker, ok := registry.GetChecker(checkerdef.CheckType(checkType))
+	if !ok {
+		return nil
+	}
+
+	configCopy, copyErr := deepCopyConfig(merged)
+	if copyErr != nil {
+		return fmt.Errorf("deep copy config for validation: %w", copyErr)
+	}
+
+	if wasSealedOnly {
+		injectSecretPlaceholders(configCopy, parseConfigPrivateKeys(oldPrivateKeys))
+	}
+
+	return checker.Validate(&checkerdef.CheckSpec{Config: configCopy})
+}
+
+// parseConfigPrivateKeys decodes the ConfigPrivateKeys JSON-array-of-strings
+// column, returning nil on an absent or unparsable value (never an error —
+// this only widens or narrows which keys get a validation placeholder, it is
+// not itself a source of truth for what's stored).
+func parseConfigPrivateKeys(configPrivateKeys *string) []string {
+	if configPrivateKeys == nil || *configPrivateKeys == "" {
+		return nil
+	}
+
+	var keys []string
+	if err := json.Unmarshal([]byte(*configPrivateKeys), &keys); err != nil {
+		return nil
+	}
+
+	return keys
+}
+
+// injectSecretPlaceholders fills in a placeholder value, in place, for every
+// key that's absent from config — see validatePatchedConfig for when this is
+// safe to call.
+func injectSecretPlaceholders(config map[string]any, keys []string) {
+	for _, key := range keys {
+		if _, present := config[key]; present {
+			continue
+		}
+
+		if key == "private_key" {
+			config[key] = placeholderPrivateKeyPEM
+			continue
+		}
+
+		config[key] = placeholderSecretValue
+	}
 }
 
 // applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check

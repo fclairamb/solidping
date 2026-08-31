@@ -194,7 +194,7 @@ type Result struct {
 	UID             string     `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string     `bun:"organization_uid,notnull"`
 	CheckUID        string     `bun:"check_uid,notnull"`
-	PeriodType      string     `bun:"period_type,notnull,default:'raw'"`
+	PeriodType      string     `bun:"period_type,notnull"`
 	PeriodStart     time.Time  `bun:"period_start,notnull"`
 	PeriodEnd       *time.Time `bun:"period_end"`
 	Region          *string    `bun:"region"`

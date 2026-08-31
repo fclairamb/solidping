@@ -37,6 +37,7 @@ func seedNotificationRows(ctx context.Context, t *testing.T, ts *TestServer) not
 	now := time.Now()
 	incident := &models.Incident{
 		UID:             "60000000-0000-0000-0000-000000000002",
+		Kind:            models.IncidentKindCheck,
 		OrganizationUID: cliCovOrgUID,
 		CheckUID:        checkUID,
 		Title:           &title,

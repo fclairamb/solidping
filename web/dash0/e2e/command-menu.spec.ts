@@ -7,6 +7,86 @@ async function getAuthToken(page: Page): Promise<string> {
   return (await resp.json()).accessToken;
 }
 
+// Seeds a throwaway user (via the test-only /api/v1/test/users endpoint) with
+// its own single org, mirroring account-organizations-create.spec.ts's
+// seedUserWithOrg — this never touches the shared test@test.com session that
+// authenticatedPage caches for the whole worker, so adding a second org for
+// these tests can't leak extra memberships into every other spec.
+async function seedUserWithOrg(page: Page) {
+  const stamp = Date.now() + Math.floor(Math.random() * 1000);
+  const email = `cmdk-org-${stamp}@unknown.example`;
+  const password = "Strong-Pass-123!";
+
+  const createUserResp = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+    data: { email, password, name: "CmdK Org User" },
+  });
+  if (createUserResp.status() !== 201) {
+    test.skip(
+      true,
+      `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${createUserResp.status()}`,
+    );
+  }
+
+  const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { email, password },
+  });
+  expect(loginResp.status()).toBe(200);
+  const login = (await loginResp.json()) as { accessToken: string };
+
+  const orgSlug = `cmdk1-${stamp.toString(36)}`;
+  const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+    headers: { Authorization: `Bearer ${login.accessToken}` },
+    data: { name: `CmdK Org ${stamp}`, slug: orgSlug },
+  });
+  expect(createOrgResp.status()).toBe(201);
+  const org = (await createOrgResp.json()) as {
+    slug: string;
+    accessToken: string;
+    refreshToken?: string;
+    expiresIn?: number;
+  };
+
+  return { stamp, email, password, org };
+}
+
+// Seeds `page`'s localStorage with an already-issued session, the same
+// low-level shape AuthContext reads on boot — lets a test start on a
+// specific org/session without driving the login form.
+async function seedBrowserSession(
+  page: Page,
+  session: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresIn?: number;
+    slug?: string;
+  },
+) {
+  await page.addInitScript(
+    ({ accessToken, refreshToken, expiresIn, slug }) => {
+      localStorage.setItem("solidping_session_token", accessToken as string);
+      if (refreshToken) {
+        localStorage.setItem("solidping_refresh_token", refreshToken as string);
+      }
+      if (expiresIn) {
+        localStorage.setItem(
+          "solidping_expires_at",
+          String(Date.now() + Number(expiresIn) * 1000),
+        );
+        localStorage.setItem("solidping_expires_in", String(expiresIn));
+      }
+      if (slug) {
+        localStorage.setItem("solidping_org", slug as string);
+      }
+    },
+    {
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken ?? "",
+      expiresIn: session.expiresIn ?? 0,
+      slug: session.slug ?? "",
+    },
+  );
+}
+
 async function createStatusPageViaApi(
   page: Page,
   token: string,
@@ -133,8 +213,13 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.getByTestId("command-menu-ai")).toBeVisible();
     await expect(page.getByTestId("command-menu-ai")).toContainText("AI assistants");
 
-    // Verify Organization group (same heading/entry-title collision as above).
-    await expect(page.locator("[cmdk-group-heading]", { hasText: "Organization" })).toBeVisible();
+    // Verify Organization group. Anchored (not a plain substring) because
+    // the new "Switch organization" group heading also contains
+    // "Organization" as a substring — test@test.com belongs to 3 orgs
+    // (test, test2, test3), so that group renders here too.
+    await expect(
+      page.locator("[cmdk-group-heading]", { hasText: /^Organization$/ }),
+    ).toBeVisible();
     await expect(page.getByTestId("command-menu-organization")).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
@@ -322,7 +407,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     ).toBeVisible();
   });
 
-  test("exposes the Organization entry, findable by 'organization', → parent redirects to invitations", async ({
+  test("exposes the Organization entry, findable by 'organization', → parent redirects to members", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -340,10 +425,12 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(orgItem).toContainText("Organization");
 
     // Selecting it navigates to the parent route, whose index redirects to
-    // the current default child (invitations).
+    // the current default child. Members, not Invitations, since
+    // organization.index.tsx's default was changed (see that route's own
+    // history) — this test just fell out of sync with it.
     await orgItem.click();
-    await page.waitForURL(/\/organization\/invitations/, { timeout: 5000 });
-    expect(page.url()).toContain("/organization/invitations");
+    await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
+    expect(page.url()).toContain("/organization/members");
     await expect(input).not.toBeVisible();
   });
 
@@ -579,5 +666,118 @@ test.describe("Command Menu (Cmd+K)", () => {
       await deleteSloViaApi(page, token, slo.uid);
       await deleteCheckViaApi(page, token, check.uid);
     }
+  });
+
+  test("renames the palette's Settings item to Organization Settings, still findable by 'settings'", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // The label changed from "Settings" to "Organization Settings", but
+    // typing "settings" alone must still find it — a future rename that
+    // silently breaks this substring match would regress discoverability.
+    await input.fill("settings");
+    const settingsItem = page.getByTestId("command-menu-organization-settings");
+    await expect(settingsItem).toBeVisible();
+    await expect(settingsItem).toContainText("Organization Settings");
+
+    await settingsItem.click();
+    await page.waitForURL(/\/organization\/settings/, { timeout: 5000 });
+    expect(page.url()).toContain("/organization/settings");
+    await expect(input).not.toBeVisible();
+  });
+
+  test("single-org user sees no 'Switch organization' group in the palette", async ({
+    page,
+  }) => {
+    const { org } = await seedUserWithOrg(page);
+    await seedBrowserSession(page, { ...org, slug: org.slug });
+
+    await page.goto(`orgs/${org.slug}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // No search term: with a single org, the group must not render at all —
+    // not even as an empty heading.
+    await expect(
+      page.locator("[cmdk-group-heading]", { hasText: "Switch organization" }),
+    ).toHaveCount(0);
+  });
+
+  test("lists the user's other organizations, searchable by name and slug, and switching lands on its dashboard", async ({
+    page,
+  }) => {
+    const { stamp, org } = await seedUserWithOrg(page);
+
+    // A second org for the same user, created via the API with org1's token
+    // — mirrors a user who already belongs to two organizations.
+    const org2Slug = `cmdk2-${stamp.toString(36)}`;
+    const org2Name = `CmdK Org Two ${stamp}`;
+    const createOrg2Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+      headers: { Authorization: `Bearer ${org.accessToken}` },
+      data: { name: org2Name, slug: org2Slug },
+    });
+    expect(createOrg2Resp.status()).toBe(201);
+
+    // Seed the ORIGINAL (org1) session — the create-org call above minted a
+    // session scoped to org2, but this test wants to start on org1 with
+    // both memberships visible.
+    await seedBrowserSession(page, { ...org, slug: org.slug });
+
+    await page.goto(`orgs/${org.slug}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // Findable by name.
+    await input.fill(org2Name);
+    await expect(
+      page.locator("[cmdk-group-heading]", { hasText: "Switch organization" }),
+    ).toBeVisible();
+    const itemByName = page.getByTestId(`command-menu-switch-org-${org2Slug}`);
+    await expect(itemByName).toBeVisible();
+    await expect(itemByName).toContainText(org2Name);
+    await expect(itemByName).toContainText(org2Slug);
+
+    // Also findable by slug alone.
+    await input.fill(org2Slug);
+    await expect(page.getByTestId(`command-menu-switch-org-${org2Slug}`)).toBeVisible();
+
+    // Selecting it switches and lands on the new org's dashboard.
+    await page.getByTestId(`command-menu-switch-org-${org2Slug}`).click();
+    await page.waitForURL((url) => url.pathname.endsWith(`/orgs/${org2Slug}`), {
+      timeout: 10000,
+    });
+    await expect(input).not.toBeVisible();
+
+    // The switch is effective: the stored token now works against the new
+    // org and no longer against the one the test started from.
+    const storedToken = await page.evaluate(() =>
+      localStorage.getItem("solidping_session_token"),
+    );
+    expect(storedToken).toBeTruthy();
+    expect(storedToken).not.toBe(org.accessToken);
+
+    const scoped = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${org2Slug}/checks`,
+      { headers: { Authorization: `Bearer ${storedToken}` } },
+    );
+    expect(scoped.status()).toBe(200);
+
+    const crossOrg = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${org.slug}/checks`,
+      { headers: { Authorization: `Bearer ${storedToken}` } },
+    );
+    expect(crossOrg.status()).toBe(403);
   });
 });

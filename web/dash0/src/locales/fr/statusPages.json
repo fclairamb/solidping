@@ -44,7 +44,8 @@
     "language": "Langue",
     "willInclude": "Inclura :",
     "createStatusPage": "Créer la page de statut",
-    "saveChanges": "Enregistrer les modifications"
+    "saveChanges": "Enregistrer les modifications",
+    "removeCheck": "Retirer"
   },
   "detail": {
     "configuration": "Configuration",
@@ -75,7 +76,33 @@
     "deleteDescription": "Supprimer cette section et toutes ses ressources associées ? Les vérifications elles-mêmes ne seront pas affectées.",
     "deleted": "Section supprimée",
     "deleteFailed": "Échec de la suppression de la section",
-    "empty": "Aucune vérification dans cette section pour le moment"
+    "empty": "Aucune vérification dans cette section pour le moment",
+    "membership": {
+      "title": "Composition",
+      "manual": "Manuelle",
+      "all": "Toutes les vérifications",
+      "labels": "Par étiquette",
+      "hint": {
+        "manual": "Vous ajoutez chaque composant de cette section à la main.",
+        "all": "Toutes les vérifications de cette organisation sont listées automatiquement, y compris celles créées plus tard.",
+        "labels": "Toute vérification portant l'ensemble de ces étiquettes est listée automatiquement, y compris celles créées plus tard."
+      },
+      "labelsField": "Étiquettes requises",
+      "labelsHint": "Une vérification doit porter toutes ces étiquettes pour apparaître. Les valeurs sont exactes.",
+      "publicWarningTitle": "Cette section est sur une page publique",
+      "publicWarningAll": "Toutes les vérifications actuelles et futures de cette organisation apparaîtront sur cette page publique, y compris celles créées plus tard. Préférez une étiquette comme public=true, pour que chaque vérification s'inscrive explicitement.",
+      "publicWarningLabels": "Toutes les vérifications actuelles et futures portant ces étiquettes apparaîtront sur cette page publique, y compris celles créées plus tard.",
+      "autoBadge": "auto",
+      "autoTooltip": "Ajouté automatiquement par la règle de composition de cette section. Modifiez la règle pour changer cela.",
+      "truncated": "{{shown}} vérifications affichées sur {{total}}. Affinez la règle avec des étiquettes pour voir le reste.",
+      "claimedElsewhere": {
+        "full_one": "La vérification correspondante est déjà affichée dans « {{section}} ». Une vérification n'apparaît qu'une seule fois par page ; déplacez cette section plus haut ou restreignez la règle de l'autre section pour l'afficher ici.",
+        "full_other": "Les {{count}} vérifications correspondantes sont déjà affichées dans « {{section}} ». Une vérification n'apparaît qu'une seule fois par page ; déplacez cette section plus haut ou restreignez la règle de l'autre section pour les afficher ici.",
+        "partial_one": "{{count}} vérification correspondante supplémentaire est déjà affichée ailleurs sur cette page.",
+        "partial_other": "{{count}} vérifications correspondantes supplémentaires sont déjà affichées ailleurs sur cette page."
+      },
+      "labelsRequired": "Ajoutez au moins une étiquette"
+    }
   },
   "resources": {
     "add": "Ajouter un composant",
@@ -289,5 +316,29 @@
     "passwordPlaceholder": "6 caractères minimum",
     "passwordKeepPlaceholder": "Laisser vide pour conserver le mot de passe actuel",
     "passwordFieldHint": "Partagez-le avec les personnes autorisées. Le modifier déconnecte immédiatement tout le monde."
+  },
+  "wand": {
+    "prefill": "Préremplir pour moi",
+    "loadChecksFailed": "Impossible de charger la liste complète des contrôles",
+    "createForMe": "Créer une page de statut pour moi",
+    "createFailed": "Échec de la création de la page de statut"
+  },
+  "tvMode": {
+    "title": "Mode TV",
+    "description": "Un affichage plein écran de cette page pour un écran de bureau : une seule vue sans défilement, en grands caractères, sans aucun élément interactif.",
+    "publicNote": "Cette page est publique : l'URL du mode TV fonctionne telle quelle — dirigez un écran dessus et laissez-le tourner.",
+    "restrictedNote": "Cette page n'est pas publique : un écran ne peut pas l'ouvrir sans intervention. Générez un jeton kiosque pour donner à un écran un accès en lecture seule ; il contourne la demande de mot de passe et rend visible une page privée.",
+    "generate": "Générer un jeton kiosque",
+    "regenerate": "Régénérer",
+    "revoke": "Révoquer",
+    "tokenLabel": "jeton kiosque",
+    "tokenShownOnce": "Copiez-le maintenant : il n'est affiché qu'une fois et ne peut pas être récupéré ensuite.",
+    "tokenGenerated": "Jeton kiosque généré",
+    "tokenRevoked": "Jeton kiosque révoqué",
+    "tokenFailed": "Impossible de mettre à jour le jeton kiosque",
+    "regenerateTitle": "Régénérer le jeton kiosque ?",
+    "regenerateDescription": "Tout écran utilisant l'URL actuelle cessera immédiatement de fonctionner. Vous devrez le mettre à jour avec la nouvelle.",
+    "revokeTitle": "Révoquer le jeton kiosque ?",
+    "revokeDescription": "Tous les écrans qui l'utilisent cesseront immédiatement de fonctionner, et cette page reviendra à ses règles de visibilité normales."
   }
 }

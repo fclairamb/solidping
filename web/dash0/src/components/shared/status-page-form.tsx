@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { slugify } from "@/lib/utils";
+import { buildStatusPageWandPrefill } from "@/lib/onboarding-wand";
 import {
   Select,
   SelectContent,
@@ -54,6 +55,10 @@ interface StatusPageFormData {
   // merge: null resets the section to the platform defaults (99.9/99.0),
   // an object replaces it wholly.
   settings?: { availability: AvailabilitySettings | null };
+  // Checks attached to the page's default section, in submit order. Only
+  // ever populated (and only ever sent) in create mode — editing a page's
+  // resources happens on the page detail route, not here.
+  checkUids: string[];
 }
 
 export function StatusPageForm({
@@ -63,7 +68,11 @@ export function StatusPageForm({
   onSubmit,
   onCancel,
   initialName,
-  prefilledCheckName,
+  initialCheckUids,
+  checkNamesByUid,
+  orgName,
+  allChecks,
+  allChecksLoaded,
 }: {
   mode: "create" | "edit";
   initialData?: StatusPage;
@@ -77,11 +86,23 @@ export function StatusPageForm({
    */
   initialName?: string;
   /**
-   * When set, renders a non-editable "Will include: <name>" line — the check
-   * this create-from-check flow is about to attach to the page's default
-   * section.
+   * Checks to pre-attach on mount — e.g. the single check carried by a
+   * "Publish on a status page" deep link (`?checkUid=`). Rendered as
+   * removable badges alongside anything the magic-wand or the operator adds.
    */
-  prefilledCheckName?: string;
+  initialCheckUids?: string[];
+  /** uid -> display name, for rendering attached-check badges. */
+  checkNamesByUid?: Map<string, string>;
+  /**
+   * Org display name, used by the "Prefill for me" wand to seed the Name
+   * field. Distinct from `initialName`: that one only fires for the
+   * check-deep-link flow, this one only fires on an explicit wand click.
+   */
+  orgName?: string;
+  /** Every check currently in the org, for the wand's "attach every check". */
+  allChecks?: { uid: string; name?: string }[];
+  /** False while `allChecks` is still paginating in — disables the wand. */
+  allChecksLoaded?: boolean;
 }) {
   const { t } = useTranslation("statusPages");
   // initialName (e.g. the org's name, when arriving from a check's
@@ -131,6 +152,22 @@ export function StatusPageForm({
   const [thresholdDegradedInput, setThresholdDegradedInput] = useState(
     initialData?.settings?.availability?.thresholdDegraded?.toString() ?? ""
   );
+  // Attached checks. Seeded synchronously from initialCheckUids (no query in
+  // flight for the seed itself — same reasoning as `initialName` above), then
+  // fully controlled here: the wand can set it in bulk, and each badge can
+  // remove itself.
+  const [checkUids, setCheckUids] = useState<string[]>(initialCheckUids ?? []);
+
+  // The wand only offers to fill a BLANK form — once the operator has typed a
+  // name or attached a check (by hand or via a deep link), it steps aside.
+  const showWand =
+    mode === "create" && name.trim() === "" && checkUids.length === 0;
+
+  const handleWandClick = () => {
+    const prefill = buildStatusPageWandPrefill(orgName, allChecks ?? []);
+    setName(prefill.name);
+    setCheckUids(prefill.checkUids);
+  };
 
   useEffect(() => {
     if (!slugManuallyEdited && mode === "create") {
@@ -182,18 +219,39 @@ export function StatusPageForm({
         : 60,
       autoResolve,
       settings,
+      checkUids,
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <Button type="button" variant="ghost" size="icon" onClick={onCancel}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <h1 className="text-3xl font-bold tracking-tight">
           {mode === "create" ? "New Status Page" : "Edit Status Page"}
         </h1>
+        {showWand && (
+          <Button
+            type="button"
+            variant="outline"
+            className="ml-auto"
+            onClick={handleWandClick}
+            disabled={!allChecksLoaded}
+            data-testid="wand-prefill-status-page"
+            aria-label={t("wand.prefill", "Prefill for me")}
+          >
+            {allChecksLoaded ? (
+              <Wand2 className="h-4 w-4 sm:mr-2" />
+            ) : (
+              <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+            )}
+            <span className="hidden sm:inline">
+              {t("wand.prefill", "Prefill for me")}
+            </span>
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -206,7 +264,7 @@ export function StatusPageForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {prefilledCheckName && (
+          {checkUids.length > 0 && (
             <div
               className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2"
               data-testid="status-page-prefilled-check"
@@ -214,7 +272,28 @@ export function StatusPageForm({
               <span className="text-sm text-muted-foreground">
                 {t("form.willInclude")}
               </span>
-              <Badge variant="secondary">{prefilledCheckName}</Badge>
+              {checkUids.map((uid) => (
+                <Badge
+                  key={uid}
+                  variant="secondary"
+                  className="gap-1 pr-1"
+                  data-testid="status-page-attached-check"
+                >
+                  {checkNamesByUid?.get(uid) ?? uid}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCheckUids((prev) =>
+                        prev.filter((existing) => existing !== uid),
+                      )
+                    }
+                    aria-label={t("form.removeCheck", "Remove")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-background/60"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
             </div>
           )}
 

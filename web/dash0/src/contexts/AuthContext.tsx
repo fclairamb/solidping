@@ -125,6 +125,33 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// Module-level (not React state) flag tracking whether a switchOrg() call is
+// currently in flight. AuthProvider is mounted once app-wide, so a plain
+// variable is enough — it doesn't need to be reactive, only readable at the
+// moment OrgLayout's auto-switch-org guard effect (routes/orgs/$org.tsx)
+// decides whether to fire its own switchOrg() call.
+//
+// Why this exists: a switcher UI (AppSidebar, CommandMenu, the organizations
+// page) calls `await switchOrg(slug); navigate(...)`. switchOrg's internal
+// `await apiFetch("/auth/me")` (line ~498) yields to the event loop *after*
+// already updating `org` state — which lets OrgLayout, still mounted on the
+// OLD url (navigate() hasn't run yet), re-render and see auth.org !== the
+// still-old URL param. Its guard then fires ITS OWN switchOrg() call for the
+// stale URL org, reverting the session mid-flight — a real, reproducible
+// race (not a test flake): three switch-org requests ping-pong and the
+// session can settle on the wrong org depending on which network call
+// resolves last. Skipping the guard while an explicit switch is already in
+// flight removes the conflicting call; the guard re-evaluates safely once
+// the explicit switch finishes and the caller's navigate() catches the URL
+// up to the (now-authoritative) org state.
+let switchOrgInFlight = false;
+
+/** Whether a switchOrg() call is currently in flight. See the flag's doc
+ * comment above for why OrgLayout's auto-switch-org guard checks this. */
+export function isSwitchOrgInFlight(): boolean {
+  return switchOrgInFlight;
+}
+
 interface AuthResponse {
   accessToken: string;
   // Present on every login-shaped response (password, 2FA, passkey,
@@ -468,42 +495,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const switchOrg = async (orgSlug: string) => {
-    const data = await apiFetch<AuthResponse>(`/api/v1/auth/switch-org`, {
-      method: "POST",
-      body: JSON.stringify({ org: orgSlug }),
-    });
-    // switch-org mints a NEW refresh token scoped to the target org — the
-    // client must overwrite (not merge/keep) the old one, or a subsequent
-    // background refresh would silently flip back to the login-time org.
-    setSession(data.accessToken, data.refreshToken, data.expiresIn);
-    const resolvedOrg = data.organization?.slug || orgSlug;
-    setStoredOrg(resolvedOrg);
-    setOrg(resolvedOrg);
-    setOrgUid(data.organization?.uid ?? null);
-    setUser({
-      uid: data.user.uid,
-      email: data.user.email,
-      name: data.user.name,
-      avatarUrl: data.user.avatarUrl,
-      roles: [data.user.role],
-      isAdmin:
-        data.user.role === "owner" ||
-        data.user.role === "admin" ||
-        data.user.role === "superadmin",
-      isOwner: data.user.role === "owner" || data.user.role === "superadmin",
-      isSuperAdmin: data.user.role === "superadmin",
-    });
-    // Re-fetch organizations from /me (consistent with login)
+    switchOrgInFlight = true;
     try {
-      const meData = await apiFetch<MeResponse>(`/api/v1/auth/me`);
-      setOrganizations(meData.organizations || []);
-    } catch {
-      // Fallback: preserve existing list with updated role
-      setOrganizations((prev) =>
-        prev.map((o) =>
-          o.slug === resolvedOrg ? { ...o, role: data.user.role } : o
-        )
-      );
+      const data = await apiFetch<AuthResponse>(`/api/v1/auth/switch-org`, {
+        method: "POST",
+        body: JSON.stringify({ org: orgSlug }),
+      });
+      // switch-org mints a NEW refresh token scoped to the target org — the
+      // client must overwrite (not merge/keep) the old one, or a subsequent
+      // background refresh would silently flip back to the login-time org.
+      setSession(data.accessToken, data.refreshToken, data.expiresIn);
+      const resolvedOrg = data.organization?.slug || orgSlug;
+      setStoredOrg(resolvedOrg);
+      setOrg(resolvedOrg);
+      setOrgUid(data.organization?.uid ?? null);
+      setUser({
+        uid: data.user.uid,
+        email: data.user.email,
+        name: data.user.name,
+        avatarUrl: data.user.avatarUrl,
+        roles: [data.user.role],
+        isAdmin:
+          data.user.role === "owner" ||
+          data.user.role === "admin" ||
+          data.user.role === "superadmin",
+        isOwner: data.user.role === "owner" || data.user.role === "superadmin",
+        isSuperAdmin: data.user.role === "superadmin",
+      });
+      // Re-fetch organizations from /me (consistent with login)
+      try {
+        const meData = await apiFetch<MeResponse>(`/api/v1/auth/me`);
+        setOrganizations(meData.organizations || []);
+      } catch {
+        // Fallback: preserve existing list with updated role
+        setOrganizations((prev) =>
+          prev.map((o) =>
+            o.slug === resolvedOrg ? { ...o, role: data.user.role } : o
+          )
+        );
+      }
+    } finally {
+      switchOrgInFlight = false;
     }
   };
 

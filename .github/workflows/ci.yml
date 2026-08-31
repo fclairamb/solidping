@@ -293,10 +293,17 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-24.04
-    # 20 min for the main suite + ~5 min budget for the session-continuity
-    # side-car run below (session-continuity.spec.ts waits out real
-    # access-token expiries, so it inherently takes longer than a normal spec).
-    timeout-minutes: 30
+    # Main suite + status0 specs + ~5 min for the session-continuity side-car
+    # run below (session-continuity.spec.ts waits out real access-token
+    # expiries, so it inherently takes longer than a normal spec).
+    # Raised 30 -> 45 on 2026-08-30: the suite outgrew the old budget. Run
+    # 33280066073 finished every step but got cancelled at exactly 30m during
+    # the last one, after the batch added ~10 specs (TV mode alone adds 7) and
+    # after enabling SP_AUTH_REGISTRATION_EMAIL_PATTERN un-skipped
+    # membership-requests.spec.ts. This is a capacity bump, NOT a hang guard
+    # being loosened: the known Playwright-install hang is still bounded by the
+    # per-attempt timeout on that step, and every step here had succeeded.
+    timeout-minutes: 45
     needs: [build]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
@@ -378,6 +385,14 @@ jobs:
           SP_DB_URL: postgres://solidping:solidping@localhost:55432/solidping?sslmode=disable
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
+          # Self-registration is off unless auth.registration_email_pattern is
+          # set, and systemconfig applies its DB overlay ONCE at process boot —
+          # PUT-ing the parameter at runtime does not take effect. Specs that
+          # drive the real register -> confirm flow (confirm-registration-no-org)
+          # therefore need it set before the server starts. Note this is NOT
+          # bound by koanf's env loader (which collapses every underscore to a
+          # dot); it works because systemconfig declares this exact EnvVar.
+          SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*"
 
       - name: Wait for server
         run: |

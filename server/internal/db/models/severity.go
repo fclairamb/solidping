@@ -22,8 +22,8 @@ type Severity struct {
 	Slug            string     `bun:"slug,notnull"`
 	Name            string     `bun:"name,notnull"`
 	Description     *string    `bun:"description"`
-	Channels        string     `bun:"channels,notnull,default:'[]'"`
-	IsDefault       bool       `bun:"is_default,notnull,default:false"`
+	Channels        string     `bun:"channels,notnull"`
+	IsDefault       bool       `bun:"is_default,notnull"`
 	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt       *time.Time `bun:"deleted_at"`

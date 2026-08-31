@@ -400,7 +400,7 @@ export function StatusPageWidgetCard({
               data-testid="status-page-widget-preview"
               title={tStatusPages("widget.previewTitle")}
               srcDoc={previewSrcDoc}
-              sandbox="allow-scripts"
+              sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
               className="h-40 w-full sm:h-48"
             />
           </div>

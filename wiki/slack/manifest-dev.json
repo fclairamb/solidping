@@ -2,9 +2,9 @@
   "url": "https://api.slack.com/apps/A0AF77410MP/oauth?success=1",
   "display_information": {
     "name": "SolidPing (dev)",
-    "description": "Solidping (dev)",
+    "description": "Development build — uptime alerts in your channels",
     "background_color": "#bf1336",
-    "long_description": "Development version of the SolidPing app. SolidPing performs various kinds of checks around internet hosts.\r\nIt can check HTTP, ICMP, FTP, TCP / UDP, DNS servers and send alerts when something is wrong."
+    "long_description": "Development version of the SolidPing app, not for production use.\n\nSolidPing watches your websites, APIs, servers and network services from multiple regions, and tells your team the moment something breaks — in the channel where they already are.\n\n*In Slack you can:*\n• Receive incident alerts, escalations and recovery notices in any channel\n• Create a check without leaving Slack, with a slash command\n• Acknowledge and resolve incidents from the message itself\n• Sign in to the SolidPing dashboard with your Slack identity\n• See live status inline when someone pastes a SolidPing link\n\nSolidPing runs HTTP, ICMP, TCP, UDP, DNS, FTP and many other check types, with alerting by Slack, email, SMS, voice, WhatsApp, Discord and webhooks. It is open source and can be self-hosted, or used as a hosted service.\n\nFree plan available. Pricing: https://www.solidping.io/pricing"
   },
   "features": {
     "bot_user": {
@@ -24,21 +24,7 @@
         "command": "/solidping",
         "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
         "description": "Manage your SolidPing monitoring",
-        "usage_hint": "[setup|create|list|config|incidents|ack|help]",
-        "should_escape": false
-      },
-      {
-        "command": "/comment",
-        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
-        "description": "Comment on a SolidPing incident",
-        "usage_hint": "[#42] I think the central DNS is down",
-        "should_escape": false
-      },
-      {
-        "command": "/check",
-        "url": "https://app.dev.example.com/api/v1/integrations/slack/command",
-        "description": "Quick shortcut to create a check",
-        "usage_hint": "https://example.com",
+        "usage_hint": "[check|comment|create|list|config|incidents|help]",
         "should_escape": false
       }
     ],
@@ -88,7 +74,7 @@
       "is_enabled": true,
       "request_url": "https://app.dev.example.com/api/v1/integrations/slack/interaction"
     },
-    "org_deploy_enabled": true,
+    "org_deploy_enabled": false,
     "socket_mode_enabled": false,
     "token_rotation_enabled": false
   }

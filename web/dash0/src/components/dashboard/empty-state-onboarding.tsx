@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, Bot, Globe, Network, Shield, Loader2, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,7 @@ const QUICK_DEFS: Record<
 // and the full check editor for those who want the long form.
 export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
   const { t } = useTranslation("dashboard");
+  const navigate = useNavigate();
   const [tab, setTab] = useState<QuickType>("http");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -87,14 +88,22 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
     if (!trimmed) return;
 
     try {
-      await createCheck.mutateAsync({
+      const created = await createCheck.mutateAsync({
         name: `${def.namePrefix} — ${displayHostFor(def.field, trimmed)}`,
         type: tab,
         config: { [def.field]: trimmed },
       });
       setValue("");
-      // Refresh checks so the dashboard re-renders with the regular view.
+      // Refresh checks so the list (and this hero, once the user navigates
+      // back to the dashboard) reflect the new check.
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      // Land on the check's own page — the moment of highest engagement
+      // right after creating it — instead of staying on the dashboard.
+      // Mirrors checks.new.tsx's post-create navigation.
+      navigate({
+        to: "/orgs/$org/checks/$checkUid",
+        params: { org, checkUid: created.uid },
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("welcome.unexpectedError"));
     }

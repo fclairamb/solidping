@@ -133,6 +133,10 @@
       "formatLabel": "Formato de vista previa",
       "formatHtml": "HTML",
       "formatText": "Texto",
+      "schemeLabel": "Esquema de color de vista previa",
+      "schemeLight": "Claro",
+      "schemeDark": "Oscuro",
+      "schemeDarkHint": "Activa el bloque prefers-color-scheme de la plantilla — lo que muestran Apple Mail y Thunderbird en modo oscuro. Gmail no lo admite y se queda en claro.",
       "refresh": "Actualizar",
       "retry": "Reintentar",
       "loading": "Cargando…",
@@ -152,9 +156,11 @@
     "groupStatusPages": "Páginas de estado",
     "groupEscalationPolicies": "Políticas de escalada",
     "groupSlos": "SLO",
+    "groupSwitchOrg": "Cambiar de organización",
     "newCheck": "Nueva comprobación",
     "newCheckDescription": "Crear una nueva comprobación de monitorización",
-    "aiDescription": "Conectar asistentes de IA vía MCP"
+    "aiDescription": "Conectar asistentes de IA vía MCP",
+    "organizationSettings": "Configuración de la organización"
   },
   "security": "Seguridad",
   "slos": "SLO",

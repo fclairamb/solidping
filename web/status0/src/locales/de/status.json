@@ -77,5 +77,34 @@
   "unlockPasswordLabel": "Passwort",
   "unlockSubmit": "Statusseite anzeigen",
   "unlockSubmitting": "Wird geprüft…",
-  "unlockGenericError": "Das Passwort konnte nicht geprüft werden. Bitte erneut versuchen."
+  "unlockGenericError": "Das Passwort konnte nicht geprüft werden. Bitte erneut versuchen.",
+  "tv": {
+    "stale": "Daten nicht verfügbar",
+    "staleSince": "Seit {{time}} keine Aktualisierung erhalten",
+    "updatedAt": "aktualisiert um {{time}}",
+    "ongoingFor": "läuft seit {{duration}}",
+    "resolvedAgo": "vor {{ago}}",
+    "resolvedAgoFor": "vor {{ago}} · dauerte {{duration}}",
+    "durationMinutes": "{{minutes}} Min.",
+    "durationHoursMinutes": "{{hours}} Std. {{minutes}} Min.",
+    "durationDaysHours": "{{days}} T. {{hours}} Std.",
+    "daysSinceLastIncident_one": "{{count}} Tag seit dem letzten Vorfall",
+    "daysSinceLastIncident_other": "{{count}} Tage seit dem letzten Vorfall",
+    "noIncidentsRecorded": "Keine Vorfälle erfasst",
+    "cycling": "Wechselt zwischen {{count}} aktiven Vorfällen",
+    "affectedTitle": "Betroffene Dienste",
+    "affectedCycling": "Wechselt durch {{count}} betroffene Dienste",
+    "failingFor": "seit {{duration}}",
+    "failingSectionFor": "{{section}} · seit {{duration}}",
+    "lockedTitle": "Dieser Bildschirm benötigt ein Kiosk-Token",
+    "lockedDescription": "Öffnen Sie die Statusseite im Dashboard, erzeugen Sie ein TV-Modus-Token und verwenden Sie die angezeigte URL.",
+    "pickAPageTitle": "Der TV-Modus benötigt eine Statusseite",
+    "pickAPageDescription": "Verwenden Sie /{Organisation}/tv für die Standardseite oder /{Organisation}/{Seite}/tv für eine bestimmte.",
+    "uptimeWindow": {
+      "24h": "Verfügbarkeit (24 Std.)",
+      "7d": "Verfügbarkeit (7 Tage)",
+      "30d": "Verfügbarkeit (30 Tage)",
+      "90d": "Verfügbarkeit (90 Tage)"
+    }
+  }
 }

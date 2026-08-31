@@ -123,6 +123,7 @@ func seedAvailabilityData(ctx context.Context, t *testing.T, ts *TestServer) {
 	incEnd1 := now.Add(-4 * time.Hour)
 	r.NoError(dbService.CreateIncident(ctx, &models.Incident{
 		UID:             newAvailUID(60),
+		Kind:            models.IncidentKindCheck,
 		OrganizationUID: availOrgUID,
 		CheckUID:        availCheckUID,
 		State:           models.IncidentStateResolved,
@@ -137,6 +138,7 @@ func seedAvailabilityData(ctx context.Context, t *testing.T, ts *TestServer) {
 	incEnd2 := now.Add(-5*24*time.Hour + 2*time.Hour)
 	r.NoError(dbService.CreateIncident(ctx, &models.Incident{
 		UID:             newAvailUID(61),
+		Kind:            models.IncidentKindCheck,
 		OrganizationUID: availOrgUID,
 		CheckUID:        availCheckUID,
 		State:           models.IncidentStateResolved,

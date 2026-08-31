@@ -8,7 +8,10 @@ vi.mock("@/api/client", () => ({
     setSessionMock(accessToken, refreshToken, expiresIn),
 }));
 
-import { applyConfirmRegistrationHandoff } from "./confirm-registration-handoff";
+import {
+  applyConfirmRegistrationHandoff,
+  ConfirmRegistrationSessionError,
+} from "./confirm-registration-handoff";
 
 describe("applyConfirmRegistrationHandoff", () => {
   beforeEach(() => {
@@ -59,5 +62,30 @@ describe("applyConfirmRegistrationHandoff", () => {
     });
 
     expect(target).toEqual({ to: "/no-org" });
+  });
+
+  // The regression this spec (2026-08-29-06) exists for: the backend's
+  // zero-org confirm-registration branch used to omit accessToken
+  // entirely, and this function forwarded `undefined` straight to
+  // setSession — which then persisted the literal string "undefined" as
+  // the session token, and the very next authenticated call 401'd the
+  // freshly-created user back to the login page.
+  it("never calls setSession when the response carries no accessToken", () => {
+    expect(() => applyConfirmRegistrationHandoff({})).toThrow(
+      ConfirmRegistrationSessionError
+    );
+
+    expect(setSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("throws ConfirmRegistrationSessionError (not a generic Error) so the route can distinguish it from a bad token", () => {
+    let caught: unknown;
+    try {
+      applyConfirmRegistrationHandoff({ accessToken: "" });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ConfirmRegistrationSessionError);
   });
 });

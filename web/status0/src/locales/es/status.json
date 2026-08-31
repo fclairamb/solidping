@@ -77,5 +77,34 @@
   "unlockPasswordLabel": "Contraseña",
   "unlockSubmit": "Ver la página de estado",
   "unlockSubmitting": "Comprobando…",
-  "unlockGenericError": "No se ha podido comprobar la contraseña. Inténtalo de nuevo."
+  "unlockGenericError": "No se ha podido comprobar la contraseña. Inténtalo de nuevo.",
+  "tv": {
+    "stale": "Datos no disponibles",
+    "staleSince": "Sin actualizaciones desde las {{time}}",
+    "updatedAt": "actualizado a las {{time}}",
+    "ongoingFor": "en curso desde hace {{duration}}",
+    "resolvedAgo": "hace {{ago}}",
+    "resolvedAgoFor": "hace {{ago}} · duró {{duration}}",
+    "durationMinutes": "{{minutes}} min",
+    "durationHoursMinutes": "{{hours}} h {{minutes}} min",
+    "durationDaysHours": "{{days}} d {{hours}} h",
+    "daysSinceLastIncident_one": "{{count}} día desde el último incidente",
+    "daysSinceLastIncident_other": "{{count}} días desde el último incidente",
+    "noIncidentsRecorded": "Sin incidentes registrados",
+    "cycling": "Alternando entre {{count}} incidentes activos",
+    "affectedTitle": "Servicios afectados",
+    "affectedCycling": "Alternando entre {{count}} servicios afectados",
+    "failingFor": "desde hace {{duration}}",
+    "failingSectionFor": "{{section}} · desde hace {{duration}}",
+    "lockedTitle": "Esta pantalla necesita un token de quiosco",
+    "lockedDescription": "Abra la página de estado en el panel, genere un token de modo TV y use la URL que le indique.",
+    "pickAPageTitle": "El modo TV necesita una página de estado",
+    "pickAPageDescription": "Use /{organizacion}/tv para la página predeterminada, o /{organizacion}/{pagina}/tv para una concreta.",
+    "uptimeWindow": {
+      "24h": "disponibilidad de 24 h",
+      "7d": "disponibilidad de 7 días",
+      "30d": "disponibilidad de 30 días",
+      "90d": "disponibilidad de 90 días"
+    }
+  }
 }

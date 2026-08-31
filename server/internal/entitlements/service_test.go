@@ -1,6 +1,7 @@
 package entitlements_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -911,4 +912,153 @@ func TestSetDenormalizesPlanWeightOntoJobs(t *testing.T) {
 	r.NoError(dbSvc.DB().NewSelect().Model(&after).Where("check_uid = ?", check.UID).Scan(ctx))
 	r.Equal(entitlements.PlanWeightPaid, after.PlanWeight,
 		"billing upgrade must denormalize the paid weight onto existing jobs")
+}
+
+// newRatedService builds an entitlements service on the shared DB with SaaS
+// defaults (MaxChecksPerMinute = 10).
+func newRatedService(dbSvc *sqlite.Service) *entitlements.Service {
+	return entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
+}
+
+// setRateCap writes MaxChecksPerMinute as a superadmin override, the way the
+// entitlements editor (or a billing push) does.
+func setRateCap(t *testing.T, svc *entitlements.Service, orgUID string, perMinute int) {
+	t.Helper()
+	require.NoError(t, svc.Set(t.Context(), orgUID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecksPerMinute: entitlements.Int(perMinute)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+}
+
+// TestReserveCheckExecutionRaisedCapAppliesWithoutRestart reproduces the
+// production pathology of spec 2026-08-29-10: the cap is raised by ANOTHER
+// process (the API server / billing push), so the worker's own service never
+// runs Set and never clears its cache. Before the fix the worker's bucket kept
+// its creation-time capacity of 10 forever and skipped executions the org was
+// entitled to, while reporting the new limit in the QuotaError.
+func TestReserveCheckExecutionRaisedCapAppliesWithoutRestart(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("rate-raise-org", "Rate Raise Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// Two independent processes over one database: the API server that performs
+	// the write, and a deported check worker that only ever reads.
+	apiSvc := newRatedService(dbSvc)
+	workerSvc := newRatedService(dbSvc)
+
+	// The worker builds (and drains) its bucket at the SaaS default of 10/min.
+	for i := range 10 {
+		r.NoError(workerSvc.ReserveCheckExecution(ctx, org.UID), "call %d", i+1)
+	}
+	r.ErrorIs(workerSvc.ReserveCheckExecution(ctx, org.UID), entitlements.ErrEntitlementExceeded)
+
+	// The operator raises the cap to 100 through the API server. The worker
+	// process is NOT restarted and never observes the Set.
+	setRateCap(t, apiSvc, org.UID, 100)
+
+	resolved, err := workerSvc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.MaxChecksPerMinute)
+	r.Equal(100, *resolved.Limits.MaxChecksPerMinute, "the worker resolves the new limit")
+
+	// ...and must now honor it. These calls happen within milliseconds, so the
+	// old capacity/60 refill could never supply them: passing this loop proves
+	// the cached bucket adopted the raised capacity rather than staying at 10.
+	for i := range 50 {
+		r.NoError(workerSvc.ReserveCheckExecution(ctx, org.UID),
+			"post-raise call %d must be allowed at the new cap without a restart", i+1)
+	}
+}
+
+// TestReserveCheckExecutionLoweredCapClampsWithoutRestart covers the other
+// direction: a cap lowered elsewhere must clamp the surplus a stale bucket is
+// holding, so the org cannot burst past its new limit.
+func TestReserveCheckExecutionLoweredCapClampsWithoutRestart(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("rate-lower-org", "Rate Lower Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	apiSvc := newRatedService(dbSvc)
+	workerSvc := newRatedService(dbSvc)
+
+	// Start the worker's bucket at a generous 100/min: one call materializes it
+	// nearly full (99 tokens).
+	setRateCap(t, apiSvc, org.UID, 100)
+	r.NoError(workerSvc.ReserveCheckExecution(ctx, org.UID))
+
+	// The plan is downgraded to 5/min elsewhere.
+	setRateCap(t, apiSvc, org.UID, 5)
+
+	// The stale surplus must be clamped to the new burst: five more calls at
+	// most, then denial. Without the clamp the worker would happily spend the
+	// ~99 tokens it was holding.
+	for i := range 5 {
+		r.NoError(workerSvc.ReserveCheckExecution(ctx, org.UID), "post-lower call %d", i+1)
+	}
+
+	err = workerSvc.ReserveCheckExecution(ctx, org.UID)
+	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
+
+	var quotaErr *entitlements.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal(5, quotaErr.Limit)
+}
+
+// TestReserveCheckExecutionCapacityChangeIsRaceFree exercises the in-place
+// capacity reconciliation from many goroutines at once (run under -race): the
+// reserve path mutates the cached bucket under the same lock allow() takes, so
+// a concurrent cap change must never be observed half-applied.
+func TestReserveCheckExecutionCapacityChangeIsRaceFree(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("rate-race-org", "Rate Race Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	apiSvc := newRatedService(dbSvc)
+	workerSvc := newRatedService(dbSvc)
+
+	var wg sync.WaitGroup
+
+	for range 8 {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for range 50 {
+				// The verdict does not matter here — only that concurrent
+				// reserves and cap changes stay memory-safe.
+				_ = workerSvc.ReserveCheckExecution(ctx, org.UID)
+			}
+		}()
+	}
+
+	for _, capacity := range []int{100, 5, 250, 20} {
+		setRateCap(t, apiSvc, org.UID, capacity)
+	}
+
+	wg.Wait()
 }

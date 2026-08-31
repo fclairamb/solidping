@@ -130,6 +130,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
+	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
@@ -766,7 +767,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// orgGroup by design. These are exactly the URLs customers paste into
 	// their own sites (status pages, SVG badges, the /embed/v1 widget's
 	// summary endpoint), so they are the ones a rename must not break.
-	publicOrgAPI := api.Use(orgSlugRedirect.Middleware, statusPageUnlockGrant)
+	publicOrgAPI := api.Use(orgSlugRedirect.Middleware, statusPageUnlockGrant, statusPageKioskGrant)
 
 	// Org creation (protected). Any authenticated user may create an org; the
 	// creator becomes its owner (spec 2026-08-08-11).
@@ -1635,6 +1636,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// A hard demotion reached through the synchronous Verify button alerts the
 	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
 	statusPagesService.SetJobsService(s.services.Jobs)
+	// Selector-driven status page sections (spec 2026-08-29-11) re-materialize
+	// after any check write. Best-effort by construction — ReconcileOrgSelectors
+	// returns nothing, so a status page can never fail a check create — with the
+	// page-view backstop as the safety net.
+	checksService.SetStatusPageReconciler(statusPagesService)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1658,6 +1664,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
 	orgStatusPages.POST("/:statusPageUid/favicon", statusPageAssetsHandler.UploadFavicon)
 	orgStatusPages.DELETE("/:statusPageUid/favicon", statusPageAssetsHandler.DeleteFavicon)
+	// Kiosk token for wallboard/TV mode (spec 2026-08-29-08). POST mints or
+	// regenerates (invalidating the previous one), DELETE revokes. The
+	// plaintext token exists only in the POST response.
+	orgStatusPages.POST("/:statusPageUid/kiosk-token", statusPagesHandler.GenerateKioskToken)
+	orgStatusPages.DELETE("/:statusPageUid/kiosk-token", statusPagesHandler.RevokeKioskToken)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
 	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
@@ -2131,9 +2142,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// posts analytics to this first-party path instead of *.posthog.com, so ad
 	// blockers that block third-party analytics hosts do not silently drop
 	// events. posthog-js uses GET (static assets, remote config) and POST
-	// (events, flags).
+	// (events, flags). It is a genuinely public, credential-free surface
+	// (isPublicCORSPath) — capture never carries a SolidPing session, and the
+	// whole point is letting OTHER first-party hosts (e.g. a marketing site)
+	// proxy their own analytics through here, which the CORS allowlist could
+	// never enumerate. OPTIONS is registered alongside GET/POST so a
+	// preflighted request (a JSON POST, or one carrying a custom header)
+	// reaches corsMiddleware instead of a bare 405 with no CORS headers at all
+	// (spec 2026-08-30-09).
 	mainGroup.GET(config.PostHogProxyPath+"/*path", s.proxyPostHog)
 	mainGroup.POST(config.PostHogProxyPath+"/*path", s.proxyPostHog)
+	mainGroup.OPTIONS(config.PostHogProxyPath+"/*path", func(_ http.ResponseWriter, _ *http.Request) error {
+		return nil
+	})
 
 	// Catch-all for frontend (must be last)
 	mainGroup.GET("/*path", s.serveAppRoot)
@@ -2177,13 +2198,85 @@ func initSentry(cfg config.SentryConfig) error {
 	return nil
 }
 
+// isPublicCORSPath reports whether path falls under a genuinely public,
+// credential-free surface: public status pages and their assets, the
+// embeddable widget, or the PostHog ingest proxy. A request under one of
+// these always answers Access-Control-Allow-Origin: "*" with NO
+// Access-Control-Allow-Credentials, regardless of the configured allowlist —
+// the domains that embed them (a customer's own site, a marketing site
+// proxying anonymous analytics capture) can never be enumerated in that
+// allowlist, and none of these surfaces ever need a SolidPing session to
+// answer. Everything else goes through the allowlist (see corsMiddleware).
+// Spec 2026-08-30-09.
+func isPublicCORSPath(path string) bool {
+	prefixes := [...]string{
+		config.PostHogProxyPath + "/",
+		"/embed/",
+		statuspageassets.PublicPathPrefix,
+		"/api/v1/status-pages/",
+	}
+
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isAllowedCORSOrigin reports whether origin exactly matches one of allowed —
+// scheme, host and port all significant, per the Origin header's own
+// semantics (https://example.com and https://example.com:8443 are different
+// origins).
+func isAllowedCORSOrigin(origin string, allowed []string) bool {
+	for _, candidate := range allowed {
+		if candidate == origin {
+			return true
+		}
+	}
+
+	return false
+}
+
+// corsMiddleware answers the CORS preflight/actual-request headers for the
+// whole app. It never pairs a wildcard Access-Control-Allow-Origin with
+// Access-Control-Allow-Credentials — the Fetch standard forbids that
+// combination outright, and a browser making a credentialed cross-origin
+// request refuses the response the moment it sees both, which is exactly what
+// silently broke every credentialed cross-origin caller before this (spec
+// 2026-08-30-09).
+//
+// Two distinct answers, chosen by request path:
+//
+//   - A genuinely public, credential-free surface (isPublicCORSPath) always
+//     gets "*" with no Allow-Credentials — the correct pairing for a surface
+//     whose callers can never be enumerated in an allowlist.
+//   - Everything else echoes the request's Origin — with Allow-Credentials and
+//     Vary: Origin — only when it matches Config.ResolvedCORSAllowedOrigins
+//     (which defaults to the app's own public URL). A non-matching Origin gets
+//     no Access-Control-Allow-Origin at all, so the browser blocks the
+//     request, same as for any other unlisted cross-origin caller.
+//
+// The decision happens before the OPTIONS short-circuit below, so a preflight
+// sees exactly the same headers an actual request would.
 func (s *Server) corsMiddleware(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
-		writer.Header().Set("Access-Control-Allow-Origin", "*")
 		writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 		writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
 		writer.Header().Set("Access-Control-Max-Age", "86400")
-		writer.Header().Set("Access-Control-Allow-Credentials", "true")
+
+		switch origin := req.Header.Get("Origin"); {
+		case isPublicCORSPath(req.URL.Path):
+			writer.Header().Set("Access-Control-Allow-Origin", "*")
+		case origin != "":
+			writer.Header().Add("Vary", "Origin")
+
+			if isAllowedCORSOrigin(origin, s.config.ResolvedCORSAllowedOrigins()) {
+				writer.Header().Set("Access-Control-Allow-Origin", origin)
+				writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+		}
 
 		if req.Method == http.MethodOptions {
 			writer.WriteHeader(http.StatusOK)
@@ -2645,7 +2738,7 @@ func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) err
 	// Strip the proxy prefix so the upstream receives the path it expects.
 	upstreamPath := strings.TrimPrefix(req.URL.Path, config.PostHogProxyPath)
 
-	//nolint:exhaustruct // Only Rewrite is needed for reverse proxying.
+	//nolint:exhaustruct // Only Rewrite and ModifyResponse are needed for reverse proxying.
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(proxyReq *httputil.ProxyRequest) {
 			proxyReq.SetURL(target)
@@ -2656,6 +2749,23 @@ func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) err
 			// Preserve the visitor IP so PostHog geolocates the real client,
 			// not the SolidPing server.
 			proxyReq.SetXForwarded()
+		},
+		// PostHog Cloud answers its own Access-Control-* headers. Left in
+		// place, they land ALONGSIDE the ones corsMiddleware already set on
+		// this response, so the client sees each header twice — a repeated
+		// Access-Control-Allow-Origin fails the CORS check outright, even
+		// though curl and every other non-browser probe cannot tell the
+		// difference (spec 2026-08-30-09). Exactly one layer must own these
+		// headers; stripping the upstream's here leaves corsMiddleware as
+		// that one layer.
+		ModifyResponse: func(resp *http.Response) error {
+			for header := range resp.Header {
+				if strings.HasPrefix(header, "Access-Control-") {
+					resp.Header.Del(header)
+				}
+			}
+
+			return nil
 		},
 	}
 
@@ -3748,5 +3858,19 @@ func readMasterKeyFile(path string) (string, error) {
 func statusPageUnlockGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) error {
 		return next(writer, statuspagelock.WithRequestGrant(req))
+	}
+}
+
+// statusPageKioskGrant installs the request's own kiosk-token decision on its
+// context (spec 2026-08-29-08).
+//
+// Mounted alongside statusPageUnlockGrant, and for the same reason: the gate
+// belongs at ONE place, next to the visibility check. It only READS
+// `?kiosk=<token>`; whether that token means anything is decided per page by
+// statuspagekiosk.Decide, so an unmounted middleware locks pages rather than
+// exposing them.
+func statusPageKioskGrant(next httpx.HandlerFunc) httpx.HandlerFunc {
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		return next(writer, statuspagekiosk.WithRequestGrant(req))
 	}
 }

@@ -35,6 +35,13 @@ Auth: public (test mode only)
 ### GET /api/mgmt/email-preview/:template
 Render an email template with sample data so it can be reviewed in a browser
 without sending anything. `?format=html` (default) or `?format=text`.
+`?colorScheme=light` (default) or `?colorScheme=dark`; `dark` applies only to
+the HTML format and rewrites the template's own
+`@media (prefers-color-scheme: dark)` block to `@media all`, so an `<iframe>`
+— which cannot be told to report a dark preference — shows the exact CSS a
+dark-mode client applies. Without the param the response is the untouched
+template. Any other value is a 400. See
+[features/email-dark-mode.md](../features/email-dark-mode.md).
 Registered only when `SP_RUNMODE=test`. Auth: public (test mode only)
 
 ### POST /api/mgmt/report

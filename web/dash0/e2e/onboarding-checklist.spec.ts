@@ -163,11 +163,13 @@ test.describe("Getting-started checklist", () => {
       "false",
     );
 
-    // Every step links somewhere; the status-page one carries the check to
-    // pre-attach (spec 2026-08-28-16).
+    // Every step links somewhere; the status-page one lands on the list, not
+    // the blank create form (spec 2026-08-30-10) — the list carries its own
+    // "create a page for me" wand, so dropping the user into an empty form
+    // skips the better entry point.
     await expect(
       page.getByTestId("onboarding-step-statusPage-cta"),
-    ).toHaveAttribute("href", /\/status-pages\/new\?checkUid=/);
+    ).toHaveAttribute("href", /\/status-pages$/);
   });
 
   test("the alerting step is derived: it flips when a channel appears, with nothing stored", async ({
@@ -362,6 +364,61 @@ test.describe("Getting-started checklist", () => {
     await expect(otherPage.getByTestId("onboarding-checklist")).toHaveCount(0);
 
     await other.close();
+  });
+
+  test("clicking a step row's body (not the CTA button) navigates to the step's route", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOrgWithCheck(page);
+
+    await openDashboard(page, orgSlug);
+
+    // The "team" step's own CTA links to the members page; clicking the
+    // row's status icon (well away from the CTA button) must navigate the
+    // same way the CTA itself would, proving the whole row is one stretched
+    // click target rather than just the small button on the right. `force`
+    // is required and is itself part of the proof: Playwright's
+    // actionability check reports that the CTA link's stretched overlay is
+    // exactly what receives the hit-test at this point (not the status
+    // icon) — that is the click-through mechanism working as designed, not
+    // an accidental cover-up.
+    await page.getByTestId("onboarding-step-team-status").click({ force: true });
+    await expect(page).toHaveURL(/\/organization\/members$/);
+  });
+
+  test("clicking the test-alert button fires the test alert without navigating away", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOrgWithCheck(page);
+
+    await page.route("**/api/v1/orgs/*/integrations/*/test", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          statusCode: 0,
+          durationMs: 12,
+          detail: "Delivered to alice@acme.com",
+        }),
+      }),
+    );
+
+    await openDashboard(page, orgSlug);
+    const dashboardUrl = page.url();
+
+    // The alerts row nests a second interactive element (the test-alert
+    // button) inside the row's stretched navigation target. Clicking it must
+    // fire the test alert and must NOT trigger the row's own navigation to
+    // the integrations page — this is the load-bearing assertion that the
+    // nested-interactive handling (stopPropagation / z-index layering)
+    // actually works, not just that the button is clickable in isolation.
+    await page.getByTestId("onboarding-test-alert").click();
+    await expect(
+      page.getByText("Delivered to alice@acme.com"),
+    ).toBeVisible();
+    expect(page.url()).toBe(dashboardUrl);
+    await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
   });
 
   test("stays usable at mobile width", async ({ page }) => {

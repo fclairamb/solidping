@@ -81,6 +81,9 @@ var (
 	// ErrNoMessageID is returned when Meta accepts the request but returns no
 	// message id — we cannot correlate a delivery status without one.
 	ErrNoMessageID = errors.New("whatsapp: response carried no message id")
+	// ErrMissingMessageID is returned when MarkRead is called with an empty
+	// message id — there is nothing to acknowledge.
+	ErrMissingMessageID = errors.New("whatsapp: message id is required")
 )
 
 // e164Pattern validates E.164 phone numbers: a leading '+', a non-zero first
@@ -263,6 +266,11 @@ type textContent struct {
 // messageTypeText is the Cloud API message type for a free-form text message.
 const messageTypeText = "text"
 
+// messagingProduct is the fixed value every Cloud API request body carries —
+// shared so the string literal is not repeated across the send and mark-read
+// payloads.
+const messagingProduct = "whatsapp"
+
 // ErrEmptyText is returned when a free-form send has nothing to say.
 var ErrEmptyText = errors.New("whatsapp: message body is empty")
 
@@ -284,7 +292,7 @@ func (c *Client) SendText(ctx context.Context, to, body string) (string, error) 
 	}
 
 	return c.postMessage(ctx, &textPayload{
-		MessagingProduct: "whatsapp",
+		MessagingProduct: messagingProduct,
 		RecipientType:    "individual",
 		To:               normalizeRecipient(recipient),
 		Type:             messageTypeText,
@@ -292,20 +300,21 @@ func (c *Client) SendText(ctx context.Context, to, body string) (string, error) 
 	})
 }
 
-// postMessage marshals a payload to the messages endpoint and returns the
-// provider message id. Shared by the template and free-form senders so both
-// classify errors and parse responses identically.
-func (c *Client) postMessage(ctx context.Context, payload any) (string, error) {
+// post marshals payload, POSTs it to the phone number's /messages endpoint and
+// returns the raw 2xx response body. Non-2xx responses are run through
+// classifyError so every caller — postMessage, MarkRead, and any future one —
+// gets identically typed failures.
+func (c *Client) post(ctx context.Context, payload any) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("marshal whatsapp payload: %w", err)
+		return nil, fmt.Errorf("marshal whatsapp payload: %w", err)
 	}
 
 	endpoint := fmt.Sprintf("%s/%s/%s/messages", c.baseURL, c.apiVersion, c.phoneNumberID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("creating whatsapp request: %w", err)
+		return nil, fmt.Errorf("creating whatsapp request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
@@ -313,14 +322,26 @@ func (c *Client) postMessage(ctx context.Context, payload any) (string, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("sending whatsapp request: %w", err)
+		return nil, fmt.Errorf("sending whatsapp request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode >= http.StatusMultipleChoices {
-		return "", classifyError(resp.StatusCode, respBody)
+		return nil, classifyError(resp.StatusCode, respBody)
+	}
+
+	return respBody, nil
+}
+
+// postMessage marshals a payload to the messages endpoint and returns the
+// provider message id. Shared by the template and free-form senders so both
+// classify errors and parse responses identically.
+func (c *Client) postMessage(ctx context.Context, payload any) (string, error) {
+	respBody, err := c.post(ctx, payload)
+	if err != nil {
+		return "", err
 	}
 
 	var parsed sendResponse
@@ -333,6 +354,64 @@ func (c *Client) postMessage(ctx context.Context, payload any) (string, error) {
 	}
 
 	return parsed.Messages[0].ID, nil
+}
+
+// markReadPayload is the wire shape of a mark-as-read request.
+type markReadPayload struct {
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	MessagingProduct string `json:"messaging_product"`
+	Status           string `json:"status"`
+	//nolint:tagliatelle // Meta's Graph API wire format uses snake_case.
+	MessageID string `json:"message_id"`
+}
+
+// markReadResponse is the wire shape of a successful mark-as-read response —
+// `{"success": true}`, NOT the `{"messages":[...]}` shape postMessage expects.
+// That is the reason MarkRead cannot reuse postMessage as-is: parsing this
+// response as a sendResponse would always find zero messages and return
+// ErrNoMessageID for a call that actually succeeded.
+type markReadResponse struct {
+	Success bool `json:"success"`
+}
+
+// MarkRead marks one inbound message read on the Cloud API. This is the ONLY
+// way a business number's read receipt reaches the sender's phone — WhatsApp
+// never marks inbound messages read automatically, so without this call the
+// sender's app shows the double GREY check forever, even after the message
+// was read and answered.
+//
+// Meta's read receipts are CUMULATIVE and this cannot be opted out of:
+// marking messageID read also blue-checks every earlier message in the same
+// conversation. That matters once a command dispatcher marks its own inbound
+// message read immediately on receipt — it will also blue-check an older,
+// still-unread support question sitting in the same WhatsApp conversation.
+// That is expected Meta behavior, not a bug introduced here; this comment
+// exists so nobody re-discovers it as one.
+func (c *Client) MarkRead(ctx context.Context, messageID string) error {
+	id := strings.TrimSpace(messageID)
+	if id == "" {
+		return ErrMissingMessageID
+	}
+
+	respBody, err := c.post(ctx, &markReadPayload{
+		MessagingProduct: messagingProduct,
+		Status:           "read",
+		MessageID:        id,
+	})
+	if err != nil {
+		return err
+	}
+
+	var parsed markReadResponse
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return fmt.Errorf("parsing whatsapp mark-read response: %w", err)
+	}
+
+	if !parsed.Success {
+		return ErrRequestFailed
+	}
+
+	return nil
 }
 
 // templatePayload / component types are the wire shape of the Cloud API
@@ -416,7 +495,7 @@ func buildTemplatePayload(msg *TemplateMessage) (*templatePayload, error) {
 	}
 
 	return &templatePayload{
-		MessagingProduct: "whatsapp",
+		MessagingProduct: messagingProduct,
 		RecipientType:    "individual",
 		To:               normalizeRecipient(recipient),
 		Type:             "template",

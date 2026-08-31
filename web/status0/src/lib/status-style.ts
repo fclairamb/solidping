@@ -42,6 +42,25 @@ export interface StatusStyle {
   bannerTitle: string;
   // Tailwind classes for the trailing pill on the banner.
   bannerPill: string;
+  // --- TV / wallboard mode (spec 2026-08-29-08) ---
+  //
+  // The same status vocabulary, rendered for a 4 m reading distance instead of
+  // 40 cm: a whole-viewport tinted surface rather than a slim banner.
+  //
+  // Committed to a DARK ground on purpose, independent of the visitor's theme.
+  // A wallboard is a fixed installation that runs 24/7, and a full-brightness
+  // light-green wash is both glaring in an office and hard on the panel. The
+  // tint is therefore a dark base with the status colour mixed in, which keeps
+  // the three states unmistakably different without lighting up the room.
+  //
+  // Colour is never the only carrier — every consumer pairs these with the
+  // status icon and the status word, because roughly one man in twelve cannot
+  // separate this green from this red.
+  tvSurface: string;
+  // Text/icon colour for the headline on that surface.
+  tvAccent: string;
+  // Border/edge treatment for cards sitting on the surface.
+  tvCard: string;
 }
 
 const NEUTRAL_CHART = "transparent";
@@ -63,6 +82,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "success",
         labelKey: "operational",
+        tvSurface: "bg-[oklch(0.19_0.05_150)] text-[oklch(0.95_0.02_150)]",
+        tvAccent: "text-[oklch(0.86_0.17_150)]",
+        tvCard: "border-[oklch(0.42_0.09_150)] bg-[oklch(0.24_0.05_150)]",
         bannerSurface:
           "border-status-ok/25 bg-gradient-to-r from-status-ok/[0.10] via-status-ok/[0.04] to-transparent",
         bannerTitle: "text-status-ok-foreground",
@@ -77,6 +99,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "warning",
+        tvSurface: "bg-[oklch(0.21_0.05_85)] text-[oklch(0.96_0.02_85)]",
+        tvAccent: "text-[oklch(0.88_0.16_85)]",
+        tvCard: "border-[oklch(0.45_0.09_85)] bg-[oklch(0.26_0.05_85)]",
         bannerSurface:
           "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
         bannerTitle: "text-status-warning-foreground",
@@ -91,6 +116,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: WARNING_CHART,
         badgeVariant: "warning",
         labelKey: "degraded",
+        tvSurface: "bg-[oklch(0.21_0.05_85)] text-[oklch(0.96_0.02_85)]",
+        tvAccent: "text-[oklch(0.88_0.16_85)]",
+        tvCard: "border-[oklch(0.45_0.09_85)] bg-[oklch(0.26_0.05_85)]",
         bannerSurface:
           "border-status-warning/30 bg-gradient-to-r from-status-warning/[0.12] via-status-warning/[0.05] to-transparent",
         bannerTitle: "text-status-warning-foreground",
@@ -108,6 +136,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "secondary",
         labelKey: "abandoned",
+        tvSurface: "bg-[oklch(0.19_0.01_250)] text-[oklch(0.93_0.01_250)]",
+        tvAccent: "text-[oklch(0.80_0.02_250)]",
+        tvCard: "border-[oklch(0.38_0.01_250)] bg-[oklch(0.24_0.01_250)]",
         bannerSurface:
           "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
         bannerTitle: "text-foreground",
@@ -122,6 +153,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: DOWN_CHART,
         badgeVariant: "destructive",
         labelKey: "outage",
+        tvSurface: "bg-[oklch(0.20_0.07_25)] text-[oklch(0.96_0.02_25)]",
+        tvAccent: "text-[oklch(0.83_0.18_25)]",
+        tvCard: "border-[oklch(0.44_0.13_25)] bg-[oklch(0.26_0.08_25)]",
         bannerSurface:
           "border-status-error/30 bg-gradient-to-r from-status-error/[0.12] via-status-error/[0.05] to-transparent",
         bannerTitle: "text-status-error-foreground",
@@ -141,6 +175,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "info",
         labelKey: "underMaintenance",
+        tvSurface: "bg-[oklch(0.19_0.05_250)] text-[oklch(0.95_0.02_250)]",
+        tvAccent: "text-[oklch(0.80_0.14_250)]",
+        tvCard: "border-[oklch(0.42_0.10_250)] bg-[oklch(0.25_0.06_250)]",
         bannerSurface:
           "border-primary/25 bg-gradient-to-r from-primary/[0.10] via-primary/[0.04] to-transparent",
         bannerTitle: "text-primary",
@@ -159,6 +196,9 @@ export function statusStyle(status: string | undefined | null): StatusStyle {
         chartColor: NEUTRAL_CHART,
         badgeVariant: "secondary",
         labelKey: "unknown",
+        tvSurface: "bg-[oklch(0.19_0.01_250)] text-[oklch(0.93_0.01_250)]",
+        tvAccent: "text-[oklch(0.80_0.02_250)]",
+        tvCard: "border-[oklch(0.38_0.01_250)] bg-[oklch(0.24_0.01_250)]",
         bannerSurface:
           "border-border bg-gradient-to-r from-muted/60 via-muted/25 to-transparent",
         bannerTitle: "text-foreground",
