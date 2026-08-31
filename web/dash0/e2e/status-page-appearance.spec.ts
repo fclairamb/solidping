@@ -370,6 +370,19 @@ test.describe("Status page appearance editor", () => {
     const htmlText = await page.getByTestId("badge-embed-html").textContent();
     expect(htmlText).toContain(`src="${urlText}"`);
 
+    // Spec 2026-08-31-03: a badge whose entire purpose is "click here to see
+    // whether we are up" must not paste as a bare, unlinked image. Both
+    // snippets wrap the badge in a link to the public status page, using the
+    // same absolute origin as the badge URL itself.
+    const pageUrl = new URL(`/status0/test/${slug}`, page.url()).toString();
+    const pageName = `e2e-appearance-${suffix}`;
+    expect(markdownText).toBe(
+      `[![${pageName} status](${urlText})](${pageUrl})`,
+    );
+    expect(htmlText).toBe(
+      `<a href="${pageUrl}" target="_blank" rel="noopener noreferrer"><img src="${urlText}" alt="${pageName} status" /></a>`,
+    );
+
     // The URL is live: it 200s with a real SVG carrying the rollup status —
     // a freshly-created page has no resources, so it rolls up to "unknown".
     const resp = await page.request.get(urlText!);

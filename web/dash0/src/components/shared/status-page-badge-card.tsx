@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { buildStatusPageBadgeEmbedSnippets } from "@/lib/status-page-badge-embed";
 
 type BadgeStyle = "flat" | "flat-square";
 
@@ -76,8 +77,13 @@ export function StatusPageBadgeCard({
   const badgePath = `/api/v1/status-pages/${org}/${pageSlug}/badge${query ? `?${query}` : ""}`;
   const badgeUrl = `${window.location.origin}${badgePath}`;
 
-  const markdownCode = `![${pageName} status](${badgeUrl})`;
-  const htmlCode = `<img src="${badgeUrl}" alt="${pageName} status" />`;
+  const { pagePath, markdownCode, htmlCode } = buildStatusPageBadgeEmbedSnippets({
+    origin: window.location.origin,
+    org,
+    pageSlug,
+    pageName,
+    badgeUrl,
+  });
 
   return (
     <Card data-testid="status-page-badge-card">
@@ -123,7 +129,7 @@ export function StatusPageBadgeCard({
 
         <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
           <a
-            href={`/status0/${org}/${pageSlug}`}
+            href={pagePath}
             target="_blank"
             rel="noopener noreferrer"
             title={tStatusPages("viewPublic")}
