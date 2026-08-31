@@ -1069,7 +1069,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSeverities.DELETE("/:uid", severitiesHandler.DeleteSeverity)
 
 	// Check dependency routes (authentication required)
-	depsService := checkdependencies.NewService(s.dbService)
+	depsService := checkdependencies.NewService(s.dbService, s.defaultCheckTimeout())
 	depsHandler := checkdependencies.NewHandler(depsService, s.config)
 	orgChecks.GET("/:check/dependencies", depsHandler.ListForCheck)
 	orgChecks.POST("/:check/dependencies", depsHandler.Create)
