@@ -98,6 +98,7 @@ import {
   selectorFromMembership,
   type SectionMembershipValue,
 } from "@/components/shared/section-membership";
+import { SelectorClaimedElsewhereAlert } from "@/components/shared/selector-claimed-elsewhere-alert";
 import { ApiError } from "@/api/client";
 
 export const Route = createFileRoute("/orgs/$org/status-pages/$statusPageUid/")(
@@ -1147,6 +1148,11 @@ function SectionCard({
             </AlertDescription>
           </Alert>
         )}
+        <SelectorClaimedElsewhereAlert
+          ownResourceCount={section.resources?.length ?? 0}
+          claimedElsewhere={section.selectorClaimedElsewhere}
+          claimantName={section.selectorClaimedSectionName}
+        />
         {section.resources && section.resources.length > 0 ? (
           <DndContext
             sensors={sensors}

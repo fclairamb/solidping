@@ -2611,6 +2611,19 @@ export interface StatusPageSection {
    * showing a stable alphabetical prefix. Authenticated only.
    */
   selectorTruncated?: boolean;
+  /**
+   * How many of the selector's matched checks are already displayed by
+   * resource rows OUTSIDE this section — an earlier selector section or a
+   * manual placement (spec 2026-08-31-01). Authenticated only. Absent/0 means
+   * nothing is claimed elsewhere.
+   */
+  selectorClaimedElsewhere?: number;
+  /**
+   * Name of the section holding the most of `selectorClaimedElsewhere`'s
+   * checks, for the "already shown in '{{section}}'" copy. Authenticated
+   * only; absent when `selectorClaimedElsewhere` is 0/absent.
+   */
+  selectorClaimedSectionName?: string;
   resources?: StatusPageResource[];
   createdAt?: string;
 }

@@ -95,6 +95,12 @@
       "autoBadge": "auto",
       "autoTooltip": "Añadido automáticamente por la regla de composición de esta sección. Edite la regla para cambiarlo.",
       "truncated": "Mostrando {{shown}} de {{total}} comprobaciones coincidentes. Acote la regla con etiquetas para ver el resto.",
+      "claimedElsewhere": {
+        "full_one": "La comprobación coincidente ya se muestra en «{{section}}». Una comprobación solo aparece una vez por página; mueva esta sección más arriba o restrinja la regla de la otra sección para mostrarla aquí.",
+        "full_other": "Las {{count}} comprobaciones coincidentes ya se muestran en «{{section}}». Una comprobación solo aparece una vez por página; mueva esta sección más arriba o restrinja la regla de la otra sección para mostrarlas aquí.",
+        "partial_one": "{{count}} comprobación coincidente adicional ya se muestra en otra parte de esta página.",
+        "partial_other": "{{count}} comprobaciones coincidentes adicionales ya se muestran en otra parte de esta página."
+      },
       "labelsRequired": "Añada al menos una etiqueta"
     }
   },

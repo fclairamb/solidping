@@ -95,6 +95,12 @@
       "autoBadge": "auto",
       "autoTooltip": "Automatisch durch die Zusammensetzungsregel dieses Abschnitts hinzugefügt. Ändern Sie die Regel, um dies zu ändern.",
       "truncated": "{{shown}} von {{total}} passenden Prüfungen werden angezeigt. Grenzen Sie die Regel mit Labels ein, um den Rest zu sehen.",
+      "claimedElsewhere": {
+        "full_one": "Die passende Prüfung wird bereits in „{{section}}“ angezeigt. Eine Prüfung erscheint nur einmal pro Seite; verschieben Sie diesen Abschnitt nach oben oder grenzen Sie die Regel des anderen Abschnitts ein, um sie hier anzuzeigen.",
+        "full_other": "Alle {{count}} passenden Prüfungen werden bereits in „{{section}}“ angezeigt. Eine Prüfung erscheint nur einmal pro Seite; verschieben Sie diesen Abschnitt nach oben oder grenzen Sie die Regel des anderen Abschnitts ein, um sie hier anzuzeigen.",
+        "partial_one": "{{count}} weitere passende Prüfung wird bereits an anderer Stelle auf dieser Seite angezeigt.",
+        "partial_other": "{{count}} weitere passende Prüfungen werden bereits an anderer Stelle auf dieser Seite angezeigt."
+      },
       "labelsRequired": "Fügen Sie mindestens ein Label hinzu"
     }
   },

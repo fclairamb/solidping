@@ -95,6 +95,12 @@
       "autoBadge": "auto",
       "autoTooltip": "Added automatically by this section's membership rule. Edit the rule to change it.",
       "truncated": "Showing {{shown}} of {{total}} matching checks. Narrow the rule with labels to see the rest.",
+      "claimedElsewhere": {
+        "full_one": "The matching check is already shown in \"{{section}}\". A check appears only once per page; move this section higher or narrow the other section's rule to show it here.",
+        "full_other": "All {{count}} matching checks are already shown in \"{{section}}\". A check appears only once per page; move this section higher or narrow the other section's rule to show them here.",
+        "partial_one": "{{count}} more matching check is already shown elsewhere on this page.",
+        "partial_other": "{{count}} more matching checks are already shown elsewhere on this page."
+      },
       "labelsRequired": "Add at least one label"
     }
   },

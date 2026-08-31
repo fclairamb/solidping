@@ -95,6 +95,12 @@
       "autoBadge": "auto",
       "autoTooltip": "Ajouté automatiquement par la règle de composition de cette section. Modifiez la règle pour changer cela.",
       "truncated": "{{shown}} vérifications affichées sur {{total}}. Affinez la règle avec des étiquettes pour voir le reste.",
+      "claimedElsewhere": {
+        "full_one": "La vérification correspondante est déjà affichée dans « {{section}} ». Une vérification n'apparaît qu'une seule fois par page ; déplacez cette section plus haut ou restreignez la règle de l'autre section pour l'afficher ici.",
+        "full_other": "Les {{count}} vérifications correspondantes sont déjà affichées dans « {{section}} ». Une vérification n'apparaît qu'une seule fois par page ; déplacez cette section plus haut ou restreignez la règle de l'autre section pour les afficher ici.",
+        "partial_one": "{{count}} vérification correspondante supplémentaire est déjà affichée ailleurs sur cette page.",
+        "partial_other": "{{count}} vérifications correspondantes supplémentaires sont déjà affichées ailleurs sur cette page."
+      },
       "labelsRequired": "Ajoutez au moins une étiquette"
     }
   },
