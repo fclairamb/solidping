@@ -214,10 +214,25 @@ test.describe("Invitations", () => {
       expect(page.url()).not.toContain("/invite/");
       expect(page.url()).not.toContain("/login");
 
-      const storedToken = await page.evaluate(() =>
-        window.localStorage.getItem("solidping_session_token")
-      );
-      expect(storedToken).toBeTruthy();
+      // Poll rather than read once: waitForURL resolves on the FIRST match,
+      // and the app keeps navigating (org resolution, then the dashboard
+      // route) for a moment afterwards. A bare page.evaluate racing that
+      // teardown dies with "Execution context was destroyed", which is what
+      // made this test fail in CI while passing locally.
+      await expect
+        .poll(
+          async () => {
+            try {
+              return await page.evaluate(() =>
+                window.localStorage.getItem("solidping_session_token")
+              );
+            } catch {
+              return null;
+            }
+          },
+          { timeout: 10_000 }
+        )
+        .toBeTruthy();
     });
 
     test("a bogus token shows the invalid invitation card", async ({

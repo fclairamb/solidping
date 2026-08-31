@@ -436,7 +436,14 @@ test.describe("Magic wand defaults", () => {
     // Every other field is the create form's own default — see
     // status-page-form.tsx's initial state / buildStatusPageWandAutoCreatePayload.
     expect(detail.visibility).toBe("public");
-    expect(detail.isDefault).toBe(false);
+    // isDefault is the ONE field the client does not get to decide: the server
+    // promotes an org's FIRST status page to default whatever the payload says
+    // (statuspages/service.go, "Check if this should be default (first page or
+    // explicitly set)"). seedOrg gives us a fresh org, so the wand's page is
+    // that first page. The create form goes through the same path and lands on
+    // the same value — which is exactly the parity this test is pinning, so
+    // asserting `false` here would assert a behaviour neither surface has.
+    expect(detail.isDefault).toBe(true);
     expect(detail.showAvailability).toBe(true);
     expect(detail.showResponseTime).toBe(true);
     expect(detail.hideBranding).toBe(false);
