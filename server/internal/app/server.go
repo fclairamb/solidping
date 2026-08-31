@@ -1166,6 +1166,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentWorkerIncidents := incidents.NewService(
 		s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	agentWorkerIncidents.SetPublicationHook(incidentPublicationsService)
+	agentWorkerIncidents.SetDefaultCheckTimeout(s.defaultCheckTimeout())
 
 	agentWorkersSvc := workers.NewService(
 		s.dbService,
@@ -1239,6 +1240,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsService.SetPublicationHook(incidentPublicationsService)
+	incidentsService.SetDefaultCheckTimeout(s.defaultCheckTimeout())
 	incidentsService.SetAttachmentStore(attachmentsService)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := orgGroup("/orgs/:org/incidents")
@@ -3691,6 +3693,14 @@ func (s *Server) Services() *services.Registry {
 // JobSvc returns the job service (used for testing).
 func (s *Server) JobSvc() jobsvc.Service {
 	return s.jobSvc
+}
+
+// defaultCheckTimeout is the resolved global per-check execution ceiling
+// (`scheduling.check_timeout_ms`) as a duration. It feeds the incident
+// service's confirmation-hold cap and the dependency lint's margin formula,
+// both of which need "how late can a check possibly notice an outage".
+func (s *Server) defaultCheckTimeout() time.Duration {
+	return time.Duration(s.config.Server.Scheduling.CheckTimeoutMs * float64(time.Millisecond))
 }
 
 // Sentinel errors surfaced by newFreeboxConnectionResolver. Defining

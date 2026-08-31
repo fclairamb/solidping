@@ -197,6 +197,8 @@ func NewCheckWorker(
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
 	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
+	incidentSvc.SetDefaultCheckTimeout(
+		time.Duration(cfg.Server.Scheduling.CheckTimeoutMs * float64(time.Millisecond)))
 
 	// The in-process worker is the path most incidents actually open on, so it
 	// needs the status-page publication hook too — without it, auto-publish
