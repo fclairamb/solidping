@@ -191,6 +191,19 @@ Users can also enable TOTP two-factor authentication on their accounts. See [Aut
 
 See [Security & Encryption](/configuration/security) for the full guide.
 
+### File Storage
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_FILESTORAGE_TYPE` | `local` | Backend: `local` or `s3` |
+| `SP_FILESTORAGE_LOCAL_ROOT` | `./data/files` | Local backend root — must be a mounted volume in a container, or uploads are lost on the next restart |
+| `SP_FILESTORAGE_S3_BUCKET` | - | S3 bucket name (required when `SP_FILESTORAGE_TYPE=s3`) |
+| `SP_FILESTORAGE_S3_REGION` | - | S3 region — required by the SDK even for stores that ignore it |
+| `SP_FILESTORAGE_S3_ENDPOINT` | - | Custom endpoint for S3-compatible stores (MinIO, OVHcloud, …). Empty = AWS S3 |
+
+See [File Storage](/configuration/file-storage) for the full backend guide,
+S3 credential resolution, and worked examples.
+
 ### Product Analytics
 
 Analytics is **off by default** — with no project API key set, the server sends
@@ -300,6 +313,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Notifications](/configuration/notifications) - Email, Slack, Discord, webhooks, and more
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
 - [Security & Encryption](/configuration/security) - Credentials encryption at rest
+- [File Storage](/configuration/file-storage) - Where uploaded blobs (org logos, status-page assets, screenshots) are stored, and the container volume trap
 - [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
 - [Data Retention](/configuration/data-retention) - How long raw results and summaries are kept, and how to tune it
 
