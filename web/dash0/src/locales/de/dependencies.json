@@ -41,5 +41,11 @@
     "child": "Kind",
     "kind": "Art",
     "description": "Beschreibung"
+  },
+  "warnings": {
+    "confirmationMargin": {
+      "title": "Bestätigt schneller, als {{parent}} erkennen kann",
+      "body": "Die Bestätigungsdauer dieses Checks ({{current}} s) ist kürzer als die {{recommended}} s, die sein harter Elterncheck {{parent}} braucht, um denselben Ausfall zu bemerken. Es ist nichts kaputt: Solange der Elterncheck noch validiert, wird der Vorfall dieses Checks zurückgehalten, damit nur eine Meldung rausgeht — eine Benachrichtigung kann hier also später als nach {{current}} s eintreffen."
+    }
   }
 }

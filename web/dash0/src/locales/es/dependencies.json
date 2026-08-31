@@ -41,5 +41,11 @@
     "child": "Hijo",
     "kind": "Tipo",
     "description": "Descripción"
+  },
+  "warnings": {
+    "confirmationMargin": {
+      "title": "Confirma más rápido de lo que {{parent}} puede detectar",
+      "body": "La confirmación de {{current}} s de este check es más corta que los {{recommended}} s que su padre estricto {{parent}} puede necesitar para detectar la misma caída. No hay nada roto: mientras el padre siga validando, el incidente de este check se retiene para que solo salga un aviso — pero eso significa que aquí una notificación puede llegar más tarde de {{current}} s."
+    }
   }
 }

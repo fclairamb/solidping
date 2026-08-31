@@ -85,6 +85,7 @@ import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { DependencyWarnings } from "@/components/checks/dependency-warnings";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -3465,6 +3466,42 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";`}
+        />
+
+        <h3 className="text-sm font-medium">Configuration lint banner</h3>
+        <p className="text-sm text-muted-foreground">
+          A <em>soft</em> lint on a configuration that is legal but will behave
+          in a way the numbers on screen do not suggest — here, a check whose
+          confirmation window is shorter than the time its hard parent needs to
+          notice the same outage. Amber{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          Alert, never destructive and never a blocking validation: the runtime
+          already handles the case, so the banner explains rather than forbids.
+          It renders nothing when the API returns no warnings, so a card can
+          mount it unconditionally.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md">
+              <DependencyWarnings
+                warnings={[
+                  {
+                    code: "CONFIRMATION_MARGIN_TOO_SHORT",
+                    dependencyUid: "edge-1",
+                    parentCheck: {
+                      uid: "p1",
+                      slug: "rabbitmq-aws",
+                      name: "RabbitMQ (AWS)",
+                    },
+                    childConfirmationSeconds: 120,
+                    recommendedConfirmationSeconds: 195,
+                    message: "",
+                  },
+                ]}
+              />
+            </div>
+          }
+          importLine={`import { DependencyWarnings } from "@/components/checks/dependency-warnings";`}
         />
 
         <h3 className="text-sm font-medium">Quota meter (pending draft)</h3>

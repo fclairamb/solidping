@@ -1205,9 +1205,24 @@ export interface DependencyEdge {
   kind: DependencyKind;
   description?: string;
 }
+// Soft configuration lint over a check's hard `dependsOn` edges
+// (spec 2026-08-31-06). Advisory only — the API never rejects a write for it.
+export type DependencyWarningCode = "CONFIRMATION_MARGIN_TOO_SHORT";
+export interface DependencyWarning {
+  code: DependencyWarningCode;
+  dependencyUid: string;
+  parentCheck: CheckRef;
+  childConfirmationSeconds: number;
+  recommendedConfirmationSeconds: number;
+  /** English fallback from the API; the UI renders off `code` instead. */
+  message: string;
+}
 export interface PerCheckDependencies {
   dependsOn: DependencyEdge[];
   dependedOnBy: DependencyEdge[];
+  /** Always present on responses from a current server; optional so an older
+   * one (or a cached payload) does not break the page. */
+  warnings?: DependencyWarning[];
 }
 export interface GraphNode {
   uid: string;

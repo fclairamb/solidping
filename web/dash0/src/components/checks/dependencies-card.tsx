@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { ancestorsAndDescendants, resolveCheckRefLabel } from "@/lib/dependency-graph";
 import { formatCyclePath } from "@/components/shared/dependency-cycle-path";
+import { DependencyWarnings } from "@/components/checks/dependency-warnings";
 
 interface DependenciesCardProps {
   org: string;
@@ -62,6 +63,7 @@ export function DependenciesCard({ org, checkUid }: DependenciesCardProps) {
         <CardTitle>{t("dependencies:title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        <DependencyWarnings warnings={deps?.warnings} />
         <DependsOnSection
           org={org}
           checkUid={checkUid}

@@ -41,5 +41,11 @@
     "child": "Enfant",
     "kind": "Type",
     "description": "Description"
+  },
+  "warnings": {
+    "confirmationMargin": {
+      "title": "Confirme plus vite que {{parent}} ne peut détecter",
+      "body": "La confirmation de {{current}} s de ce check est plus courte que les {{recommended}} s dont son parent strict {{parent}} peut avoir besoin pour constater la même panne. Rien n'est cassé : tant que le parent est en cours de validation, l'incident de ce check est retenu pour qu'une seule alerte parte — mais une notification peut donc arriver après {{current}} s."
+    }
   }
 }
