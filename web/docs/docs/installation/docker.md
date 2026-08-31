@@ -20,6 +20,7 @@ docker run -d \
   -v solidping-data:/data \
   -e SP_DB_TYPE=sqlite \
   -e SP_DB_DIR=/data \
+  -e SP_FILESTORAGE_LOCAL_ROOT=/data/files \
   ghcr.io/fclairamb/solidping:latest
 ```
 
@@ -31,10 +32,22 @@ For production deployments, PostgreSQL is recommended:
 docker run -d \
   --name solidping \
   -p 4000:4000 \
+  -v solidping-files:/data/files \
   -e SP_DB_TYPE=postgres \
   -e SP_DB_URL="postgresql://user:password@host:5432/solidping" \
+  -e SP_FILESTORAGE_LOCAL_ROOT=/data/files \
   ghcr.io/fclairamb/solidping:latest
 ```
+
+:::warning Don't skip the volume
+SolidPing also stores a handful of blobs (org logos, status-page assets,
+incident screenshots) outside the database, at `SP_FILESTORAGE_LOCAL_ROOT`
+(default `./data/files`, relative to the container's working directory).
+Without a mounted volume there, every upload is destroyed on the next
+`docker stop` / `docker run` cycle — silently. See
+[File Storage](/configuration/file-storage) for the S3 alternative, which has
+no such constraint.
+:::
 
 ## Environment Variables
 
@@ -44,6 +57,7 @@ docker run -d \
 | `SP_DB_URL` | - | PostgreSQL connection string (required if `SP_DB_TYPE=postgres`) |
 | `SP_DB_DIR` | `.` | Directory for SQLite database file |
 | `SP_SERVER_LISTEN` | `:4000` | Server listen address and port |
+| `SP_FILESTORAGE_LOCAL_ROOT` | `./data/files` | Where uploaded blobs (org logos, status-page assets, screenshots) are written — must be a mounted volume, see [File Storage](/configuration/file-storage) |
 
 ## Docker Compose Example
 
@@ -74,12 +88,16 @@ services:
     environment:
       SP_DB_TYPE: postgres
       SP_DB_URL: postgresql://solidping:solidping@postgres:5432/solidping?sslmode=disable
+      SP_FILESTORAGE_LOCAL_ROOT: /data/files
+    volumes:
+      - solidping-files:/data/files
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres-data:
+  solidping-files:
 ```
 
 Start the services:
@@ -136,4 +154,5 @@ curl http://localhost:4000/api/mgmt/health
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All environment variables
+- [File Storage](/configuration/file-storage) - Local volume vs. S3 for uploaded blobs
 - [Kubernetes Deployment](/installation/kubernetes) - For orchestrated deployments
