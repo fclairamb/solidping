@@ -2391,12 +2391,23 @@ func applyRuntimeEnv(cfg *RuntimeConfig) {
 	}
 }
 
-// applyFileStorageEnv reads SP_FILESTORAGE_S3_* into cfg. koanf's env loader
-// collapses every underscore in SP_*-prefixed names to a dot, so it would map
-// these to filestorage.s3.bucket / filestorage.s3.endpoint etc. and miss the
-// snake_case koanf tags ("s3_bucket", "s3_endpoint", ...). Reading them here
-// makes the whole S3 backend env-configurable for containerized self-hosters.
+// applyFileStorageEnv reads SP_FILESTORAGE_LOCAL_ROOT and SP_FILESTORAGE_S3_*
+// into cfg. koanf's env loader collapses every underscore in SP_*-prefixed
+// names to a dot, so it would map these to filestorage.local.root /
+// filestorage.s3.bucket etc. and miss the snake_case koanf tags ("local_root",
+// "s3_bucket", ...). Reading them here makes both backends env-configurable for
+// containerized self-hosters.
+//
+// SP_FILESTORAGE_TYPE is deliberately absent: it is a single-word key, so
+// koanf's collapse maps it straight onto the "type" tag already.
 func applyFileStorageEnv(cfg *FileStorageConfig) {
+	// The local root matters most in containers: left at its default it points
+	// at ./data/files inside the image, so unless that path is a mounted
+	// volume every upload dies with the container — silently, since nothing
+	// fails until a later read.
+	if v := os.Getenv("SP_FILESTORAGE_LOCAL_ROOT"); v != "" {
+		cfg.LocalRoot = v
+	}
 	if v := os.Getenv("SP_FILESTORAGE_S3_BUCKET"); v != "" {
 		cfg.S3Bucket = v
 	}

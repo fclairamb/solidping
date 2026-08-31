@@ -306,6 +306,7 @@ func TestParseLogLevel(t *testing.T) {
 func TestApplyFileStorageEnv(t *testing.T) {
 	r := require.New(t)
 
+	t.Setenv("SP_FILESTORAGE_LOCAL_ROOT", "/var/lib/solidping/files")
 	t.Setenv("SP_FILESTORAGE_S3_BUCKET", "solidping")
 	t.Setenv("SP_FILESTORAGE_S3_REGION", "eu-west-3")
 	t.Setenv("SP_FILESTORAGE_S3_PREFIX", "blobs")
@@ -317,6 +318,12 @@ func TestApplyFileStorageEnv(t *testing.T) {
 	var cfg FileStorageConfig
 	applyFileStorageEnv(&cfg)
 
+	// Regression: SP_FILESTORAGE_LOCAL_ROOT used to be dropped entirely — koanf
+	// maps it to filestorage.local.root, which misses the "local_root" tag, and
+	// the manual reader did not cover it. A container told to store blobs on a
+	// mounted volume silently kept writing to ./data/files inside the image and
+	// lost every upload on restart.
+	r.Equal("/var/lib/solidping/files", cfg.LocalRoot)
 	r.Equal("solidping", cfg.S3Bucket)
 	r.Equal("eu-west-3", cfg.S3Region)
 	r.Equal("blobs", cfg.S3Prefix)
