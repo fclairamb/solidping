@@ -247,6 +247,8 @@ func holdCases() []holdCase {
 // page is the parent's — and crucially there is NO incident.rolled_up event,
 // because nothing had to be walked back.
 func caseCoreHeldChildNeverPages(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	parent := s.check(t, "rabbitmq-aws-nonprod", nil)
@@ -308,6 +310,8 @@ func caseCoreHeldChildNeverPages(t *testing.T, s *holdSetup) {
 // case above would prove nothing. The child must open and page at exactly its
 // own configured confirmation.
 func casePositiveControlHealthyParent(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	parent := s.check(t, "rabbitmq-healthy", nil)
@@ -346,6 +350,8 @@ func casePositiveControlHealthyParent(t *testing.T, s *holdSetup) {
 // failing, and its failure is now demonstrably its own. The gate releases and
 // the child opens UN-suppressed.
 func caseParentBlipReleasesHold(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	parent := s.check(t, "rabbitmq-blip", nil)
@@ -387,6 +393,8 @@ func caseParentBlipReleasesHold(t *testing.T, s *holdSetup) {
 // The fixture doubles as its own control: the SAME wedged parent gates before
 // the cap and stops gating after it, so a broken cap fails one half or the other.
 func caseCapExpiryWedgedParent(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	parent := s.check(t, "rabbitmq-wedged", nil)
@@ -428,6 +436,8 @@ func caseCapExpiryWedgedParent(t *testing.T, s *holdSetup) {
 // descendants hold; when the db confirms, each opens already suppressed under
 // it. One page for a three-check cascade.
 func caseChainTwoLevels(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	// The root confirms slowest — the shape that produced the outage.
@@ -486,6 +496,8 @@ func caseChainTwoLevels(t *testing.T, s *holdSetup) {
 // 6a. Soft edges are never consulted, for rollup parity: a soft parent
 // mid-confirmation changes nothing about the child.
 func caseSoftParentNeverGates(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	parent := s.check(t, "cdn-soft", nil)
@@ -508,6 +520,8 @@ func caseSoftParentNeverGates(t *testing.T, s *holdSetup) {
 
 // 6b. No parents at all: byte-identical to the behavior before the gate.
 func caseNoParentsUnchanged(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	check := s.check(t, "standalone", nil)
@@ -530,6 +544,8 @@ func caseNoParentsUnchanged(t *testing.T, s *holdSetup) {
 // the reopen cooldown is held by exactly the same rule as a first open — and
 // then reopens suppressed once the parent confirms.
 func caseReopenHeldThenSuppressed(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	// Confirmation 0 on the child: the relapse is instantaneous, which is the
@@ -591,6 +607,8 @@ func caseReopenHeldThenSuppressed(t *testing.T, s *holdSetup) {
 // a check as down with no incident behind it. Several consecutive held ticks
 // must all read `validating`.
 func caseStatusCoherence(t *testing.T, s *holdSetup) {
+	t.Helper()
+
 	r := require.New(t)
 
 	parent := s.check(t, "rabbitmq-status", nil)
@@ -602,12 +620,14 @@ func caseStatusCoherence(t *testing.T, s *holdSetup) {
 	parent = s.fail(t, parent)
 
 	// The parent's cap is T+195s; every child tick from T+120s to T+180s is held.
-	for _, offset := range []time.Duration{120, 140, 160, 180} {
-		s.at(offset * time.Second)
+	for _, offset := range []time.Duration{
+		120 * time.Second, 140 * time.Second, 160 * time.Second, 180 * time.Second,
+	} {
+		s.at(offset)
 		child = s.fail(t, child)
 
 		r.Equal(models.CheckStatusValidating, child.Status,
-			"held at T+%s: the visible status must agree with the deferred open", offset*time.Second)
+			"held at T+%s: the visible status must agree with the deferred open", offset)
 		s.noActiveIncident(t, child)
 	}
 
@@ -684,7 +704,10 @@ func TestConfirmationHold_Postgres(t *testing.T) {
 
 	for i, tc := range holdCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			// Sequential: one embedded server, one org per case.
+			// One embedded server, one org per case — the cases share no rows,
+			// so they run concurrently against it.
+			t.Parallel()
+
 			tc.run(t, newHoldSetup(t, dbSvc, orgSlugForCase(i)))
 		})
 	}

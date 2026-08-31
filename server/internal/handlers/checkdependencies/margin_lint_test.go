@@ -197,8 +197,10 @@ func TestConfirmationMarginWarningsMissingParent(t *testing.T) {
 	child := lintCheck("c1", "consumer", 0)
 
 	got := svc.confirmationMarginWarnings(child,
-		[]*models.CheckDependency{{UID: "edge-1", ParentCheckUID: "gone", ChildCheckUID: "c1",
-			Kind: models.CheckDependencyKindHard}},
+		[]*models.CheckDependency{{
+			UID: "edge-1", ParentCheckUID: "gone", ChildCheckUID: "c1",
+			Kind: models.CheckDependencyKindHard,
+		}},
 		map[string]*models.Check{"c1": child})
 
 	require.Empty(t, got)
