@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.21.2](https://github.com/fclairamb/solidping/compare/v0.21.1...v0.21.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#293](https://github.com/fclairamb/solidping/issues/293)) ([5e962ac](https://github.com/fclairamb/solidping/commit/5e962ac103e067b0bd2c3e633896dc5d5249a17a))
+* **deps:** update go dependencies (non-major) ([#297](https://github.com/fclairamb/solidping/issues/297)) ([2c2fbdb](https://github.com/fclairamb/solidping/commit/2c2fbdbba0b840031c132d4fcf9bcc1bf45c7e11))
+* **deps:** update module github.com/prometheus/client_model to v0.6.3 ([#295](https://github.com/fclairamb/solidping/issues/295)) ([d2d936b](https://github.com/fclairamb/solidping/commit/d2d936bb80810e90365d841bbedea97e91a031c3))
+* hold cascading child pages, preserve rollup attribution, document file storage ([#296](https://github.com/fclairamb/solidping/issues/296)) ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
+
 ## [0.21.1](https://github.com/fclairamb/solidping/compare/v0.21.0...v0.21.1) (2026-08-31)
 
 
