@@ -2419,6 +2419,46 @@ function FormsSection() {
           importLine={`import { Switch } from "@/components/ui/switch";`}
         />
 
+        <h3 className="text-sm font-medium">
+          Security toggle with a follow-up nudge
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          When flipping a switch hardens something but leaves a residue the user
+          still has to clean up, the switch alone is not enough — say what is
+          left to do, and only while it is true. Render the Switch with a hint
+          line, then a plain <code>Alert</code> that appears{" "}
+          <strong>only when the switch is on</strong>. Used by the heartbeat
+          check&apos;s <code>require_hmac</code> toggle: turning it on stops
+          plaintext beats, but the token may already have been sniffed and is
+          also the signing key, so the alert asks for a rotation.
+        </p>
+
+        <ExampleRow
+          preview={
+            <div className="space-y-3">
+              <div className="flex items-start gap-2">
+                <Switch id="dr-security-switch" defaultChecked />
+                <div className="space-y-1">
+                  <Label htmlFor="dr-security-switch">
+                    Require signed beats (HMAC)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Reject the plaintext form on TCP and UDP.
+                  </p>
+                </div>
+              </div>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  This check has accepted plaintext beats, so its token may
+                  already have been seen on the wire. Regenerate it now.
+                </AlertDescription>
+              </Alert>
+            </div>
+          }
+          importLine={`import { Switch } from "@/components/ui/switch";\nimport { Label } from "@/components/ui/label";\nimport { Alert, AlertDescription } from "@/components/ui/alert";\nimport { AlertTriangle } from "lucide-react";`}
+        />
+
         <h3 className="text-sm font-medium">Name + slug pair</h3>
         <p className="text-sm text-muted-foreground">
           When a resource has both a human-readable name and a URL slug, render{" "}

@@ -25,6 +25,7 @@ import {
   useCloneCheck,
   useDeleteCheck,
   useUpdateCheck,
+  useFeatures,
   useRotateHeartbeatToken,
   useResults,
   useChartWindowResults,
@@ -49,6 +50,8 @@ import {
 import { cn } from "@/lib/utils";
 import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -445,7 +448,139 @@ function HeartbeatEndpoint({
         <p className="text-xs text-muted-foreground">
           {t("endpoints.heartbeat.callerNote")}
         </p>
+        <HeartbeatPushEndpoint org={org} check={check} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Embedded push transports for a heartbeat check (spec 2026-09-01-06).
+ *
+ * Rendered only when the server reports a listener enabled: the TCP/UDP
+ * listeners are off by default and exposing their ports is a deployment
+ * decision, so advertising a `nc` one-liner nobody can reach would be worse
+ * than showing nothing.
+ */
+function HeartbeatPushEndpoint({
+  org,
+  check,
+}: {
+  org: string;
+  check: { slug?: string; uid: string; config?: Record<string, unknown> };
+}) {
+  const { t } = useTranslation("checks");
+  const { data: features } = useFeatures();
+  const updateCheck = useUpdateCheck(org, check.uid);
+  const push = features?.heartbeatPush;
+  const requireHmac = check.config?.require_hmac === true;
+
+  if (!push || (!push.tcpEnabled && !push.udpEnabled)) return null;
+
+  const token = (check.config?.token as string) ?? "";
+  const identifier = check.slug || check.uid;
+  const host = push.host || window.location.hostname;
+  const target = `${org}/${identifier}`;
+  const tcpCommand = `printf 'SP1 ${target} ${token}\n' | nc ${host} ${push.tcpPort}`;
+  const udpCommand = `printf 'SP1 ${target} ${token}' | nc -u -w1 ${host} ${push.udpPort}`;
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(t("detail.toast.copied"));
+  };
+
+  const handleToggle = async (next: boolean) => {
+    try {
+      await updateCheck.mutateAsync({ config: { require_hmac: next } });
+      toast.success(
+        next
+          ? t("endpoints.heartbeat.push.hmacEnabled")
+          : t("endpoints.heartbeat.push.hmacDisabled"),
+      );
+    } catch {
+      toast.error(t("endpoints.heartbeat.push.hmacFailed"));
+    }
+  };
+
+  return (
+    <div className="space-y-3 border-t pt-3" data-testid="heartbeat-push">
+      <div className="text-sm font-medium text-muted-foreground">
+        {t("endpoints.heartbeat.push.title")}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("endpoints.heartbeat.push.description")}
+      </p>
+
+      {push.tcpEnabled && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("endpoints.heartbeat.push.tcpLabel", { port: push.tcpPort })}
+          </div>
+          <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
+            <span className="flex-1" data-testid="heartbeat-push-tcp">
+              {tcpCommand}
+            </span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(tcpCommand)}
+              className="text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {push.udpEnabled && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">
+            {t("endpoints.heartbeat.push.udpLabel", { port: push.udpPort })}
+          </div>
+          <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
+            <span className="flex-1" data-testid="heartbeat-push-udp">
+              {udpCommand}
+            </span>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(udpCommand)}
+              className="text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        {t("endpoints.heartbeat.push.annotationHint")}
+      </p>
+
+      <div className="flex items-start gap-2">
+        <Switch
+          id="heartbeat-require-hmac"
+          checked={requireHmac}
+          disabled={updateCheck.isPending}
+          onCheckedChange={handleToggle}
+          data-testid="heartbeat-require-hmac"
+        />
+        <div className="space-y-1">
+          <Label htmlFor="heartbeat-require-hmac">
+            {t("endpoints.heartbeat.push.requireHmac")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t("endpoints.heartbeat.push.requireHmacHint")}
+          </p>
+        </div>
+      </div>
+
+      {requireHmac && (
+        <Alert data-testid="heartbeat-rotate-nudge">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            {t("endpoints.heartbeat.push.rotateNudge")}
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   );
 }

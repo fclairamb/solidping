@@ -555,7 +555,20 @@
       "regenerateConfirm": "Token erneuern",
       "regenerating": "Wird erneuert…",
       "regenerated": "Ping-Token erneuert",
-      "regenerateFailed": "Ping-Token konnte nicht erneuert werden"
+      "regenerateFailed": "Ping-Token konnte nicht erneuert werden",
+      "push": {
+        "title": "Eingebettete Geräte (TCP/UDP)",
+        "description": "Mikrocontroller und Mobilfunkmodems können pro Lebenszeichen eine Zeile über rohes TCP oder UDP senden, ganz ohne TLS-Stack. Beginnen Sie mit SP1 und wechseln Sie dann zur signierten SP2-Form.",
+        "tcpLabel": "TCP (Port {{port}}) — Token im Klartext:",
+        "udpLabel": "UDP (Port {{port}}) — Token im Klartext, ohne Bestätigung:",
+        "annotationHint": "Hängen Sie eine optionale Annotation an: ein Statuswort und key=value-Felder, z. B. „started volts=3.71 rssi=-67“. Numerische Werte werden als Metriken erfasst.",
+        "requireHmac": "Signierte Lebenszeichen verlangen (HMAC)",
+        "requireHmacHint": "Weist die Klartext-Form SP1 über TCP und UDP ab. Nur die signierte SP2-Form und die HTTPS-URL oben werden akzeptiert. Ohne Auswirkung auf die HTTPS-URL.",
+        "rotateNudge": "Dieser Check hat Klartext-Lebenszeichen akzeptiert; sein Token war möglicherweise im Netz sichtbar — und dieses Token ist zugleich der Signaturschlüssel. Erneuern Sie es jetzt.",
+        "hmacEnabled": "Signierte Lebenszeichen sind jetzt erforderlich",
+        "hmacDisabled": "Klartext-Lebenszeichen werden wieder akzeptiert",
+        "hmacFailed": "Signaturanforderung konnte nicht aktualisiert werden"
+      }
     },
     "email": {
       "title": "E-Mail-Endpunkt",

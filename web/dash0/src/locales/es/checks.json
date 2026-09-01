@@ -555,7 +555,20 @@
       "regenerateConfirm": "Regenerar token",
       "regenerating": "Regenerando…",
       "regenerated": "Token de ping regenerado",
-      "regenerateFailed": "No se pudo regenerar el token de ping"
+      "regenerateFailed": "No se pudo regenerar el token de ping",
+      "push": {
+        "title": "Dispositivos embebidos (TCP/UDP)",
+        "description": "Los microcontroladores y módems celulares pueden enviar una línea por latido sobre TCP o UDP en bruto, sin pila TLS. Empieza con SP1 y pasa después a la forma firmada SP2.",
+        "tcpLabel": "TCP (puerto {{port}}) — token en claro:",
+        "udpLabel": "UDP (puerto {{port}}) — token en claro, sin acuse:",
+        "annotationHint": "Añade una anotación opcional: una palabra de estado y campos clave=valor, p. ej. «started volts=3.71 rssi=-67». Los valores numéricos se registran como métricas.",
+        "requireHmac": "Exigir latidos firmados (HMAC)",
+        "requireHmacHint": "Rechaza la forma SP1 en claro por TCP y UDP. Solo se aceptan la forma firmada SP2 y la URL HTTPS de arriba. No afecta a la URL HTTPS.",
+        "rotateNudge": "Este check ha aceptado latidos en claro, así que su token puede haberse visto en la red — y ese token es también la clave de firma. Regenéralo ahora.",
+        "hmacEnabled": "Ahora se exigen latidos firmados",
+        "hmacDisabled": "Se vuelven a aceptar latidos en claro",
+        "hmacFailed": "No se pudo actualizar el requisito de firma"
+      }
     },
     "email": {
       "title": "Endpoint de correo",
