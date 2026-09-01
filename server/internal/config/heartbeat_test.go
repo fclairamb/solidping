@@ -26,6 +26,10 @@ func TestHeartbeatPushOffByDefault(t *testing.T) {
 	r.Equal(DefaultHeartbeatTimestampWindow, cfg.Heartbeat.ResolvedTimestampWindow())
 	r.Equal(DefaultHeartbeatIdleTimeout, cfg.Heartbeat.ResolvedIdleTimeout())
 	r.True(cfg.Heartbeat.UDPReplyOK)
+	// The per-connection cap is a distinct guard from the per-source one and
+	// must be armed by default too — see HeartbeatConfig.ConnRatePerMinute.
+	r.Equal(DefaultHeartbeatConnRatePerMinute, cfg.Heartbeat.ConnRatePerMinute)
+	r.Equal(DefaultHeartbeatConnRateBurst, cfg.Heartbeat.ConnRateBurst)
 }
 
 // TestHeartbeatEnvVarsBind is the guard against the koanf multi-word quirk:
@@ -40,6 +44,8 @@ func TestHeartbeatEnvVarsBind(t *testing.T) {
 	t.Setenv("SP_HEARTBEAT_IDLE_TIMEOUT", "2m")
 	t.Setenv("SP_HEARTBEAT_RATE_PER_MINUTE", "17")
 	t.Setenv("SP_HEARTBEAT_RATE_BURST", "5")
+	t.Setenv("SP_HEARTBEAT_CONN_RATE_PER_MINUTE", "9")
+	t.Setenv("SP_HEARTBEAT_CONN_RATE_BURST", "2")
 	t.Setenv("SP_HEARTBEAT_MAX_SOURCE_IPS", "99")
 	t.Setenv("SP_HEARTBEAT_MAX_CONNECTIONS", "13")
 	t.Setenv("SP_HEARTBEAT_UDP_REPLY_OK", "false")
@@ -54,6 +60,8 @@ func TestHeartbeatEnvVarsBind(t *testing.T) {
 	r.Equal(2*time.Minute, cfg.Heartbeat.IdleTimeout)
 	r.Equal(17, cfg.Heartbeat.RatePerMinute)
 	r.Equal(5, cfg.Heartbeat.RateBurst)
+	r.Equal(9, cfg.Heartbeat.ConnRatePerMinute)
+	r.Equal(2, cfg.Heartbeat.ConnRateBurst)
 	r.Equal(99, cfg.Heartbeat.MaxSourceIPs)
 	r.Equal(13, cfg.Heartbeat.MaxConnections)
 	r.False(cfg.Heartbeat.UDPReplyOK)
@@ -62,6 +70,7 @@ func TestHeartbeatEnvVarsBind(t *testing.T) {
 	// cannot pass vacuously by reading an unbound struct.
 	r.NotEqual(DefaultHeartbeatTimestampWindow, cfg.Heartbeat.TimestampWindow)
 	r.NotEqual(DefaultHeartbeatRatePerMinute, cfg.Heartbeat.RatePerMinute)
+	r.NotEqual(DefaultHeartbeatConnRatePerMinute, cfg.Heartbeat.ConnRatePerMinute)
 }
 
 // TestHeartbeatEnvVarsAreRecognized guards the startup env check: a name the
@@ -81,6 +90,7 @@ func TestHeartbeatEnvVarsAreRecognized(t *testing.T) {
 		"SP_HEARTBEAT_TCP_LISTEN", "SP_HEARTBEAT_UDP_LISTEN",
 		"SP_HEARTBEAT_TIMESTAMP_WINDOW", "SP_HEARTBEAT_IDLE_TIMEOUT",
 		"SP_HEARTBEAT_RATE_PER_MINUTE", "SP_HEARTBEAT_RATE_BURST",
+		"SP_HEARTBEAT_CONN_RATE_PER_MINUTE", "SP_HEARTBEAT_CONN_RATE_BURST",
 		"SP_HEARTBEAT_MAX_SOURCE_IPS", "SP_HEARTBEAT_MAX_CONNECTIONS",
 		"SP_HEARTBEAT_UDP_REPLY_OK",
 	} {

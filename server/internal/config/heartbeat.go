@@ -32,6 +32,13 @@ const (
 	// per-source-IP budget applied to both listeners.
 	DefaultHeartbeatRatePerMinute = 120
 	DefaultHeartbeatRateBurst     = 60
+	// DefaultHeartbeatConnRatePerMinute / DefaultHeartbeatConnRateBurst are the
+	// PER-CONNECTION beat budget on the TCP listener. Deliberately tighter than
+	// the per-source one: a single socket beating faster than twice a minute is
+	// misconfigured, whereas a NAT'd site legitimately carries many devices'
+	// worth of traffic on one source address.
+	DefaultHeartbeatConnRatePerMinute = 60
+	DefaultHeartbeatConnRateBurst     = 10
 	// DefaultHeartbeatMaxSourceIPs caps how many per-IP buckets are held at
 	// once, so a spoofed-source flood cannot grow the map without bound.
 	DefaultHeartbeatMaxSourceIPs = 10000
@@ -72,6 +79,20 @@ type HeartbeatConfig struct {
 	// rate limiting, which is only ever right on a closed network.
 	RatePerMinute int `koanf:"rate_per_minute"`
 	RateBurst     int `koanf:"rate_burst"`
+	// ConnRatePerMinute / ConnRateBurst are the PER-CONNECTION beat budget on
+	// the TCP listener (SP_HEARTBEAT_CONN_RATE_PER_MINUTE / _CONN_RATE_BURST).
+	// 0 disables the per-connection cap.
+	//
+	// This is a different guard from the per-source budget above, not a
+	// duplicate of it. The per-source bucket bounds what one network SOURCE
+	// costs the server, and every connection from one NAT'd site shares it;
+	// this bounds what one CONNECTION costs regardless of how many its source
+	// has open, so a single device stuck in a retry loop is throttled on its
+	// own socket instead of draining the budget its neighbors depend on.
+	// They are separately configurable because they answer to different
+	// pressures.
+	ConnRatePerMinute int `koanf:"conn_rate_per_minute"`
+	ConnRateBurst     int `koanf:"conn_rate_burst"`
 	// MaxSourceIPs caps the per-IP bucket map (SP_HEARTBEAT_MAX_SOURCE_IPS).
 	// UDP source addresses are spoofable, so this is a memory bound, never an
 	// identity statement.
@@ -89,15 +110,17 @@ type HeartbeatConfig struct {
 // DefaultHeartbeatConfig returns the shipped defaults: both listeners off.
 func DefaultHeartbeatConfig() HeartbeatConfig {
 	return HeartbeatConfig{
-		TCPListen:       "",
-		UDPListen:       "",
-		TimestampWindow: DefaultHeartbeatTimestampWindow,
-		IdleTimeout:     DefaultHeartbeatIdleTimeout,
-		RatePerMinute:   DefaultHeartbeatRatePerMinute,
-		RateBurst:       DefaultHeartbeatRateBurst,
-		MaxSourceIPs:    DefaultHeartbeatMaxSourceIPs,
-		MaxConnections:  DefaultHeartbeatMaxConnections,
-		UDPReplyOK:      true,
+		TCPListen:         "",
+		UDPListen:         "",
+		TimestampWindow:   DefaultHeartbeatTimestampWindow,
+		IdleTimeout:       DefaultHeartbeatIdleTimeout,
+		RatePerMinute:     DefaultHeartbeatRatePerMinute,
+		RateBurst:         DefaultHeartbeatRateBurst,
+		ConnRatePerMinute: DefaultHeartbeatConnRatePerMinute,
+		ConnRateBurst:     DefaultHeartbeatConnRateBurst,
+		MaxSourceIPs:      DefaultHeartbeatMaxSourceIPs,
+		MaxConnections:    DefaultHeartbeatMaxConnections,
+		UDPReplyOK:        true,
 	}
 }
 
@@ -220,6 +243,8 @@ func applyHeartbeatEnv(cfg *HeartbeatConfig) {
 	durEnv("SP_HEARTBEAT_IDLE_TIMEOUT", &cfg.IdleTimeout)
 	intEnv("SP_HEARTBEAT_RATE_PER_MINUTE", &cfg.RatePerMinute)
 	intEnv("SP_HEARTBEAT_RATE_BURST", &cfg.RateBurst)
+	intEnv("SP_HEARTBEAT_CONN_RATE_PER_MINUTE", &cfg.ConnRatePerMinute)
+	intEnv("SP_HEARTBEAT_CONN_RATE_BURST", &cfg.ConnRateBurst)
 	intEnv("SP_HEARTBEAT_MAX_SOURCE_IPS", &cfg.MaxSourceIPs)
 	intEnv("SP_HEARTBEAT_MAX_CONNECTIONS", &cfg.MaxConnections)
 

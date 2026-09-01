@@ -209,8 +209,19 @@ Only an accepted **line** marks the check alive. A hung device holding a socket
 open never reads as up. After any disconnect, reconnect with jittered backoff.
 :::
 
-Guards: an idle timeout (10 minutes by default), a per-source beat budget, a
-bounded line length (512 bytes) and a connection cap.
+Guards: an idle timeout (10 minutes by default), a bounded line length (512
+bytes), a connection cap, and **two independent rate budgets**:
+
+- a **per-source-IP** budget, shared by every connection from one address;
+- a **per-connection** budget, applied to each socket on its own.
+
+They are not redundant. The per-source budget bounds what one network source
+costs the server, but every device behind one NAT shares it — so without the
+per-connection cap, a single device stuck in a retry loop would drain the
+budget its well-behaved neighbours depend on. A connection that exceeds its own
+budget is closed rather than throttled: the protocol has no way to say "slow
+down", and a client beating far above its check's period is misconfigured.
+Reconnect with jittered backoff.
 
 ## Requiring signed beats
 
@@ -262,9 +273,16 @@ already captured the token able to forge perfectly valid signed beats. Use
 | `heartbeat.idle_timeout` | `SP_HEARTBEAT_IDLE_TIMEOUT` | `10m` |
 | `heartbeat.rate_per_minute` | `SP_HEARTBEAT_RATE_PER_MINUTE` | `120` |
 | `heartbeat.rate_burst` | `SP_HEARTBEAT_RATE_BURST` | `60` |
+| `heartbeat.conn_rate_per_minute` | `SP_HEARTBEAT_CONN_RATE_PER_MINUTE` | `60` |
+| `heartbeat.conn_rate_burst` | `SP_HEARTBEAT_CONN_RATE_BURST` | `10` |
 | `heartbeat.max_source_ips` | `SP_HEARTBEAT_MAX_SOURCE_IPS` | `10000` |
 | `heartbeat.max_connections` | `SP_HEARTBEAT_MAX_CONNECTIONS` | `512` |
 | `heartbeat.udp_reply_ok` | `SP_HEARTBEAT_UDP_REPLY_OK` | `true` |
+
+`rate_per_minute` / `rate_burst` are the per-source-IP budget on both
+listeners; `conn_rate_per_minute` / `conn_rate_burst` are the per-connection
+budget on TCP. Setting either rate to `0` disables that guard, which is only
+ever right on a closed network.
 
 ```bash
 SP_HEARTBEAT_TCP_LISTEN=:4001

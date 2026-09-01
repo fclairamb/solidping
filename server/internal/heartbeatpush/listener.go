@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
@@ -328,6 +330,9 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 
 	idle := s.cfg.ResolvedIdleTimeout()
 	reader := bufio.NewReaderSize(conn, MaxLineBytes+2)
+	// Per-connection budget, separate from the per-source one below. See
+	// connBudget for why one is not a substitute for the other.
+	budget := newConnBudget(s.cfg.ConnRatePerMinute, s.cfg.ConnRateBurst)
 
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(idle)); err != nil {
@@ -343,14 +348,70 @@ func (s *Server) serveConn(ctx context.Context, conn net.Conn) {
 			return
 		}
 
-		if !s.serveLine(ctx, conn, line) {
+		if !s.serveLine(ctx, conn, budget, line) {
 			return
 		}
 	}
 }
 
+// connBudget is the per-connection beat rate cap.
+//
+// It is deliberately NOT the same thing as the per-source-IP bucket, even
+// though both are rate limits and the per-source one is the stricter of the
+// two in aggregate. They protect different things:
+//
+//   - the per-source bucket bounds what one network SOURCE costs the server.
+//     Every connection from one NAT'd site shares it, so a hundred devices
+//     behind one router share a hundred devices' worth of budget.
+//   - this bounds what one CONNECTION costs, no matter how many other
+//     connections its source has open. A single device stuck in a tight retry
+//     loop is throttled on its own socket instead of consuming the budget its
+//     well-behaved neighbors behind the same NAT depend on.
+//
+// A connection that exceeds its budget is closed, not merely throttled: there
+// is no protocol-level way to say "slow down", and a client beating far above
+// its check's period is misconfigured rather than merely eager. The docs tell
+// devices to reconnect with jittered backoff after any disconnect.
+type connBudget struct {
+	limiter *rate.Limiter
+}
+
+// newConnBudget builds the per-connection cap from its OWN knobs
+// (heartbeat.conn_rate_per_minute / conn_rate_burst), separate from the
+// per-source ones — see the connBudget doc and config.HeartbeatConfig for why
+// the two guards are not interchangeable. A non-positive rate disables it,
+// which is only ever right on a closed network.
+func newConnBudget(perMinute, burst int) *connBudget {
+	if perMinute <= 0 {
+		return &connBudget{}
+	}
+
+	if burst <= 0 {
+		burst = 1
+	}
+
+	return &connBudget{limiter: rate.NewLimiter(rate.Limit(float64(perMinute)/60.0), burst)}
+}
+
+// allow reports whether this connection may send one more beat.
+func (b *connBudget) allow() bool {
+	if b == nil || b.limiter == nil {
+		return true
+	}
+
+	return b.limiter.Allow()
+}
+
 // serveLine handles one line and reports whether the connection may continue.
-func (s *Server) serveLine(ctx context.Context, conn net.Conn, line []byte) bool {
+func (s *Server) serveLine(ctx context.Context, conn net.Conn, budget *connBudget, line []byte) bool {
+	// Per-connection cap first: it is the cheaper check, and it is the one
+	// that must not be escapable by opening more sockets from the same source.
+	if !budget.allow() {
+		prommetrics.HeartbeatPushBeats.WithLabelValues(TransportTCP, outcomeRateLimited).Inc()
+
+		return false
+	}
+
 	if !s.limiter.allow(conn.RemoteAddr()) {
 		prommetrics.HeartbeatPushBeats.WithLabelValues(TransportTCP, outcomeRateLimited).Inc()
 

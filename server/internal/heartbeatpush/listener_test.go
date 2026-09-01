@@ -137,8 +137,15 @@ func TestUDPIsSilentOnEveryFailure(t *testing.T) {
 		r.False(gotReply, "a failure must produce no bytes at all: %q", payload)
 	}
 
-	// Positive control on the same socket: an accepted beat DOES answer, so
-	// the silences above are not simply a dead listener.
+	// Positive control: an accepting listener DOES answer the very first
+	// payload in the list, so the silences above are the refusal path rather
+	// than a dead code path.
+	//
+	// It is a SECOND server with a different sink, not the same socket — a
+	// fake sink's verdict is fixed for its lifetime. The stronger property
+	// (the same live socket answering an accepted beat and staying silent on
+	// every rejection, against a real database) is measured in
+	// handlers/heartbeat's TestWireUDPFailuresAreIndistinguishable.
 	accepting := &fakeSink{accept: true}
 	okServer := startServer(t, accepting, nil)
 	_, gotReply := sendDatagram(t, okServer.UDPAddr(), validLine)
@@ -341,6 +348,106 @@ func TestRateLimitDropsBeyondTheBudget(t *testing.T) {
 
 	r.LessOrEqual(sink.count(), 5, "the budget must drop the flood before the ingest sees it")
 	r.Positive(sink.count(), "positive control: the first beats do get through")
+}
+
+// TestPerConnectionBeatCapClosesTheConnection covers the per-connection cap
+// (spec V1 scope item 2), which is NOT the same guard as the per-source-IP
+// budget: the per-source bucket is shared by every connection from one NAT'd
+// site, so without this one device in a tight retry loop would drain the
+// budget its well-behaved neighbors depend on.
+//
+// The per-source budget is left wide open here precisely so the per-connection
+// cap is the only thing that can produce the observed behavior.
+func TestPerConnectionBeatCapClosesTheConnection(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	sink := &fakeSink{accept: true}
+	server := startServer(t, sink, func(cfg *config.HeartbeatConfig) {
+		// Per-SOURCE budget wide open, so the per-CONNECTION cap is the only
+		// thing that can produce the behavior below. Without this isolation
+		// the test would pass with the per-connection cap deleted entirely.
+		cfg.RatePerMinute = 1000000
+		cfg.RateBurst = 1000000
+		cfg.MaxSourceIPs = 1000
+
+		cfg.ConnRatePerMinute = 60 // 1/s refill
+		cfg.ConnRateBurst = 3
+	})
+
+	conn, reader := dialTCP(t, server.TCPAddr())
+
+	// The burst is answered.
+	for range 3 {
+		_, err := conn.Write([]byte(validLine + "\n"))
+		r.NoError(err)
+
+		r.NoError(conn.SetReadDeadline(time.Now().Add(time.Second)))
+
+		line, err := reader.ReadString('\n')
+		r.NoError(err, "positive control: a beat inside the budget is answered")
+		r.Equal("OK\n", line)
+	}
+
+	// The next one exceeds it. There is no protocol way to say "slow down", so
+	// the connection is closed rather than throttled.
+	_, _ = conn.Write([]byte(validLine + "\n"))
+	r.NoError(conn.SetReadDeadline(time.Now().Add(2 * time.Second)))
+
+	_, err := reader.ReadString('\n')
+	r.Error(err, "an over-budget beat must close the connection without a response")
+
+	r.Equal(3, sink.count(), "the over-budget beat must never reach the ingest")
+}
+
+// TestPerConnectionBeatCapIsPerConnection is the half that distinguishes this
+// guard from the per-source one: a FRESH connection from the same source gets
+// a fresh budget, so the cap throttles the misbehaving socket rather than
+// locking the source out.
+func TestPerConnectionBeatCapIsPerConnection(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	sink := &fakeSink{accept: true}
+	server := startServer(t, sink, func(cfg *config.HeartbeatConfig) {
+		// Per-source budget wide open again, so what is observed can only be
+		// the per-connection cap.
+		cfg.RatePerMinute = 1000000
+		cfg.RateBurst = 1000000
+		cfg.MaxSourceIPs = 1000
+
+		cfg.ConnRatePerMinute = 60
+		cfg.ConnRateBurst = 2
+	})
+
+	// Drain one connection's budget, and confirm it really is drained — that
+	// assertion is what makes this test fail if the cap is removed, rather
+	// than merely passing because everything is allowed.
+	first, firstReader := dialTCP(t, server.TCPAddr())
+
+	for range 2 {
+		_, err := first.Write([]byte(validLine + "\n"))
+		r.NoError(err)
+		r.NoError(first.SetReadDeadline(time.Now().Add(time.Second)))
+		_, err = firstReader.ReadString('\n')
+		r.NoError(err)
+	}
+
+	_, _ = first.Write([]byte(validLine + "\n"))
+	r.NoError(first.SetReadDeadline(time.Now().Add(2 * time.Second)))
+	_, drainedErr := firstReader.ReadString('\n')
+	r.Error(drainedErr, "the first connection must be over its budget by now")
+
+	// A second connection from the same source starts fresh.
+	second, secondReader := dialTCP(t, server.TCPAddr())
+
+	_, err := second.Write([]byte(validLine + "\n"))
+	r.NoError(err)
+	r.NoError(second.SetReadDeadline(time.Now().Add(time.Second)))
+
+	line, err := secondReader.ReadString('\n')
+	r.NoError(err, "a new connection must not inherit another connection's spent budget")
+	r.Equal("OK\n", line)
 }
 
 // TestListenersOffByDefault — a zero-value configuration binds nothing.
