@@ -584,9 +584,55 @@ grpc://hostname:50051
 |--------|-------------|---------|
 | Host | gRPC server | `api.example.com` |
 | Port | gRPC port | `50051` |
-| Service | Service name to check | `my.service.v1` |
-| TLS | Enable TLS | `true` / `false` |
-| Timeout | Connection timeout | `10s` |
+| Service | Service name to check — leave empty for overall server health | `my.service.v1` |
+| TLS | Encrypt the connection | `true` / `false` |
+| Skip TLS verification | Accept an invalid, expired or self-signed certificate | `true` / `false` |
+| Metadata | Request metadata sent on every health RPC, stored in plain text | `x-tenant: acme` |
+| Secret metadata | Same, but stored encrypted — for bearers and API keys | `authorization: Bearer …` |
+| Timeout | Overall check timeout (1–30s) | `10s` |
+
+**Named service vs overall health.** With no service name the check asks for the
+server's overall health, which every health server answers. With a service name
+it asks about that one service — and if the server never registered it, the
+check reports `service "…" is not registered with the health server` rather than
+a raw `NotFound` RPC error. A service that answers `NOT_SERVING` is reported
+**down but still timed**, so you can watch a service slow down before it drains.
+
+**TLS modes.** `tls: false` speaks plaintext HTTP/2 (h2c). `tls: true` verifies
+the server certificate normally. `tls: true` with `tlsSkipVerify: true` encrypts
+the connection but accepts any certificate — useful for an internal service with
+a self-signed certificate, but it means the check reports up even when the
+certificate is invalid or expired.
+
+**Request metadata.** Both maps are sent as gRPC request metadata on the health
+RPC, which is what lets you check a health endpoint sitting behind an
+authenticating proxy. `metadata` stays in the public, searchable configuration;
+`secretMetadata` is encrypted at rest and never returned by the API. Keys must be
+lowercase (gRPC lowercases them on the wire) and use only letters, digits, `-`,
+`.` or `_`; the `grpc-` prefix is reserved by the gRPC runtime and `-bin` keys
+(binary metadata) are not supported.
+
+**Metrics.** The connection is established and timed phase by phase rather than
+being absorbed by the first RPC:
+
+| Metric | Meaning |
+|--------|---------|
+| `dns_time_ms` | Name resolution. Absent for a literal IP and for a tunneled check (which resolves on the far side of the bastion) |
+| `connect_time_ms` | TCP connection |
+| `tls_time_ms` | TLS handshake. Absent for a plaintext (h2c) check |
+| `rpc_time_ms` | The health RPC itself |
+| `total_time_ms` | End to end |
+
+A failing check names the phase it died in (`dns`, `connect`, `tls-handshake` or
+`rpc`), so a name that does not resolve, a refused port, a broken TLS handshake
+and an unhealthy service are no longer the same error message.
+
+:::note Deprecated
+The `keyword` / `invertKeyword` options match a substring of the serving-status
+enum (`SERVING` / `NOT_SERVING`), which the serving-status check already covers.
+They still work for checks that set them, but they are not offered in the
+dashboard and should not be used for new checks.
+:::
 
 ### Kafka {#kafka}
 

@@ -639,5 +639,18 @@
       "partial": "{{applied}} actualizadas, pero {{failed}} fallaron: {{names}}",
       "failed": "No se pudieron aplicar los cambios de programación."
     }
+  },
+  "grpc": {
+    "tlsSkipVerify": "Omitir la verificación del certificado TLS",
+    "tlsSkipVerifyWarning": "Se ignorarán los errores de certificado: el check informará «up» incluso con un certificado no válido, caducado o autofirmado.",
+    "metadata": "Metadatos de la petición",
+    "metadataDescription": "Se envían con cada RPC de health check. Se almacenan en texto plano y se pueden buscar: úsalos para cabeceras de enrutado o de inquilino.",
+    "addMetadata": "Añadir metadato",
+    "secretMetadata": "Metadatos secretos de la petición",
+    "secretMetadataDescription": "Valores de metadatos almacenados cifrados: úsalos para tokens Bearer y claves de API.",
+    "secretMetadataEncrypted": "(cifrado — introduce nuevos valores para reemplazarlo)",
+    "addSecretMetadata": "Añadir metadato secreto",
+    "metadataKeyPlaceholder": "x-tenant",
+    "metadataValuePlaceholder": "valor"
   }
 }

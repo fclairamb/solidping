@@ -687,5 +687,18 @@
       "partial": "Updated {{applied}}, but {{failed}} failed: {{names}}",
       "failed": "Could not apply the schedule changes."
     }
+  },
+  "grpc": {
+    "tlsSkipVerify": "Skip TLS certificate verification",
+    "tlsSkipVerifyWarning": "Certificate errors will be ignored — the check will report up even for an invalid, expired, or self-signed certificate.",
+    "metadata": "Request metadata",
+    "metadataDescription": "Sent with every health check RPC. Stored in plain text and searchable — use it for routing or tenant headers.",
+    "addMetadata": "Add metadata",
+    "secretMetadata": "Secret request metadata",
+    "secretMetadataDescription": "Metadata values stored encrypted — use for authorization bearers and API keys.",
+    "secretMetadataEncrypted": "(encrypted — enter new values to replace)",
+    "addSecretMetadata": "Add secret metadata",
+    "metadataKeyPlaceholder": "x-tenant",
+    "metadataValuePlaceholder": "value"
   }
 }

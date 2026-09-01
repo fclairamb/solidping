@@ -687,5 +687,18 @@
       "partial": "{{applied}} mise(s) à jour, mais {{failed}} en échec : {{names}}",
       "failed": "Impossible d'appliquer les modifications de planification."
     }
+  },
+  "grpc": {
+    "tlsSkipVerify": "Ignorer la vérification du certificat TLS",
+    "tlsSkipVerifyWarning": "Les erreurs de certificat seront ignorées — le check remontera « up » même avec un certificat invalide, expiré ou auto-signé.",
+    "metadata": "Métadonnées de requête",
+    "metadataDescription": "Envoyées avec chaque RPC de health check. Stockées en clair et interrogeables — à utiliser pour les en-têtes de routage ou de tenant.",
+    "addMetadata": "Ajouter une métadonnée",
+    "secretMetadata": "Métadonnées de requête secrètes",
+    "secretMetadataDescription": "Valeurs de métadonnées stockées chiffrées — à utiliser pour les jetons Bearer et les clés d'API.",
+    "secretMetadataEncrypted": "(chiffré — saisissez de nouvelles valeurs pour remplacer)",
+    "addSecretMetadata": "Ajouter une métadonnée secrète",
+    "metadataKeyPlaceholder": "x-tenant",
+    "metadataValuePlaceholder": "valeur"
   }
 }

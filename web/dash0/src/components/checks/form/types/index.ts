@@ -53,7 +53,16 @@ import {
   rabbitmqModule,
 } from "./database";
 import { clickhouseModule } from "./clickhouse";
-import { grpcModule, kafkaModule, mqttModule } from "./messaging";
+import {
+  grpcModule,
+  GrpcAdvancedFields,
+  grpcAdvancedSummary,
+  GrpcAuthFields,
+  grpcAuthSummary,
+  kafkaModule,
+  mqttModule,
+} from "./messaging";
+import type { GrpcState } from "./messaging";
 import { a2sModule, minecraftModule } from "./game";
 import {
   snmpModule,
@@ -146,6 +155,11 @@ export const authFieldsRegistry: Partial<Record<CheckType, AuthSection>> = {
     summary: (state, configPrivateKeys) =>
       httpAuthSummary(state as HttpState, configPrivateKeys),
   },
+  grpc: {
+    Fields: GrpcAuthFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state, configPrivateKeys) =>
+      grpcAuthSummary(state as GrpcState, configPrivateKeys),
+  },
 };
 
 // Per-type fields rendered inside the always-present "Advanced" section,
@@ -166,5 +180,9 @@ export const advancedFieldsRegistry: Partial<
   domain: {
     Fields: DomainAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
     summary: (state) => domainAdvancedSummary(state as DomainState),
+  },
+  grpc: {
+    Fields: GrpcAdvancedFields as unknown as FC<CheckTypeFieldsProps>,
+    summary: (state) => grpcAdvancedSummary(state as GrpcState),
   },
 };

@@ -639,5 +639,18 @@
       "partial": "{{applied}} aktualisiert, aber {{failed}} fehlgeschlagen: {{names}}",
       "failed": "Die Planungsänderungen konnten nicht angewendet werden."
     }
+  },
+  "grpc": {
+    "tlsSkipVerify": "TLS-Zertifikatsprüfung überspringen",
+    "tlsSkipVerifyWarning": "Zertifikatsfehler werden ignoriert — der Check meldet auch bei einem ungültigen, abgelaufenen oder selbstsignierten Zertifikat „up“.",
+    "metadata": "Request-Metadaten",
+    "metadataDescription": "Werden mit jedem Health-Check-RPC gesendet. Im Klartext gespeichert und durchsuchbar — für Routing- oder Mandanten-Header.",
+    "addMetadata": "Metadatum hinzufügen",
+    "secretMetadata": "Geheime Request-Metadaten",
+    "secretMetadataDescription": "Metadatenwerte werden verschlüsselt gespeichert — für Bearer-Tokens und API-Schlüssel.",
+    "secretMetadataEncrypted": "(verschlüsselt — neue Werte eingeben, um sie zu ersetzen)",
+    "addSecretMetadata": "Geheimes Metadatum hinzufügen",
+    "metadataKeyPlaceholder": "x-tenant",
+    "metadataValuePlaceholder": "Wert"
   }
 }
