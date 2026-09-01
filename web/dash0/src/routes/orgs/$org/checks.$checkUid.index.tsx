@@ -491,7 +491,12 @@ function HeartbeatPushEndpoint({
 
   const handleToggle = async (next: boolean) => {
     try {
-      await updateCheck.mutateAsync({ config: { require_hmac: next } });
+      // The public side of a config PATCH is REPLACE, not merge, so the whole
+      // config goes back — sending only the flag would drop the ping token
+      // this very card renders a URL from.
+      await updateCheck.mutateAsync({
+        config: { ...(check.config ?? {}), require_hmac: next },
+      });
       toast.success(
         next
           ? t("endpoints.heartbeat.push.hmacEnabled")

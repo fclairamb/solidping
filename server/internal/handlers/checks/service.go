@@ -4324,6 +4324,8 @@ func (s *Service) applyConfigUpdate(
 		return mergeErr
 	}
 
+	preserveHeartbeatToken(check, merged)
+
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
 	// wholesale and wipe unrelated keys.
@@ -4754,6 +4756,35 @@ func (s *Service) applyConfigPatch(
 	}
 
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
+}
+
+// preserveHeartbeatToken carries a heartbeat check's existing ping token across
+// a config PATCH that does not mention it.
+//
+// The public side of a config PATCH is REPLACE, not merge (see
+// mergePatchConfig), and the heartbeat token is deliberately NOT a declared
+// secret — it lives in the public column because the ping URL is built from it
+// (see checkheartbeat.SecretFields). Those two facts together mean a PATCH of
+// any other key, `{"config":{"require_hmac":true}}` for instance, silently
+// destroys the check's ping URL: every existing sender starts failing, and
+// nothing in the response says why. HeartbeatChecker.Validate would mint a
+// replacement, but it runs on a deep COPY, so the new token is discarded too.
+//
+// The token is a server-minted credential with its own rotate endpoint
+// (RotateHeartbeatToken), which is the ONE supported way to change it. A PATCH
+// that happens not to mention it is never a request to destroy it.
+func preserveHeartbeatToken(check *models.Check, merged map[string]any) {
+	if checkerdef.CheckType(check.Type) != checkerdef.CheckTypeHeartbeat {
+		return
+	}
+
+	if token, ok := merged["token"].(string); ok && token != "" {
+		return
+	}
+
+	if stored, ok := check.Config["token"].(string); ok && stored != "" {
+		merged["token"] = stored
+	}
 }
 
 // checkDisplayName is the check's name for the audit trail, falling back to
