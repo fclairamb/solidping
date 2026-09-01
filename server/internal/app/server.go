@@ -109,6 +109,7 @@ import (
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/whatsappcb"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	"github.com/fclairamb/solidping/server/internal/heartbeatpush"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
@@ -201,9 +202,13 @@ type Server struct {
 	statusPagesService       *statuspages.Service    // Public status-page lookups for status0 OG-metadata injection
 	customDomainCache        *customDomainCache      // host -> status-page resolution cache for custom-domain routing
 	tlsEdge                  *tlsedge.Edge           // in-server ACME/TLS listeners (nil unless acme.enabled)
-	status0FS                fs.FS                   // overridden in tests; nil means use the real embedded status0Files
-	cancelCtx                context.CancelFunc
-	workersWg                sync.WaitGroup // Tracks workers
+	// heartbeatPush serves the embedded TCP/UDP beat listeners (spec
+	// 2026-09-01-06). Non-nil once SetupRoutes has run, but binds nothing
+	// unless heartbeat.tcp_listen / heartbeat.udp_listen are set.
+	heartbeatPush *heartbeatpush.Server
+	status0FS     fs.FS // overridden in tests; nil means use the real embedded status0Files
+	cancelCtx     context.CancelFunc
+	workersWg     sync.WaitGroup // Tracks workers
 
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
@@ -1119,9 +1124,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	heartbeatService := heartbeat.NewService(
 		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService,
 		s.defaultCheckTimeout())
+	heartbeatService.SetPushTimestampWindow(s.config.Heartbeat.TimestampWindow)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	publicOrgAPI.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	publicOrgAPI.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
+
+	// The embedded push transports (spec 2026-09-01-06) are a second door into
+	// the SAME heartbeatService, so a beat that arrives as a UDP datagram is
+	// recorded exactly like one that arrives as an HTTPS request — same
+	// maintenance tagging, same incident/recovery semantics, same configured
+	// check timeout. Off unless an operator sets a listen address; opening the
+	// ports on the Service / load balancer stays a deployment decision.
+	s.heartbeatPush = heartbeatpush.NewServer(&s.config.Heartbeat, heartbeatService)
 
 	// The HTTP edge-worker API (/workers/{register,heartbeat,claim-jobs,
 	// submit-result}) was removed with spec 2026-07-16-02: it had no production
@@ -3216,17 +3230,10 @@ func (s *Server) Start(ctx context.Context) error {
 		slog.InfoContext(ctx, "Skipping check worker", "role", s.config.Node.Role)
 	}
 
-	// Start HTTP server only if role allows
-	if s.config.ShouldRunAPI() {
-		if err := s.serveHTTP(ctx); err != nil {
-			return err
-		}
-	} else {
-		slog.InfoContext(ctx, "Skipping HTTP server", "role", s.config.Node.Role)
-
-		// Wait for shutdown signal when not running HTTP server
-		<-ctx.Done()
-		slog.InfoContext(ctx, "Shutting down node", "timeout", s.config.Server.ShutdownTimeout)
+	// Serve the API surfaces (HTTP + the embedded heartbeat beat listeners), or
+	// simply wait for shutdown when this node's role does not serve them.
+	if err := s.serveAPIOrWait(ctx, runnerCtx); err != nil {
+		return err
 	}
 
 	// Signal runners to stop accepting new work AFTER HTTP server is shut down
@@ -3244,6 +3251,47 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	return ctx.Err()
+}
+
+// serveAPIOrWait runs every ingest surface this node's role owns — the HTTP
+// server and the embedded heartbeat beat listeners — and blocks until
+// shutdown. When the role serves no API it just waits for the signal.
+//
+// runnerCtx (not ctx) drives the beat listeners for the same reason it drives
+// the job and check workers: they must keep accepting until the HTTP server
+// has drained, not stop the instant the shutdown signal arrives.
+func (s *Server) serveAPIOrWait(ctx, runnerCtx context.Context) error {
+	if !s.config.ShouldRunAPI() {
+		slog.InfoContext(ctx, "Skipping HTTP server", "role", s.config.Node.Role)
+
+		<-ctx.Done()
+		slog.InfoContext(ctx, "Shutting down node", "timeout", s.config.Server.ShutdownTimeout)
+
+		return nil
+	}
+
+	if err := s.startHeartbeatPush(runnerCtx); err != nil {
+		return err
+	}
+
+	return s.serveHTTP(ctx)
+}
+
+// startHeartbeatPush binds the embedded heartbeat beat listeners alongside the
+// HTTP server: they are an ingest surface, so they belong to the API role.
+//
+// A bind failure is a deployment mistake (a port already taken) and stops the
+// boot rather than leaving the operator believing the transport is live.
+func (s *Server) startHeartbeatPush(ctx context.Context) error {
+	if s.heartbeatPush == nil || !s.heartbeatPush.Enabled() {
+		return nil
+	}
+
+	if err := s.heartbeatPush.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start heartbeat push listeners: %w", err)
+	}
+
+	return nil
 }
 
 // armDatabaseFaultShutdown returns a derived context that the first structural
@@ -3415,6 +3463,13 @@ func (s *Server) Close(ctx context.Context) error {
 		if err := s.profilerSrv.Shutdown(shutdownCtx); err != nil {
 			slog.ErrorContext(ctx, "Error shutting down profiler", "error", err)
 			closeErr = err
+		}
+	}
+
+	// Stop accepting pushed beats before the database goes away.
+	if s.heartbeatPush != nil {
+		if err := s.heartbeatPush.Close(); err != nil {
+			slog.WarnContext(ctx, "Error closing heartbeat push listeners", "error", err)
 		}
 	}
 
