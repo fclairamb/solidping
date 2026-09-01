@@ -244,8 +244,8 @@ func resolveAddresses(ctx context.Context, timer *phaseTimer, addr string) ([]st
 	}
 
 	candidates := make([]string, 0, len(ips))
-	for _, ip := range ips {
-		candidates = append(candidates, net.JoinHostPort(ip.IP.String(), port))
+	for i := range ips {
+		candidates = append(candidates, net.JoinHostPort(ips[i].IP.String(), port))
 	}
 
 	return candidates, nil
@@ -297,7 +297,7 @@ func transportCredentials(cfg *GRPCConfig, timer *phaseTimer) credentials.Transp
 	return &timedCredentials{
 		TransportCredentials: credentials.NewTLS(&tls.Config{
 			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: cfg.TLSSkipVerify, //nolint:gosec // opt-in per check
+			InsecureSkipVerify: cfg.TLSSkipVerify,
 		}),
 		timer: timer,
 	}

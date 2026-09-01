@@ -70,7 +70,9 @@ func startTestServer(t *testing.T, opts testServerOptions) *testServer {
 
 	srv := &testServer{}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listenCfg := &net.ListenConfig{}
+
+	listener, err := listenCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	addr, ok := listener.Addr().(*net.TCPAddr)
@@ -191,7 +193,9 @@ func testTLSConfig(t *testing.T, handshakeDelay time.Duration) *tls.Config {
 func closedPort(t *testing.T) (string, int) {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listenCfg := &net.ListenConfig{}
+
+	listener, err := listenCfg.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	addr, ok := listener.Addr().(*net.TCPAddr)

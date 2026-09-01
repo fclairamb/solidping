@@ -34,8 +34,6 @@ const (
 // already lowercased. gRPC normalizes keys to lowercase on the wire, so an
 // uppercase key in the config is a silent rename — rejected rather than
 // quietly folded.
-//
-//nolint:gochecknoglobals // compiled once, read-only
 var metadataKeyPattern = regexp.MustCompile(`^[a-z0-9._-]+$`)
 
 // GRPCConfig holds the configuration for gRPC health checks.
@@ -147,19 +145,22 @@ func (c *GRPCConfig) FromMap(configMap map[string]any) error {
 func stringMapConfigValue(configMap map[string]any, key string) (map[string]string, error) {
 	switch typed := configMap[key].(type) {
 	case nil:
-		return nil, nil
+		// An absent key yields an empty map rather than nil: every consumer
+		// guards on len(), and it keeps this from returning a nil value with a
+		// nil error.
+		return map[string]string{}, nil
 	case map[string]string:
 		return typed, nil
 	case map[string]any:
 		out := make(map[string]string, len(typed))
 
-		for k, v := range typed {
-			str, ok := v.(string)
+		for name, value := range typed {
+			str, ok := value.(string)
 			if !ok {
-				return nil, checkerdef.NewConfigErrorf(key, "%s must be a string", k)
+				return nil, checkerdef.NewConfigErrorf(key, "%s must be a string", name)
 			}
 
-			out[k] = str
+			out[name] = str
 		}
 
 		return out, nil
