@@ -488,7 +488,7 @@ func (s *Service) reEvaluateRollupChildren(
 	}
 
 	for _, child := range children {
-		if err := s.reEvaluateChild(ctx, child); err != nil {
+		if err := s.reEvaluateChild(ctx, child, parent); err != nil {
 			slog.WarnContext(ctx, "Failed to re-evaluate rollup child",
 				"childIncidentUid", child.UID, "error", err)
 		}
@@ -497,14 +497,14 @@ func (s *Service) reEvaluateRollupChildren(
 	return nil
 }
 
-func (s *Service) reEvaluateChild(ctx context.Context, child *models.Incident) error {
+func (s *Service) reEvaluateChild(ctx context.Context, child, parent *models.Incident) error {
 	check, err := s.db.GetCheck(ctx, child.OrganizationUID, child.CheckUID)
 	if err != nil {
 		return fmt.Errorf("get child check: %w", err)
 	}
 
 	if check.Status != models.CheckStatusDown {
-		return s.markRollupDetached(ctx, child)
+		return s.markRollupDetached(ctx, child, parent)
 	}
 
 	suppressed := false
@@ -528,15 +528,31 @@ func (s *Service) reEvaluateChild(ctx context.Context, child *models.Incident) e
 	return nil
 }
 
-func (s *Service) markRollupDetached(ctx context.Context, child *models.Incident) error {
+// markRollupDetached un-suppresses a recovered child whose rollup parent has
+// resolved. It deliberately does NOT clear caused_by_incident_uid: that
+// attribution is the post-mortem record of the cascade, nothing downstream
+// treats a non-nil caused_by as "currently suppressed" (that reads
+// paging_suppressed instead — see ListSuppressedChildIncidents), and the
+// reopen path resets attribution from scratch on every reopen, so no stale
+// value here can leak into a later relapse.
+func (s *Service) markRollupDetached(ctx context.Context, child, parent *models.Incident) error {
 	suppressed := false
-	update := models.IncidentUpdate{
-		PagingSuppressed:         &suppressed,
-		ClearCausedByIncidentUID: true,
-	}
+	update := models.IncidentUpdate{PagingSuppressed: &suppressed}
 
 	if err := s.db.UpdateIncident(ctx, child.UID, &update); err != nil {
-		return fmt.Errorf("clear rollup attribution: %w", err)
+		return fmt.Errorf("clear rollup suppression: %w", err)
+	}
+
+	child.PagingSuppressed = false
+
+	payload := models.JSONMap{keyCheckUID: child.CheckUID}
+	if parent != nil {
+		payload[keyParentIncidentUID] = parent.UID
+		payload[keyParentCheckUID] = parent.CheckUID
+	}
+
+	if err := s.emitEvent(ctx, child.OrganizationUID, models.EventTypeIncidentRollupDetached, child, payload); err != nil {
+		return fmt.Errorf("emit rollup detached event: %w", err)
 	}
 
 	return nil

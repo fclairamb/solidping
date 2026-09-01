@@ -37,6 +37,15 @@ const (
 	// incident-open time: this one changes a live incident's paging behavior
 	// mid-flight, so the timeline has to say so. Never pages.
 	EventTypeIncidentRolledUp EventType = "incident.rolled_up"
+	// EventTypeIncidentRollupDetached indicates a suppressed child was
+	// un-attached from its rollup parent because the parent resolved AND the
+	// child's own check had already recovered (spec
+	// 2026-08-31-07-rollup-detach-erases-attribution). paging_suppressed
+	// flips false, but caused_by_incident_uid is deliberately kept — it is
+	// the post-mortem record of which cascade this incident belonged to.
+	// Never pages: the child never paged on the way in, so it does not page
+	// on the way out either.
+	EventTypeIncidentRollupDetached EventType = "incident.rollup_detached"
 	// EventTypeIncidentAcknowledged indicates an incident was acknowledged.
 	EventTypeIncidentAcknowledged EventType = "incident.acknowledged"
 	// EventTypeIncidentUnacknowledged indicates an acknowledgment was cleared.

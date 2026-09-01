@@ -1480,6 +1480,11 @@ func (s *Service) queueLifecycleNotifications(
 		// paged — the whole point of the attachment is that the child stops
 		// paging. See rollup.go.
 		models.EventTypeIncidentRolledUp,
+		// Detaching a recovered child from its rollup parent un-suppresses it
+		// for FUTURE relapses but does not itself page: the child never paged
+		// on the way in, so it does not page on the way out. See
+		// markRollupDetached in rollup.go.
+		models.EventTypeIncidentRollupDetached,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
