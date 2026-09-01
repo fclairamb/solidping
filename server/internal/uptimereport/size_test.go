@@ -133,6 +133,8 @@ func TestUptimeReportStaysUnderGmailClipLimit(t *testing.T) {
 	r.Positive(cells)
 	r.LessOrEqual(cells, maxStripCells)
 
+	t.Logf("worst-case 50-check monthly report renders to %d bytes (%d day cells)", len(html), cells)
+
 	r.Lessf(len(html), sizeBudgetBytes,
 		"rendered report is %d bytes; Gmail clips around %d", len(html), gmailClipBytes)
 	r.Less(len(html), gmailClipBytes)
