@@ -35,8 +35,9 @@ At every `incidentCreated`, the service runs `applyRollup`
    break on oldest `startedAt`.
 4. If found: set `child.causedByIncidentUid = parent.uid` and
    `child.pagingSuppressed = true`. The child's incident row exists,
-   but `emitEvent` (`incidents/service.go:888`) skips the channel
-   fan-out for everything except the resolved event.
+   but `queueLifecycleNotifications` gates created, escalated, reopened
+   **and resolved** alike on `pagingSuppressed` — suppression silences the
+   whole lifecycle, not just the open.
 
 The depth cap is 10. In practice that's plenty for any sane org topology;
 a real graph that hits the cap probably has a cycle or a confused
@@ -216,10 +217,17 @@ Parent recovery triggers `reEvaluateRollupChildren`
 the resolving parent:
 
 - If the child's check has recovered (status flipped back to UP):
-  emit a `rollup_detached` event for the timeline, clear the
-  attribution, and don't page. The child resolved silently along with
-  the parent — there was never a real on-call moment for the child's
-  failure mode.
+  emit an `incident.rollup_detached` event for the timeline, flip
+  `pagingSuppressed` back to `false`, and don't page. `causedByIncidentUid`
+  is deliberately **kept** — it stays as the historical record of which
+  cascade this incident belonged to, not a live suppression flag (nothing
+  downstream reads a non-nil `causedByIncidentUid` as "currently
+  suppressed"; that's what `pagingSuppressed` is for, and
+  `ListSuppressedChildIncidents` filters on it, not on the attribution).
+  Without this, resolving the parent erased the only evidence the cascade
+  ever happened — the RabbitMQ nonprod outage of 2026-08-30 lost the
+  attribution on 10 of 11 dependent incidents this way, and the
+  investigation had to be reconstructed from the events feed.
 - If the child is still failing on its own: clear `pagingSuppressed`,
   emit an `incidentReopened` event. This is when the channel fan-out
   finally happens for the child. The on-call learns "the underlying db
@@ -228,6 +236,16 @@ the resolving parent:
 This second branch is the load-bearing reason cascade rollup doesn't
 make problems disappear: a child that's down for *its own* reason still
 pages, just with a delay from the open time until the parent resolves.
+
+Keeping `causedByIncidentUid` on detach is safe for the relapse case too:
+if a detached child (still-active incident, check recovered) fails again
+before *its own* incident resolves, the relapse pages normally — nothing
+re-reads the stale attribution as "still suppressed", because suppression
+is decided by `pagingSuppressed` alone. And if the child's incident
+resolves and later reopens from scratch, `reopenIncident` re-runs
+`applyRollup` on a clean slate (`causedByIncidentUid` reset to `nil`
+first), so a reopen is always a fresh rollup decision, never inherited
+from the detached state.
 
 ## What happens on reopen
 
