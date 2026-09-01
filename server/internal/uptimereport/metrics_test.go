@@ -9,16 +9,20 @@ import (
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
-// upBucket builds a window aggregate: `total` probes, `up` of them successful,
-// with `avg` milliseconds of average response time over every probe.
-func upBucket(up, total int, avg float64) uptimebar.BucketStats {
-	stats := uptimebar.BucketStats{Up: up, Total: total}
-	if total > 0 && avg > 0 {
-		stats.DurCnt = total
-		stats.DurSum = avg * float64(total)
-		stats.DurMin = avg / 2
-		stats.DurMax = avg * 2
-		stats.DurExtremaCnt = total
+// bucketProbes is the probe count every fixture bucket below is built from.
+const bucketProbes = 1000
+
+// upBucket builds a window aggregate: bucketProbes probes, `up` of them
+// successful, with `avg` milliseconds of average response time over every
+// probe.
+func upBucket(up int, avg float64) uptimebar.BucketStats {
+	stats := uptimebar.BucketStats{Up: up, Total: bucketProbes}
+	if avg > 0 {
+		stats.DurCnt = bucketProbes
+		stats.DurSum = avg * bucketProbes
+		stats.DurMin = float32(avg / 2)
+		stats.DurMax = float32(avg * 2)
+		stats.DurExtremaCnt = bucketProbes
 	}
 
 	return stats
@@ -81,8 +85,8 @@ func TestApplyTrendOmitsEverythingWithoutABaseline(t *testing.T) {
 
 	var data Data
 
-	applyTrend(&data, trendInputs{
-		current:          upBucket(1000, 1000, 150),
+	applyTrend(&data, &trendInputs{
+		current:          upBucket(1000, 150),
 		previous:         uptimebar.BucketStats{}, // nothing recorded last month
 		currentIncidents: 2,
 	})
@@ -100,9 +104,9 @@ func TestApplyTrendOmitsEverythingWithoutABaseline(t *testing.T) {
 	// Positive control: the SAME call with a real baseline fills all three.
 	var withBaseline Data
 
-	applyTrend(&withBaseline, trendInputs{
-		current:           upBucket(1000, 1000, 150),
-		previous:          upBucket(990, 1000, 200),
+	applyTrend(&withBaseline, &trendInputs{
+		current:           upBucket(1000, 150),
+		previous:          upBucket(990, 200),
 		currentIncidents:  2,
 		previousIncidents: 5,
 	})
@@ -128,9 +132,9 @@ func TestApplyTrendZeroDeltasAreNeutral(t *testing.T) {
 
 	var data Data
 
-	same := upBucket(1000, 1000, 150)
+	same := upBucket(1000, 150)
 
-	applyTrend(&data, trendInputs{
+	applyTrend(&data, &trendInputs{
 		current:           same,
 		previous:          same,
 		currentIncidents:  0,
@@ -161,8 +165,8 @@ func TestApplyTrendZeroDeltasAreNeutral(t *testing.T) {
 func TestApplyResponseDeltaSuppressedForDegeneratePeriods(t *testing.T) {
 	t.Parallel()
 
-	downAllPeriod := upBucket(0, 1000, 20) // fast, because they were all errors
-	healthy := upBucket(1000, 1000, 150)
+	downAllPeriod := upBucket(0, 20) // fast, because they were all errors
+	healthy := upBucket(1000, 150)
 
 	for _, tc := range []struct {
 		name           string
@@ -176,7 +180,7 @@ func TestApplyResponseDeltaSuppressedForDegeneratePeriods(t *testing.T) {
 		{"no durations last period", healthy, uptimebar.BucketStats{Up: 10, Total: 10}, false},
 		// Positive control: two comparable healthy periods DO produce a delta,
 		// so every "false" above is a real suppression and not a broken call.
-		{"two comparable periods", healthy, upBucket(1000, 1000, 300), true},
+		{"two comparable periods", healthy, upBucket(1000, 300), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -185,7 +189,7 @@ func TestApplyResponseDeltaSuppressedForDegeneratePeriods(t *testing.T) {
 
 			var data Data
 
-			applyTrend(&data, trendInputs{current: tc.current, previous: tc.previous})
+			applyTrend(&data, &trendInputs{current: tc.current, previous: tc.previous})
 
 			r.Equal(tc.wantShownAtAll, data.ShowResponseDelta)
 			if !tc.wantShownAtAll {
@@ -206,7 +210,7 @@ func TestApplyLatencySuppressedWhenDownAllPeriod(t *testing.T) {
 
 	var downData Data
 
-	applyLatency(&downData, upBucket(0, 1000, 20))
+	applyLatency(&downData, upBucket(0, 20))
 	r.False(downData.HasLatency)
 	r.Empty(downData.AvgResponseTime)
 	r.Empty(downData.MinResponseTime)
@@ -222,7 +226,7 @@ func TestApplyLatencySuppressedWhenDownAllPeriod(t *testing.T) {
 	// Positive control.
 	var healthy Data
 
-	stats := upBucket(999, 1000, 150)
+	stats := upBucket(999, 150)
 	stats.SlowSamples = 3
 
 	applyLatency(&healthy, stats)
@@ -242,8 +246,8 @@ func TestSlowLinePhrasesTiersHonestly(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		samples int
-		peaks   int
+		samples int32
+		peaks   int32
 		want    string
 	}{
 		{"none", 0, 0, "none above 1 s"},
@@ -289,10 +293,10 @@ func TestDayStripColorNoDataIsGrayNotRed(t *testing.T) {
 	r.NotEqual(dayBadColor, dayStripColor(uptimebar.BucketStats{}))
 
 	// Positive controls across the whole ramp.
-	r.Equal(dayGoodColor, dayStripColor(upBucket(1000, 1000, 100)))
-	r.Equal(dayWarnColor, dayStripColor(upBucket(995, 1000, 100)))
-	r.Equal(dayPoorColor, dayStripColor(upBucket(970, 1000, 100)))
-	r.Equal(dayBadColor, dayStripColor(upBucket(0, 1000, 100)))
+	r.Equal(dayGoodColor, dayStripColor(upBucket(1000, 100)))
+	r.Equal(dayWarnColor, dayStripColor(upBucket(995, 100)))
+	r.Equal(dayPoorColor, dayStripColor(upBucket(970, 100)))
+	r.Equal(dayBadColor, dayStripColor(upBucket(0, 100)))
 }
 
 // TestSortWorstFirst is the ordering the maxCheckRows cap depends on: the

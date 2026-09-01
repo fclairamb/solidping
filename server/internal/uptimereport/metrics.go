@@ -128,30 +128,30 @@ type trendInputs struct {
 // The load-bearing rule: with no previous-period data (a new org, a new check,
 // a schedule's first run) NOTHING is rendered — not "±0.00%", not a gray dash.
 // An empty baseline is not a measurement of "no change".
-func applyTrend(data *Data, in trendInputs) {
-	prevPct, hasPrevious := in.previous.AvailabilityPct()
+func applyTrend(data *Data, inputs *trendInputs) {
+	prevPct, hasPrevious := inputs.previous.AvailabilityPct()
 	if !hasPrevious {
 		return
 	}
 
 	data.HasPreviousData = true
 	data.PreviousAvailabilityPct = formatPct(prevPct)
-	data.PreviousIncidentCount = in.previousIncidents
+	data.PreviousIncidentCount = inputs.previousIncidents
 
-	if curPct, ok := in.current.AvailabilityPct(); ok {
+	if curPct, ok := inputs.current.AvailabilityPct(); ok {
 		delta := roundTo(curPct-prevPct, availabilityDeltaPrecision)
 		data.ShowAvailabilityDelta = true
 		data.AvailabilityDeltaText = formatSignedFloat(delta, availabilityDeltaPrecision, " pts")
 		data.AvailabilityDeltaColor = deltaColor(delta)
 	}
 
-	incidentDelta := in.currentIncidents - in.previousIncidents
+	incidentDelta := inputs.currentIncidents - inputs.previousIncidents
 	data.ShowIncidentDelta = true
 	data.IncidentDeltaText = formatSignedCount(incidentDelta)
 	// Fewer incidents is better, so the improvement is the negated movement.
 	data.IncidentDeltaColor = deltaColor(float64(-incidentDelta))
 
-	applyResponseDelta(data, in)
+	applyResponseDelta(data, inputs)
 }
 
 // applyResponseDelta fills the response-time delta, or nothing.
@@ -160,13 +160,13 @@ func applyTrend(data *Data, in trendInputs) {
 // measured on error responses is the celebrated-nonsense failure mode this spec
 // exists to avoid. Also suppressed when either period recorded no duration at
 // all, or when the baseline is zero (nothing to take a percentage of).
-func applyResponseDelta(data *Data, in trendInputs) {
-	if isDownAllPeriod(in.current) || isDownAllPeriod(in.previous) {
+func applyResponseDelta(data *Data, inputs *trendInputs) {
+	if isDownAllPeriod(inputs.current) || isDownAllPeriod(inputs.previous) {
 		return
 	}
 
-	currentAvg, hasCurrent := in.current.AvgDuration()
-	previousAvg, hasPrevious := in.previous.AvgDuration()
+	currentAvg, hasCurrent := inputs.current.AvgDuration()
+	previousAvg, hasPrevious := inputs.previous.AvgDuration()
 
 	if !hasCurrent || !hasPrevious || previousAvg <= 0 {
 		return
@@ -219,7 +219,7 @@ func applyLatency(data *Data, overall uptimebar.BucketStats) {
 // exact SAMPLE count, rollups can only yield a PEAK count (a period that held
 // at least one slow probe). A window that straddles the retention boundary has
 // both, and the two are never summed into one misleading number.
-func slowLine(samples, peaks int) string {
+func slowLine(samples, peaks int32) string {
 	threshold := slowThresholdLabel()
 
 	switch {
@@ -231,11 +231,11 @@ func slowLine(samples, peaks int) string {
 	case samples > 0:
 		return fmt.Sprintf("%s above %s", pluralize(samples, "sample"), threshold)
 	default:
-		return fmt.Sprintf("none above %s", threshold)
+		return "none above " + threshold
 	}
 }
 
-func pluralize(count int, noun string) string {
+func pluralize(count int32, noun string) string {
 	if count == 1 {
 		return fmt.Sprintf("%d %s", count, noun)
 	}
@@ -245,7 +245,7 @@ func pluralize(count int, noun string) string {
 
 // Day-strip colors. Discrete states, not the continuous availabilityTextColor
 // ramp: a 6-pixel cell cannot carry a gradient, and discrete colors also let
-// identical neighbours collapse into one run-length-encoded cell, which is what
+// identical neighbors collapse into one run-length-encoded cell, which is what
 // keeps a 50-check monthly report far below Gmail's clipping limit.
 const (
 	dayNoDataColor = "#d1d5db"

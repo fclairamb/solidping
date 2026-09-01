@@ -85,8 +85,8 @@ func TestBucketStats_RawExtremaAndSlowSamples(t *testing.T) {
 	r.True(ok)
 	r.InDelta(80, low, 0.001)
 	r.InDelta(4200, high, 0.001)
-	r.Equal(5, stats.DurExtremaCnt)
-	r.Equal(2, stats.SlowSamples, "1000ms sits exactly on the threshold and must not count")
+	r.Equal(int32(5), stats.DurExtremaCnt)
+	r.Equal(int32(2), stats.SlowSamples, "1000ms sits exactly on the threshold and must not count")
 	r.Zero(stats.SlowPeaks, "raw rows are samples, never peaks")
 
 	// The pinned fields must be untouched by any of this.
@@ -120,7 +120,7 @@ func TestBucketStats_FailedSamplesStillCountTowardsDurations(t *testing.T) {
 	_, high, ok := stats.DurationRange()
 	r.True(ok)
 	r.InDelta(5000, high, 0.001, "the failed sample's duration is included")
-	r.Equal(1, stats.SlowSamples)
+	r.Equal(int32(1), stats.SlowSamples)
 
 	// A lifecycle marker still contributes nothing at all — the exclusion rule
 	// is unchanged.
@@ -150,7 +150,7 @@ func TestBucketStats_RollupExtremaAndSlowPeaks(t *testing.T) {
 	r.InDelta(2400, high, 0.001)
 
 	r.Zero(stats.SlowSamples, "a rollup can never claim an exact slow-sample count")
-	r.Equal(1, stats.SlowPeaks)
+	r.Equal(int32(1), stats.SlowPeaks)
 
 	// A rollup without duration columns contributes no extrema and no peak —
 	// the negative control for the switch above.
@@ -192,15 +192,15 @@ func TestBucketStats_AddMergesTheNewCounters(t *testing.T) {
 	r.InDelta(1900, merged.DurSum, 0.001)
 	r.InDelta(20, merged.DurMin, 0.001)
 	r.InDelta(6000, merged.DurMax, 0.001)
-	r.Equal(16, merged.DurExtremaCnt)
-	r.Equal(4, merged.SlowSamples)
-	r.Equal(3, merged.SlowPeaks)
+	r.Equal(int32(16), merged.DurExtremaCnt)
+	r.Equal(int32(4), merged.SlowSamples)
+	r.Equal(int32(3), merged.SlowPeaks)
 
 	// Merging a bucket that measured nothing must not drag the minimum to zero.
 	withEmpty := left
 	withEmpty.Add(BucketStats{Up: 3, Total: 3})
 	r.InDelta(50, withEmpty.DurMin, 0.001)
-	r.Equal(10, withEmpty.DurExtremaCnt)
+	r.Equal(int32(10), withEmpty.DurExtremaCnt)
 
 	// ...and merging INTO an unmeasured bucket seeds from the other side
 	// rather than keeping a zero minimum.
@@ -209,7 +209,7 @@ func TestBucketStats_AddMergesTheNewCounters(t *testing.T) {
 	seeded.Add(right)
 	r.InDelta(20, seeded.DurMin, 0.001)
 	r.InDelta(6000, seeded.DurMax, 0.001)
-	r.Equal(6, seeded.DurExtremaCnt)
+	r.Equal(int32(6), seeded.DurExtremaCnt)
 }
 
 // TestWindowAvailability_CarriesLatencyAcrossTiers is the end-to-end read-path
@@ -242,6 +242,6 @@ func TestWindowAvailability_CarriesLatencyAcrossTiers(t *testing.T) {
 	r.True(ok)
 	r.InDelta(45, low, 0.001, "the rollup tier's minimum wins")
 	r.InDelta(9000, high, 0.001, "the raw tier's maximum wins")
-	r.Equal(1, stats.SlowSamples)
-	r.Equal(1, stats.SlowPeaks)
+	r.Equal(int32(1), stats.SlowSamples)
+	r.Equal(int32(1), stats.SlowPeaks)
 }

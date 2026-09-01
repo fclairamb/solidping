@@ -229,8 +229,6 @@ func Window(schedule *models.ReportSchedule, now time.Time) (slo.Window, *time.L
 }
 
 // Build assembles the report for one schedule over one window.
-//
-//nolint:funlen // a linear assembly of one view model.
 func (b *Builder) Build(
 	ctx context.Context, org *models.Organization, schedule *models.ReportSchedule,
 	window slo.Window, now time.Time,
@@ -277,6 +275,43 @@ func (b *Builder) Build(
 		return nil, fmt.Errorf("window availability: %w", err)
 	}
 
+	overall := b.applyCheckTable(ctx, data, org, checks, byCheck, checkUIDs, window, hints, baseURL)
+
+	applyOverall(data, overall, checks)
+
+	incidents, err := b.incidentBlock(ctx, org.UID, checkUIDs, window, now)
+	if err != nil {
+		return nil, err
+	}
+
+	applyIncidents(data, incidents)
+
+	if trendErr := b.applyPreviousPeriod(
+		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
+	); trendErr != nil {
+		return nil, trendErr
+	}
+
+	if schedule.IncludeSLOs {
+		sloRows, sloErr := b.sloRows(ctx, org, baseURL, schedule, checkUIDs, window, now)
+		if sloErr != nil {
+			return nil, sloErr
+		}
+
+		data.SLOs = sloRows
+	}
+
+	return data, nil
+}
+
+// applyCheckTable builds the per-check rows (with their day strips), orders
+// them worst-first, applies both caps, and returns the scope-level aggregate
+// they sum to.
+func (b *Builder) applyCheckTable(
+	ctx context.Context, data *Data, org *models.Organization, checks []*models.Check,
+	byCheck map[string]uptimebar.BucketStats, checkUIDs []string,
+	window slo.Window, hints uptimebar.Hints, baseURL string,
+) uptimebar.BucketStats {
 	plan := planDayStrip(window)
 	strips := b.dayStrips(ctx, org.UID, checkUIDs, plan, hints)
 
@@ -298,6 +333,12 @@ func (b *Builder) Build(
 		data.DayStripLabel = plan.label()
 	}
 
+	return overall
+}
+
+// applyOverall fills the headline availability, the down-all-period statement
+// and the response-time block from the scope-level aggregate.
+func applyOverall(data *Data, overall uptimebar.BucketStats, checks []*models.Check) {
 	if pct, ok := overall.AvailabilityPct(); ok {
 		data.HasData = true
 		data.AvailabilityPct = formatPct(pct)
@@ -310,13 +351,13 @@ func (b *Builder) Build(
 	}
 
 	applyLatency(data, overall)
+}
 
-	incidents, err := b.incidentBlock(ctx, org.UID, checkUIDs, window, now)
-	if err != nil {
-		return nil, err
-	}
-
+// applyIncidents fills the incident block. Each derived figure is shown only
+// when it exists: an average of "0s" over zero incidents is not a fact.
+func applyIncidents(data *Data, incidents availability.PeriodIncidents) {
 	data.IncidentCount = incidents.Count
+
 	if incidents.LongestSeconds > 0 {
 		data.LongestIncident = formatDuration(incidents.LongestSeconds)
 	}
@@ -328,23 +369,6 @@ func (b *Builder) Build(
 	if incidents.TotalDowntimeSeconds > 0 {
 		data.TotalDowntime = formatDuration(incidents.TotalDowntimeSeconds)
 	}
-
-	if trendErr := b.applyPreviousPeriod(
-		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
-	); trendErr != nil {
-		return nil, trendErr
-	}
-
-	if schedule.IncludeSLOs {
-		sloRows, sloErr := b.sloRows(ctx, org, baseURL, schedule, checkUIDs, window, now)
-		if sloErr != nil {
-			return nil, sloErr
-		}
-
-		data.SLOs = sloRows
-	}
-
-	return data, nil
 }
 
 // buildCheckRows folds the per-check window stats into rows and, at the same
@@ -471,7 +495,7 @@ func (b *Builder) applyPreviousPeriod(
 		return err
 	}
 
-	applyTrend(data, trendInputs{
+	applyTrend(data, &trendInputs{
 		current:           current,
 		previous:          previousOverall,
 		currentIncidents:  currentIncidents,

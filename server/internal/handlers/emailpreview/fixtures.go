@@ -25,6 +25,12 @@ const (
 	keyDashboardURL = "DashboardURL"
 	keySubject      = "Subject"
 	keyName         = "Name"
+	// keyColor / colorReportGood keep the uptime-report day strip readable
+	// without repeating literals the linter counts.
+	keyColor        = "Color"
+	keySpan         = "Span"
+	keyWide         = "Wide"
+	colorReportGood = "#15803d"
 	keyHasData      = "HasData"
 	keyAvailability = "AvailabilityPct"
 )
@@ -315,10 +321,10 @@ func uptimeReportFixture() map[string]any {
 		"PreviousAvgResponseTime": "158 ms",
 		"ShowAvailabilityDelta":   true,
 		"AvailabilityDeltaText":   "+0.080 pts",
-		"AvailabilityDeltaColor":  "#15803d",
+		"AvailabilityDeltaColor":  colorReportGood,
 		"ShowIncidentDelta":       true,
 		"IncidentDeltaText":       "-2",
-		"IncidentDeltaColor":      "#15803d",
+		"IncidentDeltaColor":      colorReportGood,
 		"ShowResponseDelta":       true,
 		"ResponseDeltaText":       "+8.4%",
 		"ResponseDeltaColor":      "#b91c1c",
@@ -337,14 +343,14 @@ func uptimeReportFixture() map[string]any {
 			{
 				keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980",
 				"Days": []map[string]any{
-					{"Color": "#15803d", "Span": 20, "Wide": true},
-					{"Color": "#b45309", "Span": 1},
-					{"Color": "#15803d", "Span": 10, "Wide": true},
+					{keyColor: colorReportGood, keySpan: 20, keyWide: true},
+					{keyColor: "#b45309", keySpan: 1},
+					{keyColor: colorReportGood, keySpan: 10, keyWide: true},
 				},
 			},
 			{
 				keyName: "Marketing site", keyHasData: false, keyAvailability: "",
-				"Days": []map[string]any{{"Color": "#d1d5db", "Span": 31, "Wide": true}},
+				"Days": []map[string]any{{keyColor: "#d1d5db", keySpan: 31, keyWide: true}},
 			},
 		},
 		"SLOs": []map[string]any{

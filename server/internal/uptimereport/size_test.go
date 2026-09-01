@@ -23,7 +23,7 @@ const sizeBudgetBytes = 88 * 1024
 
 // worstCaseMonthlyReport is the pathological fixture the strip budget exists
 // for: maxCheckRows checks over a 31-day month in which every single day
-// differs in color from its neighbour, so the run-length encoding buys nothing
+// differs in color from its neighbor, so the run-length encoding buys nothing
 // and every day is its own cell.
 func worstCaseMonthlyReport(t *testing.T) *Data {
 	t.Helper()

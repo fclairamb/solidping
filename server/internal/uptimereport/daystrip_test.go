@@ -11,7 +11,7 @@ import (
 
 // TestPlanDayStripCoversEveryDayOfTheWindow pins the cell geometry, including
 // the UTC alignment the bucketing engine requires: the series must START on a
-// UTC-day boundary, or uptimebar's Truncate-keyed rows land in the neighbouring
+// UTC-day boundary, or uptimebar's Truncate-keyed rows land in the neighboring
 // cell.
 func TestPlanDayStripCoversEveryDayOfTheWindow(t *testing.T) {
 	t.Parallel()

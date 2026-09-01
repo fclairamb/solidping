@@ -78,19 +78,30 @@ type BucketStats struct {
 	// DurSum keep byte-identical semantics, because badges, status pages, the
 	// availability API and SLOs all read those and must not move
 	// (spec 2026-09-01-04).
-	DurMin        float64
-	DurMax        float64
-	DurExtremaCnt int
+	//
+	// The narrow types are deliberate. BucketStats is passed BY VALUE on every
+	// read path — it is a map value and an accumulator, and a pointer receiver
+	// would make `byCheck[uid].AvailabilityPct()` illegal at every call site —
+	// so the struct has to stay small enough for that to be cheap. float32 is
+	// also exactly what the source columns are (models.Result.Duration /
+	// DurationMin / DurationMax); widening them here would fabricate
+	// precision. The counters are per-bucket and bounded by uptimebar's own
+	// safety row caps, so int32 is orders of magnitude more headroom than any
+	// window can produce. A future field should keep the total under
+	// gocritic's by-value threshold rather than widening these back.
+	DurMin        float32
+	DurMax        float32
+	DurExtremaCnt int32
 
 	// SlowSamples counts RAW samples strictly above SlowSampleThresholdMillis.
 	// It is exact: one raw row is one probe.
-	SlowSamples int
+	SlowSamples int32
 	// SlowPeaks counts ROLLUP rows whose duration_max exceeds the threshold —
 	// a rolled-up period that contained at least one slow probe, which is NOT
 	// the same unit as a sample (the period may have held one slow probe or a
 	// thousand). It is kept as its own counter, never added to SlowSamples,
 	// precisely so a reader has to phrase the two honestly.
-	SlowPeaks int
+	SlowPeaks int32
 }
 
 // SlowSampleThresholdMillis is the response time above which a probe counts as
@@ -143,21 +154,22 @@ func (b BucketStats) AvgDuration() (float64, bool) {
 	return b.DurSum / float64(b.DurCnt), true
 }
 
-// DurationRange returns the slowest and fastest response times folded into this
-// bucket, and ok=false when no contributing row carried one. It never reports a
+// DurationRange returns the fastest and slowest response times (milliseconds)
+// folded into this bucket, and a false third value when no contributing row
+// carried one. It never reports a
 // confident "0 ms to 0 ms" for a bucket that measured nothing.
-func (b BucketStats) DurationRange() (minMillis, maxMillis float64, ok bool) {
+func (b BucketStats) DurationRange() (float64, float64, bool) {
 	if b.DurExtremaCnt == 0 {
 		return 0, 0, false
 	}
 
-	return b.DurMin, b.DurMax, true
+	return float64(b.DurMin), float64(b.DurMax), true
 }
 
 // foldExtrema folds one observed duration pair into the bucket's min/max. The
 // first observation seeds both, so a zero value can never win the minimum for a
 // bucket that has not measured anything yet.
-func (b *BucketStats) foldExtrema(minMillis, maxMillis float64) {
+func (b *BucketStats) foldExtrema(minMillis, maxMillis float32) {
 	if b.DurExtremaCnt == 0 {
 		b.DurMin, b.DurMax = minMillis, maxMillis
 		b.DurExtremaCnt = 1
@@ -234,13 +246,13 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 	}
 
 	if result.Duration != nil {
-		duration := float64(*result.Duration)
+		duration := *result.Duration
 
-		b.DurSum += duration
+		b.DurSum += float64(duration)
 		b.DurCnt++
 		b.foldExtrema(duration, duration)
 
-		if duration > SlowSampleThresholdMillis {
+		if float64(duration) > SlowSampleThresholdMillis {
 			b.SlowSamples++
 		}
 	}
@@ -310,11 +322,11 @@ func (b *BucketStats) accumulateAgg(result *models.Result) {
 	// against a confident zero.
 	switch {
 	case result.DurationMin != nil && result.DurationMax != nil:
-		b.foldExtrema(float64(*result.DurationMin), float64(*result.DurationMax))
+		b.foldExtrema(*result.DurationMin, *result.DurationMax)
 	case result.DurationMin != nil:
-		b.foldExtrema(float64(*result.DurationMin), float64(*result.DurationMin))
+		b.foldExtrema(*result.DurationMin, *result.DurationMin)
 	case result.DurationMax != nil:
-		b.foldExtrema(float64(*result.DurationMax), float64(*result.DurationMax))
+		b.foldExtrema(*result.DurationMax, *result.DurationMax)
 	}
 
 	// A rollup cannot say HOW MANY of its probes were slow — only whether its

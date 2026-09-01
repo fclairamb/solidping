@@ -594,13 +594,3 @@ func TestUptimeReportDownAllPeriodStatesTheFactAndDropsLatency(t *testing.T) {
 	r.NotContains(html, "color:#15803d")
 	r.NotContains(html, `bgcolor="#15803d"`)
 }
-
-// mustFormatter builds the shared email formatter or fails the test.
-func mustFormatter(t *testing.T) email.Formatter {
-	t.Helper()
-
-	formatter, err := email.NewFormatter()
-	require.NoError(t, err)
-
-	return formatter
-}
