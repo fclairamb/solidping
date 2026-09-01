@@ -60,7 +60,8 @@
       "statusPage": {
         "title": "Publish a status page",
         "description": "Tell your users what's happening before they have to ask.",
-        "cta": "Create a status page"
+        "cta": "Create a status page",
+        "ctaDone": "View status pages"
       },
       "team": {
         "title": "Invite a teammate",

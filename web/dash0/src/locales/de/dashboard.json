@@ -60,7 +60,8 @@
       "statusPage": {
         "title": "Statusseite veröffentlichen",
         "description": "Informieren Sie Ihre Nutzer, bevor sie nachfragen müssen.",
-        "cta": "Statusseite erstellen"
+        "cta": "Statusseite erstellen",
+        "ctaDone": "Statusseiten anzeigen"
       },
       "team": {
         "title": "Teammitglied einladen",
