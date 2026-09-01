@@ -567,7 +567,9 @@
         "rotateNudge": "Dieser Check hat Klartext-Lebenszeichen akzeptiert; sein Token war möglicherweise im Netz sichtbar — und dieses Token ist zugleich der Signaturschlüssel. Erneuern Sie es jetzt.",
         "hmacEnabled": "Signierte Lebenszeichen sind jetzt erforderlich",
         "hmacDisabled": "Klartext-Lebenszeichen werden wieder akzeptiert",
-        "hmacFailed": "Signaturanforderung konnte nicht aktualisiert werden"
+        "hmacFailed": "Signaturanforderung konnte nicht aktualisiert werden",
+        "sketchLabel": "Arduino-/ESP-Sketch (SP2, signiert)",
+        "sketchHint": "Signierte Lebenszeichen halten das Token vom Netz fern — genau das erzwingt „Signierte Lebenszeichen verlangen“ weiter unten. Die Zähler-Rezeptur und die vollständige Anleitung stehen in der Dokumentation zu eingebetteten Geräten."
       }
     },
     "email": {

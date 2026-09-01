@@ -567,7 +567,9 @@
         "rotateNudge": "Este check ha aceptado latidos en claro, así que su token puede haberse visto en la red — y ese token es también la clave de firma. Regenéralo ahora.",
         "hmacEnabled": "Ahora se exigen latidos firmados",
         "hmacDisabled": "Se vuelven a aceptar latidos en claro",
-        "hmacFailed": "No se pudo actualizar el requisito de firma"
+        "hmacFailed": "No se pudo actualizar el requisito de firma",
+        "sketchLabel": "Sketch de Arduino / ESP (SP2, firmado)",
+        "sketchHint": "Los latidos firmados mantienen el token fuera de la red: es lo que impone «Exigir latidos firmados» más abajo. Consulta la documentación de dispositivos embebidos para la receta del contador y la guía completa."
       }
     },
     "email": {

@@ -93,15 +93,37 @@ test.describe("Heartbeat push transports", () => {
 
     await expect(page.getByTestId("heartbeat-push")).toBeVisible();
 
-    // Both one-liners name the advertised host and port and carry the SP1
-    // prefix a device actually sends.
+    // Pin the RENDERED command text, not just a fragment of it. The trailing
+    // newline escape must reach the reader as the two characters printf needs
+    // (backslash + n): written as a real LF it renders as a trailing space,
+    // and anyone retyping what they see sends an unterminated line that never
+    // frames. Copy-to-clipboard would have hidden that, so assert on text.
     const tcp = page.getByTestId("heartbeat-push-tcp");
-    await expect(tcp).toContainText("SP1 ");
-    await expect(tcp).toContainText("beats.example.com 4001");
+    const tcpText = (await tcp.textContent()) ?? "";
+    expect(tcpText).toMatch(
+      /^printf 'SP1 \S+\/\S+ [0-9a-f]+\\n' \| nc beats\.example\.com 4001$/,
+    );
+    expect(tcpText).toContain("\\n'");
+    expect(tcpText).not.toContain(" ' | nc");
 
+    // UDP carries no terminator — the datagram boundary is the frame.
     const udp = page.getByTestId("heartbeat-push-udp");
-    await expect(udp).toContainText("nc -u");
-    await expect(udp).toContainText("beats.example.com 4001");
+    const udpText = (await udp.textContent()) ?? "";
+    expect(udpText).toMatch(
+      /^printf 'SP1 \S+\/\S+ [0-9a-f]+' \| nc -u -w1 beats\.example\.com 4001$/,
+    );
+    expect(udpText).not.toContain("\\n");
+
+    // The signed-form sketch is offered next to the plaintext one-liners
+    // (spec V1 scope item 7), collapsed behind a disclosure.
+    const sketch = page.getByTestId("heartbeat-push-sketch");
+    await expect(sketch).toBeVisible();
+    await expect(sketch).toContainText("Arduino");
+    await sketch.getByText(/Arduino/).click();
+    await expect(sketch).toContainText("SP2 %s/%s 0 %llu");
+    await expect(sketch).toContainText("mbedtls_md_hmac_starts");
+    // It is filled in for THIS check, not a generic placeholder.
+    await expect(sketch).toContainText("beats.example.com");
 
     // The rotate-token nudge is a consequence of the toggle, so it must not be
     // shouting at a check that has not turned signing on.

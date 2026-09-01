@@ -612,7 +612,9 @@
         "rotateNudge": "This check has accepted plaintext beats, so its token may already have been seen on the wire — and that token is also the signing key. Regenerate it now.",
         "hmacEnabled": "Signed beats are now required",
         "hmacDisabled": "Plaintext beats are accepted again",
-        "hmacFailed": "Failed to update the signature requirement"
+        "hmacFailed": "Failed to update the signature requirement",
+        "sketchLabel": "Arduino / ESP sketch (SP2, signed)",
+        "sketchHint": "Signed beats keep the token off the wire and are what \"Require signed beats\" below enforces. See the Embedded devices documentation for the counter recipe and the full walkthrough."
       }
     },
     "email": {

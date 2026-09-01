@@ -612,7 +612,9 @@
         "rotateNudge": "Ce check a accepté des battements en clair : son jeton a pu être observé sur le réseau, et ce jeton est aussi la clé de signature. Régénérez-le maintenant.",
         "hmacEnabled": "Les battements signés sont désormais exigés",
         "hmacDisabled": "Les battements en clair sont de nouveau acceptés",
-        "hmacFailed": "Échec de la mise à jour de l'exigence de signature"
+        "hmacFailed": "Échec de la mise à jour de l'exigence de signature",
+        "sketchLabel": "Croquis Arduino / ESP (SP2, signé)",
+        "sketchHint": "Les battements signés gardent le jeton hors du réseau : c'est ce qu'impose « Exiger des battements signés » ci-dessous. Voir la documentation Appareils embarqués pour la recette du compteur et le guide complet."
       }
     },
     "email": {
