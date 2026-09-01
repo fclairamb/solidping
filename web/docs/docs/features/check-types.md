@@ -1005,6 +1005,12 @@ where the query bounds the response.
 
 Passive monitoring that expects incoming pings at regular intervals. Instead of SolidPing checking a service, the service pings SolidPing to report it's alive.
 
+:::tip Microcontrollers and cellular modems
+A device with no room for a TLS stack can push the same heartbeat over raw TCP
+or UDP, one line per beat, optionally HMAC-signed and carrying battery volts or
+RSSI as metrics. See [Embedded devices (TCP/UDP)](./embedded-push.md).
+:::
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | Period | Expected ping interval | `60s` |
