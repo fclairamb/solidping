@@ -49,11 +49,11 @@ func sampleData() *uptimereport.Data {
 		AvgResponseTime: "171 ms",
 		MinResponseTime: "42 ms",
 		MaxResponseTime: "3.20 s",
-		SlowLine:        "4 samples and 2 peaks above 1000 ms",
-		SlowNote:        "A peak is a rolled-up period whose slowest sample exceeded 1000 ms.",
+		SlowLine:        "4 samples and 2 peaks above 1 s",
+		SlowNote:        "A peak is a rolled-up period whose slowest sample exceeded 1 s.",
 		LatencyNote:     "Response times include failed samples.",
 
-		DayStripLabel: "Daily availability &middot; 1 Jul – 31 Jul (UTC)",
+		DayStripLabel: "Daily availability, 1 Jul – 31 Jul (UTC)",
 
 		Checks: []uptimereport.CheckRow{
 			{

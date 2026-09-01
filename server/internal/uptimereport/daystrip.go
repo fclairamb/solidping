@@ -69,7 +69,10 @@ func (p dayStripPlan) label() string {
 
 	last := p.start.AddDate(0, 0, p.days-1)
 
-	return fmt.Sprintf("Daily availability &middot; %s – %s (UTC)",
+	// Plain text, no HTML entities: this string lands in the view model, and
+	// html/template escapes a "&middot;" into a visible "&amp;middot;". The
+	// plain-text part of the mail reads it too.
+	return fmt.Sprintf("Daily availability, %s – %s (UTC)",
 		p.start.Format("2 Jan"), last.Format("2 Jan"))
 }
 

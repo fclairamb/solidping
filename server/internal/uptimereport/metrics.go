@@ -89,8 +89,16 @@ func formatMillis(millis float64) string {
 	return fmt.Sprintf("%.0f ms", millis)
 }
 
-// slowThresholdLabel renders uptimebar.SlowSampleThresholdMillis for copy.
+// slowThresholdLabel renders uptimebar.SlowSampleThresholdMillis for copy. A
+// whole number of seconds reads as "1 s", not as formatMillis' "1.00 s" — the
+// threshold is a round configured value, not a measurement.
 func slowThresholdLabel() string {
+	const millisPerSecond = 1000.0
+
+	if math.Mod(uptimebar.SlowSampleThresholdMillis, millisPerSecond) == 0 {
+		return fmt.Sprintf("%g s", uptimebar.SlowSampleThresholdMillis/millisPerSecond)
+	}
+
 	return formatMillis(uptimebar.SlowSampleThresholdMillis)
 }
 
