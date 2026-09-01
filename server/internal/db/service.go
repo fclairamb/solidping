@@ -476,6 +476,19 @@ type Service interface {
 	// also maintained the now-removed last_for_status flag; the name is kept to
 	// avoid churn across its callers.)
 	SaveResultWithStatusTracking(ctx context.Context, result *models.Result) error
+	// TryAdvanceHeartbeatCounter atomically stores counter as the last accepted
+	// SP2 replay counter of a heartbeat check, but only when it is strictly
+	// greater than the stored value (or nothing is stored yet). Returns true
+	// when the beat may be accepted.
+	//
+	// The comparison is part of the write, never a read-then-write in Go: a
+	// device retrying the same datagram is the normal case, and two concurrent
+	// beats reading the same old value would both be accepted — exactly the
+	// replay the counter exists to prevent (spec 2026-09-01-06).
+	TryAdvanceHeartbeatCounter(ctx context.Context, checkUID string, counter int64) (bool, error)
+	// GetHeartbeatCounter returns the last accepted SP2 counter for a check,
+	// with ok=false when the check has never accepted a signed beat.
+	GetHeartbeatCounter(ctx context.Context, checkUID string) (int64, bool, error)
 	// HasRawResultWithMessageID reports whether a raw result already exists for
 	// orgUID/checkUID whose output.messageId equals messageID, restricted to
 	// rows with period_start >= since.
