@@ -2348,6 +2348,12 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to delete check: %w", err)
 	}
 
+	// The check just left the in-scope set — bust the stats cache so the
+	// next fetch recomputes instead of riding out the TTL (spec
+	// 2026-09-01-01). ApplyChecks' prune path calls this same method, so
+	// bulk deletes are covered too.
+	s.checkStats.invalidate(org.UID)
+
 	// Emit check.deleted event (actor-attributed — see emitEvent).
 	event := audit.NewEvent(ctx, org.UID, models.EventTypeCheckDeleted,
 		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
@@ -2593,7 +2599,7 @@ const checkSlugStallAttempts = 8
 func (s *Service) insertCheckResolvingSlugRace(
 	ctx context.Context, orgUID, baseSlug string, userProvidedSlug bool, check *models.Check,
 ) error {
-	return insertResolvingSlugRace(ctx, check, userProvidedSlug,
+	err := insertResolvingSlugRace(ctx, check, userProvidedSlug,
 		func(ctx context.Context) error {
 			return s.db.CreateCheck(ctx, check)
 		},
@@ -2601,6 +2607,14 @@ func (s *Service) insertCheckResolvingSlugRace(
 			return s.ensureUniqueSlug(ctx, orgUID, baseSlug, false)
 		},
 	)
+	if err == nil {
+		// The single chokepoint both CreateCheck and CloneCheck funnel
+		// through — busting here covers create, upsert-create, import,
+		// apply, and clone in one place (spec 2026-09-01-01).
+		s.checkStats.invalidate(orgUID)
+	}
+
+	return err
 }
 
 // insertResolvingSlugRace is the loop itself, with the database reached only
