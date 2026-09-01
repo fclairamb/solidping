@@ -153,17 +153,26 @@ func encodeDayCells(colors []string) []DayCell {
 // at the bottom, which is exactly the right bias.
 const maxStripCells = 900
 
-// applyStripBudget drops strips past maxStripCells, in table order. It never
-// renders a PARTIAL strip: a half-drawn month would be read as "no data after
-// the 14th" rather than as "we ran out of room".
-func applyStripBudget(rows []CheckRow) {
-	spent := 0
+// applyStripBudget drops strips past maxStripCells, in table order, and returns
+// how many rows kept theirs plus how many wanted one. It never renders a
+// PARTIAL strip: a half-drawn month would be read as "no data after the 14th"
+// rather than as "we ran out of room".
+//
+// Once the budget bites, the row still shows its percentage but no strip — and
+// a row with a number and a blank space where its neighbors have a colored bar
+// is indistinguishable from a rendering failure. The counts returned here are
+// what lets the template SAY it happened, exactly as the row cap says "showing
+// the 50 lowest-uptime checks of N" instead of silently capping.
+func applyStripBudget(rows []CheckRow) (int, int) {
+	spent, shown, wanted := 0, 0, 0
 
 	for i := range rows {
 		cells := len(rows[i].Days)
 		if cells == 0 {
 			continue
 		}
+
+		wanted++
 
 		if spent+cells > maxStripCells {
 			rows[i].Days = nil
@@ -172,5 +181,23 @@ func applyStripBudget(rows []CheckRow) {
 		}
 
 		spent += cells
+		shown++
 	}
+
+	return shown, wanted
+}
+
+// stripBudgetNote is the one-line statement rendered when the budget dropped at
+// least one strip. Deliberately factual and colorless: it explains a layout
+// limit, not a state of the monitored service.
+func stripBudgetNote(shown int) string {
+	if shown == 1 {
+		return "Daily strips are shown for the lowest-uptime check only; " +
+			"the rest were left out to keep this email under the size mail clients truncate at."
+	}
+
+	return fmt.Sprintf(
+		"Daily strips are shown for the %d lowest-uptime checks; "+
+			"the rest were left out to keep this email under the size mail clients truncate at.",
+		shown)
 }

@@ -46,7 +46,7 @@
     {{end}}
 
     {{if .Checks}}
-    <h2 class="section-title">Per check{{if .DayStripLabel}} &middot; worst first{{end}}</h2>
+    <h2 class="section-title">Per check &middot; worst first</h2>
     {{if .Truncated}}<p class="meta">Showing the {{.TruncatedShown}} lowest-uptime checks of {{.TruncatedTotal}}.</p>{{end}}
     {{/* This table deliberately carries NO class and styles its own cells
          inline. The day strip has to sit inside it (a strip a reader cannot
@@ -72,7 +72,7 @@
         {{end}}
     </table>
     {{if .DayStripLabel}}
-    <p class="meta">{{.DayStripLabel}} &mdash; green &ge; 99.9%, amber &ge; 99%, orange &ge; 95%, red below. Gray means nothing was recorded that day, so a check created mid-period reads gray, not red.</p>
+    <p class="meta">{{.DayStripLabel}} &mdash; green &ge; 99.9%, amber &ge; 99%, orange &ge; 95%, red below. Gray means nothing was recorded that day, so a check created mid-period reads gray, not red.{{if .ShowStripBudgetNote}} {{.StripBudgetNote}}{{end}}</p>
     {{end}}
     {{end}}
 
@@ -111,7 +111,9 @@ Response time:
 {{end}}{{if .SlowLine}}  - Slow probes: {{.SlowLine}}
 {{end}}  {{.LatencyNote}}{{if .SlowNote}} {{.SlowNote}}{{end}}
 {{end}}{{if .Checks}}
-Per check{{if .Truncated}} (showing the {{.TruncatedShown}} lowest-uptime checks of {{.TruncatedTotal}}){{end}}:
+Per check, worst first{{if .Truncated}} (showing the {{.TruncatedShown}} lowest-uptime checks of {{.TruncatedTotal}}){{end}}:
+{{if .ShowStripBudgetNote}}  {{.StripBudgetNote}}
+{{end}}
 {{range .Checks}}  - {{.Name}}: {{if .HasData}}{{.AvailabilityPct}}%{{if .DownAllPeriod}} (down all period){{end}}{{else}}No data{{end}}
 {{if .URL}}    {{.URL}}
 {{end}}{{end}}{{end}}{{if .SLOs}}

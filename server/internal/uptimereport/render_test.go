@@ -367,6 +367,9 @@ func fullyPopulatedData() *uptimereport.Data {
 	data.Truncated = true
 	data.TruncatedShown = 50
 	data.TruncatedTotal = 137
+	data.StripsShown = 29
+	data.ShowStripBudgetNote = true
+	data.StripBudgetNote = "Daily strips are shown for the 29 lowest-uptime checks."
 
 	for i := range data.Checks {
 		data.Checks[i].HasData = true

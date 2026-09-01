@@ -152,7 +152,13 @@ type Data struct {
 	PreviousPeriodLabel     string `json:"PreviousPeriodLabel,omitempty"`
 	HasPreviousData         bool   `json:"HasPreviousData"`
 	PreviousAvailabilityPct string `json:"PreviousAvailabilityPct,omitempty"`
-	PreviousIncidentCount   int    `json:"PreviousIncidentCount,omitempty"`
+	// PreviousIncidentCount carries NO omitempty on purpose. It is rendered
+	// under ShowIncidentDelta, and the commonest healthy report is "0 incidents
+	// last month, 0 this month" — with omitempty that zero drops out of the
+	// marshaled map entirely and the template prints "<no value>" instead of
+	// "0". Same reasoning as the PascalCase tag note above: the view model
+	// reaches the template as a map, where a missing key is not a zero.
+	PreviousIncidentCount   int    `json:"PreviousIncidentCount"`
 	PreviousAvgResponseTime string `json:"PreviousAvgResponseTime,omitempty"`
 
 	ShowAvailabilityDelta  bool   `json:"ShowAvailabilityDelta"`
@@ -191,6 +197,13 @@ type Data struct {
 	Checks []CheckRow `json:"Checks,omitempty"`
 	// DayStripLabel names the span and the timezone the strip is bucketed in.
 	DayStripLabel string `json:"DayStripLabel,omitempty"`
+	// StripsShown is how many rows actually carry a day strip. It can be lower
+	// than len(Checks) when the strip payload budget bit (see maxStripCells) —
+	// in which case ShowStripBudgetNote is set and the template says so, rather
+	// than leaving a reader to read a strip-less row as a broken email.
+	StripsShown         int    `json:"StripsShown"`
+	ShowStripBudgetNote bool   `json:"ShowStripBudgetNote"`
+	StripBudgetNote     string `json:"StripBudgetNote,omitempty"`
 	// Truncated and friends surface the maxCheckRows cap instead of silently
 	// dropping rows. The table is sorted worst-first, so what survives the cap
 	// is the lowest-uptime checks.
@@ -326,11 +339,22 @@ func (b *Builder) applyCheckTable(
 		rows = rows[:maxCheckRows]
 	}
 
-	applyStripBudget(rows)
+	stripsShown, stripsWanted := applyStripBudget(rows)
 
 	data.Checks = rows
-	if len(strips) > 0 {
+	data.StripsShown = stripsShown
+
+	if stripsShown > 0 {
 		data.DayStripLabel = plan.label()
+	}
+
+	// Say it when the strip budget bit, for the same reason the row cap says
+	// "showing the 50 lowest-uptime checks of N": a row rendered without the
+	// strip its neighbors have reads as a broken email, not as a deliberate
+	// limit.
+	if stripsWanted > stripsShown {
+		data.ShowStripBudgetNote = true
+		data.StripBudgetNote = stripBudgetNote(stripsShown)
 	}
 
 	return overall
