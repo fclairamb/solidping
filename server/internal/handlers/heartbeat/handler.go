@@ -130,6 +130,27 @@ func extractHeartbeatDuration(body map[string]any) float32 {
 	return float32(num)
 }
 
+// extractAnnotationFromBody consumes a top-level string "annotation" key from
+// the decoded body so it is parsed as an annotation rather than duplicated as
+// opaque caller data. A non-string value is left in place: it lands under
+// output.data like any other caller field, so the sender can see exactly what
+// they sent.
+func extractAnnotationFromBody(callerData map[string]any) string {
+	raw, ok := callerData["annotation"]
+	if !ok {
+		return ""
+	}
+
+	str, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+
+	delete(callerData, "annotation")
+
+	return str
+}
+
 // ReceiveHeartbeat handles incoming heartbeat pings.
 func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
@@ -142,6 +163,16 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request
 		return h.handleError(writer, req, err)
 	}
 
+	// Annotation parity with the embedded push transports (spec
+	// 2026-09-01-06): the same `[status-word] [key=value ...]` grammar means
+	// one thing across HTTPS, TCP and UDP, so a device that graduates from a
+	// curl in a cron job to a signed datagram keeps the same fields. The query
+	// parameter wins over the body key, matching how `status` already works.
+	annotation := req.URL.Query().Get("annotation")
+	if annotation == "" {
+		annotation = extractAnnotationFromBody(callerData)
+	}
+
 	// Caller metadata, captured for forensics/display purposes only (which
 	// script/cron/proxy is actually pinging this check) — same helper and
 	// semantics as auth's session history, see base.ExtractRemoteAddr.
@@ -149,10 +180,12 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req *http.Request
 	remoteAddr := base.ExtractRemoteAddr(req)
 	httpMethod := req.Method
 
-	if err := h.svc.ReceiveHeartbeat(
-		req.Context(), orgSlug, identifier, token, status, message, durationMs,
-		userAgent, remoteAddr, httpMethod, callerData,
-	); err != nil {
+	if err := h.svc.Receive(req.Context(), &Request{
+		OrgSlug: orgSlug, Identifier: identifier, Token: token,
+		Status: status, Message: message, DurationMs: durationMs,
+		UserAgent: userAgent, RemoteAddr: remoteAddr, HTTPMethod: httpMethod,
+		CallerData: callerData, Annotation: annotation,
+	}); err != nil {
 		return h.handleError(writer, req, err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -380,4 +381,58 @@ func TestReceiveHeartbeatHandlerDurationMsNaNIgnoredWithoutFailingPing(t *testin
 	result := s.lastResult(t)
 	r.NotNil(result.Duration)
 	r.InDelta(float32(0), *result.Duration, 0.0001)
+}
+
+// TestReceiveHeartbeatHandlerAnnotationQueryParam proves the HTTPS ingest
+// accepts the same annotation grammar as the embedded push transports, so the
+// field means one thing across all three (spec 2026-09-01-06).
+func TestReceiveHeartbeatHandlerAnnotationQueryParam(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
+		s.url()+"?token="+testToken+"&annotation="+url.QueryEscape("started volts=3.71 fw=1.4.2"), nil)
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+	r.Equal(http.StatusOK, rec.Code)
+
+	result := s.lastResult(t)
+	r.InDelta(3.71, result.Metrics["volts"], 0.0001)
+
+	data, ok := result.Output["data"].(map[string]any)
+	r.True(ok)
+
+	annotation, ok := data["annotation"].(map[string]any)
+	r.True(ok)
+	r.Equal("started", annotation["status"])
+}
+
+// TestReceiveHeartbeatHandlerAnnotationBodyKey covers the JSON-body half of
+// the same parity, and proves the key is consumed rather than duplicated into
+// the opaque caller data.
+func TestReceiveHeartbeatHandlerAnnotationBodyKey(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := newHeartbeatHandlerSetup(t)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, s.url()+"?token="+testToken,
+		strings.NewReader(`{"annotation":"ok temp=21.5"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.router.ServeHTTP(rec, req)
+	r.Equal(http.StatusOK, rec.Code)
+
+	result := s.lastResult(t)
+	r.InDelta(21.5, result.Metrics["temp"], 0.0001)
+
+	data, ok := result.Output["data"].(map[string]any)
+	r.True(ok)
+	r.NotContains(data, "annotation_raw")
+
+	annotation, ok := data["annotation"].(map[string]any)
+	r.True(ok)
+	r.Equal("ok", annotation["status"])
 }

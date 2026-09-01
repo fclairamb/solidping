@@ -2,6 +2,7 @@ package heartbeat
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"strings"
@@ -10,9 +11,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/heartbeatpush"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -122,6 +125,29 @@ type Service struct {
 	db          db.Service
 	incidentSvc *incidents.Service
 	rt          *realtime.Publisher
+	// pushTimestampWindow bounds how far an SP2 beat's `ts` may sit from
+	// server time. Zero means "use the documented default", so a call site
+	// that forgets SetPushTimestampWindow gets the safe value rather than a
+	// zero-width window that would reject every clock-carrying device.
+	pushTimestampWindow time.Duration
+}
+
+// SetPushTimestampWindow configures the SP2 freshness window used by the
+// embedded TCP/UDP transports. Non-positive values keep the documented
+// default (config.DefaultHeartbeatTimestampWindow).
+func (s *Service) SetPushTimestampWindow(window time.Duration) {
+	if window > 0 {
+		s.pushTimestampWindow = window
+	}
+}
+
+// timestampWindow resolves the configured SP2 freshness window.
+func (s *Service) timestampWindow() time.Duration {
+	if s.pushTimestampWindow <= 0 {
+		return config.DefaultHeartbeatTimestampWindow
+	}
+
+	return s.pushTimestampWindow
 }
 
 // NewService creates a new heartbeat service. rt may be nil (realtime
@@ -159,6 +185,43 @@ func NewService(
 	}
 }
 
+// Request is one inbound heartbeat, whatever transport carried it.
+//
+// It exists so the HTTP ingest and the embedded TCP/UDP push transports reach
+// the SAME recording code by construction rather than by copy: maintenance
+// tagging, the result insert, the realtime hint and incident/recovery
+// processing (with the operator-configured check timeout, spec 2026-09-01-02)
+// happen in exactly one place, recordBeat.
+type Request struct {
+	OrgSlug    string
+	Identifier string
+	// Token is the plaintext token to compare. Only the HTTP ingest supplies
+	// it; the push transports verify their own credential (SP1 token or SP2
+	// MAC) before calling recordBeat.
+	Token string
+	// Status is the caller-reported status word ("", "running", "up", "down",
+	// "error"). Empty means "up", for backward compatibility.
+	Status string
+	// Message overrides the default output message.
+	Message string
+	// DurationMs is the caller-reported run duration (0 when absent).
+	DurationMs float32
+	// UserAgent, RemoteAddr, HTTPMethod and Transport are caller metadata:
+	// display-only forensics, never used for any security decision. In
+	// particular the source address of a UDP datagram is spoofable and is
+	// NEVER identity.
+	UserAgent  string
+	RemoteAddr string
+	HTTPMethod string
+	Transport  string
+	// CallerData is caller-supplied data persisted nested under
+	// Output["data"] — see buildHeartbeatOutput for why it is never flattened.
+	CallerData map[string]any
+	// Annotation is the raw beat annotation ("" when absent). Parsing is
+	// best-effort and can never fail the beat.
+	Annotation string
+}
+
 // ReceiveHeartbeat processes an incoming heartbeat ping. durationMs is the
 // caller-reported run duration (0 when absent or invalid), persisted as the
 // result's Duration. userAgent, remoteAddr, and httpMethod are caller
@@ -170,34 +233,63 @@ func (s *Service) ReceiveHeartbeat(
 	ctx context.Context, orgSlug, identifier, token, statusStr, message string, durationMs float32,
 	userAgent, remoteAddr, httpMethod string, callerData map[string]any,
 ) error {
-	// Look up organization
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	return s.Receive(ctx, &Request{
+		OrgSlug: orgSlug, Identifier: identifier, Token: token,
+		Status: statusStr, Message: message, DurationMs: durationMs,
+		UserAgent: userAgent, RemoteAddr: remoteAddr, HTTPMethod: httpMethod,
+		CallerData: callerData,
+	})
+}
+
+// Receive is the token-authenticated ingest path: resolve the check, compare
+// the token, record the beat.
+func (s *Service) Receive(ctx context.Context, req *Request) error {
+	org, check, err := s.resolveCheck(ctx, req.OrgSlug, req.Identifier)
 	if err != nil {
-		return ErrOrganizationNotFound
+		return err
 	}
 
-	// Look up check by UID or slug
-	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
-	if err != nil || check == nil {
-		return ErrCheckNotFound
-	}
-
-	// Verify it's a heartbeat check
-	if checkerdef.CheckType(check.Type) != checkerdef.CheckTypeHeartbeat {
-		return ErrNotHeartbeatCheck
-	}
-
-	// Validate token
-	if token == "" {
+	if req.Token == "" {
 		return ErrMissingToken
 	}
 
 	expectedToken, _ := check.Config["token"].(string)
-	if expectedToken == "" || token != expectedToken {
+	if expectedToken == "" || subtle.ConstantTimeCompare([]byte(req.Token), []byte(expectedToken)) != 1 {
 		return ErrInvalidToken
 	}
 
-	// Resolve status (default to "up" for backward compatibility)
+	return s.recordBeat(ctx, org, check, req)
+}
+
+// resolveCheck maps <org>/<identifier> to a live heartbeat check.
+func (s *Service) resolveCheck(
+	ctx context.Context, orgSlug, identifier string,
+) (*models.Organization, *models.Check, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, nil, ErrOrganizationNotFound
+	}
+
+	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
+	if err != nil || check == nil {
+		return nil, nil, ErrCheckNotFound
+	}
+
+	if checkerdef.CheckType(check.Type) != checkerdef.CheckTypeHeartbeat {
+		return nil, nil, ErrNotHeartbeatCheck
+	}
+
+	return org, check, nil
+}
+
+// recordBeat is the ONE place a heartbeat becomes a result row. Every ingest
+// transport converges here after it has authenticated the beat its own way, so
+// maintenance tagging, the status-tracking insert, the realtime hint and
+// incident/recovery processing cannot drift between transports.
+func (s *Service) recordBeat(
+	ctx context.Context, org *models.Organization, check *models.Check, req *Request,
+) error {
+	statusStr := req.Status
 	if statusStr == "" {
 		statusStr = "up"
 	}
@@ -209,19 +301,30 @@ func (s *Service) ReceiveHeartbeat(
 		return ErrInvalidStatus
 	}
 
-	// Resolve output message
-	outputMessage := message
+	outputMessage := req.Message
 	if outputMessage == "" {
 		outputMessage = defaultOutputMessage(statusStr)
 	}
 
-	// Save result
+	// Annotation parsing is total and runs last, so a malformed annotation can
+	// only ever add less information — never reject the beat.
+	callerData, metrics := applyAnnotation(req.CallerData, req.Annotation)
+
+	if req.Transport != "" {
+		if callerData == nil {
+			callerData = make(map[string]any, 1)
+		}
+
+		callerData["transport"] = req.Transport
+	}
+
 	resultUID, err := uuid.NewV7()
 	if err != nil {
 		return err
 	}
 
 	status := int(checkerStatus)
+	durationMs := req.DurationMs
 
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -231,9 +334,10 @@ func (s *Service) ReceiveHeartbeat(
 		PeriodStart:     time.Now(),
 		Status:          &status,
 		Duration:        &durationMs,
-		Metrics:         make(models.JSONMap),
-		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod, callerData),
-		CreatedAt:       time.Now(),
+		Metrics:         metrics,
+		Output: buildHeartbeatOutput(
+			outputMessage, req.UserAgent, req.RemoteAddr, req.HTTPMethod, callerData),
+		CreatedAt: time.Now(),
 	}
 
 	s.tagMaintenance(ctx, check.UID, result)
@@ -258,4 +362,55 @@ func (s *Service) ReceiveHeartbeat(
 	}
 
 	return nil
+}
+
+// applyAnnotation folds a beat annotation into the two places it belongs:
+// numeric fields become first-class time series in the result's `metrics`
+// jsonb (rolled up by the suffix conventions in jobtypes.job_aggregation), and
+// the status word, the text fields and the raw fallback go under the result's
+// `output` jsonb.
+//
+// It never returns an error. A firmware typo in a key name must not make a
+// healthy device look dead.
+func applyAnnotation(callerData map[string]any, annotation string) (map[string]any, models.JSONMap) {
+	metrics := make(models.JSONMap)
+
+	parsed := heartbeatpush.ParseAnnotation(annotation)
+	if parsed.IsEmpty() {
+		return callerData, metrics
+	}
+
+	for key, value := range parsed.Numeric {
+		metrics[key] = value
+	}
+
+	stored := make(map[string]any, 3)
+	if parsed.Status != "" {
+		stored["status"] = parsed.Status
+	}
+
+	if len(parsed.Text) > 0 {
+		fields := make(map[string]any, len(parsed.Text))
+		for key, value := range parsed.Text {
+			fields[key] = value
+		}
+
+		stored["fields"] = fields
+	}
+
+	if parsed.Raw != "" {
+		stored["raw"] = parsed.Raw
+	}
+
+	if len(stored) == 0 {
+		return callerData, metrics
+	}
+
+	if callerData == nil {
+		callerData = make(map[string]any, 1)
+	}
+
+	callerData["annotation"] = stored
+
+	return callerData, metrics
 }
