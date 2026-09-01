@@ -303,10 +303,49 @@ func uptimeReportFixture() map[string]any {
 		"CheckCount":      2,
 		"IncidentCount":   3,
 		"LongestIncident": "42m",
+		"AverageIncident": "21m 40s",
 		"TotalDowntime":   "1h 5m",
+
+		// Period-over-period trend. Present in the fixture so the preview
+		// exercises the delta spans rather than only their absence.
+		"PreviousPeriodLabel":     "June 2026",
+		"HasPreviousData":         true,
+		"PreviousAvailabilityPct": "99.870",
+		"PreviousIncidentCount":   5,
+		"PreviousAvgResponseTime": "158 ms",
+		"ShowAvailabilityDelta":   true,
+		"AvailabilityDeltaText":   "+0.080 pts",
+		"AvailabilityDeltaColor":  "#15803d",
+		"ShowIncidentDelta":       true,
+		"IncidentDeltaText":       "-2",
+		"IncidentDeltaColor":      "#15803d",
+		"ShowResponseDelta":       true,
+		"ResponseDeltaText":       "+8.4%",
+		"ResponseDeltaColor":      "#b91c1c",
+
+		// Response-time block.
+		"HasLatency":      true,
+		"AvgResponseTime": "171 ms",
+		"MinResponseTime": "42 ms",
+		"MaxResponseTime": "3.20 s",
+		"SlowLine":        "4 samples and 2 peaks above 1000 ms",
+		"SlowNote":        "A peak is a rolled-up period whose slowest sample exceeded 1000 ms.",
+		"LatencyNote":     "Response times include failed samples.",
+
+		"DayStripLabel": "Daily availability &middot; 1 Jul – 31 Jul (UTC)",
 		"Checks": []map[string]any{
-			{keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980"},
-			{keyName: "Marketing site", keyHasData: false, keyAvailability: ""},
+			{
+				keyName: fixtureCheckName, keyHasData: true, keyAvailability: "99.980",
+				"Days": []map[string]any{
+					{"Color": "#15803d", "Span": 20, "Wide": true},
+					{"Color": "#b45309", "Span": 1},
+					{"Color": "#15803d", "Span": 10, "Wide": true},
+				},
+			},
+			{
+				keyName: "Marketing site", keyHasData: false, keyAvailability: "",
+				"Days": []map[string]any{{"Color": "#d1d5db", "Span": 31, "Wide": true}},
+			},
 		},
 		"SLOs": []map[string]any{
 			{

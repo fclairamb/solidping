@@ -9,8 +9,10 @@ package uptimereport
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +66,30 @@ type CheckRow struct {
 	// AvailabilityColor is a hex color interpolated from AvailabilityPct
 	// (see availabilityTextColor), filled only when HasData.
 	AvailabilityColor string `json:"AvailabilityColor,omitempty"`
+	// DownAllPeriod is set when the check measured data and EVERY probe
+	// failed. The template states that as a fact rather than dressing it up as
+	// a percentage.
+	DownAllPeriod bool `json:"DownAllPeriod,omitempty"`
+	// Days is the per-day availability strip, run-length encoded (see
+	// DayCell). Empty when the strip could not be built.
+	Days []DayCell `json:"Days,omitempty"`
+}
+
+// DayCell is one run of consecutive same-colored days in a check's strip.
+//
+// Run-length encoded rather than one cell per day: a healthy month collapses to
+// a single cell, which is what keeps a 50-check monthly report far below
+// Gmail's ~102 KB clipping limit (see TestUptimeReportStaysUnderGmailClipLimit).
+//
+//nolint:tagliatelle // template view-model keys are PascalCase; see the note above.
+type DayCell struct {
+	Color string `json:"Color"`
+	Span  int    `json:"Span"`
+	// Wide mirrors Span > 1 as a BOOL because the template must branch on it,
+	// and html/template cannot compare a JSON-round-tripped float64 against an
+	// integer literal ("incompatible types for comparison"). See the tag note
+	// above: this view model reaches the template as a map, not as this struct.
+	Wide bool `json:"Wide,omitempty"`
 }
 
 // SLORow is one objective's line in the report.
@@ -112,10 +138,67 @@ type Data struct {
 
 	IncidentCount   int    `json:"IncidentCount"`
 	LongestIncident string `json:"LongestIncident,omitempty"`
+	// AverageIncident is TotalDowntime / IncidentCount, shown only when there
+	// was at least one incident. There is deliberately no MTBF: at the 0-2
+	// incidents a month that is the common case it is a degenerate statistic.
+	AverageIncident string `json:"AverageIncident,omitempty"`
 	TotalDowntime   string `json:"TotalDowntime,omitempty"`
 
+	// --- Period-over-period trend -------------------------------------
+	//
+	// Every Show* flag is false when there is no previous-period data, and the
+	// matching text is then empty: an absent baseline renders NOTHING, never
+	// "±0.00%" and never in green (see applyTrend).
+	PreviousPeriodLabel     string `json:"PreviousPeriodLabel,omitempty"`
+	HasPreviousData         bool   `json:"HasPreviousData"`
+	PreviousAvailabilityPct string `json:"PreviousAvailabilityPct,omitempty"`
+	PreviousIncidentCount   int    `json:"PreviousIncidentCount,omitempty"`
+	PreviousAvgResponseTime string `json:"PreviousAvgResponseTime,omitempty"`
+
+	ShowAvailabilityDelta  bool   `json:"ShowAvailabilityDelta"`
+	AvailabilityDeltaText  string `json:"AvailabilityDeltaText,omitempty"`
+	AvailabilityDeltaColor string `json:"AvailabilityDeltaColor,omitempty"`
+
+	ShowIncidentDelta  bool   `json:"ShowIncidentDelta"`
+	IncidentDeltaText  string `json:"IncidentDeltaText,omitempty"`
+	IncidentDeltaColor string `json:"IncidentDeltaColor,omitempty"`
+
+	ShowResponseDelta  bool   `json:"ShowResponseDelta"`
+	ResponseDeltaText  string `json:"ResponseDeltaText,omitempty"`
+	ResponseDeltaColor string `json:"ResponseDeltaColor,omitempty"`
+
+	// --- Response time -------------------------------------------------
+	//
+	// HasLatency is false — and the whole block absent — for a scope that was
+	// down end to end or measured no duration at all.
+	HasLatency      bool   `json:"HasLatency"`
+	AvgResponseTime string `json:"AvgResponseTime,omitempty"`
+	MinResponseTime string `json:"MinResponseTime,omitempty"`
+	MaxResponseTime string `json:"MaxResponseTime,omitempty"`
+	// SlowLine phrases the slow-probe count honestly across storage tiers —
+	// exact "samples" from raw, "peaks" from rollups, never summed together.
+	SlowLine string `json:"SlowLine,omitempty"`
+	// SlowNote explains what a peak is, present only when peaks contribute.
+	SlowNote string `json:"SlowNote,omitempty"`
+	// LatencyNote states that failed samples are included in these numbers —
+	// the rule uptimebar and the aggregation job both apply.
+	LatencyNote string `json:"LatencyNote,omitempty"`
+
+	// --- Degenerate-period statement ------------------------------------
+	DownAllPeriod      bool   `json:"DownAllPeriod"`
+	DownAllPeriodLabel string `json:"DownAllPeriodLabel,omitempty"`
+
 	Checks []CheckRow `json:"Checks,omitempty"`
-	SLOs   []SLORow   `json:"SLOs,omitempty"`
+	// DayStripLabel names the span and the timezone the strip is bucketed in.
+	DayStripLabel string `json:"DayStripLabel,omitempty"`
+	// Truncated and friends surface the maxCheckRows cap instead of silently
+	// dropping rows. The table is sorted worst-first, so what survives the cap
+	// is the lowest-uptime checks.
+	Truncated      bool `json:"Truncated"`
+	TruncatedShown int  `json:"TruncatedShown,omitempty"`
+	TruncatedTotal int  `json:"TruncatedTotal,omitempty"`
+
+	SLOs []SLORow `json:"SLOs,omitempty"`
 
 	DashboardURL   string `json:"DashboardURL,omitempty"`
 	DocsURL        string `json:"DocsURL,omitempty"`
@@ -194,37 +277,37 @@ func (b *Builder) Build(
 		return nil, fmt.Errorf("window availability: %w", err)
 	}
 
-	var overall uptimebar.BucketStats
+	plan := planDayStrip(window)
+	strips := b.dayStrips(ctx, org.UID, checkUIDs, plan, hints)
 
-	rows := make([]CheckRow, 0, len(checks))
+	overall, rows := buildCheckRows(checks, byCheck, strips, baseURL, org.Slug)
 
-	for _, check := range checks {
-		stats := byCheck[check.UID]
-		overall.Add(stats)
-
-		row := CheckRow{Name: checkDisplayName(check), URL: checkReportURL(baseURL, org.Slug, check)}
-		if pct, ok := stats.AvailabilityPct(); ok {
-			row.HasData = true
-			row.AvailabilityPct = formatPct(pct)
-			row.AvailabilityColor = availabilityTextColor(pct)
-		}
-
-		rows = append(rows, row)
-	}
-
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	sortWorstFirst(rows)
 
 	if len(rows) > maxCheckRows {
+		data.Truncated = true
+		data.TruncatedShown = maxCheckRows
+		data.TruncatedTotal = len(rows)
 		rows = rows[:maxCheckRows]
 	}
 
 	data.Checks = rows
+	if len(strips) > 0 {
+		data.DayStripLabel = plan.label()
+	}
 
 	if pct, ok := overall.AvailabilityPct(); ok {
 		data.HasData = true
 		data.AvailabilityPct = formatPct(pct)
 		data.AvailabilityColor = availabilityTextColor(pct)
 	}
+
+	if isDownAllPeriod(overall) {
+		data.DownAllPeriod = true
+		data.DownAllPeriodLabel = downAllPeriodLabel(checks)
+	}
+
+	applyLatency(data, overall)
 
 	incidents, err := b.incidentBlock(ctx, org.UID, checkUIDs, window, now)
 	if err != nil {
@@ -236,8 +319,18 @@ func (b *Builder) Build(
 		data.LongestIncident = formatDuration(incidents.LongestSeconds)
 	}
 
+	if incidents.AverageSeconds > 0 {
+		data.AverageIncident = formatDuration(incidents.AverageSeconds)
+	}
+
 	if incidents.TotalDowntimeSeconds > 0 {
 		data.TotalDowntime = formatDuration(incidents.TotalDowntimeSeconds)
+	}
+
+	if trendErr := b.applyPreviousPeriod(
+		ctx, org.UID, schedule, checkUIDs, window, now, hints, data, overall, incidents.Count,
+	); trendErr != nil {
+		return nil, trendErr
 	}
 
 	if schedule.IncludeSLOs {
@@ -250,6 +343,140 @@ func (b *Builder) Build(
 	}
 
 	return data, nil
+}
+
+// buildCheckRows folds the per-check window stats into rows and, at the same
+// time, into the scope-level total. Returning both from one pass is what keeps
+// "the headline" and "the sum of the table" from ever disagreeing.
+func buildCheckRows(
+	checks []*models.Check, byCheck map[string]uptimebar.BucketStats,
+	strips map[string][]DayCell, baseURL, orgSlug string,
+) (uptimebar.BucketStats, []CheckRow) {
+	var overall uptimebar.BucketStats
+
+	rows := make([]CheckRow, 0, len(checks))
+
+	for _, check := range checks {
+		stats := byCheck[check.UID]
+		overall.Add(stats)
+
+		row := CheckRow{
+			Name: checkDisplayName(check),
+			URL:  checkReportURL(baseURL, orgSlug, check),
+			Days: strips[check.UID],
+		}
+
+		if pct, ok := stats.AvailabilityPct(); ok {
+			row.HasData = true
+			row.AvailabilityPct = formatPct(pct)
+			row.AvailabilityColor = availabilityTextColor(pct)
+			row.DownAllPeriod = pct == 0
+		}
+
+		rows = append(rows, row)
+	}
+
+	return overall, rows
+}
+
+// sortWorstFirst orders the table by ascending availability, no-data checks
+// last, ties broken by name.
+//
+// This is what makes the maxCheckRows cap safe: alphabetical order let a check
+// that was down all month sit invisibly below the fold of a 50-row table, and
+// the whole point of a digest is that the broken thing is the first thing you
+// see. A no-data check is not "0%" — it goes last, not first.
+func sortWorstFirst(rows []CheckRow) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		left, right := rows[i], rows[j]
+
+		if left.HasData != right.HasData {
+			return left.HasData
+		}
+
+		if left.HasData && left.AvailabilityPct != right.AvailabilityPct {
+			// AvailabilityPct is formatPct's fixed-width 3-decimal rendering
+			// of a percentage in [0, 100], so a numeric compare is needed:
+			// "9.000" sorts after "10.000" as a string.
+			return parsePct(left.AvailabilityPct) < parsePct(right.AvailabilityPct)
+		}
+
+		return left.Name < right.Name
+	})
+}
+
+// parsePct reads back what formatPct wrote. A value that cannot be parsed
+// sorts as the worst possible, so a formatting bug surfaces at the TOP of the
+// table rather than hiding at the bottom.
+func parsePct(formatted string) float64 {
+	pct, err := strconv.ParseFloat(formatted, 64)
+	if err != nil {
+		return -1
+	}
+
+	return pct
+}
+
+// downAllPeriodLabel names the subject of the "was down for the entire period"
+// statement: the check itself when the scope is a single check, and a plain
+// collective phrase otherwise.
+func downAllPeriodLabel(checks []*models.Check) string {
+	if len(checks) == 1 {
+		return checkDisplayName(checks[0])
+	}
+
+	return "Every monitored check"
+}
+
+// applyPreviousPeriod runs the same aggregation over the CALENDAR period before
+// the reported one and fills the trend block.
+//
+// A failure to read the previous period is not fatal to the digest: the report
+// is about the period that just closed, and losing the comparison must not lose
+// the report. It logs and leaves every Show* flag false, which renders exactly
+// as a first-ever run does — no delta at all.
+func (b *Builder) applyPreviousPeriod(
+	ctx context.Context, orgUID string, schedule *models.ReportSchedule, checkUIDs []string,
+	window slo.Window, now time.Time, hints uptimebar.Hints,
+	data *Data, current uptimebar.BucketStats, currentIncidents int,
+) error {
+	loc, err := slo.LoadLocation(schedule.Timezone)
+	if err != nil {
+		loc = time.UTC
+	}
+
+	previous := slo.PrecedingWindow(loc, window, schedule.Frequency == models.ReportFrequencyWeekly)
+	data.PreviousPeriodLabel = periodLabel(schedule, previous)
+
+	byCheck, err := uptimebar.WindowAvailability(
+		ctx, b.db, orgUID, checkUIDs, previous.Start, previous.End, hints)
+	if err != nil {
+		slog.WarnContext(ctx, "uptime report could not read the previous period; "+
+			"sending the digest without period-over-period deltas",
+			"organization_uid", orgUID, "error", err)
+
+		return nil
+	}
+
+	var previousOverall uptimebar.BucketStats
+
+	for _, checkUID := range checkUIDs {
+		previousOverall.Add(byCheck[checkUID])
+	}
+
+	previousIncidents, err := b.incidentBlock(ctx, orgUID, checkUIDs, previous, now)
+	if err != nil {
+		return err
+	}
+
+	applyTrend(data, trendInputs{
+		current:           current,
+		previous:          previousOverall,
+		currentIncidents:  currentIncidents,
+		previousIncidents: previousIncidents.Count,
+	})
+
+	return nil
 }
 
 // scopeChecks expands a schedule to the checks it covers. Both scope lists

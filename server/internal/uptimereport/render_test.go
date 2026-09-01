@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,16 +24,52 @@ func sampleData() *uptimereport.Data {
 		CheckCount:        2,
 		IncidentCount:     3,
 		LongestIncident:   "42m",
+		AverageIncident:   "21m 40s",
 		TotalDowntime:     "1h 5m",
+
+		PreviousPeriodLabel:     "June 2026",
+		HasPreviousData:         true,
+		PreviousAvailabilityPct: "99.870",
+		PreviousIncidentCount:   5,
+		PreviousAvgResponseTime: "158 ms",
+
+		ShowAvailabilityDelta:  true,
+		AvailabilityDeltaText:  "+0.080 pts",
+		AvailabilityDeltaColor: "#15803d",
+
+		ShowIncidentDelta:  true,
+		IncidentDeltaText:  "-2",
+		IncidentDeltaColor: "#15803d",
+
+		ShowResponseDelta:  true,
+		ResponseDeltaText:  "+8.4%",
+		ResponseDeltaColor: "#b91c1c",
+
+		HasLatency:      true,
+		AvgResponseTime: "171 ms",
+		MinResponseTime: "42 ms",
+		MaxResponseTime: "3.20 s",
+		SlowLine:        "4 samples and 2 peaks above 1000 ms",
+		SlowNote:        "A peak is a rolled-up period whose slowest sample exceeded 1000 ms.",
+		LatencyNote:     "Response times include failed samples.",
+
+		DayStripLabel: "Daily availability &middot; 1 Jul – 31 Jul (UTC)",
+
 		Checks: []uptimereport.CheckRow{
 			{
 				Name: "Production API", HasData: true, AvailabilityPct: "99.980",
 				AvailabilityColor: "#15803d",
 				URL:               "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api",
+				Days: []uptimereport.DayCell{
+					{Color: "#15803d", Span: 20, Wide: true},
+					{Color: "#b45309", Span: 1},
+					{Color: "#15803d", Span: 10, Wide: true},
+				},
 			},
 			{
 				Name: "Marketing site", HasData: false,
-				URL: "https://solidping.example/dash0/orgs/acme/checks/chk-marketing",
+				URL:  "https://solidping.example/dash0/orgs/acme/checks/chk-marketing",
+				Days: []uptimereport.DayCell{{Color: "#d1d5db", Span: 31, Wide: true}},
 			},
 		},
 		SLOs: []uptimereport.SLORow{{
@@ -203,8 +238,12 @@ func TestUptimeReportColorsAvailabilityByValue(t *testing.T) {
 	// one HasData check row got the colored-value-span treatment — a
 	// per-value color span appearing more than once would mean the no-data
 	// row got colored too.
+	//
+	// Counted on the availability-colored VALUE span specifically, not on
+	// "font-weight: 600" anywhere: the check-name cells and the trend deltas
+	// legitimately carry that weight too.
 	r.Contains(html, "No data")
-	r.Equal(1, strings.Count(html, "font-weight: 600"))
+	r.Equal(1, countColoredCheckValues(html, "99.980%"))
 	// Color is HTML-only.
 	r.NotContains(text, "#15803d")
 }
@@ -301,4 +340,12 @@ func TestUptimeReportBrandingSurvivesTheJSONRoundTrip(t *testing.T) {
 
 	r.Contains(html, "https://solidping.example/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="acme"`)
+}
+
+// countColoredCheckValues counts value spans rendered with an interpolated
+// availability color around the given text.
+func countColoredCheckValues(html, value string) int {
+	pattern := fmt.Sprintf(`style="color: #[0-9a-f]{6}; font-weight: 600">%s</span>`, regexp.QuoteMeta(value))
+
+	return len(regexp.MustCompile(pattern).FindAllString(html, -1))
 }

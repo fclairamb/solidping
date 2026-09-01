@@ -7,31 +7,73 @@
 
     {{/* The one number the whole digest is about, promoted out of the table:
          a report that opens with a grid of equal-weight rows makes the reader
-         hunt for its own headline. */}}
+         hunt for its own headline. The delta under it renders ONLY when there
+         is a real previous period to compare against — an absent baseline
+         prints nothing at all, never a green "±0.00%". */}}
     <table class="metric" role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
             <td align="center">
                 <span class="metric-value"{{if .AvailabilityColor}} style="color: {{.AvailabilityColor}}"{{end}}>{{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}</span>
                 <span class="metric-label">Availability &middot; {{.PeriodLabel}}</span>
+                {{if .ShowAvailabilityDelta}}<span class="meta"><span style="color: {{.AvailabilityDeltaColor}}; font-weight: 600">{{.AvailabilityDeltaText}}</span> vs {{.PreviousPeriodLabel}} ({{.PreviousAvailabilityPct}}%)</span>{{end}}
             </td>
         </tr>
     </table>
+
+    {{if .DownAllPeriod}}
+    {{/* Down end to end. A grid of zeros and a "response time" measured on
+         error responses would both be noise, so the report says the one thing
+         that is true and shows no latency block at all. */}}
+    <p><strong>{{.DownAllPeriodLabel}} was down for the entire period.</strong></p>
+    {{end}}
 
     {{/* label/value cells, NOT <th>: base.html styles the two-column grid on
          td.label/td.value, and a bare <th> renders centered and unpadded. */}}
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
         <tr><td class="label">Checks monitored</td><td class="value">{{.CheckCount}}</td></tr>
-        <tr><td class="label">Incidents</td><td class="value">{{.IncidentCount}}{{if .LongestIncident}} &middot; longest {{.LongestIncident}}{{end}}</td></tr>
+        <tr><td class="label">Incidents</td><td class="value">{{.IncidentCount}}{{if .LongestIncident}} &middot; longest {{.LongestIncident}}{{end}}{{if .AverageIncident}} &middot; average {{.AverageIncident}}{{end}}{{if .ShowIncidentDelta}}<br><span class="meta"><span style="color: {{.IncidentDeltaColor}}; font-weight: 600">{{.IncidentDeltaText}}</span> vs {{.PreviousPeriodLabel}} ({{.PreviousIncidentCount}})</span>{{end}}</td></tr>
         {{if .TotalDowntime}}<tr><td class="label">Total downtime</td><td class="value">{{.TotalDowntime}}</td></tr>{{end}}
     </table>
 
-    {{if .Checks}}
-    <h2 class="section-title">Per check</h2>
+    {{if .HasLatency}}
+    <h2 class="section-title">Response time</h2>
     <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td class="label">Average</td><td class="value">{{.AvgResponseTime}}{{if .ShowResponseDelta}}<br><span class="meta"><span style="color: {{.ResponseDeltaColor}}; font-weight: 600">{{.ResponseDeltaText}}</span> vs {{.PreviousPeriodLabel}} ({{.PreviousAvgResponseTime}})</span>{{end}}</td></tr>
+        {{if .MinResponseTime}}<tr><td class="label">Fastest / slowest</td><td class="value">{{.MinResponseTime}} &middot; {{.MaxResponseTime}}</td></tr>{{end}}
+        {{if .SlowLine}}<tr><td class="label">Slow probes</td><td class="value">{{.SlowLine}}</td></tr>{{end}}
+    </table>
+    <p class="meta">{{.LatencyNote}}{{if .SlowNote}} {{.SlowNote}}{{end}}</p>
+    {{end}}
+
+    {{if .Checks}}
+    <h2 class="section-title">Per check{{if .DayStripLabel}} &middot; worst first{{end}}</h2>
+    {{if .Truncated}}<p class="meta">Showing the {{.TruncatedShown}} lowest-uptime checks of {{.TruncatedTotal}}.</p>{{end}}
+    {{/* This table deliberately carries NO class and styles its own cells
+         inline. The day strip has to sit inside it (a strip a reader cannot
+         line up with a check name is decoration, not information), and the
+         formatter's CSS inliner copies `.details-table td { padding: 12px
+         16px; ... }` onto EVERY descendant td — which on a 50-check monthly
+         report would be hundreds of kilobytes of duplicated style attributes
+         on cells that are 8 pixels tall. Class-free cells cost the inliner
+         nothing. See TestUptimeReportStaysUnderGmailClipLimit. */}}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; margin: 18px 0 8px; border: 1px solid #e4e9ef; border-radius: 12px; border-collapse: separate; border-spacing: 0">
         {{range .Checks}}
-        <tr><td class="label">{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td><td class="value">{{if .HasData}}<span style="color: {{.AvailabilityColor}}; font-weight: 600">{{.AvailabilityPct}}%</span>{{else}}No data{{end}}</td></tr>
+        <tr>
+            <td style="padding: 11px 16px 5px; font-size: 14px; color: #0f172a; font-weight: 600">{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+            <td align="right" style="padding: 11px 16px 5px; font-size: 14px; white-space: nowrap">{{if .HasData}}<span style="color: {{.AvailabilityColor}}; font-weight: 600">{{.AvailabilityPct}}%</span>{{if .DownAllPeriod}} &middot; down all period{{end}}{{else}}No data{{end}}</td>
+        </tr>
+        {{if .Days}}
+        <tr><td colspan="2" style="padding: 0 16px 11px; font-size: 0; line-height: 0">
+            <table role="presentation" width="100%" height="8" cellpadding="0" cellspacing="0" style="width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0; line-height: 0">
+                <tr>{{range .Days}}<td{{if .Wide}} colspan="{{.Span}}"{{end}} bgcolor="{{.Color}}">&nbsp;</td>{{end}}</tr>
+            </table>
+        </td></tr>
+        {{end}}
         {{end}}
     </table>
+    {{if .DayStripLabel}}
+    <p class="meta">{{.DayStripLabel}} &mdash; green &ge; 99.9%, amber &ge; 99%, orange &ge; 95%, red below. Gray means nothing was recorded that day, so a check created mid-period reads gray, not red.</p>
+    {{end}}
     {{end}}
 
     {{if .SLOs}}
@@ -57,13 +99,20 @@
 {{define "text"}}{{.OrgName}} uptime report — {{.PeriodLabel}}{{if .Timezone}} ({{.Timezone}}){{end}}
 {{.ScopeLabel}}
 
-Overall availability: {{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}
-Checks monitored: {{.CheckCount}}
-Incidents: {{.IncidentCount}}{{if .LongestIncident}} (longest {{.LongestIncident}}){{end}}
+Overall availability: {{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}{{if .ShowAvailabilityDelta}} ({{.AvailabilityDeltaText}} vs {{.PreviousPeriodLabel}}: {{.PreviousAvailabilityPct}}%){{end}}
+{{if .DownAllPeriod}}{{.DownAllPeriodLabel}} was down for the entire period.
+{{end}}Checks monitored: {{.CheckCount}}
+Incidents: {{.IncidentCount}}{{if .LongestIncident}} (longest {{.LongestIncident}}{{if .AverageIncident}}, average {{.AverageIncident}}{{end}}){{end}}{{if .ShowIncidentDelta}} ({{.IncidentDeltaText}} vs {{.PreviousPeriodLabel}}: {{.PreviousIncidentCount}}){{end}}
 {{if .TotalDowntime}}Total downtime: {{.TotalDowntime}}
+{{end}}{{if .HasLatency}}
+Response time:
+  - Average: {{.AvgResponseTime}}{{if .ShowResponseDelta}} ({{.ResponseDeltaText}} vs {{.PreviousPeriodLabel}}: {{.PreviousAvgResponseTime}}){{end}}
+{{if .MinResponseTime}}  - Fastest / slowest: {{.MinResponseTime}} / {{.MaxResponseTime}}
+{{end}}{{if .SlowLine}}  - Slow probes: {{.SlowLine}}
+{{end}}  {{.LatencyNote}}{{if .SlowNote}} {{.SlowNote}}{{end}}
 {{end}}{{if .Checks}}
-Per check:
-{{range .Checks}}  - {{.Name}}: {{if .HasData}}{{.AvailabilityPct}}%{{else}}No data{{end}}
+Per check{{if .Truncated}} (showing the {{.TruncatedShown}} lowest-uptime checks of {{.TruncatedTotal}}){{end}}:
+{{range .Checks}}  - {{.Name}}: {{if .HasData}}{{.AvailabilityPct}}%{{if .DownAllPeriod}} (down all period){{end}}{{else}}No data{{end}}
 {{if .URL}}    {{.URL}}
 {{end}}{{end}}{{end}}{{if .SLOs}}
 Objectives:
