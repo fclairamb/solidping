@@ -156,3 +156,133 @@ see Decisions.
   follow-up spec if requested (openstatus doesn't have them either).
 - The `Health/Watch` streaming RPC — openstatus doesn't use it either;
   polling `Check` matches our scheduler model.
+
+## Implementation Plan
+
+Verified before planning:
+
+- `connection_time_ms` is referenced nowhere outside old spec files — no
+  aggregation, no dashboard label, no docs table. Safe to drop.
+- `timeout` **is** already reachable from the dashboard: `check-form.tsx`
+  layers a protocol-agnostic `timeout` (1–30 s) onto the config for every
+  non-passive type, gRPC included. The spec's item 4 is wrong on that point;
+  the form work is `tlsSkipVerify` + metadata, and the plan adds an E2E
+  assertion that the shared timeout really does round-trip for gRPC rather
+  than duplicating the input inside `grpcModule`.
+- dash0 ships **four** locales (`en`, `fr`, `de`, `es`) — the spec is right.
+- Locale completeness is enforced per feature in vitest (see
+  `src/lib/check-scheduling.test.ts`'s "Locale completeness" block), not by a
+  repo-wide parity test, so this spec adds its own parity block.
+- `CHANGELOG.md` is owned by release-please (only `chore(release)` commits
+  touch it), and `wiki/conventions/changelog.md` states the entry *is* the
+  `feat:`/`fix:` commit message, expanded at release time. So the changelog
+  deliverable here is a user-facing `feat(grpc): …` commit message plus a
+  `grpc` entry in `SCOPE_LABELS` (`web/docs/src/lib/changelog.ts`), which is
+  missing today. `CHANGELOG.md` itself is not hand-edited.
+
+### 1. `checkgrpc/config.go` — request metadata
+
+- `Metadata map[string]string` (`metadata`) and `SecretMetadata`
+  (`secretMetadata`), decoded from both `map[string]string` and
+  `map[string]any` like `HTTPConfig` does, emitted by `GetConfig` only when
+  non-empty.
+- `SecretFields() []string { return []string{"secretMetadata"} }`.
+- `Validate` rejects: empty key, a key that is not `[a-z0-9._-]+` (gRPC
+  normalizes to lowercase; an uppercase key is a silent rename), the reserved
+  `grpc-` prefix, and the `-bin` suffix (binary metadata needs base64 values,
+  which a plain string field cannot express). Same rules for both maps.
+- `Keyword`/`InvertKeyword` gain a deprecation comment; decoding and matching
+  are unchanged.
+
+### 2. `checkgrpc/dial.go` (new) — instrumented connection
+
+- `phaseTimer`: mutex-guarded recorder for `dns_time_ms`, `connect_time_ms`,
+  `tls_time_ms`, the failing phase, the dial error, and the resolved address.
+- `grpc.WithContextDialer` that, untunneled, resolves the host itself with
+  `net.Resolver` (skipped for IP literals and for the tunneled path) and then
+  dials the resolved `ip:port` with `net.Dialer`; tunneled, it hands the
+  verbatim `host:port` to the bastion dialer with no local lookup.
+- A `credentials.TransportCredentials` wrapper timing `ClientHandshake`.
+- The target is always `passthrough:///host:port` now (not only when
+  tunneled): with the default `dns` resolver gRPC resolves the name *before*
+  our dialer sees it, which would make `dns_time_ms` measure nothing and turn
+  every DNS failure into an opaque resolver error.
+- `waitForReady`: `conn.Connect()` then loop on `GetState`/
+  `WaitForStateChange` until `Ready`, bailing on the first `TransientFailure`
+  (so a failure is reported as the phase that produced it instead of being
+  absorbed by gRPC's retry backoff) or on ctx expiry.
+
+### 3. `checkgrpc/checker.go` — phases, classification, metadata
+
+- `Execute` builds the instrumented dialer, connects eagerly, and only then
+  issues the health RPC, so `rpc_time_ms` is a true TTFB analog.
+- `connection_time_ms` is removed; `dns_time_ms`/`connect_time_ms`/
+  `tls_time_ms` are recorded when they happened, `rpc_time_ms`/
+  `total_time_ms` as before.
+- Failures carry `output["phase"]` ∈ `dns` | `connect` | `tls-handshake` |
+  `rpc`, a phase-specific message, and (untunneled only) a
+  `checkerdef.NetworkFailure` marker built with `ClassifyDialError` /
+  `ClassifyTLSHandshakeError` + `NewNetworkFailure`, located on the address we
+  actually dialed. Tunneled failures call `DropNetworkFailure` — the same
+  reasoning as the HTTP path: the failure happened on the far side of the
+  bastion.
+- Deadline expiry keeps `StatusTimeout`; every other failure stays
+  `StatusDown`, with the metrics measured so far attached.
+- `handleRPCError` special-cases `codes.NotFound` →
+  `service "<name>" is not registered with the health server`, keeping the raw
+  error under `output["rpcError"]`.
+- `NOT_SERVING` / `SERVICE_UNKNOWN` keep `StatusDown` **with** metrics — locked
+  in by a test.
+- Metadata is merged (plain first, secret last so a secret wins a collision),
+  lowercased, and attached with `metadata.NewOutgoingContext`. Values are never
+  written to `output`.
+
+### 4. Samples + audit test
+
+- `GetSampleConfigs` gains a TLS + named-service sample.
+- `registry/secret_audit_test.go`'s comment claiming checkgrpc has no
+  secret-bearing field is corrected (the assertion itself now passes only
+  because `secretMetadata` is declared).
+
+### 5. Backend tests (`checker_test.go`, `metadata_test.go`, `phases_test.go`)
+
+Against an in-process `grpc-go` health server: SERVING; NOT_SERVING keeps its
+latency; unknown named service (`SERVICE_UNKNOWN` and the friendly NOT_FOUND
+text); h2c / TLS / TLS-skip-verify; TLS against a plaintext server; metadata
+arrives verbatim (asserted through a server interceptor) and secret values
+never appear in the serialized output; phase metrics present and plausible;
+unresolvable host → phase `dns`; closed port → phase `connect` + a
+`connection-refused` marker. Timing split proved two ways: a handler that
+sleeps moves only `rpc_time_ms`, and a TLS handshake that sleeps
+(`GetConfigForClient`) moves only `tls_time_ms` — the direct proof that the
+connection cost is no longer inside `rpc_time_ms`. `tunnel_test.go` stays as
+is and gains a case asserting the explicit-connect path still records no
+`dns_time_ms` through a tunnel.
+
+### 6. Frontend (`messaging.tsx`, `types/index.ts`, locales)
+
+- `GrpcState` gains `tlsSkipVerify`, `metadata`, `secretMetadata`,
+  `metadataDirty` (the `headersDirty` guard, so an untouched form never wipes
+  stored secret metadata).
+- `grpcAdvancedFields` (registered in `advancedFieldsRegistry`): the
+  `tlsSkipVerify` switch, shown only when TLS is on, with the amber warning
+  styling `HttpOptionsFields` uses, plus the plain metadata key/value editor.
+- `grpcAuthFields` (registered in `authFieldsRegistry`): the secret-metadata
+  editor with the `••••` stored-value placeholder driven by
+  `configPrivateKeys`.
+- Locale keys for all four locales, plus a vitest block covering
+  `fromConfig`/`toConfig` round-trips, the dirty guard, and locale parity.
+
+### 7. E2E
+
+`web/dash0/e2e/check-grpc-metadata.spec.ts`: create a gRPC check through the
+form with TLS + skip-verify + plain metadata + secret metadata + a custom
+timeout, assert the public config round-trips, `secretMetadata` is absent from
+the public config and listed in `configPrivateKeys`, and that editing an
+unrelated field preserves it.
+
+### 8. Docs
+
+`web/docs/docs/features/check-types.md` gRPC entry: TLS modes (including
+`tlsSkipVerify`), named service vs overall health, metadata/secretMetadata,
+the phase metrics reported, and `keyword` noted as deprecated.
