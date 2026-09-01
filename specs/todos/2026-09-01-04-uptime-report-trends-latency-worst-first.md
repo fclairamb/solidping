@@ -144,3 +144,92 @@ is a degenerate statistic (the competitor email's "0.0 hours" proves the point).
 - A worst-first sort test including no-data checks and the >50-row truncation.
 - A size test (or at least an assertion in an existing render test) for the 50-check
   monthly fixture with strips.
+
+## Implementation Plan
+
+### 1. `server/internal/slo/window.go` — calendar-aware previous window
+
+Add `PrecedingWindow(loc, window, weekly) Window`: the period immediately before an
+already-resolved report window, built with `AddDate` in `loc` (so "the month before
+March" is February, 28 days, and a DST month is honestly an hour short). `End` is the
+given window's `Start` in `loc`, so the two windows are exactly adjacent and half-open.
+Tests: month-length asymmetry (Mar → Feb), year rollover, weekly, DST.
+
+### 2. `server/internal/uptimebar/bucketing.go` — min/max/slow, as NEW fields only
+
+`BucketStats.AvailabilityPct` / `AvgDuration` / `Up` / `Total` / `DurCnt` / `DurSum` keep
+byte-identical semantics — badges, status pages and SLOs must not move. Added:
+
+- `DurMin`, `DurMax`, `DurExtremaCnt` — extremes over the bucket, valid only when
+  `DurExtremaCnt > 0`. Raw rows fold their own `duration`; rollup rows fold
+  `duration_min` / `duration_max`.
+- `SlowSamples` — RAW samples strictly above `SlowSampleThresholdMillis` (1000, an
+  exported constant; no UI, per the non-goals).
+- `SlowPeaks` — ROLLUP rows whose `duration_max` exceeds the threshold. Counted
+  separately from `SlowSamples` because they are a different unit (a rolled-up period
+  with at least one slow sample, not a sample), and the report labels them as such.
+- `DurationRange() (min, max float64, ok bool)` accessor.
+- `Add` folds all five, so the group-merge path can never forget one.
+
+**Failed-sample decision (spec's bounded choice):** raw accumulation
+(`accumulateRaw`) and the aggregation job (`processRawResult`) BOTH already include any
+non-lifecycle row carrying a duration — including `down` / `error` / `timeout`. Raw and
+rollup therefore already agree, and changing either would move `duration_avg` for status
+pages and badges. Decision: **keep it — failed samples are included** — and say so in
+the template copy ("Response times include failed samples.").
+
+### 3. `server/internal/uptimereport/report.go`
+
+- **Previous window:** `slo.PrecedingWindow` + a second `uptimebar.WindowAvailability`
+  and a second `incidentBlock`. `HasPreviousData` is `prevOverall.Total > 0`.
+- **Deltas** (flat scalar view-model fields, not nested structs — the email-preview
+  fixture is a hand-built `map[string]any` and `{{.X.Y}}` on a missing map key is a
+  template ERROR, whereas a missing flat bool is just false):
+  `ShowAvailabilityDelta` / `…Text` / `…Color`, same triplet for incidents and response
+  time. Green only for a genuine improvement, red for a regression, neutral `#6b7280`
+  for "no change"; **no previous data ⇒ `Show*` false, no text at all**.
+- **Latency block:** `HasLatency`, `AvgResponseTime`, `MinResponseTime`,
+  `MaxResponseTime`, `SlowCount`, `SlowLabel`, `SlowNote`, `LatencyNote`. Suppressed
+  (`HasLatency=false`) when the scope was down the whole period or no duration was
+  recorded.
+- **Average incident duration:** `AverageIncident`, from the existing
+  `PeriodIncidents.AverageSeconds`, only when `Count > 0`.
+- **Down-all-period:** `DownAllPeriod` + `DownAllPeriodLabel` (the check's own name when
+  the scope is a single check, else the scope label); per row, `CheckRow.DownAllPeriod`.
+  Also suppresses the response-time delta — a delta measured on error responses is the
+  competitor failure mode this spec exists to avoid.
+- **Worst-first sort:** ascending availability, `HasData=false` last, ties by name.
+  Sorted through a local keyed slice so the view model keeps no sort scaffolding.
+  Truncation surfaces as `Truncated` / `TruncatedShown` / `TruncatedTotal`.
+- **Per-day strip:** one `uptimebar.BucketAvailability` call at 24 h, aligned to the UTC
+  day (`Truncate(24h)`), covering the window. **UTC days, not local days**: day-tier
+  rollups are UTC-day aligned by construction, so folding them into local days would
+  misattribute a whole day for every zone with a negative offset (and drop the last
+  local day of a month entirely). The strip is labeled "(UTC)" rather than lying about
+  it. Cells carry a discrete color (green/amber/orange/red, gray for no data) and are
+  run-length encoded (`DayCell{Color, Span, Wide}`) — both for size and because a
+  continuous gradient is illegible at 6 px.
+
+### 4. `server/internal/email/templates/uptime-report.html`
+
+Deltas next to the headline and in the details table; a response-time block; the
+worst-first table with the strip as a second row per check; truncation note; legend.
+Strip markup is a bare nested `<table>` with `<td bgcolor>` cells and **no class**, kept
+OUT of `.details-table` — the formatter's CSS inliner would otherwise inline
+`.details-table td { padding … }` into all ~1600 strip cells. Plain-text part mirrors
+every new stat.
+
+### 5. Tests
+
+- `slo`: `PrecedingWindow` table test.
+- `uptimebar`: min/max/slow accumulation across raw and rollup tiers, `Add` merge, and a
+  pin that `AvailabilityPct`/`AvgDuration` are unchanged.
+- `uptimereport/report_test.go`: delta formatting/colors (including the neutral-zero and
+  omitted-baseline negatives), worst-first sort with no-data rows, RLE strip.
+- `uptimereport/builder_test.go` (new, in-memory SQLite, real `db.Service`): end-to-end
+  degenerate cases — down-all-period, empty previous window, zero delta, mid-period
+  check creation, >50-row truncation — asserting suppression flags and neutral colors,
+  each with a positive control proving the assertion could have failed.
+- `uptimereport/render_test.go`: every new field in the JSON round trip, and a 50-check
+  × 31-day monthly fixture asserted well under Gmail's ~102 KB clipping limit.
+- `emailpreview`: fixture extended so the preview exercises the new blocks.
