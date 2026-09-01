@@ -581,8 +581,18 @@ detection.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `token` | string | O | | Token to validate incoming heartbeat pings |
+| `require_hmac` | bool | O | `false` | Refuse unsigned (`SP1`) beats on the embedded TCP/UDP push transports |
 
 The heartbeat checker is passive: it waits for external systems to ping it. The check's `period` and `grace_period` on the check object (not in config) determine when the check is considered down.
+
+`require_hmac` only affects the embedded push transports (spec 2026-09-01-06). With
+`false` the check accepts `SP1` (plaintext token), `SP2` (HMAC-signed) and the HTTPS
+ingest; with `true` only `SP2` and HTTPS are accepted and an `SP1` beat is dropped
+silently on UDP. A mistyped value (`"true"`, `1`, …) is a validation error rather than
+a fallback to `false` — silently downgrading a security setting is not an acceptable
+failure mode. **Turning it on should be paired with a token rotation**: a check that
+ever accepted `SP1` has leaked its token to any passive sniffer, and that token is
+also the `SP2` signing key.
 
 ---
 
