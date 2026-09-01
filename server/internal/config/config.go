@@ -501,6 +501,7 @@ type Config struct {
 	Entitlements EntitlementsConfig   `koanf:"entitlements"`
 	Audit        AuditConfig          `koanf:"audit"`
 	ACME         ACMEConfig           `koanf:"acme"`
+	Heartbeat    HeartbeatConfig      `koanf:"heartbeat"`
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -1496,6 +1497,7 @@ func Load() (*Config, error) {
 		},
 		// In-server ACME is opt-in; the listen addresses are pre-filled so
 		// enabling it is a one-flag change on a host with :80/:443 free.
+		Heartbeat: DefaultHeartbeatConfig(),
 		ACME: ACMEConfig{
 			Enabled:     false,
 			ListenHTTP:  DefaultACMEListenHTTP,
@@ -1770,6 +1772,7 @@ func Load() (*Config, error) {
 	applyServerEnv(&cfg.Server)
 	applySchedulingEnv(&cfg.Server.Scheduling)
 	applyACMEEnv(&cfg.ACME)
+	applyHeartbeatEnv(&cfg.Heartbeat)
 	applyEncryptionEnv(&cfg.Encryption)
 	applyAuditEnv(&cfg.Audit)
 	applyProfilerEnv(&cfg.Profiler)

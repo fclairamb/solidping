@@ -186,6 +186,17 @@ func manualReaderServerEnvVars() []string {
 		"SP_ENCRYPTION_MASTER_KEY",
 		"SP_ENCRYPTION_MASTER_KEY_FILE",
 		"SP_ENCRYPTION_AUTO_MIGRATE",
+		// applyHeartbeatEnv — every heartbeat key is multi-word, so koanf's env
+		// loader cannot reach any of them (see HeartbeatConfig).
+		"SP_HEARTBEAT_TCP_LISTEN",
+		"SP_HEARTBEAT_UDP_LISTEN",
+		"SP_HEARTBEAT_TIMESTAMP_WINDOW",
+		"SP_HEARTBEAT_IDLE_TIMEOUT",
+		"SP_HEARTBEAT_RATE_PER_MINUTE",
+		"SP_HEARTBEAT_RATE_BURST",
+		"SP_HEARTBEAT_MAX_SOURCE_IPS",
+		"SP_HEARTBEAT_MAX_CONNECTIONS",
+		"SP_HEARTBEAT_UDP_REPLY_OK",
 		// applySchedulingEnv
 		"SP_SCHEDULING_SLOW_THRESHOLD_MS",
 		"SP_SCHEDULING_CHECK_TIMEOUT_MS",
