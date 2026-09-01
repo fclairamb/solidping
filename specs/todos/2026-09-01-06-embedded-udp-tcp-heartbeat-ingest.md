@@ -218,3 +218,127 @@ rotate-token endpoint already exists).
 - **SaaS exposure**: raw TCP/UDP ports on solidping.io need LB support and
   possibly per-region entry points. V1 targets self-hosted + the k8xp dev
   deployment first.
+
+## Implementation Plan
+
+Sequenced so every commit leaves the tree building. Package layout: a new
+`server/internal/heartbeatpush/` owns the wire protocol, the two listeners and
+the per-source-IP budget; `server/internal/handlers/heartbeat` keeps owning
+verification + recording (so the HTTP and push transports converge on one
+code path by construction, not by copy).
+
+### 1. Config (`internal/config`)
+
+`HeartbeatConfig` at the top level of `Config` (`koanf:"heartbeat"`):
+
+| key | env | default | meaning |
+|---|---|---|---|
+| `tcp_listen` | `SP_HEARTBEAT_TCP_LISTEN` | `""` | off; `:4001` when enabled |
+| `udp_listen` | `SP_HEARTBEAT_UDP_LISTEN` | `""` | off; `:4001` when enabled |
+| `timestamp_window` | `SP_HEARTBEAT_TIMESTAMP_WINDOW` | `5m` | SP2 `ts` tolerance |
+| `idle_timeout` | `SP_HEARTBEAT_IDLE_TIMEOUT` | `10m` | TCP idle close |
+| `rate_per_minute` | `SP_HEARTBEAT_RATE_PER_MINUTE` | `120` | per-source-IP budget |
+| `rate_burst` | `SP_HEARTBEAT_RATE_BURST` | `60` | per-source-IP burst |
+| `max_source_ips` | `SP_HEARTBEAT_MAX_SOURCE_IPS` | `10000` | bucket-map cap |
+| `max_connections` | `SP_HEARTBEAT_MAX_CONNECTIONS` | `512` | concurrent TCP conns |
+| `udp_reply_ok` | `SP_HEARTBEAT_UDP_REPLY_OK` | `true` | reply `OK` on success only |
+
+Every key is multi-word → koanf's env loader cannot reach it (project quirk),
+so a manual `applyHeartbeatEnv` reader plus entries in
+`manualReaderEnvVars()`. `NormalizeListen` turns `"4001"` / `"true"` into
+`":4001"`. Test: env binding + normalization table.
+
+### 2. Wire protocol (`internal/heartbeatpush/protocol.go`, `annotation.go`)
+
+Pure, dependency-free parsing, exhaustively table-tested:
+
+- `ParseLine([]byte) (*Beat, error)` — SP1/SP2, MAC as the **last** token,
+  `Beat.Signed` carries the exact signed prefix. Single-space separation
+  (a double space is malformed, so the signed bytes are unambiguous).
+- caps: line ≤ 512 B, org ≤ 64, identifier ≤ 128, annotation ≤ 128 B.
+- `ParseAnnotation(string) Annotation` — optional leading status word then
+  ≤10 `key=value` pairs; keys `[a-z0-9_]{1,32}`, values ≤64 B; numeric
+  (finite float64) split from text; **any grammar violation degrades to
+  `Raw`, never to an error**. Control characters stripped everywhere.
+- `VerifyMAC(token, signed, mac)` — HMAC-SHA256 truncated to 16 B,
+  `hmac.Equal` (constant time).
+
+### 3. Counter state (DB)
+
+New table `heartbeat_counters(check_uid pk, last_counter bigint, updated_at)`,
+migration **018_v0_22_0** in both dialects (new number — never renumber).
+`db.Service.TryAdvanceHeartbeatCounter(ctx, checkUID, counter) (bool, error)`
+is a conditional upsert (`... DO UPDATE ... WHERE last_counter < excluded`),
+so strict monotonicity is enforced by the database and is safe under
+concurrent beats. Counters > `math.MaxInt64` are rejected at parse time.
+
+### 4. `require_hmac` on the checker
+
+`checkheartbeat.Validate` accepts/normalizes `require_hmac` (bool, default
+`false`), rejecting a non-bool. Document it in
+`wiki/conventions/checker-config.md`.
+
+### 5. `heartbeat.Service` — one recording path
+
+Refactor into `resolveCheck` + `recordBeat(ctx, org, check, beatInput)`;
+`ReceiveHeartbeat` (HTTP) becomes resolve + token compare + `recordBeat`, so
+maintenance tagging, `SaveResultWithStatusTracking`, the realtime hint and
+`ProcessCheckResult` (with the spec-2026-09-01-02 check timeout) are shared
+by construction. New `HandleBeat(ctx, *heartbeatpush.Beat, remoteAddr,
+transport)`:
+
+1. resolve org/check (any failure → one opaque `ErrBeatRejected`),
+2. SP1 → reject when `require_hmac`; constant-time token compare,
+3. SP2 → `VerifyMAC`, then `ts` window (skipped when `ts == 0`), then
+   `TryAdvanceHeartbeatCounter`,
+4. annotation → numeric pairs to `Metrics`, status word / text pairs / raw
+   to `Output.data.annotation`,
+5. `recordBeat`.
+
+HTTP parity: `?annotation=` (and a JSON `annotation` string) run the same
+`ParseAnnotation` and land in the same two places.
+
+### 6. Listeners (`internal/heartbeatpush/listener.go`, `ratelimit.go`)
+
+- per-source-IP token bucket (`golang.org/x/time/rate`), idle-evicted, capped
+  map — mirrors `middleware/ratelimit.go` budget logic;
+- **UDP**: bounded read, bounded concurrent handlers, reply `OK` only on
+  success and only when `2 <= n` (never more bytes than received); **any**
+  failure — malformed, unknown org/check, bad MAC, replay, rate limit —
+  replies nothing at all;
+- **TCP**: newline-delimited, `OK\n` per accepted line, idle deadline,
+  per-connection beat cap, bounded line length, connection cap; an invalid
+  line closes the connection with no response. An open connection records
+  nothing.
+
+### 7. Metrics + wiring
+
+`prommetrics.HeartbeatPushBeats{transport,outcome}` with
+accepted/rejected/malformed/rate_limited, registered in `allCollectors`.
+`Server.Start` starts the listeners (API role only, no-op when unset) and
+`Server.Close` stops them.
+
+### 8. Frontend surface
+
+`GET /api/v1/features` gains `heartbeatPush {tcpEnabled, udpEnabled, host,
+tcpPort, udpPort}`. The heartbeat check-detail card gains the `require_hmac`
+switch (with the rotate-token nudge) and copy-paste `nc` / Arduino examples,
+rendered only when a listener is enabled. Locale keys in all four locales.
+
+### 9. Docs
+
+`web/docs/docs/features/embedded-push.md` — both message forms, both
+transports, the boot-counter guidance, annotations, and the security
+trade-offs (SP1 replay masks an outage; SP2 authenticates the message not the
+transport; source IPs are spoofable). Note that opening the ports is a
+deployment decision. Cross-link from `check-types.md#heartbeat`.
+
+### 10. Tests (the security negatives, each with a positive control)
+
+- replayed SP2 datagram rejected (counter not strictly greater);
+- SP1 on a `require_hmac: true` check rejected and marks nothing alive;
+- bad MAC / wrong token / nonexistent org / nonexistent check are all
+  byte-identical on UDP (no reply at all) — indistinguishable from each other;
+- stale `ts` outside the window rejected, `ts = 0` accepted;
+- an open TCP connection with no accepted line marks nothing alive;
+- secrets never logged and never echoed.
