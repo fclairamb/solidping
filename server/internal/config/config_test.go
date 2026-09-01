@@ -306,6 +306,7 @@ func TestParseLogLevel(t *testing.T) {
 func TestApplyFileStorageEnv(t *testing.T) {
 	r := require.New(t)
 
+	t.Setenv("SP_FILESTORAGE_LOCAL_ROOT", "/var/lib/solidping/files")
 	t.Setenv("SP_FILESTORAGE_S3_BUCKET", "solidping")
 	t.Setenv("SP_FILESTORAGE_S3_REGION", "eu-west-3")
 	t.Setenv("SP_FILESTORAGE_S3_PREFIX", "blobs")
@@ -317,6 +318,12 @@ func TestApplyFileStorageEnv(t *testing.T) {
 	var cfg FileStorageConfig
 	applyFileStorageEnv(&cfg)
 
+	// Regression: SP_FILESTORAGE_LOCAL_ROOT used to be dropped entirely — koanf
+	// maps it to filestorage.local.root, which misses the "local_root" tag, and
+	// the manual reader did not cover it. A container told to store blobs on a
+	// mounted volume silently kept writing to ./data/files inside the image and
+	// lost every upload on restart.
+	r.Equal("/var/lib/solidping/files", cfg.LocalRoot)
 	r.Equal("solidping", cfg.S3Bucket)
 	r.Equal("eu-west-3", cfg.S3Region)
 	r.Equal("blobs", cfg.S3Prefix)
@@ -1668,4 +1675,35 @@ func TestApplyServerEnv_CORSAllowedOrigins(t *testing.T) {
 	cfg = &ServerConfig{}
 	applyServerEnv(cfg)
 	r.Equal([]string{"https://c.example.com"}, cfg.CORSAllowedOrigins, "SP_SERVER_ prefix wins over the shorter name")
+}
+
+// TestSchedulingCheckTimeout pins the single ms→Duration conversion every
+// consumer of the per-check execution ceiling must go through. It exists
+// because the conversion used to be copy-pasted at each call site, and the
+// call sites that forgot to copy it (heartbeat, email-check and MCP ingest)
+// silently ran the incident confirmation-hold gate on a different ceiling
+// than the worker did.
+func TestSchedulingCheckTimeout(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		ms   float64
+		want time.Duration
+	}{
+		"shipped default": {ms: 15000, want: 15 * time.Second},
+		"raised":          {ms: 45000, want: 45 * time.Second},
+		"lowered":         {ms: 2500, want: 2500 * time.Millisecond},
+		"fractional ms":   {ms: 1.5, want: 1500 * time.Microsecond},
+		// 0 stays 0: applying the documented built-in default is each
+		// consumer's job (incidents.DefaultCheckTimeoutFallback), not the
+		// raw conversion's.
+		"unset": {ms: 0, want: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := SchedulingConfig{CheckTimeoutMs: tc.ms}
+			require.Equal(t, tc.want, cfg.CheckTimeout())
+		})
+	}
 }

@@ -68,7 +68,7 @@ func TestHeartbeatPathAutoPublishes(t *testing.T) {
 	pubs := incidentpublications.NewService(dbSvc, clock.Real{}, nil)
 	pubs.SetJobsService(jobs)
 
-	hbSvc := heartbeat.NewService(dbSvc, jobs, nil, pubs)
+	hbSvc := heartbeat.NewService(dbSvc, jobs, nil, pubs, 0)
 
 	// A failing heartbeat ping: this is a real inbound signal, not a synthetic
 	// call into the incident service.

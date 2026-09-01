@@ -201,6 +201,35 @@ type Check struct {
 	TargetHostSortKey string `bun:"target_host_sort_key,scanonly"`
 }
 
+// CheckConfigKeyTimeout is the check-config key holding the optional
+// per-check execution timeout, stored as a Go duration string
+// (spec 2026-07-11-05).
+const CheckConfigKeyTimeout = "timeout"
+
+// TimeoutOrDefault resolves the check's per-execution timeout: the explicit
+// `timeout` entry in its config when it parses to a positive duration, and
+// `defaultTimeout` (the server's scheduling.check_timeout_ms) otherwise.
+//
+// This is a READ-side approximation of what the worker actually applies —
+// the worker additionally clamps an unset timeout by the cost EWMA and caps
+// an explicit one (checkworker.perCheckTimeout). Both consumers here want an
+// upper bound on "how late can this check possibly notice an outage", and the
+// unclamped default is exactly that bound: the cost-aware clamp only ever
+// shortens it.
+func (c *Check) TimeoutOrDefault(defaultTimeout time.Duration) time.Duration {
+	raw, ok := c.Config[CheckConfigKeyTimeout].(string)
+	if !ok || raw == "" {
+		return defaultTimeout
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return defaultTimeout
+	}
+
+	return parsed
+}
+
 // RegionSpreadDuration returns the check's optional inter-region spread
 // override as a *time.Duration (nil when unset), for the
 // scheduling.RegionSpread resolver. Keeps the *timeutils.Duration ⇄

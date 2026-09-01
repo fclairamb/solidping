@@ -37,7 +37,7 @@ func TestRotateHeartbeatTokenInvalidatesOldTokenImmediately(t *testing.T) {
 	r.NotEmpty(oldToken)
 
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
-	hbSvc := heartbeat.NewService(dbSvc, jobs, nil, nil)
+	hbSvc := heartbeat.NewService(dbSvc, jobs, nil, nil, 0)
 
 	// Old token works before rotation (positive control).
 	r.NoError(hbSvc.ReceiveHeartbeat(ctx, org.Slug, created.UID, oldToken, "up", "", 0, "", "", "", nil))

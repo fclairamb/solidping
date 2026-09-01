@@ -95,15 +95,25 @@ type Handler struct {
 //
 // publicationHook may be nil; see heartbeat.NewService for why it is a
 // parameter rather than a setter.
+//
+// defaultCheckTimeout is the operator-configured `scheduling.check_timeout_ms`
+// (config.SchedulingConfig.CheckTimeout) and is required for the same reason:
+// an inbound mail opens incidents through the same rollup gate as a probe
+// result, so leaving it unset would give this ingest path a confirmation-hold
+// cap that disagrees with the worker's for the identical check. Non-positive
+// values keep incidents.DefaultCheckTimeoutFallback.
 func NewHandler(
 	dbService db.Service, jobSvc jobsvc.Service, rtPub *realtime.Publisher,
 	publicationHook incidents.PublicationHook, logger *slog.Logger,
+	defaultCheckTimeout time.Duration,
 ) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	incidentSvc := incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub)
+	incidentSvc.SetDefaultCheckTimeout(defaultCheckTimeout)
+
 	if publicationHook != nil {
 		incidentSvc.SetPublicationHook(publicationHook)
 	}

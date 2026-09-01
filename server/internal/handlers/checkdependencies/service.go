@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -27,12 +29,41 @@ var (
 // Service holds the dependency-graph business logic.
 type Service struct {
 	db db.Service
+
+	// defaultCheckTimeout is the server's resolved
+	// `scheduling.check_timeout_ms`. It is the fallback term in the
+	// confirmation-margin lint below, for a parent that left `timeout` unset.
+	defaultCheckTimeout time.Duration
 }
 
-// NewService creates a new dependency service.
-func NewService(dbService db.Service) *Service {
-	return &Service{db: dbService}
+// NewService creates a new dependency service. `defaultCheckTimeout` is the
+// resolved `scheduling.check_timeout_ms`; a non-positive value falls back to
+// the shipped default so a partially-wired caller still lints sensibly.
+func NewService(dbService db.Service, defaultCheckTimeout time.Duration) *Service {
+	if defaultCheckTimeout <= 0 {
+		defaultCheckTimeout = DefaultCheckTimeoutFallback
+	}
+
+	return &Service{db: dbService, defaultCheckTimeout: defaultCheckTimeout}
 }
+
+// DefaultCheckTimeoutFallback mirrors the shipped default of
+// `scheduling.check_timeout_ms` (15s).
+const DefaultCheckTimeoutFallback = 15 * time.Second
+
+// WarningCodeConfirmationMarginTooShort marks a hard `dependsOn` edge whose
+// child can finish confirming before its parent could possibly have detected
+// the same outage.
+//
+// SOFT — advisory only, never a validation error. The strict margin
+// (`child.confirmation >= parent.confirmation + parent.period +
+// parent.timeout`) is the right thing to aim for, but enforcing it would tax
+// every child incident with the margin even when the parent is healthy, and
+// would turn a single check edit into cross-resource validation. The runtime
+// confirmation hold (spec 2026-08-31-06) already covers the gap at page time;
+// this warning only explains why a page may arrive later than the child's
+// configured confirmation suggests.
+const WarningCodeConfirmationMarginTooShort = "CONFIRMATION_MARGIN_TOO_SHORT"
 
 // CheckRef is a minimal {uid, slug, name} reference inlined into responses.
 type CheckRef struct {
@@ -50,10 +81,33 @@ type DependencyResponse struct {
 	Description *string  `json:"description,omitempty"`
 }
 
-// PerCheckDependencies bundles parents and children of a single check.
+// PerCheckDependencies bundles parents and children of a single check, plus
+// the soft configuration lint over its `dependsOn` edges.
 type PerCheckDependencies struct {
 	DependsOn    []DependencyResponse `json:"dependsOn"`
 	DependedOnBy []DependencyResponse `json:"dependedOnBy"`
+	// Warnings is never nil — an empty array, so a client can render it
+	// without a null guard.
+	Warnings []DependencyWarning `json:"warnings"`
+}
+
+// DependencyWarning is one soft lint finding about an edge. It carries the
+// numbers behind the verdict rather than only prose, so the dashboard can
+// render a localized sentence (and a concrete suggested value) without
+// re-deriving the formula.
+type DependencyWarning struct {
+	Code          string   `json:"code"`
+	DependencyUID string   `json:"dependencyUid"`
+	ParentCheck   CheckRef `json:"parentCheck"`
+	// ChildConfirmationSeconds is the child's configured confirmation period.
+	ChildConfirmationSeconds int `json:"childConfirmationSeconds"`
+	// RecommendedConfirmationSeconds is the strict margin
+	// `parent.confirmation + parent.period + parent.timeoutOrDefault`,
+	// rounded up to whole seconds.
+	RecommendedConfirmationSeconds int `json:"recommendedConfirmationSeconds"`
+	// Message is an English fallback for clients with no locale bundle; the
+	// dashboard keys off Code instead.
+	Message string `json:"message"`
 }
 
 // CreateDependencyRequest is the body for POST.
@@ -139,14 +193,17 @@ func (s *Service) ListForCheck(
 
 	checkUIDs := collectCheckUIDs(parents, children)
 
-	checkMap, err := s.loadCheckRefs(ctx, orgUID, checkUIDs)
+	checks, err := s.loadChecks(ctx, orgUID, checkUIDs)
 	if err != nil {
 		return PerCheckDependencies{}, err
 	}
 
+	checkMap := checkRefs(checks)
+
 	resp := PerCheckDependencies{
 		DependsOn:    make([]DependencyResponse, 0, len(parents)),
 		DependedOnBy: make([]DependencyResponse, 0, len(children)),
+		Warnings:     []DependencyWarning{},
 	}
 
 	for _, dep := range parents {
@@ -161,7 +218,76 @@ func (s *Service) ListForCheck(
 		}
 	}
 
+	resp.Warnings = s.confirmationMarginWarnings(check, parents, checks)
+
 	return resp, nil
+}
+
+// confirmationMarginWarnings runs the soft confirmation-margin lint over the
+// check's hard `dependsOn` edges (spec 2026-08-31-06).
+//
+// An edge is flagged when
+//
+//	child.confirmation < parent.confirmation + parent.period + parent.timeout
+//
+// i.e. when the child can finish confirming before its parent could possibly
+// have observed the same outage even once — probe phase offset plus the
+// parent's own connect timeout. That is the exact shape of the RabbitMQ
+// outage this spec came from: parent and child were configured identically
+// (60s period, 120s confirmation), the inequality `parent <= child` held on
+// both counts, and four children still paged ahead of the parent.
+//
+// Soft edges are never linted: they do not suppress anything, so there is no
+// ordering to protect.
+func (s *Service) confirmationMarginWarnings(
+	child *models.Check, parents []*models.CheckDependency, checks map[string]*models.Check,
+) []DependencyWarning {
+	out := []DependencyWarning{}
+
+	for _, dep := range parents {
+		if dep.Kind != models.CheckDependencyKindHard {
+			continue
+		}
+
+		parent, ok := checks[dep.ParentCheckUID]
+		if !ok || parent == nil {
+			continue
+		}
+
+		margin := requiredConfirmationMargin(parent, s.defaultCheckTimeout)
+
+		childConfirmation := time.Duration(child.ConfirmationPeriodSeconds) * time.Second
+		if childConfirmation >= margin {
+			continue
+		}
+
+		out = append(out, DependencyWarning{
+			Code:          WarningCodeConfirmationMarginTooShort,
+			DependencyUID: dep.UID,
+			ParentCheck: CheckRef{
+				UID:  parent.UID,
+				Slug: derefString(parent.Slug),
+				Name: derefString(parent.Name),
+			},
+			ChildConfirmationSeconds:       child.ConfirmationPeriodSeconds,
+			RecommendedConfirmationSeconds: int(math.Ceil(margin.Seconds())),
+			Message: "This check can confirm before its hard parent can possibly detect the same " +
+				"outage; the confirmation hold will cover the gap at page time.",
+		})
+	}
+
+	return out
+}
+
+// requiredConfirmationMargin is the strict margin from the spec:
+// `parent.confirmation + parent.period + parent.timeoutOrDefault`. It is the
+// worst case for "how long after an outage starts can the parent still be
+// seeing its first failure" — one full period of phase offset plus the probe's
+// own timeout, on top of the parent's confirmation window.
+func requiredConfirmationMargin(parent *models.Check, defaultTimeout time.Duration) time.Duration {
+	return time.Duration(parent.ConfirmationPeriodSeconds)*time.Second +
+		time.Duration(parent.Period) +
+		parent.TimeoutOrDefault(defaultTimeout)
 }
 
 func collectCheckUIDs(parents, children []*models.CheckDependency) []string {
@@ -185,10 +311,14 @@ func collectCheckUIDs(parents, children []*models.CheckDependency) []string {
 	return uids
 }
 
-func (s *Service) loadCheckRefs(
+// loadChecks resolves check UIDs to their full rows, skipping the ones that no
+// longer exist. Full rows rather than bare refs: the confirmation-margin lint
+// needs each parent's period / confirmation / timeout, and re-querying for
+// them would double the number of round trips this endpoint makes.
+func (s *Service) loadChecks(
 	ctx context.Context, orgUID string, uids []string,
-) (map[string]CheckRef, error) {
-	out := make(map[string]CheckRef, len(uids))
+) (map[string]*models.Check, error) {
+	out := make(map[string]*models.Check, len(uids))
 	for _, uid := range uids {
 		check, err := s.db.GetCheck(ctx, orgUID, uid)
 		if err != nil {
@@ -199,10 +329,34 @@ func (s *Service) loadCheckRefs(
 			return nil, fmt.Errorf("get check ref: %w", err)
 		}
 
-		out[uid] = CheckRef{UID: check.UID, Slug: derefString(check.Slug), Name: derefString(check.Name)}
+		out[uid] = check
 	}
 
 	return out, nil
+}
+
+// checkRefs projects loaded check rows down to the {uid, slug, name} refs the
+// API inlines into every edge.
+func checkRefs(checks map[string]*models.Check) map[string]CheckRef {
+	out := make(map[string]CheckRef, len(checks))
+	for uid, check := range checks {
+		out[uid] = CheckRef{UID: check.UID, Slug: derefString(check.Slug), Name: derefString(check.Name)}
+	}
+
+	return out
+}
+
+// loadCheckRefs resolves check UIDs straight to inline refs, for the paths
+// that never lint (Update, Graph).
+func (s *Service) loadCheckRefs(
+	ctx context.Context, orgUID string, uids []string,
+) (map[string]CheckRef, error) {
+	checks, err := s.loadChecks(ctx, orgUID, uids)
+	if err != nil {
+		return nil, err
+	}
+
+	return checkRefs(checks), nil
 }
 
 func derefString(s *string) string {

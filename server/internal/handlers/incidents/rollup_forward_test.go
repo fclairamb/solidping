@@ -399,7 +399,11 @@ func TestForwardRollupRespectsTheCorrelationWindow(t *testing.T) {
 // parent-resolve re-evaluation against a child that was attached by the NEW
 // forward path — the two halves have to compose. The child's check recovers
 // before the parent's incident closes, so it must be detached silently rather
-// than paged.
+// than paged. Detach un-suppresses but deliberately KEEPS the attribution —
+// caused_by_incident_uid is the post-mortem record of the cascade, not a live
+// suppression flag (spec 2026-08-31-07-rollup-detach-erases-attribution).
+// See rollup_detach_test.go for the full table of detach/relapse/reopen
+// cases this spec added.
 func TestParentResolveStillDetachesRecoveredChild(t *testing.T) {
 	t.Parallel()
 
@@ -438,8 +442,9 @@ func TestParentResolveStillDetachesRecoveredChild(t *testing.T) {
 
 	childInc = s.reload(t, childInc)
 	r.False(childInc.PagingSuppressed, "suppression is cleared on parent resolve")
-	r.Nil(childInc.CausedByIncidentUID,
-		"a child that recovered along with its parent is detached, not paged")
+	r.NotNil(childInc.CausedByIncidentUID,
+		"a child that recovered along with its parent is detached, not paged — "+
+			"but keeps its attribution as the post-mortem record of the cascade")
 }
 
 // TestParentResolveUnsuppressesStillFailingChild is the other branch: the

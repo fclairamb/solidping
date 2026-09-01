@@ -151,6 +151,88 @@ kubectl apply -f service.yaml
 kubectl apply -f ingress.yaml
 ```
 
+## File Storage
+
+SolidPing writes a handful of blobs outside the database — org logos,
+status-page assets, incident screenshots. By default
+(`SP_FILESTORAGE_TYPE=local`) they land at `SP_FILESTORAGE_LOCAL_ROOT`
+(default `./data/files`), which is relative to the container's working
+directory. **Unless that path is backed by a mounted volume, every upload is
+destroyed the next time the pod is recreated** — a rollout, a reschedule,
+anything — and it fails silently: nothing errors at write time, only a later
+read. See [File Storage](/configuration/file-storage) for the full guide.
+
+### Option A — PersistentVolumeClaim (single replica)
+
+Add a PVC and mount it at an absolute path, so `SP_FILESTORAGE_LOCAL_ROOT` has
+no working-directory ambiguity:
+
+```yaml
+# solidping-files-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: solidping-files
+  namespace: solidping
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+```yaml
+    spec:
+      containers:
+        - name: solidping
+          image: ghcr.io/fclairamb/solidping:latest
+          env:
+            - name: SP_FILESTORAGE_LOCAL_ROOT
+              value: "/data/files"
+          volumeMounts:
+            - name: files
+              mountPath: /data/files
+      volumes:
+        - name: files
+          persistentVolumeClaim:
+            claimName: solidping-files
+```
+
+:::caution ReadWriteOnce caps you at one replica
+A `ReadWriteOnce` PVC can only be mounted by pods scheduled on a single node,
+so a `Deployment` using it cannot scale past `replicas: 1` — the sample
+`Deployment` above runs `replicas: 2`, which this option is incompatible with.
+Drop to a single replica, or use the S3 backend below if you need more than
+one.
+:::
+
+### Option B — S3 backend (multi-replica)
+
+The S3 backend keeps no local state, so it works at any replica count:
+
+```yaml
+          env:
+            - name: SP_FILESTORAGE_TYPE
+              value: "s3"
+            - name: SP_FILESTORAGE_S3_BUCKET
+              value: "solidping"
+            - name: SP_FILESTORAGE_S3_REGION
+              value: "us-east-1"
+            - name: SP_FILESTORAGE_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: solidping-secrets
+                  key: s3-access-key
+            - name: SP_FILESTORAGE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: solidping-secrets
+                  key: s3-secret-key
+```
+
+See [File Storage](/configuration/file-storage) for the endpoint/path-style
+settings a non-AWS S3-compatible store needs, and the full variable reference.
+
 ## With Helm (Coming Soon)
 
 A Helm chart for SolidPing is planned for future releases.
@@ -321,4 +403,5 @@ spec:
 ## Next Steps
 
 - [Configuration Guide](/configuration) - All configuration options
+- [File Storage](/configuration/file-storage) - Local volume vs. S3 for uploaded blobs
 - [Check Types](/features/check-types) - Configure your first checks

@@ -67,7 +67,7 @@ func (f *inboundFixture) newManagerWithDB(t *testing.T, handlerDB db.Service) (*
 	t.Helper()
 
 	jobSvc := jobsvc.NewService(f.svc.DB(), f.svc, notifier.NewLocalEventNotifier(), nil)
-	handler := emailcheck.NewHandler(handlerDB, jobSvc, nil, nil, slog.Default())
+	handler := emailcheck.NewHandler(handlerDB, jobSvc, nil, nil, slog.Default(), 0)
 
 	mgr := jmap.NewManager(f.svc)
 	mgr.RegisterHandler(handler)

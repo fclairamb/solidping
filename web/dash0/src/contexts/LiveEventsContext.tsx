@@ -131,7 +131,13 @@ function resultsRoot(root: string): QueryRoot {
  * entities ignore it. */
 const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]>>> = {
   checks: {
-    checks: [orgRoot("checks"), infiniteOrgRoot("checks")],
+    // check-stats gates the dashboard's empty-org onboarding hero
+    // (isEmptyOrg = total === 0), so a real membership/status transition
+    // must refresh it immediately rather than waiting for its own 5-minute
+    // lazy poll (spec 2026-09-01-01). Deliberately added to the "checks"
+    // kind, NOT "results" below — see that block's comment for why a
+    // results hint must never trigger an org-wide refetch.
+    checks: [orgRoot("checks"), infiniteOrgRoot("checks"), orgRoot("check-stats")],
     // The checks-list roots are deliberately ABSENT here (spec
     // 2026-08-09-07). Check workers write results continuously, so a busy org
     // emits a "results" hint essentially without pause; refetching the whole

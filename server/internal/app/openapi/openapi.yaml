@@ -10136,6 +10136,48 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Dependency"
+            warnings:
+              type: array
+              description: >-
+                Soft configuration lint over this check's hard `dependsOn`
+                edges. Advisory only — never a validation error, and never a
+                reason a write is rejected. Always present (possibly empty).
+              items:
+                $ref: "#/components/schemas/DependencyWarning"
+
+    DependencyWarning:
+      type: object
+      description: >-
+        One soft lint finding about a dependency edge.
+
+
+        `CONFIRMATION_MARGIN_TOO_SHORT` is raised for a hard `dependsOn` edge
+        where
+        `child.confirmation < parent.confirmation + parent.period + parent.timeout`:
+        the child can finish confirming before its parent could possibly have
+        observed the same outage even once. The runtime confirmation hold
+        already covers the gap at page time (the child stays `validating` while
+        a hard parent is still validating), so this only explains why a page
+        may arrive later than the child's configured confirmation suggests.
+      properties:
+        code:
+          type: string
+          enum: [CONFIRMATION_MARGIN_TOO_SHORT]
+        dependencyUid:
+          type: string
+        parentCheck:
+          $ref: "#/components/schemas/CheckRef"
+        childConfirmationSeconds:
+          type: integer
+          description: The child check's configured confirmation period, in seconds.
+        recommendedConfirmationSeconds:
+          type: integer
+          description: >-
+            `parent.confirmation + parent.period + parent.timeoutOrDefault`,
+            rounded up to whole seconds.
+        message:
+          type: string
+          description: English fallback text; localized clients key off `code` instead.
 
     CreateDependencyRequest:
       type: object

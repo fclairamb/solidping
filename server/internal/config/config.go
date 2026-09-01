@@ -1375,6 +1375,22 @@ type SchedulingConfig struct {
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
 }
 
+// CheckTimeout returns CheckTimeoutMs as a duration.
+//
+// Every consumer of the global per-check execution ceiling must go through
+// this method rather than repeating the ms→Duration conversion: the ceiling
+// feeds both check execution and the incident confirmation-hold cap
+// (incidents.Service.ancestorHoldRemaining), and a call site that quietly
+// skips it gets a different hold cap than the rest of the process for the
+// same deployment.
+//
+// A non-positive CheckTimeoutMs is returned as 0 — the documented "falls back
+// to the built-in default" behavior belongs to each consumer (see
+// incidents.DefaultCheckTimeoutFallback), not to the raw conversion.
+func (c SchedulingConfig) CheckTimeout() time.Duration {
+	return time.Duration(c.CheckTimeoutMs * float64(time.Millisecond))
+}
+
 // RedirectRule represents a path-based redirect configuration for development proxying.
 type RedirectRule struct {
 	PathPrefix string // e.g., "/dashboard"
@@ -2391,12 +2407,23 @@ func applyRuntimeEnv(cfg *RuntimeConfig) {
 	}
 }
 
-// applyFileStorageEnv reads SP_FILESTORAGE_S3_* into cfg. koanf's env loader
-// collapses every underscore in SP_*-prefixed names to a dot, so it would map
-// these to filestorage.s3.bucket / filestorage.s3.endpoint etc. and miss the
-// snake_case koanf tags ("s3_bucket", "s3_endpoint", ...). Reading them here
-// makes the whole S3 backend env-configurable for containerized self-hosters.
+// applyFileStorageEnv reads SP_FILESTORAGE_LOCAL_ROOT and SP_FILESTORAGE_S3_*
+// into cfg. koanf's env loader collapses every underscore in SP_*-prefixed
+// names to a dot, so it would map these to filestorage.local.root /
+// filestorage.s3.bucket etc. and miss the snake_case koanf tags ("local_root",
+// "s3_bucket", ...). Reading them here makes both backends env-configurable for
+// containerized self-hosters.
+//
+// SP_FILESTORAGE_TYPE is deliberately absent: it is a single-word key, so
+// koanf's collapse maps it straight onto the "type" tag already.
 func applyFileStorageEnv(cfg *FileStorageConfig) {
+	// The local root matters most in containers: left at its default it points
+	// at ./data/files inside the image, so unless that path is a mounted
+	// volume every upload dies with the container — silently, since nothing
+	// fails until a later read.
+	if v := os.Getenv("SP_FILESTORAGE_LOCAL_ROOT"); v != "" {
+		cfg.LocalRoot = v
+	}
 	if v := os.Getenv("SP_FILESTORAGE_S3_BUCKET"); v != "" {
 		cfg.S3Bucket = v
 	}

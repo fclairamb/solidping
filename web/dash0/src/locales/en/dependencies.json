@@ -41,5 +41,11 @@
     "child": "Child",
     "kind": "Kind",
     "description": "Description"
+  },
+  "warnings": {
+    "confirmationMargin": {
+      "title": "Confirms faster than {{parent}} can detect",
+      "body": "This check's {{current}}s confirmation is shorter than the {{recommended}}s its hard parent {{parent}} may need to notice the same outage. Nothing is broken: while the parent is still validating, this check's incident is held back so only one report goes out — but that means a page here can arrive later than {{current}}s."
+    }
   }
 }

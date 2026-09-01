@@ -119,11 +119,22 @@ func NewHandler(
 	rtPub *realtime.Publisher,
 	cfg *config.Config,
 ) *Handler {
+	// The MCP surface opens and resolves incidents through the same rollup
+	// gate as the worker, so it needs the operator-configured per-check
+	// timeout too: without it the confirmation-hold cap here would silently
+	// use incidents.DefaultCheckTimeoutFallback and disagree with every other
+	// ingest path on the same check. cfg may be nil in tests — the setter
+	// ignores the resulting zero and the fallback stands.
+	incidentsSvc := incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub)
+	if cfg != nil {
+		incidentsSvc.SetDefaultCheckTimeout(cfg.Server.Scheduling.CheckTimeout())
+	}
+
 	handler := &Handler{
 		checksSvc:     checks.NewService(dbService, eventNotifier, creds, entSvc),
 		checkTypesSvc: checkTypesSvc,
 		resultsSvc:    results.NewService(dbService, cfg),
-		incidentsSvc:  incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
+		incidentsSvc:  incidentsSvc,
 		eventsSvc:     events.NewService(dbService),
 		// nil cfg: the MCP surface has no app config to hand; the uptime-bar
 		// raw clamp and safety caps this feeds fall back to the live

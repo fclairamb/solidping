@@ -256,6 +256,15 @@ type Service struct {
 	// file storage disabled).
 	traces TraceRequester
 
+	// defaultCheckTimeout is the resolved global per-check execution ceiling
+	// (config `scheduling.check_timeout_ms`, default 15s). It is the fallback
+	// term in the confirmation-hold cap for an ancestor that left `timeout`
+	// unset — see hardAncestorGatesConfirmation. Seeded to
+	// DefaultCheckTimeoutFallback so every construction path (tests, the
+	// heartbeat/email ingest services) behaves like the shipped default even
+	// when nobody calls SetDefaultCheckTimeout.
+	defaultCheckTimeout time.Duration
+
 	// maintenance resolves "is this check in an active maintenance window?".
 	// Shared with the result-ingest paths (spec 2026-08-20-01) so an incident
 	// suppressed as maintenance and a result tagged as maintenance can never
@@ -263,16 +272,46 @@ type Service struct {
 	maintenance *maintenance.Resolver
 }
 
+// DefaultCheckTimeoutFallback mirrors the shipped default of
+// `scheduling.check_timeout_ms` (15s, config.go). It is what the
+// confirmation-hold cap uses when the server's real configured value was
+// never plumbed in — a deployment that lowers the ceiling calls
+// SetDefaultCheckTimeout, and one that does not gets exactly the documented
+// default rather than a zero-length hold.
+const DefaultCheckTimeoutFallback = 15 * time.Second
+
 // NewService creates a new incident service. rt may be nil (realtime
 // disabled): every publish through it is a nil-safe no-op.
 func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, rt *realtime.Publisher) *Service {
 	return &Service{
-		db:          dbService,
-		jobsSvc:     jobsSvc,
-		clock:       clk,
-		rt:          rt,
-		maintenance: maintenance.NewResolver(dbService, clk),
+		db:                  dbService,
+		jobsSvc:             jobsSvc,
+		clock:               clk,
+		rt:                  rt,
+		defaultCheckTimeout: DefaultCheckTimeoutFallback,
+		maintenance:         maintenance.NewResolver(dbService, clk),
 	}
+}
+
+// SetDefaultCheckTimeout plumbs the server's resolved
+// `scheduling.check_timeout_ms` into the confirmation-hold cap. Optional and
+// ignored for non-positive values: the constructor already seeds the shipped
+// 15s default.
+func (s *Service) SetDefaultCheckTimeout(timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+
+	s.defaultCheckTimeout = timeout
+}
+
+// DefaultCheckTimeout reports the resolved per-check execution ceiling this
+// service uses as the fallback term of the confirmation-hold cap. Exported so
+// wiring tests on the ingest paths (heartbeat, email-check, MCP) can assert
+// they plumbed the operator-configured value instead of silently inheriting
+// DefaultCheckTimeoutFallback.
+func (s *Service) DefaultCheckTimeout() time.Duration {
+	return s.defaultCheckTimeout
 }
 
 // SetPublicationHook wires the status-page publication side. Optional.
@@ -607,8 +646,16 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	now := s.clock.Now()
+
+	// The confirmation hold (spec 2026-08-31-06). Computed ONCE, here, because
+	// it needs the dependency graph and the ancestors' live rows — pickStatus
+	// downstream is a pure function and must not grow a DB dependency. The
+	// same decision drives the visible status and the incident open, so the
+	// check can never render `down` with no incident behind it.
+	holdConfirmation := s.holdForValidatingAncestor(ctx, check, isFailure, activeIncident, now)
+
 	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
-		check, isSuccess, isFailure, isWarning, activeIncident, now,
+		check, isSuccess, isFailure, isWarning, activeIncident, holdConfirmation, now,
 	)
 	statusChanged := check.Status != newStatus
 
@@ -645,7 +692,34 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return nil
 	}
 
-	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
+	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident, holdConfirmation)
+}
+
+// holdForValidatingAncestor decides whether this failing result must keep the
+// check in `validating` instead of letting its confirmation finish, because a
+// hard ancestor is itself mid-confirmation (spec 2026-08-31-06).
+//
+// The graph walk is deliberately gated to the rare pre-open tick: a failure,
+// with no incident already open, on the exact result whose confirmation window
+// has just elapsed. Every other result — successes, warnings, failures inside
+// the confirmation window, failures under an already-open incident — returns
+// before touching the database, so the steady-state per-result cost is
+// unchanged.
+func (s *Service) holdForValidatingAncestor(
+	ctx context.Context, check *models.Check, isFailure bool,
+	activeIncident *models.Incident, now time.Time,
+) bool {
+	if !isFailure || activeIncident != nil {
+		return false
+	}
+
+	// Still inside its own confirmation window: the check stays validating on
+	// its own account, so there is nothing to hold.
+	if !confirmationElapsedDerive(check, now) {
+		return false
+	}
+
+	return s.hardAncestorGatesConfirmation(ctx, check, now)
 }
 
 // publishStatusHint emits the immediate `checks` live hint when the visible
@@ -771,14 +845,15 @@ func applyClocks(check *models.Check, clocks models.IncidentClockUpdate, _ time.
 // failure lifecycle: streak keeps growing across the boundary and
 // statusChangedAt is not bumped. Only the up<->failing edge bumps it.
 func deriveCheckStatus(
-	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident, now time.Time,
+	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
+	holdConfirmation bool, now time.Time,
 ) (models.CheckStatus, int, *time.Time) {
 	prevWasFailure := check.Status == models.CheckStatusDown ||
 		check.Status == models.CheckStatusValidating
 
 	newStreak, statusChangedAt := deriveStreakAndChange(check, isSuccess, isFailure, isWarning, prevWasFailure, now)
 
-	newStatus := pickStatus(check, isSuccess, isFailure, isWarning, activeIncident, newStreak, now)
+	newStatus := pickStatus(check, isSuccess, isFailure, isWarning, activeIncident, holdConfirmation, now)
 
 	// validating <-> down do not bump statusChangedAt: both are sub-states
 	// of "the check is failing right now". Warning is not a failure sub-state,
@@ -816,9 +891,16 @@ func deriveStreakAndChange(
 // failure (FirstFailureAt isn't persisted yet at this point in
 // ProcessCheckResult), which makes the "open immediately"
 // (ConfirmationPeriodSeconds == 0) path flip straight to down.
+//
+// `holdConfirmation` is the confirmation hold (spec 2026-08-31-06): a hard
+// ancestor is still validating, so this check's open is being deferred. The
+// visible status has to agree with that decision — flipping to `down` here
+// while handleFailure declines to open an incident would render a check as
+// down with nothing behind it. validating <-> down never bumps
+// statusChangedAt, so the hold costs no status churn either.
 func pickStatus(
 	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
-	newStreak int, now time.Time,
+	holdConfirmation bool, now time.Time,
 ) models.CheckStatus {
 	if isSuccess {
 		return models.CheckStatusUp
@@ -832,7 +914,7 @@ func pickStatus(
 	if activeIncident != nil {
 		return models.CheckStatusDown
 	}
-	if isFailure && confirmationElapsedDerive(check, newStreak, now) {
+	if isFailure && !holdConfirmation && confirmationElapsedDerive(check, now) {
 		return models.CheckStatusDown
 	}
 
@@ -840,18 +922,15 @@ func pickStatus(
 }
 
 // confirmationElapsedDerive is the in-derive variant of confirmationElapsed:
-// it accepts an in-flight newStreak so a not-yet-persisted FirstFailureAt
-// can still be reasoned about as "the failure starts right now".
-func confirmationElapsedDerive(check *models.Check, newStreak int, now time.Time) bool {
-	var firstFailure time.Time
-	switch {
-	case check.FirstFailureAt != nil:
+// a not-yet-persisted FirstFailureAt is read as "the failure starts right
+// now", which is what makes ConfirmationPeriodSeconds == 0 flip straight to
+// down on the very first failing result.
+func confirmationElapsedDerive(check *models.Check, now time.Time) bool {
+	firstFailure := now
+	if check.FirstFailureAt != nil {
 		firstFailure = *check.FirstFailureAt
-	case newStreak == 1:
-		firstFailure = now
-	default:
-		firstFailure = now
 	}
+
 	confirmation := time.Duration(check.ConfirmationPeriodSeconds) * time.Second
 
 	return !now.Before(firstFailure.Add(confirmation))
@@ -870,10 +949,10 @@ func confirmationElapsedDerive(check *models.Check, newStreak int, now time.Time
 // the publication layer (status pages) instead of being baked into the row.
 func (s *Service) routeCheckResultWithIncident(
 	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
-	incident *models.Incident,
+	incident *models.Incident, holdConfirmation bool,
 ) error {
 	if isFailure {
-		return s.handleFailure(ctx, check, result, incident)
+		return s.handleFailure(ctx, check, result, incident, holdConfirmation)
 	}
 
 	return s.handleSuccess(ctx, check, result, incident)
@@ -882,9 +961,19 @@ func (s *Service) routeCheckResultWithIncident(
 // handleFailure handles a failed check result.
 func (s *Service) handleFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+	holdConfirmation bool,
 ) error {
 	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
 		// Confirmation window hasn't elapsed; stay validating.
+		return nil
+	}
+
+	// The confirmation hold (spec 2026-08-31-06): a hard ancestor is itself
+	// still validating, so this check's own confirmation does not finish yet —
+	// it stays validating for one more tick, exactly like the window branch
+	// above. Sitting BEFORE createOrReopenIncident means a reopen-after-
+	// cooldown relapse is held by the same rule as a first open.
+	if incident == nil && holdConfirmation {
 		return nil
 	}
 
@@ -1400,6 +1489,11 @@ func (s *Service) queueLifecycleNotifications(
 		// paged — the whole point of the attachment is that the child stops
 		// paging. See rollup.go.
 		models.EventTypeIncidentRolledUp,
+		// Detaching a recovered child from its rollup parent un-suppresses it
+		// for FUTURE relapses but does not itself page: the child never paged
+		// on the way in, so it does not page on the way out. See
+		// markRollupDetached in rollup.go.
+		models.EventTypeIncidentRollupDetached,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call

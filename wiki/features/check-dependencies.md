@@ -35,8 +35,9 @@ At every `incidentCreated`, the service runs `applyRollup`
    break on oldest `startedAt`.
 4. If found: set `child.causedByIncidentUid = parent.uid` and
    `child.pagingSuppressed = true`. The child's incident row exists,
-   but `emitEvent` (`incidents/service.go:888`) skips the channel
-   fan-out for everything except the resolved event.
+   but `queueLifecycleNotifications` gates created, escalated, reopened
+   **and resolved** alike on `pagingSuppressed` — suppression silences the
+   whole lifecycle, not just the open.
 
 The depth cap is 10. In practice that's plenty for any sane org topology;
 a real graph that hits the cap probably has a cycle or a confused
@@ -77,6 +78,124 @@ scheduled, `incidentNeedsPaging`
 **fire time**, alongside acked / resolved / snoozed. Pages already delivered
 are not recalled — the goal is stopping the rest of the storm.
 
+## The confirmation hold (prevention, not damage control)
+
+The forward walk suppresses the pages that have not gone out yet — it cannot
+recall the ones that have. During the RabbitMQ **nonprod** outage of
+2026-08-30 that residue was 5 Slack reports instead of 1: parent and children
+were configured identically (`period = 60s`,
+`confirmationPeriodSeconds = 120`), the dependents' health endpoints flipped
+to 503 within milliseconds of the broker dying, and the parent's own probe
+only observed its first failure 26 s later (probe phase offset plus its ~15 s
+connect timeout). Both sides then waited the *same* 120 s, so the 26 s gap was
+preserved rather than closed, and four children paged before the parent
+confirmed.
+
+Note what this disproves: the tempting static fix
+(`parent.period <= child.period` **and**
+`parent.confirmation <= child.confirmation`) already held — everything was
+equal — and pages still escaped. The invariant that actually closes the race
+is a **strict margin**:
+
+```
+child.confirmation >= parent.confirmation + parent.period + parent.timeout
+```
+
+Enforcing that as configuration is a bad trade: it permanently slows every
+child incident by the margin even when the parent is healthy, and it turns a
+check edit into cross-resource validation (lowering one parent's timeout
+invalidates every child). So the hold is **dynamic runtime state** instead
+(spec `2026-08-31-06`):
+
+> A check whose confirmation period has elapsed does **not** open an incident
+> while a hard ancestor is itself in `validating` — it stays validating one
+> more tick. When the ancestor confirms first, the child's eventual open is
+> suppressed by the backward walk before anything is sent. One report: the
+> parent's.
+
+### How the gate is evaluated
+
+`hardAncestorGatesConfirmation` (`rollup.go`) runs only on the rare pre-open
+tick — a failing result, no active incident, and the confirmation window just
+elapsed. Everything else returns before touching the database, so the
+steady-state per-result cost is unchanged.
+
+1. Walk parents BFS along **hard edges only**, same `visited` set and same
+   depth cap of 10 as `findRollupRoot`. Load each level's ancestors with
+   `GetChecksByUIDs`.
+2. An ancestor **gates** iff all three hold:
+   - `status == validating`, and
+   - `first_failure_at` is set (defensive; validating implies armed), and
+   - the per-ancestor **hold cap** has not expired:
+     ```
+     now < first_failure_at + confirmation + period + timeoutOrDefault
+     ```
+     where `timeoutOrDefault` is the check's own `timeout` config entry, or
+     the server's `scheduling.check_timeout_ms` (default 15 s) when unset.
+3. Any gating ancestor ⇒ the child stays `validating` for this result.
+4. No gating ancestor ⇒ the open proceeds unchanged.
+
+Three cases that **never** gate, and why:
+
+- **Ancestor `down`** — its incident is already open, so the child should open
+  now and be suppressed synchronously by the backward walk.
+- **Ancestor `up`** — the child's failure is its own.
+- **Soft edges** — never consulted, for rollup parity.
+
+### The wedged-parent bound
+
+The hold cap is what makes the gate safe without any extra bookkeeping. It is
+the latest instant at which a healthy ancestor could still legitimately
+confirm; past it the ancestor is treated as **wedged** — paused
+mid-confirmation, frozen by a dead region, stuck behind a maintenance window —
+and stops gating. So a stuck parent can delay a child by **at most one cap
+window**, and no per-ancestor maintenance/paused queries are needed.
+
+### Visible status agrees with the hold
+
+`pickStatus` would otherwise flip the check to `down` the moment its
+confirmation elapsed, rendering it as down with no incident behind it. The
+gate is therefore computed **once**, in `ProcessCheckResult` (it needs DB
+access; `pickStatus` is pure), and threaded as `holdConfirmation` through
+both `deriveCheckStatus`/`pickStatus` and `handleFailure`. A held check reads
+`validating`, and since `validating <-> down` never bumps `status_changed_at`
+the hold costs no status churn.
+
+The gate sits **before** `createOrReopenIncident`, so a reopen-after-cooldown
+relapse is held by exactly the same rule as a first open.
+
+Accounting is unaffected: `started_at` is already the *confirming* result's
+`period_start` (not `first_failure_at`), so a held incident simply starts
+later; downtime and availability come from results.
+
+Every held evaluation logs at **INFO** with the child's uid/slug, the gating
+ancestor's uid/slug and the ancestor's remaining cap — one line per child
+period during a real outage, bounded by the cap, and it directly answers "why
+did this page arrive 90 s late?". There are no new event rows: there is no
+incident to attach them to yet.
+
+`rollUpExistingChildren` stays as the safety net for what the gate cannot
+see — edges created mid-outage, cap expiries, and children whose confirmation
+elapsed before the edge existed.
+
+### The soft config lint
+
+`GET /orgs/:org/checks/:check/dependencies` returns a `warnings` array
+alongside `dependsOn` / `dependedOnBy`. For each hard `dependsOn` edge where
+
+```
+child.confirmation < parent.confirmation + parent.period + parent.timeoutOrDefault
+```
+
+it emits `CONFIRMATION_MARGIN_TOO_SHORT`, carrying the child's configured
+confirmation and the recommended value so the dashboard can render a concrete
+sentence. dash0 shows it as an **amber** alert on the check's dependencies
+card (`components/checks/dependency-warnings.tsx`).
+
+It is **advisory only** — never a validation error, never a reason a write is
+rejected. The runtime hold already covers the gap; the warning only explains
+why a page may arrive later than the child's configured confirmation suggests.
+
 ## Why "deepest" instead of "first hard parent"
 
 Imagine: `db → api → dashboard → status-page`. All four edges are hard.
@@ -98,10 +217,17 @@ Parent recovery triggers `reEvaluateRollupChildren`
 the resolving parent:
 
 - If the child's check has recovered (status flipped back to UP):
-  emit a `rollup_detached` event for the timeline, clear the
-  attribution, and don't page. The child resolved silently along with
-  the parent — there was never a real on-call moment for the child's
-  failure mode.
+  emit an `incident.rollup_detached` event for the timeline, flip
+  `pagingSuppressed` back to `false`, and don't page. `causedByIncidentUid`
+  is deliberately **kept** — it stays as the historical record of which
+  cascade this incident belonged to, not a live suppression flag (nothing
+  downstream reads a non-nil `causedByIncidentUid` as "currently
+  suppressed"; that's what `pagingSuppressed` is for, and
+  `ListSuppressedChildIncidents` filters on it, not on the attribution).
+  Without this, resolving the parent erased the only evidence the cascade
+  ever happened — the RabbitMQ nonprod outage of 2026-08-30 lost the
+  attribution on 10 of 11 dependent incidents this way, and the
+  investigation had to be reconstructed from the events feed.
 - If the child is still failing on its own: clear `pagingSuppressed`,
   emit an `incidentReopened` event. This is when the channel fan-out
   finally happens for the child. The on-call learns "the underlying db
@@ -110,6 +236,16 @@ the resolving parent:
 This second branch is the load-bearing reason cascade rollup doesn't
 make problems disappear: a child that's down for *its own* reason still
 pages, just with a delay from the open time until the parent resolves.
+
+Keeping `causedByIncidentUid` on detach is safe for the relapse case too:
+if a detached child (still-active incident, check recovered) fails again
+before *its own* incident resolves, the relapse pages normally — nothing
+re-reads the stale attribution as "still suppressed", because suppression
+is decided by `pagingSuppressed` alone. And if the child's incident
+resolves and later reopens from scratch, `reopenIncident` re-runs
+`applyRollup` on a clean slate (`causedByIncidentUid` reset to `nil`
+first), so a reopen is always a fresh rollup decision, never inherited
+from the detached state.
 
 ## What happens on reopen
 
@@ -145,10 +281,13 @@ Two ways to add a dependency:
 
 ## Operational caveats
 
-- **Rollup never delays an open**. The child incident is created
-  immediately on the failing result; rollup is computed synchronously
-  and the suppression flag is part of the same DB write. There is no
-  "waiting to see if a parent fails first" backoff.
+- **Rollup never delays an open** — but the *confirmation hold* does, and
+  only in the one case that matters. Once the child's confirmation elapses
+  and no hard ancestor is validating, the incident is created immediately on
+  the failing result; rollup is computed synchronously and the suppression
+  flag is part of the same DB write. The hold adds latency **only** while a
+  hard ancestor is itself mid-confirmation, and never beyond that ancestor's
+  hold cap.
 - **Rollup is evaluated in both directions, at every incident open and
   reopen** (spec `2026-08-24-15`). Backward at the child's open, forward
   at the parent's — so a parent that confirms after its dependents still
@@ -179,6 +318,10 @@ Two ways to add a dependency:
 |---|---|
 | Rollup walk + suppression | [`server/internal/handlers/incidents/rollup.go`](../../server/internal/handlers/incidents/rollup.go) |
 | Forward walk on parent open/reopen | `rollup.go` (`rollUpExistingChildren`) |
+| Confirmation hold (gate + hold cap) | `rollup.go` (`hardAncestorGatesConfirmation`, `ancestorHoldRemaining`) |
+| Hold threaded into status + open | `incidents/service.go` (`holdForValidatingAncestor`, `pickStatus`, `handleFailure`) |
+| Resolved per-check timeout | `db/models/check.go` (`Check.TimeoutOrDefault`) |
+| Confirmation-margin lint | `checkdependencies/service.go` (`confirmationMarginWarnings`) |
 | Guarded attachment (race convergence) | `db/{postgres,sqlite}/check_dependencies.go` (`AttachIncidentToRollupParent`) |
 | Escalation fire-time suppression gate | `jobs/jobtypes/job_escalation_step.go` (`incidentNeedsPaging`) |
 | Parent-resolve re-evaluation | `rollup.go:151` (`reEvaluateRollupChildren`) |
@@ -194,3 +337,7 @@ edge cases are captured in
 [`specs/done/2026/05/2026-05-03-57-check-dependencies-and-cascade-rollup.md`](../../specs/done/2026/05/2026-05-03-57-check-dependencies-and-cascade-rollup.md).
 The frontend dashboard work followed in
 [`2026-05-05-01-check-dependencies-frontend.md`](../../specs/done/2026/05/2026-05-05-01-check-dependencies-frontend.md).
+The forward walk was added by `2026-08-24-15` after the RabbitMQ outage of
+2026-08-23; the confirmation hold and the soft margin lint by `2026-08-31-06`
+after the nonprod outage of 2026-08-30 showed the forward walk to be damage
+control rather than prevention.

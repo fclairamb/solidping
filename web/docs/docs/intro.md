@@ -63,8 +63,15 @@ The fastest way to get started is with Docker:
 ```bash
 docker run -p 4000:4000 -v solidping-data:/data \
   -e SP_DB_TYPE=sqlite -e SP_DB_DIR=/data \
+  -e SP_FILESTORAGE_LOCAL_ROOT=/data/files \
   ghcr.io/fclairamb/solidping:latest
 ```
+
+`SP_FILESTORAGE_LOCAL_ROOT` puts uploaded blobs (org logos, status-page
+assets, screenshots) on the same volume as the database — without it they
+default to `./data/files` inside the container and are lost on the next
+restart. See [File Storage](/configuration/file-storage) for details and the
+S3 alternative.
 
 Then open [http://localhost:4000](http://localhost:4000) in your browser.
 

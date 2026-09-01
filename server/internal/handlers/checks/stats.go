@@ -13,10 +13,20 @@ import (
 // KPI tiles that already poll on a 30s cadence and are informational, so a
 // minute of staleness is well within budget — and it means one aggregate
 // query per org per minute no matter how many operators have the dashboard
-// open. There is deliberately no invalidation machinery: at this staleness
-// budget, waiting out the TTL is simpler and cheaper than wiring every check
-// write path (create, update, delete, apply, import, promote, status
-// transitions from the worker pipeline) to a cache buster.
+// open.
+//
+// Membership-changing writes bust the cache explicitly (spec
+// 2026-09-01-01): check create and delete — the two chokepoints
+// (insertCheckResolvingSlugRace, Service.DeleteCheck) every write path
+// (create, upsert, import, apply, clone) funnels through — call
+// checkStatsCache.invalidate so the very next fetch recomputes instead of
+// riding out the TTL. This closes the "dashboard stuck on the empty-org hero
+// for up to a minute after the first check is created" gap. Everything else
+// — enabled/disabled toggles, config edits, and status transitions from the
+// worker pipeline — deliberately keeps riding the TTL: those never flip
+// Total across zero, create/delete are rare and cheap places to bust, and
+// wiring every field-level write would trade a minute of counter staleness
+// for no real benefit.
 const defaultCheckStatsTTL = time.Minute
 
 // availability24hWindow is the trailing window Availability24h is computed
@@ -226,4 +236,15 @@ func (c *checkStatsCache) put(orgUID string, stats CheckStatsResponse) {
 	}
 
 	c.entries[orgUID] = checkStatsEntry{stats: stored, computedAt: time.Now()}
+}
+
+// invalidate drops the org's cached snapshot, if any, so the next
+// GetCheckStats call recomputes instead of serving a stale hit. Called from
+// every service path that changes the set of in-scope checks — see the
+// defaultCheckStatsTTL doc comment for which writes those are.
+func (c *checkStatsCache) invalidate(orgUID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.entries, orgUID)
 }
