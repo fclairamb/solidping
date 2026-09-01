@@ -305,6 +305,15 @@ func (s *Service) SetDefaultCheckTimeout(timeout time.Duration) {
 	s.defaultCheckTimeout = timeout
 }
 
+// DefaultCheckTimeout reports the resolved per-check execution ceiling this
+// service uses as the fallback term of the confirmation-hold cap. Exported so
+// wiring tests on the ingest paths (heartbeat, email-check, MCP) can assert
+// they plumbed the operator-configured value instead of silently inheriting
+// DefaultCheckTimeoutFallback.
+func (s *Service) DefaultCheckTimeout() time.Duration {
+	return s.defaultCheckTimeout
+}
+
 // SetPublicationHook wires the status-page publication side. Optional.
 func (s *Service) SetPublicationHook(hook PublicationHook) {
 	s.publications = hook

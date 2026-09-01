@@ -1676,3 +1676,34 @@ func TestApplyServerEnv_CORSAllowedOrigins(t *testing.T) {
 	applyServerEnv(cfg)
 	r.Equal([]string{"https://c.example.com"}, cfg.CORSAllowedOrigins, "SP_SERVER_ prefix wins over the shorter name")
 }
+
+// TestSchedulingCheckTimeout pins the single ms→Duration conversion every
+// consumer of the per-check execution ceiling must go through. It exists
+// because the conversion used to be copy-pasted at each call site, and the
+// call sites that forgot to copy it (heartbeat, email-check and MCP ingest)
+// silently ran the incident confirmation-hold gate on a different ceiling
+// than the worker did.
+func TestSchedulingCheckTimeout(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		ms   float64
+		want time.Duration
+	}{
+		"shipped default": {ms: 15000, want: 15 * time.Second},
+		"raised":          {ms: 45000, want: 45 * time.Second},
+		"lowered":         {ms: 2500, want: 2500 * time.Millisecond},
+		"fractional ms":   {ms: 1.5, want: 1500 * time.Microsecond},
+		// 0 stays 0: applying the documented built-in default is each
+		// consumer's job (incidents.DefaultCheckTimeoutFallback), not the
+		// raw conversion's.
+		"unset": {ms: 0, want: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := SchedulingConfig{CheckTimeoutMs: tc.ms}
+			require.Equal(t, tc.want, cfg.CheckTimeout())
+		})
+	}
+}

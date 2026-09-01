@@ -134,11 +134,20 @@ type Service struct {
 // — a gap that is invisible until someone notices their heartbeat outage never
 // reached the status page. Making it part of the signature means a new call
 // site has to make a deliberate choice instead of inheriting the bug.
+//
+// defaultCheckTimeout is the operator-configured `scheduling.check_timeout_ms`
+// (config.SchedulingConfig.CheckTimeout), a required parameter for the same
+// reason: a heartbeat ping runs the very same rollup gate as a probe result,
+// so an unplumbed timeout would give this ingest path a different
+// confirmation-hold cap than the worker for the identical check. Non-positive
+// values keep incidents.DefaultCheckTimeoutFallback.
 func NewService(
 	dbService db.Service, jobSvc jobsvc.Service, realtimePublisher *realtime.Publisher,
-	publicationHook incidents.PublicationHook,
+	publicationHook incidents.PublicationHook, defaultCheckTimeout time.Duration,
 ) *Service {
 	incidentSvc := incidents.NewService(dbService, jobSvc, clock.Real{}, realtimePublisher)
+	incidentSvc.SetDefaultCheckTimeout(defaultCheckTimeout)
+
 	if publicationHook != nil {
 		incidentSvc.SetPublicationHook(publicationHook)
 	}

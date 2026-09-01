@@ -36,7 +36,7 @@ func newHeartbeatSetup(t *testing.T) *heartbeatSetup {
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
-	svc := heartbeat.NewService(dbSvc, jobs, nil, nil)
+	svc := heartbeat.NewService(dbSvc, jobs, nil, nil, 0)
 
 	org := models.NewOrganization("heartbeat-test", "Heartbeat Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

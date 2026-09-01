@@ -1375,6 +1375,22 @@ type SchedulingConfig struct {
 	FastLaneReserved int `koanf:"fast_lane_reserved"`
 }
 
+// CheckTimeout returns CheckTimeoutMs as a duration.
+//
+// Every consumer of the global per-check execution ceiling must go through
+// this method rather than repeating the ms→Duration conversion: the ceiling
+// feeds both check execution and the incident confirmation-hold cap
+// (incidents.Service.ancestorHoldRemaining), and a call site that quietly
+// skips it gets a different hold cap than the rest of the process for the
+// same deployment.
+//
+// A non-positive CheckTimeoutMs is returned as 0 — the documented "falls back
+// to the built-in default" behavior belongs to each consumer (see
+// incidents.DefaultCheckTimeoutFallback), not to the raw conversion.
+func (c SchedulingConfig) CheckTimeout() time.Duration {
+	return time.Duration(c.CheckTimeoutMs * float64(time.Millisecond))
+}
+
 // RedirectRule represents a path-based redirect configuration for development proxying.
 type RedirectRule struct {
 	PathPrefix string // e.g., "/dashboard"

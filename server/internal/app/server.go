@@ -1117,7 +1117,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(
-		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService)
+		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService,
+		s.defaultCheckTimeout())
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	publicOrgAPI.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	publicOrgAPI.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
@@ -1468,7 +1469,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
 	s.jmapManager.RegisterHandler(emailcheck.NewHandler(
-		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService, slog.Default()))
+		s.dbService, s.jobSvc, s.services.Realtime, incidentPublicationsService, slog.Default(),
+		s.defaultCheckTimeout()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
@@ -3700,7 +3702,7 @@ func (s *Server) JobSvc() jobsvc.Service {
 // service's confirmation-hold cap and the dependency lint's margin formula,
 // both of which need "how late can a check possibly notice an outage".
 func (s *Server) defaultCheckTimeout() time.Duration {
-	return time.Duration(s.config.Server.Scheduling.CheckTimeoutMs * float64(time.Millisecond))
+	return s.config.Server.Scheduling.CheckTimeout()
 }
 
 // Sentinel errors surfaced by newFreeboxConnectionResolver. Defining
