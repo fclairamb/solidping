@@ -111,13 +111,15 @@ func isPublicByDesign(checkType checkerdef.CheckType, jsonName string) bool {
 // heuristic to the key-suffix and dsn/connection-string patterns): every
 // genuine credential field across all ~40 checkers is already declared
 // (password, token, secretHeaders, basicAuth, private_key, saslPassword,
-// authPassword/privPassword). checkgrpc exposes no TLS client key,
-// checkdocker/checkbrowser carry no credentials, and checkkubernetes declares
-// none because its cluster credentials live on the integration connection, not
-// the check config. The widened heuristic's only "key"-containing hit across
-// every checker's fields is `keyword` (checkgrpc/checkbrowser), which does not
-// END in "key" and so isn't flagged — no new publicByDesignFields entry was
-// needed.
+// authPassword/privPassword, and checkgrpc's secretMetadata — the gRPC request
+// metadata added by spec 2026-09-01-03, which is why checkgrpc now declares
+// SecretFields() where it previously had none; it still exposes no TLS client
+// key). checkdocker/checkbrowser carry no credentials, and checkkubernetes
+// declares none because its cluster credentials live on the integration
+// connection, not the check config. The widened heuristic's only
+// "key"-containing hit across every checker's fields is `keyword`
+// (checkgrpc/checkbrowser), which does not END in "key" and so isn't flagged —
+// no new publicByDesignFields entry was needed.
 func TestNoUndeclaredCheckerSecrets(t *testing.T) {
 	t.Parallel()
 
