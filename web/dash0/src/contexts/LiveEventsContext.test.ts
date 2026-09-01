@@ -60,6 +60,7 @@ function seedQueries(client: QueryClient): void {
   const keys: unknown[][] = [
     ["checks", ORG, { limit: 1000 }],
     ["checks", "infinite", ORG, {}],
+    ["check-stats", ORG],
     ["check", ORG, "uid-1"],
     ["check", ORG, "uid-2"],
     ["results", ORG, { checkUid: "uid-1" }],
@@ -222,6 +223,43 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
     conn.update({ entity: "checks" }, ["checks"]);
     expect(staleKeys(client)).toContain(JSON.stringify(["checks", "infinite", ORG, {}]));
+  });
+
+  it("a 'checks' kind hint also invalidates check-stats", () => {
+    // Spec 2026-09-01-01: check-stats gates the dashboard's empty-org
+    // onboarding hero. An MCP- or API-created check publishes kind "checks"
+    // (a real membership transition), so that hint must refresh the stats
+    // query too — otherwise the hero can sit over a non-empty org for up to
+    // LIVE_LAZY_POLL_MS (5 minutes) waiting on the lazy safety-net poll.
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    conn.update({ entity: "checks" }, ["checks"]);
+    expect(staleKeys(client)).toContain(JSON.stringify(["check-stats", ORG]));
+  });
+
+  it("a 'results' kind hint does NOT invalidate check-stats", () => {
+    // The negative guard for the layer-3 constraint: check-stats must be
+    // reachable only through the "checks" kind, never through "results" —
+    // that firehose (check workers write results continuously) is exactly
+    // what spec 2026-08-09-07 keeps away from org-wide refetches, and
+    // wiring check-stats to it would reproduce the same request-rate
+    // problem for the dashboard hero gate.
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    vi.advanceTimersByTime(LIVE_INVALIDATE_MIN_INTERVAL_MS);
+    conn.update({ entity: "checks" }, ["results"]);
+    expect(staleKeys(client)).not.toContain(JSON.stringify(["check-stats", ORG]));
   });
 
   it("update on a check scope invalidates only that check's queries, not another check's", () => {
