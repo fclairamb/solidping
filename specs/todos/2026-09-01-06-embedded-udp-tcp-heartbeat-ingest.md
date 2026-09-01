@@ -37,13 +37,13 @@ implemented from the start:
 **SP1 — plaintext token:**
 
 ```
-SP1 <org>/<check-identifier> <token>\n
+SP1 <org>/<check-identifier> <token> [annotation]\n
 ```
 
 **SP2 — HMAC-signed (no secret on the wire):**
 
 ```
-SP2 <org>/<check-identifier> <ts> <ctr> <mac>\n
+SP2 <org>/<check-identifier> <ts> <ctr> [annotation] <mac>\n
 ```
 
 - `ts` — unix seconds from the device clock, or `0` when the device has no
@@ -54,8 +54,12 @@ SP2 <org>/<check-identifier> <ts> <ctr> <mac>\n
   zero flash writes in steady state, no RNG needed (which is why this is a
   counter and not a nonce).
 - `mac` — HMAC-SHA256 keyed with the check's token, computed over the exact
-  string `SP2 <org>/<check-identifier> <ts> <ctr>`, truncated to 16 bytes,
-  hex-encoded. The whole datagram stays around 80 bytes.
+  line up to but excluding the final space and the MAC itself (i.e.
+  `SP2 <org>/<check-identifier> <ts> <ctr>` plus the annotation when
+  present), truncated to 16 bytes, hex-encoded. The MAC is always the
+  **last** space-separated token — parse the line from both ends — so the
+  annotation is covered by the signature and can never be tampered with on
+  an authenticated beat. A bare datagram stays around 80 bytes.
 
 The canonical-string-then-HMAC style deliberately mirrors the existing
 service-signature scheme (`internal/servicesig`, HMAC-SHA256 over
@@ -73,6 +77,46 @@ SP2 verification, in order:
    check, then persist the new value. Strict monotonicity is the replay
    protection: an old datagram fails, and even the latest datagram cannot be
    replayed.
+
+### Beat annotations (optional status word + key=value fields)
+
+Both message forms accept an optional annotation, logfmt-style:
+
+```
+[status-word] [key1=value1 key2=value2 ...]
+```
+
+- **`status-word`** — one bare token without `=` (e.g. `started`, `alive`).
+  V1 treats it as an opaque annotation stored on the result; the docs
+  reserve `started` / `ok` / `fail` as "annotation-only today, may gain
+  semantics later" so firmware can adopt the vocabulary now without wire
+  changes. No status-changing keywords in V1 — a pushed `fail` raising
+  incidents drags in recovery-lifecycle design, and under SP1 would let a
+  token holder raise false alarms; deferred deliberately. The immediate
+  value is reboot visibility: a device beating `started` every 10 minutes
+  is crash-looping, which a bare heartbeat cannot distinguish from healthy.
+- **`key=value` pairs** — split on the first `=` (values may contain `=`);
+  keys `[a-z0-9_]{1,32}`, values ≤64 bytes, no quoting so no spaces in
+  values, at most 10 pairs per beat, whole annotation ≤128 bytes (inside
+  the line cap). NaN/Inf rejected; numbers parse as float64.
+- **An annotation never invalidates a beat.** Parsing is best-effort: if
+  the remainder doesn't match the grammar, store it as raw text on the
+  result and count the beat anyway — aliveness first; a firmware typo in a
+  key name must never make a healthy device look dead. (Under SP2 the MAC
+  covers the raw bytes either way.)
+- **Storage**: the status word and non-numeric pairs go to the result's
+  `output` jsonb; **numeric values go to the result's `metrics` jsonb**,
+  making them first-class time series — charted on the check page and
+  rolled up by the existing aggregation suffix conventions
+  (`server/internal/jobs/jobtypes/job_aggregation.go`). No schema change.
+  This is the "send data" half of the original idea: battery volts, RSSI,
+  temperature in one UDP datagram.
+- **Untrusted input**: strip control characters, HTML-escape everywhere it
+  renders in dash0, never log raw. The per-beat caps above bound metric-key
+  cardinality; rate limiting bounds beat volume.
+- **HTTP parity**: the existing HTTPS ingest accepts the same annotation
+  (query param or small body) so the field means one thing across all three
+  transports.
 
 ### Per-check HMAC requirement
 
@@ -156,12 +200,21 @@ rotate-token endpoint already exists).
   aliveness, not censorship. UDP source addresses are spoofable — never treat
   the source IP as identity.
 
+### Considered and deferred (do not implement in V1)
+
+- **`.\n` repeat-beat on an established TCP connection** (MQTT
+  `PINGREQ`-style). Deferred deliberately: it converts message
+  authentication into session authentication — an on-path attacker could
+  hijack the TCP session and keep dotting to mask an outage without holding
+  the key — and the byte savings are marginal (TCP/IP headers dominate;
+  byte-starved devices should use UDP). If ever revisited, the safe
+  semantics are: dot = repeat the connection's most recently accepted full
+  line, at least one full line before any dot, a re-auth interval (~15 min)
+  after which dots are rejected and a full line is required again, and SP2
+  counters advance only on real signed lines.
+
 ### Open questions (settle during implementation, prefer the listed default)
 
-- **Payload beyond aliveness**: the original idea says "send data" — small
-  metrics (battery %, RSSI) would need heartbeat-metrics schema decisions.
-  Out of V1; leave room in the line format (trailing key=value pairs, covered
-  by the SP2 MAC if present) without implementing parsing.
 - **SaaS exposure**: raw TCP/UDP ports on solidping.io need LB support and
   possibly per-region entry points. V1 targets self-hosted + the k8xp dev
   deployment first.
