@@ -136,3 +136,41 @@ func encodeDayCells(colors []string) []DayCell {
 
 	return cells
 }
+
+// maxStripCells is the total number of day cells the whole report may render,
+// across every row.
+//
+// It is a HARD byte bound, not a nicety. The strip is per-row x up to
+// maxCheckRows rows, and a mail Gmail clips at ~102 KB is a mail whose footer,
+// unsubscribe link and objectives simply disappear behind a "[Message clipped]"
+// link. Run-length encoding already collapses the realistic cases to a handful
+// of cells per row; this bounds the pathological one (a month in which every
+// check changes state every single day), which would otherwise be 50 x 31
+// cells.
+//
+// The budget is spent in the table's own order, which is worst-uptime first —
+// so when it does run out, the rows that lose their strip are the healthy ones
+// at the bottom, which is exactly the right bias.
+const maxStripCells = 900
+
+// applyStripBudget drops strips past maxStripCells, in table order. It never
+// renders a PARTIAL strip: a half-drawn month would be read as "no data after
+// the 14th" rather than as "we ran out of room".
+func applyStripBudget(rows []CheckRow) {
+	spent := 0
+
+	for i := range rows {
+		cells := len(rows[i].Days)
+		if cells == 0 {
+			continue
+		}
+
+		if spent+cells > maxStripCells {
+			rows[i].Days = nil
+
+			continue
+		}
+
+		spent += cells
+	}
+}

@@ -291,6 +291,8 @@ func (b *Builder) Build(
 		rows = rows[:maxCheckRows]
 	}
 
+	applyStripBudget(rows)
+
 	data.Checks = rows
 	if len(strips) > 0 {
 		data.DayStripLabel = plan.label()
