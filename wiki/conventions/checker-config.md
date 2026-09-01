@@ -184,10 +184,16 @@ Either `url` or `host` is required. Default period: 5 minutes.
 | `port` | int | O | 50051 | Target port. Validation: 1-65535 |
 | `tls` | bool | O | false | Use TLS |
 | `tlsSkipVerify` | bool | O | false | Skip TLS certificate verification |
-| `serviceName` | string | O | | gRPC service name for health check |
+| `serviceName` | string | O | | gRPC service name for health check. Empty = overall server health |
 | `timeout` | duration | O | 10s | Check timeout (max: 60s) |
-| `keyword` | string | O | | Keyword to search for in response |
-| `invertKeyword` | bool | O | false | Fail if keyword IS found (instead of not found) |
+| `metadata` | map[string]string | O | | Request metadata sent on the health RPC. Stays in the public, queryable config |
+| `secretMetadata` | map[string]string | O | | Same, but declared in `SecretFields()` — split out of the public config and encrypted at rest, never returned by the API |
+| `keyword` | string | O | | Keyword to search for in response (deprecated — matches the serving-status enum the check already evaluates; not offered in the dashboard) |
+| `invertKeyword` | bool | O | false | Fail if keyword IS found (instead of not found) (deprecated, see `keyword`) |
+
+Metadata keys (both maps) must be lowercase and match `[a-z0-9._-]+`; the
+`grpc-` prefix is reserved by the gRPC runtime and `-bin` (binary metadata)
+keys are rejected.
 
 ---
 
