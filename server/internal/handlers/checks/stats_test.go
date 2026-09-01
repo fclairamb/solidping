@@ -462,3 +462,117 @@ func TestGetCheckStatsCachedMapIsNotShared(t *testing.T) {
 	r.NoError(err)
 	r.Equal(1, second.ByStatus[models.WireStatusUp])
 }
+
+// TestCreateCheckInvalidatesStatsCache is the load-bearing regression proof
+// for spec 2026-09-01-01: a stats fetch primes the cache with total: 0, then
+// CreateCheck must bust it so the very next fetch reports total: 1 without
+// waiting out the (default, one-minute) TTL. No TTL override is used here —
+// the default TTL is left in place on purpose, so a passing assertion can
+// only mean the cache was genuinely busted, not that it happened to expire.
+func TestCreateCheckInvalidatesStatsCache(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, _, org := newStatsService(t, "stats-create-bust")
+
+	empty, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(0, empty.Total, "a freshly primed cache for an empty org must read total: 0")
+
+	_, err = svc.CreateCheck(ctx, org.Slug, httpCheckReq())
+	r.NoError(err)
+
+	after, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, after.Total,
+		"creating a check must bust the cache so the next fetch sees it immediately, not after the TTL")
+}
+
+// TestDeleteCheckInvalidatesStatsCache is the symmetric case: deleting the
+// org's only check must bust the cache immediately too, so a dashboard does
+// not keep rendering the normal (non-empty) view over a now-empty org.
+func TestDeleteCheckInvalidatesStatsCache(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, _, org := newStatsService(t, "stats-delete-bust")
+
+	created, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
+	r.NoError(err)
+
+	primed, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, primed.Total, "the cache must be primed with the one check before it is deleted")
+
+	r.NoError(svc.DeleteCheck(ctx, org.Slug, created.UID))
+
+	after, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(0, after.Total,
+		"deleting a check must bust the cache so the next fetch sees the drop immediately, not after the TTL")
+}
+
+// TestCloneCheckInvalidatesStatsCache targets CloneCheck specifically: it
+// bypasses Service.CreateCheck and inserts straight through
+// insertCheckResolvingSlugRace, so this is the regression proof that the
+// shared chokepoint really does cover it too, not just the CreateCheck path.
+func TestCloneCheckInvalidatesStatsCache(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, _, org := newStatsService(t, "stats-clone-bust")
+
+	created, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
+	r.NoError(err)
+
+	primed, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, primed.Total)
+
+	_, err = svc.CloneCheck(ctx, org.Slug, created.UID, &checks.CloneCheckRequest{})
+	r.NoError(err)
+
+	after, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(2, after.Total,
+		"cloning a check must bust the cache too, since it bypasses CreateCheck")
+}
+
+// TestPlainResultWriteDoesNotInvalidateStatsCache is the control: it proves
+// the TTL trade-off is preserved rather than the fix degenerating into
+// "cache nothing". A plain result write changes nothing about which checks
+// are in scope, so it must NOT bust the cache. Proven by mutating the checks
+// table directly behind the cache's back (the same trick
+// TestGetCheckStatsCacheServesStaleThenRefreshes uses) so a stale read below
+// is unambiguous: only a cache that was never busted can produce it.
+func TestPlainResultWriteDoesNotInvalidateStatsCache(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, dbSvc, org := newStatsService(t, "stats-result-no-bust")
+
+	created, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
+	r.NoError(err)
+
+	primed, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, primed.Total)
+
+	// Mutate the checks table behind the cache's back: if the cache were
+	// somehow busted by the result write below, this second check would
+	// show up in the recomputed total.
+	seedStatsChecks(ctx, t, dbSvc, org.UID, []statsFixture{
+		{status: models.CheckStatusUp, enabled: true},
+	})
+
+	result := models.NewResult(org.UID, created.UID, models.ResultStatusUp, 10)
+	r.NoError(dbSvc.CreateResult(ctx, result))
+
+	still, err := svc.GetCheckStats(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(1, still.Total, "a plain result write must not bust the stats cache")
+}
