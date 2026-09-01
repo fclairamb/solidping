@@ -161,3 +161,95 @@ func mustLoad(t *testing.T, name string) *time.Location {
 
 	return loc
 }
+
+// TestPrecedingWindowIsCalendarAware is the whole point of the helper: the
+// period before a report window must be the previous CALENDAR period, not the
+// same number of seconds subtracted. A duration-based "previous month" for
+// March would reach back into January, and the two windows must touch exactly —
+// no gap, no overlap.
+func TestPrecedingWindowIsCalendarAware(t *testing.T) {
+	t.Parallel()
+
+	paris := mustLoad(t, "Europe/Paris")
+
+	for _, tc := range []struct {
+		name       string
+		loc        *time.Location
+		window     slo.Window
+		weekly     bool
+		wantStart  string
+		wantEnd    string
+		wantLength time.Duration
+	}{
+		{
+			// The case a naive `Start.Add(-span)` gets wrong: March is 31 days,
+			// February 28, so subtracting March's span lands on 1 February
+			// minus 3 days.
+			name:       "month before March is a 28-day February",
+			loc:        time.UTC,
+			window:     slo.MonthWindow(time.UTC, time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC)),
+			wantStart:  "2026-02-01T00:00:00Z",
+			wantEnd:    "2026-03-01T00:00:00Z",
+			wantLength: 28 * 24 * time.Hour,
+		},
+		{
+			name:       "month before January rolls the year back",
+			loc:        time.UTC,
+			window:     slo.MonthWindow(time.UTC, time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)),
+			wantStart:  "2025-12-01T00:00:00Z",
+			wantEnd:    "2026-01-01T00:00:00Z",
+			wantLength: 31 * 24 * time.Hour,
+		},
+		{
+			// March 2026 contains the European spring-forward (Sunday 29
+			// March), so the month the wall clock lived through is an hour
+			// shorter than 31x24h.
+			name:       "DST month is honestly an hour short",
+			loc:        paris,
+			window:     slo.MonthWindow(paris, time.Date(2026, 4, 10, 0, 0, 0, 0, paris)),
+			wantStart:  "2026-02-28T23:00:00Z",
+			wantEnd:    "2026-03-31T22:00:00Z",
+			wantLength: 31*24*time.Hour - time.Hour,
+		},
+		{
+			name:       "week before is exactly seven days",
+			loc:        time.UTC,
+			window:     slo.WeekWindow(time.UTC, time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)),
+			weekly:     true,
+			wantStart:  "2026-08-10T00:00:00Z",
+			wantEnd:    "2026-08-17T00:00:00Z",
+			wantLength: 7 * 24 * time.Hour,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			prev := slo.PrecedingWindow(tc.loc, tc.window, tc.weekly)
+
+			r.Equal(tc.wantStart, prev.Start.UTC().Format(time.RFC3339))
+			r.Equal(tc.wantEnd, prev.End.UTC().Format(time.RFC3339))
+			r.Equal(tc.wantLength, prev.End.Sub(prev.Start))
+
+			// Adjacent and half-open: the previous window ends exactly where
+			// the reported one begins.
+			r.True(prev.End.Equal(tc.window.Start))
+		})
+	}
+}
+
+// TestPrecedingWindowDefaultsToUTC pins the nil-location fallback — a schedule
+// with an unloadable timezone must still produce a usable comparison window
+// rather than panicking inside the report builder.
+func TestPrecedingWindowDefaultsToUTC(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	window := slo.MonthWindow(time.UTC, time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC))
+	prev := slo.PrecedingWindow(nil, window, false)
+
+	r.Equal("2026-06-01T00:00:00Z", prev.Start.UTC().Format(time.RFC3339))
+	r.Equal("2026-07-01T00:00:00Z", prev.End.UTC().Format(time.RFC3339))
+}

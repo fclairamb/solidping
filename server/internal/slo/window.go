@@ -108,3 +108,32 @@ func PreviousWindow(loc *time.Location, now time.Time, weekly bool) Window {
 
 	return Window{Start: start, End: start.AddDate(0, 1, 0)}
 }
+
+// PrecedingWindow returns the period immediately BEFORE an already-resolved
+// report window — what a period-over-period comparison needs ("versus last
+// month", "versus last week").
+//
+// It is calendar-aware on purpose, which is the whole reason it exists rather
+// than the caller subtracting a duration: "the month before March" is February,
+// which is 28 days, not 31, and "the month before" a month containing a DST
+// transition is an hour longer or shorter than 30x24h. Subtracting
+// window.End-window.Start would compare March against a 31-day slab reaching
+// back into January.
+//
+// The bounds are anchored to the given window rather than recomputed from a
+// "now": End is exactly window.Start (in loc), so the two windows are adjacent
+// and half-open with no gap and no overlap, whatever calendar arithmetic the
+// caller used to build the current one.
+func PrecedingWindow(loc *time.Location, window Window, weekly bool) Window {
+	if loc == nil {
+		loc = time.UTC
+	}
+
+	end := window.Start.In(loc)
+
+	if weekly {
+		return Window{Start: end.AddDate(0, 0, -7), End: end}
+	}
+
+	return Window{Start: end.AddDate(0, -1, 0), End: end}
+}
