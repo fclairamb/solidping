@@ -806,6 +806,10 @@ export function useCreateCheck(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      // A new check changes the org's total — the empty-org dashboard hero
+      // gate reads this query, so it must not wait out its own poll/TTL
+      // window to notice (spec 2026-09-01-01).
+      queryClient.invalidateQueries({ queryKey: ["check-stats", org] });
     },
   });
 }
@@ -967,6 +971,10 @@ export function useDeleteCheck(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      // Symmetric with useCreateCheck: deleting the org's last check must
+      // flip the dashboard back to the empty-org hero without waiting out
+      // the stats query's own poll/TTL window (spec 2026-09-01-01).
+      queryClient.invalidateQueries({ queryKey: ["check-stats", org] });
     },
   });
 }
