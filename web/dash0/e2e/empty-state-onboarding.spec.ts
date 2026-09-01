@@ -219,37 +219,33 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
 
       // Navigating back to the dashboard: the org now has a check, so the
       // empty-state hero must be gone (replaced by the regular dashboard /
-      // onboarding-checklist view) — the behavior the old assertion covered.
+      // onboarding-checklist view, with its KPI tiles) — the behavior the
+      // old assertion covered.
       //
-      // `isEmptyOrg` (dashboard-page.tsx) keys off GET checks/stats, which
-      // the server caches per-org for a full minute with no write-path
-      // invalidation (server/internal/handlers/checks/stats.go, spec
-      // 2026-08-02-06 — deliberate, out of scope here). The dashboard visit
-      // above already primed that cache with `total: 0` for this org, so an
-      // unstubbed reload right after create would still read the stale
-      // zero — not a rendering bug, just the real cache window. Stub the
-      // stats response for this one reload to a post-create shape (mirrors
-      // gotoEmptyDashboard's stats stub above) so the assertion exercises
-      // `isEmptyOrg`'s rendering branch instead of racing a real minute-long
-      // cache.
-      await page.route(`**/api/v1/orgs/${orgSlug}/checks/stats*`, (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            total: 1,
-            enabled: 1,
-            disabled: 0,
-            byStatus: {},
-            down: 0,
-            hardDown: 0,
-          }),
-        }),
-      );
+      // `isEmptyOrg` (dashboard-page.tsx) keys off GET checks/stats. Before
+      // spec 2026-09-01-01, that endpoint's per-org server cache (server/
+      // internal/handlers/checks/stats.go) had deliberately no invalidation
+      // machinery, so the dashboard visit above would have primed it with
+      // `total: 0` and this reload — a fresh page load with its own
+      // QueryClient, so the client-side fix in useCreateCheck/LiveEventsContext
+      // does not even apply here — would have kept reading that stale zero
+      // for up to a minute. This is now run WITHOUT a route stub: the
+      // server-side cache bust in Service.insertCheckResolvingSlugRace
+      // (called by the quick-create POST above) must have already dropped
+      // that cache entry, so this real, unstubbed reload sees the check
+      // immediately.
       await page.goto(`orgs/${orgSlug}`);
       await page.waitForLoadState("networkidle");
       await expect(page.getByTestId("quick-start-input")).not.toBeVisible();
       await expect(page.getByTestId("quick-start-submit")).not.toBeVisible();
+
+      // Not just "hero gone" — the KPI tiles that replace it must actually
+      // render, proving the dashboard switched all the way into its normal
+      // (non-empty) mode rather than into some blank in-between state.
+      await expect(page.getByTestId("kpi-tile-monitored")).toBeVisible();
+      await expect(page.getByTestId("kpi-tile-monitored")).toContainText(
+        "1 Active",
+      );
     });
   });
 });
