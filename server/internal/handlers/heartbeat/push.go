@@ -147,13 +147,22 @@ func (s *Service) verifyBeat(
 //
 // It logs the target and the reason and NOTHING else: never the token, never
 // the MAC, never the raw annotation bytes. A rejection log is written on
-// unauthenticated input, so anything echoed into it is attacker-controlled.
+// unauthenticated input, so anything echoed into it is attacker-controlled —
+// TestPushLoggingNeverLeaksCredentials is the guard that keeps a future "log
+// the annotation while debugging" change from turning this into a credential
+// sink.
+//
+// The org and identifier ARE echoed, because a rejection you cannot attribute
+// to a target is useless for debugging. They go through the same
+// control-character stripping as annotations first: slog's TextHandler quotes
+// them, but a JSON handler, a log shipper, or a terminal tailing the file are
+// not all equally careful, and the cost of stripping is nil.
 func (s *Service) logBeatRejection(ctx context.Context, beat *heartbeatpush.Beat, transport, reason string) {
 	slog.DebugContext(ctx, "Heartbeat push beat rejected",
 		"transport", transport,
 		"protocol_version", beat.Version,
-		"org", beat.Org,
-		"identifier", beat.Identifier,
+		"org", heartbeatpush.SanitizeForLog(beat.Org),
+		"identifier", heartbeatpush.SanitizeForLog(beat.Identifier),
 		"reason", reason,
 	)
 }

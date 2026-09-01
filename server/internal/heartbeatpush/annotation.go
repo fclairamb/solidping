@@ -182,6 +182,17 @@ func validStatusWord(word string) bool {
 	return true
 }
 
+// SanitizeForLog strips control characters from a wire-supplied string before
+// it reaches a log line.
+//
+// Exported because the ingest logs the beat's target (org / identifier), and
+// those bytes come off an unauthenticated socket exactly like an annotation
+// does. One stripping rule for every wire-supplied string, rather than two
+// that can drift apart.
+func SanitizeForLog(text string) string {
+	return sanitizeAnnotationText(text)
+}
+
 // sanitizeAnnotationText drops control characters (including the newline that
 // frames the protocol and anything that could forge a log line) and replaces
 // invalid UTF-8, so nothing stored from the wire can escape the context it is
