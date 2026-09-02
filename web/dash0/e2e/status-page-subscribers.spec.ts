@@ -7,12 +7,17 @@ test.describe("Status page subscribers (admin)", () => {
     const page = authenticatedPage;
 
     // Open the status pages list.
-    await page.getByRole("link", { name: "Status Pages" }).click();
+    await page
+      .getByTestId("app-sidebar")
+      .getByRole("link", { name: "Status Pages" })
+      .click();
     await page.waitForURL(/\/status-pages/);
     await page.waitForLoadState("networkidle");
 
     // Open the edit route for the first status page row.
-    const editButton = page.locator('[data-testid^="status-page-row-edit-"]').first();
+    const editButton = page
+      .locator('[data-testid^="status-page-row-edit-"]')
+      .first();
     await expect(editButton).toBeVisible({ timeout: 10000 });
     await editButton.click();
     await page.waitForURL(/\/status-pages\/[^/]+\/edit/);
@@ -23,7 +28,7 @@ test.describe("Status page subscribers (admin)", () => {
     await expect(card).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("subscriber-count")).toBeVisible();
     await expect(
-      card.getByRole("heading", { name: /Subscribers/i })
+      card.getByRole("heading", { name: /Subscribers/i }),
     ).toBeVisible();
 
     await page.screenshot({

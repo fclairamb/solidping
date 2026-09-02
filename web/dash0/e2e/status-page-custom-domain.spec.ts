@@ -107,7 +107,10 @@ async function mockDomainState(
 // openFirstStatusPageEditor navigates to the edit route of the first status
 // page in the list.
 async function openFirstStatusPageEditor(page: Page) {
-  await page.getByRole("link", { name: "Status Pages" }).click();
+  await page
+    .getByTestId("app-sidebar")
+    .getByRole("link", { name: "Status Pages" })
+    .click();
   await page.waitForURL(/\/status-pages/);
   await page.waitForLoadState("networkidle");
 
@@ -127,7 +130,10 @@ test.describe("Status page custom domain", () => {
     const page = authenticatedPage;
 
     // Open the status pages list.
-    await page.getByRole("link", { name: "Status Pages" }).click();
+    await page
+      .getByTestId("app-sidebar")
+      .getByRole("link", { name: "Status Pages" })
+      .click();
     await page.waitForURL(/\/status-pages/);
     await page.waitForLoadState("networkidle");
 
@@ -189,7 +195,10 @@ test.describe("Status page custom domain", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.getByRole("link", { name: "Status Pages" }).click();
+    await page
+      .getByTestId("app-sidebar")
+      .getByRole("link", { name: "Status Pages" })
+      .click();
     await page.waitForURL(/\/status-pages/);
     await page.waitForLoadState("networkidle");
 
