@@ -175,4 +175,71 @@ export async function disableHttpCache(page: Page): Promise<void> {
   await page.route("**/*", (route) => route.continue());
 }
 
+/**
+ * Logs in through the API (not the UI) and returns the access token, for
+ * specs that need to set fixtures up over REST before driving the browser.
+ */
+export async function getAuthToken(page: Page): Promise<string> {
+  const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { org: "test", email: "test@test.com", password: "test" },
+  });
+  const body = await resp.json();
+  return body.accessToken;
+}
+
+export interface HeartbeatCheck {
+  uid: string;
+  name: string;
+  /** Server-generated slug (e.g. "heartbeat-heartbeat-2") — the incidents
+   * list renders the incident title ("<slug> is down") and the check slug,
+   * never the check *name*, so incident-row assertions must match on this. */
+  slug: string;
+  hbToken: string;
+}
+
+/**
+ * Creates a heartbeat check over the API and returns its uid/slug plus the
+ * heartbeat token needed to ping it.
+ *
+ * Shared by live-updates.spec.ts and check-heartbeat-evaluation-rows.spec.ts:
+ * a heartbeat is the only check type whose results a spec can create on
+ * demand without a real probe, so it is the fixture of choice for anything
+ * that needs genuine result rows.
+ *
+ * `period` (e.g. "01:00:00") is worth setting deliberately. A heartbeat check
+ * is scheduled like any other: its passive job writes a `No heartbeat
+ * received` → down result whenever the last signal is older than the period,
+ * and one scheduler-evaluation row per period regardless. The default (60 s)
+ * is fine for tests that only care about the heartbeats they send themselves;
+ * a test that counts rows, or that must not see a status transition it did
+ * not cause, passes a long period so no second evaluation can run inside the
+ * test's lifetime.
+ */
+export async function createHeartbeatCheck(
+  page: Page,
+  token: string,
+  name: string,
+  checkGroupUid?: string,
+  period?: string,
+): Promise<HeartbeatCheck> {
+  const hbToken = `e2e-live-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      name,
+      type: "heartbeat",
+      config: { token: hbToken },
+      // Open/resolve incidents on the first failing/passing heartbeat so the
+      // live-update latency is the only delay under test.
+      confirmationPeriodSeconds: 0,
+      recoveryPeriodSeconds: 0,
+      ...(checkGroupUid ? { checkGroupUid } : {}),
+      ...(period ? { period } : {}),
+    },
+  });
+  expect(resp.status()).toBe(201);
+  const body = await resp.json();
+  return { uid: body.uid, name, slug: body.slug, hbToken };
+}
+
 export { expect, type Page };
