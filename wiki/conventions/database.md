@@ -193,18 +193,28 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
-**The current unreleased target is `016_v0_19_0`.** v0.18.3 shipped, so `015`
-is frozen: everything this cycle produces is appended to `016_v0_19_0.up.sql` /
+**The current unreleased target is `018_v0_23_0`.** v0.22.0 shipped, so `017`
+is frozen: everything this cycle produces is appended to `018_v0_23_0.up.sql` /
 `.down.sql` (both dialects) instead. That number is unreleased, so it costs dev
-databases nothing — a database that already ran `015` simply picks `016` up as
+databases nothing — a database that already ran `017` simply picks `018` up as
 the next unapplied migration, with no reset, no hand-apply and no
 `solidping migrate repair`. Check the latest `vX.Y.Z` tag before appending to a
 migration, not the previous cycle's habit — and **update this paragraph when
 you are the one who moves past a frozen number**, because a stale pointer here
 is what causes the mistake it is meant to prevent. It has already happened
-twice: `015` acquired its first section only after a change had already been
-written into `014` on the stale belief that v0.17.0 was still pending, and this
-paragraph then went on naming `015` after v0.18.0–v0.18.3 had all shipped.
+three times: `015` acquired its first section only after a change had already
+been written into `014` on the stale belief that v0.17.0 was still pending;
+this paragraph then went on naming `015` after v0.18.0–v0.18.3 had all
+shipped; and the file that is now `018_v0_23_0` was first written as
+`018_v0_22_0`, named after a version that had already been tagged the same
+day.
+
+Note that the number and the version do not advance in lockstep: `017` is
+named `v0_21_0` yet it is the migration v0.22.0 shipped with, because v0.22.0
+needed no DDL of its own. The version suffix names the release a file ships
+IN, so always resolve it from the latest tag plus what is in flight (an open
+release-please PR, and whether this cycle carries `feat:` commits and so lands
+a minor), never by incrementing the previous file's suffix.
 
 ## Development workflow
 

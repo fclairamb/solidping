@@ -1,6 +1,6 @@
--- Teardown/parity half of the consolidated v0.22.0 migration — never run in
+-- Teardown/parity half of the consolidated v0.23.0 migration — never run in
 -- production. Sections appear in the EXACT REVERSE order of
--- 018_v0_22_0.up.sql.
+-- 018_v0_23_0.up.sql.
 
 -- ==========================================================================
 -- SECTION: passive-signal-index

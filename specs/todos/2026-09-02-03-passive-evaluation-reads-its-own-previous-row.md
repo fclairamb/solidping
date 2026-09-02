@@ -211,8 +211,12 @@ the docs paragraph of 2026-09-02-04 rather than here.
 
 ### D3 — `results_raw_signal_idx` in migration 018
 
-Highest existing migration is `017_v0_21_0` (released as part of v0.21.x), so
-the next number is `018_v0_22_0` in **both** dialects, up and down:
+Highest existing migration is `017_v0_21_0`, which is the migration the
+already-released v0.22.0 shipped with (a file is named after the release it
+ships IN, and v0.22.0 needed no DDL of its own). So the next number is
+`018_v0_23_0` in **both** dialects, up and down — v0.23.0 rather than v0.22.1
+because v0.22.1 is already in an open release-please PR and this cycle carries
+`feat:` commits:
 
 ```sql
 create index if not exists results_raw_signal_idx
