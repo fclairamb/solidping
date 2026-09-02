@@ -89,7 +89,30 @@ func envNameForKoanfPath(path string) (string, bool) {
 // Keep this in sync with the apply*Env helpers and the bare os.Getenv reads in
 // config.Load — TestManualReaderEnvVarsBind spot-checks that these names bind.
 func manualReaderEnvVars() []string {
-	return append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
+	out := append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
+
+	return append(out, manualReaderHeartbeatEnvVars()...)
+}
+
+// manualReaderHeartbeatEnvVars covers applyHeartbeatEnv. EVERY key in
+// HeartbeatConfig is multi-word, so koanf's env loader cannot reach a single
+// one of them — SP_HEARTBEAT_TCP_LISTEN would land on heartbeat.tcp.listen and
+// bind nothing at all. Kept as its own list so the embedded push transports'
+// settings stay findable next to each other.
+func manualReaderHeartbeatEnvVars() []string {
+	return []string{
+		"SP_HEARTBEAT_TCP_LISTEN",
+		"SP_HEARTBEAT_UDP_LISTEN",
+		"SP_HEARTBEAT_TIMESTAMP_WINDOW",
+		"SP_HEARTBEAT_IDLE_TIMEOUT",
+		"SP_HEARTBEAT_RATE_PER_MINUTE",
+		"SP_HEARTBEAT_RATE_BURST",
+		"SP_HEARTBEAT_CONN_RATE_PER_MINUTE",
+		"SP_HEARTBEAT_CONN_RATE_BURST",
+		"SP_HEARTBEAT_MAX_SOURCE_IPS",
+		"SP_HEARTBEAT_MAX_CONNECTIONS",
+		"SP_HEARTBEAT_UDP_REPLY_OK",
+	}
 }
 
 // manualReaderServerEnvVars covers Load's own bare reads and the helpers that

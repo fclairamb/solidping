@@ -67,7 +67,48 @@ type BucketStats struct {
 	// calls it.
 	MaintUp    int
 	MaintTotal int
+
+	// DurMin / DurMax are the extreme response times (milliseconds) folded
+	// into this bucket, valid only when DurExtremaCnt > 0. Raw rows fold their
+	// own `duration`; rollup rows fold the `duration_min` / `duration_max`
+	// the aggregation job already persists.
+	//
+	// Like MaintUp/MaintTotal these are ADDITIVE NEW fields: nothing existing
+	// reads them, and AvailabilityPct / AvgDuration / Up / Total / DurCnt /
+	// DurSum keep byte-identical semantics, because badges, status pages, the
+	// availability API and SLOs all read those and must not move
+	// (spec 2026-09-01-04).
+	//
+	// The narrow types are deliberate. BucketStats is passed BY VALUE on every
+	// read path — it is a map value and an accumulator, and a pointer receiver
+	// would make `byCheck[uid].AvailabilityPct()` illegal at every call site —
+	// so the struct has to stay small enough for that to be cheap. float32 is
+	// also exactly what the source columns are (models.Result.Duration /
+	// DurationMin / DurationMax); widening them here would fabricate
+	// precision. The counters are per-bucket and bounded by uptimebar's own
+	// safety row caps, so int32 is orders of magnitude more headroom than any
+	// window can produce. A future field should keep the total under
+	// gocritic's by-value threshold rather than widening these back.
+	DurMin        float32
+	DurMax        float32
+	DurExtremaCnt int32
+
+	// SlowSamples counts RAW samples strictly above SlowSampleThresholdMillis.
+	// It is exact: one raw row is one probe.
+	SlowSamples int32
+	// SlowPeaks counts ROLLUP rows whose duration_max exceeds the threshold —
+	// a rolled-up period that contained at least one slow probe, which is NOT
+	// the same unit as a sample (the period may have held one slow probe or a
+	// thousand). It is kept as its own counter, never added to SlowSamples,
+	// precisely so a reader has to phrase the two honestly.
+	SlowPeaks int32
 }
+
+// SlowSampleThresholdMillis is the response time above which a probe counts as
+// slow. A constant for now by design: the uptime report is its only reader and
+// the spec that introduced it (2026-09-01-04) rules a configurable threshold
+// out of scope. Milliseconds, matching models.Result.Duration.
+const SlowSampleThresholdMillis = 1000.0
 
 // ExcludingMaintenance returns the same bucket with maintenance-tagged probes
 // removed from both numerator and denominator.
@@ -113,6 +154,34 @@ func (b BucketStats) AvgDuration() (float64, bool) {
 	return b.DurSum / float64(b.DurCnt), true
 }
 
+// DurationRange returns the fastest and slowest response times (milliseconds)
+// folded into this bucket, and a false third value when no contributing row
+// carried one. It never reports a
+// confident "0 ms to 0 ms" for a bucket that measured nothing.
+func (b BucketStats) DurationRange() (float64, float64, bool) {
+	if b.DurExtremaCnt == 0 {
+		return 0, 0, false
+	}
+
+	return float64(b.DurMin), float64(b.DurMax), true
+}
+
+// foldExtrema folds one observed duration pair into the bucket's min/max. The
+// first observation seeds both, so a zero value can never win the minimum for a
+// bucket that has not measured anything yet.
+func (b *BucketStats) foldExtrema(minMillis, maxMillis float32) {
+	if b.DurExtremaCnt == 0 {
+		b.DurMin, b.DurMax = minMillis, maxMillis
+		b.DurExtremaCnt = 1
+
+		return
+	}
+
+	b.DurMin = min(b.DurMin, minMillis)
+	b.DurMax = max(b.DurMax, maxMillis)
+	b.DurExtremaCnt++
+}
+
 // Add folds another bucket into this one. This is the ONLY place buckets are
 // merged, so a new counter can never be added to BucketStats and silently
 // forgotten by the group-merge path (that is exactly how MaintUp/MaintTotal
@@ -124,6 +193,18 @@ func (b *BucketStats) Add(other BucketStats) {
 	b.DurSum += other.DurSum
 	b.MaintUp += other.MaintUp
 	b.MaintTotal += other.MaintTotal
+	b.SlowSamples += other.SlowSamples
+	b.SlowPeaks += other.SlowPeaks
+
+	if other.DurExtremaCnt > 0 {
+		count := b.DurExtremaCnt
+
+		b.foldExtrema(other.DurMin, other.DurMax)
+
+		// foldExtrema counts one observation; carry the merged bucket's real
+		// count so a merge of merges stays honest.
+		b.DurExtremaCnt = count + other.DurExtremaCnt
+	}
 }
 
 // accumulateRaw merges a raw result row into the bucket. Lifecycle markers
@@ -134,6 +215,15 @@ func (b *BucketStats) Add(other BucketStats) {
 // CountsAsUp rule, which also matches the aggregation job and the status
 // page. This is the single point where the "warning counts as up" rule lives
 // for the raw tier.
+//
+// Duration accumulation (DurSum/DurCnt, and now the extrema and slow counters)
+// deliberately includes FAILED samples — any non-lifecycle row carrying a
+// duration, down and error and timeout alike. That is not an oversight, it is
+// the rule the aggregation job already applies when it computes duration_avg /
+// duration_min / duration_max (jobs/jobtypes/job_aggregation.go's
+// processRawResult), so raw and rollup tiers agree; changing it here would move
+// what status pages and badges display. Readers that surface response times
+// must say so in their copy (spec 2026-09-01-04).
 func (b *BucketStats) accumulateRaw(result *models.Result) {
 	if result.Status == nil || result.ExcludedFromAvailability() {
 		return
@@ -156,8 +246,15 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 	}
 
 	if result.Duration != nil {
-		b.DurSum += float64(*result.Duration)
+		duration := *result.Duration
+
+		b.DurSum += float64(duration)
 		b.DurCnt++
+		b.foldExtrema(duration, duration)
+
+		if float64(duration) > SlowSampleThresholdMillis {
+			b.SlowSamples++
+		}
 	}
 }
 
@@ -217,6 +314,26 @@ func (b *BucketStats) accumulateAgg(result *models.Result) {
 	if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
 		b.DurSum += float64(*result.DurationAvg) * float64(*result.TotalChecks)
 		b.DurCnt += *result.TotalChecks
+	}
+
+	// Extremes come from the columns the aggregation job persists. A row
+	// carrying only one of the two (nothing writes that today, but a
+	// hand-repaired row could) folds the one it has against itself rather than
+	// against a confident zero.
+	switch {
+	case result.DurationMin != nil && result.DurationMax != nil:
+		b.foldExtrema(*result.DurationMin, *result.DurationMax)
+	case result.DurationMin != nil:
+		b.foldExtrema(*result.DurationMin, *result.DurationMin)
+	case result.DurationMax != nil:
+		b.foldExtrema(*result.DurationMax, *result.DurationMax)
+	}
+
+	// A rollup cannot say HOW MANY of its probes were slow — only whether its
+	// slowest one was. Counting the row (a "peak") rather than pretending to
+	// count samples is what keeps the report's number honest across tiers.
+	if result.DurationMax != nil && float64(*result.DurationMax) > SlowSampleThresholdMillis {
+		b.SlowPeaks++
 	}
 }
 

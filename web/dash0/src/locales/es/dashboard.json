@@ -60,7 +60,8 @@
       "statusPage": {
         "title": "Publica una página de estado",
         "description": "Cuenta a tus usuarios qué ocurre antes de que tengan que preguntar.",
-        "cta": "Crear una página de estado"
+        "cta": "Crear una página de estado",
+        "ctaDone": "Ver páginas de estado"
       },
       "team": {
         "title": "Invita a un compañero",

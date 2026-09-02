@@ -109,6 +109,31 @@ Each digest carries overall availability, a per-check breakdown, the incident
 summary, and — when enabled — the error-budget state of every objective in
 scope.
 
+**What a digest contains**
+
+- **Overall availability**, with a comparison against the previous calendar
+  period ("last month", not "the last 30 days"). The first digest for a new
+  organization shows no comparison at all rather than a meaningless zero, and a
+  period that genuinely did not move reads *no change* in neutral gray —
+  improvements are the only thing shown in green.
+- **Incidents**: how many, the longest, the average, and the total downtime,
+  each against the previous period. There is deliberately no MTBF: with the
+  handful of incidents a typical month produces it is not a meaningful number.
+- **Response time**: average, fastest and slowest, and how many probes were
+  slower than one second. Recent periods count individual *samples*; older data
+  is stored as rollups, which can only report *peaks* — a rolled-up period whose
+  slowest probe crossed the threshold — so the digest names them separately
+  instead of adding them together. These figures include failed probes.
+- **Per-check table, worst first**, so a check that broke is the first thing you
+  read rather than something buried alphabetically. Each check carries a strip
+  of one cell per day (bucketed in UTC), colored by that day's availability;
+  a day with no data at all is gray, so a check created mid-period does not look
+  like a check that was failing. Large organizations see the 50 lowest-uptime
+  checks, and the digest says so.
+- A scope that was **down for the entire period** says exactly that, and its
+  response-time block is omitted — response times measured on error responses
+  are noise, not an improvement.
+
 - **Send me a test** renders the report for the period that most recently closed
   and mails it to *you*. It never fans out to the recipient list.
 - Every message carries a `List-Unsubscribe` header. Unsubscribing removes the

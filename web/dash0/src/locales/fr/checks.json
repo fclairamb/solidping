@@ -600,7 +600,22 @@
       "regenerateConfirm": "Régénérer le token",
       "regenerating": "Régénération…",
       "regenerated": "Token de ping régénéré",
-      "regenerateFailed": "Échec de la régénération du token de ping"
+      "regenerateFailed": "Échec de la régénération du token de ping",
+      "push": {
+        "title": "Appareils embarqués (TCP/UDP)",
+        "description": "Les microcontrôleurs et modems cellulaires peuvent envoyer une ligne par battement en TCP ou UDP brut, sans pile TLS. Utilisez SP1 pour démarrer, puis passez à la forme signée SP2.",
+        "tcpLabel": "TCP (port {{port}}) — jeton en clair :",
+        "udpLabel": "UDP (port {{port}}) — jeton en clair, sans accusé :",
+        "annotationHint": "Ajoutez une annotation facultative : un mot d'état et des champs clé=valeur, par ex. « started volts=3.71 rssi=-67 ». Les valeurs numériques deviennent des métriques.",
+        "requireHmac": "Exiger des battements signés (HMAC)",
+        "requireHmacHint": "Refuse la forme SP1 en clair sur TCP et UDP. Seules la forme signée SP2 et l'URL HTTPS ci-dessus sont acceptées. Sans effet sur l'URL HTTPS.",
+        "rotateNudge": "Ce check a accepté des battements en clair : son jeton a pu être observé sur le réseau, et ce jeton est aussi la clé de signature. Régénérez-le maintenant.",
+        "hmacEnabled": "Les battements signés sont désormais exigés",
+        "hmacDisabled": "Les battements en clair sont de nouveau acceptés",
+        "hmacFailed": "Échec de la mise à jour de l'exigence de signature",
+        "sketchLabel": "Croquis Arduino / ESP (SP2, signé)",
+        "sketchHint": "Les battements signés gardent le jeton hors du réseau : c'est ce qu'impose « Exiger des battements signés » ci-dessous. Voir la documentation Appareils embarqués pour la recette du compteur et le guide complet."
+      }
     },
     "email": {
       "title": "Endpoint e-mail",
@@ -687,5 +702,18 @@
       "partial": "{{applied}} mise(s) à jour, mais {{failed}} en échec : {{names}}",
       "failed": "Impossible d'appliquer les modifications de planification."
     }
+  },
+  "grpc": {
+    "tlsSkipVerify": "Ignorer la vérification du certificat TLS",
+    "tlsSkipVerifyWarning": "Les erreurs de certificat seront ignorées — le check remontera « up » même avec un certificat invalide, expiré ou auto-signé.",
+    "metadata": "Métadonnées de requête",
+    "metadataDescription": "Envoyées avec chaque RPC de health check. Stockées en clair et interrogeables — à utiliser pour les en-têtes de routage ou de tenant.",
+    "addMetadata": "Ajouter une métadonnée",
+    "secretMetadata": "Métadonnées de requête secrètes",
+    "secretMetadataDescription": "Valeurs de métadonnées stockées chiffrées — à utiliser pour les jetons Bearer et les clés d'API.",
+    "secretMetadataEncrypted": "(chiffré — saisissez de nouvelles valeurs pour remplacer)",
+    "addSecretMetadata": "Ajouter une métadonnée secrète",
+    "metadataKeyPlaceholder": "x-tenant",
+    "metadataValuePlaceholder": "valeur"
   }
 }

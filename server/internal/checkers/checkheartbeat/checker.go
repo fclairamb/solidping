@@ -40,6 +40,14 @@ func (c *HeartbeatChecker) Validate(spec *checkerdef.CheckSpec) error {
 		spec.Config["token"] = token
 	}
 
+	// require_hmac must be a real boolean. Rejecting a mistyped value (rather
+	// than treating it as absent) is deliberate: this is a security setting,
+	// and "the string \"true\" quietly meant false" is not an acceptable way
+	// for a check to end up accepting plaintext-token beats.
+	if _, err := RequireHMACFromConfig(spec.Config); err != nil {
+		return err
+	}
+
 	// Auto-generate name and slug if not provided
 	if spec.Name == "" {
 		spec.Name = "heartbeat"

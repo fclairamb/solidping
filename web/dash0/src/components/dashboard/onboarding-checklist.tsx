@@ -320,9 +320,21 @@ function OnboardingStepRow({
   const { t } = useTranslation("dashboard");
   const Icon = STEP_ICONS[step.id];
 
+  // Rows had no background of their own, so the card's own primary tint
+  // bled through every one of them — done and pending rows read identically
+  // apart from the tick. Give each row an explicit base (matching the card
+  // surface) so it reads as a crisp item sitting on the tint, and let done
+  // rows carry a faint emerald wash — the same alpha-based
+  // `emerald-500/…` pattern as the "all set" banner above, which needs no
+  // `dark:` variant because the alpha already reads correctly on both
+  // surfaces.
+  const rowTone = step.done
+    ? "border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/15"
+    : "bg-card hover:bg-muted/50";
+
   return (
     <div
-      className="relative flex cursor-pointer flex-col gap-2 rounded-md border p-3 hover:bg-muted/50 sm:flex-row sm:items-center sm:gap-3"
+      className={`relative flex cursor-pointer flex-col gap-2 rounded-md border p-3 transition-colors sm:flex-row sm:items-center sm:gap-3 ${rowTone}`}
       data-testid={`onboarding-step-${step.id}`}
       data-done={step.done ? "true" : "false"}
     >
@@ -374,7 +386,11 @@ function OnboardingStepRow({
             {t("onboarding.testAlert.cta")}
           </Button>
         ) : null}
-        <OnboardingStepLink org={org} step={step} />
+        <OnboardingStepLink
+          org={org}
+          step={step}
+          sharesRowWithTestAlert={step.id === "alerts" && Boolean(onTestAlert)}
+        />
       </div>
     </div>
   );
@@ -383,16 +399,29 @@ function OnboardingStepRow({
 function OnboardingStepLink({
   org,
   step,
+  sharesRowWithTestAlert,
 }: {
   org: string;
   step: OnboardingStep;
+  /** True only for the alerts row when the test-alert button is also shown. */
+  sharesRowWithTestAlert: boolean;
 }) {
   const { t } = useTranslation("dashboard");
-  const label = t(`onboarding.steps.${step.id}.cta`);
+  // The statusPage step is the one CTA whose pending label ("Create a status
+  // page") stops making sense once done — reusing it there reads as an
+  // instruction to redo a finished step. Every other step already has a
+  // state-neutral label (e.g. "check" says "View checks" throughout).
+  const label =
+    step.done && step.id === "statusPage"
+      ? t("onboarding.steps.statusPage.ctaDone")
+      : t(`onboarding.steps.${step.id}.cta`);
   const testId = `onboarding-step-${step.id}-cta`;
-  // The step's own action is secondary once another button leads the row (the
-  // test-alert case) and once the step is done.
-  const variant = step.done || step.id === "alerts" ? "outline" : "default";
+  // The step's own action is secondary once another button leads the row
+  // (the test-alert case) and once the step is done. When the alerts row has
+  // no test-alert button to defer to, its own CTA is the row's only action
+  // and should carry the same weight as any other pending step's.
+  const variant =
+    step.done || sharesRowWithTestAlert ? "outline" : "default";
 
   // The statusPage step used to land on the blank create form (pre-attaching
   // the org's first check via ?checkUid=, spec 2026-08-28-16). It now lands

@@ -60,7 +60,8 @@
       "statusPage": {
         "title": "Publiez une page de statut",
         "description": "Informez vos utilisateurs avant qu'ils n'aient à demander.",
-        "cta": "Créer une page de statut"
+        "cta": "Créer une page de statut",
+        "ctaDone": "Voir les pages de statut"
       },
       "team": {
         "title": "Invitez un collègue",

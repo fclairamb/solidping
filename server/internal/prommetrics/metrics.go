@@ -595,6 +595,37 @@ var (
 		},
 	)
 
+	// HeartbeatPushBeats counts beats seen by the embedded TCP/UDP heartbeat
+	// listeners. transport is "tcp" or "udp"; outcome is one of:
+	//   "accepted"     — verified and recorded as a heartbeat result.
+	//   "malformed"    — did not parse as an SP1/SP2 line.
+	//   "rejected"     — parsed but refused (unknown target, bad token, bad
+	//                    MAC, replayed counter, stale timestamp, require_hmac).
+	//                    Deliberately ONE bucket: the wire must not distinguish
+	//                    these, and neither should a dashboard that someone
+	//                    might screenshot into a ticket.
+	//   "rate_limited" — dropped by the per-source-IP budget before parsing.
+	//   "error"        — an internal fault (a database failure), the only
+	//                    outcome worth alerting on.
+	HeartbeatPushBeats = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_heartbeat_push_beats_total",
+			Help: "Total beats seen by the embedded TCP/UDP heartbeat listeners, by transport and outcome",
+		},
+		[]string{"transport", "outcome"},
+	)
+
+	// HeartbeatPushConnections counts TCP connections accepted by the embedded
+	// heartbeat listener, and those refused because the connection cap was
+	// already reached ("refused").
+	HeartbeatPushConnections = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_heartbeat_push_connections_total",
+			Help: "Total TCP connections handled by the embedded heartbeat listener, by outcome",
+		},
+		[]string{"outcome"},
+	)
+
 	allCollectors = []prometheus.Collector{
 		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
@@ -616,6 +647,7 @@ var (
 		RealtimeSubscriptions, RealtimeMessagesReceived,
 		CheckRunnerAbandoned, CheckRunnerAbandonedActive,
 		TLSEdgeConnections,
+		HeartbeatPushBeats, HeartbeatPushConnections,
 	}
 )
 

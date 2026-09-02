@@ -4012,8 +4012,26 @@ export function useEmailPreviewIndex() {
   });
 }
 
+/**
+ * Embedded TCP/UDP heartbeat push transports (spec 2026-09-01-06).
+ *
+ * Reported by the server so the check detail page only advertises a transport
+ * a device can actually reach — the listeners are off by default and opening
+ * their ports is a deployment decision.
+ */
+export interface HeartbeatPushFeature {
+  tcpEnabled: boolean;
+  udpEnabled: boolean;
+  /** Hostname devices should send beats to; empty when it can't be derived. */
+  host: string;
+  /** 0 when the matching transport is disabled. */
+  tcpPort: number;
+  udpPort: number;
+}
+
 export interface FeaturesResponse {
   bugReport: boolean;
+  heartbeatPush?: HeartbeatPushFeature;
 }
 
 export function useFeatures(opts?: { enabled?: boolean }) {

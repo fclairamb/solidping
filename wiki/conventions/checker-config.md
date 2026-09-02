@@ -184,10 +184,16 @@ Either `url` or `host` is required. Default period: 5 minutes.
 | `port` | int | O | 50051 | Target port. Validation: 1-65535 |
 | `tls` | bool | O | false | Use TLS |
 | `tlsSkipVerify` | bool | O | false | Skip TLS certificate verification |
-| `serviceName` | string | O | | gRPC service name for health check |
+| `serviceName` | string | O | | gRPC service name for health check. Empty = overall server health |
 | `timeout` | duration | O | 10s | Check timeout (max: 60s) |
-| `keyword` | string | O | | Keyword to search for in response |
-| `invertKeyword` | bool | O | false | Fail if keyword IS found (instead of not found) |
+| `metadata` | map[string]string | O | | Request metadata sent on the health RPC. Stays in the public, queryable config |
+| `secretMetadata` | map[string]string | O | | Same, but declared in `SecretFields()` — split out of the public config and encrypted at rest, never returned by the API |
+| `keyword` | string | O | | Keyword to search for in response (deprecated — matches the serving-status enum the check already evaluates; not offered in the dashboard) |
+| `invertKeyword` | bool | O | false | Fail if keyword IS found (instead of not found) (deprecated, see `keyword`) |
+
+Metadata keys (both maps) must be lowercase and match `[a-z0-9._-]+`; the
+`grpc-` prefix is reserved by the gRPC runtime and `-bin` (binary metadata)
+keys are rejected.
 
 ---
 
@@ -575,8 +581,18 @@ detection.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `token` | string | O | | Token to validate incoming heartbeat pings |
+| `require_hmac` | bool | O | `false` | Refuse unsigned (`SP1`) beats on the embedded TCP/UDP push transports |
 
 The heartbeat checker is passive: it waits for external systems to ping it. The check's `period` and `grace_period` on the check object (not in config) determine when the check is considered down.
+
+`require_hmac` only affects the embedded push transports (spec 2026-09-01-06). With
+`false` the check accepts `SP1` (plaintext token), `SP2` (HMAC-signed) and the HTTPS
+ingest; with `true` only `SP2` and HTTPS are accepted and an `SP1` beat is dropped
+silently on UDP. A mistyped value (`"true"`, `1`, …) is a validation error rather than
+a fallback to `false` — silently downgrading a security setting is not an acceptable
+failure mode. **Turning it on should be paired with a token rotation**: a check that
+ever accepted `SP1` has leaked its token to any passive sniffer, and that token is
+also the `SP2` signing key.
 
 ---
 

@@ -57,6 +57,8 @@ export const SCOPE_LABELS: Record<string, string> = {
   telegram: "Telegram",
   whatsapp: "WhatsApp",
   zulip: "Zulip",
+  grpc: "gRPC checks",
+  heartbeat: "Heartbeat checks",
   smtp: "Email",
   email: "Email",
   webpush: "Web push",

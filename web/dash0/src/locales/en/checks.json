@@ -600,7 +600,22 @@
       "regenerateConfirm": "Regenerate token",
       "regenerating": "Regenerating…",
       "regenerated": "Ping token regenerated",
-      "regenerateFailed": "Failed to regenerate ping token"
+      "regenerateFailed": "Failed to regenerate ping token",
+      "push": {
+        "title": "Embedded devices (TCP/UDP)",
+        "description": "Microcontrollers and cellular modems can send one line per beat over raw TCP or UDP, with no TLS stack. Use SP1 while you get started, then move to the signed SP2 form.",
+        "tcpLabel": "TCP (port {{port}}) — plaintext token:",
+        "udpLabel": "UDP (port {{port}}) — plaintext token, fire-and-forget:",
+        "annotationHint": "Append an optional annotation: a status word and key=value fields, e.g. \"started volts=3.71 rssi=-67\". Numeric values are charted as metrics.",
+        "requireHmac": "Require signed beats (HMAC)",
+        "requireHmacHint": "Reject the plaintext SP1 form on TCP and UDP. Only the signed SP2 form and the HTTPS endpoint above are accepted. Does not affect the HTTPS endpoint.",
+        "rotateNudge": "This check has accepted plaintext beats, so its token may already have been seen on the wire — and that token is also the signing key. Regenerate it now.",
+        "hmacEnabled": "Signed beats are now required",
+        "hmacDisabled": "Plaintext beats are accepted again",
+        "hmacFailed": "Failed to update the signature requirement",
+        "sketchLabel": "Arduino / ESP sketch (SP2, signed)",
+        "sketchHint": "Signed beats keep the token off the wire and are what \"Require signed beats\" below enforces. See the Embedded devices documentation for the counter recipe and the full walkthrough."
+      }
     },
     "email": {
       "title": "Email Endpoint",
@@ -687,5 +702,18 @@
       "partial": "Updated {{applied}}, but {{failed}} failed: {{names}}",
       "failed": "Could not apply the schedule changes."
     }
+  },
+  "grpc": {
+    "tlsSkipVerify": "Skip TLS certificate verification",
+    "tlsSkipVerifyWarning": "Certificate errors will be ignored — the check will report up even for an invalid, expired, or self-signed certificate.",
+    "metadata": "Request metadata",
+    "metadataDescription": "Sent with every health check RPC. Stored in plain text and searchable — use it for routing or tenant headers.",
+    "addMetadata": "Add metadata",
+    "secretMetadata": "Secret request metadata",
+    "secretMetadataDescription": "Metadata values stored encrypted — use for authorization bearers and API keys.",
+    "secretMetadataEncrypted": "(encrypted — enter new values to replace)",
+    "addSecretMetadata": "Add secret metadata",
+    "metadataKeyPlaceholder": "x-tenant",
+    "metadataValuePlaceholder": "value"
   }
 }

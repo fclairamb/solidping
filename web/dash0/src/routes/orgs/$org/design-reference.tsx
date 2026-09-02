@@ -2419,6 +2419,46 @@ function FormsSection() {
           importLine={`import { Switch } from "@/components/ui/switch";`}
         />
 
+        <h3 className="text-sm font-medium">
+          Security toggle with a follow-up nudge
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          When flipping a switch hardens something but leaves a residue the user
+          still has to clean up, the switch alone is not enough — say what is
+          left to do, and only while it is true. Render the Switch with a hint
+          line, then a plain <code>Alert</code> that appears{" "}
+          <strong>only when the switch is on</strong>. Used by the heartbeat
+          check&apos;s <code>require_hmac</code> toggle: turning it on stops
+          plaintext beats, but the token may already have been sniffed and is
+          also the signing key, so the alert asks for a rotation.
+        </p>
+
+        <ExampleRow
+          preview={
+            <div className="space-y-3">
+              <div className="flex items-start gap-2">
+                <Switch id="dr-security-switch" defaultChecked />
+                <div className="space-y-1">
+                  <Label htmlFor="dr-security-switch">
+                    Require signed beats (HMAC)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Reject the plaintext form on TCP and UDP.
+                  </p>
+                </div>
+              </div>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  This check has accepted plaintext beats, so its token may
+                  already have been seen on the wire. Regenerate it now.
+                </AlertDescription>
+              </Alert>
+            </div>
+          }
+          importLine={`import { Switch } from "@/components/ui/switch";\nimport { Label } from "@/components/ui/label";\nimport { Alert, AlertDescription } from "@/components/ui/alert";\nimport { AlertTriangle } from "lucide-react";`}
+        />
+
         <h3 className="text-sm font-medium">Name + slug pair</h3>
         <p className="text-sm text-muted-foreground">
           When a resource has both a human-readable name and a URL slug, render{" "}
@@ -5459,7 +5499,7 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
     <Section
       id="onboarding-checklist"
       title="Onboarding checklist"
-      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back."
+      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back. Rows below carry their own background — bg-card for pending, a faint emerald-500/10 wash for done — so they read as items sitting on the card's bg-primary/5 tint rather than outlines the tint bleeds through; the fixture below mixes both states on purpose."
     >
       <ExampleRow
         preview={
@@ -5468,9 +5508,15 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
               org={org}
               steps={[
                 { id: "check", done: true },
-                { id: "alerts", done: true },
+                // Pending with no test-alert button in the fixture (no
+                // onTestAlert prop below) — its CTA carries the same
+                // primary weight as any other pending step's, not the
+                // outline it used to be forced into.
+                { id: "alerts", done: false },
                 { id: "report", done: false },
-                { id: "statusPage", done: false },
+                // Done — its CTA reads "View status pages" instead of
+                // reusing the pending "Create a status page" label.
+                { id: "statusPage", done: true },
                 { id: "team", done: false },
               ]}
               allSet={false}
