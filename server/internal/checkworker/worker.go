@@ -1525,35 +1525,19 @@ func passiveFailedSignalMessage(noun string, signalStatus int) string {
 	return "Last " + strings.ToLower(noun) + " reported failure"
 }
 
-// executePassiveJob handles passive check jobs (heartbeat, email).
-// Instead of making a network request, it inspects whether a recent inbound
-// signal landed within the check's period.
-func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
-	period := time.Duration(checkJob.Period)
-	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
-
-	// Get the latest INBOUND SIGNAL for this check — the last heartbeat POST
-	// or incoming email, never one of this evaluation's own previous rows.
-	//
-	// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
-	// self-referential: every evaluation writes a raw row of its own through
-	// SubmitResult, so from the second tick after a beat onwards the evaluator
-	// read its own predecessor. `elapsed` then measured the gap between two
-	// consecutive evaluations (≈ period ± claim jitter) rather than the gap
-	// since the beat, which made the overdue branch below a per-tick coin
-	// flip, reported the previous evaluation's timestamp as lastSignalAt, and
-	// made the stale-run branch unreachable — each Running evaluation
-	// re-anchored runStarted on itself.
-	lastSignals, err := r.backend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
-	if err != nil {
-		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last signal: %w", err))
-	}
-
-	// Determine status based on recency of last passive signal
+// passiveEvaluation derives an evaluation row's status and output from the
+// newest INBOUND SIGNAL (nil when the check has never been pinged, or when its
+// only rows are its own past evaluations and the creation marker).
+//
+// Split out of executePassiveJob so the message table and the marking rules
+// below read as one thing rather than as a tail on the job plumbing.
+func passiveEvaluation(
+	noun string, period time.Duration, lastSignal *models.Result,
+) (checkerdef.Status, map[string]any) {
 	status := checkerdef.StatusDown
 	output := map[string]any{outputKeyMessage: "No " + strings.ToLower(noun) + " received"}
 
-	if lastSignal, ok := lastSignals[checkJob.CheckUID]; ok && lastSignal.Status != nil {
+	if lastSignal != nil && lastSignal.Status != nil {
 		elapsed := time.Since(lastSignal.PeriodStart)
 
 		switch {
@@ -1623,6 +1607,35 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	// absence a reliable "this row is a real signal" for dash0, the REST API
 	// and MCP consumers alike.
 	output[outputKeyEvaluation] = true
+
+	return status, output
+}
+
+// executePassiveJob handles passive check jobs (heartbeat, email).
+// Instead of making a network request, it inspects whether a recent inbound
+// signal landed within the check's period.
+func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
+	period := time.Duration(checkJob.Period)
+	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
+
+	// Get the latest INBOUND SIGNAL for this check — the last heartbeat POST
+	// or incoming email, never one of this evaluation's own previous rows.
+	//
+	// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
+	// self-referential: every evaluation writes a raw row of its own through
+	// SubmitResult, so from the second tick after a beat onwards the evaluator
+	// read its own predecessor. `elapsed` then measured the gap between two
+	// consecutive evaluations (≈ period ± claim jitter) rather than the gap
+	// since the beat, which made the overdue branch below a per-tick coin
+	// flip, reported the previous evaluation's timestamp as lastSignalAt, and
+	// made the stale-run branch unreachable — each Running evaluation
+	// re-anchored runStarted on itself.
+	lastSignals, err := r.backend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
+	if err != nil {
+		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last signal: %w", err))
+	}
+
+	status, output := passiveEvaluation(noun, period, lastSignals[checkJob.CheckUID])
 
 	result := checkerdef.Result{
 		Status:   status,

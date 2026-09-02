@@ -141,7 +141,7 @@ func TestExecutePassiveJob_MarksEvaluationRows(t *testing.T) {
 // TestExecutePassiveJob_MarksEveryBranch walks the rest of the switch. The
 // marker is stamped after the switch precisely so no branch can forget it, and
 // this is what proves it — including the branches that produce a failing status
-// and the one that has no signal to point at at all.
+// and the one that has no signal to point at.
 //
 //nolint:paralleltest // Test uses shared database state
 func TestExecutePassiveJob_MarksEveryBranch(t *testing.T) {
