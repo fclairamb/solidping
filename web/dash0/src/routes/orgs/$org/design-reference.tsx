@@ -89,6 +89,7 @@ import { DependencyWarnings } from "@/components/checks/dependency-warnings";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { EvaluationCard } from "@/components/checks/evaluation-card";
 import { StatusDot } from "@/components/shared/status-dot";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
@@ -1705,6 +1706,34 @@ function ButtonsBadgesSection() {
           importLine={`import { FlappingBadge } from "@/components/shared/flapping-badge";\n\n{(incident.flapLevel ?? 0) > 0 && (\n  <FlappingBadge flapLevel={incident.flapLevel} t={t} />\n)}`}
         />
 
+        <h3 className="text-sm font-medium">Row-kind badge</h3>
+        <p className="text-sm text-muted-foreground">
+          For rows the system wrote on its own schedule rather than in response
+          to something that happened — today, a passive check&apos;s{" "}
+          <em>scheduler evaluation</em> row (spec 2026-09-02-04), which a
+          heartbeat check writes every period alongside the beats its callers
+          send. It sits <strong>after</strong> the status badge and never uses a
+          status colour: the status is still the row&apos;s real status, and a
+          second coloured chip next to it would read as a competing verdict.
+          Outline variant plus{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            text-muted-foreground
+          </code>{" "}
+          keeps it clearly subordinate. Wrap it in a Tooltip — the badge is one
+          word, so the explanation has to live somewhere.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-1">
+              <StatusBadge status="up" />
+              <Badge variant="outline" className="text-muted-foreground">
+                Evaluation
+              </Badge>
+            </div>
+          }
+          importLine={`import { Badge } from "@/components/ui/badge";\nimport { StatusBadge } from "@/components/shared/status-badge";\nimport { isEvaluationOutput } from "@/components/checks/evaluation-card";\n\n<div className="flex flex-wrap items-center gap-1">\n  <StatusBadge status={result.status} />\n  {isEvaluationOutput(result.output) && (\n    <Tooltip>\n      <TooltipTrigger asChild>\n        <Badge variant="outline" className="text-muted-foreground">\n          {t("checks:detail.results.evaluationBadge")}\n        </Badge>\n      </TooltipTrigger>\n      <TooltipContent>{t("checks:detail.results.evaluationTooltip")}</TooltipContent>\n    </Tooltip>\n  )}\n</div>`}
+        />
+
         <h3 className="text-sm font-medium">
           SLO state chip &amp; error-budget meter
         </h3>
@@ -2986,7 +3015,55 @@ function DataDisplaySection() {
       <CodeSnippet
         code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
+
+      <div className="space-y-2 pt-2">
+        <h3 className="text-sm font-medium">Evaluation card</h3>
+        <p className="text-sm text-muted-foreground">
+          The result-detail card for a passive check&apos;s scheduler-written
+          row (spec 2026-09-02-04). It is the reading half of the Row-kind badge
+          in Buttons &amp; badges: the badge says &quot;this row is not a
+          beat&quot; in a table, this card says it on the row&apos;s own page
+          and links to the beat the evaluation actually read. Same shape as{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            DnsblCard
+          </code>{" "}
+          and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            EmailDeliveryCard
+          </code>
+          : it self-hides when the output is not its own, and it exports the
+          keys it renders so the page can strip them from the raw Output dump —
+          which is what makes that dump disappear entirely here instead of
+          repeating the card as JSON.
+        </p>
+        <EvaluationCardExample />
+      </div>
+      <CodeSnippet
+        code={`import {\n  EvaluationCard,\n  EVALUATION_OUTPUT_KEYS,\n  isEvaluationOutput,\n} from "@/components/checks/evaluation-card";\n\n<EvaluationCard\n  org={org}\n  checkUid={checkUid}\n  checkType={check?.type}\n  output={result.output}\n  periodStart={result.periodStart}\n  regionLabel={regionDisplayLabel(regions, result.region)}\n/>`}
+      />
     </Section>
+  );
+}
+
+/* A live EvaluationCard on a synthetic evaluation row: an on-time heartbeat
+ * evaluated by the eu-west worker 12 s after the beat it read. */
+function EvaluationCardExample() {
+  return (
+    <div className="max-w-xl">
+      <EvaluationCard
+        org="default"
+        checkUid="00000000-0000-7000-8000-00000000cafe"
+        checkType="heartbeat"
+        periodStart="2026-09-02T12:36:50.000Z"
+        regionLabel="🇪🇺 EU West"
+        output={{
+          message: "Heartbeat on time",
+          evaluation: true,
+          lastSignalAt: "2026-09-02T12:36:38Z",
+          lastSignalResultUid: "00000000-0000-7000-8000-00000000beef",
+        }}
+      />
+    </div>
   );
 }
 
