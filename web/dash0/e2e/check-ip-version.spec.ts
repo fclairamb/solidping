@@ -155,6 +155,12 @@ test.describe("IP version selector", () => {
       .click();
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 15000 });
+    // The networkidle wait is load-bearing here, not decoration. This submit
+    // starts on /checks/<uid>/edit, which ALREADY matches the regex above, so
+    // waitForURL resolves instantly and getCheck below would race the PATCH
+    // and read back the pre-clear "ipv6". The create half above waits for the
+    // same reason; omitting it here made this test fail ~2 runs in 3.
+    await page.waitForLoadState("networkidle");
 
     const cleared = await getCheck(page, token, uid);
     expect(cleared.config.ipVersion).toBeUndefined();
