@@ -217,17 +217,33 @@ test.describe("Magic wand defaults", () => {
     await expect(page.getByTestId("wand-create-email-alerts")).toHaveCount(0);
   });
 
-  test("report wand: creates a weekly org-wide report and flips the checklist step", async ({
+  test("report wand: creates a weekly report scoped to the 10 most recently created checks and flips the checklist step", async ({
     page,
   }) => {
-    const { orgSlug, auth, email } = await seedOrg(page, 1);
+    // 12 checks so the list endpoint's first page (limit=10) is a strict
+    // subset — this is what proves the wand caps at 10 rather than just
+    // happening to attach "everything" like the status-page wand does.
+    const { orgSlug, auth, email } = await seedOrg(page, 12);
     await deleteAll(page, orgSlug, auth, "report-schedules");
+
+    // The oracle: what the wand is supposed to read and attach.
+    const recentResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/checks?limit=10`,
+      { headers: auth },
+    );
+    expect(recentResp.status()).toBe(200);
+    const recentChecks = ((await recentResp.json()) as {
+      data?: { uid: string }[];
+    }).data ?? [];
+    expect(recentChecks).toHaveLength(10);
+    const expectedUids = recentChecks.map((c) => c.uid);
 
     await page.goto(`orgs/${orgSlug}/organization/report-schedules`);
     await page.waitForLoadState("networkidle");
 
     const wand = page.getByTestId("wand-create-weekly-report");
     await expect(wand).toBeVisible();
+    await expect(wand).toBeEnabled({ timeout: 10000 });
 
     await wand.click();
     await expect(page.getByText("Weekly uptime report created")).toBeVisible();
@@ -239,6 +255,7 @@ test.describe("Magic wand defaults", () => {
     );
     const items = ((await resp.json()) as {
       data?: {
+        uid: string;
         name: string;
         frequency: string;
         recipients: string[];
@@ -252,11 +269,28 @@ test.describe("Magic wand defaults", () => {
     expect(items[0].name).toBe("Weekly uptime report");
     expect(items[0].frequency).toBe("weekly");
     expect(items[0].recipients).toEqual([email]);
-    // Empty scopes = org-wide.
-    expect(items[0].checkUids).toEqual([]);
+    // Exactly the 10 most recently created checks, in the same order.
+    expect(items[0].checkUids).toEqual(expectedUids);
     expect(items[0].checkGroupUids).toEqual([]);
     expect(items[0].includeSlos).toBe(true);
     expect(items[0].enabled).toBe(true);
+
+    // The list page's Scope column reflects the count, not "All checks".
+    const row = page.getByTestId("report-row");
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("10 checks, 0 groups");
+
+    // The edit page's checks picker lists exactly those 10 checks.
+    await page.goto(`orgs/${orgSlug}/organization/report-schedules/${items[0].uid}`);
+    await page.waitForLoadState("networkidle");
+    for (const uid of expectedUids) {
+      await expect(
+        page.getByTestId(`report-checks-chip-remove-${uid}`),
+      ).toBeVisible();
+    }
+    await expect(
+      page.locator('[data-testid^="report-checks-chip-remove-"]'),
+    ).toHaveCount(10);
 
     await page.goto(`orgs/${orgSlug}`);
     await page.waitForLoadState("networkidle");
