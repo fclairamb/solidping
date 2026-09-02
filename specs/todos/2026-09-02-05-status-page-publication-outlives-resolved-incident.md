@@ -169,3 +169,96 @@ spec fixes the mechanism; it does not retro-close existing rows.
   stale-publication alert (present when the linked incident is resolved, absent
   when it is live).
 - Run `bun run test:unit` in dash0 and status0 for the new locale keys.
+
+---
+
+## Implementation Plan
+
+### Step 1 — Publishing a resolved incident yields a resolved publication
+
+`server/internal/handlers/incidentpublications/service.go`
+
+- Add a private helper `resolveRetroactively(ctx, page, pub, incident, tpl, name, actorUID)` that
+  stamps `PublicState = resolved` / `ResolvedAt = incident.ResolvedAt` (falling back to `now` when
+  the incident carries no `resolved_at`), persists the patch, posts the templated `resolved`
+  update and emits `EventTypeStatusPageIncidentResolved`.
+- `PublishIncident()`: after the row is created and the templated `investigating` update is posted,
+  call the helper when `incident.State == models.IncidentStateResolved`. The public timeline then
+  reads investigating → resolved back-to-back: a retroactive post-mortem entry, not a live outage.
+  `Severity` is still honoured (it labels the past entry). The returned `PublicationResponse`
+  carries `state: "resolved"` for free, since `toResponse` reads `pub.PublicState`.
+- `CreatePublication()`: when `incidentUid` points at a resolved incident, force the same
+  resolved state/`ResolvedAt` regardless of the requested `state`, and post the templated
+  `resolved` update when the caller supplied no `bodyMarkdown` of their own.
+- No new error code, no DDL.
+
+### Step 2 — `if_untouched` actually applies to hand-published, incident-linked entries
+
+- `service.go` `PublishIncident()`: **drop** `pub.HumanTouchedAt = &now`. Linking an incident to a
+  page is not taking over the narrative; the edit/append paths (`UpdatePublication`,
+  `AppendUpdate`) still stamp it. `CreatePublication` keeps its stamp.
+- `policy.go` `OnIncidentResolved()`: replace `if !pub.AutoCreated || pub.IsResolved()` with
+  `if pub.IncidentUID == nil || pub.IsResolved()`. A publication *linked* to the resolving incident
+  is in scope of the page's `autoResolve` policy whoever created it; free-form publications
+  (no `incidentUid`) stay untouched under every policy.
+- Update the `OnIncidentResolved()` doc comment and the `HumanTouchedAt` / `AutoCreated` comments in
+  `server/internal/db/models/incident_publication.go`.
+
+### Step 3 — A check-less open publication is visible in dash0
+
+Backend:
+- `PublicationResponse` gains `stale bool` — "this publication is open while the incident it is
+  linked to has resolved". False for a resolved publication and for a free-form one.
+- `ListOptions` gains `StaleOnly`; the handler reads `?stale=true`. Staleness is computed in the
+  service (one `GetIncident` per linked publication in the page, capped at the existing 200-row
+  page size) rather than as a SQL join, so no change is needed in either dialect.
+- `server/internal/app/openapi/openapi.yaml`: document the `stale` query parameter and the `stale`
+  response property.
+
+dash0:
+- `useIncidentPublications(org, pageUid, { activeOnly, staleOnly })`; `IncidentPublication` gains
+  `stale?: boolean`.
+- New `useStalePublications(org)` hook: status pages × `active=true&stale=true`, flattened.
+- New `web/dash0/src/components/shared/stale-publications-banner.tsx` — `Alert variant="warning"`
+  from the design reference (same shape as `CheckRateLimitBanner`), one line per page, each linking
+  to `/orgs/$org/status-pages/$statusPageUid/incidents/$uid`.
+- Mounted at the top of `checks.index.tsx` and on `status-pages.$statusPageUid.index.tsx`
+  (scoped to that page there).
+- New `statusPages:stalePublications.*` keys in en/fr/de/es, plus the design-reference entry.
+
+### Step 4 — The TV headline is honest about its cause
+
+`web/status0/src/lib/tv-board.ts`
+- Export `normalizeRollup`, and add `incidentDrivenCount(rollup, activeIncidents)`: the number of
+  active publications when `resolveTvState()` lands strictly worse than `normalizeRollup(rollup)`,
+  and `0` otherwise (check-driven, or not escalated at all).
+
+`web/status0/src/components/tv/tv-board.tsx`
+- Render a one-line subtitle under the headline when that count is non-zero:
+  *"Driven by 1 open incident — all monitored services are passing"*
+  (`tv.incidentDriven_one` / `_other`, all four locales). The check-driven case is untouched.
+
+### Tests
+
+- `publication_test.go`:
+  - publishing an already-resolved incident → publication born `resolved`,
+    `ResolvedAt == incident.ResolvedAt`, `investigating` + `resolved` updates,
+    `StatusPageIncidentResolved` event emitted, `humanTouched == false`;
+  - publishing a **live** incident is unchanged (still `investigating`, still open) — the
+    positive control that keeps the above from passing vacuously;
+  - `Create()` with a resolved `incidentUid` → resolved;
+  - `OnIncidentResolved` with a hand-published, incident-linked, untouched publication under
+    `if_untouched` → resolved; same but touched → `monitoring` note only, still open;
+  - a free-form publication (no `incidentUid`) sitting on the same page as a linked one →
+    the linked one resolves, the free-form one is untouched;
+  - negative control: `never` leaves both alone;
+  - `always` → resolved even when touched;
+  - the public status-page endpoint reports `activeIncidents: []` once the only publication is
+    resolved;
+  - the `stale` flag/filter: open + linked-resolved → stale; open + linked-live → not stale;
+    resolved → not stale; free-form → not stale.
+- `web/status0/src/lib/tv-board.test.ts`: `incidentDrivenCount` truth table.
+- `web/status0/src/lib/tv-locales.test.ts`: the new `tv.incidentDriven_*` keys.
+- `web/dash0/src/lib/stale-publications.test.ts`: the banner's derivation + locale parity.
+- `web/dash0/e2e/`: the stale-publication alert is present when the linked incident is resolved and
+  absent when it is live.
