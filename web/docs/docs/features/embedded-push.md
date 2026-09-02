@@ -100,6 +100,12 @@ survives a power cut. Counters above 2^63−1 are rejected.
 
 ### A minimal Arduino / ESP sketch
 
+Before flashing, replace the four placeholders below — `ORG`, `CHECK`,
+`TOKEN` and `HOST`/`PORT` — with the values from the check's own **Embedded
+devices (TCP/UDP)** panel on its detail page: the org slug and check
+identifier, the ping token shown there, and the host/port of whichever
+listener (TCP or UDP) you enabled.
+
 ```cpp
 // Requires an HMAC-SHA256 implementation — mbedTLS ships with the ESP32 core,
 // and a self-contained one is about 200 lines. Nothing like a TLS stack.
