@@ -167,9 +167,11 @@ rotate-token endpoint already exists).
    identical behavior to the HTTP ingest, including the configured-check-timeout
    handling fixed by spec 2026-09-01-02.
 5. **Counter state**: persist the last accepted `ctr` per check server-side
-   (small per-check state write on each accepted SP2 beat; exact home —
-   dedicated column vs. job-state jsonb — is an implementation choice, but it
-   must survive restarts and be safe under concurrent beats).
+   (small per-check state write on each accepted SP2 beat; must survive
+   restarts and be safe under concurrent beats). **Decision (2026-09-02): the
+   home is the existing generic `state_entries` store, NOT a dedicated
+   `heartbeat_counters` table** — see "Resolved: where the counter lives"
+   below.
 6. **Abuse resistance**: per-source-IP rate limiting on both listeners
    (reuse/mirror `internal/middleware/ratelimit.go` budget logic where
    practical), bounded read sizes, constant-time token/MAC comparison, and
@@ -265,12 +267,15 @@ Pure, dependency-free parsing, exhaustively table-tested:
 
 ### 3. Counter state (DB)
 
-New table `heartbeat_counters(check_uid pk, last_counter bigint, updated_at)`,
-migration **018_v0_22_0** in both dialects (new number — never renumber).
-`db.Service.TryAdvanceHeartbeatCounter(ctx, checkUID, counter) (bool, error)`
-is a conditional upsert (`... DO UPDATE ... WHERE last_counter < excluded`),
-so strict monotonicity is enforced by the database and is safe under
-concurrent beats. Counters > `math.MaxInt64` are rejected at parse time.
+The counter lives in the existing generic `state_entries` store under the key
+`heartbeat_counter/<checkUID>` (slash-namespaced, per that table's documented
+key convention), org-scoped via `organization_uid`, with the value as
+`{"lastCounter": N}`.
+`db.Service.TryAdvanceHeartbeatCounter(ctx, orgUID, checkUID, counter) (bool, error)`
+stays a **single conditional upsert** — `ON CONFLICT (organization_uid, key)
+DO UPDATE ... WHERE <stored lastCounter> < <incoming>` — so strict
+monotonicity is still enforced by the database and is safe under concurrent
+beats. Counters > `math.MaxInt64` are rejected at parse time.
 
 ### 4. `require_hmac` on the checker
 
@@ -342,3 +347,42 @@ deployment decision. Cross-link from `check-types.md#heartbeat`.
 - stale `ts` outside the window rejected, `ts = 0` accepted;
 - an open TCP connection with no accepted line marks nothing alive;
 - secrets never logged and never echoed.
+
+## Resolved: where the counter lives
+
+**Question:** the spec left the counter's home as "an implementation choice".
+The first implementation added a dedicated `heartbeat_counters` table.
+
+**Decision (2026-09-02, user):** use an entry in the existing generic
+`state_entries` store instead. Rationale:
+
+1. **Repo precedent.** Issue #89 deliberately made this same call in the other
+   direction — "collapse OAuth storage from three dedicated tables to reusing
+   `state_entries`/`user_tokens`". `state_entries` already backs notification
+   state, password resets, invites, OAuth sign-in state and OAuth grants. A
+   dedicated table for one integer per check cuts against that.
+2. **Atomicity is unchanged.** `state_entries` carries
+   `unique (organization_uid, key)`, so the identical conditional upsert
+   applies. The replay guard keeps living in the database.
+3. **Org deletion improves.** `organization_uid` is
+   `references organizations(uid) on delete cascade`, so counters die with the
+   org — which the standalone table did not do. The property the original
+   design cared about is preserved: the row survives a check's *soft* delete,
+   so an undeleted check does not silently re-accept every old datagram.
+
+**Constraints this decision carries — all three are load-bearing:**
+
+- **It MUST remain a single conditional upsert.** Do NOT port it to
+  `GetStateEntry` → compare in Go → `SetStateEntry`. The generic setter is
+  unconditional, so that is the tempting port, and it reintroduces exactly the
+  replay race the counter exists to prevent — two concurrent beats both read
+  the old value and both are accepted. A retried UDP datagram is the normal
+  case here, not the exotic one.
+- **`expires_at` stays NULL.** Counters must never expire;
+  `DeleteExpiredStateEntries` only touches rows with a non-null `expires_at`.
+- **The unique constraint ignores `deleted_at`.** The read and advance paths
+  must not resurrect or be confused by a soft-deleted row.
+
+The `heartbeat_counters` table and its migration section are removed. Since
+`018_v0_22_0` is the single consolidated (still unreleased) v0.22.0 migration,
+that section is deleted from it rather than reverted by a new migration.
