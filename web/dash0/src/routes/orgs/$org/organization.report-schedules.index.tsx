@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { ApiError } from "@/api/client";
 import {
+  useChecks,
   useCreateReportSchedule,
   useDeleteReportSchedule,
   useReportSchedules,
@@ -52,18 +53,28 @@ function ReportSchedulesIndexPage() {
   const { user } = useAuth();
   const [pendingDelete, setPendingDelete] = useState<ReportSchedule | null>(null);
 
+  // The wand scopes the report to the 10 most recently created checks —
+  // the list endpoint's default order (created_at DESC) makes the first
+  // page exactly that. An org with zero checks falls back to the empty
+  // (org-wide) scope inside buildWeeklyReportWandPayload.
+  const { data: recentChecks, isLoading: isLoadingChecks } = useChecks(org, {
+    limit: 10,
+  });
+
   // Visible only once we know the org actually lacks an enabled schedule —
   // guarding on isLoading avoids a flash-then-disappear for an org that
   // already has one.
   const showWand = !isLoading && !hasEnabledReportSchedule(schedules);
+  const wandPending = createSchedule.isPending || isLoadingChecks;
 
   const onWandClick = () => {
-    if (!user?.email) return;
+    if (!user?.email || isLoadingChecks) return;
     createSchedule.mutate(
       buildWeeklyReportWandPayload(
         t,
         user.email,
         Intl.DateTimeFormat().resolvedOptions().timeZone,
+        recentChecks ?? [],
       ),
       {
         onSuccess: () =>
@@ -93,11 +104,11 @@ function ReportSchedulesIndexPage() {
               <Button
                 variant="outline"
                 onClick={onWandClick}
-                disabled={createSchedule.isPending}
+                disabled={wandPending}
                 data-testid="wand-create-weekly-report"
                 aria-label={t("reports.wand.create", "Create a weekly uptime report for me")}
               >
-                {createSchedule.isPending ? (
+                {wandPending ? (
                   <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
                 ) : (
                   <Wand2 className="h-4 w-4 sm:mr-2" />
