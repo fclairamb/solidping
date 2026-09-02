@@ -100,6 +100,7 @@ import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
+import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
@@ -114,6 +115,12 @@ import { DependenciesCard } from "@/components/checks/dependencies-card";
 // The result-output key reporting which address family the probe used, and the
 // config key pinning it. Kept next to each other so the pair can't drift.
 const IP_VERSION_OUTPUT_KEY = "ip_version";
+
+// The two passive-evaluation output keys that are pure bookkeeping: the
+// self-declaration the worker stamps and the uid it points at (spec
+// 2026-09-02-04). Both are filtered out of the header's raw Output dump.
+const EVALUATION_ROW_MARKER_KEY = "evaluation";
+const EVALUATION_LAST_SIGNAL_UID_KEY = "lastSignalResultUid";
 const IP_VERSION_CONFIG_KEY = "ipVersion";
 
 /**
@@ -868,11 +875,19 @@ function CheckDetailPage() {
     [chartWindowResults, effectiveRegion],
   );
 
+  // Passive checks (heartbeat, email) interleave two kinds of raw row that
+  // look identical in this table — the beat, and the scheduler's own
+  // evaluation of the schedule (spec 2026-09-02-04) — so for those types only
+  // we also pull `output` and badge the evaluations. Deliberately NOT widened
+  // for other types: nothing else in this table needs the payload, and the
+  // chart-window query (which fetches far more rows) is untouched.
+  const isPassiveCheckType = check?.type === "heartbeat" || check?.type === "email";
+
   const { data: results } = useResults(org, {
     checkUid,
     size: 10,
     region: effectiveRegion,
-    with: "durationMs,region",
+    with: isPassiveCheckType ? "durationMs,region,output" : "durationMs,region",
     refetchInterval,
   });
 
@@ -1635,6 +1650,13 @@ function CheckDetailPage() {
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
+                              // Bookkeeping a passive evaluation row stamps on
+                              // itself (spec 2026-09-02-04). "evaluation: true"
+                              // and a bare uid are noise here; the badge on the
+                              // Recent Results rows below is what conveys the
+                              // row kind. message + lastSignalAt still show.
+                              key !== EVALUATION_ROW_MARKER_KEY &&
+                              key !== EVALUATION_LAST_SIGNAL_UID_KEY &&
                               !(
                                 DNSBL_OUTPUT_KEYS as readonly string[]
                               ).includes(key),
@@ -1800,68 +1822,102 @@ function CheckDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {results.data.map((result) => (
-                  <TableRow
-                    key={result.uid}
-                    className={
-                      result.uid ? "cursor-pointer hover:bg-muted/50" : ""
-                    }
-                    data-testid={`result-row-${result.uid}`}
-                    onClick={() => {
-                      if (!result.uid) return;
-                      navigate({
-                        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
-                        params: { org, checkUid, resultUid: result.uid },
-                        search: { region: effectiveRegion },
-                      });
-                    }}
-                  >
-                    <TableCell className="text-sm">
-                      {result.periodStart
-                        ? formatResultTime(result.periodStart)
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={result.status} />
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {result.durationMs !== undefined
-                        ? `${Math.round(result.durationMs)}ms`
-                        : "-"}
-                    </TableCell>
-                    <TableCell
-                      className="text-sm"
-                      data-testid="result-region-cell"
+                {results.data.map((result) => {
+                  // `output` is only requested for passive checks, so this is
+                  // always false elsewhere — no other type can be badged by
+                  // accident (spec 2026-09-02-04).
+                  const isEvaluationRow =
+                    isPassiveCheckType && isEvaluationOutput(result.output);
+
+                  return (
+                    <TableRow
+                      key={result.uid}
+                      className={
+                        result.uid ? "cursor-pointer hover:bg-muted/50" : ""
+                      }
+                      data-testid={`result-row-${result.uid}`}
+                      onClick={() => {
+                        if (!result.uid) return;
+                        navigate({
+                          to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+                          params: { org, checkUid, resultUid: result.uid },
+                          search: { region: effectiveRegion },
+                        });
+                      }}
                     >
-                      {result.region
-                        ? (() => {
-                            const slug = result.region;
-                            return (
-                              // A real <button> styled with badgeVariants (not
-                              // <Badge>, which renders a plain <div> with no
-                              // asChild/Slot support) — keeps the Badge look
-                              // while being a genuine interactive element, with
-                              // a hover/focus affordance signaling it's clickable.
-                              <button
-                                type="button"
-                                className={cn(
-                                  badgeVariants({ variant: "outline" }),
-                                  "cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                )}
-                                data-testid={`result-region-badge-${result.uid}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setRegion(slug);
-                                }}
-                              >
-                                {regionDisplayLabel(regionsData?.regions, slug)}
-                              </button>
-                            );
-                          })()
-                        : "-"}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableCell
+                        className={cn(
+                          "text-sm",
+                          isEvaluationRow && "text-muted-foreground",
+                        )}
+                      >
+                        {result.periodStart
+                          ? formatResultTime(result.periodStart)
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {/* Wraps rather than truncates on a narrow screen: the
+                            badge sits under the status badge instead of forcing
+                            a horizontal scroll. */}
+                        <div className="flex flex-wrap items-center gap-1">
+                          <StatusBadge status={result.status} />
+                          {isEvaluationRow && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  variant="outline"
+                                  className="text-muted-foreground"
+                                  data-testid={`result-evaluation-badge-${result.uid}`}
+                                >
+                                  {t("checks:detail.results.evaluationBadge")}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t("checks:detail.results.evaluationTooltip")}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {result.durationMs !== undefined
+                          ? `${Math.round(result.durationMs)}ms`
+                          : "-"}
+                      </TableCell>
+                      <TableCell
+                        className="text-sm"
+                        data-testid="result-region-cell"
+                      >
+                        {result.region
+                          ? (() => {
+                              const slug = result.region;
+                              return (
+                                // A real <button> styled with badgeVariants (not
+                                // <Badge>, which renders a plain <div> with no
+                                // asChild/Slot support) — keeps the Badge look
+                                // while being a genuine interactive element, with
+                                // a hover/focus affordance signaling it's clickable.
+                                <button
+                                  type="button"
+                                  className={cn(
+                                    badgeVariants({ variant: "outline" }),
+                                    "cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                  )}
+                                  data-testid={`result-region-badge-${result.uid}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRegion(slug);
+                                  }}
+                                >
+                                  {regionDisplayLabel(regionsData?.regions, slug)}
+                                </button>
+                              );
+                            })()
+                          : "-"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (
