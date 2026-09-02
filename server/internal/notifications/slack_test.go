@@ -1039,11 +1039,11 @@ func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *model
 	panic("not implemented")
 }
 
-func (m *mockDBService) TryAdvanceHeartbeatCounter(_ context.Context, _ string, _ int64) (bool, error) {
+func (m *mockDBService) TryAdvanceHeartbeatCounter(_ context.Context, _, _ string, _ int64) (bool, error) {
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetHeartbeatCounter(_ context.Context, _ string) (int64, bool, error) {
+func (m *mockDBService) GetHeartbeatCounter(_ context.Context, _, _ string) (int64, bool, error) {
 	panic("not implemented")
 }
 

@@ -233,9 +233,16 @@ func TestHandleBeatRejectsAFailedMACWithoutMovingTheCounter(t *testing.T) {
 
 	r.False(s.handle(t, heartbeatpush.SignSP2(s.org.Slug, s.checkSlug(), "wrong-key", 0, 1_000_000, "")))
 
-	_, ok, err := s.dbSvc.GetHeartbeatCounter(t.Context(), s.check.UID)
+	_, ok, err := s.dbSvc.GetHeartbeatCounter(t.Context(), s.org.UID, s.check.UID)
 	r.NoError(err)
 	r.False(ok, "a forged beat must not create counter state")
+
+	// Same property one level down, now that the counter is a generic state
+	// entry: NO ROW AT ALL, not merely a counter that reads as zero. An
+	// unauthenticated caller must not be able to make the server write.
+	entry, err := s.dbSvc.GetStateEntry(t.Context(), &s.org.UID, "heartbeat_counter/"+s.check.UID)
+	r.NoError(err)
+	r.Nil(entry, "a forged beat must not write a state entry either")
 
 	// The real device, far below the forged counter, is still accepted.
 	r.True(s.handle(t, heartbeatpush.SignSP2(s.org.Slug, s.checkSlug(), testToken, 0, 7, "")))

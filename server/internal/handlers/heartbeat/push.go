@@ -73,7 +73,7 @@ func (s *Service) HandleBeat(
 		requireHMAC = true
 	}
 
-	if ok, verifyErr := s.verifyBeat(ctx, beat, check, token, requireHMAC, transport); !ok || verifyErr != nil {
+	if ok, verifyErr := s.verifyBeat(ctx, beat, org, check, token, requireHMAC, transport); !ok || verifyErr != nil {
 		return false, verifyErr
 	}
 
@@ -91,7 +91,7 @@ func (s *Service) HandleBeat(
 // verifyBeat runs the per-version credential checks. It returns ok=false for a
 // rejection and a non-nil error only for an internal fault.
 func (s *Service) verifyBeat(
-	ctx context.Context, beat *heartbeatpush.Beat, check *models.Check,
+	ctx context.Context, beat *heartbeatpush.Beat, org *models.Organization, check *models.Check,
 	token string, requireHMAC bool, transport string,
 ) (bool, error) {
 	if beat.Version == 1 {
@@ -129,7 +129,7 @@ func (s *Service) verifyBeat(
 		}
 	}
 
-	advanced, err := s.db.TryAdvanceHeartbeatCounter(ctx, check.UID, beat.Counter)
+	advanced, err := s.db.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, beat.Counter)
 	if err != nil {
 		return false, err
 	}
