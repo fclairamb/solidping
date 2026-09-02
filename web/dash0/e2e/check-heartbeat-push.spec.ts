@@ -1,6 +1,8 @@
 import { test, expect, mockSloCoverage, type Page } from "./fixtures";
 
-// Embedded TCP/UDP heartbeat push transports (spec 2026-09-01-06).
+// Embedded TCP/UDP heartbeat push transports (spec 2026-09-01-06), collapsed
+// by default with the Arduino/ESP sketch moved to the docs (spec
+// 2026-09-02-01).
 //
 // The listeners are off by default and opening their ports is a deployment
 // decision, so the dashboard must render this block ONLY when the server says
@@ -76,7 +78,7 @@ test.describe("Heartbeat push transports", () => {
     await expect(page.getByTestId("heartbeat-push")).toHaveCount(0);
   });
 
-  test("shows copy-paste examples and the require_hmac toggle", async ({
+  test("collapsed by default, expands to show copy-paste examples and a docs link", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -93,37 +95,54 @@ test.describe("Heartbeat push transports", () => {
 
     await expect(page.getByTestId("heartbeat-push")).toBeVisible();
 
+    // Collapsed on load: the summary line is honest about what is enabled,
+    // but the one-liners themselves are not rendered until expanded.
+    const toggle = page.getByTestId("heartbeat-push-toggle");
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toContainText("TCP 4001");
+    await expect(toggle).toContainText("UDP 4001");
+    await expect(page.getByTestId("heartbeat-push-tcp")).not.toBeVisible();
+    await expect(page.getByTestId("heartbeat-push-udp")).not.toBeVisible();
+
+    await toggle.click();
+
     // Pin the RENDERED command text, not just a fragment of it. The trailing
     // newline escape must reach the reader as the two characters printf needs
     // (backslash + n): written as a real LF it renders as a trailing space,
     // and anyone retyping what they see sends an unterminated line that never
     // frames. Copy-to-clipboard would have hidden that, so assert on text.
+    //
+    // Each command also sits behind its own collapsed disclosure now
+    // (CollapsibleCode) — open it before reading its text.
     const tcp = page.getByTestId("heartbeat-push-tcp");
+    await expect(tcp).toBeVisible();
+    await tcp.locator("summary").click();
     const tcpText = (await tcp.textContent()) ?? "";
     expect(tcpText).toMatch(
-      /^printf 'SP1 \S+\/\S+ [0-9a-f]+\\n' \| nc beats\.example\.com 4001$/,
+      /^.*printf 'SP1 \S+\/\S+ [0-9a-f]+\\n' \| nc beats\.example\.com 4001$/,
     );
     expect(tcpText).toContain("\\n'");
     expect(tcpText).not.toContain(" ' | nc");
 
     // UDP carries no terminator — the datagram boundary is the frame.
     const udp = page.getByTestId("heartbeat-push-udp");
+    await expect(udp).toBeVisible();
+    await udp.locator("summary").click();
     const udpText = (await udp.textContent()) ?? "";
     expect(udpText).toMatch(
-      /^printf 'SP1 \S+\/\S+ [0-9a-f]+' \| nc -u -w1 beats\.example\.com 4001$/,
+      /^.*printf 'SP1 \S+\/\S+ [0-9a-f]+' \| nc -u -w1 beats\.example\.com 4001$/,
     );
     expect(udpText).not.toContain("\\n");
 
-    // The signed-form sketch is offered next to the plaintext one-liners
-    // (spec V1 scope item 7), collapsed behind a disclosure.
-    const sketch = page.getByTestId("heartbeat-push-sketch");
-    await expect(sketch).toBeVisible();
-    await expect(sketch).toContainText("Arduino");
-    await sketch.getByText(/Arduino/).click();
-    await expect(sketch).toContainText("SP2 %s/%s 0 %llu");
-    await expect(sketch).toContainText("mbedtls_md_hmac_starts");
-    // It is filled in for THIS check, not a generic placeholder.
-    await expect(sketch).toContainText("beats.example.com");
+    // The Arduino/ESP sketch itself now lives in the docs, not this page — a
+    // docs link replaces it, scoped to this section so it is not confused
+    // with the check-type docs link in the page header.
+    const docsLink = page.getByTestId("heartbeat-push").getByTestId("docs-link");
+    await expect(docsLink).toBeVisible();
+    await expect(docsLink).toHaveAttribute(
+      "href",
+      "/docs/features/embedded-push#a-minimal-arduino--esp-sketch",
+    );
 
     // The rotate-token nudge is a consequence of the toggle, so it must not be
     // shouting at a check that has not turned signing on.
@@ -138,22 +157,33 @@ test.describe("Heartbeat push transports", () => {
       .textContent();
     expect(pingUrlBefore).toContain("token=");
 
-    const toggle = page.getByTestId("heartbeat-require-hmac");
-    await expect(toggle).toBeVisible();
-    await toggle.click();
+    const hmacToggle = page.getByTestId("heartbeat-require-hmac");
+    await expect(hmacToggle).toBeVisible();
+    await hmacToggle.click();
 
     // Turning it on surfaces the rotation nudge: the token may already have
     // been sniffed, and it is also the signing key.
     await expect(page.getByTestId("heartbeat-rotate-nudge")).toBeVisible();
 
-    // And the setting survives a reload, i.e. it was actually persisted.
+    // And the setting survives a reload, i.e. it was actually persisted. The
+    // section itself stays collapsed by default even though require_hmac is
+    // now on — the summary line ("… · signed only") is what covers that,
+    // not auto-expansion — but the rotate nudge is a security warning and
+    // must stay visible regardless: it lives outside the collapsible body.
     await page.reload();
     await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("heartbeat-require-hmac")).not.toBeVisible(); // collapsed again
+    await expect(page.getByTestId("heartbeat-push-toggle")).toContainText(
+      "signed only",
+    );
+    await expect(page.getByTestId("heartbeat-push-tcp")).not.toBeVisible();
+    await expect(page.getByTestId("heartbeat-rotate-nudge")).toBeVisible();
+
+    await page.getByTestId("heartbeat-push-toggle").click();
     await expect(page.getByTestId("heartbeat-require-hmac")).toHaveAttribute(
       "data-state",
       "checked",
     );
-    await expect(page.getByTestId("heartbeat-rotate-nudge")).toBeVisible();
 
     const pingUrlAfter = await page
       .locator(".font-mono.break-all span")
@@ -176,6 +206,9 @@ test.describe("Heartbeat push transports", () => {
     await createHeartbeatCheck(page, `E2E HB Push UDP ${Date.now()}`);
 
     await expect(page.getByTestId("heartbeat-push")).toBeVisible();
+    await expect(page.getByTestId("heartbeat-push-tcp")).toHaveCount(0);
+
+    await page.getByTestId("heartbeat-push-toggle").click();
     await expect(page.getByTestId("heartbeat-push-udp")).toBeVisible();
     await expect(page.getByTestId("heartbeat-push-tcp")).toHaveCount(0);
   });
