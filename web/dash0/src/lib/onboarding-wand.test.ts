@@ -98,22 +98,59 @@ describe("buildEmailAlertsWandPayload", () => {
 });
 
 describe("buildWeeklyReportWandPayload", () => {
-  it("is org-wide, includes SLOs, and carries the given timezone", () => {
+  it("scopes to the given checks, includes SLOs, and carries the given timezone", () => {
     const payload = buildWeeklyReportWandPayload(
       tFor(slosEn),
       "alice@acme.com",
       "Europe/Paris",
+      [{ uid: "c1" }, { uid: "c2" }, { uid: "c3" }],
     );
     expect(payload).toEqual({
       name: "Weekly uptime report",
       frequency: "weekly",
       timezone: "Europe/Paris",
       recipients: ["alice@acme.com"],
-      checkUids: [],
+      checkUids: ["c1", "c2", "c3"],
       checkGroupUids: [],
       includeSlos: true,
       enabled: true,
     });
+  });
+
+  it("caps checkUids at 10, keeping the given order (newest-first)", () => {
+    const checks = Array.from({ length: 15 }, (_, i) => ({ uid: `c${i}` }));
+    const payload = buildWeeklyReportWandPayload(
+      tFor(slosEn),
+      "alice@acme.com",
+      "UTC",
+      checks,
+    );
+    expect(payload.checkUids).toEqual(checks.slice(0, 10).map((c) => c.uid));
+    expect(payload.checkUids).toHaveLength(10);
+    expect(payload.checkGroupUids).toEqual([]);
+  });
+
+  it("attaches all checks when there are fewer than 10", () => {
+    const checks = [{ uid: "c1" }, { uid: "c2" }];
+    const payload = buildWeeklyReportWandPayload(
+      tFor(slosEn),
+      "alice@acme.com",
+      "UTC",
+      checks,
+    );
+    expect(payload.checkUids).toEqual(["c1", "c2"]);
+    expect(payload.checkGroupUids).toEqual([]);
+  });
+
+  it("falls back to the empty (org-wide) scope when there are zero checks", () => {
+    const payload = buildWeeklyReportWandPayload(
+      tFor(slosEn),
+      "alice@acme.com",
+      "UTC",
+      [],
+    );
+    expect(payload.checkUids).toEqual([]);
+    expect(payload.checkGroupUids).toEqual([]);
   });
 
   it.each(SLOS_LOCALES)(
@@ -123,6 +160,7 @@ describe("buildWeeklyReportWandPayload", () => {
         tFor(bundle),
         "alice@acme.com",
         "UTC",
+        [],
       );
       expect(payload.name).not.toContain("wand.");
       expect(payload.name.length).toBeGreaterThan(0);
