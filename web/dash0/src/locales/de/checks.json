@@ -371,7 +371,21 @@
       "rolledUpToMonth": "Es wurde in diese Monats-Aggregation ({{start}}–{{end}}) zusammengefasst, die seinen Zeitstempel abdeckt ({{ts}}).",
       "originalUid": "Die ursprüngliche UID {{uid}} wurde im Rahmen der automatischen Aggregation gelöscht."
     },
-    "notFound": "Ergebnis nicht gefunden — es wurde möglicherweise im Rahmen der automatischen Aggregation gelöscht, und es gibt keine Aggregation, die seinen Zeitstempel abdeckt."
+    "notFound": "Ergebnis nicht gefunden — es wurde möglicherweise im Rahmen der automatischen Aggregation gelöscht, und es gibt keine Aggregation, die seinen Zeitstempel abdeckt.",
+    "evaluation": {
+      "badge": "Auswertung",
+      "title": "Auswertung durch den Planer",
+      "explainerHeartbeat": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
+      "explainerEmail": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
+      "explainerNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
+      "explainerEmailNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
+      "lastSignal": "Letztes Signal",
+      "before": "{{duration}} vor dieser Auswertung",
+      "overdueBy": "Überfällig seit",
+      "runStarted": "Lauf gestartet",
+      "noSignal": "Kein Signal vorhanden",
+      "openSignal": "Signal öffnen"
+    }
   },
   "detail": {
     "summary": {
@@ -469,7 +483,9 @@
           "week": "Letzte Woche",
           "month": "Letzter Monat"
         }
-      }
+      },
+      "evaluationBadge": "Auswertung",
+      "evaluationTooltip": "Vom Planer geschrieben, als er die Prüfung ausgewertet hat. Kein Heartbeat."
     },
     "period": "Zeitraum",
     "lastChecked": "Zuletzt geprüft",

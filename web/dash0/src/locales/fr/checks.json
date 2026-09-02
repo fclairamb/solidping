@@ -416,7 +416,21 @@
       "rolledUpToMonth": "Il a été agrégé dans cette agrégation mensuelle ({{start}}–{{end}}) couvrant son horodatage ({{ts}}).",
       "originalUid": "L'UID d'origine {{uid}} a été supprimé lors de l'agrégation automatique."
     },
-    "notFound": "Résultat introuvable — il a peut-être été supprimé lors de l'agrégation automatique, et aucune agrégation couvrant son horodatage n'a été trouvée."
+    "notFound": "Résultat introuvable — il a peut-être été supprimé lors de l'agrégation automatique, et aucune agrégation couvrant son horodatage n'a été trouvée.",
+    "evaluation": {
+      "badge": "Évaluation",
+      "title": "Évaluation du planificateur",
+      "explainerHeartbeat": "Cette ligne a été écrite par le worker de contrôles {{region}} lorsqu'il a évalué la planification du contrôle. Ce n'est pas un heartbeat — rien n'a appelé à cet instant.",
+      "explainerEmail": "Cette ligne a été écrite par le worker de contrôles {{region}} lorsqu'il a évalué la planification du contrôle. Ce n'est pas un e-mail — aucun e-mail n'est arrivé à cet instant.",
+      "explainerNoRegion": "Cette ligne a été écrite par un worker de contrôles lorsqu'il a évalué la planification du contrôle. Ce n'est pas un heartbeat — rien n'a appelé à cet instant.",
+      "explainerEmailNoRegion": "Cette ligne a été écrite par un worker de contrôles lorsqu'il a évalué la planification du contrôle. Ce n'est pas un e-mail — aucun e-mail n'est arrivé à cet instant.",
+      "lastSignal": "Dernier signal",
+      "before": "{{duration}} avant cette évaluation",
+      "overdueBy": "En retard de",
+      "runStarted": "Exécution démarrée",
+      "noSignal": "Aucun signal enregistré",
+      "openSignal": "Ouvrir le signal"
+    }
   },
   "detail": {
     "summary": {
@@ -514,7 +528,9 @@
           "week": "Dernière semaine",
           "month": "Dernier mois"
         }
-      }
+      },
+      "evaluationBadge": "Évaluation",
+      "evaluationTooltip": "Écrite par le planificateur lorsqu'il a évalué le contrôle. Ce n'est pas un heartbeat."
     },
     "period": "Période",
     "lastChecked": "Dernière vérification",

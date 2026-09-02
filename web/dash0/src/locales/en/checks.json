@@ -416,7 +416,21 @@
       "rolledUpToMonth": "It was rolled up into this month aggregation ({{start}}–{{end}}) covering its timestamp ({{ts}}).",
       "originalUid": "The original UID {{uid}} was deleted as part of automatic aggregation."
     },
-    "notFound": "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp."
+    "notFound": "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp.",
+    "evaluation": {
+      "badge": "Evaluation",
+      "title": "Scheduler evaluation",
+      "explainerHeartbeat": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
+      "explainerEmail": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
+      "explainerNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
+      "explainerEmailNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
+      "lastSignal": "Last signal",
+      "before": "{{duration}} before this evaluation",
+      "overdueBy": "Overdue by",
+      "runStarted": "Run started",
+      "noSignal": "No signal on record",
+      "openSignal": "Open the signal"
+    }
   },
   "detail": {
     "summary": {
@@ -514,7 +528,9 @@
           "week": "Last week",
           "month": "Last month"
         }
-      }
+      },
+      "evaluationBadge": "Evaluation",
+      "evaluationTooltip": "Written by the scheduler when it evaluated the check. Not a heartbeat."
     },
     "period": "Period",
     "lastChecked": "Last Checked",
