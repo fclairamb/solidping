@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.22.0](https://github.com/fclairamb/solidping/compare/v0.21.2...v0.22.0) (2026-09-02)
+
+
+### Features
+
+* **heartbeat:** add an embedded TCP/UDP push transport for constrained devices ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **heartbeat:** add an embedded TCP/UDP push transport so constrained ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 43234fa ([#300](https://github.com/fclairamb/solidping/issues/300)) ([9c9b3e2](https://github.com/fclairamb/solidping/commit/9c9b3e28124afcc3a0425dd596598015a5f8ba05))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.110.0 ([#298](https://github.com/fclairamb/solidping/issues/298)) ([2482111](https://github.com/fclairamb/solidping/commit/24821117589350c2ee3af7fe85709346775b76e0))
+
 ## [0.21.2](https://github.com/fclairamb/solidping/compare/v0.21.1...v0.21.2) (2026-09-01)
 
 
