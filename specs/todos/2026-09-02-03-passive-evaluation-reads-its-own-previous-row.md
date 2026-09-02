@@ -172,3 +172,92 @@ the docs paragraph of 2026-09-02-04 rather than here.
 - Distinguishing evaluation rows from beats in the API/dashboard — spec
   2026-09-02-04, which assumes this spec has landed so that "the signal this
   evaluation saw" is a real beat.
+
+## Implementation Plan
+
+### D1 — `LastResults` → `LastSignals` (checkworker backend)
+
+- `server/internal/checkworker/backend/backend.go`: rename the interface
+  method to `LastSignals(ctx, orgUID, checkUIDs)` and rewrite its doc to the
+  new contract — "the newest raw row per check that was written by an inbound
+  signal (heartbeat POST / inbound email), never a worker-written evaluation
+  row".
+- `backend/direct.go`: `DirectBackend.LastSignals` delegates to the new
+  `dbService.GetLastSignalForChecks`.
+- `backend/ws.go`: `WSBackend.LastSignals` keeps returning
+  `ErrPassiveUnsupported` (passive checks never dispatch to private-region
+  agents).
+- `checkworker/fetcher_fatal_test.go`: rename the `claimFailBackend` stub.
+- `checkworker/worker.go:1493`: call `r.backend.LastSignals(...)`, and rename
+  the local `lastResults`/`lastResult` to `lastSignals`/`lastSignal` so the
+  switch reads as "what the beat said", not "what we last wrote".
+
+### D2 — `GetLastSignalForChecks` (db.Service, PG + SQLite)
+
+- `server/internal/db/service.go`: add `GetLastSignalForChecks` next to
+  `GetLastResultForChecks`, documenting that the two differ only by the
+  `worker_uid IS NULL` predicate and why both must exist.
+- `db/postgres/postgres.go`: new method, same `unnest() CROSS JOIN LATERAL`
+  descent as `GetLastResultForChecks`, plus
+  `AND res.worker_uid IS NULL` and the existing `status != created` exclusion.
+  Query hoisted to a package constant (`lastSignalForChecksQuery`) so the
+  EXPLAIN test can plan exactly what production runs.
+- `db/sqlite/sqlite.go`: mirror with the correlated-scalar-subquery form
+  (`lastSignalForChecksQuery` constant), same two predicates.
+- `GetLastResultForChecks` is NOT touched in either dialect — the API's
+  `lastResult` still means "newest row of any origin".
+- `notifications/slack_test.go`'s `mockDBService` gains the new method so the
+  `db.Service` interface still compiles.
+
+### D3 — `results_raw_signal_idx` in migration 018
+
+Highest existing migration is `017_v0_21_0` (released as part of v0.21.x), so
+the next number is `018_v0_22_0` in **both** dialects, up and down:
+
+```sql
+create index if not exists results_raw_signal_idx
+  on results (organization_uid, check_uid, period_start desc)
+  where period_type = 'raw' and worker_uid is null;
+```
+
+SQLite supports partial indexes with this exact shape (`results_raw_idx`
+already uses one), so the two dialects are textually identical here. Down
+migrations drop the index.
+
+### D4 — `executePassiveJob` semantics
+
+Structure of the switch at `worker.go:1500-1538` is unchanged; only its input
+changes (guaranteed signal row). The default branch additionally carries
+`lastSignalAt` when a signal exists but matched no branch (a `down`/`error`
+beat) so the UI can say when the last signal landed. Message wording of that
+branch is untouched — owned by spec 2026-09-02-04.
+
+### Tests
+
+- `checkworker/worker_test.go`:
+  - `TestExecutePassiveJob_IgnoresItsOwnEvaluationRows` — beat (Up,
+    `WorkerUID: nil`) at `now − (P + 30s)`, evaluation row (Up,
+    `WorkerUID: &worker.UID`) at `now − 10s`; expect `Heartbeat overdue`,
+    `lastSignalAt` == the beat's `period_start`, `overdueBy ≈ 30s`. Must fail
+    on pre-fix code (which returns `Heartbeat received`).
+  - `TestExecutePassiveJob_StaleRunDetectedDespiteEvaluationRows` — Running
+    beat at `now − (2P + 30s)`, Running evaluation row at `now − P`; expect
+    `StatusTimeout` + `Run started but never completed`, `runStarted` == the
+    beat's timestamp. Must fail on pre-fix code (returns Running).
+  - `TestExecutePassiveJob_EmailIgnoresItsOwnEvaluationRows` — email variant
+    of the first (noun = "Email"), since `passiveSignalNoun` shares the path.
+- `db/sqlite/last_signal_test.go`: skips worker rows, skips `created`, absent
+  for a check with only evaluation rows, one entry per requested check, org
+  isolation, and an `EXPLAIN QUERY PLAN` assertion on
+  `results_raw_signal_idx`.
+- `db/postgres/last_signal_postgres_test.go`: the same row-level contract
+  plus an `EXPLAIN` assertion that the plan names `results_raw_signal_idx`.
+- `TestExecuteHeartbeatJob_RunningStatus` and the express-hint /
+  region-fallback tests keep passing unchanged (their seeded rows already have
+  `worker_uid = NULL`, i.e. they read as signals).
+
+### Verification of the negative
+
+Before the final gate, temporarily point `DirectBackend.LastSignals` back at
+`GetLastResultForChecks` and confirm the two new `worker_test.go` tests go
+red, then restore the fix and confirm green.
