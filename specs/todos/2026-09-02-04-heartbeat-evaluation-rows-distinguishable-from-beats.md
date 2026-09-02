@@ -241,3 +241,93 @@ batch gate.
 - Reusing `EvaluationCard` on the incident detail page for the opening
   result snapshot of a heartbeat incident.
 - Whether evaluation rows should count toward availability.
+
+## Implementation Plan
+
+### D1 — backend: evaluation output marks itself (`server/internal/checkworker/worker.go`)
+
+- Add output-key constants next to `outputKeyMessage` (~:78):
+  `outputKeyEvaluation = "evaluation"`, `outputKeyLastSignalAt = "lastSignalAt"`,
+  `outputKeyLastSignalResultUID = "lastSignalResultUid"`,
+  `outputKeyOverdueBy = "overdueBy"`, `outputKeyRunStarted = "runStarted"`.
+- In `executePassiveJob`, after the switch, unconditionally stamp
+  `evaluation: true`; whenever a signal row exists, stamp `lastSignalAt`
+  (RFC3339 of `lastSignal.PeriodStart`) and `lastSignalResultUid`
+  (`lastSignal.UID`) on **every** branch — the running/stale-run branches
+  included, which today carry only `runStarted`.
+- Message table, only the two collisions change:
+  - Up + on time: `Heartbeat received` → `Heartbeat on time` (`Email on time`).
+  - `default:` branch (newest signal is a deliberate `down`/`error` beat):
+    `No <noun> received` → `Last heartbeat reported failure` /
+    `Last heartbeat reported error` (`Last email …` for email checks), keyed off
+    the beat's own status.
+  - Overdue, no-signal-at-all, running and stale-run wording: unchanged.
+- `recordBeat`, `buildHeartbeatOutput`, `defaultOutputMessage` and the email
+  ingest are NOT touched.
+- `server/internal/app/openapi/openapi.yaml` (`output` description, ~:10499):
+  one sentence pointing at the D7 docs paragraph. No schema change.
+
+### D2 — result detail: `EvaluationCard`
+
+- New `web/dash0/src/components/checks/evaluation-card.tsx` exporting
+  `EvaluationCard` + `EVALUATION_OUTPUT_KEYS`, following the
+  DnsblCard / EmailDeliveryCard convention.
+- Rendered when `output.evaluation === true`, plus the legacy fallback
+  (`lastSignalAt` or `runStarted` present AND none of the caller keys).
+- Content: title "Scheduler evaluation", the row's `message`, the region-aware
+  explainer, Last signal / before-this-evaluation duration / Overdue by /
+  Run started / "No signal on record", and the two actions
+  ("Open the signal" → the beat with `search: { region: undefined }`,
+  "View all results for this check").
+- `checks.$checkUid.results.$resultUid.tsx`: mount the card, add the
+  `<Badge variant="secondary">Evaluation</Badge>` header badge, strip
+  `EVALUATION_OUTPUT_KEYS` + `message` from the raw Output dump for evaluation
+  rows only, and give the existing Caller card `data-testid="caller-card"`.
+
+### D3 — Recent Results table badge
+
+- `checks.$checkUid.index.tsx`: widen the 10-row Recent Results query's `with:`
+  to `durationMs,region,output` **only** when `check.type` is `heartbeat` or
+  `email`. The chart-window query is untouched.
+- Evaluation rows get an outline/muted "Evaluation" badge
+  (`data-testid="result-evaluation-badge-{uid}"`) after the `StatusBadge`,
+  wrapped in a Tooltip, and a muted Time cell. Wrapping layout, no fixed widths.
+
+### D4 — check header Output block
+
+- Filter `evaluation` and `lastSignalResultUid` out of the raw key/value dump
+  the same way `IP_VERSION_OUTPUT_KEY` already is.
+
+### D5 — design reference (mandatory)
+
+- `design-reference.tsx`: a **Row-kind badge** example in Buttons & badges
+  (outline + muted "Evaluation" next to a `StatusBadge`, with the "never uses a
+  status colour" note), and an **Evaluation card** example with its import line.
+
+### D6 — locales
+
+- `web/dash0/src/locales/{de,en,es,fr}/checks.json`: the
+  `resultDetail.evaluation.*` block and `detail.results.evaluationBadge` /
+  `evaluationTooltip` exactly as specified in English, translated for the other
+  three. `bun run test:unit` (locale parity) must stay green.
+
+### D7 — docs
+
+- `web/docs/docs/features/check-types.md`: a "Two kinds of result rows"
+  subsection in the Heartbeat section (beats vs scheduler evaluations, the key
+  list, the message table, and the raw-retention caveat), mirrored in the
+  Email Reception section.
+
+### Tests
+
+- `server/internal/checkworker/`: `TestExecutePassiveJob_MarksEvaluationRows`
+  (table over heartbeat/email) plus the overdue / no-signal / running /
+  stale-run / failed-beat branches, and the **positive control** that re-reads
+  the seeded beat row and deep-compares its `Output` to what was inserted.
+- `server/internal/handlers/heartbeat/service_test.go`: assert the ingest's
+  stored output carries no `evaluation` key.
+- Existing tests that pin the old wording (`passive_signal_test.go`,
+  `worker_test.go`) updated to the D1 table.
+- `web/dash0/e2e/check-heartbeat-evaluation-rows.spec.ts`: the spec's two
+  scenarios (real flow with a 1 h period; mocked detail rendering + "Open the
+  signal" dropping `?region=`).
