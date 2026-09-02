@@ -97,7 +97,7 @@ COPY web/docs/ ./
 RUN bun run build
 
 # Stage 2: Backend Build
-FROM golang:1.27.0-trixie AS backend-builder
+FROM golang:1.27.1-trixie AS backend-builder
 
 # Build arguments for version information
 ARG VERSION=dev
