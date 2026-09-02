@@ -283,10 +283,12 @@ func TestExecutePassiveJob_StaleRunDetectedDespiteEvaluationRows(t *testing.T) {
 
 // TestExecutePassiveJob_CarriesLastSignalAtOnANonUpBeat pins D4's one
 // behavioral addition: a beat that deliberately reports failure matches no
-// branch of the switch, so the message stays the generic "No heartbeat
-// received" (its wording is owned by spec 2026-09-02-04) — but the row now
-// carries lastSignalAt, so the UI can say when the last signal landed instead
-// of implying none was ever received.
+// branch of the switch, but the row still carries lastSignalAt, so the UI can
+// say when the last signal landed instead of implying none was ever received.
+//
+// The message itself is spec 2026-09-02-04's: "No heartbeat received" was a
+// false statement here (a heartbeat WAS received; it said the job failed), and
+// it is now "Last heartbeat reported failure".
 //
 //nolint:paralleltest // Test uses shared database state
 func TestExecutePassiveJob_CarriesLastSignalAtOnANonUpBeat(t *testing.T) {
@@ -302,8 +304,8 @@ func TestExecutePassiveJob_CarriesLastSignalAtOnANonUpBeat(t *testing.T) {
 
 	require.NotNil(t, written.Status)
 	assert.Equal(t, int(checkerdef.StatusDown), *written.Status)
-	assert.Equal(t, "No heartbeat received", written.Output["message"],
-		"the default branch's wording is owned by spec 2026-09-02-04 and must not drift here")
+	assert.Equal(t, "Last heartbeat reported failure", written.Output["message"],
+		"a beat that reported failure is not the same as no beat at all")
 	assertSignalAt(t, written.Output, "lastSignalAt", beat.PeriodStart)
 }
 
