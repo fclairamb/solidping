@@ -52,6 +52,7 @@ import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleCode } from "@/components/shared/copyable-code";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -456,80 +457,20 @@ function HeartbeatEndpoint({
 }
 
 /**
- * A copy-pasteable SP2 (HMAC-signed) sender for an ESP32-class device, filled
- * in with this check's own target, token and endpoint.
- *
- * SP2 rather than SP1 on purpose: the one-liners above are for getting
- * started, but a device that lives on a network for years should not keep
- * putting its token on the wire, and the signed form is what `require_hmac`
- * below then lets you enforce. The full walkthrough (counter recipe,
- * annotations, security trade-offs) is on the Embedded devices docs page.
- */
-function arduinoSketch({
-  org,
-  identifier,
-  token,
-  host,
-  port,
-}: {
-  org: string;
-  identifier: string;
-  token: string;
-  host: string;
-  port: number;
-}): string {
-  return `// SolidPing SP2 heartbeat — HMAC-signed, no secret on the wire.
-// mbedTLS ships with the ESP32 core; any HMAC-SHA256 will do.
-#include <WiFiUdp.h>
-#include <mbedtls/md.h>
-
-const char *ORG   = "${org}";
-const char *CHECK = "${identifier}";
-const char *TOKEN = "${token}";
-const char *HOST  = "${host}";
-const uint16_t PORT = ${port};
-
-// Persist this in flash and bump it once per boot: with the counter below it
-// is monotonic across reboots and costs zero flash writes while running.
-uint64_t bootCount;
-
-void sendBeat(float volts) {
-  char line[192];
-  uint64_t ctr = (bootCount << 32) | (millis() / 1000);
-
-  // ts = 0 means "this device has no clock" — fine, the counter is what stops
-  // replays. Everything before the MAC is signed, annotation included.
-  int n = snprintf(line, sizeof(line), "SP2 %s/%s 0 %llu volts=%.2f",
-                   ORG, CHECK, (unsigned long long)ctr, volts);
-
-  uint8_t mac[32];
-  mbedtls_md_context_t ctx;
-  mbedtls_md_init(&ctx);
-  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
-  mbedtls_md_hmac_starts(&ctx, (const uint8_t *)TOKEN, strlen(TOKEN));
-  mbedtls_md_hmac_update(&ctx, (const uint8_t *)line, n);
-  mbedtls_md_hmac_finish(&ctx, mac);
-  mbedtls_md_free(&ctx);
-
-  n += snprintf(line + n, sizeof(line) - n, " ");
-  for (int i = 0; i < 16; i++) {  // truncate to 16 bytes, hex-encode
-    n += snprintf(line + n, sizeof(line) - n, "%02x", mac[i]);
-  }
-
-  WiFiUDP udp;
-  udp.beginPacket(HOST, PORT);
-  udp.write((const uint8_t *)line, n);
-  udp.endPacket();
-}`;
-}
-
-/**
  * Embedded push transports for a heartbeat check (spec 2026-09-01-06).
  *
  * Rendered only when the server reports a listener enabled: the TCP/UDP
  * listeners are off by default and exposing their ports is a deployment
  * decision, so advertising a `nc` one-liner nobody can reach would be worse
  * than showing nothing.
+ *
+ * Collapsed by default (spec 2026-09-02-01): this is an opt-in,
+ * deployment-level feature that most heartbeat checks never touch, so it
+ * should be discoverable rather than dominating the endpoint card. The
+ * `summary` line keeps the collapsed row honest about what is enabled. The
+ * rotate-token nudge is rendered *outside* the collapsible body — it is a
+ * security warning and must stay visible even while the section is
+ * collapsed.
  */
 function HeartbeatPushEndpoint({
   org,
@@ -557,13 +498,22 @@ function HeartbeatPushEndpoint({
   const tcpCommand = `printf 'SP1 ${target} ${token}\\n' | nc ${host} ${push.tcpPort}`;
   // UDP needs no terminator: the datagram boundary is the frame.
   const udpCommand = `printf 'SP1 ${target} ${token}' | nc -u -w1 ${host} ${push.udpPort}`;
-  const port = push.udpEnabled ? push.udpPort : push.tcpPort;
-  const sketch = arduinoSketch({ org, identifier, token, host, port });
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(t("detail.toast.copied"));
-  };
+  const summaryParts: string[] = [];
+  if (push.tcpEnabled) {
+    summaryParts.push(
+      t("endpoints.heartbeat.push.summaryTcp", { port: push.tcpPort }),
+    );
+  }
+  if (push.udpEnabled) {
+    summaryParts.push(
+      t("endpoints.heartbeat.push.summaryUdp", { port: push.udpPort }),
+    );
+  }
+  if (requireHmac) {
+    summaryParts.push(t("endpoints.heartbeat.push.summarySignedOnly"));
+  }
+  const summary = summaryParts.join(" · ");
 
   const handleToggle = async (next: boolean) => {
     try {
@@ -585,84 +535,65 @@ function HeartbeatPushEndpoint({
 
   return (
     <div className="space-y-3 border-t pt-3" data-testid="heartbeat-push">
-      <div className="text-sm font-medium text-muted-foreground">
-        {t("endpoints.heartbeat.push.title")}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {t("endpoints.heartbeat.push.description")}
-      </p>
-
-      {push.tcpEnabled && (
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">
-            {t("endpoints.heartbeat.push.tcpLabel", { port: push.tcpPort })}
-          </div>
-          <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
-            <span className="flex-1" data-testid="heartbeat-push-tcp">
-              {tcpCommand}
-            </span>
-            <button
-              type="button"
-              onClick={() => copyToClipboard(tcpCommand)}
-              className="text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
-            >
-              <Copy className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {push.udpEnabled && (
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">
-            {t("endpoints.heartbeat.push.udpLabel", { port: push.udpPort })}
-          </div>
-          <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
-            <span className="flex-1" data-testid="heartbeat-push-udp">
-              {udpCommand}
-            </span>
-            <button
-              type="button"
-              onClick={() => copyToClipboard(udpCommand)}
-              className="text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
-            >
-              <Copy className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <p className="text-xs text-muted-foreground">
-        {t("endpoints.heartbeat.push.annotationHint")}
-      </p>
-
-      <div data-testid="heartbeat-push-sketch">
-        <CollapsibleCode
-          label={t("endpoints.heartbeat.push.sketchLabel")}
-          value={sketch}
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("endpoints.heartbeat.push.sketchHint")}
+      <CollapsibleSection
+        title={t("endpoints.heartbeat.push.title")}
+        summary={summary}
+        defaultOpen={false}
+        data-testid="heartbeat-push-toggle"
+      >
+        <p className="text-xs text-muted-foreground">
+          {t("endpoints.heartbeat.push.description")}
         </p>
-      </div>
 
-      <div className="flex items-start gap-2">
-        <Switch
-          id="heartbeat-require-hmac"
-          checked={requireHmac}
-          disabled={updateCheck.isPending}
-          onCheckedChange={handleToggle}
-          data-testid="heartbeat-require-hmac"
-        />
-        <div className="space-y-1">
-          <Label htmlFor="heartbeat-require-hmac">
-            {t("endpoints.heartbeat.push.requireHmac")}
-          </Label>
-          <p className="text-xs text-muted-foreground">
-            {t("endpoints.heartbeat.push.requireHmacHint")}
+        {push.tcpEnabled && (
+          <CollapsibleCode
+            label={t("endpoints.heartbeat.push.tcpLabel", {
+              port: push.tcpPort,
+            })}
+            value={tcpCommand}
+            data-testid="heartbeat-push-tcp"
+          />
+        )}
+
+        {push.udpEnabled && (
+          <CollapsibleCode
+            label={t("endpoints.heartbeat.push.udpLabel", {
+              port: push.udpPort,
+            })}
+            value={udpCommand}
+            data-testid="heartbeat-push-udp"
+          />
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          {t("endpoints.heartbeat.push.annotationHint")}
+        </p>
+
+        <div className="flex items-start gap-2">
+          <p className="flex-1 text-xs text-muted-foreground">
+            {t("endpoints.heartbeat.push.sketchDocsHint")}
           </p>
+          <DocsLink href="/docs/features/embedded-push#a-minimal-arduino--esp-sketch" />
         </div>
-      </div>
+
+        <div className="flex items-start gap-2">
+          <Switch
+            id="heartbeat-require-hmac"
+            checked={requireHmac}
+            disabled={updateCheck.isPending}
+            onCheckedChange={handleToggle}
+            data-testid="heartbeat-require-hmac"
+          />
+          <div className="space-y-1">
+            <Label htmlFor="heartbeat-require-hmac">
+              {t("endpoints.heartbeat.push.requireHmac")}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {t("endpoints.heartbeat.push.requireHmacHint")}
+            </p>
+          </div>
+        </div>
+      </CollapsibleSection>
 
       {requireHmac && (
         <Alert data-testid="heartbeat-rotate-nudge">
