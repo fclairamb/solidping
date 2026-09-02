@@ -75,7 +75,7 @@ func (b *claimFailBackend) DeferRateLimited(context.Context, *models.CheckJob, s
 	return nil
 }
 
-func (b *claimFailBackend) LastResults(
+func (b *claimFailBackend) LastSignals(
 	context.Context, string, []string,
 ) (map[string]*models.Result, error) {
 	return map[string]*models.Result{}, nil

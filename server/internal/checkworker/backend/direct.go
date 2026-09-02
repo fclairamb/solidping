@@ -309,11 +309,15 @@ func (b *DirectBackend) DeferRateLimited(
 	return b.checkJobSvc.DeferLeaseRateLimited(ctx, job.UID, workerUID, nextScheduledAt)
 }
 
-// LastResults returns the latest result per check (passive checks).
-func (b *DirectBackend) LastResults(
+// LastSignals returns the newest INBOUND SIGNAL row per check (passive
+// checks). Deliberately GetLastSignalForChecks and not
+// GetLastResultForChecks: SubmitResult above stamps worker_uid on every row
+// this worker writes, so "the newest raw row" would be the evaluator reading
+// its own previous output (spec 2026-09-02-03).
+func (b *DirectBackend) LastSignals(
 	ctx context.Context, orgUID string, checkUIDs []string,
 ) (map[string]*models.Result, error) {
-	return b.dbService.GetLastResultForChecks(ctx, orgUID, checkUIDs)
+	return b.dbService.GetLastSignalForChecks(ctx, orgUID, checkUIDs)
 }
 
 // Hints subscribes to check.created events (the in-process express hint).

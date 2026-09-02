@@ -386,9 +386,9 @@ func (b *WSBackend) DeferRateLimited(_ context.Context, _ *models.CheckJob, _ st
 	return nil
 }
 
-// LastResults is unsupported: passive checks (heartbeat/email) are driven by
+// LastSignals is unsupported: passive checks (heartbeat/email) are driven by
 // inbound signals to the server and never dispatch to private regions' agents.
-func (b *WSBackend) LastResults(_ context.Context, _ string, _ []string) (map[string]*models.Result, error) {
+func (b *WSBackend) LastSignals(_ context.Context, _ string, _ []string) (map[string]*models.Result, error) {
 	return nil, ErrPassiveUnsupported
 }
 

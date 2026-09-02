@@ -1489,52 +1489,71 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	period := time.Duration(checkJob.Period)
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
-	// Get the latest result for this check
-	lastResults, err := r.backend.LastResults(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
+	// Get the latest INBOUND SIGNAL for this check — the last heartbeat POST
+	// or incoming email, never one of this evaluation's own previous rows.
+	//
+	// Reading "the newest raw row" here (the pre-2026-09-02-03 behaviour) was
+	// self-referential: every evaluation writes a raw row of its own through
+	// SubmitResult, so from the second tick after a beat onwards the evaluator
+	// read its own predecessor. `elapsed` then measured the gap between two
+	// consecutive evaluations (≈ period ± claim jitter) rather than the gap
+	// since the beat, which made the overdue branch below a per-tick coin
+	// flip, reported the previous evaluation's timestamp as lastSignalAt, and
+	// made the stale-run branch unreachable — each Running evaluation
+	// re-anchored runStarted on itself.
+	lastSignals, err := r.backend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
-		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last result: %w", err))
+		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last signal: %w", err))
 	}
 
 	// Determine status based on recency of last passive signal
 	status := checkerdef.StatusDown
 	output := map[string]any{outputKeyMessage: "No " + strings.ToLower(noun) + " received"}
 
-	if lastResult, ok := lastResults[checkJob.CheckUID]; ok && lastResult.Status != nil {
-		elapsed := time.Since(lastResult.PeriodStart)
+	if lastSignal, ok := lastSignals[checkJob.CheckUID]; ok && lastSignal.Status != nil {
+		elapsed := time.Since(lastSignal.PeriodStart)
 
 		switch {
-		// Last result was UP and recent enough
-		case *lastResult.Status == int(checkerdef.StatusUp) && elapsed <= period:
+		// Last signal was UP and recent enough
+		case *lastSignal.Status == int(checkerdef.StatusUp) && elapsed <= period:
 			status = checkerdef.StatusUp
 			output = map[string]any{
 				outputKeyMessage: noun + " received",
-				"lastSignalAt":   lastResult.PeriodStart.Format(time.RFC3339),
+				"lastSignalAt":   lastSignal.PeriodStart.Format(time.RFC3339),
 			}
 
-		// Last result was UP but overdue
-		case *lastResult.Status == int(checkerdef.StatusUp):
+		// Last signal was UP but overdue
+		case *lastSignal.Status == int(checkerdef.StatusUp):
 			output = map[string]any{
 				outputKeyMessage: noun + " overdue",
-				"lastSignalAt":   lastResult.PeriodStart.Format(time.RFC3339),
+				"lastSignalAt":   lastSignal.PeriodStart.Format(time.RFC3339),
 				"overdueBy":      (elapsed - period).String(),
 			}
 
-		// Last result was RUNNING and still within grace period (2x period)
-		case *lastResult.Status == int(checkerdef.StatusRunning) && elapsed <= period*2:
+		// Last signal was RUNNING and still within grace period (2x period)
+		case *lastSignal.Status == int(checkerdef.StatusRunning) && elapsed <= period*2:
 			status = checkerdef.StatusRunning
 			output = map[string]any{
 				outputKeyMessage: "Run in progress",
-				"runStarted":     lastResult.PeriodStart.Format(time.RFC3339),
+				"runStarted":     lastSignal.PeriodStart.Format(time.RFC3339),
 			}
 
-		// Last result was RUNNING but exceeded grace period — stale run
-		case *lastResult.Status == int(checkerdef.StatusRunning):
+		// Last signal was RUNNING but exceeded grace period — stale run
+		case *lastSignal.Status == int(checkerdef.StatusRunning):
 			status = checkerdef.StatusTimeout
 			output = map[string]any{
 				outputKeyMessage: "Run started but never completed",
-				"runStarted":     lastResult.PeriodStart.Format(time.RFC3339),
+				"runStarted":     lastSignal.PeriodStart.Format(time.RFC3339),
 				"overdueBy":      (elapsed - period*2).String(),
 			}
+
+		// A signal exists but reports a non-Up, non-Running status (a `down`
+		// or `error` beat the caller sent deliberately). The message stays as
+		// it is — its wording is owned by spec 2026-09-02-04 — but the
+		// timestamp is carried through so the UI can still say when the last
+		// signal landed instead of pretending none was ever received.
+		default:
+			output["lastSignalAt"] = lastSignal.PeriodStart.Format(time.RFC3339)
 		}
 	}
 
