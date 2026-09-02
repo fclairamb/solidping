@@ -21,7 +21,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.8.1
 	github.com/docker/go-units v0.5.0
-	github.com/dop251/goja v0.0.0-20260826204918-8f1c0696a37b
+	github.com/dop251/goja v0.0.0-20260901132549-43234fa61381
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fergusstrange/embedded-postgres v1.34.0
