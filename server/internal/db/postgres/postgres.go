@@ -2761,6 +2761,84 @@ func (s *Service) GetLastResultForChecks(
 	return resultMap, nil
 }
 
+// lastSignalForChecksQuery is the SQL behind GetLastSignalForChecks, kept as a
+// package constant so the EXPLAIN test plans exactly what production runs.
+//
+// It is GetLastResultForChecks's query plus one predicate,
+// `res.worker_uid IS NULL`, and that single predicate is the whole point
+// (spec 2026-09-02-03). A passive check's raw history interleaves two kinds
+// of row:
+//
+//   - SIGNAL rows, written at ingest by handlers/heartbeat's recordBeat and
+//     handlers/emailcheck — neither constructor sets worker_uid or region;
+//   - EVALUATION rows, written every period by
+//     checkworker.executePassiveJob through DirectBackend.SubmitResult, which
+//     always stamps worker_uid.
+//
+// The evaluator asks "when did the last beat land?". Answering it with the
+// newest row of ANY origin makes the evaluator read its own previous output
+// from the second tick after a beat onwards: `elapsed` then measures the gap
+// between two consecutive evaluations (≈ period ± claim jitter) instead of
+// the gap since the beat, so overdue detection is a coin flip, lastSignalAt
+// reports the previous evaluation's timestamp, and the stale-run branch
+// (elapsed > 2×period on a Running row) can never be reached because each
+// evaluation re-anchors the Running timestamp on itself.
+//
+// `created` is excluded for the same reason as in lastResult: CreateCheck's
+// one-time "Check created" marker has no worker_uid either, and "the check
+// was created" is not a signal. Reaper rows (ResultStatusAbandoned) are
+// worker-written and drop out via the worker_uid predicate on their own.
+//
+// The descent rides results_raw_signal_idx (organization_uid, check_uid,
+// period_start desc) WHERE period_type = 'raw' AND worker_uid IS NULL —
+// migration 018. results_raw_idx does NOT carry worker_uid, so without the
+// dedicated partial index a silent heartbeat's descent would walk every
+// evaluation row inside raw retention (1440 of them at a 1-minute period and
+// the 24 h default) on every single tick, for every dead check.
+const lastSignalForChecksQuery = `
+	SELECT r.*
+	FROM unnest(?::uuid[]) AS cu(uid)
+	CROSS JOIN LATERAL (
+		SELECT res.*
+		FROM results AS res
+		WHERE res.organization_uid = ?
+			AND res.check_uid = cu.uid
+			AND res.period_type = 'raw'
+			AND res.worker_uid IS NULL
+			AND (res.status IS NULL OR res.status != ?)
+		ORDER BY res.period_start DESC
+		LIMIT 1
+	) AS r
+`
+
+// GetLastSignalForChecks returns the newest inbound-signal raw row per
+// requested check. See the db.Service interface doc and
+// lastSignalForChecksQuery for why this is deliberately not the same thing as
+// GetLastResultForChecks.
+func (s *Service) GetLastSignalForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Result, error) {
+	if len(checkUIDs) == 0 {
+		return make(map[string]*models.Result), nil
+	}
+
+	var results []*models.Result
+
+	err := s.db.NewRaw(lastSignalForChecksQuery, pgdialect.Array(checkUIDs), orgUID,
+		int(models.ResultStatusCreated)).Scan(ctx, &results)
+	if err != nil {
+		return nil, err
+	}
+
+	// The LATERAL LIMIT 1 already guarantees at most one row per check_uid.
+	resultMap := make(map[string]*models.Result)
+	for _, result := range results {
+		resultMap[result.CheckUID] = result
+	}
+
+	return resultMap, nil
+}
+
 // abandonedResultLifecycleStatuses is the raw statuses ReapAbandonedResults
 // scans for: ResultStatusCreated only — the sole status any code path writes
 // and then may leave open (CreateCheck's one-time "Check created" marker).

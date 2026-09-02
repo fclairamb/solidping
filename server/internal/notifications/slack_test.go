@@ -1031,6 +1031,12 @@ func (m *mockDBService) GetLastResultForChecks(
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetLastSignalForChecks(
+	_ context.Context, _ string, _ []string,
+) (map[string]*models.Result, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) ReapAbandonedResults(_ context.Context) (models.ReapAbandonedResultsOutcome, error) {
 	return models.ReapAbandonedResultsOutcome{}, errMockNotImplemented
 }

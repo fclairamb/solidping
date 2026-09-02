@@ -447,6 +447,29 @@ type Service interface {
 	GetLastResultForChecks(
 		ctx context.Context, orgUID string, checkUIDs []string,
 	) (map[string]*models.Result, error)
+	// GetLastSignalForChecks returns the newest raw result per requested
+	// check that was written by an INBOUND SIGNAL — a heartbeat POST or an
+	// incoming email — rather than by a worker (absent from the map when the
+	// check has no such row). Same per-check index descent as
+	// GetLastResultForChecks, narrowed by `worker_uid IS NULL`.
+	//
+	// The two must both exist and must not be collapsed (spec 2026-09-02-03).
+	// `lastResult` in the API means "the newest row of any origin", which is
+	// right for "when was this check last evaluated". The passive evaluator
+	// (checkworker.executePassiveJob) needs the opposite: it writes a raw row
+	// of its own every period, so reading the newest row of any origin makes
+	// it re-anchor on its own predecessor — overdue detection then becomes a
+	// per-tick coin flip on scheduling jitter, `lastSignalAt` drifts onto the
+	// previous evaluation's timestamp, and the stale-run (2×period) branch
+	// becomes unreachable because every evaluation refreshes the anchor.
+	//
+	// `created` stays excluded exactly as in GetLastResultForChecks:
+	// CreateCheck's one-time "Check created" marker also has no worker_uid
+	// and must never read as a signal. Reaper rows (`abandoned`) are
+	// worker-written and drop out via the worker_uid predicate.
+	GetLastSignalForChecks(
+		ctx context.Context, orgUID string, checkUIDs []string,
+	) (map[string]*models.Result, error)
 	// ReapAbandonedResults finalizes raw results still sitting in
 	// ResultStatusCreated well past any plausible execution window for their
 	// check — models.AbandonedResultThreshold, "the check's period plus the

@@ -2706,6 +2706,84 @@ func (s *Service) GetLastResultForChecks(
 	return resultMap, nil
 }
 
+// lastSignalForChecksQuery is the SQL behind GetLastSignalForChecks, kept as a
+// package constant so the EXPLAIN QUERY PLAN test can plan exactly what
+// production runs. Mirrors postgres.lastSignalForChecksQuery one-for-one
+// (sync-pg-to-sqlite convention), in the same correlated-scalar-subquery form
+// lastResultForChecksQuery uses because SQLite has neither DISTINCT ON nor
+// LATERAL.
+//
+// It is lastResultForChecksQuery plus one predicate, `r2.worker_uid IS NULL`,
+// and that predicate is the whole point (spec 2026-09-02-03): signal rows
+// (handlers/heartbeat recordBeat, handlers/emailcheck) never set worker_uid,
+// while the passive evaluator's own rows always do via
+// DirectBackend.SubmitResult. Reading "the newest raw row of any origin" made
+// checkworker.executePassiveJob re-anchor on its own previous output, turning
+// overdue detection into a per-tick coin flip on claim jitter, reporting the
+// previous evaluation's timestamp as lastSignalAt, and making the stale-run
+// (2×period) branch unreachable.
+//
+// `created` stays excluded for the same reason as in lastResultForChecksQuery:
+// CreateCheck's one-time "Check created" marker also has no worker_uid, and
+// "created" is not a signal.
+//
+// The correlated subquery's (organization_uid, check_uid) equality +
+// worker_uid IS NULL + ORDER BY period_start DESC LIMIT 1 matches
+// results_raw_signal_idx (organization_uid, check_uid, period_start desc)
+// WHERE period_type = 'raw' AND worker_uid IS NULL (migration 018), so the
+// lookup stays a single index descent no matter how long the check has been
+// silent. results_raw_idx alone would not do: it does not carry worker_uid,
+// so a dead heartbeat would walk every evaluation row inside raw retention.
+const lastSignalForChecksQuery = `
+	WITH winners AS (
+		SELECT (
+			SELECT r2.uid
+			FROM results r2
+			WHERE r2.organization_uid = ?
+				AND r2.check_uid = c.uid
+				AND r2.period_type = 'raw'
+				AND r2.worker_uid IS NULL
+				AND (r2.status IS NULL OR r2.status != ?)
+			ORDER BY r2.period_start DESC
+			LIMIT 1
+		) AS uid
+		FROM checks c
+		WHERE c.uid IN (?)
+	)
+	SELECT r.*
+	FROM results r
+	JOIN winners w ON w.uid = r.uid
+`
+
+// GetLastSignalForChecks returns the newest inbound-signal raw row per
+// requested check. See the db.Service interface doc and
+// lastSignalForChecksQuery for why this is deliberately not the same thing as
+// GetLastResultForChecks.
+func (s *Service) GetLastSignalForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Result, error) {
+	if len(checkUIDs) == 0 {
+		return make(map[string]*models.Result), nil
+	}
+
+	var results []*models.Result
+
+	err := s.db.NewRaw(lastSignalForChecksQuery, orgUID,
+		int(models.ResultStatusCreated), bun.List(checkUIDs)).Scan(ctx, &results)
+	if err != nil {
+		return nil, err
+	}
+
+	// One winning uid per check already guarantees at most one row per
+	// check_uid.
+	resultMap := make(map[string]*models.Result)
+	for _, result := range results {
+		resultMap[result.CheckUID] = result
+	}
+
+	return resultMap, nil
+}
+
 // abandonedResultLifecycleStatuses is the raw statuses ReapAbandonedResults
 // scans for: ResultStatusCreated only — the sole status any code path writes
 // and then may leave open (CreateCheck's one-time "Check created" marker).
