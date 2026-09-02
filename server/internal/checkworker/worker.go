@@ -77,6 +77,29 @@ const (
 
 	outputKeyMessage = "message"
 
+	// Output keys the passive evaluator stamps on the rows IT writes (spec
+	// 2026-09-02-04). A passive check's raw history interleaves two kinds of
+	// row that used to be indistinguishable to a reader: SIGNAL rows (beats,
+	// written by handlers/heartbeat's recordBeat and handlers/emailcheck,
+	// carrying caller metadata and no worker/region) and EVALUATION rows,
+	// written once per period by executePassiveJob. Both said "Heartbeat
+	// received", so opening the evaluation row that landed seconds after a
+	// ping showed status Up with no Caller card and read as "my ping was not
+	// recorded".
+	//
+	// outputKeyEvaluation is the declaration dash0, the API and MCP consumers
+	// key off; it is written on evaluation rows ONLY. recordBeat and the email
+	// ingest are deliberately untouched, so the absence of this key is a
+	// reliable "this row is a real signal".
+	outputKeyEvaluation = "evaluation"
+	// outputKeyLastSignalAt / outputKeyLastSignalResultUID point at the beat
+	// the evaluation was computed from, so the UI can say when the last signal
+	// landed and link straight to it.
+	outputKeyLastSignalAt        = "lastSignalAt"
+	outputKeyLastSignalResultUID = "lastSignalResultUid"
+	outputKeyOverdueBy           = "overdueBy"
+	outputKeyRunStarted          = "runStarted"
+
 	// abandonGrace is how much extra time a checker gets past its
 	// execTimeout before the watchdog abandons it (spec 2026-07-05-05 D1).
 	// This gives well-behaved checkers room to observe ctx.Done() and
@@ -1482,6 +1505,26 @@ func passiveSignalNoun(t checkerdef.CheckType) string {
 	return "Heartbeat"
 }
 
+// passiveFailedSignalMessage words the evaluation of a passive check whose
+// newest signal reports a deliberate failure — a cron job that pinged with
+// `?status=down`, or an `error` beat (spec 2026-09-02-04).
+//
+// This branch used to reuse the no-signal-at-all message, "No heartbeat
+// received", which is a false statement: the beat was received, and it said
+// the job failed. The two situations page for different reasons — one means
+// the scheduler never fired, the other means the work ran and failed — so
+// they must not read identically.
+//
+// noun is passiveSignalNoun's capitalized form; it is lowercased here because
+// it lands mid-sentence.
+func passiveFailedSignalMessage(noun string, signalStatus int) string {
+	if signalStatus == int(checkerdef.StatusError) {
+		return "Last " + strings.ToLower(noun) + " reported error"
+	}
+
+	return "Last " + strings.ToLower(noun) + " reported failure"
+}
+
 // executePassiveJob handles passive check jobs (heartbeat, email).
 // Instead of making a network request, it inspects whether a recent inbound
 // signal landed within the check's period.
@@ -1514,48 +1557,72 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 		elapsed := time.Since(lastSignal.PeriodStart)
 
 		switch {
-		// Last signal was UP and recent enough
+		// Last signal was UP and recent enough.
+		//
+		// "on time", NOT "received" (spec 2026-09-02-04): the ingest's own
+		// wording for a beat is "Heartbeat received", and this row is not a
+		// beat — it is the scheduler saying the beat arrived inside the
+		// period. Two rows seconds apart both reading "Heartbeat received",
+		// only one of them carrying caller metadata, is exactly what made
+		// users conclude their ping had not been recorded.
 		case *lastSignal.Status == int(checkerdef.StatusUp) && elapsed <= period:
 			status = checkerdef.StatusUp
 			output = map[string]any{
-				outputKeyMessage: noun + " received",
-				"lastSignalAt":   lastSignal.PeriodStart.Format(time.RFC3339),
+				outputKeyMessage: noun + " on time",
 			}
 
 		// Last signal was UP but overdue
 		case *lastSignal.Status == int(checkerdef.StatusUp):
 			output = map[string]any{
-				outputKeyMessage: noun + " overdue",
-				"lastSignalAt":   lastSignal.PeriodStart.Format(time.RFC3339),
-				"overdueBy":      (elapsed - period).String(),
+				outputKeyMessage:   noun + " overdue",
+				outputKeyOverdueBy: (elapsed - period).String(),
 			}
 
 		// Last signal was RUNNING and still within grace period (2x period)
 		case *lastSignal.Status == int(checkerdef.StatusRunning) && elapsed <= period*2:
 			status = checkerdef.StatusRunning
 			output = map[string]any{
-				outputKeyMessage: "Run in progress",
-				"runStarted":     lastSignal.PeriodStart.Format(time.RFC3339),
+				outputKeyMessage:    "Run in progress",
+				outputKeyRunStarted: lastSignal.PeriodStart.Format(time.RFC3339),
 			}
 
 		// Last signal was RUNNING but exceeded grace period — stale run
 		case *lastSignal.Status == int(checkerdef.StatusRunning):
 			status = checkerdef.StatusTimeout
 			output = map[string]any{
-				outputKeyMessage: "Run started but never completed",
-				"runStarted":     lastSignal.PeriodStart.Format(time.RFC3339),
-				"overdueBy":      (elapsed - period*2).String(),
+				outputKeyMessage:    "Run started but never completed",
+				outputKeyRunStarted: lastSignal.PeriodStart.Format(time.RFC3339),
+				outputKeyOverdueBy:  (elapsed - period*2).String(),
 			}
 
 		// A signal exists but reports a non-Up, non-Running status (a `down`
-		// or `error` beat the caller sent deliberately). The message stays as
-		// it is — its wording is owned by spec 2026-09-02-04 — but the
-		// timestamp is carried through so the UI can still say when the last
-		// signal landed instead of pretending none was ever received.
+		// or `error` beat the caller sent deliberately). "No heartbeat
+		// received" was simply false here — a heartbeat WAS received, and it
+		// said the job failed. Saying so is the difference between "your cron
+		// never ran" and "your cron ran and blew up", which are different
+		// incidents with different fixes.
 		default:
-			output["lastSignalAt"] = lastSignal.PeriodStart.Format(time.RFC3339)
+			output = map[string]any{
+				outputKeyMessage: passiveFailedSignalMessage(noun, *lastSignal.Status),
+			}
 		}
+
+		// Every branch above reached its verdict by looking at this one beat,
+		// so every branch points back at it — including the running/stale-run
+		// ones, whose runStarted happens to be the same instant but is a
+		// different statement ("when the run began" vs "the row I read").
+		// lastSignalResultUid is what lets the UI offer "open the signal"
+		// instead of leaving the reader to hunt for it by timestamp.
+		output[outputKeyLastSignalAt] = lastSignal.PeriodStart.Format(time.RFC3339)
+		output[outputKeyLastSignalResultUID] = lastSignal.UID
 	}
+
+	// The row's self-declaration (spec 2026-09-02-04). Unconditional, and
+	// written here — after the switch — so no future branch can forget it.
+	// Nothing on the ingest side ever sets this key, which is what makes its
+	// absence a reliable "this row is a real signal" for dash0, the REST API
+	// and MCP consumers alike.
+	output[outputKeyEvaluation] = true
 
 	result := checkerdef.Result{
 		Status:   status,

@@ -10498,7 +10498,14 @@ components:
           description: Performance metrics (with=metrics)
         output:
           type: object
-          description: Diagnostic output (with=output)
+          description: >
+            Diagnostic output (with=output). Free-form and check-type
+            specific. For passive checks (heartbeat, email), rows written by
+            the scheduler rather than by an inbound signal carry
+            `evaluation: true` plus `lastSignalAt` /
+            `lastSignalResultUid`; see the "Two kinds of result rows"
+            section of the Heartbeat documentation
+            (/docs/features/check-types#heartbeat).
         availabilityPct:
           type: number
           description: >
