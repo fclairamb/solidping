@@ -38,7 +38,8 @@ func seedSignalRow(
 // newSignalWorker inserts a real worker row: results.worker_uid is a foreign
 // key, so an evaluation row cannot be seeded with an invented uid.
 func newSignalWorker(
-	t *testing.T, s *Service, ctx context.Context, identifier string, //nolint:revive // ctx after t matches this package's helpers
+	//nolint:revive // ctx after t matches this package's helpers
+	t *testing.T, s *Service, ctx context.Context, identifier string,
 ) string {
 	t.Helper()
 

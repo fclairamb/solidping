@@ -89,7 +89,7 @@ func newPassiveEvaluationFixture(
 	check := models.NewCheck(org.UID, "passive-"+uuid.New().String()[:8], string(checkType))
 	check.Config = models.JSONMap{"token": "passive-signal-token"}
 	require.NoError(t, dbSvc.CreateCheck(ctx, check))
-	require.EqualValues(t, time.Minute, time.Duration(check.Period),
+	require.Equal(t, time.Minute, time.Duration(check.Period),
 		"these tests are written against the default 1-minute period")
 
 	checkJob := new(models.CheckJob)
@@ -282,7 +282,7 @@ func TestExecutePassiveJob_StaleRunDetectedDespiteEvaluationRows(t *testing.T) {
 }
 
 // TestExecutePassiveJob_CarriesLastSignalAtOnANonUpBeat pins D4's one
-// behavioural addition: a beat that deliberately reports failure matches no
+// behavioral addition: a beat that deliberately reports failure matches no
 // branch of the switch, so the message stays the generic "No heartbeat
 // received" (its wording is owned by spec 2026-09-02-04) — but the row now
 // carries lastSignalAt, so the UI can say when the last signal landed instead

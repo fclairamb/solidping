@@ -1492,7 +1492,7 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	// Get the latest INBOUND SIGNAL for this check — the last heartbeat POST
 	// or incoming email, never one of this evaluation's own previous rows.
 	//
-	// Reading "the newest raw row" here (the pre-2026-09-02-03 behaviour) was
+	// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
 	// self-referential: every evaluation writes a raw row of its own through
 	// SubmitResult, so from the second tick after a beat onwards the evaluator
 	// read its own predecessor. `elapsed` then measured the gap between two
