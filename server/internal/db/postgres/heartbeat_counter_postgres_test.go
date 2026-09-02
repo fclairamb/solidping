@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -137,7 +138,11 @@ func TestHeartbeatCounterStateEntryContract_Postgres(t *testing.T) {
 	entry, err := svc.GetStateEntry(ctx, &org.UID, key)
 	r.NoError(err)
 	r.NotNil(entry, "the counter must be a plain state entry under the documented key")
-	r.Nil(entry.ExpiresAt, "a counter must never expire")
+	r.NotNil(entry.ExpiresAt, "a counter carries a TTL so dead checks get swept")
+	r.WithinDuration(
+		time.Now().Add(models.HeartbeatCounterTTL), *entry.ExpiresAt, time.Minute,
+		"the TTL must be the shared constant, not an ad-hoc interval",
+	)
 	r.NotNil(entry.Value)
 	r.EqualValues(42, (*entry.Value)["lastCounter"])
 
@@ -148,26 +153,60 @@ func TestHeartbeatCounterStateEntryContract_Postgres(t *testing.T) {
 
 	stored, ok, err := svc.GetHeartbeatCounter(ctx, org.UID, check.UID)
 	r.NoError(err)
-	r.True(ok, "the expiry sweep must not remove a counter")
+	r.True(ok, "the expiry sweep must not remove a live counter")
 	r.Equal(int64(42), stored)
 
+	// Once the window has genuinely lapsed the row IS swept — but the guard
+	// ignores deleted_at, so it must keep refusing replays. Otherwise letting
+	// counters expire would let an attacker rewind a check by waiting, which
+	// matters most for a clockless (ts=0) device where this counter is the
+	// only replay protection.
+	_, err = svc.DB().NewUpdate().
+		Model((*models.StateEntry)(nil)).
+		Set("expires_at = ?", time.Now().Add(-time.Hour)).
+		Where("key = ?", key).
+		Exec(ctx)
+	r.NoError(err)
+
+	swept, err := svc.DeleteExpiredStateEntries(ctx)
+	r.NoError(err)
+	r.Positive(swept, "the fixture must actually be swept, or this proves nothing")
+
+	gone, err := svc.GetStateEntry(ctx, &org.UID, key)
+	r.NoError(err)
+	r.Nil(gone, "a swept counter is soft-deleted for the generic reader")
+
+	replayed, err := svc.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, 42)
+	r.NoError(err)
+	r.False(replayed, "a swept counter must still refuse a replayed value")
+
+	// Positive control, so the assertion above is not just "everything fails".
+	advanced, err = svc.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, 43)
+	r.NoError(err)
+	r.True(advanced, "a real device must still be able to advance")
+
 	// Soft delete: the slot is still occupied, so the guard must still hold.
+	// The counter stands at 43 by now, so replay that rather than the
+	// original 42 — the point is that the LAST accepted value still gates.
 	deleted, err := svc.DeleteStateEntry(ctx, &org.UID, key)
 	r.NoError(err)
 	r.True(deleted)
 
-	advanced, err = svc.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, 42)
+	advanced, err = svc.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, 43)
 	r.NoError(err)
 	r.False(advanced, "a soft-deleted entry must still refuse a replayed counter")
 
 	// Positive control: a legitimate beat still advances, and un-deletes the
 	// row rather than leaving live state hidden behind deleted_at.
-	advanced, err = svc.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, 43)
+	advanced, err = svc.TryAdvanceHeartbeatCounter(ctx, org.UID, check.UID, 44)
 	r.NoError(err)
 	r.True(advanced)
 
 	entry, err = svc.GetStateEntry(ctx, &org.UID, key)
 	r.NoError(err)
 	r.NotNil(entry, "a winning advance restores the entry")
-	r.Nil(entry.ExpiresAt)
+	r.NotNil(entry.ExpiresAt, "a winning advance also refreshes the TTL")
+	r.WithinDuration(
+		time.Now().Add(models.HeartbeatCounterTTL), *entry.ExpiresAt, time.Minute,
+	)
 }

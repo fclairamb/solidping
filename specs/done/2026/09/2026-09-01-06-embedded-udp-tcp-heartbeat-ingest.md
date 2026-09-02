@@ -378,8 +378,21 @@ The first implementation added a dedicated `heartbeat_counters` table.
   replay race the counter exists to prevent — two concurrent beats both read
   the old value and both are accepted. A retried UDP datagram is the normal
   case here, not the exotic one.
-- **`expires_at` stays NULL.** Counters must never expire;
-  `DeleteExpiredStateEntries` only touches rows with a non-null `expires_at`.
+- **`expires_at` is a sliding 7-day window** (`models.HeartbeatCounterTTL`),
+  set on insert and pushed out again on every winning advance — amended
+  2026-09-02, superseding the original "stays NULL". A device that is actually
+  beating never expires its own counter; only a check that went quiet for a
+  week lets `DeleteExpiredStateEntries` sweep it, so the store does not
+  accumulate counters for checks nobody uses any more.
+
+  This is safe because that sweep is a **soft** delete and the advance ignores
+  `deleted_at`, so a swept counter keeps gating — pinned by a test in each
+  dialect. If a hard purge of soft-deleted state entries is ever added, the
+  cost to weigh is: a clockless device (`ts=0`, where this counter is the only
+  replay protection) silent for over a week could have an old beat replayed
+  against it. Acceptable — the check has been down and alerting for a week by
+  then — and it does not apply to devices sending a real `ts`, which the
+  timestamp window already protects.
 - **The unique constraint ignores `deleted_at`.** The read and advance paths
   must not resurrect or be confused by a soft-deleted row.
 

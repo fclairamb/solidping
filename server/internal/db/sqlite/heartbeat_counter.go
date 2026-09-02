@@ -3,8 +3,11 @@ package sqlite
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // HeartbeatCounterKey builds the state_entries key holding a check's last
@@ -29,11 +32,11 @@ func HeartbeatCounterKey(checkUID string) string {
 // Go.
 const advanceHeartbeatCounterQuery = `
 INSERT INTO state_entries
-  (uid, organization_uid, key, value, created_at, updated_at)
-VALUES (?, ?, ?, json_object('lastCounter', ?), current_timestamp, current_timestamp)
+  (uid, organization_uid, key, value, expires_at, created_at, updated_at)
+VALUES (?, ?, ?, json_object('lastCounter', ?), ?, current_timestamp, current_timestamp)
 ON CONFLICT (organization_uid, key)
 DO UPDATE SET value = excluded.value,
-              expires_at = NULL,
+              expires_at = excluded.expires_at,
               deleted_at = NULL,
               updated_at = current_timestamp
 WHERE COALESCE(CAST(json_extract(value, '$.lastCounter') AS INTEGER), -1)
@@ -48,9 +51,11 @@ WHERE COALESCE(CAST(json_extract(value, '$.lastCounter') AS INTEGER), -1)
 func (s *Service) TryAdvanceHeartbeatCounter(
 	ctx context.Context, orgUID, checkUID string, counter int64,
 ) (bool, error) {
+	expiresAt := time.Now().Add(models.HeartbeatCounterTTL)
+
 	res, err := s.db.NewRaw(
 		advanceHeartbeatCounterQuery,
-		uuid.New().String(), orgUID, HeartbeatCounterKey(checkUID), counter,
+		uuid.New().String(), orgUID, HeartbeatCounterKey(checkUID), counter, expiresAt,
 	).Exec(ctx)
 	if err != nil {
 		return false, fmt.Errorf("advance heartbeat counter: %w", err)

@@ -3,6 +3,9 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // HeartbeatCounterKey builds the state_entries key holding a check's last
@@ -25,30 +28,43 @@ func HeartbeatCounterKey(checkUID string) string {
 //
 // Details that are load-bearing rather than incidental:
 //
-//   - `expires_at` is left out of the INSERT (so NULL) and forced back to NULL
-//     on every update. DeleteExpiredStateEntries only sweeps rows with a
-//     non-null expires_at, so a counter can never be garbage-collected out
-//     from under a live device.
+//   - `expires_at` is a SLIDING models.HeartbeatCounterTTL window: set on
+//     insert and pushed out again on every winning advance. A device that is
+//     actually beating therefore never expires its own counter; only a check
+//     that went quiet for a week lets DeleteExpiredStateEntries sweep it, so
+//     the store does not accumulate counters for checks nobody uses any more.
+//
+//     Sweeping is safe today because that sweep is a SOFT delete and the
+//     comparison below ignores deleted_at, so a swept counter keeps gating.
+//     If a hard purge of soft-deleted state entries is ever added, note what
+//     it would cost: a clockless device (ts=0, where this counter is the only
+//     replay protection) that has been silent for over a week could have an
+//     old beat replayed against it. That is acceptable — the check has been
+//     down and alerting for a week by then — and it does not apply to devices
+//     that send a real ts, which the timestamp window already protects.
+//
 //   - `deleted_at` is cleared on a winning advance. The unique constraint
 //     carries no deleted_at predicate, so a soft-deleted row still owns the
 //     slot and still gates this comparison — which is the fail-safe direction
 //     (an old counter can never be replayed by deleting the entry first). A
 //     row that just accepted a beat is live state, so it is un-deleted rather
 //     than left in a state the read path would have to lie about.
+//
 //   - COALESCE(..., -1) keeps a row whose value lost its lastCounter from
 //     wedging the check forever: without it the comparison is NULL, the update
 //     never fires, and every future beat is rejected. -1 rather than 0 because
 //     a device's first counter may legitimately be 0.
+//
 //   - The conflict target matches on organization_uid, and Postgres treats
 //     NULLs as distinct there. That is fine because a check always belongs to
 //     an org, so this key is never written with a NULL org.
 const advanceHeartbeatCounterQuery = `
 INSERT INTO state_entries
-  (uid, organization_uid, key, value, created_at, updated_at)
-VALUES (gen_random_uuid(), ?, ?, jsonb_build_object('lastCounter', ?), now(), now())
+  (uid, organization_uid, key, value, expires_at, created_at, updated_at)
+VALUES (gen_random_uuid(), ?, ?, jsonb_build_object('lastCounter', ?), ?, now(), now())
 ON CONFLICT (organization_uid, key)
 DO UPDATE SET value = excluded.value,
-              expires_at = NULL,
+              expires_at = excluded.expires_at,
               deleted_at = NULL,
               updated_at = excluded.updated_at
 WHERE COALESCE((state_entries.value->>'lastCounter')::bigint, -1)
@@ -63,7 +79,12 @@ WHERE COALESCE((state_entries.value->>'lastCounter')::bigint, -1)
 func (s *Service) TryAdvanceHeartbeatCounter(
 	ctx context.Context, orgUID, checkUID string, counter int64,
 ) (bool, error) {
-	res, err := s.db.NewRaw(advanceHeartbeatCounterQuery, orgUID, HeartbeatCounterKey(checkUID), counter).Exec(ctx)
+	expiresAt := time.Now().Add(models.HeartbeatCounterTTL)
+
+	res, err := s.db.NewRaw(
+		advanceHeartbeatCounterQuery,
+		orgUID, HeartbeatCounterKey(checkUID), counter, expiresAt,
+	).Exec(ctx)
 	if err != nil {
 		return false, fmt.Errorf("advance heartbeat counter: %w", err)
 	}

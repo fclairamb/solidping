@@ -23,6 +23,20 @@ type StateEntry struct {
 	DeletedAt       *time.Time `bun:"deleted_at"`
 }
 
+// HeartbeatCounterTTL is how long a heartbeat check's SP2 replay counter is
+// kept after the last accepted beat.
+//
+// It is a SLIDING window: every accepted signed beat pushes it out again, so a
+// device that is actually beating never expires its own counter. Only a check
+// that has stopped beating for this long lets its counter be swept, which is
+// what keeps the store from accumulating counters for checks nobody uses any
+// more.
+//
+// Defined here, once, because both dialects bind it as a parameter — a
+// duplicated interval literal in two .go files is exactly the kind of thing
+// that drifts.
+const HeartbeatCounterTTL = 7 * 24 * time.Hour
+
 // NewStateEntry creates a new state entry with generated UID.
 func NewStateEntry(orgUID *string, key string) *StateEntry {
 	now := time.Now()

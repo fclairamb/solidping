@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -159,10 +160,11 @@ func TestTryAdvanceHeartbeatCounterHandlesMaxInt64(t *testing.T) {
 //
 //   - the row is the generic state entry `heartbeat_counter/<checkUID>`,
 //     org-scoped, so an org delete cascades it away;
-//   - `expires_at` is NULL. DeleteExpiredStateEntries only sweeps rows with a
-//     non-null expires_at, so a counter must never acquire one — a swept
-//     counter would silently re-open the replay window for a live device.
-func TestHeartbeatCounterLivesInStateEntriesWithoutExpiry(t *testing.T) {
+//   - `expires_at` is a SLIDING models.HeartbeatCounterTTL window, pushed out
+//     by every accepted beat, so a device that is actually beating never
+//     expires its own counter and only a check that went quiet for a week is
+//     ever swept.
+func TestHeartbeatCounterLivesInStateEntriesWithASlidingExpiry(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -176,19 +178,94 @@ func TestHeartbeatCounterLivesInStateEntriesWithoutExpiry(t *testing.T) {
 	entry, err := svc.GetStateEntry(ctx, &orgUID, "heartbeat_counter/"+checkUID)
 	r.NoError(err)
 	r.NotNil(entry, "the counter must be a plain state entry under the documented key")
-	r.Nil(entry.ExpiresAt, "a counter must never expire")
+	r.NotNil(entry.ExpiresAt, "a counter carries a TTL so dead checks get swept")
+	r.WithinDuration(
+		time.Now().Add(models.HeartbeatCounterTTL), *entry.ExpiresAt, time.Minute,
+		"the TTL must be the shared constant, not an ad-hoc interval",
+	)
 	r.NotNil(entry.Value)
 	r.EqualValues(42, (*entry.Value)["lastCounter"])
 
-	// The sweeper is the actual threat: prove it leaves the counter alone
+	firstExpiry := *entry.ExpiresAt
+
+	// The sweeper is the actual threat: prove it leaves a live counter alone
 	// rather than merely asserting the column.
 	_, err = svc.DeleteExpiredStateEntries(ctx)
 	r.NoError(err)
 
 	stored, ok, err := svc.GetHeartbeatCounter(ctx, orgUID, checkUID)
 	r.NoError(err)
-	r.True(ok, "the expiry sweep must not remove a counter")
+	r.True(ok, "the expiry sweep must not remove a live counter")
 	r.Equal(int64(42), stored)
+
+	// The window SLIDES: a later accepted beat pushes it out again, which is
+	// what stops a beating device from ever expiring itself.
+	time.Sleep(1100 * time.Millisecond)
+
+	accepted, err = svc.TryAdvanceHeartbeatCounter(ctx, orgUID, checkUID, 43)
+	r.NoError(err)
+	r.True(accepted)
+
+	entry, err = svc.GetStateEntry(ctx, &orgUID, "heartbeat_counter/"+checkUID)
+	r.NoError(err)
+	r.NotNil(entry.ExpiresAt)
+	r.True(
+		entry.ExpiresAt.After(firstExpiry),
+		"an accepted beat must push the expiry out, got %s vs %s", entry.ExpiresAt, firstExpiry,
+	)
+}
+
+// TestHeartbeatCounterKeepsGatingOnceSwept is the security half of the TTL.
+//
+// The sweep is a SOFT delete and the advance deliberately ignores deleted_at,
+// so even a counter that outlived its window keeps refusing replays. Without
+// that, letting counters expire would hand an attacker a way to rewind a check
+// simply by waiting — which matters most for a clockless (ts=0) device, where
+// this counter is the ONLY replay protection.
+func TestHeartbeatCounterKeepsGatingOnceSwept(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	svc, orgUID, checkUID := newCounterTestService(t)
+
+	accepted, err := svc.TryAdvanceHeartbeatCounter(ctx, orgUID, checkUID, 900)
+	r.NoError(err)
+	r.True(accepted)
+
+	// Backdate the window so the sweeper actually bites this row.
+	key := "heartbeat_counter/" + checkUID
+	past := time.Now().Add(-time.Hour)
+	_, err = svc.DB().NewUpdate().
+		Model((*models.StateEntry)(nil)).
+		Set("expires_at = ?", past).
+		Where("key = ?", key).
+		Exec(ctx)
+	r.NoError(err)
+
+	swept, err := svc.DeleteExpiredStateEntries(ctx)
+	r.NoError(err)
+	r.Positive(swept, "the fixture must actually be swept, or this proves nothing")
+
+	// The generic reader now sees nothing — that is the sweep working.
+	entry, err := svc.GetStateEntry(ctx, &orgUID, key)
+	r.NoError(err)
+	r.Nil(entry, "a swept counter is soft-deleted for the generic reader")
+
+	// ...but the guard still gates. Replay must still fail.
+	accepted, err = svc.TryAdvanceHeartbeatCounter(ctx, orgUID, checkUID, 900)
+	r.NoError(err)
+	r.False(accepted, "a swept counter must still refuse a replayed value")
+
+	accepted, err = svc.TryAdvanceHeartbeatCounter(ctx, orgUID, checkUID, 899)
+	r.NoError(err)
+	r.False(accepted, "a swept counter must still refuse a lower value")
+
+	// Positive control: a genuinely higher counter is still accepted, so the
+	// assertions above are not just "everything is refused".
+	accepted, err = svc.TryAdvanceHeartbeatCounter(ctx, orgUID, checkUID, 901)
+	r.NoError(err)
+	r.True(accepted, "a real device must still be able to advance")
 }
 
 // TestHeartbeatCounterSurvivesASoftDeletedStateEntry is the fail-safe
@@ -236,5 +313,8 @@ func TestHeartbeatCounterSurvivesASoftDeletedStateEntry(t *testing.T) {
 	entry, err = svc.GetStateEntry(ctx, &orgUID, "heartbeat_counter/"+checkUID)
 	r.NoError(err)
 	r.NotNil(entry, "a winning advance restores the entry")
-	r.Nil(entry.ExpiresAt)
+	r.NotNil(entry.ExpiresAt, "a winning advance also refreshes the TTL")
+	r.WithinDuration(
+		time.Now().Add(models.HeartbeatCounterTTL), *entry.ExpiresAt, time.Minute,
+	)
 }
