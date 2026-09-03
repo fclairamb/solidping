@@ -88,8 +88,8 @@ func (s *Service) GetOperatorNotifications(ctx context.Context) (*OperatorNotifi
 	}
 
 	subscribed := make(map[string][]string, len(cfg.Recipients))
-	for _, recipient := range cfg.Recipients {
-		subscribed[recipient.UserUID] = recipient.Events
+	for i := range cfg.Recipients {
+		subscribed[cfg.Recipients[i].UserUID] = cfg.Recipients[i].Events
 	}
 
 	rows := make([]OperatorNotificationRecipient, 0, len(users))
@@ -193,7 +193,9 @@ func (s *Service) SetOperatorNotifications(
 func normalizeRecipients(in []opsnotify.Recipient) []opsnotify.Recipient {
 	out := make([]opsnotify.Recipient, 0, len(in))
 
-	for _, recipient := range in {
+	for i := range in {
+		recipient := &in[i]
+
 		events := make([]string, 0, len(recipient.Events))
 
 		for _, event := range recipient.Events {
@@ -238,7 +240,7 @@ func (s *Service) SendOperatorNoticeTest(
 		URL: strings.TrimRight(baseURL, "/") + "/dash0/",
 	}
 
-	report := opsnotify.DeliverToUser(ctx, *s.opsNotice, slog.Default(), user.UID, notice)
+	report := opsnotify.DeliverToUser(ctx, *s.opsNotice, slog.Default(), user.UID, &notice)
 
 	return &OperatorNoticeTestResponse{
 		Delivered: report.Delivered,

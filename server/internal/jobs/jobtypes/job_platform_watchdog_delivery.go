@@ -40,7 +40,7 @@ func deliverWatchdogDigest(
 
 	deps := operatorNoticeDeps(jctx)
 
-	notice := opsnotify.Notice{
+	notice := &opsnotify.Notice{
 		Event:   opsnotify.EventWatchdogDigest,
 		Subject: digest.Subject,
 		Body:    digest.Text,

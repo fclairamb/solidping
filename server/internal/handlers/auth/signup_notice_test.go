@@ -13,6 +13,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 )
 
+// errDispatcherDown is the static stand-in for "the job queue is down".
+var errDispatcherDown = errors.New("the job queue is down")
+
 // noticeDispatcherMu serializes the tests that install the process-global
 // notice dispatcher. They still declare t.Parallel(); the lock queues them.
 var noticeDispatcherMu sync.Mutex //nolint:gochecknoglobals // test-local serialization of a process-wide hook
@@ -24,7 +27,7 @@ var noticeDispatcherMu sync.Mutex //nolint:gochecknoglobals // test-local serial
 type noticeCollector struct {
 	mu      sync.Mutex
 	marker  string
-	notices []opsnotify.Notice
+	notices []*opsnotify.Notice
 }
 
 func collectSignupNotices(t *testing.T, marker string) *noticeCollector {
@@ -38,7 +41,7 @@ func collectSignupNotices(t *testing.T, marker string) *noticeCollector {
 		noticeDispatcherMu.Unlock()
 	})
 
-	opsnotify.SetDispatcher(func(_ context.Context, notice opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(_ context.Context, notice *opsnotify.Notice) error {
 		if !strings.Contains(notice.Subject, c.marker) {
 			return nil
 		}
@@ -54,11 +57,11 @@ func collectSignupNotices(t *testing.T, marker string) *noticeCollector {
 	return c
 }
 
-func (c *noticeCollector) all() []opsnotify.Notice {
+func (c *noticeCollector) all() []*opsnotify.Notice {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return append([]opsnotify.Notice(nil), c.notices...)
+	return append([]*opsnotify.Notice(nil), c.notices...)
 }
 
 // TestSignupRaisesAUserRegisteredNotice walks the whole password signup — the
@@ -167,9 +170,7 @@ func TestSignupSurvivesAFailingNoticeDispatcher(t *testing.T) {
 
 	var calls int
 
-	errDispatcherDown := errors.New("the job queue is down")
-
-	opsnotify.SetDispatcher(func(context.Context, opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(context.Context, *opsnotify.Notice) error {
 		calls++
 
 		return errDispatcherDown
@@ -201,7 +202,7 @@ func TestSignupSurvivesAPanickingNoticeDispatcher(t *testing.T) {
 		noticeDispatcherMu.Unlock()
 	})
 
-	opsnotify.SetDispatcher(func(context.Context, opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(context.Context, *opsnotify.Notice) error {
 		panic("the job queue exploded")
 	})
 

@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -271,5 +270,5 @@ func TestSendOperatorNoticeTestWithoutATransport(t *testing.T) {
 	alice := env.user(t, "alice@acme.com", true, true)
 
 	_, err := env.svc.SendOperatorNoticeTest(t.Context(), alice, "")
-	require.True(t, errors.Is(err, ErrOperatorNoticeUnavailable))
+	require.ErrorIs(t, err, ErrOperatorNoticeUnavailable)
 }

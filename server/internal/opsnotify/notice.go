@@ -99,7 +99,7 @@ type Notice struct {
 
 // noticeText is the plain-text rendering shared by email, Slack and Telegram:
 // the body, then the deep link when there is one.
-func (n Notice) noticeText() string {
+func (n *Notice) noticeText() string {
 	if n.URL == "" {
 		return n.Body
 	}

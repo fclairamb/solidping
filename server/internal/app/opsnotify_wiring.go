@@ -34,7 +34,7 @@ func (s *Server) installOperatorNoticeDispatcher() {
 		return
 	}
 
-	opsnotify.SetDispatcher(func(ctx context.Context, notice opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(ctx context.Context, notice *opsnotify.Notice) error {
 		payload, err := json.Marshal(jobtypes.OperatorNoticeJobConfig{
 			Event:   notice.Event,
 			Subject: notice.Subject,

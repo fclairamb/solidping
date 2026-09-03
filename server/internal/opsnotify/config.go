@@ -31,7 +31,7 @@ type Recipient struct {
 }
 
 // Wants reports whether this recipient subscribed to an event.
-func (r Recipient) Wants(event string) bool {
+func (r *Recipient) Wants(event string) bool {
 	for _, candidate := range r.Events {
 		if candidate == event {
 			return true
@@ -68,9 +68,9 @@ func (c *Config) RecipientsFor(event string) []string {
 
 	out := make([]string, 0, len(c.Recipients))
 
-	for _, recipient := range c.Recipients {
-		if recipient.Wants(event) {
-			out = append(out, recipient.UserUID)
+	for i := range c.Recipients {
+		if c.Recipients[i].Wants(event) {
+			out = append(out, c.Recipients[i].UserUID)
 		}
 	}
 
@@ -117,7 +117,9 @@ func ValidateParameter(value any) error {
 
 	seen := make(map[string]bool, len(cfg.Recipients))
 
-	for _, recipient := range cfg.Recipients {
+	for i := range cfg.Recipients {
+		recipient := &cfg.Recipients[i]
+
 		uid := strings.TrimSpace(recipient.UserUID)
 		if uid == "" {
 			return ErrInvalidRecipient
@@ -164,8 +166,8 @@ func ValidateParameterWithDB(ctx context.Context, dbSvc db.Service, value any) e
 		return err
 	}
 
-	for _, recipient := range cfg.Recipients {
-		uid := strings.TrimSpace(recipient.UserUID)
+	for i := range cfg.Recipients {
+		uid := strings.TrimSpace(cfg.Recipients[i].UserUID)
 
 		user, getErr := dbSvc.GetUser(ctx, uid)
 		// A missing row is a bad recipient, not an infrastructure failure —

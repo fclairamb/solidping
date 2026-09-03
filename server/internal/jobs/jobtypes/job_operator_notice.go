@@ -3,6 +3,7 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -36,8 +37,8 @@ type OperatorNoticeJobConfig struct {
 }
 
 // Notice converts the persisted config back into a deliverable notice.
-func (c OperatorNoticeJobConfig) Notice() opsnotify.Notice {
-	return opsnotify.Notice{
+func (c *OperatorNoticeJobConfig) Notice() *opsnotify.Notice {
+	return &opsnotify.Notice{
 		Event:        c.Event,
 		Subject:      c.Subject,
 		Body:         c.Body,
@@ -67,7 +68,7 @@ func (d *OperatorNoticeJobDefinition) CreateJobRun(config json.RawMessage) (jobd
 // errOperatorNoticeNoEvent is returned for a notice with no event. Without one
 // there is no subscription to match and no metric label to count under, so the
 // job would be an expensive no-op.
-var errOperatorNoticeNoEvent = fmt.Errorf("operator notice requires an event")
+var errOperatorNoticeNoEvent = errors.New("operator notice requires an event")
 
 // OperatorNoticeJobRun is the runtime state for one notice delivery.
 type OperatorNoticeJobRun struct {
@@ -132,8 +133,8 @@ func (r *OperatorNoticeJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 // path that creates no org) is reported as such, which is exactly the stuck
 // signup an operator wants to notice.
 func enrichWithOrganization(
-	ctx context.Context, jctx *jobdef.JobContext, notice opsnotify.Notice,
-) opsnotify.Notice {
+	ctx context.Context, jctx *jobdef.JobContext, notice *opsnotify.Notice,
+) *opsnotify.Notice {
 	if notice.AboutUserUID == "" || jctx.DBService == nil {
 		return notice
 	}

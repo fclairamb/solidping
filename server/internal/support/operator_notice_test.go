@@ -30,7 +30,7 @@ var noticeDispatcherMu sync.Mutex //nolint:gochecknoglobals // test-local serial
 type collector struct {
 	mu      sync.Mutex
 	marker  string
-	notices []opsnotify.Notice
+	notices []*opsnotify.Notice
 }
 
 func collectNotices(t *testing.T, marker string) *collector {
@@ -44,7 +44,7 @@ func collectNotices(t *testing.T, marker string) *collector {
 		noticeDispatcherMu.Unlock()
 	})
 
-	opsnotify.SetDispatcher(func(_ context.Context, notice opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(_ context.Context, notice *opsnotify.Notice) error {
 		if !strings.Contains(notice.Subject, c.marker) {
 			return nil
 		}
@@ -60,11 +60,11 @@ func collectNotices(t *testing.T, marker string) *collector {
 	return c
 }
 
-func (c *collector) all() []opsnotify.Notice {
+func (c *collector) all() []*opsnotify.Notice {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return append([]opsnotify.Notice(nil), c.notices...)
+	return append([]*opsnotify.Notice(nil), c.notices...)
 }
 
 // TestCapture_RaisesOneOperatorNotice: an inbound message produces exactly one
@@ -234,7 +234,7 @@ func TestCapture_SurvivesAFailingNoticeDispatcher(t *testing.T) {
 		noticeDispatcherMu.Unlock()
 	})
 
-	opsnotify.SetDispatcher(func(context.Context, opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(context.Context, *opsnotify.Notice) error {
 		panic("the queue exploded")
 	})
 
