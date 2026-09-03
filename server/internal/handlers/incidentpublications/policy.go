@@ -289,7 +289,7 @@ func (s *Service) pageStillEligible(ctx context.Context, incident *models.Incide
 // created". A publication an operator made with "Publish to status page" tracks
 // the same incident an auto-published one does, and the page's autoResolve
 // setting is the operator's own instruction about what should happen when it
-// recovers — honouring it only for machine-minted rows made `if_untouched`
+// recovers — honoring it only for machine-minted rows made `if_untouched`
 // behave exactly like `never` for every hand-published entry, which is how a
 // publication came to outlive its incident by ten days (spec 2026-09-02-05).
 //

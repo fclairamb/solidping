@@ -412,6 +412,44 @@ func (s *Service) GetPublication(
 	return resp, nil
 }
 
+// requestedState resolves the optional `state` field of a create request,
+// defaulting to the opening state.
+func requestedState(req *CreatePublicationRequest) (models.PublicationState, error) {
+	if req.State == nil || *req.State == "" {
+		return models.PublicationStateInvestigating, nil
+	}
+
+	state := models.PublicationState(*req.State)
+	if !state.IsValid() {
+		return "", ErrInvalidState
+	}
+
+	return state, nil
+}
+
+// linkedIncident resolves the optional `incidentUid` of a create request and
+// rejects a second publication of the same incident on the same page. Returns
+// (nil, nil) for a free-form publication.
+func (s *Service) linkedIncident(
+	ctx context.Context, orgUID, pageUID string, incidentUID *string,
+) (*models.Incident, error) {
+	if incidentUID == nil || *incidentUID == "" {
+		return nil, nil //nolint:nilnil // "no incident, no error" is the free-form case, not a failure.
+	}
+
+	incident, err := s.db.GetIncident(ctx, orgUID, *incidentUID)
+	if err != nil || incident == nil {
+		return nil, ErrIncidentNotFound
+	}
+
+	if existing, findErr := s.db.FindIncidentPublication(ctx, *incidentUID, pageUID); findErr == nil &&
+		existing != nil {
+		return nil, ErrAlreadyPublished
+	}
+
+	return incident, nil
+}
+
 // CreatePublication creates a hand-authored publication. It is always
 // human-touched from birth: a person wrote it, so no automation may ever
 // resolve or rewrite it behind their back.
@@ -435,36 +473,22 @@ func (s *Service) CreatePublication(
 		return PublicationResponse{}, err
 	}
 
-	if err := validateTitle(req.Title); err != nil {
+	if err = validateTitle(req.Title); err != nil {
 		return PublicationResponse{}, err
 	}
 
-	if err := validateSeverity(req.Severity); err != nil {
+	if err = validateSeverity(req.Severity); err != nil {
 		return PublicationResponse{}, err
 	}
 
-	state := models.PublicationStateInvestigating
-	if req.State != nil && *req.State != "" {
-		state = models.PublicationState(*req.State)
-		if !state.IsValid() {
-			return PublicationResponse{}, ErrInvalidState
-		}
+	state, err := requestedState(req)
+	if err != nil {
+		return PublicationResponse{}, err
 	}
 
-	var linked *models.Incident
-
-	if req.IncidentUID != nil && *req.IncidentUID != "" {
-		incident, incErr := s.db.GetIncident(ctx, org.UID, *req.IncidentUID)
-		if incErr != nil || incident == nil {
-			return PublicationResponse{}, ErrIncidentNotFound
-		}
-
-		linked = incident
-
-		if existing, findErr := s.db.FindIncidentPublication(ctx, *req.IncidentUID, page.UID); findErr == nil &&
-			existing != nil {
-			return PublicationResponse{}, ErrAlreadyPublished
-		}
+	linked, err := s.linkedIncident(ctx, org.UID, page.UID, req.IncidentUID)
+	if err != nil {
+		return PublicationResponse{}, err
 	}
 
 	now := s.clock.Now()
