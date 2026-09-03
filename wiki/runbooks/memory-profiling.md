@@ -228,24 +228,42 @@ lowered) · `docs-crawl` (every path in `/docs/sitemap.xml`) · `dash0-reload`.
 
 ### Measured baseline
 
-Measured 2026-09-04. **Mode: `docker`** — `solidping-bench:local` built from the
-working tree by `make bench-memory-image`, `--memory=1g --cpus=1`, on a
-darwin/arm64 host (Docker Desktop's linux/arm64 VM, 10 CPUs). Protocol: warm-up
-45 s, sample every 5 s for 60 s, 3 repetitions. **Not** the production
-linux/amd64 image, and the warm-up is shorter than the 5 min the harness now
-defaults to — both recorded here so the numbers are reproducible rather than
+Measured 2026-09-04, **on the tree as it stands after this spec**. The JSON
+report is committed at
+[`memory-baselines/2026-09-04-docker-arm64.json`](memory-baselines/2026-09-04-docker-arm64.json)
+so the next change can be compared against it mechanically rather than against
+this prose:
+
+```bash
+make bench-memory BENCH_MEM_MODE=docker BENCH_MEM_LABEL=candidate \
+     BENCH_MEM_COMPARE=wiki/runbooks/memory-baselines/2026-09-04-docker-arm64.json
+```
+
+**Mode: `docker`** — image built from the working tree by
+`make bench-memory-image`, `--memory=1g --cpus=1`, on a darwin/arm64 host
+(Docker Desktop's linux/**arm64** VM, 10 CPUs). Protocol: warm-up 45 s, sample
+every 5 s for 60 s, 3 repetitions. **Not** the production linux/amd64 image, and
+the warm-up is shorter than the 5 min the harness now defaults to — both
+recorded here, and inside the JSON, so the numbers are reproducible rather than
 authoritative-looking. The `idle` row in particular is a **warm** reading, not a
 settled one; the next section is why that distinction turned out to matter more
 than anything else in this table.
 
 | scenario | primary: cgroup anon+kernel | spread | rssAnon | Pss | RssFile | goTotal | heapLive | goroutines | threads |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `idle-all-sqlite` | **148.6 MiB** | 2.8 (1.9 %) | 148.7 | 197.9 | 49.2 | 150.0 | 70.9 | 49 | 8 |
-| `checks-500` | **31.3 MiB** | 0.5 (1.6 %) | 31.3 | 69.8 | 38.3 | 155.8 | 7.9 | 56 | 9 |
-| `docs-crawl` | **29.5 MiB** | 0.4 (1.4 %) | 29.5 | 93.4 | 63.8 | 150.2 | 8.2 | 49 | 8 |
+| `idle-all-sqlite` | **148.6 MiB** | 0.3 (0.2 %) | 148.6 | 184.9 | 36.2 | 150.2 | 70.8 | 49 | 8 |
+| `checks-500` | **31.1 MiB** | 1.3 (4.2 %) | 31.1 | 69.2 | 38.0 | 151.8 | 8.0 | 56 | 9 |
+| `docs-crawl` | **30.0 MiB** | 3.2 (10.7 %) | 30.0 | 91.5 | 62.6 | 154.5 | 8.1 | 49 | 8 |
 
 All values are medians (of the per-run medians); the spread is max−min across
 the three repetitions.
+
+An earlier run of the same three scenarios on the pre-spec tree read 148.6 /
+31.3 / 29.5 MiB — i.e. within the noise floor of the table above, which is the
+expected result and not a claim of improvement. The `docs-crawl` spread is the
+one to watch: at 10.7 % it is dominated by whether a GC fired during the window
+(see §9's note on that scenario), and it is the reason the candidate-7 verdict is
+"not resolvable by this harness" rather than a number.
 
 ### The headline result: 60 s of warm-up measures the startup burst, not the workload
 
