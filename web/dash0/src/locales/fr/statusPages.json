@@ -340,5 +340,12 @@
     "regenerateDescription": "Tout écran utilisant l'URL actuelle cessera immédiatement de fonctionner. Vous devrez le mettre à jour avec la nouvelle.",
     "revokeTitle": "Révoquer le jeton kiosque ?",
     "revokeDescription": "Tous les écrans qui l'utilisent cesseront immédiatement de fonctionner, et cette page reviendra à ses règles de visibilité normales."
+  },
+  "stalePublications": {
+    "title": "Un incident de page de statut est toujours ouvert",
+    "description_one": "{{count}} incident de page de statut est ouvert sur {{page}} alors que tous les checks liés sont opérationnels.",
+    "description_other": "{{count}} incidents de page de statut sont ouverts sur {{page}} alors que tous les checks liés sont opérationnels.",
+    "review": "Consulter",
+    "hint": "Clôturez-le sur la page de statut, sinon vos visiteurs continueront de voir un incident."
   }
 }

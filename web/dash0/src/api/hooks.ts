@@ -7168,18 +7168,31 @@ export interface IncidentPublication {
   updatedAt: string;
   updates?: PublicationUpdate[];
   affectedResources?: string[];
+  /**
+   * True when the entry is still open on the public page while the internal
+   * incident it tracks has already resolved — the state that leaves a status
+   * page (and a TV board) claiming trouble with every check up.
+   */
+  stale?: boolean;
 }
 
 export function useIncidentPublications(
   org: string,
   statusPageUid: string,
-  options?: { activeOnly?: boolean },
+  options?: { activeOnly?: boolean; staleOnly?: boolean; refetchInterval?: number },
 ) {
   return useQuery({
-    queryKey: ["incidentPublications", org, statusPageUid, options?.activeOnly],
+    queryKey: [
+      "incidentPublications",
+      org,
+      statusPageUid,
+      options?.activeOnly,
+      options?.staleOnly,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (options?.activeOnly) params.set("active", "true");
+      if (options?.staleOnly) params.set("stale", "true");
       const query = params.toString();
       const response = await apiFetch<{ data?: IncidentPublication[] }>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/incidents${query ? `?${query}` : ""}`,
@@ -7187,7 +7200,52 @@ export function useIncidentPublications(
       return response.data || [];
     },
     enabled: !!org && !!statusPageUid,
+    refetchInterval: options?.refetchInterval,
   });
+}
+
+/** One open publication whose incident has recovered, with the page it sits on. */
+export interface StalePublication {
+  page: StatusPage;
+  publication: IncidentPublication;
+}
+
+/**
+ * Every publication in the org that is open on a public page while the
+ * incident behind it has resolved.
+ *
+ * One request per status page rather than a new org-wide endpoint: an org has
+ * a handful of pages, the response is the `active=true&stale=true` slice (near
+ * always empty), and the alternative would be a second listing surface to keep
+ * in step with the first. Disabled entirely while the org has no status page,
+ * so the ordinary checks list costs nothing extra.
+ */
+export function useStalePublications(org: string): StalePublication[] {
+  const { data: pages } = useStatusPages(org, { staleTime: 60_000 });
+
+  const results = useQueries({
+    queries: (pages ?? []).map((page) => ({
+      queryKey: ["incidentPublications", org, page.uid, true, true],
+      queryFn: async () => {
+        const response = await apiFetch<{ data?: IncidentPublication[] }>(
+          `/api/v1/orgs/${org}/status-pages/${page.uid}/incidents?active=true&stale=true`,
+        );
+        return response.data || [];
+      },
+      enabled: !!org,
+      staleTime: 30_000,
+    })),
+  });
+
+  const out: StalePublication[] = [];
+
+  (pages ?? []).forEach((page, index) => {
+    for (const publication of results[index]?.data ?? []) {
+      out.push({ page, publication });
+    }
+  });
+
+  return out;
 }
 
 export function useIncidentPublication(

@@ -340,5 +340,12 @@
     "regenerateDescription": "Jeder Bildschirm, der die aktuelle URL noch verwendet, funktioniert sofort nicht mehr. Sie müssen ihn mit der neuen URL aktualisieren.",
     "revokeTitle": "Kiosk-Token widerrufen?",
     "revokeDescription": "Alle Bildschirme, die es verwenden, funktionieren sofort nicht mehr, und für diese Seite gelten wieder ihre normalen Sichtbarkeitsregeln."
+  },
+  "stalePublications": {
+    "title": "Eine Statusseiten-Störung ist noch offen",
+    "description_one": "{{count}} Statusseiten-Störung ist auf {{page}} offen, obwohl alle verknüpften Checks laufen.",
+    "description_other": "{{count}} Statusseiten-Störungen sind auf {{page}} offen, obwohl alle verknüpften Checks laufen.",
+    "review": "Ansehen",
+    "hint": "Schließen Sie sie auf der Statusseite, sonst sehen Ihre Besucher weiterhin eine Störung."
   }
 }

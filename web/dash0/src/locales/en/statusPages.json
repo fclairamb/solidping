@@ -340,5 +340,12 @@
     "regenerateDescription": "Any screen still using the current URL stops working immediately. You will need to update it with the new one.",
     "revokeTitle": "Revoke the kiosk token?",
     "revokeDescription": "Every screen using it stops working immediately, and this page goes back to its normal visibility rules."
+  },
+  "stalePublications": {
+    "title": "A status-page incident is still open",
+    "description_one": "{{count}} status-page incident is open on {{page}} while every linked check is up.",
+    "description_other": "{{count}} status-page incidents are open on {{page}} while every linked check is up.",
+    "review": "Review it",
+    "hint": "Close it on the status page, or it will keep showing trouble to your visitors."
   }
 }

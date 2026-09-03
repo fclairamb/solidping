@@ -85,6 +85,7 @@ import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import { DependencyWarnings } from "@/components/checks/dependency-warnings";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
@@ -3583,6 +3584,53 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";`}
+        />
+
+        <h3 className="text-sm font-medium">Stale-publication banner</h3>
+        <p className="text-sm text-muted-foreground">
+          A public claim that has outlived the fact behind it — a status-page
+          incident still open while every check it is linked to has recovered.
+          The same amber{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          Alert: nothing is broken, the remedy is one click on the entry, and
+          it renders nothing when every page is clean. It is mounted on the
+          checks list (where an operator lands when the wallboard goes amber)
+          and on the status page&apos;s own detail route.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md">
+              <StalePublicationsBanner
+                org={org}
+                stale={[
+                  {
+                    page: {
+                      uid: "11111111-1111-1111-1111-111111111111",
+                      name: "Public status",
+                      slug: "public",
+                      visibility: "public",
+                      isDefault: true,
+                      enabled: true,
+                    } as never,
+                    publication: {
+                      uid: "22222222-2222-2222-2222-222222222222",
+                      statusPageUid: "11111111-1111-1111-1111-111111111111",
+                      incidentUid: "33333333-3333-3333-3333-333333333333",
+                      title: "Some services are experiencing issues",
+                      state: "identified",
+                      autoCreated: false,
+                      humanTouched: false,
+                      publishedAt: "2026-08-23T12:17:51Z",
+                      createdAt: "2026-08-23T12:17:51Z",
+                      updatedAt: "2026-08-23T12:18:21Z",
+                      stale: true,
+                    },
+                  },
+                ]}
+              />
+            </div>
+          }
+          importLine={`import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";`}
         />
 
         <h3 className="text-sm font-medium">Configuration lint banner</h3>
