@@ -4319,6 +4319,71 @@ export function useDiscordGatewayStatus() {
   });
 }
 
+// Operator notifications (Server -> Notifications). The instance-level
+// subscription of super admins to platform events, delivered through each
+// recipient's own notification routes.
+export interface OperatorNotificationRecipient {
+  userUid: string;
+  email: string;
+  name?: string;
+  /** False only for a stale subscription: someone who lost super_admin. */
+  superAdmin: boolean;
+  /** Events this user is currently subscribed to. */
+  events: string[];
+  /** Distinct contact types the user can be reached on. Empty = nothing would be delivered. */
+  routes: string[];
+}
+
+export interface OperatorNotificationsConfig {
+  enabled: boolean;
+  events: string[];
+  recipients: OperatorNotificationRecipient[];
+}
+
+export interface OperatorNoticeTestResult {
+  delivered: number;
+  failed: number;
+  skipped: number;
+  routes: number;
+}
+
+export function useOperatorNotifications() {
+  return useQuery({
+    queryKey: ["operator-notifications"],
+    queryFn: async () =>
+      apiFetch<OperatorNotificationsConfig>(
+        "/api/v1/system/operator-notifications",
+      ),
+  });
+}
+
+export function useSaveOperatorNotifications() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      enabled: boolean;
+      recipients: { userUid: string; events: string[] }[];
+    }) =>
+      apiFetch<OperatorNotificationsConfig>(
+        "/api/v1/system/operator-notifications",
+        { method: "PUT", body: JSON.stringify(body) },
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["operator-notifications"], data);
+    },
+  });
+}
+
+export function useSendOperatorNoticeTest() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OperatorNoticeTestResult>(
+        "/api/v1/system/operator-notifications/test",
+        { method: "POST" },
+      ),
+  });
+}
+
 export function useTestEmail() {
   return useMutation({
     mutationFn: (recipient: string) =>

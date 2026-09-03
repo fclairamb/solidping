@@ -15,7 +15,8 @@
     "slack": "Slack",
     "analytics": "Analytique",
     "discord": "Discord",
-    "entitlements": "Droits"
+    "entitlements": "Droits",
+    "notifications": "Notifications"
   },
   "aggregation": {
     "title": "Agrégation",
@@ -429,5 +430,26 @@
       "admin": "Dérogation admin",
       "billing": "Synchronisation facturation"
     }
+  },
+  "notifications": {
+    "title": "Notifications opérateur",
+    "description": "Prévenez les super administrateurs choisis des événements de l'instance — nouveau message de support, nouvelle inscription — via les canaux de notification qu'ils ont déjà configurés pour eux-mêmes (e-mail, Telegram, message direct Slack, notification web, SMS).",
+    "enabled": "Activer les notifications opérateur",
+    "enabledHelp": "Interrupteur principal. Le désactiver arrête toutes les remises ; les événements continuent de se produire et restent dans les journaux.",
+    "columnUser": "Super administrateur",
+    "columnRoutes": "Remis via",
+    "events": {
+      "support.message": "Message de support",
+      "user.registered": "Nouvelle inscription"
+    },
+    "noRoutes": "Aucun canal de notification — rien ne sera remis",
+    "noRecipients": "Les notifications opérateur sont activées, mais personne n'est abonné à quoi que ce soit. Rien ne sera remis.",
+    "noSuperAdmins": "Aucun super administrateur sur cette instance pour l'instant.",
+    "notSuperAdmin": "N'est plus super administrateur — ignoré à la remise",
+    "superAdminOnly": "Seuls les super administrateurs peuvent être destinataires : une notification peut citer le message de support d'un client, que seul un super administrateur peut ouvrir.",
+    "sendTest": "M'envoyer un test",
+    "testDelivered_one": "Notification de test remise sur {{count}} canal.",
+    "testDelivered_other": "Notification de test remise sur {{count}} canaux.",
+    "testUndeliverable": "Rien n'a été remis. Vérifiez que vous avez au moins un canal de notification actif."
   }
 }
