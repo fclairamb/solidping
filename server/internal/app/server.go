@@ -2642,6 +2642,15 @@ func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
 // paths, and a heap copy per request turns a crawl into tens of megabytes of
 // anonymous memory the GC then spends minutes releasing. See writeEmbeddedFile.
 func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
+	embedded := path.Join("docsres", name)
+
+	// Existence is checked before any header is set, so a miss leaves the
+	// response untouched for the next candidate — or for the caller's own 404,
+	// which must not inherit a cache directive for a file that does not exist.
+	if _, err := fs.Stat(docsFiles, embedded); err != nil {
+		return err
+	}
+
 	contentType := mime.TypeByExtension(path.Ext(name))
 
 	maxAgeSeconds := 31536000 // 1 year for content-hashed assets
@@ -2651,7 +2660,7 @@ func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
 
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
 
-	return writeEmbeddedFile(writer, docsFiles, path.Join("docsres", name), contentType, status)
+	return writeEmbeddedFile(writer, docsFiles, embedded, contentType, status)
 }
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.

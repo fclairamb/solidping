@@ -32,6 +32,7 @@ Dev logs live in `logs/*.log` (`backend.log`, `dash0.log`, `status0.log`), size-
 | `make fmt` | Format all code |
 | `make migrate` | Run database migrations |
 | `make bench-checks` | Benchmark check throughput (SQLite + Postgres) |
+| `make bench-memory` | Measure memory precisely — fresh server per repetition, fixed sampling protocol, inter-run spread, `--compare` against a saved baseline. `BENCH_MEM_MODE=docker` (with `make bench-memory-image`) is the authoritative run; the default local mode is labelled non-authoritative in its own report. See `wiki/runbooks/memory-profiling.md` §5 |
 
 ## Default credentials
 

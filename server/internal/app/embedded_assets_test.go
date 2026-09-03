@@ -195,3 +195,21 @@ func TestStaticContentType(t *testing.T) {
 		r.Equal(want, staticContentType(path), path)
 	}
 }
+
+// TestServeDocsFileMissDoesNotLeakCacheHeader pins that a request that falls all
+// the way through to the plain 404 does not inherit a cache directive for a file
+// that does not exist. The candidate walk sets headers per attempt, so this is
+// the failure mode to guard.
+func TestServeDocsFileMissDoesNotLeakCacheHeader(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// A server whose docs FS has no 404.html cannot fall back, so serveDocsFile
+	// reaches http.Error — the only path where a stale header could survive.
+	rec := httptest.NewRecorder()
+	r.Error(writeDocsFile(rec, "definitely-not-here.html", http.StatusOK))
+	r.Empty(rec.Header().Get("Cache-Control"),
+		"a miss must not set a cache directive for a file that does not exist")
+	r.Empty(rec.Header().Get("Content-Type"))
+}
