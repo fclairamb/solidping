@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.22.1](https://github.com/fclairamb/solidping/compare/v0.22.0...v0.22.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* anchor heartbeat evaluation on real beats and close stale status-page incidents ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **deps:** update dependency @simplewebauthn/browser to v14 ([#308](https://github.com/fclairamb/solidping/issues/308)) ([3b11351](https://github.com/fclairamb/solidping/commit/3b113519042cfdb789073560ef211a1ed218fb07))
+* **deps:** update dependency docusaurus-plugin-llms to ^0.6.0 ([#303](https://github.com/fclairamb/solidping/issues/303)) ([8be59d5](https://github.com/fclairamb/solidping/commit/8be59d56154be2f295ef186b5f5753d79ed7bd06))
+* **deps:** update go dependencies (non-major) ([#306](https://github.com/fclairamb/solidping/issues/306)) ([91084ca](https://github.com/fclairamb/solidping/commit/91084cacd94cec7e18f5a70aa551ba53cb1fd9ac))
+
 ## [0.22.0](https://github.com/fclairamb/solidping/compare/v0.21.2...v0.22.0) (2026-09-02)
 
 
