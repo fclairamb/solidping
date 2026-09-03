@@ -2647,8 +2647,8 @@ func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
 	// Existence is checked before any header is set, so a miss leaves the
 	// response untouched for the next candidate — or for the caller's own 404,
 	// which must not inherit a cache directive for a file that does not exist.
-	if _, err := fs.Stat(docsFiles, embedded); err != nil {
-		return err
+	if !embeddedFileExists(docsFiles, embedded) {
+		return fmt.Errorf("%w: %s", fs.ErrNotExist, embedded)
 	}
 
 	contentType := mime.TypeByExtension(path.Ext(name))
@@ -2898,8 +2898,9 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 	// The asset is streamed, not read into a []byte: a dashboard reload pulls
 	// the whole hashed bundle, and a heap copy per request is anonymous memory
 	// the GC has to chase. See writeEmbeddedFile.
-	if _, err := fs.Stat(dash0Files, filePath); err != nil {
-		// If file not found, serve index.html (SPA routing)
+	if !embeddedFileExists(dash0Files, filePath) {
+		// Not a file (missing, or a directory such as the bare "/dash0/"):
+		// serve index.html so the SPA can route it client-side.
 		maxAgeSeconds = 60 // Shorter cache for index.html
 		filePath = path.Join("dash0res", "index.html")
 	}
@@ -2956,7 +2957,9 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	maxAgeSeconds := 31536000 // 1 year for assets
 	servingIndexFallback := false
 
-	if _, err := fs.Stat(fsys, filePath); err != nil {
+	if !embeddedFileExists(fsys, filePath) {
+		// Not a file (missing, or a directory such as the bare "/status0/"):
+		// the SPA shell handles it.
 		maxAgeSeconds = 60
 		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")

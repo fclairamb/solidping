@@ -19,6 +19,19 @@ const sniffLen = 512
 // callers treat it as "not found" and fall through to their own 404 path.
 var errEmbeddedIsDirectory = errors.New("embedded path is a directory")
 
+// embeddedFileExists reports whether name is a regular file in fsys.
+//
+// A directory must answer **false**. `fs.Stat` happily succeeds on one, and the
+// callers here resolve request paths that routinely land on directories — "/"
+// maps to "dash0res", "/docs/features" to "docsres/features". Treating those as
+// hits is what breaks the SPA index fallback and the docs candidate walk, so the
+// directory check lives in the one helper every caller uses.
+func embeddedFileExists(fsys fs.FS, name string) bool {
+	info, err := fs.Stat(fsys, name)
+
+	return err == nil && !info.IsDir()
+}
+
 // writeEmbeddedFile streams a file out of an embedded filesystem to the client
 // **without copying it onto the Go heap**.
 //
