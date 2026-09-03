@@ -2,6 +2,7 @@ package opsnotify
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -167,12 +168,14 @@ func ValidateParameterWithDB(ctx context.Context, dbSvc db.Service, value any) e
 		uid := strings.TrimSpace(recipient.UserUID)
 
 		user, getErr := dbSvc.GetUser(ctx, uid)
-		if getErr != nil {
-			return fmt.Errorf("looking up operator_notifications recipient %s: %w", uid, getErr)
+		// A missing row is a bad recipient, not an infrastructure failure —
+		// the storage layer reports it as sql.ErrNoRows rather than (nil, nil).
+		if errors.Is(getErr, sql.ErrNoRows) || (getErr == nil && user == nil) {
+			return fmt.Errorf("%w (%s is not a user)", ErrInvalidRecipient, uid)
 		}
 
-		if user == nil {
-			return fmt.Errorf("%w (%s is not a user)", ErrInvalidRecipient, uid)
+		if getErr != nil {
+			return fmt.Errorf("looking up operator_notifications recipient %s: %w", uid, getErr)
 		}
 
 		if !user.SuperAdmin {
