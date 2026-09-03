@@ -307,3 +307,61 @@ test.describe("TV mode — the recently-resolved strip", () => {
     await expect(card).toContainText("lasted 2h 30m");
   });
 });
+
+/**
+ * The headline's cause line (spec 2026-09-02-05).
+ *
+ * A board that reads "Some Systems Degraded" while every check is up is
+ * correct — an operator published something the probes cannot see — but with
+ * nothing saying so, the room reads it as "the monitoring is broken". The
+ * reported case sat like that for ten days.
+ */
+test.describe("TV mode — attributing the amber", () => {
+  test("names the open incident when the checks are all passing", async ({
+    page,
+  }) => {
+    await mock(page, {
+      overallStatus: "operational",
+      activeIncidents: [
+        {
+          uid: "inc-1",
+          title: "Some services are experiencing issues",
+          state: "identified",
+          severity: "minor",
+          startedAt: "2026-08-30T10:00:00Z",
+        },
+      ],
+      sections: section([resource("r1", "Checkout API", "up")]),
+    });
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    await expect(page.getByTestId("tv-headline")).toContainText("Degraded");
+    await expect(page.getByTestId("tv-headline-cause")).toContainText(
+      "1 open incident",
+    );
+  });
+
+  // The negative control: same amber board, but the checks account for it.
+  // Attributing THAT to the publication would be a lie in the other direction.
+  test("stays silent when the rollup itself is not green", async ({ page }) => {
+    await mock(page, {
+      overallStatus: "down",
+      activeIncidents: [
+        {
+          uid: "inc-1",
+          title: "Payments degraded",
+          state: "investigating",
+          severity: "minor",
+          startedAt: "2026-08-30T10:00:00Z",
+        },
+      ],
+      sections: section([resource("r1", "Checkout API", "down")]),
+    });
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    await expect(page.getByTestId("tv-headline")).toBeVisible();
+    await expect(page.getByTestId("tv-headline-cause")).toHaveCount(0);
+  });
+});

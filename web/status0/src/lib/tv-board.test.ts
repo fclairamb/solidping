@@ -6,6 +6,7 @@ import {
   durationParts,
   elapsedMs,
   failingResources,
+  incidentDrivenCount,
   isStale,
   lastResolvedAt,
   pollIntervalMs,
@@ -90,6 +91,55 @@ describe("resolveTvState", () => {
     expect(
       resolveTvState("maintenance", [incident({ severity: "critical" })]),
     ).toBe("down");
+  });
+});
+
+describe("incidentDrivenCount", () => {
+  test("is zero when nothing escalates the rollup", () => {
+    expect(incidentDrivenCount("operational", [])).toBe(0);
+    expect(incidentDrivenCount("operational", undefined)).toBe(0);
+    expect(incidentDrivenCount("down", [])).toBe(0);
+  });
+
+  test("counts the publications that took a green page amber", () => {
+    // The reported bug exactly: every check up, one open publication, board
+    // amber. The subtitle exists so the room is told which of the two it is.
+    expect(
+      incidentDrivenCount("operational", [incident({ severity: "minor" })]),
+    ).toBe(1);
+    expect(
+      incidentDrivenCount("operational", [
+        incident({ uid: "a", severity: "minor" }),
+        incident({ uid: "b", severity: "major" }),
+      ]),
+    ).toBe(2);
+  });
+
+  test("stays silent when the checks already explain the state", () => {
+    // A red rollup under a minor publication is check-driven: resolveTvState
+    // does not escalate, so there is nothing to attribute.
+    expect(
+      incidentDrivenCount("down", [incident({ severity: "minor" })]),
+    ).toBe(0);
+    expect(
+      incidentDrivenCount("degraded", [incident({ severity: "minor" })]),
+    ).toBe(0);
+  });
+
+  test("counts a critical publication that pushes a degraded page to down", () => {
+    // Escalation is not only from green: the attribution has to survive a page
+    // that was already amber for its own reasons.
+    expect(
+      incidentDrivenCount("degraded", [incident({ severity: "critical" })]),
+    ).toBe(1);
+  });
+
+  test("attributes an unknown rollup that an incident escalated", () => {
+    expect(incidentDrivenCount(undefined, [incident({})])).toBe(1);
+  });
+
+  test("never attributes a maintenance page an incident did not escalate", () => {
+    expect(incidentDrivenCount("maintenance", [])).toBe(0);
   });
 });
 

@@ -84,7 +84,38 @@ export function resolveTvState(
   return state;
 }
 
-function normalizeRollup(rollup: string | undefined): TvState {
+/**
+ * How many open publications are the SOLE reason the board is not showing what
+ * the server's own rollup says — `0` whenever the checks themselves account
+ * for the state.
+ *
+ * The board escalating past a green rollup is correct and deliberate (an
+ * operator published something the probes cannot see). What was not correct was
+ * saying "Some Systems Degraded" with no hint of where the amber came from: an
+ * operator would open the dashboard, find every check up, and conclude the
+ * board was broken. Ten days of that is how a publication came to outlive its
+ * incident unnoticed (spec 2026-09-02-05).
+ *
+ * Deliberately a COUNT rather than a boolean: the subtitle names the number,
+ * and "1 open incident" versus "3 open incidents" is the difference between a
+ * forgotten entry and a real multi-service event.
+ */
+export function incidentDrivenCount(
+  rollup: string | undefined,
+  activeIncidents: PublicIncident[] | undefined,
+): number {
+  const base = normalizeRollup(rollup);
+  const resolved = resolveTvState(rollup, activeIncidents);
+
+  if (STATE_RANK[resolved] <= STATE_RANK[base]) {
+    return 0;
+  }
+
+  return activeIncidents?.length ?? 0;
+}
+
+/** Maps the server's `overallStatus` string onto a board state. */
+export function normalizeRollup(rollup: string | undefined): TvState {
   switch (rollup) {
     case "operational":
     case "degraded":

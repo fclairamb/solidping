@@ -72,6 +72,11 @@ describe("TV mode locale parity", () => {
     // suffix itself, so both variants have to exist.
     expect(enTv.has("tv.daysSinceLastIncident_one")).toBe(true);
     expect(enTv.has("tv.daysSinceLastIncident_other")).toBe(true);
+
+    // The headline's cause line (spec 2026-09-02-05). Same plural mechanics,
+    // and the key it would render raw is 20 characters wide on a wallboard.
+    expect(enTv.has("tv.incidentDriven_one")).toBe(true);
+    expect(enTv.has("tv.incidentDriven_other")).toBe(true);
   });
 
   for (const [name, locale] of Object.entries(LOCALES)) {

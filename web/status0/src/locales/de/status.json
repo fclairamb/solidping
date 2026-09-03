@@ -91,6 +91,8 @@
     "daysSinceLastIncident_one": "{{count}} Tag seit dem letzten Vorfall",
     "daysSinceLastIncident_other": "{{count}} Tage seit dem letzten Vorfall",
     "noIncidentsRecorded": "Keine Vorfälle erfasst",
+    "incidentDriven_one": "Ausgelöst durch {{count}} offene Störung — alle überwachten Dienste laufen",
+    "incidentDriven_other": "Ausgelöst durch {{count}} offene Störungen — alle überwachten Dienste laufen",
     "cycling": "Wechselt zwischen {{count}} aktiven Vorfällen",
     "affectedTitle": "Betroffene Dienste",
     "affectedCycling": "Wechselt durch {{count}} betroffene Dienste",
