@@ -3,6 +3,7 @@ package jobtypes_test
 import (
 	"encoding/json"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -339,4 +340,43 @@ func TestOperatorNoticeIsNotPubliclyCreatable(t *testing.T) {
 	t.Parallel()
 
 	require.False(t, jobdef.IsPubliclyCreatable(jobdef.JobTypeOperatorNotice))
+}
+
+// TestOperatorNoticeJobConfigCarriesEveryNoticeField is the regression guard for
+// the bug the audit caught: the Notice -> job payload conversion used to live
+// inline in the dispatcher wiring and silently dropped AboutUserUID, so the
+// landing organization was dead in production while every test stayed green —
+// one side hand-built the job config, the other asserted at the Notify
+// boundary, and nothing crossed the line that lost the field.
+//
+// The reflection walk is the point: it fails when a NEW field is added to
+// Notice and forgotten here, which a hand-written field list never would.
+func TestOperatorNoticeJobConfigCarriesEveryNoticeField(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Populate every field of Notice with a distinct non-zero value, whatever
+	// the struct grows to.
+	original := &opsnotify.Notice{}
+	value := reflect.ValueOf(original).Elem()
+
+	for i := range value.NumField() {
+		field := value.Field(i)
+		r.Equal(reflect.String, field.Kind(),
+			"this walk only knows how to fill string fields; teach it %s",
+			value.Type().Field(i).Name)
+		field.SetString("value-of-" + value.Type().Field(i).Name)
+	}
+
+	// Through the real conversion, out through JSON (the job row is JSON), and
+	// back into a Notice — the exact path a queued notice takes.
+	encoded, err := json.Marshal(jobtypes.NewOperatorNoticeJobConfig(original))
+	r.NoError(err)
+
+	decoded := jobtypes.OperatorNoticeJobConfig{}
+	r.NoError(json.Unmarshal(encoded, &decoded))
+
+	r.Equal(original, decoded.Notice(),
+		"every Notice field must survive the round trip through the job payload")
 }

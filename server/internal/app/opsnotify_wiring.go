@@ -35,12 +35,10 @@ func (s *Server) installOperatorNoticeDispatcher() {
 	}
 
 	opsnotify.SetDispatcher(func(ctx context.Context, notice *opsnotify.Notice) error {
-		payload, err := json.Marshal(jobtypes.OperatorNoticeJobConfig{
-			Event:   notice.Event,
-			Subject: notice.Subject,
-			Body:    notice.Body,
-			URL:     notice.URL,
-		})
+		// The conversion lives in jobtypes, not here: an inline field-by-field
+		// copy at this seam is exactly what silently dropped AboutUserUID and
+		// left every notice without its landing organization.
+		payload, err := json.Marshal(jobtypes.NewOperatorNoticeJobConfig(notice))
 		if err != nil {
 			return fmt.Errorf("encode operator notice: %w", err)
 		}
