@@ -5618,13 +5618,18 @@ function OnboardingChecklistSection() {
 
 // Presentation only, for a surface that already has the data:
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
-<OnboardingChecklistCard org={org} steps={steps} allSet={false} onDismiss={hide} />`;
+<OnboardingChecklistCard org={org} steps={steps} allSet={false} onDismiss={hide} />
+
+// Reduced-motion convention (set by this card, reuse it everywhere):
+// put EVERY animation class behind motion-safe: so prefers-reduced-motion
+// drops the motion instead of the element.
+<div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both motion-safe:hover:-translate-y-px" />`;
 
   return (
     <Section
       id="onboarding-checklist"
       title="Onboarding checklist"
-      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back. Rows below carry their own background — bg-card for pending, a faint emerald-500/10 wash for done — so they read as items sitting on the card's bg-primary/5 tint rather than outlines the tint bleeds through; the fixture below mixes both states on purpose."
+      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back. PRESENTATION (spec 2026-09-03-01): the card carries its depth in chrome, not in a flat tint — a primary→violet top accent bar, two heavily blurred low-alpha blobs (primary + chart-5) and shadow-primary, all on a normal bg-card surface. Every decorative layer is aria-hidden AND pointer-events-none, because each row is one stretched click target (the CTA link's after:absolute after:inset-0 over the row's relative box) that a decoration must never intercept. Rows come in THREE tones, not two: the first still-open step is the focal 'next up' row (primary ring, shadow-primary, a Next pill, and the card's only default-variant CTA), later pending rows are quiet, and done rows recede into a faint emerald wash with a filled emerald tick — never a strikethrough, which reads as deletion rather than achievement. The header progress bar passes destructiveWhenFull={false}: Progress defaults to TRUE and would paint a finished checklist red, the colour that means 'down' everywhere else here. MOTION: this is the surface that sets dash0's reduced-motion convention — every animation class is behind Tailwind's motion-safe: variant (staggered row reveal, the tick's zoom-in, the all-set strip, the hover lift), so prefers-reduced-motion simply drops them. Two fixtures below: a mixed in-progress state and the 5/5 all-set reward strip."
     >
       <ExampleRow
         preview={
@@ -5633,11 +5638,12 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
               org={org}
               steps={[
                 { id: "check", done: true },
-                // Pending with no test-alert button in the fixture (no
-                // onTestAlert prop below) — its CTA carries the same
-                // primary weight as any other pending step's, not the
-                // outline it used to be forced into.
+                // The first still-open step: this is the "next up" row —
+                // primary ring, Next pill, and the only default-variant CTA
+                // on the card (there is no onTestAlert prop in this fixture,
+                // so nothing else is competing for that weight).
                 { id: "alerts", done: false },
+                // Pending but not next: deliberately quieter, outline CTA.
                 { id: "report", done: false },
                 // Done — its CTA reads "View status pages" instead of
                 // reusing the pending "Create a status page" label.
@@ -5651,6 +5657,35 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
         }
         importLine={
           'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'
+        }
+      />
+      <p className="text-xs text-muted-foreground">
+        And the finish line — every step done. The emerald→primary strip is
+        the card&apos;s one celebratory moment; note that the progress bar
+        goes emerald at 5/5 rather than the destructive red{" "}
+        <code className="font-mono">Progress</code> would pick by default, and
+        that five done rows read as a completed set because nothing is struck
+        through.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="max-w-2xl">
+            <OnboardingChecklistCard
+              org={org}
+              steps={[
+                { id: "check", done: true },
+                { id: "alerts", done: true },
+                { id: "report", done: true },
+                { id: "statusPage", done: true },
+                { id: "team", done: true },
+              ]}
+              allSet
+              onDismiss={() => {}}
+            />
+          </div>
+        }
+        importLine={
+          '<OnboardingChecklistCard org={org} steps={allDoneSteps} allSet onDismiss={hide} />'
         }
       />
       <CodeSnippet code={snippet} />
