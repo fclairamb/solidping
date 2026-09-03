@@ -36,6 +36,25 @@ type OperatorNoticeJobConfig struct {
 	AboutUserUID string `json:"aboutUserUid,omitempty"`
 }
 
+// NewOperatorNoticeJobConfig is the ONLY place a Notice becomes a queued job
+// payload.
+//
+// It exists because the field-by-field copy used to live inline in the
+// dispatcher wiring, where it silently dropped AboutUserUID and killed the
+// landing-organization line in production while every test — which built the
+// job config by hand on one side and asserted at the Notify boundary on the
+// other — stayed green. One conversion, next to the struct, with a round-trip
+// test that fails if a field stops travelling.
+func NewOperatorNoticeJobConfig(notice *opsnotify.Notice) OperatorNoticeJobConfig {
+	return OperatorNoticeJobConfig{
+		Event:        notice.Event,
+		Subject:      notice.Subject,
+		Body:         notice.Body,
+		URL:          notice.URL,
+		AboutUserUID: notice.AboutUserUID,
+	}
+}
+
 // Notice converts the persisted config back into a deliverable notice.
 func (c *OperatorNoticeJobConfig) Notice() *opsnotify.Notice {
 	return &opsnotify.Notice{
