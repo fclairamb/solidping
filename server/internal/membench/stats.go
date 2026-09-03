@@ -1,0 +1,496 @@
+// Package membench holds the measurement core of the memory bench harness: the
+// sample shape, the aggregation, the inter-run spread, and the significance
+// rule that decides whether a delta between two runs means anything.
+//
+// It is deliberately separate from cmd/membench (which starts servers, drives
+// workloads and shells out to docker) so the part that turns numbers into
+// conclusions is pure, unit-tested code with no clock, no network and no
+// filesystem.
+//
+// The rule that matters: **a delta smaller than the baseline's own inter-run
+// spread is not a result.** Repeating a run changes the numbers by a few
+// percent all on its own; a change that moves them by less than that has not
+// been shown to do anything. Everything here exists to make that judgement
+// mechanical instead of hopeful.
+package membench
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+	"time"
+)
+
+// Metric keys. These are the fixed column schema of every report, so two runs —
+// and two versions of this tool — diff cleanly.
+const (
+	// MetricCgroupUnreclaimable is the PRIMARY metric: cgroup anon + kernel,
+	// the memory the kernel cannot reclaim and therefore the number an OOM kill
+	// is decided on. Every ship/reject decision is made on this one.
+	MetricCgroupUnreclaimable = "cgroupUnreclaimableBytes"
+	// MetricCgroupPeak is the cgroup high-water mark — the peak metric, which
+	// is what a transient burst (a docs crawl, a login burst) shows up in.
+	MetricCgroupPeak = "cgroupPeakBytes"
+	// MetricRssAnon is resident anonymous memory: the primary metric's
+	// equivalent outside a container, and the only RSS component that can OOM.
+	MetricRssAnon = "rssAnonBytes"
+	// MetricPss and MetricRssFile move with binary size and with which pages
+	// were touched. Reported so a binary-size change is VISIBLE, and kept
+	// separate so it is never conflated with a heap change.
+	MetricPss     = "pssBytes"
+	MetricRssFile = "rssFileBytes"
+	// MetricGoTotal is the runtime's own total; MetricHeapLive the live heap.
+	MetricGoTotal  = "goTotalBytes"
+	MetricHeapLive = "heapLiveBytes"
+	// MetricGoroutines and MetricThreads are the leak-shaped counters.
+	MetricGoroutines = "goroutines"
+	MetricThreads    = "threads"
+)
+
+// MetricKeys is the report's column order. Ordered primary-metric-first so the
+// number a decision is made on is the one a reader sees first.
+//
+//nolint:gochecknoglobals // immutable schema table
+var MetricKeys = []string{
+	MetricCgroupUnreclaimable,
+	MetricCgroupPeak,
+	MetricRssAnon,
+	MetricPss,
+	MetricRssFile,
+	MetricGoTotal,
+	MetricHeapLive,
+	MetricGoroutines,
+	MetricThreads,
+}
+
+// Sample is one reading of /api/mgmt/memory, reduced to the numbers the harness
+// reports on.
+type Sample struct {
+	At     time.Time          `json:"at"`
+	Values map[string]float64 `json:"values"`
+}
+
+// MetricStats is one metric's summary over a single repetition's samples.
+type MetricStats struct {
+	Median float64 `json:"median"`
+	P95    float64 `json:"p95"`
+	Max    float64 `json:"max"`
+	// Samples is how many readings went into the summary. A repetition with too
+	// few samples is not a measurement, and the report says so rather than
+	// quietly averaging three points.
+	Samples int `json:"samples"`
+}
+
+// RunStats is one repetition: every metric summarised over its sample window.
+type RunStats struct {
+	Metrics map[string]MetricStats `json:"metrics"`
+}
+
+// MetricAgg is one metric aggregated across the K repetitions of a scenario.
+type MetricAgg struct {
+	// Median is the median of the per-run medians — the number to quote.
+	Median float64 `json:"median"`
+	// P95 and Max are the worst per-run p95 / max seen across repetitions.
+	P95 float64 `json:"p95"`
+	Max float64 `json:"max"`
+	// Spread is max−min of the per-run medians: how much this number moves when
+	// nothing at all changes. It is the yardstick every delta is measured
+	// against.
+	Spread float64 `json:"spread"`
+	// SpreadKnown is false with fewer than two repetitions. A single run has no
+	// spread, so nothing measured against it can be called significant — the
+	// tool refuses to guess rather than inventing a threshold.
+	SpreadKnown bool `json:"spreadKnown"`
+	// RunMedians is the raw per-run medians, so a reader can see the spread
+	// rather than trust it.
+	RunMedians []float64 `json:"runMedians"`
+}
+
+// SpreadRatio is the spread as a fraction of the median — the number that
+// decides whether this measurement is precise enough to be worth wiring into
+// CI. Zero when the median is zero.
+func (a MetricAgg) SpreadRatio() float64 {
+	if a.Median == 0 {
+		return 0
+	}
+
+	return a.Spread / a.Median
+}
+
+// ScenarioResult is everything the harness learned about one scenario.
+type ScenarioResult struct {
+	Scenario string               `json:"scenario"`
+	Mode     string               `json:"mode"`
+	Runs     []RunStats           `json:"runs"`
+	Metrics  map[string]MetricAgg `json:"metrics"`
+	// Notes carries anything that qualifies the numbers (a skipped workload, a
+	// short sample window). Never silently dropped: a caveat that does not
+	// reach the report is a caveat that does not exist.
+	Notes []string `json:"notes,omitempty"`
+}
+
+// Report is the whole run: metadata plus one result per scenario. Serialised to
+// JSON so `--compare` can diff two runs mechanically.
+type Report struct {
+	// Label names the build under test ("baseline", "gogc-50", …).
+	Label string `json:"label"`
+	// Mode is "docker" (authoritative: real cgroup v2, real Linux, the shipped
+	// image shape) or "local" (host binary — fast, and NOT authoritative).
+	Mode      string           `json:"mode"`
+	Host      string           `json:"host"`
+	GoVersion string           `json:"goVersion"`
+	Image     string           `json:"image,omitempty"`
+	Memory    string           `json:"memory,omitempty"`
+	CPUs      string           `json:"cpus,omitempty"`
+	StartedAt time.Time        `json:"startedAt"`
+	Protocol  Protocol         `json:"protocol"`
+	Scenarios []ScenarioResult `json:"scenarios"`
+}
+
+// Protocol records the measurement parameters, because a number without its
+// warm-up and window is not reproducible.
+type Protocol struct {
+	WarmUp   time.Duration `json:"warmUp"`
+	Interval time.Duration `json:"interval"`
+	Duration time.Duration `json:"duration"`
+	Reps     int           `json:"reps"`
+}
+
+// SummariseRun reduces one repetition's samples to per-metric stats.
+func SummariseRun(samples []Sample) RunStats {
+	run := RunStats{Metrics: make(map[string]MetricStats, len(MetricKeys))}
+
+	for _, key := range MetricKeys {
+		values := make([]float64, 0, len(samples))
+
+		for _, s := range samples {
+			if v, ok := s.Values[key]; ok {
+				values = append(values, v)
+			}
+		}
+
+		run.Metrics[key] = MetricStats{
+			Median:  Median(values),
+			P95:     Percentile(values, 0.95),
+			Max:     Max(values),
+			Samples: len(values),
+		}
+	}
+
+	return run
+}
+
+// Aggregate folds K repetitions into the per-metric aggregate, including the
+// inter-run spread that every significance judgement depends on.
+func Aggregate(runs []RunStats) map[string]MetricAgg {
+	out := make(map[string]MetricAgg, len(MetricKeys))
+
+	for _, key := range MetricKeys {
+		medians := make([]float64, 0, len(runs))
+		p95s := make([]float64, 0, len(runs))
+		maxes := make([]float64, 0, len(runs))
+
+		for _, run := range runs {
+			stats, ok := run.Metrics[key]
+			if !ok || stats.Samples == 0 {
+				continue
+			}
+
+			medians = append(medians, stats.Median)
+			p95s = append(p95s, stats.P95)
+			maxes = append(maxes, stats.Max)
+		}
+
+		agg := MetricAgg{
+			Median:     Median(medians),
+			P95:        Max(p95s),
+			Max:        Max(maxes),
+			RunMedians: medians,
+		}
+		if len(medians) >= 2 {
+			agg.Spread = Max(medians) - Min(medians)
+			agg.SpreadKnown = true
+		}
+
+		out[key] = agg
+	}
+
+	return out
+}
+
+// Delta is one metric compared between a baseline and a current run.
+type Delta struct {
+	Scenario string  `json:"scenario"`
+	Metric   string  `json:"metric"`
+	Baseline float64 `json:"baseline"`
+	Current  float64 `json:"current"`
+	Delta    float64 `json:"delta"`
+	// Threshold is the noise floor this delta had to clear: the larger of the
+	// two runs' spreads.
+	Threshold float64 `json:"threshold"`
+	// Significant is true only when |delta| > threshold AND both spreads are
+	// known. Anything else is reported as noise, however much one wanted the
+	// change to work.
+	Significant bool `json:"significant"`
+	// Reason explains a non-significant verdict in words, so a report is
+	// readable without re-deriving the rule.
+	Reason string `json:"reason,omitempty"`
+}
+
+// PercentChange is the delta relative to the baseline. Zero when the baseline
+// is zero.
+func (d Delta) PercentChange() float64 {
+	if d.Baseline == 0 {
+		return 0
+	}
+
+	return d.Delta / d.Baseline * 100
+}
+
+// Compare diffs two reports scenario by scenario. Scenarios present in only one
+// of the two are skipped — silently comparing a scenario against a differently
+// named one is how false results are manufactured.
+func Compare(baseline, current *Report) []Delta {
+	baseByName := make(map[string]ScenarioResult, len(baseline.Scenarios))
+	for _, s := range baseline.Scenarios {
+		baseByName[s.Scenario] = s
+	}
+
+	var deltas []Delta
+
+	for _, cur := range current.Scenarios {
+		base, ok := baseByName[cur.Scenario]
+		if !ok {
+			continue
+		}
+
+		for _, key := range MetricKeys {
+			deltas = append(deltas, compareMetric(cur.Scenario, key, base.Metrics[key], cur.Metrics[key]))
+		}
+	}
+
+	return deltas
+}
+
+// compareMetric applies the significance rule to one metric.
+func compareMetric(scenario, key string, base, cur MetricAgg) Delta {
+	delta := Delta{
+		Scenario:  scenario,
+		Metric:    key,
+		Baseline:  base.Median,
+		Current:   cur.Median,
+		Delta:     cur.Median - base.Median,
+		Threshold: math.Max(base.Spread, cur.Spread),
+	}
+
+	switch {
+	case !base.SpreadKnown || !cur.SpreadKnown:
+		delta.Reason = "spread unknown (need ≥2 repetitions on both sides)"
+	case math.Abs(delta.Delta) <= delta.Threshold:
+		delta.Reason = "not significant (delta ≤ inter-run spread)"
+	default:
+		delta.Significant = true
+	}
+
+	return delta
+}
+
+// Median returns the median of values; 0 for an empty slice. The input is not
+// modified.
+func Median(values []float64) float64 {
+	return Percentile(values, 0.5)
+}
+
+// Percentile returns the p-quantile (0..1) using nearest-rank on a sorted copy.
+// Nearest-rank rather than interpolation: these are observed readings, and an
+// interpolated p95 is a number the process never actually had.
+func Percentile(values []float64, p float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+
+	if p <= 0 {
+		return sorted[0]
+	}
+	if p >= 1 {
+		return sorted[len(sorted)-1]
+	}
+
+	rank := int(math.Ceil(p*float64(len(sorted)))) - 1
+	if rank < 0 {
+		rank = 0
+	}
+	if rank >= len(sorted) {
+		rank = len(sorted) - 1
+	}
+
+	return sorted[rank]
+}
+
+// Max returns the largest value; 0 for an empty slice.
+func Max(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+
+	out := values[0]
+	for _, v := range values[1:] {
+		if v > out {
+			out = v
+		}
+	}
+
+	return out
+}
+
+// Min returns the smallest value; 0 for an empty slice.
+func Min(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+
+	out := values[0]
+	for _, v := range values[1:] {
+		if v < out {
+			out = v
+		}
+	}
+
+	return out
+}
+
+// FormatBytes renders a byte count in MiB with one decimal, the unit every
+// number in this report is read in.
+func FormatBytes(v float64) string {
+	return fmt.Sprintf("%.1f", v/(1024*1024))
+}
+
+// FormatDelta renders a signed byte delta in MiB, keeping the sign visible so a
+// regression cannot be mistaken for an improvement at a glance.
+func FormatDelta(v float64) string {
+	if v > 0 {
+		return "+" + FormatBytes(v)
+	}
+
+	return FormatBytes(v)
+}
+
+// Markdown renders the report as a fixed-schema table. The schema is fixed on
+// purpose: two runs of this tool must diff as text, not just as JSON.
+func (r *Report) Markdown() string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# membench — %s\n\n", r.Label)
+	fmt.Fprintf(&b, "- mode: **%s**%s\n", r.Mode, modeCaveat(r.Mode))
+	fmt.Fprintf(&b, "- host: %s (%s)\n", r.Host, r.GoVersion)
+
+	if r.Image != "" {
+		fmt.Fprintf(&b, "- image: `%s`", r.Image)
+
+		if r.Memory != "" {
+			fmt.Fprintf(&b, ", `--memory=%s`", r.Memory)
+		}
+
+		if r.CPUs != "" {
+			fmt.Fprintf(&b, ", `--cpus=%s`", r.CPUs)
+		}
+
+		b.WriteString("\n")
+	}
+
+	fmt.Fprintf(&b, "- protocol: warm-up %s, sample every %s for %s, %d repetitions\n",
+		r.Protocol.WarmUp, r.Protocol.Interval, r.Protocol.Duration, r.Protocol.Reps)
+	fmt.Fprintf(&b, "- started: %s\n\n", r.StartedAt.Format(time.RFC3339))
+	b.WriteString("All byte columns are MiB. Primary metric (the one decisions are made on) " +
+		"is `cgroupUnreclaimableBytes` = cgroup anon + kernel — what the OOM killer cannot reclaim. " +
+		"`pssBytes` / `rssFileBytes` move with binary size and with which pages were touched; they are " +
+		"reported so that is visible, never added to the heap numbers.\n\n")
+
+	b.WriteString("| scenario |")
+
+	for _, key := range MetricKeys {
+		fmt.Fprintf(&b, " %s med | %s p95 | %s max | %s spread |", key, key, key, key)
+	}
+
+	b.WriteString("\n|---|")
+	b.WriteString(strings.Repeat("---:|", len(MetricKeys)*4))
+	b.WriteString("\n")
+
+	for _, s := range r.Scenarios {
+		fmt.Fprintf(&b, "| %s |", s.Scenario)
+
+		for _, key := range MetricKeys {
+			agg := s.Metrics[key]
+			spread := FormatBytes(agg.Spread)
+
+			if !agg.SpreadKnown {
+				spread = "n/a"
+			}
+
+			fmt.Fprintf(&b, " %s | %s | %s | %s |",
+				FormatBytes(agg.Median), FormatBytes(agg.P95), FormatBytes(agg.Max), spread)
+		}
+
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+
+	for _, s := range r.Scenarios {
+		for _, note := range s.Notes {
+			fmt.Fprintf(&b, "> **%s**: %s\n", s.Scenario, note)
+		}
+	}
+
+	return b.String()
+}
+
+// modeCaveat spells out, in the report itself, what a `--local` number is worth.
+func modeCaveat(mode string) string {
+	if mode == "local" {
+		return " — host binary, **NOT authoritative**: no cgroup accounting, a different OS and a different " +
+			"GOMAXPROCS from the shipped container. Useful for iteration and for relative comparisons on the " +
+			"same host; never quote it as the production number."
+	}
+
+	return " — containerized: real cgroup v2 accounting, the shipped image shape."
+}
+
+// CompareMarkdown renders a comparison table, non-significant rows included and
+// labelled. Rejections are results too, and hiding them is how the same dead end
+// gets retried a year later.
+func CompareMarkdown(baseline, current *Report, deltas []Delta) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "# membench comparison — `%s` → `%s`\n\n", baseline.Label, current.Label)
+	fmt.Fprintf(&b, "- baseline mode: %s; current mode: %s\n", baseline.Mode, current.Mode)
+
+	if baseline.Mode != current.Mode {
+		b.WriteString("- ⚠️ **modes differ — these two runs are not comparable.** " +
+			"A local number and a containerized number measure different things.\n")
+	}
+
+	b.WriteString("\nA delta is only significant when it exceeds the larger of the two runs' " +
+		"own inter-run spreads (MiB).\n\n")
+	b.WriteString("| scenario | metric | baseline | current | delta | % | noise floor | verdict |\n")
+	b.WriteString("|---|---|---:|---:|---:|---:|---:|---|\n")
+
+	for _, d := range deltas {
+		verdict := "**significant**"
+		if !d.Significant {
+			verdict = d.Reason
+		}
+
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %+.1f%% | %s | %s |\n",
+			d.Scenario, d.Metric,
+			FormatBytes(d.Baseline), FormatBytes(d.Current), FormatDelta(d.Delta),
+			d.PercentChange(), FormatBytes(d.Threshold), verdict)
+	}
+
+	return b.String()
+}
