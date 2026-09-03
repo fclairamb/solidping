@@ -192,3 +192,86 @@ changing them.
 because it fixes a live credential-decryption failure (incident #506) and a
 release is pending. This does not change the spec's content — it only means the
 implementer should not assume 04-02's changes are present in the tree.
+
+## Implementation Plan
+
+### Correction to the root-cause timeline (found while implementing)
+
+The spec blames `f1dd54833` (v0.22.0) for introducing the `{"value": …}` wrap.
+That is wrong, and it matters for the blast radius. `SetOrgParameter` has wrapped
+every value since the **first commit** (`eef4383fd`): both engines already read
+`jsonValue := models.JSONMap{"value": value}` at `cf910d469^`, the commit that
+added the DEK store. `f1dd54833` only factored that literal into the
+`models.ParameterValue()` helper.
+
+Consequences:
+
+- The DEK reader has been unable to do a cold load **since the DEK store shipped**
+  (`cf910d469`, 2026-05-08), not since v0.22.0. Any org that generated a DEK at
+  any point is affected, not only post-0.22.0 ones.
+- `ParamStore.LoadDEK`'s `value[0] == '"'` branch has never fired through the
+  production adapter, because `param.Value` is a `models.JSONMap` and
+  `json.Marshal` of a map always starts with `{`. It is a legacy/other-adapter
+  path, kept (per Proposal item 1) but exercised at the store seam, not through a
+  DB row.
+- **The hot mitigation suggested in Proposal item 5 must NOT be used.**
+  `update parameters set value = value->'value'` leaves a bare JSON string in the
+  `value` column, and `models.JSONMap.Scan` unmarshals that column into a
+  `map[string]any` — a bare string makes `GetOrgParameter` itself fail
+  ("cannot unmarshal string into Go value of type models.JSONMap"), turning a
+  decrypt failure into a parameter-read failure. The only remediation is to ship
+  the reader fix (item 5's main clause), which needs no SQL at all.
+
+### Steps
+
+1. **One-place unwrap in `ParamStore.LoadDEK`**
+   (`server/internal/crypto/credentials/param_store.go`). A new
+   `unwrapDEKParameterValue` normalizes the stored value to the raw envelope:
+   `{"value": …}` (current, via `models.ParameterValueKey`, inner string or
+   object), `"…"` (legacy JSON string), `{…}` carrying `v`/`alg` (raw envelope).
+   An object with neither `value` nor `v` returns a descriptive error, never
+   `ErrUnknownVersion`. Unwrap depth is bounded (one `value` hop). The false
+   "we wrote it via SetOrgParameter(string)" comment goes.
+
+2. **Production adapter extracted**: `credentials.NewParamStore(OrgParameterDB)`
+   in the same file, over a two-method interface (`GetOrgParameter` /
+   `SetOrgParameter`). `app.BuildCredentialsService` and
+   `agentws/system_agent_test.go` both call it, so test wiring and production
+   wiring can no longer diverge (Resolved-question 2 — named duplicate only).
+
+3. **Write verification in `EnsureOrgKey`** (`service.go`): after `SaveDEK`,
+   reload through the store and unwrap with the KEK before caching. A
+   storage-shape regression fails the first encrypt loudly.
+
+4. **Bounded DEK cache invalidation** (Resolved-question 1): `DecryptForOrg`
+   opens through a helper that reports whether the failure happened *while using
+   a cached DEK*. If so: drop that one cache entry, cold-reload exactly once,
+   retry once, then surface the error. No loop, no cache-wide flush.
+
+5. **Failure taxonomy**: new `credentials.ErrOrgKeyUnavailable` wraps every
+   `EnsureOrgKey` failure (keeping the `unwrap org DEK` substring for log greps).
+   `checkjobsvc` gains `ErrSecretsOrgKeyUndecryptable` and `ResultReason()`, and
+   the two result-writing sites (`checkworker/backend/direct.go`,
+   `handlers/agentws/handler.go`) use it, so an org-key failure no longer tells
+   the operator to re-save the check.
+
+6. **Tests**
+   - `param_store_test.go`: shape table (current wrapped / legacy string / raw
+     envelope / ambiguous object → descriptive error), plus a **negative
+     control** that replays the pre-fix reader byte-for-byte and asserts it
+     yields `ErrUnknownVersion` on the current wrapped shape.
+   - `dek_cold_reload_test.go` (SQLite, real `NewParamStore`): service A
+     generates + encrypts, a **second** service B on the same DB decrypts —
+     the cold path the old tests never had. Plus the legacy raw-string
+     positive control at the store seam.
+   - `dek_cold_reload_postgres_test.go` (embedded Postgres, port 15520): same
+     cold-reload property on the real engine.
+   - `service_test.go`: exactly-one-reload and persistent-failure-still-errors
+     tests over a counting store; write-verification test.
+
+7. **Docs**: new `wiki/features/credentials-encryption.md` (storage shape,
+   process-lifetime DEK cache, the cold-process symptom and its log grep, the
+   remediation note above), indexed from `wiki/README.md`.
+
+Proposal item 5 is ops and is deliberately **not** performed here: no deploy, no
+database access, no SQL.
