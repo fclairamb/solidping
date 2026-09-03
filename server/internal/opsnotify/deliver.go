@@ -2,6 +2,7 @@ package opsnotify
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -31,6 +32,72 @@ const (
 // contactTypeNone is the `contact_type` label for outcomes that happen before
 // any route is picked (no recipient, no route, dispatcher failure).
 const contactTypeNone = "none"
+
+// ErrMediumUnavailable marks "this instance cannot carry that contact type" —
+// no Telegram bot token, no web-push keys, no SMS provider for the org, no
+// Slack connection — as opposed to "the provider was there and refused it".
+//
+// A medium closure returns it (wrapped) so delivery can tell the two apart.
+// The distinction is the entire reason `solidping_operator_notice_total` has an
+// `outcome` label: an instance that never configured Telegram must not look
+// like an instance whose Telegram is broken, or the metric that exists to keep
+// silent drops visible becomes the thing hiding them.
+var ErrMediumUnavailable = errors.New("this instance cannot deliver over that medium")
+
+// Human labels for the notice kinds that travel this transport.
+const (
+	labelWatchdogDigest = "Platform watchdog digest"
+	labelOperatorNotice = "Operator notice"
+)
+
+// noticeLabel names the notice in a log line.
+//
+// The watchdog keeps its own wording: this transport was extracted FROM the
+// watchdog, its digests still flow through it, and an operator grepping their
+// logs (or an alert rule matching them) should not have the watchdog silently
+// start reporting itself under a name that never mentions the watchdog.
+func noticeLabel(event string) string {
+	if event == EventWatchdogDigest {
+		return labelWatchdogDigest
+	}
+
+	return labelOperatorNotice
+}
+
+// skipUnavailable records a route this instance simply cannot carry.
+func skipUnavailable(
+	ctx context.Context, log *slog.Logger, label, medium string, route *models.UserNotificationRoute,
+) string {
+	log.WarnContext(ctx,
+		label+" cannot be delivered: "+medium+" is not available on this instance; skipping route",
+		"contactUid", route.Contact.UID)
+
+	return outcomeSkipped
+}
+
+// classifySend turns one medium's result into an outcome label, keeping
+// "not configured" (skipped) distinct from "refused it" (failed).
+func classifySend(
+	ctx context.Context, log *slog.Logger, label, medium string,
+	route *models.UserNotificationRoute, err error,
+) string {
+	if err == nil {
+		return outcomeSent
+	}
+
+	if errors.Is(err, ErrMediumUnavailable) {
+		log.WarnContext(ctx,
+			label+" cannot be delivered: "+medium+" is not available on this instance; skipping route",
+			"contactUid", route.Contact.UID, "error", err)
+
+		return outcomeSkipped
+	}
+
+	log.WarnContext(ctx, label+" failed to send over "+medium,
+		"orgUid", route.OrgUID, "contactUid", route.Contact.UID, "error", err)
+
+	return outcomeFailed
+}
 
 // SendFunc is one medium. Every one of them is nil-able: a nil closure means
 // "this instance cannot carry that contact type", which is WARNed and counted
@@ -98,10 +165,11 @@ func DeliverToUser(
 	ctx context.Context, deps Deps, log *slog.Logger, userUID string, notice *Notice,
 ) DeliveryReport {
 	log = log.With("recipientUid", userUID, "event", notice.Event)
+	label := noticeLabel(notice.Event)
 	report := DeliveryReport{UserUID: userUID}
 
 	if deps.DB == nil {
-		log.WarnContext(ctx, "Operator notice undeliverable: no database service wired")
+		log.WarnContext(ctx, label+" undeliverable: no database service wired")
 		count(notice.Event, contactTypeNone, outcomeSkipped)
 
 		return report
@@ -109,7 +177,7 @@ func DeliverToUser(
 
 	user, err := deps.DB.GetUser(ctx, userUID)
 	if err != nil || user == nil {
-		log.WarnContext(ctx, "Operator notice undeliverable: recipient user not found", "error", err)
+		log.WarnContext(ctx, label+" undeliverable: recipient user not found", "error", err)
 		count(notice.Event, contactTypeNone, outcomeSkipped)
 
 		return report
@@ -119,7 +187,7 @@ func DeliverToUser(
 	report.Routes = len(routes)
 
 	for _, route := range routes {
-		switch dispatchRoute(ctx, deps, log, route, notice) {
+		switch dispatchRoute(ctx, deps, log, label, route, notice) {
 		case outcomeSent:
 			report.Delivered++
 		case outcomeFailed:
@@ -133,14 +201,14 @@ func DeliverToUser(
 		// "undeliverable" is asserted by the watchdog's own tests: a recipient
 		// nobody could reach must be NAMED, not counted.
 		log.WarnContext(ctx,
-			"Operator notice undeliverable: recipient has no enabled notification route that can carry it",
+			label+" undeliverable: recipient has no enabled notification route that can carry it",
 			"email", user.Email, "routes", report.Routes)
 		count(notice.Event, contactTypeNone, outcomeSkipped)
 
 		return report
 	}
 
-	log.InfoContext(ctx, "Operator notice delivered", "deliveries", report.Delivered)
+	log.InfoContext(ctx, label+" delivered", "deliveries", report.Delivered)
 
 	return report
 }
@@ -222,29 +290,29 @@ func destinationKey(contact *models.UserContact) string {
 // dispatchRoute delivers the notice over one route and returns the outcome
 // label it was counted under.
 func dispatchRoute(
-	ctx context.Context, deps Deps, log *slog.Logger,
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	var outcome string
 
 	switch route.Contact.Type {
 	case models.UserContactTypeEmail:
-		outcome = sendEmail(ctx, deps, log, route, notice)
+		outcome = sendEmail(ctx, deps, log, label, route, notice)
 	case models.UserContactTypeTelegram:
-		outcome = sendTelegram(ctx, deps, log, route, notice)
+		outcome = sendTelegram(ctx, deps, log, label, route, notice)
 	case models.UserContactTypeSlackUser:
-		outcome = sendSlackDM(ctx, deps, log, route, notice)
+		outcome = sendSlackDM(ctx, deps, log, label, route, notice)
 	case models.UserContactTypeWebPush:
-		outcome = sendWebPush(ctx, deps, log, route, notice)
+		outcome = sendWebPush(ctx, deps, log, label, route, notice)
 	case models.UserContactTypePhone:
-		outcome = sendSMS(ctx, deps, log, route, notice)
+		outcome = sendSMS(ctx, deps, log, label, route, notice)
 	default:
 		// WhatsApp (template-gated: Meta will not carry free-form business
 		// text outside a session), pushover, ntfy, and anything added later.
 		// Named in the log rather than dropped, so an operator whose only
 		// route is one of these finds out from the logs instead of from a
 		// missed message.
-		log.WarnContext(ctx, "Operator notice cannot be delivered over this contact type; skipping route",
+		log.WarnContext(ctx, label+" cannot be delivered over this contact type; skipping route",
 			"contactType", route.Contact.Type, "contactUid", route.Contact.UID)
 
 		outcome = outcomeSkipped
@@ -257,38 +325,24 @@ func dispatchRoute(
 
 // sendEmail enqueues the notice as a normal email job.
 func sendEmail(
-	ctx context.Context, deps Deps, log *slog.Logger,
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.EnqueueEmail == nil {
-		log.WarnContext(ctx, "Email delivery unavailable; skipping the operator notice email route",
-			"contactUid", route.Contact.UID)
-
-		return outcomeSkipped
+		return skipUnavailable(ctx, log, label, models.UserContactTypeEmail, route)
 	}
 
-	if err := deps.EnqueueEmail(
-		ctx, route.OrgUID, route.Contact.Value, notice.Subject, notice.noticeText(),
-	); err != nil {
-		log.WarnContext(ctx, "Failed to enqueue the operator notice email",
-			"contactUid", route.Contact.UID, "error", err)
-
-		return outcomeFailed
-	}
-
-	return outcomeSent
+	return classifySend(ctx, log, label, models.UserContactTypeEmail, route,
+		deps.EnqueueEmail(ctx, route.OrgUID, route.Contact.Value, notice.Subject, notice.noticeText()))
 }
 
 // sendTelegram DMs the notice through the instance bot.
 func sendTelegram(
-	ctx context.Context, deps Deps, log *slog.Logger,
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.SendTelegram == nil {
-		log.WarnContext(ctx, "Telegram not configured; skipping the operator notice Telegram route",
-			"contactUid", route.Contact.UID)
-
-		return outcomeSkipped
+		return skipUnavailable(ctx, log, label, models.UserContactTypeTelegram, route)
 	}
 
 	// Bodies are attacker-influenced (a support message is typed by a
@@ -301,91 +355,56 @@ func sendTelegram(
 			telegram.EscapeHTML(notice.URL) + "</a>"
 	}
 
-	if err := deps.SendTelegram(ctx, route.Contact.Value, html); err != nil {
-		log.WarnContext(ctx, "Failed to send the operator notice over Telegram",
-			"contactUid", route.Contact.UID, "error", err)
-
-		return outcomeFailed
-	}
-
-	return outcomeSent
+	return classifySend(ctx, log, label, models.UserContactTypeTelegram, route,
+		deps.SendTelegram(ctx, route.Contact.Value, html))
 }
 
 // sendSlackDM delivers the notice as a Slack DM through the org's own Slack
 // connection — the same path escalation DMs take.
 func sendSlackDM(
-	ctx context.Context, deps Deps, log *slog.Logger,
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.SendSlackDM == nil {
-		log.WarnContext(ctx, "Slack delivery unavailable; skipping the operator notice Slack route",
-			"contactUid", route.Contact.UID)
-
-		return outcomeSkipped
+		return skipUnavailable(ctx, log, label, models.UserContactTypeSlackUser, route)
 	}
 
-	if err := deps.SendSlackDM(ctx, route.OrgUID, route.Contact.Value, notice.noticeText()); err != nil {
-		log.WarnContext(ctx, "Failed to send the operator notice over Slack",
-			"orgUid", route.OrgUID, "contactUid", route.Contact.UID, "error", err)
-
-		return outcomeFailed
-	}
-
-	return outcomeSent
+	return classifySend(ctx, log, label, models.UserContactTypeSlackUser, route,
+		deps.SendSlackDM(ctx, route.OrgUID, route.Contact.Value, notice.noticeText()))
 }
 
 // sendWebPush pushes the subject line plus the first content line.
 func sendWebPush(
-	ctx context.Context, deps Deps, log *slog.Logger,
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.SendWebPush == nil {
-		log.WarnContext(ctx, "Web push not configured; skipping the operator notice web push route",
-			"contactUid", route.Contact.UID)
-
-		return outcomeSkipped
+		return skipUnavailable(ctx, log, label, models.UserContactTypeWebPush, route)
 	}
 
-	if err := deps.SendWebPush(
-		ctx, route.Contact.Value, notice.Subject, ShortBody(notice), notice.URL,
-	); err != nil {
-		log.WarnContext(ctx, "Failed to send the operator notice over web push",
-			"contactUid", route.Contact.UID, "error", err)
-
-		return outcomeFailed
-	}
-
-	return outcomeSent
+	return classifySend(ctx, log, label, models.UserContactTypeWebPush, route,
+		deps.SendWebPush(ctx, route.Contact.Value, notice.Subject, ShortBody(notice), notice.URL))
 }
 
 // sendSMS texts the compact form of the notice. An unverified number is never
 // contacted — same rule as escalation paging.
 func sendSMS(
-	ctx context.Context, deps Deps, log *slog.Logger,
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
 	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if route.Contact.VerifiedAt == nil {
-		log.WarnContext(ctx, "Phone contact not verified; skipping the operator notice SMS route",
+		log.WarnContext(ctx, label+" not sent: phone contact not verified; skipping route",
 			"contactUid", route.Contact.UID)
 
 		return outcomeSkipped
 	}
 
 	if deps.SendSMS == nil {
-		log.WarnContext(ctx, "SMS delivery unavailable; skipping the operator notice SMS route",
-			"contactUid", route.Contact.UID)
-
-		return outcomeSkipped
+		return skipUnavailable(ctx, log, label, models.UserContactTypePhone, route)
 	}
 
-	if err := deps.SendSMS(ctx, route.OrgUID, route.Contact.Value, SMSBody(notice)); err != nil {
-		log.WarnContext(ctx, "Failed to send the operator notice over SMS",
-			"orgUid", route.OrgUID, "contactUid", route.Contact.UID, "error", err)
-
-		return outcomeFailed
-	}
-
-	return outcomeSent
+	return classifySend(ctx, log, label, models.UserContactTypePhone, route,
+		deps.SendSMS(ctx, route.OrgUID, route.Contact.Value, SMSBody(notice)))
 }
 
 // ShortBody is the first non-empty content line of a notice — what a push

@@ -370,7 +370,7 @@ func TestDeliverSkipsUnverifiedPhone(t *testing.T) {
 	r.Zero(report.Delivered)
 	r.Equal(1, report.Skipped)
 	r.Empty(e.deliveries())
-	r.Contains(e.logs.String(), "not verified")
+	r.Contains(e.logs.String(), "phone contact not verified")
 }
 
 // TestDeliverSkipsWhatsApp: Meta will not carry free-form business text
@@ -435,7 +435,7 @@ func TestDeliverWarnsWhenAMediumIsNotConfigured(t *testing.T) {
 
 	r.Zero(report.Delivered)
 	r.Equal(1, report.Skipped)
-	r.Contains(e.logs.String(), "Telegram not configured")
+	r.Contains(e.logs.String(), "telegram is not available on this instance")
 }
 
 // TestResolveRecipientsRequiresSuperAdminAtDeliveryTime is the authorization
