@@ -442,7 +442,8 @@
       "supportMessage": "Support message",
       "userRegistered": "New signup"
     },
-    "noRoutes": "No notification routes — nothing will be delivered",
+    "noRoutes": "No notification routes — this admin must add one before anything is delivered",
+    "noRoutesSelf": "No notification routes — set one up on your notifications page",
     "noRecipients": "Operator notifications are on, but nobody is subscribed to anything. Nothing will be delivered.",
     "noSuperAdmins": "No super admin on this instance yet.",
     "notSuperAdmin": "No longer a super admin — skipped at delivery",
