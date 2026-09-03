@@ -137,15 +137,22 @@ type Report struct {
 	Label string `json:"label"`
 	// Mode is "docker" (authoritative: real cgroup v2, real Linux, the shipped
 	// image shape) or "local" (host binary — fast, and NOT authoritative).
-	Mode      string           `json:"mode"`
-	Host      string           `json:"host"`
-	GoVersion string           `json:"goVersion"`
-	Image     string           `json:"image,omitempty"`
-	Memory    string           `json:"memory,omitempty"`
-	CPUs      string           `json:"cpus,omitempty"`
-	StartedAt time.Time        `json:"startedAt"`
-	Protocol  Protocol         `json:"protocol"`
-	Scenarios []ScenarioResult `json:"scenarios"`
+	Mode      string `json:"mode"`
+	Host      string `json:"host"`
+	GoVersion string `json:"goVersion"`
+	Image     string `json:"image,omitempty"`
+	Memory    string `json:"memory,omitempty"`
+	// Env records any -env overrides, so a run tuned by an environment knob can
+	// never be mistaken for an untuned one.
+	Env string `json:"env,omitempty"`
+	// SampleMode is "steady" or "floor" (?gc=1 before each reading). The two
+	// measure different things and a comparison across them is meaningless, so
+	// it travels with every report and is flagged in CompareMarkdown.
+	SampleMode string           `json:"sampleMode,omitempty"`
+	CPUs       string           `json:"cpus,omitempty"`
+	StartedAt  time.Time        `json:"startedAt"`
+	Protocol   Protocol         `json:"protocol"`
+	Scenarios  []ScenarioResult `json:"scenarios"`
 }
 
 // Protocol records the measurement parameters, because a number without its
@@ -366,10 +373,47 @@ func Min(values []float64) float64 {
 	return out
 }
 
-// FormatBytes renders a byte count in MiB with one decimal, the unit every
-// number in this report is read in.
+// countMetrics are the metrics that are counts, not byte totals. Rendering a
+// goroutine count in MiB would print "0.0" for every row — a table that quietly
+// hides a goroutine leak is worse than no table.
+//
+//nolint:gochecknoglobals // immutable schema table
+var countMetrics = map[string]bool{
+	MetricGoroutines: true,
+	MetricThreads:    true,
+}
+
+// FormatBytes renders a byte count in MiB with one decimal, the unit every byte
+// column in this report is read in.
 func FormatBytes(v float64) string {
 	return fmt.Sprintf("%.1f", v/(1024*1024))
+}
+
+// FormatMetric renders a value in the unit its metric is measured in.
+func FormatMetric(metric string, v float64) string {
+	if countMetrics[metric] {
+		return fmt.Sprintf("%.0f", v)
+	}
+
+	return FormatBytes(v)
+}
+
+// FormatMetricDelta is FormatMetric with the sign kept visible.
+func FormatMetricDelta(metric string, v float64) string {
+	if v > 0 {
+		return "+" + FormatMetric(metric, v)
+	}
+
+	return FormatMetric(metric, v)
+}
+
+// MetricUnit names the unit a metric's columns are in.
+func MetricUnit(metric string) string {
+	if countMetrics[metric] {
+		return "count"
+	}
+
+	return "MiB"
 }
 
 // FormatDelta renders a signed byte delta in MiB, keeping the sign visible so a
@@ -405,6 +449,14 @@ func (r *Report) Markdown() string {
 		out.WriteString("\n")
 	}
 
+	if r.SampleMode != "" {
+		fmt.Fprintf(&out, "- sample mode: **%s**%s\n", r.SampleMode, sampleModeCaveat(r.SampleMode))
+	}
+
+	if r.Env != "" {
+		fmt.Fprintf(&out, "- env overrides: `%s`\n", r.Env)
+	}
+
 	fmt.Fprintf(&out, "- protocol: warm-up %s, sample every %s for %s, %d repetitions\n",
 		r.Protocol.WarmUp, r.Protocol.Interval, r.Protocol.Duration, r.Protocol.Reps)
 	fmt.Fprintf(&out, "- started: %s\n\n", r.StartedAt.Format(time.RFC3339))
@@ -413,37 +465,26 @@ func (r *Report) Markdown() string {
 		"`pssBytes` / `rssFileBytes` move with binary size and with which pages were touched; they are " +
 		"reported so that is visible, never added to the heap numbers.\n\n")
 
-	out.WriteString("| scenario |")
-
-	for _, key := range MetricKeys {
-		fmt.Fprintf(&out, " %s med | %s p95 | %s max | %s spread |", key, key, key, key)
-	}
-
-	out.WriteString("\n|---|")
-	out.WriteString(strings.Repeat("---:|", len(MetricKeys)*4))
-	out.WriteString("\n")
+	out.WriteString("| scenario | metric | unit | median | p95 | max | inter-run spread |\n")
+	out.WriteString("|---|---|---|---:|---:|---:|---:|\n")
 
 	for i := range r.Scenarios {
-		s := &r.Scenarios[i]
-
-		fmt.Fprintf(&out, "| %s |", s.Scenario)
+		scenario := &r.Scenarios[i]
 
 		for _, key := range MetricKeys {
-			agg := s.Metrics[key]
-			spread := FormatBytes(agg.Spread)
+			agg := scenario.Metrics[key]
 
+			spread := FormatMetric(key, agg.Spread)
 			if !agg.SpreadKnown {
 				spread = "n/a"
 			}
 
-			fmt.Fprintf(&out, " %s | %s | %s | %s |",
-				FormatBytes(agg.Median), FormatBytes(agg.P95), FormatBytes(agg.Max), spread)
+			fmt.Fprintf(&out, "| %s | %s | %s | %s | %s | %s | %s |\n",
+				scenario.Scenario, key, MetricUnit(key),
+				FormatMetric(key, agg.Median), FormatMetric(key, agg.P95),
+				FormatMetric(key, agg.Max), spread)
 		}
-
-		out.WriteString("\n")
 	}
-
-	out.WriteString("\n")
 
 	for i := range r.Scenarios {
 		for _, note := range r.Scenarios[i].Notes {
@@ -452,6 +493,16 @@ func (r *Report) Markdown() string {
 	}
 
 	return out.String()
+}
+
+// sampleModeCaveat says what a floor reading is and is not.
+func sampleModeCaveat(mode string) string {
+	if mode == "floor" {
+		return " — a GC and FreeOSMemory ran before every reading, so this is the LIVE FLOOR, " +
+			"not what the process costs in production. Compare a floor run only with another floor run."
+	}
+
+	return " — the process as a monitoring system would see it."
 }
 
 // modeCaveat spells out, in the report itself, what a `--local` number is worth.
@@ -474,6 +525,10 @@ func CompareMarkdown(baseline, current *Report, deltas []Delta) string {
 	fmt.Fprintf(&out, "# membench comparison — `%s` → `%s`\n\n", baseline.Label, current.Label)
 	fmt.Fprintf(&out, "- baseline mode: %s; current mode: %s\n", baseline.Mode, current.Mode)
 
+	if baseline.SampleMode != current.SampleMode {
+		out.WriteString("- ⚠️ **sample modes differ (steady vs floor) — these two runs are not comparable.**\n")
+	}
+
 	if baseline.Mode != current.Mode {
 		out.WriteString("- ⚠️ **modes differ — these two runs are not comparable.** " +
 			"A local number and a containerized number measure different things.\n")
@@ -481,8 +536,8 @@ func CompareMarkdown(baseline, current *Report, deltas []Delta) string {
 
 	out.WriteString("\nA delta is only significant when it exceeds the larger of the two runs' " +
 		"own inter-run spreads (MiB).\n\n")
-	out.WriteString("| scenario | metric | baseline | current | delta | % | noise floor | verdict |\n")
-	out.WriteString("|---|---|---:|---:|---:|---:|---:|---|\n")
+	out.WriteString("| scenario | metric | unit | baseline | current | delta | % | noise floor | verdict |\n")
+	out.WriteString("|---|---|---|---:|---:|---:|---:|---:|---|\n")
 
 	for i := range deltas {
 		delta := &deltas[i]
@@ -492,10 +547,11 @@ func CompareMarkdown(baseline, current *Report, deltas []Delta) string {
 			verdict = delta.Reason
 		}
 
-		fmt.Fprintf(&out, "| %s | %s | %s | %s | %s | %+.1f%% | %s | %s |\n",
-			delta.Scenario, delta.Metric,
-			FormatBytes(delta.Baseline), FormatBytes(delta.Current), FormatDelta(delta.Delta),
-			delta.PercentChange(), FormatBytes(delta.Threshold), verdict)
+		fmt.Fprintf(&out, "| %s | %s | %s | %s | %s | %s | %+.1f%% | %s | %s |\n",
+			delta.Scenario, delta.Metric, MetricUnit(delta.Metric),
+			FormatMetric(delta.Metric, delta.Baseline), FormatMetric(delta.Metric, delta.Current),
+			FormatMetricDelta(delta.Metric, delta.Delta),
+			delta.PercentChange(), FormatMetric(delta.Metric, delta.Threshold), verdict)
 	}
 
 	return out.String()

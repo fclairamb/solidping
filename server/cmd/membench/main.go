@@ -63,6 +63,8 @@ type options struct {
 	memory    string
 	cpus      string
 	baseURL   string
+	extraEnv  string
+	floor     bool
 	warmUp    time.Duration
 	interval  time.Duration
 	duration  time.Duration
@@ -95,12 +97,18 @@ func parseFlags() options {
 	flag.StringVar(&opts.label, "label", "baseline", "label for this run (names the output files)")
 	flag.StringVar(&opts.outDir, "out-dir", "bench-results", "directory for the markdown and JSON reports")
 	flag.StringVar(&opts.compare, "compare", "", "baseline JSON report to compare this run against")
+	flag.StringVar(&opts.extraEnv, "env", "",
+		"comma-separated KEY=VALUE overrides applied to every scenario, e.g. -env GOGC=50 "+
+			"(recorded in the report, so a run tuned by env cannot be mistaken for an untuned one)")
 	flag.StringVar(&opts.memory, "memory", "1g", "container memory limit for -mode docker")
 	flag.StringVar(&opts.cpus, "cpus", "1", "container CPU limit for -mode docker")
 	flag.DurationVar(&opts.warmUp, "warmup", defaultWarmUp, "warm-up before sampling starts")
 	flag.DurationVar(&opts.interval, "interval", defaultInterval, "sampling interval")
 	flag.DurationVar(&opts.duration, "duration", defaultDuration, "sampling window")
 	flag.IntVar(&opts.reps, "reps", defaultReps, "repetitions per scenario (≥2 to get a spread, and without a spread nothing is significant)")
+	flag.BoolVar(&opts.floor, "floor", false,
+		"sample the LIVE FLOOR (?gc=1: force a GC and return free pages before each reading) instead of the "+
+			"steady state. A different measurement, not a better one — never compare the two")
 	flag.IntVar(&opts.port, "port", defaultPort, "port the server under measurement listens on")
 	flag.Parse()
 
@@ -134,6 +142,13 @@ func run(ctx context.Context, opts options) error {
 		report.Image = opts.image
 		report.Memory = opts.memory
 		report.CPUs = opts.cpus
+	}
+
+	report.Env = opts.extraEnv
+	if opts.floor {
+		report.SampleMode = "floor"
+	} else {
+		report.SampleMode = "steady"
 	}
 
 	for _, sc := range scenarios {
@@ -336,7 +351,7 @@ func sampleWindow(ctx context.Context, api *client, opts options) ([]membench.Sa
 	var samples []membench.Sample
 
 	for time.Now().Before(deadline) {
-		sample, err := api.sample(ctx)
+		sample, err := api.sample(ctx, opts.floor)
 		if err != nil {
 			return samples, err
 		}
@@ -393,20 +408,34 @@ func targetEnv(opts options, sc scenario, dataDir string) map[string]string {
 		"SP_DB_RESET":      "true",
 		"SP_SERVER_LISTEN": fmt.Sprintf("0.0.0.0:%d", opts.port),
 		"LOG_LEVEL":        "warn",
+		// A container's hostname is a hex id, which fails the worker-slug
+		// pattern and refuses the boot roughly half the time (whenever the id
+		// starts with a digit). Pinning the name also keeps the worker rows
+		// from one repetition out of the next one's database.
+		"SP_NODE_NAME": "membench",
 	}
 
 	switch opts.mode {
 	case "local":
-		env["SP_DB_DATA_DIR"] = dataDir
-		env["SP_DB_EMBEDDED_DIR"] = filepath.Join(dataDir, "pg")
+		env["SP_DB_DIR"] = dataDir
 	case "docker":
 		// The image runs as nonroot with a read-only-ish /app, so the database
 		// goes somewhere the container user can actually write.
-		env["SP_DB_DATA_DIR"] = "/tmp/membench"
+		env["SP_DB_DIR"] = "/tmp/membench"
 	}
 
 	for k, v := range sc.Env {
 		env[k] = v
+	}
+
+	// Operator overrides win over the scenario: that is what makes -env usable
+	// for measuring a runtime knob (GOGC, GOMEMLIMIT, GOMAXPROCS) without
+	// editing the scenario table.
+	for _, kv := range strings.Split(opts.extraEnv, ",") {
+		key, value, found := strings.Cut(strings.TrimSpace(kv), "=")
+		if found {
+			env[key] = value
+		}
 	}
 
 	return env

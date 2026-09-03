@@ -278,9 +278,19 @@ func TestMarkdownSchemaAndCaveats(t *testing.T) {
 	md := rep.Markdown()
 
 	for _, key := range MetricKeys {
-		if !strings.Contains(md, key+" med") {
-			t.Errorf("markdown missing column for %s", key)
+		if !strings.Contains(md, "| "+key+" |") {
+			t.Errorf("markdown missing a row for %s", key)
 		}
+	}
+
+	// Counts must be rendered as counts: a goroutine count divided by 1 MiB
+	// prints 0.0 for every row, and a table that hides a goroutine leak is
+	// worse than no table.
+	if got := FormatMetric(MetricGoroutines, 42); got != "42" {
+		t.Errorf("FormatMetric(goroutines, 42) = %q, want \"42\"", got)
+	}
+	if got := FormatMetric(MetricRssAnon, 2*1024*1024); got != "2.0" {
+		t.Errorf("FormatMetric(rssAnon, 2MiB) = %q", got)
 	}
 	if !strings.Contains(md, "NOT authoritative") {
 		t.Error("a local-mode report must carry its non-authoritative caveat")
