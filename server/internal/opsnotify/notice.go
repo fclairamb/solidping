@@ -83,6 +83,18 @@ type Notice struct {
 	Body string
 	// URL deep-links into the dashboard. May be empty.
 	URL string
+	// AboutUserUID names the user this notice is ABOUT — never the recipient.
+	//
+	// It exists because the landing organization of a brand-new account is not
+	// knowable at the moment the account is created: every signup path (each
+	// OAuth/OIDC/SAML/LDAP find-or-create, the password confirmation, invite
+	// acceptance) inserts the `users` row BEFORE the membership. Resolving it
+	// at DELIVERY time, one queue hop later, is what makes "…in organization
+	// acme" true rather than a guess, and it keeps the single account-creation
+	// chokepoint free of an org parameter no caller could fill in honestly.
+	//
+	// Optional: empty means "this notice is not about a user".
+	AboutUserUID string
 }
 
 // noticeText is the plain-text rendering shared by email, Slack and Telegram:
