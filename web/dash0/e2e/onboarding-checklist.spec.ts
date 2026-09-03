@@ -421,6 +421,81 @@ test.describe("Getting-started checklist", () => {
     await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
   });
 
+  test("the header carries a real progress bar and the first open step is the only 'next up' row", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOrgWithCheck(page);
+
+    await openDashboard(page, orgSlug);
+
+    const card = page.getByTestId("onboarding-checklist");
+    await expect(card).toBeVisible();
+
+    // `data-next` is carried by the step ROWS only (the status wells inside
+    // them carry data-done but not data-next), so this is the row set.
+    const rows = card.locator("[data-next]");
+    const states = await rows.evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        done: node.getAttribute("data-done"),
+        next: node.getAttribute("data-next"),
+      })),
+    );
+    const total = states.length;
+    const doneCount = states.filter((row) => row.done === "true").length;
+
+    // A self-created org starts at 3/5 (spec 2026-08-28-15 seeds an email
+    // channel and a report schedule), so there is genuinely both a done row
+    // and an open row here — these two bounds are the positive control that
+    // the assertions below are not passing on a degenerate list.
+    expect(total).toBeGreaterThan(0);
+    expect(doneCount).toBeGreaterThan(0);
+    expect(doneCount).toBeLessThan(total);
+
+    // Spec 2026-09-03-01 replaced "N of M done" as the ONLY progress signal
+    // with a real bar; its value has to agree with the rows rather than be
+    // decorative.
+    const bar = card.getByRole("progressbar");
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute("aria-valuemax", String(total));
+    await expect(bar).toHaveAttribute("aria-valuenow", String(doneCount));
+
+    // Exactly one focal row, and it is the FIRST step still open — that is
+    // the whole point of the "next up" treatment.
+    const firstOpenIndex = states.findIndex((row) => row.done === "false");
+    expect(firstOpenIndex).toBeGreaterThanOrEqual(0);
+    expect(states.map((row) => row.next)).toEqual(
+      states.map((_, i) => (i === firstOpenIndex ? "true" : "false")),
+    );
+  });
+
+  test("a done step is muted, not struck through", async ({ page }) => {
+    const { orgSlug } = await seedOrgWithCheck(page);
+
+    await openDashboard(page, orgSlug);
+
+    // The check step is done the moment the card appears, so this is a real
+    // done row rather than a hypothetical one. Five struck-through titles
+    // read as a wall of deletions instead of a finished setup, which is why
+    // spec 2026-09-03-01 removed the strikethrough outright.
+    const doneRow = page.getByTestId("onboarding-step-check");
+    await expect(doneRow).toHaveAttribute("data-done", "true");
+    const doneDecoration = await doneRow
+      .locator("p")
+      .first()
+      .evaluate((el) => getComputedStyle(el).textDecorationLine);
+    expect(doneDecoration).toBe("none");
+
+    // Positive control: a pending title is measured the same way and is also
+    // undecorated, so the assertion above really is reading text-decoration.
+    const pendingRow = page.getByTestId("onboarding-step-team");
+    await expect(pendingRow).toHaveAttribute("data-done", "false");
+    const pendingDecoration = await pendingRow
+      .locator("p")
+      .first()
+      .evaluate((el) => getComputedStyle(el).textDecorationLine);
+    expect(pendingDecoration).toBe("none");
+  });
+
   test("stays usable at mobile width", async ({ page }) => {
     const { orgSlug } = await seedOrgWithCheck(page);
 
