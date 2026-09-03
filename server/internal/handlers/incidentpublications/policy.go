@@ -285,7 +285,17 @@ func (s *Service) pageStillEligible(ctx context.Context, incident *models.Incide
 //     the narrative over. Auto-resolving under them would overwrite a
 //     deliberate editorial decision with a machine's opinion.
 //
-// Hand-authored publications (auto_created = false) are never touched.
+// Scope is "publications LINKED to this incident", not "publications a machine
+// created". A publication an operator made with "Publish to status page" tracks
+// the same incident an auto-published one does, and the page's autoResolve
+// setting is the operator's own instruction about what should happen when it
+// recovers — honouring it only for machine-minted rows made `if_untouched`
+// behave exactly like `never` for every hand-published entry, which is how a
+// publication came to outlive its incident by ten days (spec 2026-09-02-05).
+//
+// FREE-FORM publications — no incident_uid, the "we are migrating tonight"
+// kind — are never touched by any policy. They track nothing, so there is no
+// recovery that could close them; only their author can.
 func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incident) {
 	if incident == nil {
 		return
@@ -325,7 +335,7 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 	}
 
 	for _, pub := range pubs {
-		if !pub.AutoCreated || pub.IsResolved() {
+		if pub.IncidentUID == nil || pub.IsResolved() {
 			continue
 		}
 

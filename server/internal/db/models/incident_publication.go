@@ -90,7 +90,8 @@ const (
 	// AutoResolveIfUntouched (default) resolves only while nobody has edited
 	// the publication; once a human owns the narrative, the automation posts a
 	// "component recovered" monitoring note and leaves the final resolve to
-	// them.
+	// them. It applies to every publication LINKED to the resolving incident,
+	// hand-published ones included — only free-form entries are out of scope.
 	AutoResolveIfUntouched AutoResolvePolicy = "if_untouched"
 	// AutoResolveNever posts nothing and resolves nothing.
 	AutoResolveNever AutoResolvePolicy = "never"
@@ -138,12 +139,20 @@ type IncidentPublication struct {
 	// Severity is the display-only public badge. nil = no badge.
 	Severity *string `bun:"severity"`
 	// AutoCreated marks a publication minted by the auto-publish pipeline.
-	// Only auto-created rows are candidates for auto-resolve and relapse
-	// reopen; a hand-authored publication is always the human's to close.
+	// It gates the relapse REOPEN path only: a hand-authored entry is never
+	// reopened behind its author's back. Auto-RESOLVE is keyed on IncidentUID
+	// instead — a publication linked to an incident is in scope of the page's
+	// autoResolve policy whether a machine or a person created it
+	// (spec 2026-09-02-05).
 	AutoCreated bool `bun:"auto_created,notnull"`
 	// HumanTouchedAt is stamped the first time a person edits the publication
 	// or posts an update on it. It is the whole basis of the `if_untouched`
 	// auto-resolve policy.
+	//
+	// Publishing an incident to a page does NOT stamp it: choosing to make an
+	// outage public is not the same as taking over its narrative, and treating
+	// it as such turned `if_untouched` into `never` for every hand-published
+	// entry.
 	HumanTouchedAt *time.Time `bun:"human_touched_at"`
 	PublishedAt    time.Time  `bun:"published_at,notnull,default:current_timestamp"`
 	ResolvedAt     *time.Time `bun:"resolved_at"`
