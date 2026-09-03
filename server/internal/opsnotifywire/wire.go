@@ -163,7 +163,7 @@ func sendWebPush(registry *services.Registry) opsnotify.SendWebPushFunc {
 // sendSMS texts through whichever sender the org resolves to — its own Twilio
 // integration or the instance-level provider.
 func sendSMS(registry *services.Registry) opsnotify.SendSMSFunc {
-	return func(ctx context.Context, orgUID, to, body string) error {
+	return func(ctx context.Context, orgUID, number, body string) error {
 		if registry == nil || registry.SMS == nil {
 			return errNoSMSResolver
 		}
@@ -177,7 +177,7 @@ func sendSMS(registry *services.Registry) opsnotify.SendSMSFunc {
 			return errNoSMSProvider
 		}
 
-		if _, err := resolution.Sender.SendSMS(ctx, &smssvc.SendParams{To: to, Body: body}); err != nil {
+		if _, err := resolution.Sender.SendSMS(ctx, &smssvc.SendParams{To: number, Body: body}); err != nil {
 			return fmt.Errorf("send sms: %w", err)
 		}
 

@@ -172,7 +172,7 @@ func (e *env) join(t *testing.T, org *models.Organization, user *models.User) {
 // contact adds a contact of an arbitrary type plus its enabled route.
 func (e *env) contact(
 	t *testing.T, org *models.Organization, user *models.User, contactType, value string, verified bool,
-) *models.UserContact {
+) {
 	t.Helper()
 
 	r := require.New(t)
@@ -186,12 +186,10 @@ func (e *env) contact(
 	}
 
 	r.NoError(e.db.EnsureUserNotificationRoute(ctx, user.UID, org.UID, contact.UID))
-
-	return contact
 }
 
-func testNotice() opsnotify.Notice {
-	return opsnotify.Notice{
+func testNotice() *opsnotify.Notice {
+	return &opsnotify.Notice{
 		Event:   opsnotify.EventSupportMessage,
 		Subject: "[SolidPing support] New message on sms from +33600000000",
 		Body:    "Channel: sms\nFrom:    +33600000000\n\nis the api down for you too?",
@@ -655,12 +653,12 @@ func TestNotifyNeverFailsTheCaller(t *testing.T) {
 		dispatcherMu.Unlock()
 	})
 
-	opsnotify.SetDispatcher(func(context.Context, opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(context.Context, *opsnotify.Notice) error {
 		return errMediumRefused
 	})
 	require.NotPanics(t, func() { opsnotify.Notify(t.Context(), testNotice()) })
 
-	opsnotify.SetDispatcher(func(context.Context, opsnotify.Notice) error {
+	opsnotify.SetDispatcher(func(context.Context, *opsnotify.Notice) error {
 		panic("the queue exploded")
 	})
 	require.NotPanics(t, func() { opsnotify.Notify(t.Context(), testNotice()) })

@@ -116,7 +116,7 @@ func (s *Service) raiseOperatorNotice(
 		return
 	}
 
-	opsnotify.Notify(ctx, opsnotify.Notice{
+	opsnotify.Notify(ctx, &opsnotify.Notice{
 		Event:   opsnotify.EventSupportMessage,
 		Subject: supportNoticeSubject(thread, isNewThread),
 		Body:    supportNoticeBody(thread, msg, folded),

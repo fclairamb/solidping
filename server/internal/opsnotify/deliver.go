@@ -95,7 +95,7 @@ func (r DeliveryReport) Undeliverable() bool {
 // metered, because a silent drop on a notification path is the exact bug this
 // transport exists to kill.
 func DeliverToUser(
-	ctx context.Context, deps Deps, log *slog.Logger, userUID string, notice Notice,
+	ctx context.Context, deps Deps, log *slog.Logger, userUID string, notice *Notice,
 ) DeliveryReport {
 	log = log.With("recipientUid", userUID, "event", notice.Event)
 	report := DeliveryReport{UserUID: userUID}
@@ -223,7 +223,7 @@ func destinationKey(contact *models.UserContact) string {
 // label it was counted under.
 func dispatchRoute(
 	ctx context.Context, deps Deps, log *slog.Logger,
-	route *models.UserNotificationRoute, notice Notice,
+	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	var outcome string
 
@@ -258,7 +258,7 @@ func dispatchRoute(
 // sendEmail enqueues the notice as a normal email job.
 func sendEmail(
 	ctx context.Context, deps Deps, log *slog.Logger,
-	route *models.UserNotificationRoute, notice Notice,
+	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.EnqueueEmail == nil {
 		log.WarnContext(ctx, "Email delivery unavailable; skipping the operator notice email route",
@@ -282,7 +282,7 @@ func sendEmail(
 // sendTelegram DMs the notice through the instance bot.
 func sendTelegram(
 	ctx context.Context, deps Deps, log *slog.Logger,
-	route *models.UserNotificationRoute, notice Notice,
+	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.SendTelegram == nil {
 		log.WarnContext(ctx, "Telegram not configured; skipping the operator notice Telegram route",
@@ -315,7 +315,7 @@ func sendTelegram(
 // connection — the same path escalation DMs take.
 func sendSlackDM(
 	ctx context.Context, deps Deps, log *slog.Logger,
-	route *models.UserNotificationRoute, notice Notice,
+	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.SendSlackDM == nil {
 		log.WarnContext(ctx, "Slack delivery unavailable; skipping the operator notice Slack route",
@@ -337,7 +337,7 @@ func sendSlackDM(
 // sendWebPush pushes the subject line plus the first content line.
 func sendWebPush(
 	ctx context.Context, deps Deps, log *slog.Logger,
-	route *models.UserNotificationRoute, notice Notice,
+	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if deps.SendWebPush == nil {
 		log.WarnContext(ctx, "Web push not configured; skipping the operator notice web push route",
@@ -362,7 +362,7 @@ func sendWebPush(
 // contacted — same rule as escalation paging.
 func sendSMS(
 	ctx context.Context, deps Deps, log *slog.Logger,
-	route *models.UserNotificationRoute, notice Notice,
+	route *models.UserNotificationRoute, notice *Notice,
 ) string {
 	if route.Contact.VerifiedAt == nil {
 		log.WarnContext(ctx, "Phone contact not verified; skipping the operator notice SMS route",
@@ -394,7 +394,7 @@ func sendSMS(
 // The "Generated at " skip is inherited from the watchdog digest, whose first
 // line is a timestamp nobody needs on a lock screen. It is harmless for every
 // other event, and dropping it would regress the digest.
-func ShortBody(notice Notice) string {
+func ShortBody(notice *Notice) string {
 	for _, line := range strings.Split(notice.Body, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || trimmed == notice.Subject || strings.HasPrefix(trimmed, "Generated at ") {
@@ -409,7 +409,7 @@ func ShortBody(notice Notice) string {
 
 // SMSBody renders a notice for a 160-character medium: the subject, the
 // leading content line, and the opt-out footer every outbound SMS carries.
-func SMSBody(notice Notice) string {
+func SMSBody(notice *Notice) string {
 	body := notice.Subject + " " + ShortBody(notice)
 	if len(body) > smsMaxLen {
 		body = body[:smsMaxLen] + "…"

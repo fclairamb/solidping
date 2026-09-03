@@ -92,7 +92,7 @@ func NotifyUserRegistered(ctx context.Context, user *models.User, method string)
 
 	body += "Method: " + method
 
-	opsnotify.Notify(ctx, opsnotify.Notice{
+	opsnotify.Notify(ctx, &opsnotify.Notice{
 		Event:   opsnotify.EventUserRegistered,
 		Subject: "[SolidPing] New signup: " + user.Email + " (" + method + ")",
 		Body:    body,

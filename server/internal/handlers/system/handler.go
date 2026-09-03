@@ -17,6 +17,13 @@ import (
 // request body's "value" field.
 const paramValueField = "value"
 
+// invalidJSONMessage is the validation message every malformed-body branch in
+// this package returns, and bodyField the field it is attributed to.
+const (
+	invalidJSONMessage = "Invalid JSON format"
+	bodyField          = "body"
+)
+
 // Handler provides HTTP handlers for system parameter endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -74,7 +81,7 @@ func (h *Handler) SetParameter(writer http.ResponseWriter, req *http.Request) er
 	var setReq SetParameterRequest
 	if err := json.NewDecoder(req.Body).Decode(&setReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: bodyField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -110,7 +117,7 @@ func (h *Handler) TestEmail(writer http.ResponseWriter, req *http.Request) error
 	var body TestEmailRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: bodyField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -324,7 +331,7 @@ func (h *Handler) SetOperatorNotifications(writer http.ResponseWriter, req *http
 	var body OperatorNotificationsRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: bodyField, Message: invalidJSONMessage},
 		})
 	}
 
