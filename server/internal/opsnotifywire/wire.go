@@ -12,7 +12,6 @@ package opsnotifywire
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
@@ -28,15 +27,27 @@ import (
 )
 
 // Wiring failures, all of them "this instance cannot carry that medium".
+//
+// Every one wraps opsnotify.ErrMediumUnavailable, which is what makes delivery
+// count them as `skipped` rather than `failed`. That distinction is the whole
+// point of the outcome label: an instance that never configured Telegram must
+// not look, in solidping_operator_notice_total, like an instance whose Telegram
+// is broken. Only a provider that was reachable and refused the message is a
+// failure.
 var (
-	errNoJobService   = errors.New("job service unavailable")
-	errNoTelegram     = errors.New("telegram is not configured on this instance")
-	errNoSlackToken   = errors.New("no Slack access token for this organization")
-	errNoWebPush      = errors.New("web push is not configured on this instance")
-	errNoSMSResolver  = errors.New("no SMS resolver wired")
-	errNoSMSProvider  = errors.New("no SMS provider available for this organization")
-	errNoSlackChannel = errors.New("no Slack connection for this organization")
+	errNoJobService   = unavailable("job service unavailable")
+	errNoTelegram     = unavailable("telegram is not configured on this instance")
+	errNoSlackToken   = unavailable("no Slack access token for this organization")
+	errNoWebPush      = unavailable("web push is not configured on this instance")
+	errNoSMSResolver  = unavailable("no SMS resolver wired")
+	errNoSMSProvider  = unavailable("no SMS provider available for this organization")
+	errNoSlackChannel = unavailable("no Slack connection for this organization")
 )
+
+// unavailable builds a static "not configured" error carrying the sentinel.
+func unavailable(reason string) error {
+	return fmt.Errorf("%w: %s", opsnotify.ErrMediumUnavailable, reason)
+}
 
 // emailJobConfig is the wire shape of an email job's payload.
 //
