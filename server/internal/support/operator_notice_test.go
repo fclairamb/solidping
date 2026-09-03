@@ -252,3 +252,70 @@ func TestCapture_SurvivesAFailingNoticeDispatcher(t *testing.T) {
 	r.NoError(err)
 	r.Len(stored, 1, "the message is stored regardless")
 }
+
+// TestCapture_NoticeInstanceHourlyCeiling covers the instance-wide notice cap,
+// the sibling of the per-thread fold window.
+//
+// The fold window alone is not enough: a hundred DIFFERENT numbers texting once
+// each are a hundred distinct threads, every one of them admitted by its own
+// (empty) fold state. Without the hourly ceiling that is a hundred pushes at an
+// operator's phone, which is how a notification channel gets muted for good.
+func TestCapture_NoticeInstanceHourlyCeiling(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	notices := collectNotices(t, noticeCeilingPrefix)
+	h := newHarness(t, "")
+
+	// Every distinct thread below the ceiling raises its own notice.
+	for i := range support.DefaultMirrorsPerHour {
+		_, msg, err := h.svc.Capture(t.Context(), &support.Inbound{
+			Channel:    models.SupportChannelSMS,
+			Identity:   noticeCeilingPrefix + strconv.Itoa(1000+i),
+			ExternalID: "SM-notice-ceiling-" + strconv.Itoa(i),
+			Body:       "hello",
+			At:         h.now,
+		})
+		r.NoError(err)
+		r.NotNil(msg)
+	}
+
+	r.Len(notices.all(), support.DefaultMirrorsPerHour,
+		"every distinct thread below the ceiling gets its own notice")
+
+	// One past it: the message is still captured — capture is the invariant —
+	// but the notice is suppressed.
+	_, msg, err := h.svc.Capture(t.Context(), &support.Inbound{
+		Channel:    models.SupportChannelSMS,
+		Identity:   noticeCeilingPrefix + "9999",
+		ExternalID: "SM-notice-ceiling-over",
+		Body:       "anyone there?",
+		At:         h.now,
+	})
+	r.NoError(err, "an anti-flood ceiling must never fail the webhook")
+	r.NotNil(msg, "the message is stored regardless of whether anyone was paged")
+
+	r.Len(notices.all(), support.DefaultMirrorsPerHour,
+		"past the hourly ceiling the notice is suppressed")
+
+	// The ceiling is HOURLY, not permanent: an hour on, paging resumes.
+	h.now = h.now.Add(time.Hour + time.Minute)
+
+	_, msg, err = h.svc.Capture(t.Context(), &support.Inbound{
+		Channel:    models.SupportChannelSMS,
+		Identity:   noticeCeilingPrefix + "8888",
+		ExternalID: "SM-notice-ceiling-later",
+		Body:       "still here",
+		At:         h.now,
+	})
+	r.NoError(err)
+	r.NotNil(msg)
+
+	r.Len(notices.all(), support.DefaultMirrorsPerHour+1,
+		"the ceiling is per hour, not a permanent mute")
+}
+
+// noticeCeilingPrefix is the identity prefix the ceiling test uses, and the
+// marker its collector filters on — the dispatcher is process-global while the
+// rest of this package's tests run in parallel.
+const noticeCeilingPrefix = "+336910"
