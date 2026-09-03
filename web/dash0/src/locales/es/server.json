@@ -439,8 +439,8 @@
     "columnUser": "Superadministrador",
     "columnRoutes": "Entregado por",
     "events": {
-      "support.message": "Mensaje de soporte",
-      "user.registered": "Nuevo registro"
+      "supportMessage": "Mensaje de soporte",
+      "userRegistered": "Nuevo registro"
     },
     "noRoutes": "Sin rutas de notificación — no se entregará nada",
     "noRecipients": "Las notificaciones para el operador están activas, pero nadie está suscrito a nada. No se entregará nada.",
