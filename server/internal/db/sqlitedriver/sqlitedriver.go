@@ -17,8 +17,8 @@
 //	                                 allocations: OFF the Go heap and invisible
 //	                                 to pprof.
 //
-// Note which way round that is, because the repository documented the opposite
-// for months: **the shipped cgo build uses modernc, not mattn.** sqliteshim's
+// Which way round that is matters, because the repository documented the
+// opposite for months: **the shipped cgo build uses modernc, not mattn.** sqliteshim's
 // modernc file is gated on `!cgosqlite` and the platform list — not on `!cgo` —
 // so enabling cgo does not select mattn; only `-tags cgosqlite` does. Any
 // reasoning about the off-heap gap that assumed "cgo on ⇒ mattn ⇒ off-heap" was
