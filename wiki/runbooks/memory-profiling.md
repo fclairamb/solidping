@@ -475,11 +475,23 @@ same server flags — reproduces the identical three failures.
 None of them touches embedded-asset serving, the SQLite driver package or the
 memory endpoint. They belong to whoever owns those areas on this branch.
 
-**Both backends.** The Playwright run above is the Postgres path end to end
-(app + API + database). SQLite is covered by `make test` and by the
-`bench-checks` runs above. The Go Postgres-testcontainer packages
-(`internal/db/postgres/...`) were run separately; see the batch notes for that
-result.
+**Both backends.** The Playwright run above exercises the Postgres path end to
+end (app + API + database). SQLite is covered by `make test` and by the
+`bench-checks` runs above.
+
+`go test ./internal/db/postgres/ -p 1 -count=1 -timeout 45m` (the embedded-Postgres
+package, which `make test`'s `-short` skips) is **1 failed, rest passed**:
+`TestIncrementUsageCounter_Concurrent_Postgres` fails with
+`FATAL: sorry, too many clients already (SQLSTATE=53300)` — 50 goroutines each
+taking a connection against an embedded server whose `max_connections` is below
+that. It is **reproducible in isolation, not a load flake**, and it is
+**pre-existing**: the same single test fails identically on the pre-spec tree
+(`a09a718fa`). It belongs to whoever owns the usage-counter path.
+
+Two protocol notes for whoever runs this next: the package needs
+`-timeout 45m` (the default 10 min kills it mid-run and the goroutine dump reads
+like a failure), and it takes ~11 min because each test spins its own embedded
+Postgres.
 
 ### What the negative controls showed
 
