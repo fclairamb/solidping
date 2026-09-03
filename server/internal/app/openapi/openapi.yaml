@@ -5374,6 +5374,15 @@ paths:
           description: When "true", returns only publications that are not resolved.
           schema:
             type: boolean
+        - name: stale
+          in: query
+          description: >-
+            When "true", returns only publications that are still open on the
+            public page while the internal incident they track has already
+            resolved. Combine with `active=true` for the operator's
+            "needs closing by hand" feed.
+          schema:
+            type: boolean
         - name: limit
           in: query
           schema:
@@ -10498,7 +10507,14 @@ components:
           description: Performance metrics (with=metrics)
         output:
           type: object
-          description: Diagnostic output (with=output)
+          description: >
+            Diagnostic output (with=output). Free-form and check-type
+            specific. For passive checks (heartbeat, email), rows written by
+            the scheduler rather than by an inbound signal carry
+            `evaluation: true` plus `lastSignalAt` /
+            `lastSignalResultUid`; see the "Two kinds of result rows"
+            section of the Heartbeat documentation
+            (/docs/features/check-types#heartbeat).
         availabilityPct:
           type: number
           description: >
@@ -11720,14 +11736,26 @@ components:
         autoCreated:
           type: boolean
           description: >-
-            True when the auto-publish pipeline minted it. Only auto-created
-            publications are candidates for auto-resolve and relapse reopen.
+            True when the auto-publish pipeline minted it. It gates group
+            CONSOLIDATION only — the automation never appends "also affecting
+            X" notes to a narrative a person wrote. Candidacy for auto-resolve
+            and relapse reopen is decided by `incidentUid` instead: a
+            publication linked to an incident follows the page's `autoResolve`
+            policy whether a machine or a person created it, and one that
+            tracks no incident is never touched by either.
         humanTouched:
           type: boolean
           description: >-
             True once a person edited the publication or posted an update on
             it. This flag is the whole basis of the `if_untouched` auto-resolve
-            policy.
+            policy. Publishing an incident onto a page does not set it.
+        stale:
+          type: boolean
+          description: >-
+            True when the publication is still open on the public page while
+            the internal incident it tracks has already resolved. Always false
+            for a resolved publication and for a hand-authored one that tracks
+            no incident.
         publishedAt:
           type: string
           format: date-time

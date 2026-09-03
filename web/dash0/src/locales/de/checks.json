@@ -371,7 +371,21 @@
       "rolledUpToMonth": "Es wurde in diese Monats-Aggregation ({{start}}–{{end}}) zusammengefasst, die seinen Zeitstempel abdeckt ({{ts}}).",
       "originalUid": "Die ursprüngliche UID {{uid}} wurde im Rahmen der automatischen Aggregation gelöscht."
     },
-    "notFound": "Ergebnis nicht gefunden — es wurde möglicherweise im Rahmen der automatischen Aggregation gelöscht, und es gibt keine Aggregation, die seinen Zeitstempel abdeckt."
+    "notFound": "Ergebnis nicht gefunden — es wurde möglicherweise im Rahmen der automatischen Aggregation gelöscht, und es gibt keine Aggregation, die seinen Zeitstempel abdeckt.",
+    "evaluation": {
+      "badge": "Auswertung",
+      "title": "Auswertung durch den Planer",
+      "explainerHeartbeat": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
+      "explainerEmail": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
+      "explainerNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
+      "explainerEmailNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
+      "lastSignal": "Letztes Signal",
+      "before": "{{duration}} vor dieser Auswertung",
+      "overdueBy": "Überfällig seit",
+      "runStarted": "Lauf gestartet",
+      "noSignal": "Kein Signal vorhanden",
+      "openSignal": "Signal öffnen"
+    }
   },
   "detail": {
     "summary": {
@@ -469,7 +483,9 @@
           "week": "Letzte Woche",
           "month": "Letzter Monat"
         }
-      }
+      },
+      "evaluationBadge": "Auswertung",
+      "evaluationTooltip": "Vom Planer geschrieben, als er die Prüfung ausgewertet hat. Kein Heartbeat."
     },
     "period": "Zeitraum",
     "lastChecked": "Zuletzt geprüft",
@@ -559,6 +575,9 @@
       "push": {
         "title": "Eingebettete Geräte (TCP/UDP)",
         "description": "Mikrocontroller und Mobilfunkmodems können pro Lebenszeichen eine Zeile über rohes TCP oder UDP senden, ganz ohne TLS-Stack. Beginnen Sie mit SP1 und wechseln Sie dann zur signierten SP2-Form.",
+        "summaryTcp": "TCP {{port}}",
+        "summaryUdp": "UDP {{port}}",
+        "summarySignedOnly": "nur signiert",
         "tcpLabel": "TCP (Port {{port}}) — Token im Klartext:",
         "udpLabel": "UDP (Port {{port}}) — Token im Klartext, ohne Bestätigung:",
         "annotationHint": "Hängen Sie eine optionale Annotation an: ein Statuswort und key=value-Felder, z. B. „started volts=3.71 rssi=-67“. Numerische Werte werden als Metriken erfasst.",
@@ -568,8 +587,7 @@
         "hmacEnabled": "Signierte Lebenszeichen sind jetzt erforderlich",
         "hmacDisabled": "Klartext-Lebenszeichen werden wieder akzeptiert",
         "hmacFailed": "Signaturanforderung konnte nicht aktualisiert werden",
-        "sketchLabel": "Arduino-/ESP-Sketch (SP2, signiert)",
-        "sketchHint": "Signierte Lebenszeichen halten das Token vom Netz fern — genau das erzwingt „Signierte Lebenszeichen verlangen“ weiter unten. Die Zähler-Rezeptur und die vollständige Anleitung stehen in der Dokumentation zu eingebetteten Geräten."
+        "sketchDocsHint": "Für einen startklaren signierten (SP2) Sender siehe den Arduino-/ESP-Sketch in der Dokumentation zu eingebetteten Geräten."
       }
     },
     "email": {

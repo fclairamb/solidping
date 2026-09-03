@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { StatusPageTvCard } from "@/components/shared/status-page-tv-card";
+import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -36,6 +37,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   useStatusPage,
+  useStalePublications,
   useCreateSection,
   useDeleteSection,
   useUpdateSection,
@@ -1210,6 +1212,12 @@ function StatusPageDetailPage() {
     refetch,
   } = useStatusPage(org, statusPageUid, { with: "sections" });
 
+  // Scoped to this page: the org-wide feed is filtered down so the banner here
+  // never reports an entry sitting on a different status page.
+  const stalePublications = useStalePublications(org).filter(
+    (entry) => entry.page.uid === statusPageUid || entry.page.slug === statusPageUid,
+  );
+
   const reorderSections = useReorderSections(org, statusPageUid);
   const deleteStatusPage = useDeleteStatusPage(org);
   const [pageDeleteOpen, setPageDeleteOpen] = useState(false);
@@ -1418,6 +1426,13 @@ function StatusPageDetailPage() {
           </AlertDialog>
         </div>
       </div>
+
+      {/*
+        Above everything the page is made of: an entry still claiming trouble
+        after its incident recovered is the first thing to fix here
+        (spec 2026-09-02-05).
+      */}
+      <StalePublicationsBanner org={org} stale={stalePublications} />
 
       <StatusPageTvCard org={org} page={page} />
 

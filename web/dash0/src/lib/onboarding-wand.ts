@@ -12,11 +12,13 @@ import type {
  *
  * Pure builders, kept separate from the pages that call them so they can be
  * unit tested (including locale-parity, via the `t` argument) without
- * rendering a route. Each shape mirrors what `seedOrgDefaults`
+ * rendering a route. Most shapes mirror what `seedOrgDefaults`
  * (server/internal/handlers/auth/service.go:3073) already writes for a new
  * org, so a wand-created resource is indistinguishable from a seeded one —
  * except the report's timezone, which uses the browser's own zone instead of
- * the seeder's hardcoded UTC.
+ * the seeder's hardcoded UTC, and its check scope (see
+ * `buildWeeklyReportWandPayload`), which the seeder can't replicate since it
+ * runs before the org has any checks.
  */
 
 /** Payload for the "Set up email alerts for me" wand
@@ -37,19 +39,28 @@ export function buildEmailAlertsWandPayload(
 
 /** Payload for the "Create a weekly uptime report for me" wand
  *  (POST /orgs/:org/report-schedules, via useCreateReportSchedule). `t` must
- *  already be bound to the "slos" namespace. Empty check/group scopes mean
- *  org-wide, matching the seeder. */
+ *  already be bound to the "slos" namespace.
+ *
+ *  `checks` should be the first page of `useChecks(org, { limit: 10 })` —
+ *  the default list order (created_at DESC) makes that page exactly "the 10
+ *  most recently created checks". The payload attaches up to the first 10
+ *  UIDs in the order given; `checkGroupUids` is always empty. An empty
+ *  `checks` list (a brand-new org) falls back to the empty/org-wide scope —
+ *  unlike `buildEmailAlertsWandPayload`, this shape no longer mirrors
+ *  `seedOrgDefaults`, which seeds org-wide because it runs before the org
+ *  has any checks to scope to. */
 export function buildWeeklyReportWandPayload(
   t: TFunction,
   email: string,
   timezone: string,
+  checks: readonly { uid: string }[],
 ): CreateReportScheduleRequest {
   return {
     name: t("reports.wand.defaultName", "Weekly uptime report"),
     frequency: "weekly",
     timezone,
     recipients: [email],
-    checkUids: [],
+    checkUids: checks.slice(0, 10).map((check) => check.uid),
     checkGroupUids: [],
     includeSlos: true,
     enabled: true,

@@ -17,6 +17,8 @@ import {
   durationParts,
   elapsedMs,
   failingResources,
+  incidentDrivenCount,
+  incidentDrivenKey,
   lastResolvedAt,
   recentResolved,
   resolveTvState,
@@ -324,6 +326,13 @@ export function TvBoard({
   const style = tvStyle(state);
   const Icon = STATE_ICON[state];
 
+  // Why the board is not green, when the checks alone would not explain it.
+  // Not shown while stale: the headline then means "we have lost contact", and
+  // attributing that to an incident would be a second, contradictory claim.
+  const incidentDriven = stale
+    ? 0
+    : incidentDrivenCount(page?.overallStatus, active);
+
   // Only ever computed for a board that is NOT green. A healthy page keeps
   // its "days since last incident" panel untouched — this is a fallback for an
   // unexplained non-green board, not a new permanent fixture.
@@ -384,6 +393,16 @@ export function TvBoard({
           >
             {page?.name ?? t("solidpingStatus")}
           </p>
+          {incidentDriven > 0 && (
+            <p
+              className="truncate text-lg opacity-70 sm:text-xl"
+              data-testid="tv-headline-cause"
+            >
+              {t(incidentDrivenKey(page?.overallStatus), {
+                count: incidentDriven,
+              })}
+            </p>
+          )}
         </div>
 
         {/* --- The one big number, only when the page publishes one. --- */}

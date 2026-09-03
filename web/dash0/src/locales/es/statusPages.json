@@ -340,5 +340,12 @@
     "regenerateDescription": "Cualquier pantalla que siga usando la URL actual dejará de funcionar de inmediato. Tendrá que actualizarla con la nueva.",
     "revokeTitle": "¿Revocar el token de quiosco?",
     "revokeDescription": "Todas las pantallas que lo usen dejarán de funcionar de inmediato, y esta página volverá a sus reglas de visibilidad normales."
+  },
+  "stalePublications": {
+    "title": "Una incidencia de la página de estado sigue abierta",
+    "description_one": "{{count}} incidencia de la página de estado está abierta en {{page}} aunque todos los checks vinculados funcionan.",
+    "description_other": "{{count}} incidencias de la página de estado están abiertas en {{page}} aunque todos los checks vinculados funcionan.",
+    "review": "Revisar",
+    "hint": "Ciérrala en la página de estado o tus visitantes seguirán viendo una incidencia."
   }
 }

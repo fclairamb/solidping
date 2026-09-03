@@ -416,7 +416,21 @@
       "rolledUpToMonth": "It was rolled up into this month aggregation ({{start}}–{{end}}) covering its timestamp ({{ts}}).",
       "originalUid": "The original UID {{uid}} was deleted as part of automatic aggregation."
     },
-    "notFound": "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp."
+    "notFound": "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp.",
+    "evaluation": {
+      "badge": "Evaluation",
+      "title": "Scheduler evaluation",
+      "explainerHeartbeat": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
+      "explainerEmail": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
+      "explainerNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
+      "explainerEmailNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
+      "lastSignal": "Last signal",
+      "before": "{{duration}} before this evaluation",
+      "overdueBy": "Overdue by",
+      "runStarted": "Run started",
+      "noSignal": "No signal on record",
+      "openSignal": "Open the signal"
+    }
   },
   "detail": {
     "summary": {
@@ -514,7 +528,9 @@
           "week": "Last week",
           "month": "Last month"
         }
-      }
+      },
+      "evaluationBadge": "Evaluation",
+      "evaluationTooltip": "Written by the scheduler when it evaluated the check. Not a heartbeat."
     },
     "period": "Period",
     "lastChecked": "Last Checked",
@@ -604,6 +620,9 @@
       "push": {
         "title": "Embedded devices (TCP/UDP)",
         "description": "Microcontrollers and cellular modems can send one line per beat over raw TCP or UDP, with no TLS stack. Use SP1 while you get started, then move to the signed SP2 form.",
+        "summaryTcp": "TCP {{port}}",
+        "summaryUdp": "UDP {{port}}",
+        "summarySignedOnly": "signed only",
         "tcpLabel": "TCP (port {{port}}) — plaintext token:",
         "udpLabel": "UDP (port {{port}}) — plaintext token, fire-and-forget:",
         "annotationHint": "Append an optional annotation: a status word and key=value fields, e.g. \"started volts=3.71 rssi=-67\". Numeric values are charted as metrics.",
@@ -613,8 +632,7 @@
         "hmacEnabled": "Signed beats are now required",
         "hmacDisabled": "Plaintext beats are accepted again",
         "hmacFailed": "Failed to update the signature requirement",
-        "sketchLabel": "Arduino / ESP sketch (SP2, signed)",
-        "sketchHint": "Signed beats keep the token off the wire and are what \"Require signed beats\" below enforces. See the Embedded devices documentation for the counter recipe and the full walkthrough."
+        "sketchDocsHint": "For a ready-to-flash signed (SP2) sender, see the Arduino / ESP sketch in the Embedded devices docs."
       }
     },
     "email": {

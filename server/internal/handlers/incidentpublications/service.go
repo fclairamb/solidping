@@ -148,6 +148,15 @@ type PublicationResponse struct {
 	// publication covers. Derived from the page's own resources, so it can only
 	// ever contain names the page already shows.
 	AffectedResources []string `json:"affectedResources,omitempty"`
+	// Stale means "this entry is still open on the public page while the
+	// incident it tracks has recovered". It is the operator-facing name for the
+	// exact state that let a publication outlive its incident for ten days
+	// (spec 2026-09-02-05): the checks are green, dash0 shows nothing wrong,
+	// and the public page still says something is broken.
+	//
+	// False for a resolved publication (nothing to fix) and for a free-form one
+	// (it tracks no incident, so no incident can contradict it).
+	Stale bool `json:"stale"`
 }
 
 // PublicationUpdateResponse is one narrative entry.
@@ -199,8 +208,11 @@ type PublishIncidentRequest struct {
 type ListOptions struct {
 	State      string
 	ActiveOnly bool
-	Limit      int
-	Offset     int
+	// StaleOnly keeps only the publications whose linked incident has already
+	// resolved — the ones an operator has to close by hand.
+	StaleOnly bool
+	Limit     int
+	Offset    int
 }
 
 func toResponse(pub *models.IncidentPublication) PublicationResponse {
@@ -308,7 +320,21 @@ func (s *Service) getPublication(
 
 // --- Manual CRUD ---
 
+// maxPublicationPage is the largest page the DB layer will return, and the
+// window `stale` filtering is evaluated over.
+const maxPublicationPage = 200
+
 // ListPublications returns the publications of one status page.
+//
+// `stale` is not a column, so it cannot be a SQL predicate without a join
+// written twice (once per dialect) for a query that is never on a hot path.
+// It is therefore evaluated in Go — which means the DB page has to be taken
+// BEFORE the caller's limit/offset when the filter is on, or `?stale=true&
+// limit=10` would return three rows while a fourth waited on the next page.
+// So a stale listing reads the newest `maxPublicationPage` publications of the
+// page, filters, and paginates the filtered result itself. That window is
+// generous by two orders of magnitude for what it is used for: the stale set of
+// a page that is not badly neglected is a handful of rows.
 func (s *Service) ListPublications(
 	ctx context.Context, orgSlug, pageIdentifier string, opts ListOptions,
 ) ([]PublicationResponse, error) {
@@ -322,24 +348,83 @@ func (s *Service) ListPublications(
 		return nil, err
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
+	filter := &models.ListIncidentPublicationsFilter{
 		OrganizationUID: org.UID,
 		StatusPageUID:   page.UID,
 		State:           opts.State,
 		ActiveOnly:      opts.ActiveOnly,
 		Limit:           opts.Limit,
 		Offset:          opts.Offset,
-	})
+	}
+	if opts.StaleOnly {
+		filter.Limit = maxPublicationPage
+		filter.Offset = 0
+	}
+
+	pubs, err := s.db.ListIncidentPublications(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]PublicationResponse, len(pubs))
-	for idx, pub := range pubs {
-		out[idx] = toResponse(pub)
+	out := make([]PublicationResponse, 0, len(pubs))
+
+	for _, pub := range pubs {
+		item := toResponse(pub)
+		item.Stale = s.isStale(ctx, org.UID, pub)
+
+		if opts.StaleOnly && !item.Stale {
+			continue
+		}
+
+		out = append(out, item)
+	}
+
+	if opts.StaleOnly {
+		out = paginate(out, opts.Offset, opts.Limit)
 	}
 
 	return out, nil
+}
+
+// paginate applies an offset/limit to an already-filtered slice. A limit of 0
+// means "no limit", matching the DB layer's own convention.
+func paginate(items []PublicationResponse, offset, limit int) []PublicationResponse {
+	if offset > 0 {
+		if offset >= len(items) {
+			return []PublicationResponse{}
+		}
+
+		items = items[offset:]
+	}
+
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
+	}
+
+	return items
+}
+
+// isStale reports whether an OPEN publication tracks an incident that has
+// already resolved.
+//
+// Resolved by one GetIncident per linked publication rather than a SQL join:
+// the listing is capped at 200 rows, the interesting call site asks for the
+// active ones only (a handful), and a join would have to be written twice —
+// once per dialect — for a query that is never on a hot path.
+func (s *Service) isStale(ctx context.Context, orgUID string, pub *models.IncidentPublication) bool {
+	if pub.IncidentUID == nil || pub.IsResolved() {
+		return false
+	}
+
+	incident, err := s.db.GetIncident(ctx, orgUID, *pub.IncidentUID)
+	if err != nil || incident == nil {
+		// An incident we cannot read is not evidence that the entry is stale.
+		// Claiming otherwise would put an alert in front of an operator with
+		// nothing behind it.
+		return false
+	}
+
+	return incident.State == models.IncidentStateResolved
 }
 
 // GetPublication reads one publication with its narrative.
@@ -364,13 +449,57 @@ func (s *Service) GetPublication(
 	resp := toResponse(pub)
 	resp.Updates = s.loadUpdates(ctx, org.UID, pub)
 	resp.AffectedResources = s.affectedResourceNames(ctx, org.UID, pub)
+	resp.Stale = s.isStale(ctx, org.UID, pub)
 
 	return resp, nil
+}
+
+// requestedState resolves the optional `state` field of a create request,
+// defaulting to the opening state.
+func requestedState(req *CreatePublicationRequest) (models.PublicationState, error) {
+	if req.State == nil || *req.State == "" {
+		return models.PublicationStateInvestigating, nil
+	}
+
+	state := models.PublicationState(*req.State)
+	if !state.IsValid() {
+		return "", ErrInvalidState
+	}
+
+	return state, nil
+}
+
+// linkedIncident resolves the optional `incidentUid` of a create request and
+// rejects a second publication of the same incident on the same page. Returns
+// (nil, nil) for a free-form publication.
+func (s *Service) linkedIncident(
+	ctx context.Context, orgUID, pageUID string, incidentUID *string,
+) (*models.Incident, error) {
+	if incidentUID == nil || *incidentUID == "" {
+		return nil, nil //nolint:nilnil // "no incident, no error" is the free-form case, not a failure.
+	}
+
+	incident, err := s.db.GetIncident(ctx, orgUID, *incidentUID)
+	if err != nil || incident == nil {
+		return nil, ErrIncidentNotFound
+	}
+
+	if existing, findErr := s.db.FindIncidentPublication(ctx, *incidentUID, pageUID); findErr == nil &&
+		existing != nil {
+		return nil, ErrAlreadyPublished
+	}
+
+	return incident, nil
 }
 
 // CreatePublication creates a hand-authored publication. It is always
 // human-touched from birth: a person wrote it, so no automation may ever
 // resolve or rewrite it behind their back.
+//
+// The one thing it does NOT let a caller do is open a public incident for an
+// internal incident that has already resolved: an `incidentUid` pointing at a
+// resolved incident yields a resolved publication, exactly like
+// PublishIncident (spec 2026-09-02-05). Nothing would ever close it otherwise.
 //
 //nolint:cyclop // one branch per optional field; splitting only hides the shape.
 func (s *Service) CreatePublication(
@@ -386,34 +515,36 @@ func (s *Service) CreatePublication(
 		return PublicationResponse{}, err
 	}
 
-	if err := validateTitle(req.Title); err != nil {
+	if err = validateTitle(req.Title); err != nil {
 		return PublicationResponse{}, err
 	}
 
-	if err := validateSeverity(req.Severity); err != nil {
+	if err = validateSeverity(req.Severity); err != nil {
 		return PublicationResponse{}, err
 	}
 
-	state := models.PublicationStateInvestigating
-	if req.State != nil && *req.State != "" {
-		state = models.PublicationState(*req.State)
-		if !state.IsValid() {
-			return PublicationResponse{}, ErrInvalidState
-		}
+	state, err := requestedState(req)
+	if err != nil {
+		return PublicationResponse{}, err
 	}
 
-	if req.IncidentUID != nil && *req.IncidentUID != "" {
-		if _, err := s.db.GetIncident(ctx, org.UID, *req.IncidentUID); err != nil {
-			return PublicationResponse{}, ErrIncidentNotFound
-		}
-
-		if existing, findErr := s.db.FindIncidentPublication(ctx, *req.IncidentUID, page.UID); findErr == nil &&
-			existing != nil {
-			return PublicationResponse{}, ErrAlreadyPublished
-		}
+	linked, err := s.linkedIncident(ctx, org.UID, page.UID, req.IncidentUID)
+	if err != nil {
+		return PublicationResponse{}, err
 	}
 
 	now := s.clock.Now()
+
+	// A resolved incident yields a resolved entry whatever `state` asked for.
+	// Deciding it BEFORE the row is written is what keeps the header and the
+	// timeline in step: the caller's own body update is then posted as the
+	// `resolved` narrative, rather than as an `investigating` note under a
+	// header that says the opposite.
+	retroactive := linked != nil && linked.State == models.IncidentStateResolved
+	if retroactive {
+		state = models.PublicationStateResolved
+	}
+
 	pub := models.NewIncidentPublication(org.UID, page.UID, req.Title, now)
 	pub.PublicState = state
 	pub.Severity = req.Severity
@@ -423,11 +554,16 @@ func (s *Service) CreatePublication(
 		pub.IncidentUID = req.IncidentUID
 	}
 
+	if retroactive {
+		pub.ResolvedAt = incidentResolvedAt(linked, now)
+	}
+
 	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
 		return PublicationResponse{}, err
 	}
 
-	if req.BodyMarkdown != nil && strings.TrimSpace(*req.BodyMarkdown) != "" {
+	hasBody := req.BodyMarkdown != nil && strings.TrimSpace(*req.BodyMarkdown) != ""
+	if hasBody {
 		if err := validateBody(*req.BodyMarkdown); err != nil {
 			return PublicationResponse{}, err
 		}
@@ -436,9 +572,54 @@ func (s *Service) CreatePublication(
 	}
 
 	s.emit(ctx, org.UID, models.EventTypeStatusPageIncidentPublished, pub, actorUID)
+
+	if retroactive {
+		s.closeRetroactiveCreate(ctx, page, pub, linked, actorUID, hasBody)
+	}
+
 	s.publishHint(ctx, org.UID)
 
 	return toResponse(pub), nil
+}
+
+// closeRetroactiveCreate finishes a hand-authored publication that was born
+// resolved because the incident it binds was already over.
+//
+// The templated `resolved` update is posted ONLY when the caller wrote nothing
+// of their own: this is the hand-authored path, so an operator's own words are
+// the narrative, and adding a machine-written close under them would say the
+// same thing twice in two voices. The event fires either way — a webhook
+// consumer must hear that a resolved public entry appeared regardless of who
+// phrased it.
+func (s *Service) closeRetroactiveCreate(
+	ctx context.Context, page *models.StatusPage, pub *models.IncidentPublication,
+	incident *models.Incident, actorUID string, hasBody bool,
+) {
+	if !hasBody {
+		tpl := templatesFor(page.Language)
+
+		name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
+		if name == "" {
+			name = tpl.GroupOpenedTitle
+		}
+
+		s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved,
+			fmt.Sprintf(tpl.ResolvedTitle, name), fmt.Sprintf(tpl.ResolvedBody, name), &actorUID)
+	}
+
+	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, actorUID)
+}
+
+// incidentResolvedAt is the incident's own resolution time, falling back to
+// `now` for the (unexpected) resolved incident that carries no timestamp. A
+// nil resolved_at here would make the publication read as still open on the
+// public page, which is the exact bug this whole path exists to prevent.
+func incidentResolvedAt(incident *models.Incident, now time.Time) *time.Time {
+	if incident.ResolvedAt != nil {
+		return incident.ResolvedAt
+	}
+
+	return &now
 }
 
 // UpdatePublication patches title / state / severity. ANY edit stamps
@@ -628,6 +809,15 @@ func stateForKind(kind models.StatusUpdateKind) models.PublicationState {
 // --- Incident-side publish / unpublish ---
 
 // PublishIncident publishes an existing incident onto a status page by hand.
+//
+// Publishing an incident that has ALREADY resolved is a legitimate thing to do
+// — the operator is writing the entry after the fact — but it must not reopen
+// the page. Such a publication is born `resolved` (see resolveRetroactively),
+// so the public timeline reads as a post-mortem entry rather than a live
+// outage. Before that rule existed, a retroactive publish left an
+// `investigating` entry on the page that nothing would ever close: the only
+// auto-close trigger is OnIncidentResolved, which had already fired
+// (spec 2026-09-02-05).
 func (s *Service) PublishIncident(
 	ctx context.Context, orgSlug, incidentUID, actorUID string, req *PublishIncidentRequest,
 ) (PublicationResponse, error) {
@@ -675,7 +865,11 @@ func (s *Service) PublishIncident(
 	pub := models.NewIncidentPublication(org.UID, page.UID, title, now)
 	pub.IncidentUID = &incident.UID
 	pub.Severity = req.Severity
-	pub.HumanTouchedAt = &now
+	// Deliberately NOT human-touched: linking an incident to a page is not
+	// taking over the narrative. Editing the title/state/severity or appending
+	// an update is, and those paths stamp it. Stamping here made `if_untouched`
+	// behave exactly like `never` for every hand-published entry
+	// (spec 2026-09-02-05).
 
 	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
 		if isUniqueViolation(err) {
@@ -691,9 +885,60 @@ func (s *Service) PublishIncident(
 		title, fmt.Sprintf(tpl.OpenedBody, name), &actorUID)
 
 	s.emit(ctx, org.UID, models.EventTypeStatusPageIncidentPublished, pub, actorUID)
+
+	if incident.State == models.IncidentStateResolved {
+		s.resolveRetroactively(ctx, page, pub, incident, actorUID)
+	}
+
 	s.publishHint(ctx, org.UID)
 
 	return toResponse(pub), nil
+}
+
+// resolveRetroactively closes a publication that was minted for an incident
+// which had ALREADY resolved when it was published.
+//
+// The publication's `published_at` stays "now" — that is when the entry
+// appeared on the page — while `resolved_at` is the incident's own resolution
+// time, so the public duration matches the outage rather than the paperwork.
+// The templated `resolved` update is posted on top of the `investigating` one
+// the caller already wrote, which is what makes the entry read as a
+// retroactive post-mortem instead of an outage that closed instantly.
+func (s *Service) resolveRetroactively(
+	ctx context.Context, page *models.StatusPage,
+	pub *models.IncidentPublication, incident *models.Incident, actorUID string,
+) {
+	resolvedAt := *incidentResolvedAt(incident, s.clock.Now())
+
+	resolved := models.PublicationStateResolved
+	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+		PublicState: &resolved,
+		ResolvedAt:  &resolvedAt,
+	}); err != nil {
+		// The entry exists and is visible; it is simply still open. Leaving it
+		// that way is strictly better than failing the publish, which would
+		// leave the operator with a half-written page and no error they can act
+		// on.
+		s.logger.WarnContext(ctx, "retroactive publish: failed to resolve publication",
+			"publicationUid", pub.UID, "error", err)
+
+		return
+	}
+
+	pub.PublicState = resolved
+	pub.ResolvedAt = &resolvedAt
+
+	tpl := templatesFor(page.Language)
+
+	name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
+	if name == "" {
+		name = tpl.GroupOpenedTitle
+	}
+
+	s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved,
+		fmt.Sprintf(tpl.ResolvedTitle, name), fmt.Sprintf(tpl.ResolvedBody, name), &actorUID)
+
+	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, actorUID)
 }
 
 // ListForIncident returns every live publication of one incident, across pages.
@@ -716,6 +961,7 @@ func (s *Service) ListForIncident(
 	out := make([]PublicationResponse, len(pubs))
 	for idx, pub := range pubs {
 		out[idx] = toResponse(pub)
+		out[idx].Stale = s.isStale(ctx, org.UID, pub)
 	}
 
 	return out, nil

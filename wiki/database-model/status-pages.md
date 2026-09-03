@@ -144,8 +144,8 @@ probe's output could be written into.
 | public_title | text | Customer-readable title, templated at creation, freely editable |
 | public_state | text | investigating, identified, monitoring, resolved |
 | severity | text | minor, major, critical. Display-only badge; NULL = no badge |
-| auto_created | boolean | Minted by the auto-publish pipeline. Only these are candidates for auto-resolve and relapse reopen |
-| human_touched_at | timestamptz | First manual edit / manual update. Drives the `if_untouched` auto-resolve policy |
+| auto_created | boolean | Minted by the auto-publish pipeline. Gates group **consolidation** only; auto-resolve and relapse reopen key on `incident_uid` |
+| human_touched_at | timestamptz | First manual edit / manual update. Drives the `if_untouched` auto-resolve policy. Publishing an incident onto a page does **not** set it |
 | published_at | timestamptz | When it became public |
 | resolved_at | timestamptz | When it was closed |
 | notify_window_start | timestamptz | Storm-cap window start. **Internal, never public** |
@@ -175,7 +175,7 @@ codebase today.)
 |--------|------|-------------|
 | auto_publish | boolean | Publish incidents automatically. DDL default **false**, so existing installations do not start leaking internal blips on upgrade; new pages opt in through `models.NewStatusPage` |
 | auto_publish_delay_seconds | integer | Debounce, default 60. 0 publishes immediately |
-| auto_resolve | text | always / if_untouched / never |
+| auto_resolve | text | always / if_untouched / never. Applies to every publication **linked** to the resolving incident, hand-published ones included; free-form entries (no `incident_uid`) are never touched. The relapse **reopen** path uses the same scope, so a linked entry auto-resolve closed is the one a relapse reopens |
 
 ### status_page_resources (auto-publish override)
 

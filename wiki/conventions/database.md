@@ -193,18 +193,40 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
-**The current unreleased target is `016_v0_19_0`.** v0.18.3 shipped, so `015`
-is frozen: everything this cycle produces is appended to `016_v0_19_0.up.sql` /
-`.down.sql` (both dialects) instead. That number is unreleased, so it costs dev
-databases nothing — a database that already ran `015` simply picks `016` up as
-the next unapplied migration, with no reset, no hand-apply and no
-`solidping migrate repair`. Check the latest `vX.Y.Z` tag before appending to a
-migration, not the previous cycle's habit — and **update this paragraph when
-you are the one who moves past a frozen number**, because a stale pointer here
-is what causes the mistake it is meant to prevent. It has already happened
-twice: `015` acquired its first section only after a change had already been
-written into `014` on the stale belief that v0.17.0 was still pending, and this
-paragraph then went on naming `015` after v0.18.0–v0.18.3 had all shipped.
+**There is no unreleased migration right now.** `017_v0_21_0` is the last
+migration file and v0.22.0 is the last released version, so the next schema
+change of any kind opens `018_vX_Y_Z` — and `018` is free. Whoever opens it
+names it after the release it will ship in (see the note below on resolving
+that suffix) and **updates this paragraph**, because a stale pointer here is
+what causes the mistake it is meant to prevent.
+
+Once a number is unreleased-and-open, appending to it costs dev databases
+nothing: a database that already ran `017` simply picks `018` up as the next
+unapplied migration, with no reset, no hand-apply and no
+`solidping migrate repair`. That is the whole asymmetry this section teaches —
+**unreleased numbers are free to rename, renumber and even withdraw; released
+ones are frozen forever.**
+
+The mistake has already happened three times: `015` acquired its first section
+only after a change had already been written into `014` on the stale belief
+that v0.17.0 was still pending; this paragraph then went on naming `015` after
+v0.18.0–v0.18.3 had all shipped; and an `018` was written as `018_v0_22_0`,
+named after a version that had already been tagged the same day, renamed to
+`018_v0_23_0` on the assumption that its batch would land as a minor, renamed
+again to `018_v0_22_2` once the batch PR title settled the question as a
+`fix:` — and finally withdrawn altogether when the partial index it carried
+was dropped on measured evidence (spec 2026-09-02-03). None of that churn cost
+a single database anything, precisely because `018` never shipped; the same
+sequence on a released number would have needed a reset or a hand-repair at
+every step.
+
+Note that the number and the version do not advance in lockstep: `017` is
+named `v0_21_0` yet it is the migration v0.22.0 shipped with, because v0.22.0
+needed no DDL of its own. The version suffix names the release a file ships
+IN, so always resolve it from the latest tag plus what is in flight — the open
+release-please PR, and the **batch PR title**, which is the only thing
+release-please sees under squash-merge and therefore what decides patch versus
+minor — never by incrementing the previous file's suffix.
 
 ## Development workflow
 

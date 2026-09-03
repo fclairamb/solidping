@@ -285,7 +285,17 @@ func (s *Service) pageStillEligible(ctx context.Context, incident *models.Incide
 //     the narrative over. Auto-resolving under them would overwrite a
 //     deliberate editorial decision with a machine's opinion.
 //
-// Hand-authored publications (auto_created = false) are never touched.
+// Scope is "publications LINKED to this incident", not "publications a machine
+// created". A publication an operator made with "Publish to status page" tracks
+// the same incident an auto-published one does, and the page's autoResolve
+// setting is the operator's own instruction about what should happen when it
+// recovers — honoring it only for machine-minted rows made `if_untouched`
+// behave exactly like `never` for every hand-published entry, which is how a
+// publication came to outlive its incident by ten days (spec 2026-09-02-05).
+//
+// FREE-FORM publications — no incident_uid, the "we are migrating tonight"
+// kind — are never touched by any policy. They track nothing, so there is no
+// recovery that could close them; only their author can.
 func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incident) {
 	if incident == nil {
 		return
@@ -325,7 +335,7 @@ func (s *Service) OnIncidentResolved(ctx context.Context, incident *models.Incid
 	}
 
 	for _, pub := range pubs {
-		if !pub.AutoCreated || pub.IsResolved() {
+		if pub.IncidentUID == nil || pub.IsResolved() {
 			continue
 		}
 
@@ -399,6 +409,14 @@ func (s *Service) applyResolvePolicy(
 //
 // A publication that was never resolved is left alone — the incident relapsed
 // while the page still showed it as ongoing, which is already correct.
+//
+// Scope MUST mirror OnIncidentResolved: "linked to this incident", not
+// "created by a machine". The two are one loop with two directions, and gating
+// them differently is a trapdoor — once auto-resolve could close a
+// hand-published entry, a reopen guard that still asked `auto_created` would
+// leave that entry sitting at `resolved` through the relapse. The public page
+// would then read GREEN during a live outage, which is strictly worse than the
+// amber-while-healthy state this spec set out to fix (spec 2026-09-02-05).
 func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incident) {
 	if incident == nil {
 		return
@@ -426,7 +444,7 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 	}
 
 	for _, pub := range pubs {
-		if !pub.AutoCreated || !pub.IsResolved() {
+		if pub.IncidentUID == nil || !pub.IsResolved() {
 			continue
 		}
 

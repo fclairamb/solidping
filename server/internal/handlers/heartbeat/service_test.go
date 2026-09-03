@@ -85,6 +85,16 @@ func TestReceiveHeartbeatPersistsCallerMetadata(t *testing.T) {
 	r.Equal("203.0.113.7", output["remoteAddr"])
 	r.Equal("POST", output["httpMethod"])
 	r.Equal("Heartbeat received", output["message"])
+
+	// Positive control for spec 2026-09-02-04. The checks worker marks the
+	// rows IT writes with `evaluation: true`, and dash0 / the REST API / MCP
+	// consumers all read the ABSENCE of that key as "this row is a real
+	// inbound signal". That inference is only sound while ingest never marks
+	// itself — so pin it here, at the one place that could break it.
+	r.NotContains(output, "evaluation",
+		"an ingested beat must never carry the scheduler's evaluation marker")
+	r.NotContains(output, "lastSignalAt")
+	r.NotContains(output, "lastSignalResultUid")
 }
 
 func TestReceiveHeartbeatOmitsAbsentCallerMetadata(t *testing.T) {

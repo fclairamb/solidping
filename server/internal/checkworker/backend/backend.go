@@ -125,10 +125,22 @@ type WorkerBackend interface {
 		nextScheduledAt time.Time,
 	) error
 
-	// LastResults returns the latest result per check, used by passive checks
-	// (heartbeat/email) to inspect inbound signal recency. Remote backends may
-	// not support it — passive checks are a server-side concern.
-	LastResults(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Result, error)
+	// LastSignals returns, per check, the newest raw row that was written by
+	// an INBOUND SIGNAL — a heartbeat POST or an incoming email — never a
+	// worker-written evaluation row. Passive checks (heartbeat/email) use it
+	// to measure how long ago the last signal actually landed.
+	//
+	// The distinction is load-bearing (spec 2026-09-02-03): the passive
+	// evaluator writes a raw row of its own every period, so a "newest row of
+	// any origin" lookup makes it re-anchor on its own predecessor from the
+	// second tick after a beat onwards — overdue detection degrades into a
+	// coin flip on claim jitter, lastSignalAt reports the previous
+	// evaluation's timestamp instead of the beat's, and the stale-run
+	// (2×period) branch becomes unreachable.
+	//
+	// Remote backends may not support it — passive checks are a server-side
+	// concern.
+	LastSignals(ctx context.Context, orgUID string, checkUIDs []string) (map[string]*models.Result, error)
 
 	// Hints returns a fresh channel signaled when new jobs may be available
 	// (check.created events in-process; jobs-available frames over WS). Each

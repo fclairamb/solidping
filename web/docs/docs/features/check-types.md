@@ -522,6 +522,18 @@ The receiving domain is configured by your administrator. Point a periodic test 
 Email-reception checks are receive-only — SolidPing waits for mail instead of actively probing a server. Combine it with an [SMTP check](#smtp) to also monitor outbound connectivity, or use SMTP [send mode](#smtp-send-mode) to have SolidPing generate and submit that probe email for you automatically.
 :::
 
+#### Two kinds of result rows {#email-result-rows}
+
+Exactly like the [Heartbeat check](#heartbeat-result-rows), an email-reception
+check writes two kinds of row: the **signal** row recorded when a message
+actually arrives, and the **scheduler evaluation** row a checks worker writes
+every period. Evaluation rows carry `evaluation: true`, the region of the
+worker that wrote them, and `lastSignalAt` / `lastSignalResultUid` pointing at
+the last email received; signal rows carry none of that. The messages read
+`Email on time`, `Email overdue`, `Last email reported failure` and
+`No email received`, following the same table. Branch on `evaluation`, not on
+the message text.
+
 ## Remote Access
 
 ### SSH {#ssh}
@@ -1025,6 +1037,52 @@ RSSI as metrics. See [Embedded devices (TCP/UDP)](./embedded-push.md).
 Each ping's caller metadata (User-Agent header, source IP, and HTTP method)
 is recorded and shown on that ping's result detail page — useful for
 confirming which script or host is actually pinging the check.
+
+#### Two kinds of result rows {#heartbeat-result-rows}
+
+A heartbeat check's result history interleaves **two** kinds of row, and they
+mean different things:
+
+| | **Beat** (signal row) | **Scheduler evaluation** |
+|---|---|---|
+| Written when | your caller pings the check | every period, by a checks worker |
+| Written by | the heartbeat endpoint | the scheduler |
+| Region | none | the worker's region |
+| Output keys | `message`, plus `userAgent` / `remoteAddr` / `httpMethod` / `data` when the caller supplied them | `evaluation: true`, `lastSignalAt`, `lastSignalResultUid`, plus `overdueBy` or `runStarted` where they apply |
+
+**`evaluation: true` is the reliable way to tell them apart.** An ingested beat
+never carries it, so its absence means the row is a real signal. In the
+dashboard, evaluation rows carry a muted "Evaluation" badge in the Recent
+Results table and a "Scheduler evaluation" card — with a link to the beat they
+looked at — on the result detail page.
+
+So a ping usually produces *two* rows within seconds of each other: your beat,
+and the scheduler's evaluation confirming it arrived on time. That second row
+having no caller metadata is expected — nothing called in at that moment.
+
+Evaluation messages:
+
+| Situation | Message |
+|---|---|
+| The last beat was `up` and arrived within the period | `Heartbeat on time` |
+| The last beat was `up` but is now older than the period | `Heartbeat overdue` |
+| The last beat reported failure (`?status=down`) | `Last heartbeat reported failure` |
+| The last beat reported an error (`?status=error`) | `Last heartbeat reported error` |
+| A `running` beat is still inside the 2× period grace window | `Run in progress` |
+| A `running` beat exceeded that window | `Run started but never completed` |
+| No beat on record at all | `No heartbeat received` |
+
+:::note Raw retention
+The evaluation reads the newest stored beat. Raw results are kept for a limited
+window (24 h by default) before being rolled up, so a check that has been silent
+for longer than that has no beat left to point at and its evaluations read
+`No heartbeat received` — the same message a check that was never pinged gets.
+:::
+
+The keys above are part of the documented API surface: anything reading
+`output` from `GET /api/v1/orgs/{org}/results` or through the MCP server
+(`list_results`, `diagnose_check`) sees them, and should branch on
+`evaluation` rather than on the message text.
 
 **Sending the token.** The dashboard generates a `?token=` URL that works
 everywhere, but the token can also travel as an `Authorization: Bearer`

@@ -35,6 +35,7 @@ import {
   useEscalationPolicies,
   useCheckTypes,
   useEntitlements,
+  useStalePublications,
   type Check,
   type CheckGroup,
   type ConversionWarning,
@@ -51,6 +52,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import {
   Table,
   TableBody,
@@ -1014,6 +1016,11 @@ function ChecksIndexPage() {
   // list never pays for the full usage roll-up.
   const { data: entitlements } = useEntitlements(org);
 
+  // Publications still open on a public page while the incident behind them has
+  // recovered. Almost always empty; when it is not, this list is the wrong
+  // thing to be reading and the banner says so (spec 2026-09-02-05).
+  const stalePublications = useStalePublications(org);
+
   // Status and type are both faceted (multi-value) filters. The URL is the
   // source of truth — read directly off Route.useSearch() with no local-state
   // mirror (like `groupBy` above), so a cold deep link with several values
@@ -1547,6 +1554,14 @@ function ChecksIndexPage() {
         upgradeUrl={entitlements?.upgradeUrl}
         showUsageLink
       />
+
+      {/*
+        This list is where an operator lands when the wallboard goes amber. If
+        the amber comes from a status-page entry rather than a check, an
+        all-green list here is the most misleading thing we could show them
+        (spec 2026-09-02-05).
+      */}
+      <StalePublicationsBanner org={org} stale={stalePublications} />
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-sm">

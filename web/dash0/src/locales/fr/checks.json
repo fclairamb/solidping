@@ -416,7 +416,21 @@
       "rolledUpToMonth": "Il a été agrégé dans cette agrégation mensuelle ({{start}}–{{end}}) couvrant son horodatage ({{ts}}).",
       "originalUid": "L'UID d'origine {{uid}} a été supprimé lors de l'agrégation automatique."
     },
-    "notFound": "Résultat introuvable — il a peut-être été supprimé lors de l'agrégation automatique, et aucune agrégation couvrant son horodatage n'a été trouvée."
+    "notFound": "Résultat introuvable — il a peut-être été supprimé lors de l'agrégation automatique, et aucune agrégation couvrant son horodatage n'a été trouvée.",
+    "evaluation": {
+      "badge": "Évaluation",
+      "title": "Évaluation du planificateur",
+      "explainerHeartbeat": "Cette ligne a été écrite par le worker de contrôles {{region}} lorsqu'il a évalué la planification du contrôle. Ce n'est pas un heartbeat — rien n'a appelé à cet instant.",
+      "explainerEmail": "Cette ligne a été écrite par le worker de contrôles {{region}} lorsqu'il a évalué la planification du contrôle. Ce n'est pas un e-mail — aucun e-mail n'est arrivé à cet instant.",
+      "explainerNoRegion": "Cette ligne a été écrite par un worker de contrôles lorsqu'il a évalué la planification du contrôle. Ce n'est pas un heartbeat — rien n'a appelé à cet instant.",
+      "explainerEmailNoRegion": "Cette ligne a été écrite par un worker de contrôles lorsqu'il a évalué la planification du contrôle. Ce n'est pas un e-mail — aucun e-mail n'est arrivé à cet instant.",
+      "lastSignal": "Dernier signal",
+      "before": "{{duration}} avant cette évaluation",
+      "overdueBy": "En retard de",
+      "runStarted": "Exécution démarrée",
+      "noSignal": "Aucun signal enregistré",
+      "openSignal": "Ouvrir le signal"
+    }
   },
   "detail": {
     "summary": {
@@ -514,7 +528,9 @@
           "week": "Dernière semaine",
           "month": "Dernier mois"
         }
-      }
+      },
+      "evaluationBadge": "Évaluation",
+      "evaluationTooltip": "Écrite par le planificateur lorsqu'il a évalué le contrôle. Ce n'est pas un heartbeat."
     },
     "period": "Période",
     "lastChecked": "Dernière vérification",
@@ -604,6 +620,9 @@
       "push": {
         "title": "Appareils embarqués (TCP/UDP)",
         "description": "Les microcontrôleurs et modems cellulaires peuvent envoyer une ligne par battement en TCP ou UDP brut, sans pile TLS. Utilisez SP1 pour démarrer, puis passez à la forme signée SP2.",
+        "summaryTcp": "TCP {{port}}",
+        "summaryUdp": "UDP {{port}}",
+        "summarySignedOnly": "signé uniquement",
         "tcpLabel": "TCP (port {{port}}) — jeton en clair :",
         "udpLabel": "UDP (port {{port}}) — jeton en clair, sans accusé :",
         "annotationHint": "Ajoutez une annotation facultative : un mot d'état et des champs clé=valeur, par ex. « started volts=3.71 rssi=-67 ». Les valeurs numériques deviennent des métriques.",
@@ -613,8 +632,7 @@
         "hmacEnabled": "Les battements signés sont désormais exigés",
         "hmacDisabled": "Les battements en clair sont de nouveau acceptés",
         "hmacFailed": "Échec de la mise à jour de l'exigence de signature",
-        "sketchLabel": "Croquis Arduino / ESP (SP2, signé)",
-        "sketchHint": "Les battements signés gardent le jeton hors du réseau : c'est ce qu'impose « Exiger des battements signés » ci-dessous. Voir la documentation Appareils embarqués pour la recette du compteur et le guide complet."
+        "sketchDocsHint": "Pour un émetteur signé (SP2) prêt à flasher, consultez le croquis Arduino / ESP dans la documentation des appareils embarqués."
       }
     },
     "email": {

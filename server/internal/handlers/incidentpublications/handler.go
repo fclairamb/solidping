@@ -22,6 +22,8 @@ const (
 	paramUID       = "uid"
 	paramIncident  = "incidentUid"
 	keyData        = "data"
+	// valueTrue is the only accepted spelling of a boolean query flag.
+	valueTrue = "true"
 )
 
 // Handler exposes the publication overlay over HTTP.
@@ -48,8 +50,16 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 	query := req.URL.Query()
 
 	opts := ListOptions{State: query.Get("state")}
-	if query.Get("active") == "true" {
+	if query.Get("active") == valueTrue {
 		opts.ActiveOnly = true
+	}
+
+	// ?stale=true is the "open on the page, recovered in reality" feed dash0's
+	// warning banner reads (spec 2026-09-02-05). It filters the page of rows
+	// the other parameters selected; every row still carries its own `stale`
+	// flag, so a caller that wants both kinds can ask once and split.
+	if query.Get("stale") == valueTrue {
+		opts.StaleOnly = true
 	}
 
 	if raw := query.Get("limit"); raw != "" {
@@ -206,7 +216,7 @@ func (h *Handler) Unpublish(writer http.ResponseWriter, req *http.Request) error
 func (h *Handler) ViewPublicIncidents(writer http.ResponseWriter, req *http.Request) error {
 	view, err := h.svc.ViewPublicIncidents(
 		req.Context(), httpx.Param(req, paramOrg), httpx.Param(req, "slug"),
-		req.URL.Query().Get("active") == "true")
+		req.URL.Query().Get("active") == valueTrue)
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}

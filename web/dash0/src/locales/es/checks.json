@@ -371,7 +371,21 @@
       "rolledUpToMonth": "Se incluyó en esta agregación mensual ({{start}}–{{end}}) que cubre su marca de tiempo ({{ts}}).",
       "originalUid": "El UID original {{uid}} se eliminó como parte de la agregación automática."
     },
-    "notFound": "Resultado no encontrado — puede que se haya eliminado durante la agregación automática y no hemos encontrado ninguna agregación que cubra su marca de tiempo."
+    "notFound": "Resultado no encontrado — puede que se haya eliminado durante la agregación automática y no hemos encontrado ninguna agregación que cubra su marca de tiempo.",
+    "evaluation": {
+      "badge": "Evaluación",
+      "title": "Evaluación del planificador",
+      "explainerHeartbeat": "Esta fila la escribió el worker de comprobaciones {{region}} al evaluar la programación de la comprobación. No es un heartbeat: no llamó nadie en ese momento.",
+      "explainerEmail": "Esta fila la escribió el worker de comprobaciones {{region}} al evaluar la programación de la comprobación. No es un correo: no llegó ningún correo en ese momento.",
+      "explainerNoRegion": "Esta fila la escribió un worker de comprobaciones al evaluar la programación de la comprobación. No es un heartbeat: no llamó nadie en ese momento.",
+      "explainerEmailNoRegion": "Esta fila la escribió un worker de comprobaciones al evaluar la programación de la comprobación. No es un correo: no llegó ningún correo en ese momento.",
+      "lastSignal": "Última señal",
+      "before": "{{duration}} antes de esta evaluación",
+      "overdueBy": "Retraso de",
+      "runStarted": "Ejecución iniciada",
+      "noSignal": "No hay ninguna señal registrada",
+      "openSignal": "Abrir la señal"
+    }
   },
   "detail": {
     "summary": {
@@ -469,7 +483,9 @@
           "week": "Última semana",
           "month": "Último mes"
         }
-      }
+      },
+      "evaluationBadge": "Evaluación",
+      "evaluationTooltip": "Escrita por el planificador al evaluar la comprobación. No es un heartbeat."
     },
     "period": "Período",
     "lastChecked": "Última comprobación",
@@ -559,6 +575,9 @@
       "push": {
         "title": "Dispositivos embebidos (TCP/UDP)",
         "description": "Los microcontroladores y módems celulares pueden enviar una línea por latido sobre TCP o UDP en bruto, sin pila TLS. Empieza con SP1 y pasa después a la forma firmada SP2.",
+        "summaryTcp": "TCP {{port}}",
+        "summaryUdp": "UDP {{port}}",
+        "summarySignedOnly": "solo firmado",
         "tcpLabel": "TCP (puerto {{port}}) — token en claro:",
         "udpLabel": "UDP (puerto {{port}}) — token en claro, sin acuse:",
         "annotationHint": "Añade una anotación opcional: una palabra de estado y campos clave=valor, p. ej. «started volts=3.71 rssi=-67». Los valores numéricos se registran como métricas.",
@@ -568,8 +587,7 @@
         "hmacEnabled": "Ahora se exigen latidos firmados",
         "hmacDisabled": "Se vuelven a aceptar latidos en claro",
         "hmacFailed": "No se pudo actualizar el requisito de firma",
-        "sketchLabel": "Sketch de Arduino / ESP (SP2, firmado)",
-        "sketchHint": "Los latidos firmados mantienen el token fuera de la red: es lo que impone «Exigir latidos firmados» más abajo. Consulta la documentación de dispositivos embebidos para la receta del contador y la guía completa."
+        "sketchDocsHint": "Para un emisor firmado (SP2) listo para flashear, consulta el sketch de Arduino / ESP en la documentación de dispositivos embebidos."
       }
     },
     "email": {

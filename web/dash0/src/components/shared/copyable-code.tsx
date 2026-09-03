@@ -121,10 +121,12 @@ export function CollapsibleCode({
   label,
   value,
   defaultOpen = false,
+  "data-testid": testId,
 }: {
   label: string;
   value: string;
   defaultOpen?: boolean;
+  "data-testid"?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -135,7 +137,11 @@ export function CollapsibleCode({
     });
 
   return (
-    <details className="group rounded-md border" open={defaultOpen}>
+    <details
+      className="group rounded-md border"
+      open={defaultOpen}
+      data-testid={testId}
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent">
         <span className="flex min-w-0 items-center gap-2">
           <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />

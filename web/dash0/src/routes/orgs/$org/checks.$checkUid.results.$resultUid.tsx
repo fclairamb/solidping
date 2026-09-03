@@ -15,7 +15,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { QueryErrorView } from "@/components/shared/error-views";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { EmailDeliveryCard, EMAIL_DELIVERY_OUTPUT_KEYS } from "@/components/checks/email-delivery-card";
-import { useResult, useRegions, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
+import {
+  EvaluationCard,
+  EVALUATION_OUTPUT_KEYS,
+  isEvaluationOutput,
+} from "@/components/checks/evaluation-card";
+import { useResult, useRegions, useCheck, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
 import { ResultTracerouteCard } from "@/components/incidents/traceroute-card";
 import { regionDisplayLabel } from "@/lib/region-label";
 
@@ -106,6 +111,10 @@ function ResultDetailPage() {
   // The result carries the raw region slug; show the friendly
   // "{emoji} {name}" label from the region definitions (raw-slug fallback).
   const { data: regionsData } = useRegions(org);
+  // Only for the evaluation explainer's noun ("not a heartbeat" vs "not an
+  // email"). Shares the canonical ["check", org, uid] cache entry with the
+  // check page, so arriving from it costs no extra request.
+  const { data: check } = useCheck(org, checkUid);
 
   if (isLoading) {
     return (
@@ -152,15 +161,33 @@ function ResultDetailPage() {
       ? Object.entries(heartbeatData as Record<string, unknown>)
       : [];
 
+  // A scheduler-written row for a passive check (spec 2026-09-02-04): it is
+  // NOT a heartbeat, and saying so is the whole point — the raw JSON dump it
+  // used to fall through to ({"message":"Heartbeat received","lastSignalAt":…})
+  // read as "the caller was never recorded".
+  const isEvaluation = isEvaluationOutput(
+    data.output as Record<string, unknown> | undefined,
+  );
+  const regionLabel = data.region
+    ? regionDisplayLabel(regionsData?.regions, data.region)
+    : undefined;
+
   // DNSBL zone/code fields get a dedicated DnsblCard below (human-readable
   // status codes), and the send-mode SMTP attribution fields get
   // EmailDeliveryCard; drop both from the raw JSON dump so nothing is shown
-  // twice.
+  // twice. On an evaluation row the EvaluationCard renders every key it owns
+  // — `message` included — so those go too, which leaves the Output card with
+  // nothing to show and makes it disappear entirely.
   const rawDump = Object.fromEntries(
     Object.entries(remainingOutput).filter(
       ([key]) =>
         !(DNSBL_OUTPUT_KEYS as readonly string[]).includes(key) &&
-        !(EMAIL_DELIVERY_OUTPUT_KEYS as readonly string[]).includes(key),
+        !(EMAIL_DELIVERY_OUTPUT_KEYS as readonly string[]).includes(key) &&
+        !(
+          isEvaluation &&
+          ((EVALUATION_OUTPUT_KEYS as readonly string[]).includes(key) ||
+            key === "message")
+        ),
     ),
   );
 
@@ -195,6 +222,11 @@ function ResultDetailPage() {
         )}
         {data.periodType && (
           <Badge variant="outline">{data.periodType}</Badge>
+        )}
+        {isEvaluation && (
+          <Badge variant="secondary" data-testid="result-evaluation-badge">
+            {t("checks:resultDetail.evaluation.badge")}
+          </Badge>
         )}
         <div className="ml-auto flex gap-1">
           <Tooltip>
@@ -336,8 +368,17 @@ function ResultDetailPage() {
         </Card>
       )}
 
+      <EvaluationCard
+        org={org}
+        checkUid={checkUid}
+        checkType={check?.type}
+        output={data.output as Record<string, unknown> | undefined}
+        periodStart={data.periodStart}
+        regionLabel={regionLabel}
+      />
+
       {hasCallerInfo && (
-        <Card>
+        <Card data-testid="caller-card">
           <CardHeader>
             <CardTitle className="text-base">{t("checks:resultDetail.caller")}</CardTitle>
           </CardHeader>
