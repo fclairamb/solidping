@@ -52,6 +52,14 @@ func (h *Handler) List(writer http.ResponseWriter, req *http.Request) error {
 		opts.ActiveOnly = true
 	}
 
+	// ?stale=true is the "open on the page, recovered in reality" feed dash0's
+	// warning banner reads (spec 2026-09-02-05). It filters the page of rows
+	// the other parameters selected; every row still carries its own `stale`
+	// flag, so a caller that wants both kinds can ask once and split.
+	if query.Get("stale") == "true" {
+		opts.StaleOnly = true
+	}
+
 	if raw := query.Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 || parsed > 200 {

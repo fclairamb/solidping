@@ -148,6 +148,15 @@ type PublicationResponse struct {
 	// publication covers. Derived from the page's own resources, so it can only
 	// ever contain names the page already shows.
 	AffectedResources []string `json:"affectedResources,omitempty"`
+	// Stale means "this entry is still open on the public page while the
+	// incident it tracks has recovered". It is the operator-facing name for the
+	// exact state that let a publication outlive its incident for ten days
+	// (spec 2026-09-02-05): the checks are green, dash0 shows nothing wrong,
+	// and the public page still says something is broken.
+	//
+	// False for a resolved publication (nothing to fix) and for a free-form one
+	// (it tracks no incident, so no incident can contradict it).
+	Stale bool `json:"stale"`
 }
 
 // PublicationUpdateResponse is one narrative entry.
@@ -199,8 +208,11 @@ type PublishIncidentRequest struct {
 type ListOptions struct {
 	State      string
 	ActiveOnly bool
-	Limit      int
-	Offset     int
+	// StaleOnly keeps only the publications whose linked incident has already
+	// resolved — the ones an operator has to close by hand.
+	StaleOnly bool
+	Limit     int
+	Offset    int
 }
 
 func toResponse(pub *models.IncidentPublication) PublicationResponse {
@@ -334,12 +346,43 @@ func (s *Service) ListPublications(
 		return nil, err
 	}
 
-	out := make([]PublicationResponse, len(pubs))
-	for idx, pub := range pubs {
-		out[idx] = toResponse(pub)
+	out := make([]PublicationResponse, 0, len(pubs))
+
+	for _, pub := range pubs {
+		item := toResponse(pub)
+		item.Stale = s.isStale(ctx, org.UID, pub)
+
+		if opts.StaleOnly && !item.Stale {
+			continue
+		}
+
+		out = append(out, item)
 	}
 
 	return out, nil
+}
+
+// isStale reports whether an OPEN publication tracks an incident that has
+// already resolved.
+//
+// Resolved by one GetIncident per linked publication rather than a SQL join:
+// the listing is capped at 200 rows, the interesting call site asks for the
+// active ones only (a handful), and a join would have to be written twice —
+// once per dialect — for a query that is never on a hot path.
+func (s *Service) isStale(ctx context.Context, orgUID string, pub *models.IncidentPublication) bool {
+	if pub.IncidentUID == nil || pub.IsResolved() {
+		return false
+	}
+
+	incident, err := s.db.GetIncident(ctx, orgUID, *pub.IncidentUID)
+	if err != nil || incident == nil {
+		// An incident we cannot read is not evidence that the entry is stale.
+		// Claiming otherwise would put an alert in front of an operator with
+		// nothing behind it.
+		return false
+	}
+
+	return incident.State == models.IncidentStateResolved
 }
 
 // GetPublication reads one publication with its narrative.
@@ -364,6 +407,7 @@ func (s *Service) GetPublication(
 	resp := toResponse(pub)
 	resp.Updates = s.loadUpdates(ctx, org.UID, pub)
 	resp.AffectedResources = s.affectedResourceNames(ctx, org.UID, pub)
+	resp.Stale = s.isStale(ctx, org.UID, pub)
 
 	return resp, nil
 }
@@ -815,6 +859,7 @@ func (s *Service) ListForIncident(
 	out := make([]PublicationResponse, len(pubs))
 	for idx, pub := range pubs {
 		out[idx] = toResponse(pub)
+		out[idx].Stale = s.isStale(ctx, org.UID, pub)
 	}
 
 	return out, nil

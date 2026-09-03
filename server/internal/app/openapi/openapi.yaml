@@ -5374,6 +5374,15 @@ paths:
           description: When "true", returns only publications that are not resolved.
           schema:
             type: boolean
+        - name: stale
+          in: query
+          description: >-
+            When "true", returns only publications that are still open on the
+            public page while the internal incident they track has already
+            resolved. Combine with `active=true` for the operator's
+            "needs closing by hand" feed.
+          schema:
+            type: boolean
         - name: limit
           in: query
           schema:
@@ -11734,7 +11743,14 @@ components:
           description: >-
             True once a person edited the publication or posted an update on
             it. This flag is the whole basis of the `if_untouched` auto-resolve
-            policy.
+            policy. Publishing an incident onto a page does not set it.
+        stale:
+          type: boolean
+          description: >-
+            True when the publication is still open on the public page while
+            the internal incident it tracks has already resolved. Always false
+            for a resolved publication and for a hand-authored one that tracks
+            no incident.
         publishedAt:
           type: string
           format: date-time
