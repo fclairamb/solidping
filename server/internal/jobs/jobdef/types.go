@@ -155,6 +155,18 @@ const (
 	// snooze sweep; never publicly creatable — it reports on the instance, not
 	// on an org.
 	JobTypePlatformWatchdog JobType = "platform_watchdog"
+	// JobTypeOperatorNotice delivers ONE instance-level operator notice — a
+	// captured support message, a new user registration — to the super admins
+	// subscribed to that event in the `operator_notifications` system
+	// parameter, through each of their own notification routes.
+	//
+	// It is a job rather than an inline send because both raisers are on a
+	// latency-critical path: a support webhook answering a provider under a
+	// deadline, and a signup completing. Neither may fail or slow down because
+	// Telegram is down. Never publicly creatable — its payload is free text
+	// delivered to super admins, which is exactly what must not be reachable
+	// from POST /orgs/:org/jobs.
+	JobTypeOperatorNotice JobType = "operator_notice"
 )
 
 // publiclyCreatableJobTypes is the allowlist of job types that may be enqueued

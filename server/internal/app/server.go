@@ -1487,6 +1487,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.defaultCheckTimeout()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
+	// The synchronous transport behind "Send me a test": the button's whole
+	// value is the answer, so that one path does not go through the queue.
+	systemService.SetOperatorNoticeDeps(s.operatorNoticeDeps())
+	// And the asynchronous hook every event raiser uses. Installed here, once,
+	// for the whole process.
+	s.installOperatorNoticeDispatcher()
+
 	systemHandler := system.NewHandler(systemService, s.config)
 	systemGroup := api.NewGroup("/system/parameters").
 		Use(authMiddleware.RequireAuth).
@@ -1508,6 +1515,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireSuperAdmin)
 	systemActions.POST("/test-email", systemHandler.TestEmail)
+	// Operator notifications (spec 2026-09-03-01). A dedicated GET/PUT pair
+	// rather than the raw parameter CRUD so the document is validated as a
+	// whole — an unknown event or a non-super-admin recipient is refused while
+	// the operator is still looking at the form — and so the page can render
+	// each candidate's actual routes without N extra calls.
+	systemActions.GET("/operator-notifications", systemHandler.GetOperatorNotifications)
+	systemActions.PUT("/operator-notifications", systemHandler.SetOperatorNotifications)
+	systemActions.POST("/operator-notifications/test", systemHandler.SendOperatorNoticeTest)
 	systemActions.GET("/email-inbox/config", systemHandler.EmailInboxConfig)
 	systemActions.GET("/email-inbox/status", systemHandler.EmailInboxStatus)
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)

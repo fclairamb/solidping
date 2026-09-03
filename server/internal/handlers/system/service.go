@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jmap"
+	"github.com/fclairamb/solidping/server/internal/opsnotify"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 	"github.com/fclairamb/solidping/server/internal/watchdog"
@@ -28,6 +29,9 @@ var (
 	ErrEmailInboxNotConfigured = errors.New("email inbox not configured")
 	ErrEmailInboxDisabled      = errors.New("email inbox disabled")
 	ErrEmailInboxNotAvailable  = errors.New("email inbox manager not initialized")
+	// ErrOperatorNoticeUnavailable is returned when the operator-notice
+	// transport was never wired into this process.
+	ErrOperatorNoticeUnavailable = errors.New("operator notice transport not initialized")
 )
 
 // JMAPInboxManager is the subset of *jmap.Manager that the system service
@@ -44,6 +48,9 @@ type Service struct {
 	db        db.Service
 	inbox     JMAPInboxManager
 	formatter email.Formatter
+	// opsNotice is the synchronous operator-notice transport, used only by the
+	// "Send me a test" endpoint. Nil until app/server.go wires it.
+	opsNotice *opsnotify.Deps
 }
 
 // NewService creates a new system service.
@@ -270,6 +277,17 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 	// Reject it here, while the operator is still looking at the request.
 	if key == watchdog.ParamPlatformWatchdog {
 		if err := watchdog.ValidateParameter(value); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
+		}
+	}
+
+	// Operator notifications carry support content to super admins. A typo in
+	// an event name would silently subscribe someone to nothing, and a
+	// non-super-admin recipient would be a genuine authorization mistake, so
+	// both are refused here — including through the raw parameter CRUD, not
+	// only through the dedicated endpoint the dashboard uses.
+	if key == opsnotify.ParamOperatorNotifications {
+		if err := opsnotify.ValidateParameterWithDB(ctx, s.db, value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
 		}
 	}
