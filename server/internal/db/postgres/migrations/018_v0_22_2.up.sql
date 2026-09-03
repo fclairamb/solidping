@@ -1,4 +1,4 @@
--- v0.23.0 — the ONE consolidated migration for the (still unreleased) v0.23.0
+-- v0.22.2 — the ONE consolidated migration for the (still unreleased) v0.22.2
 -- release, one file per dialect, per the repo convention documented in
 -- wiki/conventions/database.md.
 --
@@ -6,10 +6,13 @@
 -- final migration: a file is named after the release it ships IN, and no
 -- migration was needed for v0.22.0, which is why the numbers and the versions
 -- do not advance in lockstep. 017 is therefore frozen and everything this
--- cycle produces is appended here. The target is v0.23.0 rather than v0.22.1
--- because v0.22.1 is already sitting in an open release-please PR and this
--- cycle carries feat: commits, so the next minor is the release this DDL
--- actually reaches.
+-- cycle produces is appended here, under a number (018) that is unreleased
+-- and free.
+--
+-- The suffix is v0.22.2 because this batch ships as a PATCH release: the repo
+-- squash-merges, so release-please sees only the batch PR title, and that
+-- title is a fix:. v0.22.1 is already sitting in an open release-please PR
+-- and this batch lands after it, so v0.22.2 is the release this DDL reaches.
 --
 --   SECTION: passive-signal-index          results results_raw_signal_idx
 

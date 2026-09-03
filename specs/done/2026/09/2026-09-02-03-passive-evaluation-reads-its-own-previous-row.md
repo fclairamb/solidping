@@ -214,9 +214,10 @@ the docs paragraph of 2026-09-02-04 rather than here.
 Highest existing migration is `017_v0_21_0`, which is the migration the
 already-released v0.22.0 shipped with (a file is named after the release it
 ships IN, and v0.22.0 needed no DDL of its own). So the next number is
-`018_v0_23_0` in **both** dialects, up and down — v0.23.0 rather than v0.22.1
-because v0.22.1 is already in an open release-please PR and this cycle carries
-`feat:` commits:
+`018_v0_22_2` in **both** dialects, up and down — v0.22.2 because the batch
+ships as a patch release (the repo squash-merges, so release-please sees only
+the batch PR title, and that title is a `fix:`), landing after the v0.22.1
+release-please PR already in flight:
 
 ```sql
 create index if not exists results_raw_signal_idx
