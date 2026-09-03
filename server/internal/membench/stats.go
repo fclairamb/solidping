@@ -505,15 +505,27 @@ func sampleModeCaveat(mode string) string {
 	return " — the process as a monitoring system would see it."
 }
 
-// modeCaveat spells out, in the report itself, what a `--local` number is worth.
+// modeCaveat spells out, in the report itself, what a number from this mode is
+// worth. Every mode gets its own sentence and none falls through to another's:
+// a report that claims cgroup accounting it did not have is exactly the failure
+// this harness exists to prevent, and "attach" — which points at a process the
+// harness neither started nor configured — is the mode where that would bite.
 func modeCaveat(mode string) string {
-	if mode == "local" {
+	switch mode {
+	case "docker":
+		return " — containerized: real cgroup v2 accounting, the shipped image shape, a fresh process per repetition."
+	case "local":
 		return " — host binary, **NOT authoritative**: no cgroup accounting, a different OS and a different " +
 			"GOMAXPROCS from the shipped container. Useful for iteration and for relative comparisons on the " +
 			"same host; never quote it as the production number."
+	case "attach":
+		return " — attached to a process this harness did not start: **provenance unknown**. Nothing about the " +
+			"build, the environment, the warm-up or the workload was controlled here, and the cgroup section is " +
+			"populated only if whatever you pointed at happens to be containerized (on a macOS `make dev` server " +
+			"it is absent). Read it as an observation of that one process, never as a measurement of SolidPing."
+	default:
+		return " — unrecognized mode: provenance unknown, treat every number below as unverified."
 	}
-
-	return " — containerized: real cgroup v2 accounting, the shipped image shape."
 }
 
 // CompareMarkdown renders a comparison table, non-significant rows included and

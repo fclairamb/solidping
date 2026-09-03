@@ -73,9 +73,14 @@ func fastOptions(t *testing.T, srv *httptest.Server, label string) options {
 	}
 }
 
-// TestMembenchEndToEnd is the proof the spec asks for: the tool starts, samples,
-// aggregates and writes BOTH output files with real content.
-func TestMembenchEndToEnd(t *testing.T) {
+// TestMembenchSamplesAggregatesAndWritesReports covers the sampling half of the
+// spec's end-to-end clause: the tool logs in, samples, aggregates and writes
+// BOTH output files with real content. It runs in `attach` mode against a stub,
+// so it deliberately does NOT cover starting a server — that half is
+// TestLocalTargetStartsAndStopsAProcess below, and the docker half needs a
+// daemon and an image, so it is exercised by `make bench-memory`, not by `go
+// test`.
+func TestMembenchSamplesAggregatesAndWritesReports(t *testing.T) {
 	t.Parallel()
 
 	srv := stubServer(t, func(call int) float64 {
@@ -247,5 +252,105 @@ func TestEnvListIsSorted(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("envList = %v, want %v", got, want)
 		}
+	}
+}
+
+// TestLocalTargetStartsAndStopsAProcess exercises localTarget.Start/Stop for
+// real, which the attach-mode end-to-end test cannot: it spawns an actual
+// process, passes the scenario env to it, and redirects its output to the run
+// log an operator would read after a failed boot.
+//
+// /bin/sh stands in for the server binary — the target's contract is "run
+// <binary> serve with this env and capture its output", and that is exactly
+// what is asserted. Booting the real server here would make a unit test depend
+// on a built binary and a free port.
+func TestLocalTargetStartsAndStopsAProcess(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "fake-server.sh")
+
+	// Echoes its argv and one env var, so both halves of the contract are
+	// visible in the captured log.
+	const body = "#!/bin/sh\necho \"argv=$*\"\necho \"role=$SP_NODE_ROLE\"\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil { //nolint:gosec // test fixture must be executable
+		t.Fatalf("write fake server: %v", err)
+	}
+
+	logPath := filepath.Join(dir, "run.log")
+	target := &localTarget{binary: script, port: 4099, logPath: logPath}
+
+	if got := target.Mode(); got != "local" {
+		t.Errorf("Mode() = %q, want local", got)
+	}
+
+	if got := target.BaseURL(); got != "http://127.0.0.1:4099" {
+		t.Errorf("BaseURL() = %q", got)
+	}
+
+	if err := target.Start(t.Context(), map[string]string{"SP_NODE_ROLE": "api,checks"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// The process is short-lived; wait for it to write its output.
+	var captured string
+
+	for range 50 {
+		raw, err := os.ReadFile(logPath) //nolint:gosec // test-controlled path
+		if err == nil && strings.Contains(string(raw), "role=") {
+			captured = string(raw)
+
+			break
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if !strings.Contains(captured, "argv=serve") {
+		t.Errorf("the binary must be invoked as `<binary> serve`; log was %q", captured)
+	}
+
+	if !strings.Contains(captured, "role=api,checks") {
+		t.Errorf("the scenario env must reach the process; log was %q", captured)
+	}
+
+	// Stop must be safe twice: it runs from a defer and again on a later error
+	// path.
+	target.Stop()
+	target.Stop()
+}
+
+// TestLocalTargetRejectsMissingBinary pins the error an operator actually hits
+// — running `make bench-memory` before `make build-backend`.
+func TestLocalTargetRejectsMissingBinary(t *testing.T) {
+	t.Parallel()
+
+	_, err := newTarget(options{mode: "local", binary: filepath.Join(t.TempDir(), "nope"), outDir: t.TempDir()},
+		allScenarios()[0], 1)
+	if err == nil {
+		t.Fatal("a missing server binary must be an error")
+	}
+
+	if !strings.Contains(err.Error(), "make build-backend") {
+		t.Errorf("the error should name the fix, got %q", err)
+	}
+}
+
+// TestAttachTargetRequiresBaseURL keeps the third mode from silently pointing at
+// nothing.
+func TestAttachTargetRequiresBaseURL(t *testing.T) {
+	t.Parallel()
+
+	if _, err := newTarget(options{mode: "attach"}, allScenarios()[0], 1); err == nil {
+		t.Error("-mode attach without -base-url must be an error")
+	}
+
+	target, err := newTarget(options{mode: "attach", baseURL: "http://example.invalid"}, allScenarios()[0], 1)
+	if err != nil {
+		t.Fatalf("newTarget: %v", err)
+	}
+
+	if got := target.Mode(); got != "attach" {
+		t.Errorf("Mode() = %q, want attach", got)
 	}
 }

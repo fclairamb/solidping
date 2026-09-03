@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/fclairamb/solidping/server/internal/meminfo"
 )
@@ -142,9 +141,34 @@ func TestRegisterNoDescriptorCollision(t *testing.T) {
 	// collector emits nothing, which is not a failure.
 	t.Logf("process collector series present: %v", sawProcess)
 
-	// The meminfo collector is registered too; on Linux it contributes series,
-	// on macOS none. Either way it must not have broken the gather.
-	if count := testutil.CollectAndCount(NewMemInfoCollector()); count < 0 {
-		t.Fatal("unreachable")
+	// The meminfo collector must actually be part of what Register() wired up —
+	// the point of this test is that adding it did not collide, so proving it
+	// is present is half the assertion. It emits series only where /proc and
+	// the cgroup exist, so on Linux every gauge must be there and on macOS none
+	// may be; "some but not all" would mean a source was misread.
+	live := meminfo.Collect(meminfo.DefaultRoots())
+	registered := 0
+
+	for _, fam := range families {
+		if strings.HasPrefix(fam.GetName(), "solidping_process_rss_") ||
+			strings.HasPrefix(fam.GetName(), "solidping_cgroup_memory_") {
+			registered++
+		}
+	}
+
+	switch {
+	case live.Status.Present && registered == 0:
+		t.Error("/proc/self/status is readable here, so Register() must expose the rss gauges")
+	case !live.Status.Present && !live.Cgroup.Present && registered != 0:
+		t.Errorf("no /proc and no cgroup, yet %d meminfo series were emitted", registered)
+	}
+
+	// The standalone collector must also gather cleanly on a pedantic registry,
+	// which validates every descriptor it emits.
+	pedantic := prometheus.NewPedanticRegistry()
+	pedantic.MustRegister(NewMemInfoCollector())
+
+	if _, err := pedantic.Gather(); err != nil {
+		t.Fatalf("meminfo collector fails a pedantic gather: %v", err)
 	}
 }
