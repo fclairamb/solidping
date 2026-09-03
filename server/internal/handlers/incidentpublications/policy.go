@@ -409,6 +409,14 @@ func (s *Service) applyResolvePolicy(
 //
 // A publication that was never resolved is left alone — the incident relapsed
 // while the page still showed it as ongoing, which is already correct.
+//
+// Scope MUST mirror OnIncidentResolved: "linked to this incident", not
+// "created by a machine". The two are one loop with two directions, and gating
+// them differently is a trapdoor — once auto-resolve could close a
+// hand-published entry, a reopen guard that still asked `auto_created` would
+// leave that entry sitting at `resolved` through the relapse. The public page
+// would then read GREEN during a live outage, which is strictly worse than the
+// amber-while-healthy state this spec set out to fix (spec 2026-09-02-05).
 func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incident) {
 	if incident == nil {
 		return
@@ -436,7 +444,7 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 	}
 
 	for _, pub := range pubs {
-		if !pub.AutoCreated || !pub.IsResolved() {
+		if pub.IncidentUID == nil || !pub.IsResolved() {
 			continue
 		}
 

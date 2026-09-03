@@ -342,6 +342,34 @@ test.describe("TV mode — attributing the amber", () => {
     );
   });
 
+  // An ALREADY-impaired rollup pushed further by a critical publication: the
+  // attribution is still true, but "all monitored services are passing" would
+  // not be — a wallboard must never assert that with a degraded rollup behind
+  // it.
+  test("drops the all-passing clause when the rollup is already impaired", async ({
+    page,
+  }) => {
+    await mock(page, {
+      overallStatus: "degraded",
+      activeIncidents: [
+        {
+          uid: "inc-1",
+          title: "Payments degraded",
+          state: "investigating",
+          severity: "critical",
+          startedAt: "2026-08-30T10:00:00Z",
+        },
+      ],
+      sections: section([resource("r1", "Checkout API", "degraded")]),
+    });
+
+    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+
+    const cause = page.getByTestId("tv-headline-cause");
+    await expect(cause).toContainText("1 open incident");
+    await expect(cause).not.toContainText("all monitored services are passing");
+  });
+
   // The negative control: same amber board, but the checks account for it.
   // Attributing THAT to the publication would be a lie in the other direction.
   test("stays silent when the rollup itself is not green", async ({ page }) => {

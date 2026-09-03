@@ -93,6 +93,8 @@
     "noIncidentsRecorded": "Sin incidentes registrados",
     "incidentDriven_one": "Debido a {{count}} incidencia abierta — todos los servicios monitorizados funcionan",
     "incidentDriven_other": "Debido a {{count}} incidencias abiertas — todos los servicios monitorizados funcionan",
+    "incidentDrivenImpaired_one": "Debido a {{count}} incidencia abierta",
+    "incidentDrivenImpaired_other": "Debido a {{count}} incidencias abiertas",
     "cycling": "Alternando entre {{count}} incidentes activos",
     "affectedTitle": "Servicios afectados",
     "affectedCycling": "Alternando entre {{count}} servicios afectados",

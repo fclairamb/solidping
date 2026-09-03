@@ -93,6 +93,8 @@
     "noIncidentsRecorded": "Aucun incident enregistré",
     "incidentDriven_one": "Provient de {{count}} incident ouvert — tous les services surveillés fonctionnent",
     "incidentDriven_other": "Provient de {{count}} incidents ouverts — tous les services surveillés fonctionnent",
+    "incidentDrivenImpaired_one": "Provient de {{count}} incident ouvert",
+    "incidentDrivenImpaired_other": "Provient de {{count}} incidents ouverts",
     "cycling": "Défilement de {{count}} incidents actifs",
     "affectedTitle": "Services affectés",
     "affectedCycling": "Défilement de {{count}} services affectés",

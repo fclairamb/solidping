@@ -7,6 +7,7 @@ import {
   elapsedMs,
   failingResources,
   incidentDrivenCount,
+  incidentDrivenKey,
   isStale,
   lastResolvedAt,
   pollIntervalMs,
@@ -140,6 +141,26 @@ describe("incidentDrivenCount", () => {
 
   test("never attributes a maintenance page an incident did not escalate", () => {
     expect(incidentDrivenCount("maintenance", [])).toBe(0);
+  });
+});
+
+describe("incidentDrivenKey", () => {
+  test("promises everything is passing only when the rollup is green", () => {
+    expect(incidentDrivenKey("operational")).toBe("tv.incidentDriven");
+  });
+
+  test("drops the reassurance when the rollup is already impaired", () => {
+    // A `degraded` page pushed to `down` by a critical publication: the amber
+    // IS incident-driven, but "all monitored services are passing" would be a
+    // flat lie on a screen a whole room is trusting.
+    for (const rollup of ["degraded", "down", "maintenance"]) {
+      expect(incidentDrivenKey(rollup)).toBe("tv.incidentDrivenImpaired");
+    }
+  });
+
+  test("treats an unknown rollup as impaired — it is not a promise we can make", () => {
+    expect(incidentDrivenKey(undefined)).toBe("tv.incidentDrivenImpaired");
+    expect(incidentDrivenKey("something-new")).toBe("tv.incidentDrivenImpaired");
   });
 });
 

@@ -123,4 +123,50 @@ test.describe("Checks list — stale status-page publication", () => {
     await expect(page.getByTestId("checks-search-input")).toBeVisible();
     await expect(page.getByTestId("stale-publications-banner")).toHaveCount(0);
   });
+
+  // An older backend, or a proxy that drops the query string, answers the
+  // UNFILTERED listing. The client re-applies the rule so the banner does not
+  // accuse the org of neglect for a publication that is open because something
+  // is genuinely broken.
+  test("stays silent when the server ignores the stale filter", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.route("**/api/v1/orgs/*/status-pages", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: PAGE_UID,
+              name: "E2E Stale Page",
+              slug: "e2e-stale",
+              visibility: "public",
+              isDefault: false,
+              enabled: true,
+            },
+          ],
+        }),
+      }),
+    );
+    await page.route(
+      `**/api/v1/orgs/*/status-pages/${PAGE_UID}/incidents*`,
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          // No `stale` key at all — exactly what a backend that predates the
+          // field returns.
+          body: JSON.stringify({ data: [publication({ stale: undefined })] }),
+        }),
+    );
+
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("checks-search-input")).toBeVisible();
+    await expect(page.getByTestId("stale-publications-banner")).toHaveCount(0);
+  });
 });

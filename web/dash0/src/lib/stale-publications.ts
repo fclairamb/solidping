@@ -55,10 +55,16 @@ export function groupStaleByPage(
 /**
  * Whether a publication the server handed us is one the banner should show.
  *
- * The server already filters with `?stale=true`, so this is a belt-and-braces
- * guard for the callers that fetch an unfiltered list and want the same rule:
- * a resolved entry is never stale (there is nothing left to close), and a
- * free-form entry tracks no incident, so no recovery can contradict it.
+ * Applied client-side on top of `?stale=true` on purpose. A server that does
+ * not understand the parameter — an older backend behind a newer dashboard, a
+ * proxy that strips query strings — answers the unfiltered listing, and the
+ * banner would then accuse an org of neglect for every publication it has open
+ * during a genuine outage. A warning that fires when nothing is wrong is worse
+ * than no warning at all: it is the thing operators learn to ignore.
+ *
+ * The rule itself mirrors the server's: a resolved entry is never stale (there
+ * is nothing left to close), and a free-form entry tracks no incident, so no
+ * recovery can contradict it.
  */
 export function isStalePublication(pub: IncidentPublication): boolean {
   if (pub.state === "resolved" || pub.resolvedAt) {
@@ -70,9 +76,4 @@ export function isStalePublication(pub: IncidentPublication): boolean {
   }
 
   return pub.stale === true;
-}
-
-/** Total number of stale publications across every page. */
-export function countStale(groups: StalePublicationPageGroup[]): number {
-  return groups.reduce((total, group) => total + group.publications.length, 0);
 }

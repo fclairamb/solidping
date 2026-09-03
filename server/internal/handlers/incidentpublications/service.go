@@ -320,7 +320,21 @@ func (s *Service) getPublication(
 
 // --- Manual CRUD ---
 
+// maxPublicationPage is the largest page the DB layer will return, and the
+// window `stale` filtering is evaluated over.
+const maxPublicationPage = 200
+
 // ListPublications returns the publications of one status page.
+//
+// `stale` is not a column, so it cannot be a SQL predicate without a join
+// written twice (once per dialect) for a query that is never on a hot path.
+// It is therefore evaluated in Go — which means the DB page has to be taken
+// BEFORE the caller's limit/offset when the filter is on, or `?stale=true&
+// limit=10` would return three rows while a fourth waited on the next page.
+// So a stale listing reads the newest `maxPublicationPage` publications of the
+// page, filters, and paginates the filtered result itself. That window is
+// generous by two orders of magnitude for what it is used for: the stale set of
+// a page that is not badly neglected is a handful of rows.
 func (s *Service) ListPublications(
 	ctx context.Context, orgSlug, pageIdentifier string, opts ListOptions,
 ) ([]PublicationResponse, error) {
@@ -334,14 +348,20 @@ func (s *Service) ListPublications(
 		return nil, err
 	}
 
-	pubs, err := s.db.ListIncidentPublications(ctx, &models.ListIncidentPublicationsFilter{
+	filter := &models.ListIncidentPublicationsFilter{
 		OrganizationUID: org.UID,
 		StatusPageUID:   page.UID,
 		State:           opts.State,
 		ActiveOnly:      opts.ActiveOnly,
 		Limit:           opts.Limit,
 		Offset:          opts.Offset,
-	})
+	}
+	if opts.StaleOnly {
+		filter.Limit = maxPublicationPage
+		filter.Offset = 0
+	}
+
+	pubs, err := s.db.ListIncidentPublications(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +379,29 @@ func (s *Service) ListPublications(
 		out = append(out, item)
 	}
 
+	if opts.StaleOnly {
+		out = paginate(out, opts.Offset, opts.Limit)
+	}
+
 	return out, nil
+}
+
+// paginate applies an offset/limit to an already-filtered slice. A limit of 0
+// means "no limit", matching the DB layer's own convention.
+func paginate(items []PublicationResponse, offset, limit int) []PublicationResponse {
+	if offset > 0 {
+		if offset >= len(items) {
+			return []PublicationResponse{}
+		}
+
+		items = items[offset:]
+	}
+
+	if limit > 0 && limit < len(items) {
+		items = items[:limit]
+	}
+
+	return items
 }
 
 // isStale reports whether an OPEN publication tracks an incident that has
@@ -492,6 +534,17 @@ func (s *Service) CreatePublication(
 	}
 
 	now := s.clock.Now()
+
+	// A resolved incident yields a resolved entry whatever `state` asked for.
+	// Deciding it BEFORE the row is written is what keeps the header and the
+	// timeline in step: the caller's own body update is then posted as the
+	// `resolved` narrative, rather than as an `investigating` note under a
+	// header that says the opposite.
+	retroactive := linked != nil && linked.State == models.IncidentStateResolved
+	if retroactive {
+		state = models.PublicationStateResolved
+	}
+
 	pub := models.NewIncidentPublication(org.UID, page.UID, req.Title, now)
 	pub.PublicState = state
 	pub.Severity = req.Severity
@@ -501,11 +554,7 @@ func (s *Service) CreatePublication(
 		pub.IncidentUID = req.IncidentUID
 	}
 
-	retroactive := linked != nil && linked.State == models.IncidentStateResolved
-	if retroactive && state == models.PublicationStateResolved {
-		// The caller already asked for a closed entry; only the timestamp needs
-		// aligning with the incident, and their own body update is the
-		// narrative — a templated one on top would just repeat them.
+	if retroactive {
 		pub.ResolvedAt = incidentResolvedAt(linked, now)
 	}
 
@@ -513,7 +562,8 @@ func (s *Service) CreatePublication(
 		return PublicationResponse{}, err
 	}
 
-	if req.BodyMarkdown != nil && strings.TrimSpace(*req.BodyMarkdown) != "" {
+	hasBody := req.BodyMarkdown != nil && strings.TrimSpace(*req.BodyMarkdown) != ""
+	if hasBody {
 		if err := validateBody(*req.BodyMarkdown); err != nil {
 			return PublicationResponse{}, err
 		}
@@ -523,13 +573,41 @@ func (s *Service) CreatePublication(
 
 	s.emit(ctx, org.UID, models.EventTypeStatusPageIncidentPublished, pub, actorUID)
 
-	if retroactive && state != models.PublicationStateResolved {
-		s.resolveRetroactively(ctx, page, pub, linked, actorUID)
+	if retroactive {
+		s.closeRetroactiveCreate(ctx, page, pub, linked, actorUID, hasBody)
 	}
 
 	s.publishHint(ctx, org.UID)
 
 	return toResponse(pub), nil
+}
+
+// closeRetroactiveCreate finishes a hand-authored publication that was born
+// resolved because the incident it binds was already over.
+//
+// The templated `resolved` update is posted ONLY when the caller wrote nothing
+// of their own: this is the hand-authored path, so an operator's own words are
+// the narrative, and adding a machine-written close under them would say the
+// same thing twice in two voices. The event fires either way — a webhook
+// consumer must hear that a resolved public entry appeared regardless of who
+// phrased it.
+func (s *Service) closeRetroactiveCreate(
+	ctx context.Context, page *models.StatusPage, pub *models.IncidentPublication,
+	incident *models.Incident, actorUID string, hasBody bool,
+) {
+	if !hasBody {
+		tpl := templatesFor(page.Language)
+
+		name := s.affectedName(ctx, incident.OrganizationUID, page, incident)
+		if name == "" {
+			name = tpl.GroupOpenedTitle
+		}
+
+		s.postUpdate(ctx, page, pub, models.StatusUpdateKindResolved,
+			fmt.Sprintf(tpl.ResolvedTitle, name), fmt.Sprintf(tpl.ResolvedBody, name), &actorUID)
+	}
+
+	s.emit(ctx, incident.OrganizationUID, models.EventTypeStatusPageIncidentResolved, pub, actorUID)
 }
 
 // incidentResolvedAt is the incident's own resolution time, falling back to

@@ -11736,8 +11736,13 @@ components:
         autoCreated:
           type: boolean
           description: >-
-            True when the auto-publish pipeline minted it. Only auto-created
-            publications are candidates for auto-resolve and relapse reopen.
+            True when the auto-publish pipeline minted it. It gates group
+            CONSOLIDATION only — the automation never appends "also affecting
+            X" notes to a narrative a person wrote. Candidacy for auto-resolve
+            and relapse reopen is decided by `incidentUid` instead: a
+            publication linked to an incident follows the page's `autoResolve`
+            policy whether a machine or a person created it, and one that
+            tracks no incident is never touched by either.
         humanTouched:
           type: boolean
           description: >-

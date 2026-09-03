@@ -139,11 +139,13 @@ type IncidentPublication struct {
 	// Severity is the display-only public badge. nil = no badge.
 	Severity *string `bun:"severity"`
 	// AutoCreated marks a publication minted by the auto-publish pipeline.
-	// It gates the relapse REOPEN path only: a hand-authored entry is never
-	// reopened behind its author's back. Auto-RESOLVE is keyed on IncidentUID
-	// instead — a publication linked to an incident is in scope of the page's
-	// autoResolve policy whether a machine or a person created it
-	// (spec 2026-09-02-05).
+	// It gates group CONSOLIDATION only: the automation never appends "also
+	// affecting X" notes to a narrative a person wrote. Auto-RESOLVE and
+	// relapse REOPEN are keyed on IncidentUID instead — a publication linked to
+	// an incident is in scope of the page's autoResolve policy whether a
+	// machine or a person created it, and the two directions must agree or a
+	// hand-published entry gets closed by a recovery and never reopened by the
+	// relapse (spec 2026-09-02-05).
 	AutoCreated bool `bun:"auto_created,notnull"`
 	// HumanTouchedAt is stamped the first time a person edits the publication
 	// or posts an update on it. It is the whole basis of the `if_untouched`

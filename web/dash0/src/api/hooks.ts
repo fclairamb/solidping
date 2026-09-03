@@ -19,6 +19,7 @@ export interface ListQueryOptions {
   staleTime?: number;
 }
 import { mergeResultTiers } from "@/lib/result-tiers";
+import { isStalePublication } from "@/lib/stale-publications";
 import {
   chartFetchParamsForWindow,
   chartRollupTier,
@@ -7241,7 +7242,13 @@ export function useStalePublications(org: string): StalePublication[] {
 
   (pages ?? []).forEach((page, index) => {
     for (const publication of results[index]?.data ?? []) {
-      out.push({ page, publication });
+      // The `?stale=true` filter is applied again here. A backend that does not
+      // know the parameter answers the unfiltered listing, and the banner would
+      // then accuse the org of neglect for every publication open during a real
+      // outage — a warning that cries wolf is worse than none.
+      if (isStalePublication(publication)) {
+        out.push({ page, publication });
+      }
     }
   });
 

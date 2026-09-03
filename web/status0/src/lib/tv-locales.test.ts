@@ -77,6 +77,8 @@ describe("TV mode locale parity", () => {
     // and the key it would render raw is 20 characters wide on a wallboard.
     expect(enTv.has("tv.incidentDriven_one")).toBe(true);
     expect(enTv.has("tv.incidentDriven_other")).toBe(true);
+    expect(enTv.has("tv.incidentDrivenImpaired_one")).toBe(true);
+    expect(enTv.has("tv.incidentDrivenImpaired_other")).toBe(true);
   });
 
   for (const [name, locale] of Object.entries(LOCALES)) {

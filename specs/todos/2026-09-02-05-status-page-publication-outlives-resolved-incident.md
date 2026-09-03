@@ -262,3 +262,39 @@ dash0:
 - `web/dash0/src/lib/stale-publications.test.ts`: the banner's derivation + locale parity.
 - `web/dash0/e2e/`: the stale-publication alert is present when the linked incident is resolved and
   absent when it is live.
+
+### Post-audit additions
+
+The completeness audit found one real correctness bug introduced by step 2, plus
+six smaller items. All are implemented:
+
+1. **`OnIncidentReopened` had to be widened with `OnIncidentResolved`.** Once
+   auto-resolve could close a hand-published, incident-linked entry, a reopen
+   guard still asking `auto_created` left that entry at `resolved` through the
+   relapse — so the public page and the wallboard would read GREEN during a live
+   outage. `policy.go` now uses `pub.IncidentUID == nil` in both directions.
+2. `openapi.yaml`'s `autoCreated` description no longer claims auto-created rows
+   are the only auto-resolve/reopen candidates. `auto_created` now gates group
+   **consolidation** only; the Go model comment and `wiki/database-model/status-pages.md`
+   say the same thing.
+3. `groupSiblingPublications` (`group.go`) uses the same `IncidentUID == nil`
+   rule, so a hand-published entry owning a consolidated group outage closes when
+   a SIBLING is the last member to recover. Its only caller is
+   `OnIncidentResolved`, so this changes auto-resolve scope and nothing else —
+   `consolidateIntoSibling` keeps its `auto_created` gate, which is a different
+   and deliberate rule (a machine never appends to a human's narrative).
+4. `StaleOnly` now filters **before** paginating: the DB page is taken at the
+   200-row cap and the caller's `limit`/`offset` are applied to the filtered
+   result, so `?stale=true&limit=10` cannot under-report.
+5. `isStalePublication` is wired into `useStalePublications` as a client-side
+   re-application of the filter (a backend that ignores `?stale=true` would
+   otherwise light the banner during a genuine outage). `countStale` had no
+   caller and is deleted.
+6. A retroactive `Create()` with a `bodyMarkdown` posts the operator's own words
+   ONCE, as the `resolved` entry — the state is decided before the row is
+   written, so the header and the timeline agree. The templated close is posted
+   only when the caller wrote nothing.
+7. The TV subtitle no longer claims "all monitored services are passing" over an
+   already-impaired rollup. `incidentDrivenKey()` picks
+   `tv.incidentDriven` (green rollup) or `tv.incidentDrivenImpaired`
+   (attribution without the reassurance), both in all four locales.

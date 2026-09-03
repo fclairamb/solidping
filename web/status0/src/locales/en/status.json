@@ -93,6 +93,8 @@
     "noIncidentsRecorded": "No incidents recorded",
     "incidentDriven_one": "Driven by {{count}} open incident — all monitored services are passing",
     "incidentDriven_other": "Driven by {{count}} open incidents — all monitored services are passing",
+    "incidentDrivenImpaired_one": "Driven by {{count}} open incident",
+    "incidentDrivenImpaired_other": "Driven by {{count}} open incidents",
     "cycling": "Cycling through {{count}} active incidents",
     "affectedTitle": "Affected services",
     "affectedCycling": "Cycling through {{count}} affected services",

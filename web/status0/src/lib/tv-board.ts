@@ -99,6 +99,9 @@ export function resolveTvState(
  * Deliberately a COUNT rather than a boolean: the subtitle names the number,
  * and "1 open incident" versus "3 open incidents" is the difference between a
  * forgotten entry and a real multi-service event.
+ *
+ * See incidentDrivenKey for WHICH sentence that count goes into — escalating
+ * from green and escalating from amber are two different claims.
  */
 export function incidentDrivenCount(
   rollup: string | undefined,
@@ -112,6 +115,23 @@ export function incidentDrivenCount(
   }
 
   return activeIncidents?.length ?? 0;
+}
+
+/**
+ * Which subtitle sentence the incident count belongs in.
+ *
+ * The two cases are NOT interchangeable. From a green rollup the honest line is
+ * "…— all monitored services are passing": that is the whole point, the room is
+ * being told the amber is editorial rather than a probe failure. From a rollup
+ * that is ALREADY impaired — a `degraded` page pushed to `down` by a `critical`
+ * publication — that same clause is simply false, and a wallboard asserting a
+ * falsehood is the exact defect class this spec exists to remove. So that case
+ * gets the attribution without the reassurance (spec 2026-09-02-05).
+ */
+export function incidentDrivenKey(rollup: string | undefined): string {
+  return normalizeRollup(rollup) === "operational"
+    ? "tv.incidentDriven"
+    : "tv.incidentDrivenImpaired";
 }
 
 /** Maps the server's `overallStatus` string onto a board state. */

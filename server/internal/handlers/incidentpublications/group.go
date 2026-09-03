@@ -189,7 +189,7 @@ func (s *Service) consolidateIntoSibling(
 	return false
 }
 
-// groupSiblingPublications returns the still-open auto-created publications
+// groupSiblingPublications returns the still-open, incident-linked publications
 // that belong to OTHER incidents of the same group.
 //
 // Resolution needs them because consolidation deliberately breaks the
@@ -197,6 +197,14 @@ func (s *Service) consolidateIntoSibling(
 // FIRST member's incident, so when the last member recovers, listing
 // publications by its own incident UID finds nothing and the entry would stay
 // open forever.
+//
+// Its only caller is OnIncidentResolved, so the filter here is auto-resolve
+// scope and nothing else — and it uses the same rule that function does
+// ("linked to an incident", never "created by a machine"). Filtering on
+// auto_created would have re-created, for the consolidated-group case alone,
+// exactly the hole spec 2026-09-02-05 closed everywhere else: a hand-published
+// entry owning a group outage would never close when a SIBLING was the last
+// member to recover.
 func (s *Service) groupSiblingPublications(
 	ctx context.Context, incident *models.Incident, groupUID string,
 ) []*models.IncidentPublication {
@@ -214,7 +222,7 @@ func (s *Service) groupSiblingPublications(
 		}
 
 		for _, pub := range pubs {
-			if pub == nil || !pub.AutoCreated || pub.IsResolved() {
+			if pub == nil || pub.IncidentUID == nil || pub.IsResolved() {
 				continue
 			}
 

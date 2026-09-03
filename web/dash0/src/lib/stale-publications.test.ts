@@ -4,11 +4,7 @@ import frStatusPages from "@/locales/fr/statusPages.json";
 import deStatusPages from "@/locales/de/statusPages.json";
 import esStatusPages from "@/locales/es/statusPages.json";
 import type { IncidentPublication, StalePublication } from "@/api/hooks";
-import {
-  countStale,
-  groupStaleByPage,
-  isStalePublication,
-} from "./stale-publications";
+import { groupStaleByPage, isStalePublication } from "./stale-publications";
 
 function publication(
   partial: Partial<IncidentPublication> = {},
@@ -72,7 +68,6 @@ describe("isStalePublication", () => {
 describe("groupStaleByPage", () => {
   it("returns nothing for a clean org", () => {
     expect(groupStaleByPage([])).toEqual([]);
-    expect(countStale(groupStaleByPage([]))).toBe(0);
   });
 
   it("collapses several entries on one page into a single line", () => {
@@ -84,7 +79,6 @@ describe("groupStaleByPage", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].pageName).toBe("Public status");
     expect(groups[0].publications.map((p) => p.uid)).toEqual(["a", "b"]);
-    expect(countStale(groups)).toBe(2);
   });
 
   it("keeps distinct pages apart, in arrival order", () => {
@@ -97,7 +91,6 @@ describe("groupStaleByPage", () => {
     expect(groups.map((g) => g.pageUid)).toEqual(["page-2", "page-1"]);
     expect(groups[0].publications).toHaveLength(2);
     expect(groups[1].publications).toHaveLength(1);
-    expect(countStale(groups)).toBe(3);
   });
 });
 

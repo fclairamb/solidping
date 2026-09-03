@@ -506,3 +506,258 @@ func TestStaleFlagAndFilter(t *testing.T) {
 				"about it would be noise until its author closes it")
 	})
 }
+
+// TestHandPublishedEntryIsReopenedOnRelapse is the counterweight to widening
+// auto-resolve.
+//
+// Step 2 of the spec made a hand-published, incident-linked entry closeable by
+// a recovery. That, on its own, opened a hole in the OTHER direction: the
+// relapse path still asked `auto_created`, so the entry it had just closed
+// would stay `resolved` through the next outage. `ListPublicIncidents(active)`
+// excludes a resolved entry, so the public page — and the wallboard — would
+// have gone GREEN during a live outage. That is strictly worse than the
+// amber-while-healthy state this spec set out to fix, and the `stale` flag
+// cannot see it (it only looks for open entry + resolved incident).
+func TestHandPublishedEntryIsReopenedOnRelapse(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newPubSetup(t, setupOptions{
+		autoPublish: false, delaySeconds: 0, autoResolve: models.AutoResolveIfUntouched,
+	})
+
+	incident := liveIncident(t, s)
+
+	resp, err := s.pubs.PublishIncident(t.Context(), s.org.Slug, incident.UID, s.userUID,
+		&incidentpublications.PublishIncidentRequest{StatusPageUID: s.page.UID})
+	r.NoError(err)
+
+	// Recovery closes it — that is the behavior this spec introduced.
+	s.clk.Advance(30 * time.Second)
+	s.submit(models.ResultStatusUp)
+
+	pubs := s.publications()
+	r.Len(pubs, 1)
+	r.Equal(models.PublicationStateResolved, pubs[0].PublicState)
+
+	// Relapse inside the reopen cooldown.
+	s.clk.Advance(30 * time.Second)
+	s.submit(models.ResultStatusDown)
+
+	pubs = s.publications()
+	r.Len(pubs, 1, "a relapse must not mint a second public entry")
+	r.Equal(resp.UID, pubs[0].UID)
+	r.Equal(models.PublicationStateInvestigating, pubs[0].PublicState,
+		"the entry auto-resolve closed is the entry a relapse must reopen")
+	r.Nil(pubs[0].ResolvedAt)
+
+	// The customer-visible end: the page says something is wrong again.
+	active, err := s.pubs.ListPublicIncidents(t.Context(), s.page, true)
+	r.NoError(err)
+	r.Len(active, 1,
+		"the public page must never read green during a live outage")
+}
+
+// TestFreeFormPublicationIsNeverReopened is the reopen path's scope guard, and
+// the mirror of TestFreeFormPublicationSurvivesAnIncidentResolving.
+func TestFreeFormPublicationIsNeverReopened(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newPubSetup(t, setupOptions{
+		autoPublish: false, delaySeconds: 0, autoResolve: models.AutoResolveIfUntouched,
+	})
+
+	resolvedState := string(models.PublicationStateResolved)
+	freeForm, err := s.pubs.CreatePublication(t.Context(), s.org.Slug, s.page.UID, s.userUID,
+		&incidentpublications.CreatePublicationRequest{
+			Title: "Last week's planned migration",
+			State: &resolvedState,
+		})
+	r.NoError(err)
+	r.Nil(freeForm.IncidentUID)
+
+	incident := liveIncident(t, s)
+
+	linked, err := s.pubs.PublishIncident(t.Context(), s.org.Slug, incident.UID, s.userUID,
+		&incidentpublications.PublishIncidentRequest{StatusPageUID: s.page.UID})
+	r.NoError(err)
+
+	s.clk.Advance(30 * time.Second)
+	s.submit(models.ResultStatusUp)
+
+	s.clk.Advance(30 * time.Second)
+	s.submit(models.ResultStatusDown)
+
+	byUID := map[string]*models.IncidentPublication{}
+	for _, pub := range s.publications() {
+		byUID[pub.UID] = pub
+	}
+
+	r.Len(byUID, 2)
+	r.Equal(models.PublicationStateInvestigating, byUID[linked.UID].PublicState,
+		"the linked entry reopens — proof the relapse pass actually ran")
+	r.Equal(models.PublicationStateResolved, byUID[freeForm.UID].PublicState,
+		"a closed free-form entry is not resurrected by an unrelated relapse")
+}
+
+// TestRetroactiveCreateWithABodyPostsOneNarrative pins the create path's
+// narrative shape: the operator's own words, posted once, as the resolved
+// entry — not their words followed by a machine saying the same thing.
+func TestRetroactiveCreateWithABodyPostsOneNarrative(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newPubSetup(t, setupOptions{autoPublish: false, delaySeconds: 0})
+
+	incident := resolvedIncident(t, s)
+
+	body := "A configuration change took payments offline for 36 minutes."
+	resp, err := s.pubs.CreatePublication(t.Context(), s.org.Slug, s.page.UID, s.userUID,
+		&incidentpublications.CreatePublicationRequest{
+			Title:        "Payments were briefly unavailable",
+			IncidentUID:  &incident.UID,
+			BodyMarkdown: &body,
+		})
+	r.NoError(err)
+	r.Equal(string(models.PublicationStateResolved), resp.State)
+
+	full, err := s.pubs.GetPublication(t.Context(), s.org.Slug, s.page.UID, resp.UID)
+	r.NoError(err)
+	r.Len(full.Updates, 1,
+		"the operator wrote the narrative; a templated close on top would repeat them")
+	r.Equal(body, full.Updates[0].BodyMarkdown)
+	r.Equal(string(models.StatusUpdateKindResolved), full.Updates[0].Kind,
+		"the timeline and the header must not disagree")
+
+	// The event still fires — a webhook consumer hears about the closed entry
+	// whoever phrased it.
+	r.Contains(s.publicationEventTypes(resp.UID),
+		models.EventTypeStatusPageIncidentResolved)
+}
+
+// TestStaleFilterPaginatesTheFilteredSet pins that `stale` is applied BEFORE
+// the caller's limit/offset. Filtering a page of rows that was already cut to
+// `limit` would under-report: `?stale=true&limit=2` could answer with one row
+// while a second waited on a page nobody asks for.
+func TestStaleFilterPaginatesTheFilteredSet(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newPubSetup(t, setupOptions{
+		autoPublish: false, delaySeconds: 0, autoResolve: models.AutoResolveNever,
+	})
+
+	// Two stale entries, and three free-form ones interleaved so that a naive
+	// "take the newest 2 rows, then filter" would find no stale row at all.
+	staleUIDs := make([]string, 0, 2)
+
+	for round := range 2 {
+		_, err := s.pubs.CreatePublication(t.Context(), s.org.Slug, s.page.UID, s.userUID,
+			&incidentpublications.CreatePublicationRequest{
+				Title: "Planned work " + string(rune('A'+round)),
+			})
+		r.NoError(err)
+
+		incident := liveIncident(t, s)
+
+		pub, err := s.pubs.PublishIncident(t.Context(), s.org.Slug, incident.UID, s.userUID,
+			&incidentpublications.PublishIncidentRequest{StatusPageUID: s.page.UID})
+		r.NoError(err)
+
+		staleUIDs = append(staleUIDs, pub.UID)
+
+		// `never` keeps the entry open past the recovery — the stale state.
+		s.clk.Advance(time.Minute)
+		s.submit(models.ResultStatusUp)
+		s.clk.Advance(time.Hour) // past the reopen cooldown, so the next round opens a NEW incident
+	}
+
+	_, err := s.pubs.CreatePublication(t.Context(), s.org.Slug, s.page.UID, s.userUID,
+		&incidentpublications.CreatePublicationRequest{Title: "Planned work C"})
+	r.NoError(err)
+
+	all, err := s.pubs.ListPublications(t.Context(), s.org.Slug, s.page.UID,
+		incidentpublications.ListOptions{ActiveOnly: true, StaleOnly: true})
+	r.NoError(err)
+	r.Len(all, 2)
+	r.ElementsMatch(staleUIDs, []string{all[0].UID, all[1].UID})
+
+	// The newest publication on the page is free-form, so a limit applied by
+	// the DB before filtering would have returned nothing here.
+	limited, err := s.pubs.ListPublications(t.Context(), s.org.Slug, s.page.UID,
+		incidentpublications.ListOptions{ActiveOnly: true, StaleOnly: true, Limit: 1})
+	r.NoError(err)
+	r.Len(limited, 1, "limit must cut the FILTERED set, not the set it was drawn from")
+	r.Equal(all[0].UID, limited[0].UID)
+
+	paged, err := s.pubs.ListPublications(t.Context(), s.org.Slug, s.page.UID,
+		incidentpublications.ListOptions{ActiveOnly: true, StaleOnly: true, Limit: 1, Offset: 1})
+	r.NoError(err)
+	r.Len(paged, 1)
+	r.Equal(all[1].UID, paged[0].UID, "offset walks the filtered set too")
+
+	past, err := s.pubs.ListPublications(t.Context(), s.org.Slug, s.page.UID,
+		incidentpublications.ListOptions{ActiveOnly: true, StaleOnly: true, Offset: 9})
+	r.NoError(err)
+	r.Empty(past, "an offset past the end is empty, not an error")
+}
+
+// TestHandPublishedGroupEntryClosesWithTheLastSibling covers the consolidated
+// case (spec 2026-08-24-14 crossed with this one).
+//
+// A group's public entry hangs off whichever member's incident owns it, so when
+// a DIFFERENT member is the last to recover, auto-resolve has to reach the
+// entry through groupSiblingPublications. That helper filtered on
+// `auto_created`, which re-created — for this one path — exactly the hole
+// widening OnIncidentResolved closed everywhere else: a hand-published entry
+// owning a group outage would never close.
+func TestHandPublishedGroupEntryClosesWithTheLastSibling(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	probe, group, members := groupProbe(t, "Payments worker")
+
+	// Auto-publish off: the ONLY entry on this page must be the hand-published
+	// one, or the test would be watching a machine-minted twin instead.
+	autoPublish := false
+	r.NoError(probe.dbSvc.UpdateStatusPage(ctx, probe.page.UID,
+		&models.StatusPageUpdate{AutoPublish: &autoPublish}))
+
+	owner := openIncident(t, probe, probe.check, "payments-api is down")
+	r.Empty(probe.publications(), "auto-publish is off; nothing publishes itself")
+
+	pub, err := probe.pubs.PublishIncident(ctx, probe.org.Slug, owner.UID, probe.userUID,
+		&incidentpublications.PublishIncidentRequest{StatusPageUID: probe.page.UID})
+	r.NoError(err)
+	r.False(pub.AutoCreated)
+
+	probe.clk.Advance(20 * time.Second)
+
+	sibling := openIncident(t, probe, members[0], "payments-member-a is down")
+
+	// The owner recovers FIRST. The entry must stay open — a sibling is still
+	// down, and announcing "resolved" over a live outage is the worse error.
+	probe.clk.Advance(time.Minute)
+	resolveIncident(t, probe, owner)
+
+	pubs := probe.publications()
+	r.Len(pubs, 1)
+	r.NotEqual(models.PublicationStateResolved, pubs[0].PublicState,
+		"a consolidated entry closes with the LAST member, not the first")
+
+	// Now the last member recovers. Its own incident has no publication, so the
+	// entry can only be reached through the group sibling walk.
+	probe.clk.Advance(time.Minute)
+	resolveIncident(t, probe, sibling)
+
+	pubs = probe.publications()
+	r.Len(pubs, 1)
+	r.Equal(models.PublicationStateResolved, pubs[0].PublicState,
+		"the last member's recovery closes the hand-published group entry")
+	r.NotNil(pubs[0].ResolvedAt)
+
+	_ = group
+}

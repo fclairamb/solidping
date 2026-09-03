@@ -18,6 +18,7 @@ import {
   elapsedMs,
   failingResources,
   incidentDrivenCount,
+  incidentDrivenKey,
   lastResolvedAt,
   recentResolved,
   resolveTvState,
@@ -397,7 +398,9 @@ export function TvBoard({
               className="truncate text-lg opacity-70 sm:text-xl"
               data-testid="tv-headline-cause"
             >
-              {t("tv.incidentDriven", { count: incidentDriven })}
+              {t(incidentDrivenKey(page?.overallStatus), {
+                count: incidentDriven,
+              })}
             </p>
           )}
         </div>
