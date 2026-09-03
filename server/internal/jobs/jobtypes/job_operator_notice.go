@@ -44,7 +44,7 @@ type OperatorNoticeJobConfig struct {
 // landing-organization line in production while every test — which built the
 // job config by hand on one side and asserted at the Notify boundary on the
 // other — stayed green. One conversion, next to the struct, with a round-trip
-// test that fails if a field stops travelling.
+// test that fails if a field stops traveling.
 func NewOperatorNoticeJobConfig(notice *opsnotify.Notice) OperatorNoticeJobConfig {
 	return OperatorNoticeJobConfig{
 		Event:        notice.Event,
