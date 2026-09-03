@@ -76,6 +76,7 @@ import { Route as OrgsOrgSlosUidRouteImport } from './routes/orgs/$org/slos.$uid
 import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.web'
 import { Route as OrgsOrgServerSlackRouteImport } from './routes/orgs/$org/server.slack'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
+import { Route as OrgsOrgServerNotificationsRouteImport } from './routes/orgs/$org/server.notifications'
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
 import { Route as OrgsOrgServerHashingRouteImport } from './routes/orgs/$org/server.hashing'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
@@ -495,6 +496,12 @@ const OrgsOrgServerPerformanceRoute =
   OrgsOrgServerPerformanceRouteImport.update({
     id: '/performance',
     path: '/performance',
+    getParentRoute: () => OrgsOrgServerRoute,
+  } as any)
+const OrgsOrgServerNotificationsRoute =
+  OrgsOrgServerNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
     getParentRoute: () => OrgsOrgServerRoute,
   } as any)
 const OrgsOrgServerMailRoute = OrgsOrgServerMailRouteImport.update({
@@ -988,6 +995,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
+  '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
@@ -1107,6 +1115,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
+  '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
@@ -1248,6 +1257,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
+  '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
@@ -1392,6 +1402,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
+    | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
     | '/orgs/$org/server/web'
@@ -1511,6 +1522,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
+    | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
     | '/orgs/$org/server/web'
@@ -1651,6 +1663,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
+    | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
     | '/orgs/$org/server/web'
@@ -2198,6 +2211,13 @@ declare module '@tanstack/react-router' {
       path: '/performance'
       fullPath: '/orgs/$org/server/performance'
       preLoaderRoute: typeof OrgsOrgServerPerformanceRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
+    '/orgs/$org/server/notifications': {
+      id: '/orgs/$org/server/notifications'
+      path: '/notifications'
+      fullPath: '/orgs/$org/server/notifications'
+      preLoaderRoute: typeof OrgsOrgServerNotificationsRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/mail': {
@@ -3052,6 +3072,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
   OrgsOrgServerHashingRoute: typeof OrgsOrgServerHashingRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
+  OrgsOrgServerNotificationsRoute: typeof OrgsOrgServerNotificationsRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
   OrgsOrgServerSlackRoute: typeof OrgsOrgServerSlackRoute
   OrgsOrgServerWebRoute: typeof OrgsOrgServerWebRoute
@@ -3070,6 +3091,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
   OrgsOrgServerHashingRoute: OrgsOrgServerHashingRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,
+  OrgsOrgServerNotificationsRoute: OrgsOrgServerNotificationsRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
   OrgsOrgServerSlackRoute: OrgsOrgServerSlackRoute,
   OrgsOrgServerWebRoute: OrgsOrgServerWebRoute,
