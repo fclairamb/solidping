@@ -250,7 +250,7 @@ bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-b
 BENCH_MEM_MODE      ?= local
 BENCH_MEM_SCENARIOS ?= idle-all-sqlite,checks-500,docs-crawl
 BENCH_MEM_LABEL     ?= baseline
-BENCH_MEM_WARMUP    ?= 60s
+BENCH_MEM_WARMUP    ?= 5m
 BENCH_MEM_INTERVAL  ?= 5s
 BENCH_MEM_DURATION  ?= 5m
 BENCH_MEM_REPS      ?= 3

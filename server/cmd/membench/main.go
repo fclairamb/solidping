@@ -44,12 +44,20 @@ import (
 )
 
 const (
-	defaultWarmUp   = 60 * time.Second
+	// defaultWarmUp is 5 minutes, not the 60 s the spec first proposed, because
+	// 60 s was measured to be wrong: an idle container reads 148.6 MiB anon at
+	// 45 s and 23.0 MiB at 300 s. The whole difference is the startup heap,
+	// which nothing forces the runtime to release until the scavenger gets to
+	// it. A default that reports the startup burst as "idle memory" is a
+	// default that manufactures false regressions.
+	defaultWarmUp   = 5 * time.Minute
 	defaultInterval = 5 * time.Second
 	defaultDuration = 5 * time.Minute
 	defaultReps     = 3
 	defaultPort     = 4009
 	bootTimeout     = 3 * time.Minute
+	// shortWarmUp is the threshold below which the run is warned about.
+	shortWarmUp = 5 * time.Minute
 )
 
 type options struct {
@@ -102,7 +110,8 @@ func parseFlags() options {
 			"(recorded in the report, so a run tuned by env cannot be mistaken for an untuned one)")
 	flag.StringVar(&opts.memory, "memory", "1g", "container memory limit for -mode docker")
 	flag.StringVar(&opts.cpus, "cpus", "1", "container CPU limit for -mode docker")
-	flag.DurationVar(&opts.warmUp, "warmup", defaultWarmUp, "warm-up before sampling starts")
+	flag.DurationVar(&opts.warmUp, "warmup", defaultWarmUp,
+		"warm-up before sampling starts; below ~5m an idle process is still holding its startup heap")
 	flag.DurationVar(&opts.interval, "interval", defaultInterval, "sampling interval")
 	flag.DurationVar(&opts.duration, "duration", defaultDuration, "sampling window")
 	flag.IntVar(&opts.reps, "reps", defaultReps, "repetitions per scenario (≥2 to get a spread, and without a spread nothing is significant)")
@@ -158,6 +167,12 @@ func run(ctx context.Context, opts options) error {
 		}
 
 		report.Scenarios = append(report.Scenarios, result)
+	}
+
+	if opts.warmUp < shortWarmUp {
+		fmt.Printf("membench: WARNING — a %s warm-up is shorter than the scavenger's own timescale. "+
+			"An idle container measured 148.6 MiB anon at 45s and 23.0 MiB at 300s: the difference is the "+
+			"startup heap, not the workload. Treat these numbers as warm, not settled.\n", opts.warmUp)
 	}
 
 	if opts.reps < 2 {

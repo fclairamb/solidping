@@ -226,7 +226,95 @@ lowered) · `docs-crawl` (every path in `/docs/sitemap.xml`) · `dash0-reload`.
 
 ### Measured baseline
 
-<<BASELINE_TABLE>>
+Measured 2026-09-04. **Mode: `docker`** — `solidping-bench:local` built from the
+working tree by `make bench-memory-image`, `--memory=1g --cpus=1`, on a
+darwin/arm64 host (Docker Desktop's linux/arm64 VM, 10 CPUs). Protocol: warm-up
+45 s, sample every 5 s for 60 s, 3 repetitions. **Not** the production
+linux/amd64 image, and the warm-up is shorter than the 5 min the harness now
+defaults to — both recorded here so the numbers are reproducible rather than
+authoritative-looking. The `idle` row in particular is a **warm** reading, not a
+settled one; the next section is why that distinction turned out to matter more
+than anything else in this table.
+
+| scenario | primary: cgroup anon+kernel | spread | rssAnon | Pss | RssFile | goTotal | heapLive | goroutines | threads |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `idle-all-sqlite` | **148.6 MiB** | 2.8 (1.9 %) | 148.7 | 197.9 | 49.2 | 150.0 | 70.9 | 49 | 8 |
+| `checks-500` | **31.3 MiB** | 0.5 (1.6 %) | 31.3 | 69.8 | 38.3 | 155.8 | 7.9 | 56 | 9 |
+| `docs-crawl` | **29.5 MiB** | 0.4 (1.4 %) | 29.5 | 93.4 | 63.8 | 150.2 | 8.2 | 49 | 8 |
+
+All values are medians (of the per-run medians); the spread is max−min across
+the three repetitions.
+
+### The headline result: 60 s of warm-up measures the startup burst, not the workload
+
+At a 45 s warm-up, `idle-all-sqlite` sits at **148.6 MiB** while `checks-500`,
+doing real work, sits at **31.3 MiB** — a 5× inversion. Re-run the same idle
+scenario with a **300 s** warm-up and it settles at **23.0 MiB**:
+
+| `idle-all-sqlite` | warm-up 45 s | warm-up 300 s |
+|---|---:|---:|
+| cgroup anon+kernel (primary) | 148.6 MiB | **23.0 MiB** (spread 1.1) |
+| Pss | 197.9 | 44.9 |
+| RssFile | 49.2 | 21.3 |
+| heapLive | 70.9 | **7.4** |
+| goTotal | 150.0 | 150.2 |
+
+Boot (migrations, seeding, config) allocates a large heap. Then nothing else
+allocates, so no GC runs and nothing forces the pages back — until the
+scavenger gets to them, which takes minutes. `goTotal` is identical in both
+columns: the runtime keeps the *address space* either way; what changes is
+whether it is resident. Under load the first GC collapses it immediately, which
+is why the busy scenario looked cheaper.
+
+Three consequences an operator should act on:
+
+- **An idle SolidPing container costs about 23 MiB of unreclaimable memory**,
+  not 149. The prod API pod's 53 Mi working set in `kubectl top` is consistent
+  with that: ~23 MiB anon + ~21 MiB of mapped binary + kernel accounting.
+- **Any memory number taken less than ~5 minutes after boot is the startup
+  burst.** `make bench-memory` therefore defaults to a **5-minute warm-up**
+  (the spec proposed 60 s; 60 s was measured to be wrong) and prints a warning
+  below that.
+- **A "reduction" measured on a short window may be measuring nothing but
+  whether a GC happened to fire.** Hence the inter-run spread, and hence
+  `-floor` as a separate mode.
+
+### Corroboration against the cluster
+
+`kubectl top --containers` on k8xp, 2026-09-04 (linux/amd64, the real images):
+
+| namespace | pod / container | working set |
+|---|---|---:|
+| `solidping-prod` | API `backend` | 61 Mi |
+| `solidping-prod` | checks workers `backend` (4 regions) | 30–44 Mi |
+| `solidping-prod` | checks workers `browser` sidecar | 38–119 Mi |
+| `solidping-prod` | deported agent `agent` | 27 Mi |
+| `solidping-dev` | API `backend` | 77 Mi |
+| `solidping-dev` | checks workers `backend` (5 regions) | 21–47 Mi |
+
+**Reading the delta.** `kubectl top` reports the cgroup **working set** =
+`memory.current` − inactive file pages, so it counts anon *plus* the
+actively-mapped pages of the binary. The harness's settled idle numbers —
+23.0 MiB anon + 21.3 MiB RssFile ≈ 44 MiB — land just under the prod API pod's
+61 Mi, and the gap is what you would expect: the pod is serving traffic (so more
+of the binary is mapped in and more heap is live), it runs the amd64 image
+rather than arm64, and the working set also carries kernel accounting the
+`rssAnon`/`rssFile` pair does not.
+
+The important part is that the *shape* matches: **roughly half of what
+`kubectl top` shows for a SolidPing container is file-backed and reclaimable.**
+Sizing a memory limit from the working set therefore over-provisions; sizing it
+from `cgroup anon + kernel` (the primary metric) is what the OOM killer will
+actually act on. The checks workers' 128 Mi request / 512 Mi limit against
+30–44 Mi working set — of which maybe 20 MiB is anon — has room in it, but that
+is a `k8xp` change and belongs in its own spec.
+
+Note also the `browser` sidecar at 38–119 Mi: on several worker pods it is the
+**larger** consumer, and it shares the pod's memory limit. Optimising the Go
+process while `chromedp/headless-shell` swings by 80 Mi is optimising the wrong
+container — explicitly out of scope here, but worth knowing before anyone
+tightens a limit.
+
 
 ## 6. Soak / leak detection (B3)
 
@@ -300,13 +388,78 @@ as open rather than guessed at.
 
 ## 9. Reduction candidates — ranked results
 
-<<RESULTS_TABLE>>
+Measured with the protocol in §5 unless a row says otherwise. **A rejection is a
+result**: it is recorded with its numbers so the next person does not re-try it
+blind.
+
+| # | Candidate | Δ primary metric | Verdict |
+|---|---|---|---|
+| 1 | GC levers as defaults (`GOGC` × `GOMEMLIMIT`) | not measured | **rejected for now, and the reason is a measurement.** The knob sweep was going to chase the 148.6 MiB idle figure — which turned out to be a warm-up artifact that the runtime resolves on its own within five minutes (23.0 MiB, §5). There is no idle overhang left for `GOGC` to attack, and `GOGC` cannot act on a process that does not allocate anyway. Appendix B's quoted "−47 % heap, −25 % RSS at `GOGC=25`" remains **unverified**; verifying it belongs with the `checks-N` scenarios, where allocation is continuous, not with idle. |
+| 2 | `GOMAXPROCS` from cgroup `cpu.max` | n/a — **already done by the toolchain** | **rejected as unnecessary, verified not assumed.** In a `--cpus=1` container on a 10-CPU host: `nproc` still reports 10, `/sys/fs/cgroup/cpu.max` reads `100000 100000`, and `/api/mgmt/memory` reports `goMaxProcs: 2` — the Go ≥1.25 container-aware value (the CPU limit, with a floor of 2). The module's `go 1.26.0` directive enables it. Writing our own reader would duplicate the runtime. |
+| 3 | Init-time dead weight (drop `sqliteshim`) | **0** — the premise was false | **rejected as a memory reduction, shipped as a correctness fix.** sqliteshim's driver files are mutually exclusive build-tagged files: it never linked both, so there was no dead weight to drop and no `modernc.org/libc` init to save. What the attempt *did* find is that the tags select **modernc** on every platform we ship to (only `-tags cgosqlite` selects mattn), while `buildinfo.SQLiteDriver()` reported `mattn` whenever cgo was on — see §4. |
+| 4 | Per-role trimming (`role=checks` vs `role=all`) | not measured | **open.** The scenario exists (`idle-api-checks-sqlite`) but was not run in this pass. Note the structural limit recorded in §5: a checks-**only** node serves no HTTP, so it cannot be sampled from inside at all. |
+| 5 | Peak-signature suspects (#1 `http.Client`, #5 10 MB body) | not measured under load | **partly closed by inspection** — see §8 rows 1 and 5. Neither is the unconditional per-check cost the runbook assumed. |
+| 6 | SQLite driver and pool (mattn vs modernc) | not measured | **open, and now correctly framed.** The build runs modernc, so today's `derived.offHeapBytes` is ~0.3 MiB in an idle container — measured, and consistent with an on-heap driver. Comparing the two drivers means building with `-tags cgosqlite`; the harness can do it, this pass did not. |
+| 7 | Serve embedded assets without heap copies | **−0.1 MiB (not significant, floor 1.2)** on `docs-crawl`; **no change** on `idle-all-sqlite` | **shipped on an allocation measurement, not an RSS one — stated plainly.** The RSS harness cannot resolve it: the allocation removed is short-lived, so whether it shows in resident memory depends on whether a GC fired during the window. The Go benchmark can: on `search-index.json` (3.6 MB, fetched by the offline docs search) serving goes from **3.6 MB/op to 33 KB/op** and 460 µs to 72 µs (`BenchmarkServeEmbedded{ReadFile,Streamed}`). The `idle-all-sqlite` run alongside it is the **negative control** the spec asks for: every metric came back not-significant on the scenario the change does not touch. |
+
+### What the negative controls showed
+
+- **Untouched scenario, untouched numbers.** `idle-all-sqlite` between the
+  baseline and the candidate build: primary metric 148.6 → 148.7 MiB, and every
+  one of the nine metrics flagged *not significant*.
+- **The "not significant" flag fires on its own noise.** `docs-crawl`'s peak
+  metric moved +18.4 MiB between the two builds and was correctly rejected
+  against its own 81.1 MiB spread — a harness that reported that as a
+  regression would report anything as anything.
+- **One thing did trip the flag, and it is instructive**: `goTotalBytes` on
+  `docs-crawl` rose 4.6 MiB (floor 4.2). Cause: with streaming, the crawl no
+  longer allocates enough to force a GC, so in one repetition the process kept
+  its startup heap. Less garbage produced a *higher* resident total. That is
+  the same effect as the idle inversion above, and it is exactly why the
+  primary metric alone is not a verdict.
+
+### Not attempted
+
+`GOGC`/`GOMEMLIMIT` sweeps, the 30-minute soak (suspects #2/#7/#8/#9), the
+`checks-1000` peak scenarios, the mattn-vs-modernc comparison, and the
+`login-burst` argon2 peak. The harness runs all of them; this pass ran the three
+scenarios needed to establish a baseline and to judge the one candidate that
+shipped.
+
 
 ---
 
 ## 10. Should this run in CI?
 
-<<CI_DECISION>>
+**No — not as a per-PR job.** Decided from the first real numbers, as the spec
+required, rather than by assumption.
+
+What the numbers say:
+
+| metric | inter-run spread (3 reps, quiet laptop) |
+|---|---|
+| `cgroupUnreclaimableBytes` (primary) | 0.4–2.8 MiB → **1.4–1.9 %** |
+| `heapLiveBytes` | 0.1–0.5 MiB → ~1 % |
+| `goTotalBytes` | 0.1–4.2 MiB |
+| `pssBytes` / `rssFileBytes` | 1.7–**32.6** MiB → up to **30 %** |
+| `cgroupPeakBytes` | 20.6–**81.1** MiB → up to **33 %** |
+
+So the primary metric is precise enough to be worth watching (a >5 % regression
+would clear the noise floor), but the peak and file-backed metrics are not —
+their spread is larger than most changes anyone would want to detect, on a
+*quiet* machine. A shared CI runner is noisier and much slower.
+
+The cost side is decisive on its own: a single scenario is 3 repetitions ×
+(boot + 45 s warm-up + 60 s window) ≈ 6 minutes, plus building a Linux image
+from the tree. Three scenarios at the default 60 s / 5 min protocol is over an
+hour. That is not a per-PR job.
+
+**Recommendation:** keep it a deliberate, local measurement. If it is ever
+automated, the shape that would work is a **nightly** job on a dedicated
+machine, pinned to `cgroupUnreclaimableBytes` on `idle-all-sqlite` and
+`checks-500` only, alerting on a >5 % move against a stored baseline — and
+explicitly *not* on the peak or Pss columns, which would cry wolf.
+
 
 ---
 
