@@ -285,9 +285,15 @@ At a 45 s warm-up, `idle-all-sqlite` sits at **148.6 MiB** while `checks-500`,
 doing real work, sits at **31.3 MiB** — a 5× inversion. Re-run the same idle
 scenario with a **300 s** warm-up and it settles at **23.0 MiB**:
 
-Same provenance as the table above — docker mode, linux/**arm64** image built
-from this tree, `--memory=1g --cpus=1`, 3 repetitions; not the production
-linux/amd64 image.
+Provenance, precisely: same harness and same container limits (docker mode,
+linux/**arm64** image, `--memory=1g --cpus=1`, 3 repetitions, not the production
+linux/amd64 image) — but **both columns come from the superseded run described
+above**, not from the committed baseline, and their JSON is gone. What *is*
+checkable in-tree is that the committed baseline's own 45 s idle figure is
+148.6 MiB, identical to the left column; the 300 s column has no surviving
+artefact and would have to be re-measured to be re-checked
+(`make bench-memory BENCH_MEM_SCENARIOS=idle-all-sqlite` at the 5 min default
+does exactly that).
 
 | `idle-all-sqlite` | warm-up 45 s | warm-up 300 s |
 |---|---:|---:|
@@ -548,6 +554,12 @@ like a failure), and it takes ~11 min because each test spins its own embedded
 Postgres.
 
 ### What the negative controls showed
+
+These three come from the baseline-vs-candidate comparison run, whose reports
+were among those cleared from `bench-results/` — so, like the warm-up table in
+§5, they are quoted rather than checkable in-tree. The rule they exercise is
+not: it is unit-tested in `internal/membench/stats_test.go`, and those tests
+fail if the significance rule is inverted.
 
 - **Untouched scenario, untouched numbers.** `idle-all-sqlite` between the
   baseline and the candidate build: primary metric 148.6 → 148.7 MiB, and every
