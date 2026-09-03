@@ -24,6 +24,8 @@ const (
 	labelMessageType  = "type"
 	labelListener     = "listener"
 	labelChannel      = "channel"
+	labelEvent        = "event"
+	labelContactType  = "contact_type"
 	labelDetector     = "detector"
 	labelSeverity     = "severity"
 )
@@ -502,6 +504,19 @@ var (
 		[]string{labelOutcome},
 	)
 
+	// OperatorNotice counts instance-level operator notices by event
+	// ("support.message", "user.registered", "watchdog.digest", "test"),
+	// contact type and outcome ("sent", "failed", "skipped"). Mirrors
+	// solidping_support_mirror_total: a notice that never reaches anybody is
+	// otherwise indistinguishable from an instance where nothing happened.
+	OperatorNotice = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_operator_notice_total",
+			Help: "Operator notices by event, contact type and delivery outcome",
+		},
+		[]string{labelEvent, labelContactType, labelOutcome},
+	)
+
 	// SupportDMUnavailable reports how many connected integrations cannot
 	// deliver direct messages because they were installed before the DM scope
 	// existed and have not been re-authorized.
@@ -628,6 +643,7 @@ var (
 
 	allCollectors = []prometheus.Collector{
 		SupportCapture, SupportMirror, SupportDMUnavailable, OrgProviderLinksDangling,
+		OperatorNotice,
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
