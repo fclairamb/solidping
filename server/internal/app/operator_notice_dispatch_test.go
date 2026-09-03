@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,7 +81,7 @@ func operatorNoticeJobs(t *testing.T, server *Server) []jobtypes.OperatorNoticeJ
 
 // signUp drives a real password registration through the server's own auth
 // service and returns the created user.
-func signUp(t *testing.T, server *Server, ctx context.Context, email string) *models.User {
+func signUp(ctx context.Context, t *testing.T, server *Server, email string) *models.User {
 	t.Helper()
 
 	r := require.New(t)
@@ -107,6 +108,10 @@ func signUp(t *testing.T, server *Server, ctx context.Context, email string) *mo
 
 	r.NotEmpty(token, "precondition: the registration token must have been stored")
 
+	// Re-assert THIS server's dispatcher immediately before the account is
+	// created, so the notice cannot land in a sibling test's job table.
+	server.installOperatorNoticeDispatcher()
+
 	_, err = server.authService.ConfirmRegistration(ctx, token)
 	r.NoError(err)
 
@@ -124,14 +129,21 @@ func signUp(t *testing.T, server *Server, ctx context.Context, email string) *mo
 //
 // This drives a REAL signup through the REAL dispatcher and asserts what
 // actually landed in the job table.
+//
+// It is deliberately NOT parallel: the notice dispatcher is process-wide and
+// every other server this package boots installs its own over it, so a parallel
+// body would race the wiring under test. Go runs non-parallel top-level tests
+// to completion before resuming any paused parallel one, which is exactly the
+// isolation this needs.
+//
+//nolint:paralleltest // asserts on a process-wide hook every other server here replaces
 func TestSignupEnqueuesANoticeCarryingTheNewUser(t *testing.T) {
-	//nolint:paralleltest // installs the process-wide notice dispatcher
 	r := require.New(t)
 	server, ctx := newOperatorNoticeServer(t)
 
 	const email = "dispatch-seam@acme.com"
 
-	user := signUp(t, server, ctx, email)
+	user := signUp(ctx, t, server, email)
 
 	notices := operatorNoticeJobs(t, server)
 	r.Len(notices, 1, "one account created is one queued notice")
@@ -145,8 +157,9 @@ func TestSignupEnqueuesANoticeCarryingTheNewUser(t *testing.T) {
 // production does — signup, dispatcher, queued job, delivery — and asserts the
 // operator's email actually names the organization. It is the end-to-end proof
 // that the field above is not merely present but load-bearing.
+//
+//nolint:paralleltest // asserts on a process-wide hook every other server here replaces
 func TestQueuedSignupNoticeResolvesItsOrganization(t *testing.T) {
-	//nolint:paralleltest // installs the process-wide notice dispatcher
 	r := require.New(t)
 	server, ctx := newOperatorNoticeServer(t)
 
@@ -171,7 +184,7 @@ func TestQueuedSignupNoticeResolvesItsOrganization(t *testing.T) {
 		},
 	}, false))
 
-	signUp(t, server, ctx, "newcomer@acme.com")
+	signUp(ctx, t, server, "newcomer@acme.com")
 
 	queued := operatorNoticeJobs(t, server)
 	r.Len(queued, 1)
@@ -198,16 +211,16 @@ func TestQueuedSignupNoticeResolvesItsOrganization(t *testing.T) {
 		Where("deleted_at IS NULL").
 		Scan(ctx))
 
-	var bodies string
+	bodies := strings.Builder{}
 
 	for _, job := range emails {
 		raw, marshalErr := json.Marshal(job.Config)
 		r.NoError(marshalErr)
 
-		bodies += string(raw)
+		bodies.Write(raw)
 	}
 
-	r.Contains(bodies, "newcomer@acme.com", "precondition: the notice email went out")
-	r.Contains(bodies, "Org:", "the operator is told which organization the signup landed in")
-	r.Contains(bodies, org.Slug)
+	r.Contains(bodies.String(), "newcomer@acme.com", "precondition: the notice email went out")
+	r.Contains(bodies.String(), "Org:", "the operator is told which organization the signup landed in")
+	r.Contains(bodies.String(), org.Slug)
 }
