@@ -20,50 +20,6 @@ import (
 const lifecyclePendingIndexDDL = "CREATE INDEX idx_results_lifecycle_pending on results (period_start)\n" +
 	"  where period_type = 'raw' and status = 1"
 
-// indexesAddedAfter013 names every index on `results` that a migration LATER
-// than 013 introduces. The byte-identity assertion below compares the live
-// schema against a replay of 001..013, so each new index has to be listed
-// here or it reads as "014 changed a pre-existing index".
-//
-// Adding a name here is the deliberate, reviewable act of saying "this index
-// is new, and 014 did not touch the old ones"; the assertion keeps its teeth
-// because every OTHER index still has to match byte for byte.
-//
-//   - idx_results_lifecycle_pending — 014, the abandoned-result reaper.
-//   - results_raw_signal_idx — 018, the passive evaluator's signal descent
-//     (spec 2026-09-02-03).
-func indexesAddedAfter013() map[string]bool {
-	return map[string]bool{
-		"idx_results_lifecycle_pending": true,
-		"results_raw_signal_idx":        true,
-	}
-}
-
-// indexesAddedAfter014 is the subset of the above that a migration later than
-// 014 creates. The SQLite half of 014 is a full table rebuild that recreates
-// the indexes IT knows about, so replaying it on a database that has already
-// run 018 legitimately drops the newer index — in production 018 runs after
-// 014 and creates it there. Excluding it keeps the "index-stable when
-// replayed" assertion about what 014 is itself responsible for.
-func indexesAddedAfter014() map[string]bool {
-	return map[string]bool{
-		"results_raw_signal_idx": true,
-	}
-}
-
-// withoutIndexes returns m minus the named entries.
-func withoutIndexes(m map[string]string, exclude map[string]bool) map[string]string {
-	out := make(map[string]string, len(m))
-
-	for name, ddl := range m {
-		if !exclude[name] {
-			out[name] = ddl
-		}
-	}
-
-	return out
-}
-
 // resultsStatusDomainMigrationSQL is the results-status-domain SECTION of the
 // consolidated v0.17.0 migration, read straight out of the embedded FS so this
 // test can never drift from the SQL that actually ships. Only that section is
@@ -139,7 +95,13 @@ func TestResultsStatusDomainMigration(t *testing.T) {
 	r.Equal(lifecyclePendingIndexDDL, after["idx_results_lifecycle_pending"],
 		"the reaper's partial index must cover status=1 only — status=2 (running) is used by heartbeat checks")
 
-	preserved := withoutIndexes(after, indexesAddedAfter013())
+	preserved := make(map[string]string, len(after))
+
+	for name, ddl := range after {
+		if name != "idx_results_lifecycle_pending" {
+			preserved[name] = ddl
+		}
+	}
 
 	r.Equal(before, preserved,
 		"014 must leave every pre-existing index on results byte-identical to what 001..013 produced")
@@ -224,10 +186,7 @@ func TestResultsStatusDomainMigration(t *testing.T) {
 	r.Equal(region, gotRegion)
 	r.Equal(models.PeriodTypeHour, gotPeriodType)
 
-	r.Equal(
-		withoutIndexes(after, indexesAddedAfter014()),
-		withoutIndexes(resultsIndexDefinitions(ctx, t, s), indexesAddedAfter014()),
-		"the rebuild must be index-stable when replayed")
+	r.Equal(after, resultsIndexDefinitions(ctx, t, s), "the rebuild must be index-stable when replayed")
 	r.Equal(0, count(`select count(*) from pragma_table_info('results') where name = 'abandoned'`))
 }
 

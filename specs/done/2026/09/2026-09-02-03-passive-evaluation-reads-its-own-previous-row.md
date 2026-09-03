@@ -266,3 +266,46 @@ branch is untouched — owned by spec 2026-09-02-04.
 Before the final gate, temporarily point `DirectBackend.LastSignals` back at
 `GetLastResultForChecks` and confirm the two new `worker_test.go` tests go
 red, then restore the fix and confirm green.
+
+## Outcome note: D3 was dropped before merge
+
+**Everything above shipped except D3.** The `worker_uid IS NULL` query fix
+(`GetLastSignalForChecks` in both dialects), the `LastResults` →
+`LastSignals` rename, the `executePassiveJob` change and every behavioural
+test landed as written — the coin-flip overdue detection and the unreachable
+stale-run branch are fixed. The partial index `results_raw_signal_idx`, and
+migration `018` which carried it, were **withdrawn before merge** on measured
+evidence.
+
+What the measurement said, on the real dev and prod databases:
+
+| | passive checks with signals | walk depth | cost |
+|---|---|---|---|
+| prod | 1 | 0 rows | 0.12 ms |
+| dev (worst silent check) | — | 1 118 rows | 10.5 ms, 477 page reads |
+
+D3's premise — that a silent heartbeat's descent walks every evaluation row
+inside raw retention — is correct in principle, and dev shows it happening.
+But prod's walk depth is zero today, so the index buys prod nothing, while
+costing an extra index on `results`, the hottest insert path in the product.
+The index was cheap in space (768 rows on dev, 294 on prod); it was the write
+amplification against a speculative read benefit that decided it.
+
+Migration `018` was deleted rather than emptied: it was never applied anywhere
+(dev and prod both run v0.22.0, whose highest applied migration is `017`), so
+the number simply returns to being free. An empty numbered migration would
+have been worse than none.
+
+**When to revisit:** once passive checks are numerous, or routinely silent for
+long stretches, the walk depth on prod starts to resemble dev's. The fix is
+then one migration:
+
+```sql
+create index results_raw_signal_idx
+  on results (organization_uid, check_uid, period_start desc)
+  where period_type = 'raw' and worker_uid is null;
+```
+
+The trigger and the exact DDL are recorded in the doc comment above
+`postgres.lastSignalForChecksQuery`, which is where someone investigating a
+slow passive evaluation will actually be looking.

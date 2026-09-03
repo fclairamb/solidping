@@ -2,12 +2,10 @@ package postgres
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -199,92 +197,4 @@ func TestGetLastSignalForChecks_Postgres(t *testing.T) {
 		r.NotNil(empty)
 		r.Empty(empty)
 	})
-}
-
-// TestGetLastSignalForChecks_UsesTheSignalIndex_Postgres asserts the plan
-// rides results_raw_signal_idx (migration 018) rather than results_raw_idx or
-// a sequential scan.
-//
-// This is why the partial index exists: results_raw_idx does not carry
-// worker_uid, so on a check that has stopped beating the descent walks every
-// evaluation row inside raw retention before it reaches the beat — 1440 heap
-// fetches per tick at a 1-minute period with the 24 h default, every minute,
-// for every silent check. The fixture puts 500 evaluation rows on top of one
-// old beat precisely so the wrong plan would be measurably wrong.
-//
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its siblings
-func TestGetLastSignalForChecks_UsesTheSignalIndex_Postgres(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping embedded-postgres test in -short mode")
-	}
-
-	r := require.New(t)
-	s, ctx := newSignalPG(t, portLastSignal+2)
-
-	org := models.NewOrganization("signal-plan-org", "Signal Plan Org")
-	r.NoError(s.CreateOrganization(ctx, org))
-
-	check := models.NewCheck(org.UID, "planned", "heartbeat")
-	r.NoError(s.CreateCheck(ctx, check))
-
-	worker := newSignalWorkerPG(t, s, ctx, "signal-plan-w")
-	base := time.Now().Add(time.Hour)
-
-	// One old beat, then a wall of evaluation rows on top of it — the shape a
-	// heartbeat that stopped beating has.
-	seedSignalRowPG(t, s, ctx, org.UID, check.UID, models.ResultStatusUp, base, nil)
-
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO results (uid, organization_uid, check_uid, period_type, period_start, worker_uid, status, duration)
-		 SELECT gen_random_uuid(), ?, ?, 'raw', ?::timestamptz + (i * interval '1 minute'), ?, ?, 0
-		 FROM generate_series(1, 500) AS i`,
-		org.UID, check.UID, base, worker, int(models.ResultStatusDown))
-	r.NoError(err)
-
-	// Noise from other checks, so the target's rows are not the whole table
-	// and an index scan is the planner's genuine choice.
-	for i := range 5 {
-		noise := models.NewCheck(org.UID, "plan-noise-"+string(rune('a'+i)), "http")
-		r.NoError(s.CreateCheck(ctx, noise))
-		_, noiseErr := s.db.ExecContext(ctx,
-			`INSERT INTO results (uid, organization_uid, check_uid, period_type, period_start, worker_uid, status, duration)
-			 SELECT gen_random_uuid(), ?, ?, 'raw', ?::timestamptz + (i * interval '1 minute'), ?, ?, 0
-			 FROM generate_series(1, 500) AS i`,
-			org.UID, noise.UID, base, worker, int(models.ResultStatusUp))
-		r.NoError(noiseErr)
-	}
-
-	_, err = s.db.ExecContext(ctx, "ANALYZE results")
-	r.NoError(err)
-
-	// Render the exact statement production runs (same package constant, same
-	// argument order) with its arguments inlined, so EXPLAIN can plan it.
-	raw := s.db.NewRaw(lastSignalForChecksQuery,
-		pgdialect.Array([]string{check.UID}), org.UID, int(models.ResultStatusCreated))
-	rendered, err := raw.AppendQuery(s.db.QueryGen(), nil)
-	r.NoError(err)
-
-	rows, err := s.db.QueryContext(ctx, "EXPLAIN (ANALYZE, BUFFERS) "+string(rendered))
-	r.NoError(err)
-
-	defer func() { _ = rows.Close() }()
-
-	var plan strings.Builder
-
-	for rows.Next() {
-		var line string
-
-		r.NoError(rows.Scan(&line))
-		plan.WriteString(line)
-		plan.WriteString("\n")
-	}
-
-	r.NoError(rows.Err())
-
-	steps := plan.String()
-
-	r.Contains(steps, "results_raw_signal_idx",
-		"the signal lookup must ride the dedicated partial index:\n%s", steps)
-	r.NotContains(steps, "Seq Scan on results",
-		"the signal lookup must never scan the results table:\n%s", steps)
 }

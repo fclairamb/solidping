@@ -2727,13 +2727,20 @@ func (s *Service) GetLastResultForChecks(
 // CreateCheck's one-time "Check created" marker also has no worker_uid, and
 // "created" is not a signal.
 //
-// The correlated subquery's (organization_uid, check_uid) equality +
-// worker_uid IS NULL + ORDER BY period_start DESC LIMIT 1 matches
-// results_raw_signal_idx (organization_uid, check_uid, period_start desc)
-// WHERE period_type = 'raw' AND worker_uid IS NULL (migration 018), so the
-// lookup stays a single index descent no matter how long the check has been
-// silent. results_raw_idx alone would not do: it does not carry worker_uid,
-// so a dead heartbeat would walk every evaluation row inside raw retention.
+// The correlated subquery's (organization_uid, check_uid) equality + ORDER BY
+// period_start DESC LIMIT 1 matches results_raw_idx (organization_uid,
+// check_uid, period_start desc) WHERE period_type = 'raw', so the index
+// supplies the filter and the ordering — but not the worker_uid predicate,
+// which is applied as the index is walked. The lookup therefore costs one row
+// visited per evaluation row written since the last signal: nothing at all
+// for a check that is beating normally, and a walk that grows with the
+// silence for one that has stopped, bounded by raw retention.
+//
+// There is deliberately NO dedicated partial index carrying worker_uid; see
+// postgres.lastSignalForChecksQuery for the measurements (prod walk depth 0 /
+// 0.12 ms; dev's worst silent check 1118 rows / 10.5 ms / 477 page reads) and
+// the exact index to add if passive checks ever become numerous or routinely
+// silent.
 const lastSignalForChecksQuery = `
 	WITH winners AS (
 		SELECT (

@@ -2789,12 +2789,29 @@ func (s *Service) GetLastResultForChecks(
 // was created" is not a signal. Reaper rows (ResultStatusAbandoned) are
 // worker-written and drop out via the worker_uid predicate on their own.
 //
-// The descent rides results_raw_signal_idx (organization_uid, check_uid,
-// period_start desc) WHERE period_type = 'raw' AND worker_uid IS NULL —
-// migration 018. results_raw_idx does NOT carry worker_uid, so without the
-// dedicated partial index a silent heartbeat's descent would walk every
-// evaluation row inside raw retention (1440 of them at a 1-minute period and
-// the 24 h default) on every single tick, for every dead check.
+// The descent rides results_raw_idx (organization_uid, check_uid,
+// period_start desc) WHERE period_type = 'raw', which supplies the equality
+// and the ordering but NOT the worker_uid predicate: that is applied as the
+// index is walked, so the lookup costs one row visited per evaluation row
+// written since the last signal. A check that is beating normally pays
+// nothing (the newest raw row IS the beat); a check that has gone silent pays
+// a walk that grows with its silence, bounded by raw retention.
+//
+// There is deliberately NO dedicated partial index on (…) WHERE
+// worker_uid IS NULL, because measurement said the walk is not costing
+// anything yet: on prod the walk depth was 0 (0.12 ms), and even the worst
+// silent check on dev walked 1118 rows at 10.5 ms and 477 page reads. Weighed
+// against another index on `results` — the hottest insert path in the
+// product — that was not worth paying for one check. Revisit when passive
+// checks are numerous or routinely silent for long stretches: the fix is one
+// migration adding
+//
+//	create index results_raw_signal_idx
+//	  on results (organization_uid, check_uid, period_start desc)
+//	  where period_type = 'raw' and worker_uid is null;
+//
+// which is tiny (it holds only ingest rows and creation markers) and makes
+// this lookup O(1) regardless of how long the check has been silent.
 const lastSignalForChecksQuery = `
 	SELECT r.*
 	FROM unnest(?::uuid[]) AS cu(uid)

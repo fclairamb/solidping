@@ -2,12 +2,10 @@ package sqlite
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -215,63 +213,4 @@ func TestGetLastSignalForChecks_OneEntryPerRequestedCheck(t *testing.T) {
 	r.NoError(err)
 	r.NotNil(empty)
 	r.Empty(empty)
-}
-
-// TestGetLastSignalForChecks_UsesTheSignalIndex asserts the lookup rides
-// results_raw_signal_idx (migration 018) rather than results_raw_idx.
-//
-// This is the whole reason the partial index exists: results_raw_idx does not
-// carry worker_uid, so for a check that has stopped beating the descent would
-// walk every evaluation row inside raw retention — 1440 of them per tick at a
-// 1-minute period with the 24 h default — on every single evaluation, for
-// every silent check. EXPLAIN QUERY PLAN runs the exact SQL production
-// executes (same package constant).
-func TestGetLastSignalForChecks_UsesTheSignalIndex(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	s, ctx := newSignalTestService(t)
-
-	org := models.NewOrganization("signal-plan-org", "Signal Plan Org")
-	r.NoError(s.CreateOrganization(ctx, org))
-
-	check := models.NewCheck(org.UID, "planned", "heartbeat")
-	r.NoError(s.CreateCheck(ctx, check))
-
-	worker := newSignalWorker(t, s, ctx, "signal-w3")
-	base := time.Now().Add(time.Hour)
-	seedSignalRow(t, s, ctx, org.UID, check.UID, models.ResultStatusUp, base, nil)
-
-	for i := 1; i <= 40; i++ {
-		seedSignalRow(t, s, ctx, org.UID, check.UID,
-			models.ResultStatusUp, base.Add(time.Duration(i)*time.Minute), &worker)
-	}
-
-	_, err := s.DB().ExecContext(ctx, "ANALYZE")
-	r.NoError(err)
-
-	var plan []struct {
-		ID      int    `bun:"id"`
-		Parent  int    `bun:"parent"`
-		NotUsed int    `bun:"notused"`
-		Detail  string `bun:"detail"`
-	}
-	r.NoError(s.DB().NewRaw(
-		"EXPLAIN QUERY PLAN "+lastSignalForChecksQuery,
-		org.UID, int(models.ResultStatusCreated), bun.List([]string{check.UID}),
-	).Scan(ctx, &plan))
-
-	var builder strings.Builder
-	for i := range plan {
-		builder.WriteString(plan[i].Detail)
-		builder.WriteString("\n")
-	}
-	steps := builder.String()
-
-	r.Contains(steps, "results_raw_signal_idx",
-		"the signal lookup must ride the dedicated partial index, not results_raw_idx:\n%s", steps)
-	r.Contains(steps, "CORRELATED SCALAR SUBQUERY",
-		"the winner per check must come from a correlated lookup, not a ranking:\n%s", steps)
-	r.NotContains(steps, "SCAN",
-		"no step may scan a row set; every step must be an index search:\n%s", steps)
 }
