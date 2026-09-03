@@ -33,5 +33,11 @@ func createUserAndCapture(ctx context.Context, dbSvc db.Service, user *models.Us
 		Properties: map[string]any{"signupMethod": auth.SignupMethodSlack},
 	})
 
+	// The instance-level operator notice, raised through auth's own helper so
+	// a Slack signup reads identically to every other one (spec 2026-09-03-01).
+	// Unlike the analytics event above it DOES carry the email — see the
+	// privacy note on NotifyUserRegistered.
+	auth.NotifyUserRegistered(ctx, user, auth.SignupMethodSlack)
+
 	return nil
 }

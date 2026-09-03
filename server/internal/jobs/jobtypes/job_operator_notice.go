@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
@@ -28,11 +29,21 @@ type OperatorNoticeJobConfig struct {
 	Subject string `json:"subject"`
 	Body    string `json:"body"`
 	URL     string `json:"url,omitempty"`
+	// AboutUserUID names the user the notice is about (a new signup). The org
+	// they landed in is resolved HERE rather than by the raiser, because on
+	// every signup path the `users` row is inserted before the membership.
+	AboutUserUID string `json:"aboutUserUid,omitempty"`
 }
 
 // Notice converts the persisted config back into a deliverable notice.
 func (c OperatorNoticeJobConfig) Notice() opsnotify.Notice {
-	return opsnotify.Notice{Event: c.Event, Subject: c.Subject, Body: c.Body, URL: c.URL}
+	return opsnotify.Notice{
+		Event:        c.Event,
+		Subject:      c.Subject,
+		Body:         c.Body,
+		URL:          c.URL,
+		AboutUserUID: c.AboutUserUID,
+	}
 }
 
 // CreateJobRun builds an executable instance.
@@ -101,11 +112,67 @@ func (r *OperatorNoticeJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 	}
 
 	deps := operatorNoticeDeps(jctx)
-	notice := r.cfg.Notice()
+	notice := enrichWithOrganization(ctx, jctx, r.cfg.Notice())
 
 	for _, userUID := range recipients {
 		opsnotify.DeliverToUser(ctx, deps, log, userUID, notice)
 	}
 
 	return nil
+}
+
+// enrichWithOrganization appends the landing organization to a notice about a
+// user, and points the deep link at that org's member list.
+//
+// This runs at DELIVERY time on purpose. Every signup path — password
+// confirmation, each OAuth/OIDC/SAML/LDAP find-or-create, invite acceptance —
+// inserts the `users` row BEFORE the membership, so "which org did they land
+// in?" is simply not answerable at the moment the notice is raised. One queue
+// hop later it is. A user who genuinely joined none (the self-registration
+// path that creates no org) is reported as such, which is exactly the stuck
+// signup an operator wants to notice.
+func enrichWithOrganization(
+	ctx context.Context, jctx *jobdef.JobContext, notice opsnotify.Notice,
+) opsnotify.Notice {
+	if notice.AboutUserUID == "" || jctx.DBService == nil {
+		return notice
+	}
+
+	members, err := jctx.DBService.ListMembersByUser(ctx, notice.AboutUserUID)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Could not resolve the new user's organizations for the operator notice",
+			"aboutUserUid", notice.AboutUserUID, "error", err)
+
+		return notice
+	}
+
+	if len(members) == 0 {
+		notice.Body += "\nOrg:    no organization"
+
+		return notice
+	}
+
+	slugs := make([]string, 0, len(members))
+
+	for _, member := range members {
+		org, orgErr := jctx.DBService.GetOrganization(ctx, member.OrganizationUID)
+		if orgErr != nil || org == nil {
+			continue
+		}
+
+		slugs = append(slugs, org.Slug)
+	}
+
+	if len(slugs) == 0 {
+		return notice
+	}
+
+	notice.Body += "\nOrg:    " + strings.Join(slugs, ", ")
+
+	if notice.URL == "" && jctx.AppConfig != nil {
+		notice.URL = strings.TrimRight(jctx.AppConfig.Server.BaseURL, "/") +
+			"/dash0/orgs/" + slugs[0] + "/organization/members"
+	}
+
+	return notice
 }
