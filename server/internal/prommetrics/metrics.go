@@ -676,4 +676,8 @@ func Register(reg prometheus.Registerer) {
 		reg.MustRegister(c)
 	}
 	registerRuntimeCollectors(reg)
+	// The Linux /proc + cgroup breakdown. Namespaced solidping_*, so it cannot
+	// collide with the Go/process collectors just registered; emits nothing at
+	// all where the sources are absent (macOS dev).
+	reg.MustRegister(NewMemInfoCollector())
 }
