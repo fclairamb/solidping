@@ -410,6 +410,10 @@ function OnboardingStepRow({
       style={{ animationDelay: `${index * 60}ms` }}
       data-testid={`onboarding-step-${step.id}`}
       data-done={step.done ? "true" : "false"}
+      // Exposed so the e2e suite can pin the focal row rather than guessing
+      // it from a class name: exactly one row carries data-next="true", and
+      // it is always the first step still open.
+      data-next={isNext ? "true" : "false"}
     >
       <span
         className="shrink-0"
@@ -524,10 +528,11 @@ function OnboardingStepLink({
       ? t("onboarding.steps.statusPage.ctaDone")
       : t(`onboarding.steps.${step.id}.cta`);
   const testId = `onboarding-step-${step.id}-cta`;
-  // Exactly one filled button per card: the next-up step's own CTA. A done
+  // Exactly one filled step CTA per card: the next-up step's own. A done
   // step, a pending step further down the list, and the alerts row that
   // already has the test-alert button leading it all fall back to `outline`,
-  // so the card has a single obvious thing to click.
+  // so the eye lands on one obvious next action. (The test-alert button is
+  // its own affordance, not a step CTA, and keeps its own weight.)
   const variant =
     isNext && !step.done && !sharesRowWithTestAlert ? "default" : "outline";
 
