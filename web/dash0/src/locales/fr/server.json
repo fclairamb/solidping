@@ -439,8 +439,8 @@
     "columnUser": "Super administrateur",
     "columnRoutes": "Remis via",
     "events": {
-      "support.message": "Message de support",
-      "user.registered": "Nouvelle inscription"
+      "supportMessage": "Message de support",
+      "userRegistered": "Nouvelle inscription"
     },
     "noRoutes": "Aucun canal de notification — rien ne sera remis",
     "noRecipients": "Les notifications opérateur sont activées, mais personne n'est abonné à quoi que ce soit. Rien ne sera remis.",

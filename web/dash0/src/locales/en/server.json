@@ -439,8 +439,8 @@
     "columnUser": "Super admin",
     "columnRoutes": "Delivered on",
     "events": {
-      "support.message": "Support message",
-      "user.registered": "New signup"
+      "supportMessage": "Support message",
+      "userRegistered": "New signup"
     },
     "noRoutes": "No notification routes — nothing will be delivered",
     "noRecipients": "Operator notifications are on, but nobody is subscribed to anything. Nothing will be delivered.",

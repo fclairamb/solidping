@@ -36,6 +36,17 @@ export const Route = createFileRoute("/orgs/$org/server/notifications")({
   component: OperatorNotificationsPage,
 });
 
+/**
+ * Backend event name -> locale key. The event names carry dots
+ * ("support.message"), which i18next reads as nested-path separators, so they
+ * cannot be locale keys themselves — an unmapped event falls back to its raw
+ * name rather than rendering a dotted key path.
+ */
+const EVENT_LABEL_KEY: Record<string, string> = {
+  "support.message": "supportMessage",
+  "user.registered": "userRegistered",
+};
+
 /** Subscription state as the table edits it: userUid -> set of events. */
 type Selection = Record<string, string[]>;
 
@@ -189,7 +200,12 @@ function OperatorNotificationsPage() {
                   <TableHead>{t("server:notifications.columnUser")}</TableHead>
                   {config.events.map((event) => (
                     <TableHead key={event} className="whitespace-nowrap">
-                      {t(`server:notifications.events.${event}`, event)}
+                      {EVENT_LABEL_KEY[event]
+                        ? t(
+                            `server:notifications.events.${EVENT_LABEL_KEY[event]}`,
+                            event,
+                          )
+                        : event}
                     </TableHead>
                   ))}
                   <TableHead className="hidden sm:table-cell">

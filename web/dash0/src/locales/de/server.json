@@ -439,8 +439,8 @@
     "columnUser": "Super-Administrator",
     "columnRoutes": "Zugestellt über",
     "events": {
-      "support.message": "Support-Nachricht",
-      "user.registered": "Neue Registrierung"
+      "supportMessage": "Support-Nachricht",
+      "userRegistered": "Neue Registrierung"
     },
     "noRoutes": "Keine Benachrichtigungswege — es wird nichts zugestellt",
     "noRecipients": "Betreiber-Benachrichtigungen sind aktiv, aber niemand hat etwas abonniert. Es wird nichts zugestellt.",
