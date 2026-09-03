@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/contexts/AuthContext";
 import { ApiError } from "@/api/client";
 import {
   useOperatorNotifications,
@@ -61,6 +62,8 @@ function selectionFrom(config: OperatorNotificationsConfig): Selection {
 function OperatorNotificationsPage() {
   const { t } = useTranslation(["server", "common"]);
   const { org } = Route.useParams();
+  // Only the viewer's own row may link to the (per-viewer) notifications page.
+  const { user } = useAuth();
   const { data: config, isLoading } = useOperatorNotifications();
   const save = useSaveOperatorNotifications();
   const sendTest = useSendOperatorNoticeTest();
@@ -253,6 +256,8 @@ function OperatorNotificationsPage() {
                               routes={recipient.routes}
                               org={org}
                               warning={t("server:notifications.noRoutes")}
+                              selfWarning={t("server:notifications.noRoutesSelf")}
+                              isSelf={recipient.userUid === user?.uid}
                             />
                           </div>
                         </div>
@@ -281,6 +286,8 @@ function OperatorNotificationsPage() {
                           routes={recipient.routes}
                           org={org}
                           warning={t("server:notifications.noRoutes")}
+                          selfWarning={t("server:notifications.noRoutesSelf")}
+                          isSelf={recipient.userUid === user?.uid}
                         />
                       </TableCell>
                     </TableRow>
@@ -356,32 +363,55 @@ function OperatorNotificationsPage() {
 /**
  * The routes cell. A recipient with no enabled notification route is the most
  * likely silent failure of this whole feature — subscribing them looks like it
- * worked and delivers nothing — so it is an amber warning that links straight
- * to where it gets fixed, not a blank cell.
+ * worked and delivers nothing — so it is an amber warning rather than a blank
+ * cell.
+ *
+ * Only the VIEWER'S OWN row links anywhere. Notification routes are per-user
+ * and dash0 has no admin route onto somebody else's, so the link that used to
+ * sit on every row sent (say) Alice to Alice's settings from Bob's row — which
+ * looks actionable, changes nothing about Bob, and is worse than no link at
+ * all. Another admin's row therefore states the problem and names who has to
+ * fix it: them, on their own notifications page.
  */
 function RouteSummary({
   routes,
   org,
   warning,
+  selfWarning,
+  isSelf,
 }: {
   routes: string[];
   org: string;
   warning: string;
+  selfWarning: string;
+  isSelf: boolean;
 }) {
-  if (routes.length === 0) {
+  if (routes.length > 0) {
+    return (
+      <span className="text-xs text-muted-foreground">{routes.join(", ")}</span>
+    );
+  }
+
+  const className =
+    "inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-500";
+
+  if (isSelf) {
     return (
       <Link
         to="/orgs/$org/account/notifications"
         params={{ org }}
-        className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 hover:underline dark:text-amber-500"
+        className={`${className} hover:underline`}
       >
         <TriangleAlert className="h-3.5 w-3.5" />
-        {warning}
+        {selfWarning}
       </Link>
     );
   }
 
   return (
-    <span className="text-xs text-muted-foreground">{routes.join(", ")}</span>
+    <span className={className}>
+      <TriangleAlert className="h-3.5 w-3.5" />
+      {warning}
+    </span>
   );
 }

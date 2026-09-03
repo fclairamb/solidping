@@ -175,6 +175,15 @@ test.describe("Superadmin operator notifications", () => {
     const bobRow = page.getByTestId("operator-recipient-bob@acme.com");
     await expect(bobRow).toContainText(/no notification routes/i);
 
+    // The warning on SOMEBODY ELSE'S row must not be a link: notification
+    // routes are per-user, so the only page this dashboard could link to is the
+    // viewer's own — which is what it used to do, silently sending Alice to
+    // Alice's settings from Bob's row.
+    await expect(bobRow.locator("a")).toHaveCount(0);
+    await expect(
+      bobRow.locator('a[href*="/account/notifications"]'),
+    ).toHaveCount(0);
+
     // Positive control: the recipient who HAS routes shows them instead of the
     // warning, so the amber text is not on every row.
     const aliceRow = page.getByTestId("operator-recipient-alice@acme.com");

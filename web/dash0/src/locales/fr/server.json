@@ -442,7 +442,8 @@
       "supportMessage": "Message de support",
       "userRegistered": "Nouvelle inscription"
     },
-    "noRoutes": "Aucun canal de notification — rien ne sera remis",
+    "noRoutes": "Aucun canal de notification — cet administrateur doit en ajouter un pour recevoir quoi que ce soit",
+    "noRoutesSelf": "Aucun canal de notification — configurez-en un sur votre page de notifications",
     "noRecipients": "Les notifications opérateur sont activées, mais personne n'est abonné à quoi que ce soit. Rien ne sera remis.",
     "noSuperAdmins": "Aucun super administrateur sur cette instance pour l'instant.",
     "notSuperAdmin": "N'est plus super administrateur — ignoré à la remise",

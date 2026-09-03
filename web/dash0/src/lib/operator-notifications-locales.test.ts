@@ -31,6 +31,7 @@ const NOTIFICATION_KEYS = [
   "notifications.events.supportMessage",
   "notifications.events.userRegistered",
   "notifications.noRoutes",
+  "notifications.noRoutesSelf",
   "notifications.noRecipients",
   "notifications.noSuperAdmins",
   "notifications.notSuperAdmin",
@@ -81,6 +82,19 @@ describe("operator notifications copy locale parity", () => {
         "supportMessage",
         "userRegistered",
       ]);
+    }
+  });
+
+  // Two distinct warnings: the viewer's own row links to their notifications
+  // page, another admin's row cannot (routes are per-user and dash0 has no
+  // admin route onto someone else's), so it must say who has to act instead of
+  // offering a link that would take the viewer to their own settings.
+  it("keeps the self and other no-routes warnings distinct", () => {
+    for (const [locale, bundle] of SERVER_LOCALES) {
+      expect(
+        lookup(bundle, "notifications.noRoutes"),
+        `${locale} reuses one warning for both rows`,
+      ).not.toBe(lookup(bundle, "notifications.noRoutesSelf"));
     }
   });
 

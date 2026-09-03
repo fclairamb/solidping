@@ -442,7 +442,8 @@
       "supportMessage": "Mensaje de soporte",
       "userRegistered": "Nuevo registro"
     },
-    "noRoutes": "Sin rutas de notificación — no se entregará nada",
+    "noRoutes": "Sin rutas de notificación — este administrador debe añadir una para recibir algo",
+    "noRoutesSelf": "Sin rutas de notificación — configura una en tu página de notificaciones",
     "noRecipients": "Las notificaciones para el operador están activas, pero nadie está suscrito a nada. No se entregará nada.",
     "noSuperAdmins": "Todavía no hay ningún superadministrador en esta instancia.",
     "notSuperAdmin": "Ya no es superadministrador — omitido en la entrega",
