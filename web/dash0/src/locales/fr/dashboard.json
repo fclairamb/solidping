@@ -36,6 +36,7 @@
     "dismiss": "Masquer la liste de démarrage",
     "doneLabel": "Terminé",
     "todoLabel": "Pas encore fait",
+    "nextUp": "Suivant",
     "reenableHint": "Masquée par erreur ? Réaffichez-la depuis Compte → Profil.",
     "allSet": {
       "title": "Tout est prêt",

@@ -36,6 +36,7 @@
     "dismiss": "Hide the getting-started checklist",
     "doneLabel": "Done",
     "todoLabel": "Not done yet",
+    "nextUp": "Next",
     "reenableHint": "Hidden it by mistake? Bring it back from Account → Profile.",
     "allSet": {
       "title": "You're all set",
