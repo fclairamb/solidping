@@ -296,7 +296,7 @@ integration**.
    network/endpoint surfaces (HTTP, TCP, SSL, heartbeat). SolidPing adds
    Ping/ICMP, UDP, DNS, SMTP/POP3/IMAP, SSH, FTP/SFTP, WebSocket, gRPC,
    databases (6 engines), message queues (Kafka/RabbitMQ/MQTT), SNMP, game
-   servers, JMAP inbox, browser (Rod), and sandboxed JS checks.
+   servers, JMAP inbox, browser (chromedp/CDP), and sandboxed JS checks.
 2. **Built-in authentication + multi-tenancy + RBAC** — org-scoped isolation and
    admin/user/viewer roles. **Maintenant has no built-in auth at all** and
    relies on an external reverse proxy; it is single-organization with no roles.
