@@ -2616,44 +2616,42 @@ func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
 	}
 
 	for _, candidate := range candidates {
-		data, err := docsFiles.ReadFile(path.Join("docsres", candidate))
-		if err != nil {
-			continue
+		if writeDocsFile(writer, candidate, http.StatusOK) == nil {
+			return
 		}
-
-		writeDocsFile(writer, candidate, data, http.StatusOK)
-
-		return
 	}
 
-	if data, err := docsFiles.ReadFile(path.Join("docsres", "404.html")); err == nil {
-		writeDocsFile(writer, "404.html", data, http.StatusNotFound)
-
+	if writeDocsFile(writer, "404.html", http.StatusNotFound) == nil {
 		return
 	}
 
 	http.Error(writer, "Not found", http.StatusNotFound)
 }
 
-// writeDocsFile writes a docs file with a content type derived from its
+// writeDocsFile streams a docs file with a content type derived from its
 // extension (falling back to content sniffing) and a cache policy that keeps
 // HTML/text fresh while letting Docusaurus's content-hashed assets cache for a
 // year.
-func writeDocsFile(writer http.ResponseWriter, name string, data []byte, status int) {
+//
+// It returns an error when the file does not exist, which is how the caller
+// walks its candidate list: the cache header is set before the file is opened,
+// and a miss writes no status line, so falling through to the next candidate
+// stays safe.
+//
+// Streamed rather than ReadFile'd: the embedded docs are ~46 MB across 1 070
+// paths, and a heap copy per request turns a crawl into tens of megabytes of
+// anonymous memory the GC then spends minutes releasing. See writeEmbeddedFile.
+func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
 	contentType := mime.TypeByExtension(path.Ext(name))
-	if contentType == "" {
-		contentType = http.DetectContentType(data)
-	}
 
 	maxAgeSeconds := 31536000 // 1 year for content-hashed assets
 	if strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".txt") || strings.HasSuffix(name, ".xml") {
 		maxAgeSeconds = 60
 	}
 
-	writer.Header().Set("Content-Type", contentType)
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
-	writer.WriteHeader(status)
-	_, _ = writer.Write(data)
+
+	return writeEmbeddedFile(writer, docsFiles, path.Join("docsres", name), contentType, status)
 }
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.
@@ -2888,45 +2886,22 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 	maxAgeSeconds := 31536000 // 1 year for assets
 
-	// Try to read the file from the embedded filesystem
-	data, err := dash0Files.ReadFile(filePath)
-	if err != nil {
+	// The asset is streamed, not read into a []byte: a dashboard reload pulls
+	// the whole hashed bundle, and a heap copy per request is anonymous memory
+	// the GC has to chase. See writeEmbeddedFile.
+	if _, err := fs.Stat(dash0Files, filePath); err != nil {
 		// If file not found, serve index.html (SPA routing)
 		maxAgeSeconds = 60 // Shorter cache for index.html
 		filePath = path.Join("dash0res", "index.html")
-
-		data, err = dash0Files.ReadFile(filePath)
-		if err != nil {
-			slog.ErrorContext(req.Context(), "Error reading dash0 file", "error", err)
-			http.Error(writer, "File not found", http.StatusNotFound)
-
-			return nil
-		}
-	}
-
-	// Determine content type based on file extension
-	contentType := http.DetectContentType(data)
-
-	switch {
-	case strings.HasSuffix(filePath, ".css"):
-		contentType = contentTypeCSS
-	case strings.HasSuffix(filePath, ".js"):
-		contentType = contentTypeJS
-	case strings.HasSuffix(filePath, ".svg"):
-		contentType = contentTypeSVG
-	case strings.HasSuffix(filePath, ".html"):
-		contentType = contentTypeHTML
-	case strings.HasSuffix(filePath, ".png"):
-		contentType = contentTypePNG
-	case strings.HasSuffix(filePath, ".ico"):
-		contentType = contentTypeICO
 	}
 
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
-	writer.Header().Set("Content-Type", contentType)
 
-	if _, err := writer.Write(data); err != nil {
-		return err
+	if err := writeEmbeddedFile(writer, dash0Files, filePath, staticContentType(filePath), http.StatusOK); err != nil {
+		slog.ErrorContext(req.Context(), "Error reading dash0 file", "error", err)
+		http.Error(writer, "File not found", http.StatusNotFound)
+
+		return nil
 	}
 
 	return nil
@@ -2966,30 +2941,39 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 		reqPath = "/"
 	}
 
+	fsys := s.status0FSOrDefault()
 	filePath := path.Join("status0res", reqPath)
 
 	maxAgeSeconds := 31536000 // 1 year for assets
 	servingIndexFallback := false
 
-	data, err := fs.ReadFile(s.status0FSOrDefault(), filePath)
-	if err != nil {
+	if _, err := fs.Stat(fsys, filePath); err != nil {
 		maxAgeSeconds = 60
 		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
+	}
 
-		data, err = fs.ReadFile(s.status0FSOrDefault(), filePath)
+	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+
+	if !servingIndexFallback {
+		// Hashed assets are streamed rather than copied onto the heap: the
+		// status0 bundle is the large one here, and a per-request copy is
+		// anonymous memory the GC has to chase. See writeEmbeddedFile.
+		err := writeEmbeddedFile(writer, fsys, filePath, staticContentType(filePath), http.StatusOK)
 		if err != nil {
 			slog.ErrorContext(req.Context(), "Error reading status0 file", "error", err)
 			http.Error(writer, "File not found", http.StatusNotFound)
-
-			return nil
 		}
+
+		return nil
 	}
 
-	// For a status-page path served via the SPA index.html fallback, inject
-	// per-page Open Graph / Twitter Card metadata so shared links get a rich
-	// preview. Non-status-page paths and missing/disabled/private pages keep
-	// the generic head (no page-existence leak).
+	// The SPA shell alone is read into memory, because it is REWRITTEN before
+	// being sent: for a status-page path, per-page Open Graph / Twitter Card
+	// metadata is injected so shared links get a rich preview. Non-status-page
+	// paths and missing/disabled/private pages keep the generic head (no
+	// page-existence leak). It is a few kilobytes, so the copy is irrelevant
+	// next to the hashed assets streamed above.
 	//
 	// A `password` page keeps the generic head too, and that is not an
 	// oversight to be fixed: status0MetaForPath resolves the page WITHOUT
@@ -2999,45 +2983,50 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// artifact, unlike its custom-domain twin — there, the host IS the page, so
 	// the meta is injected unconditionally and the directive has to follow the
 	// page's visibility (serveStatus0IndexForCustomHost, spec 2026-08-22-06).
-	if servingIndexFallback {
-		if meta, ok := s.status0MetaForPath(req, reqPath); ok {
-			data = []byte(injectStatus0Meta(string(data), &meta))
-		}
+	data, err := fs.ReadFile(fsys, filePath)
+	if err != nil {
+		slog.ErrorContext(req.Context(), "Error reading status0 file", "error", err)
+		http.Error(writer, "File not found", http.StatusNotFound)
+
+		return nil
 	}
 
-	contentType := http.DetectContentType(data)
-
-	switch {
-	case strings.HasSuffix(filePath, ".css"):
-		contentType = contentTypeCSS
-	case strings.HasSuffix(filePath, ".js"):
-		contentType = contentTypeJS
-	case strings.HasSuffix(filePath, ".svg"):
-		contentType = contentTypeSVG
-	case strings.HasSuffix(filePath, ".html"):
-		contentType = contentTypeHTML
-	case strings.HasSuffix(filePath, ".png"):
-		contentType = contentTypePNG
-	case strings.HasSuffix(filePath, ".ico"):
-		contentType = contentTypeICO
+	if meta, ok := s.status0MetaForPath(req, reqPath); ok {
+		data = []byte(injectStatus0Meta(string(data), &meta))
 	}
-
-	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
 
 	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
 	// shell varies on it exactly like the custom-domain one. Hashed assets do
 	// not, so they keep their unqualified year-long entry.
-	if servingIndexFallback {
-		writer.Header().Set("Vary", statuspagecache.VaryPublic)
-	}
-
-	writer.Header().Set("Content-Type", contentType)
+	writer.Header().Set("Vary", statuspagecache.VaryPublic)
+	writer.Header().Set("Content-Type", contentTypeHTML)
 
 	if _, err := writer.Write(data); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// staticContentType maps a static asset's extension to its content type,
+// returning "" for anything unrecognized so the caller sniffs it instead.
+func staticContentType(filePath string) string {
+	switch {
+	case strings.HasSuffix(filePath, ".css"):
+		return contentTypeCSS
+	case strings.HasSuffix(filePath, ".js"):
+		return contentTypeJS
+	case strings.HasSuffix(filePath, ".svg"):
+		return contentTypeSVG
+	case strings.HasSuffix(filePath, ".html"):
+		return contentTypeHTML
+	case strings.HasSuffix(filePath, ".png"):
+		return contentTypePNG
+	case strings.HasSuffix(filePath, ".ico"):
+		return contentTypeICO
+	default:
+		return ""
+	}
 }
 
 // runStartupJob runs the startup job synchronously to ensure critical resources
