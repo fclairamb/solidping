@@ -15,9 +15,9 @@ import (
 // can be told to swap the stored key or to fail a save round-trip. The load
 // count is the whole point: the cache invalidation must be provably bounded.
 type countingStore struct {
-	mu     sync.Mutex
-	data   map[string][]byte
-	loads  int
+	mu      sync.Mutex
+	data    map[string][]byte
+	loads   int
 	corrupt bool // when set, LoadDEK hands back an unopenable value
 }
 
@@ -56,6 +56,20 @@ func (s *countingStore) loadCount() int {
 	defer s.mu.Unlock()
 
 	return s.loads
+}
+
+func (s *countingStore) remove(orgUID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.data, orgUID)
+}
+
+func (s *countingStore) stored(orgUID string) ([]byte, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.data[orgUID]
+
+	return v, ok
 }
 
 func (s *countingStore) replace(orgUID string, wrapped []byte) {
@@ -192,3 +206,41 @@ func (s failingStore) LoadDEK(context.Context, string) ([]byte, bool, error) {
 }
 
 func (s failingStore) SaveDEK(context.Context, string, []byte) error { return s.err }
+
+// TestDecryptRetryNeverRegeneratesTheOrgKey guards the invalidation against
+// making things worse: if the DEK row has vanished, the retry must NOT mint a
+// fresh key. Doing so would leave every already-encrypted secret for the org
+// permanently unopenable — a far worse outcome than the decrypt error it would
+// paper over.
+func TestDecryptRetryNeverRegeneratesTheOrgKey(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	const org = "org-rowgone"
+
+	store := newCountingStore()
+
+	svc, err := credentials.NewService(newKey(t), store)
+	r.NoError(err)
+
+	r.NoError(svc.EnsureOrgKey(ctx, org))
+
+	// The row disappears while this process still holds the key in memory.
+	store.remove(org)
+
+	foreign, err := credentials.NewService(newKey(t), newCountingStore())
+	r.NoError(err)
+
+	otherEnvelope, err := foreign.EncryptForOrg(ctx, org, map[string]any{"password": "other"})
+	r.NoError(err)
+
+	_, err = svc.DecryptForOrg(ctx, org, otherEnvelope)
+	r.Error(err)
+
+	_, exists := store.stored(org)
+	r.False(exists, "a missing DEK row must never be replaced by a freshly minted key")
+
+	r.Equal(0, svc.DEKCacheLen(), "the invalidated entry stays dropped, not refilled")
+}
