@@ -188,6 +188,15 @@ var _ db.Service = (*Service)(nil)
 // New creates a new PostgreSQL service with an external database.
 func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if cfg.Embedded {
+		// cfg's pool fields (MaxOpenConns, MaxIdleConns, ConnMaxLifetime,
+		// ConnMaxIdleTime) are ignored on this branch ON PURPOSE: NewEmbedded
+		// applies its own fixed, conservative bound (see applyPoolLimits call
+		// there) sized against the embedded server's own max_connections,
+		// which this process also controls. That ceiling — not whatever a
+		// caller happened to set on Config for a real deployment — is what
+		// must govern here, so silently dropping cfg's pool fields is
+		// intentional rather than an oversight. (It used to be an oversight:
+		// see spec 2026-09-04-04.)
 		suite := cfg.RunMode
 		if suite == "" {
 			suite = "app"
@@ -259,6 +268,21 @@ func NewEmbedded(
 	time.Sleep(1 * time.Second)
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(inst.DSN())))
+
+	// Bound the pool by default: the embedded server above is started with
+	// max_connections=10, three of which Postgres reserves for superusers,
+	// leaving 7 available. Left unbounded (database/sql's default is
+	// unlimited), a 50-goroutine concurrency test asks for ~50 backends and
+	// everything past the 7th is refused with `53300 sorry, too many clients
+	// already` — a test-infrastructure failure that reads exactly like a
+	// product bug (spec 2026-09-04-04). Reuse applyPoolLimits, the same
+	// function the non-embedded New path uses, so there is exactly one place
+	// that bounds a pool. NewEmbedded's positional signature is shared by many
+	// callers and intentionally not widened for this — the default lives here
+	// instead of another parameter; a caller needing a different bound can
+	// still call sqldb.SetMaxOpenConns via the returned Service's DB().
+	applyPoolLimits(sqldb, &Config{MaxOpenConns: 5, MaxIdleConns: 2})
+
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed for metrics; verbose slog logging is opt-in.
