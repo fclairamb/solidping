@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/driver/sqliteshim"
+
+	"github.com/fclairamb/solidping/server/internal/db/sqlitedriver"
 )
 
 // TestMigration009SlugRebuildPreservesData proves that the *_new table
@@ -33,7 +34,7 @@ func TestMigration009SlugRebuildPreservesData(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	db, err := sql.Open(sqliteshim.ShimName, ":memory:")
+	db, err := sql.Open(sqlitedriver.Name, ":memory:")
 	r.NoError(err)
 	t.Cleanup(func() { _ = db.Close() })
 	db.SetMaxOpenConns(1)
