@@ -17,10 +17,85 @@ permissions:
   pull-requests: read
 
 jobs:
+  # Wiki-only pull requests build and test nothing: wiki/ holds internal
+  # engineering notes and is not an input to any build (the published docs site
+  # is web/docs/, which is separate). Running the full pipeline for them costs a
+  # ~28-minute E2E run to prove that prose did not break Go, so detect that case
+  # once here and let every build job skip on it.
+  #
+  # Skipping is safe *specifically because* of how the `ci` gate below is
+  # written: it runs with always() and fails only on 'failure' or 'cancelled',
+  # so a skipped job satisfies it — the same property the release-please skip
+  # already relies on. If that gate ever starts treating 'skipped' as a failure,
+  # this must change with it.
+  changes:
+    name: Detect non-wiki changes
+    runs-on: ubuntu-24.04
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Decide whether anything outside wiki/ changed
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Only pull requests carry a well-defined "what changed" set. A push
+          # to main (and anything else) always builds — never let this become a
+          # way for untested code to reach main.
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "not a pull request — building everything"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          files=$(gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename')
+
+          # An empty list means the API told us nothing, not that nothing
+          # changed. Fail safe and build.
+          if [[ -z "$files" ]]; then
+            echo "could not determine changed files — building everything"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "changed files:"
+          echo "$files" | sed 's/^/  /'
+
+          # Deliberately a POSIX `case` glob rather than `grep -qv '^wiki/'`.
+          # Inverted-quiet grep is not portable: ugrep, which is `grep` on some
+          # developer machines, returns false there even when non-wiki files are
+          # present, so anyone reproducing this check locally would be told a
+          # 138-file code change was "wiki-only". `case` means exactly one thing
+          # in every POSIX shell.
+          #
+          # A rename out of wiki/ lists the destination path too, so a file
+          # leaving wiki/ correctly counts as a code change.
+          code=false
+          while IFS= read -r file; do
+            if [[ -z "$file" ]]; then continue; fi
+            case "$file" in
+              wiki/*) ;;
+              *) code=true ;;
+            esac
+          done <<< "$files"
+
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [[ "$code" == "true" ]]; then
+            echo "==> changes outside wiki/ — running the full pipeline"
+          else
+            echo "==> wiki-only change — skipping build, lint, test and E2E"
+          fi
+
   backend-lint:
     name: Backend Lint & Test
     runs-on: ubuntu-24.04
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
       run:
         working-directory: server
@@ -87,7 +162,8 @@ jobs:
   dash:
     name: Dash Build
     runs-on: ubuntu-24.04
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
       run:
         working-directory: web/dash
@@ -119,7 +195,8 @@ jobs:
   dash0:
     name: Dash0 Build
     runs-on: ubuntu-24.04
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
       run:
         working-directory: web/dash0
@@ -152,7 +229,8 @@ jobs:
     name: Status0 Build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
       run:
         working-directory: web/status0
@@ -198,7 +276,8 @@ jobs:
   docs:
     name: Docs Build
     runs-on: ubuntu-24.04
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
       run:
         working-directory: web/docs
@@ -235,8 +314,8 @@ jobs:
   build:
     name: Build Binary
     runs-on: ubuntu-24.04
-    needs: [dash, dash0, status0, docs]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes, dash, dash0, status0, docs]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -304,8 +383,8 @@ jobs:
     # being loosened: the known Playwright-install hang is still bounded by the
     # per-attempt timeout on that step, and every step here had succeeded.
     timeout-minutes: 45
-    needs: [build]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    needs: [changes, build]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
       run:
         working-directory: web/dash0
@@ -528,7 +607,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-24.04
-    needs: [backend-lint, dash, dash0, status0, docs, build, e2e-tests]
+    needs: [changes, backend-lint, dash, dash0, status0, docs, build, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures
@@ -537,7 +616,7 @@ jobs:
             echo "One or more required jobs failed or were cancelled"
             exit 1
           fi
-          echo "All checks passed (or skipped for release-please branch)"
+          echo "All checks passed (or skipped: release-please branch, or wiki-only change)"
 
   docker:
     name: Build and Push Docker Image
