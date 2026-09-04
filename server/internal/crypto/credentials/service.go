@@ -296,7 +296,12 @@ func (s *service) DecryptForOrg(ctx context.Context, orgUID string, envelope str
 		// invisible to the process that made it.
 		s.dekCache.Delete(orgUID)
 
-		plain, _, err = s.openWithOrgKey(ctx, orgUID, envelope)
+		// Reload, never regenerate: if the row has gone missing, minting a new
+		// DEK here would make every already-encrypted secret for this org
+		// permanently unopenable. A failed reload keeps the original error.
+		if reloadErr := s.reloadOrgKey(ctx, orgUID); reloadErr == nil {
+			plain, _, err = s.openWithOrgKey(ctx, orgUID, envelope)
+		}
 	}
 
 	if err != nil {
@@ -309,6 +314,31 @@ func (s *service) DecryptForOrg(ctx context.Context, orgUID string, envelope str
 	}
 
 	return out, nil
+}
+
+// reloadOrgKey re-reads the org DEK from the store and caches it. Unlike
+// EnsureOrgKey it NEVER generates a key: it exists for the invalidation retry,
+// where an absent row means "something is wrong", not "this org has no key
+// yet". Generating there would orphan every secret already encrypted for the
+// org.
+func (s *service) reloadOrgKey(ctx context.Context, orgUID string) error {
+	wrapped, found, err := s.store.LoadDEK(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("%w: load org DEK: %w", ErrOrgKeyUnavailable, err)
+	}
+
+	if !found {
+		return fmt.Errorf("%w: org DEK row is gone", ErrOrgKeyUnavailable)
+	}
+
+	dek, err := s.decryptWith(s.kek, wrapped)
+	if err != nil {
+		return fmt.Errorf("%w: unwrap org DEK: %w", ErrOrgKeyUnavailable, err)
+	}
+
+	s.dekCache.Store(orgUID, dek)
+
+	return nil
 }
 
 // openWithOrgKey ensures the org DEK is available and opens one envelope with

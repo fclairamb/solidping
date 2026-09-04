@@ -66,7 +66,9 @@ Two guards exist because of exactly this (incident #506, 2026-09-03):
   cross-process outage.
 - **Bounded cache invalidation** — when an envelope fails to open with a cached
   DEK, that one entry is dropped and cold-reloaded exactly once before the error
-  is surfaced. One retry, no loop, no cache-wide flush.
+  is surfaced. One retry, no loop, no cache-wide flush. The retry **reloads,
+  never regenerates**: a missing DEK row is an error there, because minting a
+  replacement would orphan every secret already encrypted for that org.
 
 ## Diagnosing "credentials could not be decrypted"
 
