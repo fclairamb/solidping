@@ -253,17 +253,31 @@ than anything else in this table.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | `idle-all-sqlite` | **148.6 MiB** | 0.3 (0.2 %) | 148.6 | 184.9 | 36.2 | 150.2 | 70.8 | 49 | 8 |
 | `checks-500` | **31.1 MiB** | 1.3 (4.2 %) | 31.1 | 69.2 | 38.0 | 151.8 | 8.0 | 56 | 9 |
-| `docs-crawl` | **30.0 MiB** | 3.2 (10.7 %) | 30.0 | 91.5 | 62.6 | 154.5 | 8.1 | 49 | 8 |
+| `docs-crawl` | **30.0 MiB** | 3.2 (10.6 %) | 30.0 | 91.5 | 62.6 | 154.5 | 8.1 | 49 | 8 |
 
 All values are medians (of the per-run medians); the spread is max−min across
 the three repetitions.
 
-An earlier run of the same three scenarios on the pre-spec tree read 148.6 /
-31.3 / 29.5 MiB — i.e. within the noise floor of the table above, which is the
-expected result and not a claim of improvement. The `docs-crawl` spread is the
-one to watch: at 10.7 % it is dominated by whether a GC fired during the window
-(see §9's note on that scenario), and it is the reason the candidate-7 verdict is
-"not resolvable by this harness" rather than a number.
+**Why this table was re-measured, and what it replaced.** The run that first
+filled this section was overwritten: `bench-results/` is gitignored, and a
+concurrent `make bench-checks` on this branch cleared it before the JSON was
+copied anywhere durable. So the table above is a **fresh run on the final
+tree**, and the numbers it replaced — 148.6 / 31.3 / 29.5 MiB — are quoted from
+a report **whose raw JSON no longer exists**.
+
+Be precise about where those superseded numbers came from, because it is not
+"the pre-spec tree": they were measured on the image §9's candidate-7 comparison
+uses as its *baseline* — the tree with Part 1 (the `/api/mgmt/memory` breakdown
+and the harness) already in place, but **before** candidates 3 and 7 (the
+`sqliteshim` → `sqlitedriver` swap and the streamed embedded assets). The two
+sets agree within the noise floor of the table above, which is the expected
+result for changes neither of which targets idle memory — not a claim of
+improvement, and not independently checkable any more.
+
+The `docs-crawl` spread is the one to watch: at 10.6 % it is dominated by
+whether a GC fired during the window (see §9's note on that scenario), and it is
+the reason the candidate-7 verdict is "not resolvable by this harness" rather
+than a number.
 
 ### The headline result: 60 s of warm-up measures the startup burst, not the workload
 
@@ -441,21 +455,50 @@ throughput and p95 stay within 5 %, and the full suite passes on both database
 backends. Recorded here because a gate whose evidence is not written down is not
 a gate.
 
-**Throughput and latency (`loadgen`, 200 checks / 10 s period / 90 s, SQLite,
-three runs per side, alternated).** Pre-spec binary built from `a09a718fa` with
-the same embedded assets, so only the Go changes differ:
+**Throughput and latency** (`loadgen`, 200 checks / 10 s period / 90 s, SQLite,
+three runs per side, alternated before/after/before/after so machine drift
+cancels). Raw reports committed at
+[`memory-baselines/loadgen-2026-09-04/`](memory-baselines/loadgen-2026-09-04/).
+
+*How the two binaries were built*, since "only the Go changes differ" is a claim
+that needs a mechanism:
+
+- **before** — `git worktree add` at `a09a718fa` (the branch tip before this
+  spec), then `go build` in that worktree. The `//go:embed` directories
+  (`server/internal/app/{res,dash0res,status0res,docsres}`) are build outputs and
+  are **gitignored**, so a fresh worktree has none; they were copied in from the
+  main tree before building.
+- **after** — `go build` on the working tree.
+
+So the embedded frontends are byte-identical by construction, and the claim is
+independently checkable without them: `git diff --name-only a09a718fa..HEAD`
+touches **zero files under `web/`**, so no frontend source changed across the
+range either.
+
+> Do **not** reproduce this with `make bench-checks`: that target depends on
+> `build`, which rebuilds dash0/status0/docs from source. You would get a
+> different binary from the one measured here, and on a range that *did* touch
+> the frontend you would be comparing two variables at once.
 
 | | run 1 | run 2 | run 3 | median | spread |
 |---|---:|---:|---:|---:|---:|
 | before — checks/min | 1324.7 | 1324.7 | 1202.7 | **1324.7** | 122.0 (9.2 %) |
 | after — checks/min | 1265.3 | 1318.7 | 1326.0 | **1318.7** | 60.7 (4.6 %) |
 
-Median delta **−0.45 %**, an order of magnitude inside the run-to-run spread.
-Latencies are flat to the millisecond: `execute` p50 30.0–30.1 ms and p95
-48.0–48.1 ms on *both* sides, `save_result` p95 4.8–5.0 ms, DB query p95
-3.7–4.5 ms. Note the first single run read −4.5 %, which would have squeaked
-through the 5 % gate as a "pass" while actually being noise — the reason the
-table has three runs a side.
+**Verdict: no detectable change.** Applying this harness's own rule — a delta no
+larger than the spread is not a result (`membench.Compare`) — 6.0 checks/min
+against a 122.0 spread is not a measurable difference at all, in either
+direction. The −0.45 % in the median row is *not* a small regression; it is
+noise, and it is quoted only so the arithmetic is visible.
+
+Latencies say the same: flat to the millisecond, `execute` p50 30.0–30.1 ms and
+p95 48.0–48.1 ms on *both* sides, `save_result` p95 4.8–5.0 ms, DB query p95
+3.7–4.5 ms.
+
+Note the first single run read −4.5 %, which would have squeaked through the
+5 % gate as a "pass" while actually being noise — the reason the table has three
+runs a side, and a reminder that a one-run throughput gate measures the machine
+as much as the code.
 
 **Full dash0 Playwright suite**, `CI=true` against a side-car `SP_RUNMODE=test`
 server on port 4022 backed by the docker-compose **PostgreSQL** (never the
@@ -474,6 +517,17 @@ same server flags — reproduces the identical three failures.
 
 None of them touches embedded-asset serving, the SQLite driver package or the
 memory endpoint. They belong to whoever owns those areas on this branch.
+
+**The rest of gate clause (iv)**, run on the final tree:
+
+| gate | result |
+|---|---|
+| `make build-backend` | binary produced |
+| `make lint-back` (golangci-lint, whole module) | **0 issues** |
+| `make test` (`go test ./... -short`) | **all packages ok**, no failures |
+| `make build-docs` (Docusaurus, incl. the generated API reference) | success, 320 documents |
+| dash0 unit tests (`cd web/dash0 && bun run test:unit`) | **76 files / 1281 tests passed** |
+| dash0 Playwright (full suite) | 702 passed / 3 failed / 10 skipped — see above |
 
 **Both backends.** The Playwright run above exercises the Postgres path end to
 end (app + API + database). SQLite is covered by `make test` and by the
@@ -539,22 +593,42 @@ required, rather than by assumption.
 
 What the numbers say:
 
-Spreads measured in docker mode on a linux/arm64 image built from this tree, on
-an otherwise idle laptop — the *best case* for precision. A shared CI runner is
-noisier, so treat these as a lower bound on the noise a CI job would see.
+Every figure below is read off the committed baseline
+[`memory-baselines/2026-09-04-docker-arm64.json`](memory-baselines/2026-09-04-docker-arm64.json)
+— docker mode, linux/arm64 image built from this tree, 3 repetitions, on an
+otherwise idle laptop. That is the *best case* for precision: a shared CI runner
+is noisier, so treat these as a lower bound on the noise a CI job would see.
 
-| metric | inter-run spread (3 reps, quiet laptop) |
-|---|---|
-| `cgroupUnreclaimableBytes` (primary) | 0.4–2.8 MiB → **1.4–1.9 %** |
-| `heapLiveBytes` | 0.1–0.5 MiB → ~1 % |
-| `goTotalBytes` | 0.1–4.2 MiB |
-| `pssBytes` / `rssFileBytes` | 1.7–**32.6** MiB → up to **30 %** |
-| `cgroupPeakBytes` | 20.6–**81.1** MiB → up to **33 %** |
+Spread is max−min of the per-run medians, shown per scenario because **the
+precision is a property of the scenario, not of the metric**:
 
-So the primary metric is precise enough to be worth watching (a >5 % regression
-would clear the noise floor), but the peak and file-backed metrics are not —
-their spread is larger than most changes anyone would want to detect, on a
-*quiet* machine. A shared CI runner is noisier and much slower.
+| metric | `idle-all-sqlite` | `checks-500` | `docs-crawl` |
+|---|---|---|---|
+| `cgroupUnreclaimableBytes` (primary) | 0.3 MiB → **0.2 %** | 1.3 MiB → **4.2 %** | 3.2 MiB → **10.6 %** |
+| `heapLiveBytes` | 0.3 MiB → 0.4 % | 0.1 MiB → 1.3 % | 0.0 MiB → 0.4 % |
+| `goTotalBytes` | 0.2 MiB → 0.2 % | 5.7 MiB → 3.7 % | 4.6 MiB → 3.0 % |
+| `pssBytes` | 6.0 MiB → 3.3 % | 4.7 MiB → 6.8 % | 22.7 MiB → **24.8 %** |
+| `rssFileBytes` | 6.4 MiB → 17.7 % | 3.4 MiB → 9.0 % | 17.6 MiB → **28.0 %** |
+| `cgroupPeakBytes` | 54.6 MiB → **22.2 %** | 18.0 MiB → 9.3 % | 52.9 MiB → **21.4 %** |
+
+So "the primary metric is precise enough" is **only true for two of the three
+scenarios**, and it is worth being exact about which:
+
+- **`idle-all-sqlite` (0.2 %) and `checks-500` (4.2 %)** can carry a 5 % gate.
+  `idle` comfortably; `checks-500` only just, so a 5 % alert there would sit
+  barely outside its own noise and should be read as "look", not "regression".
+- **`docs-crawl` (10.6 %) cannot.** Its spread already exceeds the gate, for the
+  reason §5 gives: the number is dominated by whether a GC fired inside the
+  sample window. A 5 % gate on it would fire on nothing.
+- **No peak or file-backed column can carry any useful gate anywhere.**
+  `cgroupPeakBytes` swings 9–22 %, `rssFileBytes` 9–28 %, `pssBytes` 3–25 % —
+  larger than most changes anyone would want to detect, on a *quiet* machine.
+
+An earlier version of this section quoted 1.4–1.9 % for the primary metric from
+a run whose artefacts no longer exist, and concluded from it that the metric was
+precise enough full stop. The committed numbers do not support that as stated;
+the corrected version is above, and the recommendation below is re-derived from
+it rather than carried over.
 
 The cost side is decisive on its own. Even the *shortened* protocol used for
 the tables above — 3 repetitions × (boot + 45 s warm-up + 60 s window) — is
@@ -564,10 +638,22 @@ over half an hour, and the defaults are what a trustworthy number requires.
 That is not a per-PR job.
 
 **Recommendation:** keep it a deliberate, local measurement. If it is ever
-automated, the shape that would work is a **nightly** job on a dedicated
-machine, pinned to `cgroupUnreclaimableBytes` on `idle-all-sqlite` and
-`checks-500` only, alerting on a >5 % move against a stored baseline — and
-explicitly *not* on the peak or Pss columns, which would cry wolf.
+automated, the shape that survives the numbers above is a **nightly** job on a
+dedicated machine, pinned to `cgroupUnreclaimableBytes` on **`idle-all-sqlite`
+and `checks-500` only**, alerting on a >5 % move against the committed baseline.
+Explicitly excluded, and why:
+
+| scenario / column | in a nightly gate? |
+|---|---|
+| `idle-all-sqlite` primary (0.2 %) | **yes** — 5 % is 25× its noise |
+| `checks-500` primary (4.2 %) | **yes, as a "look at this"** — 5 % is barely outside its noise |
+| `docs-crawl` primary (10.6 %) | **no** — its own spread exceeds the gate |
+| `cgroupPeakBytes`, `pssBytes`, `rssFileBytes` (up to 28 %) | **no** — they would cry wolf |
+
+Anything excluded here stays a manual measurement. That is not a limitation of
+the harness so much as of the quantity: a peak metric read from
+`memory.peak` is cumulative from container start, so it carries the startup
+burst in every reading and cannot isolate a later peak at all.
 
 
 ---
@@ -591,6 +677,15 @@ this runbook.
 - **`browser check ×10`** — see §9 "Not attempted"; the sidecar it would measure
   is the larger consumer on several worker pods, so this is the most valuable
   missing scenario.
+- **`Dockerfile.bench` pins `golang:1.27.0-trixie` while the shipped
+  `Dockerfile` is on `golang:1.27.1-trixie`.** The committed baseline was
+  measured on 1.27.0 (`goVersion` in its JSON says so), which is why the pin was
+  left alone rather than bumped underneath it: moving the toolchain and keeping
+  the baseline would make the two disagree silently. Bump the pin **and**
+  re-baseline together, not separately.
+- **`localTarget.Stop()` is only tested against an already-exited process.** Its
+  idempotency is covered; killing a still-running server is exercised by every
+  real `make bench-memory` run but not by a unit test.
 - **Continuous profiling** (Pyroscope / Parca) remains a possible follow-up and
   is not set up.
 
