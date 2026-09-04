@@ -252,7 +252,7 @@ than anything else in this table.
 | scenario | primary: cgroup anon+kernel | spread | rssAnon | Pss | RssFile | goTotal | heapLive | goroutines | threads |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | `idle-all-sqlite` | **148.6 MiB** | 0.3 (0.2 %) | 148.6 | 184.9 | 36.2 | 150.2 | 70.8 | 49 | 8 |
-| `checks-500` | **31.1 MiB** | 1.3 (4.2 %) | 31.1 | 69.2 | 38.0 | 151.8 | 8.0 | 56 | 9 |
+| `checks-500` | **31.1 MiB** | 1.3 (4.1 %) | 31.1 | 69.2 | 38.0 | 151.8 | 8.0 | 56 | 9 |
 | `docs-crawl` | **30.0 MiB** | 3.2 (10.6 %) | 30.0 | 91.5 | 62.6 | 154.5 | 8.1 | 49 | 8 |
 
 All values are medians (of the per-run medians); the spread is max−min across
@@ -443,6 +443,15 @@ and significance* of a change measured against its own noise floor, which is
 what survives the platform difference; the absolute numbers are not production
 figures.
 
+One label, for the same reason the negative controls below carry it: **row 7's
+numbers come from the baseline-vs-candidate comparison run whose reports were
+cleared from `bench-results/`**, so they are quoted rather than checkable
+in-tree. That is also why row 7 cites a 1.2 MiB noise floor for `docs-crawl`
+where the committed baseline records 3.2 MiB — two different runs of the same
+scenario, not an inconsistency. `docs-crawl` has by far the least stable spread
+of the three scenarios (§10), which is precisely why row 7's verdict is "not
+resolvable by this harness".
+
 | # | Candidate | Δ primary metric | Verdict |
 |---|---|---|---|
 | 1 | GC levers as defaults (`GOGC` × `GOMEMLIMIT`) | not measured | **rejected for now, and the reason is a measurement.** The knob sweep was going to chase the 148.6 MiB idle figure — which turned out to be a warm-up artifact that the runtime resolves on its own within five minutes (23.0 MiB, §5). There is no idle overhang left for `GOGC` to attack, and `GOGC` cannot act on a process that does not allocate anyway. Appendix B's quoted "−47 % heap, −25 % RSS at `GOGC=25`" remains **unverified**; verifying it belongs with the `checks-N` scenarios, where allocation is continuous, not with idle. |
@@ -497,9 +506,13 @@ against a 122.0 spread is not a measurable difference at all, in either
 direction. The −0.45 % in the median row is *not* a small regression; it is
 noise, and it is quoted only so the arithmetic is visible.
 
-Latencies say the same: flat to the millisecond, `execute` p50 30.0–30.1 ms and
-p95 48.0–48.1 ms on *both* sides, `save_result` p95 4.8–5.0 ms, DB query p95
-3.7–4.5 ms.
+Latencies say the same. `execute` really is flat to the tenth of a millisecond
+— p50 30.0–30.1 ms and p95 48.0–48.1 ms on *both* sides — and so is DB query
+p95 at 3.7–4.5 ms. `save_result` p95 is the one noisy column: 5.0 / 7.0 / 5.1 ms
+before against 4.8 / 6.1 / 5.0 ms after, an observed range of **4.8–7.0 ms**
+across all six runs, with **the worst reading on the *before* side**. It swings
+~40 % run to run on a quiet laptop and still shows no regression — the same
+lesson the throughput table above teaches, in a different column.
 
 Note the first single run read −4.5 %, which would have squeaked through the
 5 % gate as a "pass" while actually being noise — the reason the table has three
@@ -616,7 +629,7 @@ precision is a property of the scenario, not of the metric**:
 
 | metric | `idle-all-sqlite` | `checks-500` | `docs-crawl` |
 |---|---|---|---|
-| `cgroupUnreclaimableBytes` (primary) | 0.3 MiB → **0.2 %** | 1.3 MiB → **4.2 %** | 3.2 MiB → **10.6 %** |
+| `cgroupUnreclaimableBytes` (primary) | 0.3 MiB → **0.2 %** | 1.3 MiB → **4.1 %** | 3.2 MiB → **10.6 %** |
 | `heapLiveBytes` | 0.3 MiB → 0.4 % | 0.1 MiB → 1.3 % | 0.0 MiB → 0.4 % |
 | `goTotalBytes` | 0.2 MiB → 0.2 % | 5.7 MiB → 3.7 % | 4.6 MiB → 3.0 % |
 | `pssBytes` | 6.0 MiB → 3.3 % | 4.7 MiB → 6.8 % | 22.7 MiB → **24.8 %** |
@@ -626,7 +639,7 @@ precision is a property of the scenario, not of the metric**:
 So "the primary metric is precise enough" is **only true for two of the three
 scenarios**, and it is worth being exact about which:
 
-- **`idle-all-sqlite` (0.2 %) and `checks-500` (4.2 %)** can carry a 5 % gate.
+- **`idle-all-sqlite` (0.2 %) and `checks-500` (4.1 %)** can carry a 5 % gate.
   `idle` comfortably; `checks-500` only just, so a 5 % alert there would sit
   barely outside its own noise and should be read as "look", not "regression".
 - **`docs-crawl` (10.6 %) cannot.** Its spread already exceeds the gate, for the
@@ -658,7 +671,7 @@ Explicitly excluded, and why:
 | scenario / column | in a nightly gate? |
 |---|---|
 | `idle-all-sqlite` primary (0.2 %) | **yes** — 5 % is 25× its noise |
-| `checks-500` primary (4.2 %) | **yes, as a "look at this"** — 5 % is barely outside its noise |
+| `checks-500` primary (4.1 %) | **yes, as a "look at this"** — 5 % is barely outside its noise |
 | `docs-crawl` primary (10.6 %) | **no** — its own spread exceeds the gate |
 | `cgroupPeakBytes`, `pssBytes`, `rssFileBytes` (up to 28 %) | **no** — they would cry wolf |
 
