@@ -1,6 +1,7 @@
 package app
 
 import (
+	"embed"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -342,12 +343,14 @@ func TestSPARootsServeTheShell(t *testing.T) {
 	tests := []struct {
 		name    string
 		path    string
+		shell   string
+		files   embed.FS
 		handler func(http.ResponseWriter, *http.Request) error
 	}{
-		{"dash0 root", "/dash0/", srv.serveDash0Static},
-		{"dash0 client route", "/dash0/orgs/acme/checks", srv.serveDash0Static},
-		{"status0 root", "/status0/", srv.serveStatus0Static},
-		{"status0 client route", "/status0/acme/status", srv.serveStatus0Static},
+		{"dash0 root", "/dash0/", "dash0res/index.html", dash0Files, srv.serveDash0Static},
+		{"dash0 client route", "/dash0/orgs/acme/checks", "dash0res/index.html", dash0Files, srv.serveDash0Static},
+		{"status0 root", "/status0/", "status0res/index.html", status0Files, srv.serveStatus0Static},
+		{"status0 client route", "/status0/acme/status", "status0res/index.html", status0Files, srv.serveStatus0Static},
 	}
 
 	for _, testCase := range tests {
@@ -363,7 +366,17 @@ func TestSPARootsServeTheShell(t *testing.T) {
 			r.Contains(rec.Header().Get("Content-Type"), "text/html")
 			r.Equal("public, max-age=60", rec.Header().Get("Cache-Control"),
 				"the shell must not inherit the hashed assets' year-long cache")
-			r.Contains(strings.ToLower(rec.Body.String()), "<!doctype html")
+
+			// Compare against whatever the embedded FS actually holds rather
+			// than looking for a doctype. CI's backend job never builds the
+			// frontends - it writes a one-line placeholder into each embed dir
+			// - so asserting on real Vite output would pin the test to a
+			// developer's working tree. Byte-equality with the embedded shell
+			// pins the regression more tightly anyway: the bug served a 404,
+			// not a different body.
+			shell, err := testCase.files.ReadFile(testCase.shell)
+			r.NoError(err, "the embedded shell must exist for this test to mean anything")
+			r.Equal(string(shell), rec.Body.String(), "the handler must serve the shell verbatim")
 		})
 	}
 }
