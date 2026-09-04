@@ -423,7 +423,9 @@ test.describe("Check Groups", () => {
     ).toBeVisible({ timeout: 10000 });
 
     // Click Edit
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 

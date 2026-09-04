@@ -130,7 +130,9 @@ test.describe("Check form — Region Spread", () => {
 
     // Re-open the edit form and confirm the override round-tripped through a
     // real save, not just held in client state.
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-region-spread-input")).toHaveValue("5");
@@ -144,7 +146,9 @@ test.describe("Check form — Region Spread", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-region-spread-input")).toHaveValue("");
