@@ -197,7 +197,6 @@ BENCH_CHECKS   ?= 200
 BENCH_DURATION ?= 2m
 BENCH_PERIOD   ?= 10s
 BENCH_PORT     ?= 4001
-BENCH_PG_PORT  ?= 5435
 BENCH_DATA     := bench-data
 BENCH_OUT      := bench-results
 
@@ -210,7 +209,7 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 	@lsof -ti :$(BENCH_PORT) | xargs kill 2>/dev/null || true
 	@SP_RUNMODE=test \
 		SP_DB_TYPE=sqlite \
-		SP_DB_DATA_DIR=$(BENCH_DATA)/sqlite \
+		SP_DB_DIR=$(BENCH_DATA)/sqlite \
 		SP_DB_RESET=true \
 		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
 		LOG_LEVEL=warn \
@@ -224,14 +223,15 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 		-period $(BENCH_PERIOD) \
 		-output-dir $(BENCH_OUT)
 
+# No BENCH_DATA directory here: embedded PostgreSQL owns its data directory (a
+# temp dir created by internal/db/postgres/embeddedpg) and listens on a fixed
+# port, so neither is configurable from the environment.
 bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-backed test server (embedded PG)
 	@echo "==> Bench: PostgreSQL (embedded)"
-	@mkdir -p $(BENCH_DATA)/pg $(BENCH_OUT)
+	@mkdir -p $(BENCH_OUT)
 	@lsof -ti :$(BENCH_PORT) | xargs kill 2>/dev/null || true
 	@SP_RUNMODE=test \
 		SP_DB_TYPE=postgres-embedded \
-		SP_DB_EMBEDDED_DIR=$(BENCH_DATA)/pg \
-		SP_DB_PORT=$(BENCH_PG_PORT) \
 		SP_DB_RESET=true \
 		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
 		LOG_LEVEL=warn \
