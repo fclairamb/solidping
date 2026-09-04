@@ -275,3 +275,25 @@ Consequences:
 
 Proposal item 5 is ops and is deliberately **not** performed here: no deploy, no
 database access, no SQL.
+
+## Closing notes — ops remediation (NOT performed by this change)
+
+Proposal item 5 is an operations step and was deliberately left undone here: no
+deploy, no database connection, no SQL was run while implementing.
+
+What remains to be done by an operator, once this ships:
+
+- Deploy the release to the `solidping-dev` API **and** all five `checks`
+  workers (they pin their own image tags — see
+  `project_k8xp_solidping_three_deployments_synced_tag`). The affected org's
+  checks recover on their own; nothing has to be re-entered and no secret is
+  lost (the wrapped DEK is intact in `value.value`, the KEK is unchanged).
+- **Do not run the hot-mitigation SQL the Proposal floats**
+  (`update parameters set value = value->'value' …`). It leaves a bare JSON
+  string in a column that decodes into a `models.JSONMap`, so `GetOrgParameter`
+  can no longer scan the row at all — it turns a decrypt failure into a
+  parameter-read failure. The reader now accepts the wrapped shape as stored,
+  so there is nothing to mitigate. This is written up in
+  `wiki/features/credentials-encryption.md`.
+- Prod has no `encryption.dek` row yet, so nothing to remediate there — the
+  latent failure simply never fires once the fix is deployed.
