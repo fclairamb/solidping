@@ -1,8 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { useCreateCheck, useCheckGroups, useRegions } from "@/api/hooks";
+import {
+  useCreateCheck,
+  useCheckGroups,
+  useRegions,
+  useDependencyGraph,
+} from "@/api/hooks";
 import { apiFetch } from "@/api/client";
+import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
 
@@ -98,13 +104,14 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
 });
 
 function CheckNewPage() {
-  const { t } = useTranslation("checks");
+  const { t } = useTranslation(["checks", "dependencies"]);
   const navigate = useNavigate();
   const { org } = Route.useParams();
   const search = Route.useSearch();
   const createCheck = useCreateCheck(org);
   const { data: checkGroups } = useCheckGroups(org);
   const { data: regionsData } = useRegions(org);
+  const { data: dependencyGraph } = useDependencyGraph(org);
 
   const hasSearchParams = Object.values(search).some((v) => v !== undefined);
 
@@ -201,18 +208,32 @@ function CheckNewPage() {
             body: JSON.stringify({ connectionUids: data.connectionUids }),
           });
         }
-        if (data.dependsOnParentUids && data.dependsOnParentUids.length > 0) {
-          for (const parentUid of data.dependsOnParentUids) {
-            await apiFetch(
-              `/api/v1/orgs/${org}/checks/${check.uid}/dependencies`,
-              {
-                method: "POST",
-                body: JSON.stringify({
-                  parentCheckUid: parentUid,
-                  kind: "hard",
-                }),
-              },
-            );
+        if (data.dependsOn && data.dependsOn.length > 0) {
+          // Post the kind and description the form staged. This used to
+          // hard-code `kind: "hard"`, so a soft edge picked on the create page
+          // was silently created as a hard one.
+          for (const draft of data.dependsOn) {
+            try {
+              await apiFetch(
+                `/api/v1/orgs/${org}/checks/${check.uid}/dependencies`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    parentCheckUid: draft.parentCheckUid,
+                    kind: draft.kind,
+                    ...(draft.description
+                      ? { description: draft.description }
+                      : {}),
+                  }),
+                },
+              );
+            } catch (err) {
+              throw mapDependencySaveError(err, t, {
+                graph: dependencyGraph,
+                childUid: check.uid,
+                parentUid: draft.parentCheckUid,
+              });
+            }
           }
         }
         toast.success(t("toast.created"));
