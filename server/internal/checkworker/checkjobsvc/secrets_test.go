@@ -261,6 +261,10 @@ func TestMergeJobSecretsFailedOnBadEnvelope(t *testing.T) {
 	r.Nil(job.Config["password"], "no secret may leak out of a failed decrypt")
 }
 
+// errBadCiphertext stands in for a per-check envelope failure with a healthy
+// org key.
+var errBadCiphertext = errors.New("bad ciphertext")
+
 // TestMergeJobSecretsNamesTheOrgKeyLayer pins the failure taxonomy the incident
 // asked for: when the ORG key itself cannot be opened — a worker holding the
 // wrong master key, or an unreadable DEK row — the reason must say so instead
@@ -312,5 +316,5 @@ func TestMergeJobSecretsNamesTheOrgKeyLayer(t *testing.T) {
 	r.Equal(checkjobsvc.ErrSecretsUnavailable,
 		checkjobsvc.ResultReason(checkjobsvc.SecretMergeUnavailable, err))
 	r.Equal(checkjobsvc.ErrSecretsUndecryptable,
-		checkjobsvc.ResultReason(checkjobsvc.SecretMergeFailed, errors.New("bad ciphertext")))
+		checkjobsvc.ResultReason(checkjobsvc.SecretMergeFailed, errBadCiphertext))
 }
