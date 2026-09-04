@@ -33,7 +33,7 @@ Marketing claim: replaces ~$673/mo of PagerDuty + Pingdom + Statuspage.io. The "
 | Database / queue / SNMP | ❌ | ✅ |
 | Heartbeat / cron | ✅ + `/fail` + exit-code path | ✅ |
 | Heartbeat `/start` endpoint | ❌ | ❌ (gap, both) |
-| Browser checks | ✅ Playwright (Chromium) | ✅ Rod (Chromium) |
+| Browser checks | ✅ Playwright (Chromium), real test scripts | ✅ chromedp/CDP (Chromium), page load + selector + keyword — not a script runner |
 | SSL / domain expiration | ✅ | ✅ |
 | Multi-region quorum | ✅ hardcoded 3-of-N | Per-region results, no quorum |
 | `confirmation_period` (time) | ✅ seconds | ❌ uses count-based `IncidentThreshold` |
