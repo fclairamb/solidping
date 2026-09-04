@@ -1,0 +1,898 @@
+{
+  "label": "2026-09-04-post-spec",
+  "mode": "docker",
+  "host": "Florents-MacBook-Air.local (darwin/arm64)",
+  "goVersion": "go1.27.0",
+  "image": "solidping-bench:postspec",
+  "memory": "1g",
+  "sampleMode": "steady",
+  "cpus": "1",
+  "startedAt": "2026-09-04T07:56:56.508636Z",
+  "protocol": {
+    "warmUp": 45000000000,
+    "interval": 5000000000,
+    "duration": 60000000000,
+    "reps": 3
+  },
+  "scenarios": [
+    {
+      "scenario": "idle-all-sqlite",
+      "mode": "docker",
+      "runs": [
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 257351680,
+              "p95": 257351680,
+              "max": 257351680,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 156016640,
+              "p95": 156135424,
+              "max": 156135424,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 157530408,
+              "p95": 157530408,
+              "max": 157530408,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 49,
+              "p95": 52,
+              "max": 52,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 74279584,
+              "p95": 74279584,
+              "max": 74279584,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 188198912,
+              "p95": 188817408,
+              "max": 188817408,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 156041216,
+              "p95": 156143616,
+              "max": 156143616,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 32153600,
+              "p95": 32677888,
+              "max": 32677888,
+              "samples": 12
+            },
+            "threads": {
+              "median": 8,
+              "p95": 8,
+              "max": 8,
+              "samples": 12
+            }
+          }
+        },
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 290803712,
+              "p95": 290803712,
+              "max": 290803712,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 155656192,
+              "p95": 155774976,
+              "max": 155774976,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 157268264,
+              "p95": 157530408,
+              "max": 157530408,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 49,
+              "p95": 49,
+              "max": 49,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 74286936,
+              "p95": 74286936,
+              "max": 74286936,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 194514944,
+              "p95": 196018176,
+              "max": 196018176,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 155660288,
+              "p95": 155774976,
+              "max": 155774976,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 38866944,
+              "p95": 40484864,
+              "max": 40484864,
+              "samples": 12
+            },
+            "threads": {
+              "median": 8,
+              "p95": 8,
+              "max": 8,
+              "samples": 12
+            }
+          }
+        },
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 233594880,
+              "p95": 248356864,
+              "max": 248356864,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 155779072,
+              "p95": 155893760,
+              "max": 155893760,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 157530408,
+              "p95": 157530408,
+              "max": 157530408,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 49,
+              "p95": 53,
+              "max": 53,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 74024232,
+              "p95": 74024232,
+              "max": 74024232,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 193880064,
+              "p95": 223072256,
+              "max": 223072256,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 155779072,
+              "p95": 155893760,
+              "max": 155893760,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 37990400,
+              "p95": 67297280,
+              "max": 67297280,
+              "samples": 12
+            },
+            "threads": {
+              "median": 8,
+              "p95": 8,
+              "max": 8,
+              "samples": 12
+            }
+          }
+        }
+      ],
+      "metrics": {
+        "cgroupPeakBytes": {
+          "median": 257351680,
+          "p95": 290803712,
+          "max": 290803712,
+          "spread": 57208832,
+          "spreadKnown": true,
+          "runMedians": [
+            257351680,
+            290803712,
+            233594880
+          ]
+        },
+        "cgroupUnreclaimableBytes": {
+          "median": 155779072,
+          "p95": 156135424,
+          "max": 156135424,
+          "spread": 360448,
+          "spreadKnown": true,
+          "runMedians": [
+            156016640,
+            155656192,
+            155779072
+          ]
+        },
+        "goTotalBytes": {
+          "median": 157530408,
+          "p95": 157530408,
+          "max": 157530408,
+          "spread": 262144,
+          "spreadKnown": true,
+          "runMedians": [
+            157530408,
+            157268264,
+            157530408
+          ]
+        },
+        "goroutines": {
+          "median": 49,
+          "p95": 53,
+          "max": 53,
+          "spread": 0,
+          "spreadKnown": true,
+          "runMedians": [
+            49,
+            49,
+            49
+          ]
+        },
+        "heapLiveBytes": {
+          "median": 74279584,
+          "p95": 74286936,
+          "max": 74286936,
+          "spread": 262704,
+          "spreadKnown": true,
+          "runMedians": [
+            74279584,
+            74286936,
+            74024232
+          ]
+        },
+        "pssBytes": {
+          "median": 193880064,
+          "p95": 223072256,
+          "max": 223072256,
+          "spread": 6316032,
+          "spreadKnown": true,
+          "runMedians": [
+            188198912,
+            194514944,
+            193880064
+          ]
+        },
+        "rssAnonBytes": {
+          "median": 155779072,
+          "p95": 156143616,
+          "max": 156143616,
+          "spread": 380928,
+          "spreadKnown": true,
+          "runMedians": [
+            156041216,
+            155660288,
+            155779072
+          ]
+        },
+        "rssFileBytes": {
+          "median": 37990400,
+          "p95": 67297280,
+          "max": 67297280,
+          "spread": 6713344,
+          "spreadKnown": true,
+          "runMedians": [
+            32153600,
+            38866944,
+            37990400
+          ]
+        },
+        "threads": {
+          "median": 8,
+          "p95": 8,
+          "max": 8,
+          "spread": 0,
+          "spreadKnown": true,
+          "runMedians": [
+            8,
+            8,
+            8
+          ]
+        }
+      },
+      "notes": [
+        "the reference idle shape: every role in one process, no traffic"
+      ]
+    },
+    {
+      "scenario": "checks-500",
+      "mode": "docker",
+      "runs": [
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 197246976,
+              "p95": 197246976,
+              "max": 197246976,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 31457280,
+              "p95": 32559104,
+              "max": 32559104,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 157530408,
+              "p95": 157530408,
+              "max": 157530408,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 56,
+              "p95": 66,
+              "max": 66,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 8282216,
+              "p95": 8743400,
+              "max": 8743400,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 69484544,
+              "p95": 71557120,
+              "max": 71557120,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 31440896,
+              "p95": 32559104,
+              "max": 32559104,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 38170624,
+              "p95": 39669760,
+              "max": 39669760,
+              "samples": 12
+            },
+            "threads": {
+              "median": 9,
+              "p95": 9,
+              "max": 9,
+              "samples": 12
+            }
+          }
+        },
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 202534912,
+              "p95": 202534912,
+              "max": 202534912,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 32800768,
+              "p95": 34738176,
+              "max": 34738176,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 159201576,
+              "p95": 159201576,
+              "max": 159201576,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 56,
+              "p95": 71,
+              "max": 71,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 8390664,
+              "p95": 8853960,
+              "max": 8853960,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 72605696,
+              "p95": 86347776,
+              "max": 86347776,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 32800768,
+              "p95": 34738176,
+              "max": 34738176,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 39809024,
+              "p95": 51613696,
+              "max": 51613696,
+              "samples": 12
+            },
+            "threads": {
+              "median": 9,
+              "p95": 9,
+              "max": 9,
+              "samples": 12
+            }
+          }
+        },
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 216096768,
+              "p95": 216096768,
+              "max": 216096768,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 32612352,
+              "p95": 33726464,
+              "max": 33726464,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 163465528,
+              "p95": 163465528,
+              "max": 163465528,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 56,
+              "p95": 66,
+              "max": 66,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 8355888,
+              "p95": 8954344,
+              "max": 8954344,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 74452992,
+              "p95": 88465408,
+              "max": 88465408,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 32612352,
+              "p95": 33726464,
+              "max": 33726464,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 41746432,
+              "p95": 54808576,
+              "max": 54808576,
+              "samples": 12
+            },
+            "threads": {
+              "median": 9,
+              "p95": 9,
+              "max": 9,
+              "samples": 12
+            }
+          }
+        }
+      ],
+      "metrics": {
+        "cgroupPeakBytes": {
+          "median": 202534912,
+          "p95": 216096768,
+          "max": 216096768,
+          "spread": 18849792,
+          "spreadKnown": true,
+          "runMedians": [
+            197246976,
+            202534912,
+            216096768
+          ]
+        },
+        "cgroupUnreclaimableBytes": {
+          "median": 32612352,
+          "p95": 34738176,
+          "max": 34738176,
+          "spread": 1343488,
+          "spreadKnown": true,
+          "runMedians": [
+            31457280,
+            32800768,
+            32612352
+          ]
+        },
+        "goTotalBytes": {
+          "median": 159201576,
+          "p95": 163465528,
+          "max": 163465528,
+          "spread": 5935120,
+          "spreadKnown": true,
+          "runMedians": [
+            157530408,
+            159201576,
+            163465528
+          ]
+        },
+        "goroutines": {
+          "median": 56,
+          "p95": 71,
+          "max": 71,
+          "spread": 0,
+          "spreadKnown": true,
+          "runMedians": [
+            56,
+            56,
+            56
+          ]
+        },
+        "heapLiveBytes": {
+          "median": 8355888,
+          "p95": 8954344,
+          "max": 8954344,
+          "spread": 108448,
+          "spreadKnown": true,
+          "runMedians": [
+            8282216,
+            8390664,
+            8355888
+          ]
+        },
+        "pssBytes": {
+          "median": 72605696,
+          "p95": 88465408,
+          "max": 88465408,
+          "spread": 4968448,
+          "spreadKnown": true,
+          "runMedians": [
+            69484544,
+            72605696,
+            74452992
+          ]
+        },
+        "rssAnonBytes": {
+          "median": 32612352,
+          "p95": 34738176,
+          "max": 34738176,
+          "spread": 1359872,
+          "spreadKnown": true,
+          "runMedians": [
+            31440896,
+            32800768,
+            32612352
+          ]
+        },
+        "rssFileBytes": {
+          "median": 39809024,
+          "p95": 54808576,
+          "max": 54808576,
+          "spread": 3575808,
+          "spreadKnown": true,
+          "runMedians": [
+            38170624,
+            39809024,
+            41746432
+          ]
+        },
+        "threads": {
+          "median": 9,
+          "p95": 9,
+          "max": 9,
+          "spread": 0,
+          "spreadKnown": true,
+          "runMedians": [
+            9,
+            9,
+            9
+          ]
+        }
+      },
+      "notes": [
+        "500 HTTP checks at a 10s period against the node's own /api/mgmt/health"
+      ]
+    },
+    {
+      "scenario": "docs-crawl",
+      "mode": "docker",
+      "runs": [
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 215142400,
+              "p95": 215142400,
+              "max": 215142400,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 28311552,
+              "p95": 29601792,
+              "max": 29601792,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 157268264,
+              "p95": 157268264,
+              "max": 157268264,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 49,
+              "p95": 49,
+              "max": 49,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 8501104,
+              "p95": 9289648,
+              "max": 9289648,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 94531584,
+              "p95": 103763968,
+              "max": 103763968,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 28311552,
+              "p95": 29601792,
+              "max": 29601792,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 65667072,
+              "p95": 74625024,
+              "max": 74625024,
+              "samples": 12
+            },
+            "threads": {
+              "median": 8,
+              "p95": 8,
+              "max": 8,
+              "samples": 12
+            }
+          }
+        },
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 270643200,
+              "p95": 270643200,
+              "max": 270643200,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 31662080,
+              "p95": 152752128,
+              "max": 152752128,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 162052392,
+              "p95": 162052392,
+              "max": 162052392,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 49,
+              "p95": 49,
+              "max": 49,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 8486688,
+              "p95": 8716896,
+              "max": 8716896,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 118288384,
+              "p95": 240107520,
+              "max": 240107520,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 31662080,
+              "p95": 152752128,
+              "max": 152752128,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 82464768,
+              "p95": 88289280,
+              "max": 88289280,
+              "samples": 12
+            },
+            "threads": {
+              "median": 9,
+              "p95": 9,
+              "max": 9,
+              "samples": 12
+            }
+          }
+        },
+        {
+          "metrics": {
+            "cgroupPeakBytes": {
+              "median": 259063808,
+              "p95": 259063808,
+              "max": 259063808,
+              "samples": 12
+            },
+            "cgroupUnreclaimableBytes": {
+              "median": 31494144,
+              "p95": 155435008,
+              "max": 155435008,
+              "samples": 12
+            },
+            "goTotalBytes": {
+              "median": 162122040,
+              "p95": 162122040,
+              "max": 162122040,
+              "samples": 12
+            },
+            "goroutines": {
+              "median": 49,
+              "p95": 49,
+              "max": 49,
+              "samples": 12
+            },
+            "heapLiveBytes": {
+              "median": 8469264,
+              "p95": 8754248,
+              "max": 8754248,
+              "samples": 12
+            },
+            "pssBytes": {
+              "median": 95924224,
+              "p95": 235212800,
+              "max": 235212800,
+              "samples": 12
+            },
+            "rssAnonBytes": {
+              "median": 31494144,
+              "p95": 155447296,
+              "max": 155447296,
+              "samples": 12
+            },
+            "rssFileBytes": {
+              "median": 64053248,
+              "p95": 79822848,
+              "max": 79822848,
+              "samples": 12
+            },
+            "threads": {
+              "median": 8,
+              "p95": 8,
+              "max": 8,
+              "samples": 12
+            }
+          }
+        }
+      ],
+      "metrics": {
+        "cgroupPeakBytes": {
+          "median": 259063808,
+          "p95": 270643200,
+          "max": 270643200,
+          "spread": 55500800,
+          "spreadKnown": true,
+          "runMedians": [
+            215142400,
+            270643200,
+            259063808
+          ]
+        },
+        "cgroupUnreclaimableBytes": {
+          "median": 31494144,
+          "p95": 155435008,
+          "max": 155435008,
+          "spread": 3350528,
+          "spreadKnown": true,
+          "runMedians": [
+            28311552,
+            31662080,
+            31494144
+          ]
+        },
+        "goTotalBytes": {
+          "median": 162052392,
+          "p95": 162122040,
+          "max": 162122040,
+          "spread": 4853776,
+          "spreadKnown": true,
+          "runMedians": [
+            157268264,
+            162052392,
+            162122040
+          ]
+        },
+        "goroutines": {
+          "median": 49,
+          "p95": 49,
+          "max": 49,
+          "spread": 0,
+          "spreadKnown": true,
+          "runMedians": [
+            49,
+            49,
+            49
+          ]
+        },
+        "heapLiveBytes": {
+          "median": 8486688,
+          "p95": 9289648,
+          "max": 9289648,
+          "spread": 31840,
+          "spreadKnown": true,
+          "runMedians": [
+            8501104,
+            8486688,
+            8469264
+          ]
+        },
+        "pssBytes": {
+          "median": 95924224,
+          "p95": 240107520,
+          "max": 240107520,
+          "spread": 23756800,
+          "spreadKnown": true,
+          "runMedians": [
+            94531584,
+            118288384,
+            95924224
+          ]
+        },
+        "rssAnonBytes": {
+          "median": 31494144,
+          "p95": 155447296,
+          "max": 155447296,
+          "spread": 3350528,
+          "spreadKnown": true,
+          "runMedians": [
+            28311552,
+            31662080,
+            31494144
+          ]
+        },
+        "rssFileBytes": {
+          "median": 65667072,
+          "p95": 88289280,
+          "max": 88289280,
+          "spread": 18411520,
+          "spreadKnown": true,
+          "runMedians": [
+            65667072,
+            82464768,
+            64053248
+          ]
+        },
+        "threads": {
+          "median": 8,
+          "p95": 9,
+          "max": 9,
+          "spread": 1,
+          "spreadKnown": true,
+          "runMedians": [
+            8,
+            9,
+            8
+          ]
+        }
+      },
+      "notes": [
+        "every path in /docs/sitemap.xml, once per iteration — the embedded-asset peak, which is a peak and not a baseline"
+      ]
+    }
+  ]
+}
