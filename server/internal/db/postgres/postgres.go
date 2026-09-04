@@ -188,15 +188,26 @@ var _ db.Service = (*Service)(nil)
 // New creates a new PostgreSQL service with an external database.
 func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if cfg.Embedded {
+		// This branch serves SP_DATABASE_TYPE=postgres-embedded for real —
+		// main.go's openDB/runMigrations and internal/app/server.go all reach
+		// here in a genuine deployment, not just in tests.
+		//
 		// cfg's pool fields (MaxOpenConns, MaxIdleConns, ConnMaxLifetime,
 		// ConnMaxIdleTime) are ignored on this branch ON PURPOSE: NewEmbedded
 		// applies its own fixed, conservative bound (see applyPoolLimits call
-		// there) sized against the embedded server's own max_connections,
-		// which this process also controls. That ceiling — not whatever a
-		// caller happened to set on Config for a real deployment — is what
-		// must govern here, so silently dropping cfg's pool fields is
-		// intentional rather than an oversight. (It used to be an oversight:
-		// see spec 2026-09-04-04.)
+		// there) sized against the embedded Postgres server's own
+		// max_connections=10, which this same process also starts and
+		// controls. That ceiling, not whatever a caller happened to set on
+		// Config, is the binding constraint — honouring a larger
+		// cfg.MaxOpenConns here would just reopen the 53300 "too many clients
+		// already" failure the fixed bound exists to prevent. Raising
+		// embedded throughput requires raising both the client pool bound
+		// (NewEmbedded's applyPoolLimits call) and the server's
+		// max_connections together; changing only one reintroduces the bug in
+		// one direction or the other. So silently dropping cfg's pool fields
+		// is intentional rather than an oversight. (It used to be an
+		// oversight: see spec 2026-09-04-04, including its amendment — this
+		// is a real production code path, not test-only.)
 		suite := cfg.RunMode
 		if suite == "" {
 			suite = "app"
