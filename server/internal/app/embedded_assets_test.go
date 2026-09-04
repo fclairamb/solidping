@@ -213,3 +213,101 @@ func TestServeDocsFileMissDoesNotLeakCacheHeader(t *testing.T) {
 		"a miss must not set a cache directive for a file that does not exist")
 	r.Empty(rec.Header().Get("Content-Type"))
 }
+
+// discardWriter is an http.ResponseWriter that throws the body away, so a
+// benchmark measures the serving path's allocations and not the recorder's
+// buffer growth.
+type discardWriter struct{ header http.Header }
+
+func (w *discardWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = http.Header{}
+	}
+
+	return w.header
+}
+func (w *discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (w *discardWriter) WriteHeader(int)             {}
+
+// largestEmbeddedDoc finds the biggest file in the embedded docs, which is what
+// makes the two strategies differ: the cost of ReadFile is the file's size.
+func largestEmbeddedDoc(tb testing.TB) (string, int64) {
+	tb.Helper()
+
+	var (
+		biggest string
+		size    int64
+	)
+
+	err := fs.WalkDir(docsFiles, "docsres", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err //nolint:wrapcheck // walk callback
+		}
+
+		info, statErr := entry.Info()
+		if statErr != nil {
+			return statErr //nolint:wrapcheck // walk callback
+		}
+
+		if info.Size() > size {
+			biggest, size = path, info.Size()
+		}
+
+		return nil
+	})
+	if err != nil {
+		tb.Fatalf("walk embedded docs: %v", err)
+	}
+
+	if biggest == "" {
+		tb.Skip("no embedded docs in this build")
+	}
+
+	return biggest, size
+}
+
+// BenchmarkServeEmbeddedStreamed and BenchmarkServeEmbeddedReadFile are the
+// measurement behind the switch to streaming. The bench harness in
+// cmd/membench measures resident memory, which cannot see this: the allocation
+// is short-lived, and whether it shows up in RSS depends on whether a GC
+// happened to run. Allocated bytes per request is the honest metric, and it is
+// the one that scales with file size.
+//
+// Run: `go test ./internal/app -run=XXX -bench='ServeEmbedded' -benchmem`.
+func BenchmarkServeEmbeddedStreamed(b *testing.B) {
+	name, size := largestEmbeddedDoc(b)
+	b.ReportMetric(float64(size), "filebytes")
+	b.ResetTimer()
+
+	for range b.N {
+		writer := &discardWriter{}
+		if err := writeEmbeddedFile(writer, docsFiles, name, "text/html", http.StatusOK); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkServeEmbeddedReadFile(b *testing.B) {
+	name, size := largestEmbeddedDoc(b)
+	b.ReportMetric(float64(size), "filebytes")
+	b.ResetTimer()
+
+	for range b.N {
+		writer := &discardWriter{}
+
+		// The pattern this change replaced: embed.FS.ReadFile is []byte(string),
+		// a fresh heap allocation the size of the file, per request.
+		data, err := docsFiles.ReadFile(name)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		writer.Header().Set("Content-Type", "text/html")
+		writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		writer.WriteHeader(http.StatusOK)
+
+		if _, err := writer.Write(data); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
