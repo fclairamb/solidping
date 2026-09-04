@@ -94,3 +94,41 @@ func TestApplyPoolLimits_QueuesRatherThanErrors(t *testing.T) {
 
 	require.Equal(t, int64(goroutines), succeeded.Load())
 }
+
+// portEmbeddedPoolBounded is distinct from every other embedded-Postgres port
+// in this package (see the numbering notes in org_usage_counter_postgres_test.go
+// and postgres_headroom_postgres_test.go).
+const portEmbeddedPoolBounded = 15521
+
+// TestNewEmbedded_PoolBoundedBelowNonSuperuserConnectionLimit is a permanent,
+// cheap guard against the regression spec 2026-09-04-04 fixed: NewEmbedded
+// pins the embedded server at max_connections=10, 3 of which Postgres
+// reserves for superusers, leaving 7 available to this process's own pool.
+// If a future change ever widened or removed the applyPoolLimits(sqldb,
+// &Config{MaxOpenConns: 5, ...}) call in NewEmbedded, this test fails fast —
+// without needing to run a full 50-goroutine concurrency test and wait for a
+// 53300 to surface.
+//
+//nolint:paralleltest // shares dev-machine embedded-postgres resources with its siblings
+func TestNewEmbedded_PoolBoundedBelowNonSuperuserConnectionLimit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	const nonSuperuserConnectionLimit = 7 // max_connections=10 minus 3 reserved for superusers
+
+	ctx := t.Context()
+
+	s, err := New(ctx, &Config{Embedded: true, Port: portEmbeddedPoolBounded, RunMode: runModeTest})
+	if err != nil {
+		t.Skipf("embedded postgres unavailable: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	maxOpenConns := s.DB().Stats().MaxOpenConnections
+	require.Positive(t, maxOpenConns,
+		"NewEmbedded must bound the pool (0 means database/sql's unlimited default)")
+	require.Less(t, maxOpenConns, nonSuperuserConnectionLimit,
+		"the embedded pool's MaxOpenConns must stay comfortably under the server's non-superuser "+
+			"connection limit, or concurrent callers get a hard 53300 instead of queueing")
+}

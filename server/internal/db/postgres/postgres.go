@@ -198,7 +198,7 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 		// there) sized against the embedded Postgres server's own
 		// max_connections=10, which this same process also starts and
 		// controls. That ceiling, not whatever a caller happened to set on
-		// Config, is the binding constraint — honouring a larger
+		// Config, is the binding constraint — honoring a larger
 		// cfg.MaxOpenConns here would just reopen the 53300 "too many clients
 		// already" failure the fixed bound exists to prevent. Raising
 		// embedded throughput requires raising both the client pool bound
