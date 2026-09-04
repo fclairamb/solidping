@@ -51,7 +51,11 @@ export function DependenciesCard({ org, checkUid }: DependenciesCardProps) {
             to="/orgs/$org/checks/$checkUid/edit"
             params={{ org, checkUid }}
             search={{ section: "dependencies" }}
-            aria-label={t("dependencies:editDependencies")}
+            // Deliberately NOT an aria-label: the visible "Edit" text already
+            // names the link, and any aria-label containing "edit" would make
+            // the page header's own Edit button ambiguous to
+            // `getByLabel("Edit")` in the e2e suite.
+            title={t("dependencies:editDependencies")}
           >
             <Pencil className="h-3.5 w-3.5" />
             {t("common:edit", { defaultValue: "Edit" })}

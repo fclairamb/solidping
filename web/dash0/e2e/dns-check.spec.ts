@@ -71,7 +71,9 @@ test.describe("DNS check form", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Edit round-trip: domain, server, and record type all persist.
-    await page.getByRole("link", { name: /Edit/i }).click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
     await page.waitForLoadState("networkidle");
 
