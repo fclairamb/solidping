@@ -90,13 +90,13 @@ Input formats differ, and it matters:
 | Feature | BetterStack | UptimeRobot | Pingdom | StatusCake | Checkly | Healthchecks.io | Uptime Kuma | Gatus | SolidPing |
 |---------|-------------|-------------|---------|------------|---------|-----------------|-------------|-------|-----------|
 | **Email** | ✅ Unlimited | ✅ Unlimited | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (SMTP) | ✅ |
-| **SMS** | ✅ Unlimited | ✅ Limited | ✅ Quota | ✅ 75 free/mo | ✅ (via int.) | ✅ (Twilio) | ✅ (Twilio) | ✅ (Twilio) | ❌ |
-| **Voice Calls** | ✅ Unlimited | ❌ | ✅ Limited | ✅ | ✅ (via int.) | ✅ (Twilio) | ❌ | ❌ | ❌ |
+| **SMS** | ✅ Unlimited | ✅ Limited | ✅ Quota | ✅ 75 free/mo | ✅ (via int.) | ✅ (Twilio) | ✅ (Twilio) | ✅ (Twilio) | ✅ self-hosted (own Twilio) · ❌ **not on any hosted plan** |
+| **Voice Calls** | ✅ Unlimited | ❌ | ✅ Limited | ✅ | ✅ (via int.) | ✅ (Twilio) | ❌ | ❌ | ✅ self-hosted (own Twilio) · ❌ **not on any hosted plan** |
 | **Slack** | ✅ Native | ✅ Native | ✅ Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (OAuth + threads) |
 | **Discord** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (OAuth + webhook) |
-| **Microsoft Teams** | ✅ Native | ✅ Native | ✅ Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Telegram** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (spec ready) |
-| **PagerDuty** | ✅ Native | ✅ Native | ✅ Native | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (spec ready) |
+| **Microsoft Teams** | ✅ Native | ✅ Native | ✅ Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (webhook + bot) |
+| **Telegram** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ **as a user contact**, with interactive ack/comment — *not* an org connection type |
+| **PagerDuty** | ✅ Native | ✅ Native | ✅ Native | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Native |
 | **OpsGenie** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | **Google Chat** | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ |
 | **Mattermost** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
@@ -105,14 +105,23 @@ Input formats differ, and it matters:
 | **Web Push** (browser, no app) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | **Ntfy** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Signal** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| **Matrix** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
-| **Total Channels** | ~15 | ~12 | ~8 | ~14 | ~17 | ~25 | ~90 (Apprise) | ~20 | **10 native** |
+| **Matrix** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Total Channels** | ~15 | ~12 | ~8 | ~14 | ~17 | ~25 | ~90 (Apprise) | ~20 | **16 senders** (15 usable on hosted plans), plus Telegram and Web Push via user contacts |
 
 **Most Channels**: Uptime Kuma (~90 via Apprise library)
 
-**Best Native Integrations**: BetterStack & Checkly (~15-17 first-class), SolidPing (10 native, including chat-platform OAuth flows and Slack Marketplace direct install)
+**Best Native Integrations**: BetterStack & Checkly (~15-17 first-class), SolidPing (16 first-class senders, including chat-platform OAuth flows and Slack Marketplace direct install)
 
-**SolidPing Remaining Gaps**: Microsoft Teams, Telegram, PagerDuty, SMS/Voice (Telegram, Teams, and PagerDuty specs are drafted in `specs/ideas/2026-03-22-notification-channels.md` and `specs/ideas/2026-03-22-telegram-notifications.md`)
+**SolidPing Remaining Gaps**: Signal, and Apprise-scale breadth. Teams, Telegram and PagerDuty
+all shipped — the earlier "spec ready" entries were stale.
+
+**The gap that is real, and commercial rather than technical**: SMS, voice and WhatsApp are
+implemented (one `Twilio` sender in `server/internal/notifications/registry.go`) but are
+**not included on any hosted plan** — the carriers bill per message and the plans do not
+price them in, so the hosted entitlements set `MaxSmsPerMonth` / `MaxCallsPerMonth` /
+`MaxWhatsappPerMonth` to 0. They work self-hosted, on the operator's own Twilio account.
+Any hosted comparison against BetterStack, UptimeRobot, Pingdom, StatusCake or Site24x7
+must score this as a loss; any self-hosted comparison must not.
 
 ## Advanced Features
 
