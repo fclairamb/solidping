@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.23.0](https://github.com/fclairamb/solidping/compare/v0.22.1...v0.23.0) (2026-09-04)
+
+
+### Features
+
+* operator notifications, dependency editing on the edit page, and a measured memory baseline ([#318](https://github.com/fclairamb/solidping/issues/318)) ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to f87b40a ([#312](https://github.com/fclairamb/solidping/issues/312)) ([43bac80](https://github.com/fclairamb/solidping/commit/43bac80990682605704367b6b0708f35d3c532ee))
+* **deps:** update module github.com/go-jose/go-jose/v4 to v4.1.5 ([#313](https://github.com/fclairamb/solidping/issues/313)) ([48344aa](https://github.com/fclairamb/solidping/commit/48344aaec0d67b9efaeb36092497ecfde1863fcb))
+* **deps:** update module golang.org/x/crypto to v0.56.0 ([#310](https://github.com/fclairamb/solidping/issues/310)) ([e9de249](https://github.com/fclairamb/solidping/commit/e9de249b45496d1426ccbdd13e682ace04f0aa4e))
+
 ## [0.22.1](https://github.com/fclairamb/solidping/compare/v0.22.0...v0.22.1) (2026-09-03)
 
 
