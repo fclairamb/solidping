@@ -6,6 +6,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/opsnotify"
 )
 
 // Signup method labels attached to the user_signed_up product event. These are
@@ -60,5 +61,43 @@ func createUserAndCapture(
 		Properties: map[string]any{"signupMethod": method},
 	})
 
+	NotifyUserRegistered(ctx, user, method)
+
 	return nil
+}
+
+// NotifyUserRegistered raises the instance-level `user.registered` operator
+// notice (spec 2026-09-03-01).
+//
+// PRIVACY, deliberately different from the analytics capture above: this
+// notice DOES carry the email address and the display name. That is not an
+// oversight and must not be "fixed". Its only recipients are super admins,
+// who can already read both in the users admin, and an operator who is told
+// "somebody signed up" without being told who cannot welcome them or notice
+// that the signup got stuck. The analytics event stays UID-only because it
+// leaves the instance; this one never does.
+//
+// Fire-and-forget: opsnotify.Notify cannot fail or block, so a signup can
+// never fail because a messaging provider is down.
+// Exported because Sign-in-with-Slack creates accounts from
+// internal/integrations/slack, which has its own account-creation chokepoint.
+// One function, so the two sites cannot drift into two different notices.
+func NotifyUserRegistered(ctx context.Context, user *models.User, method string) {
+	body := "A new user just signed up on this SolidPing instance.\n\n" +
+		"Email:  " + user.Email + "\n"
+
+	if user.Name != "" {
+		body += "Name:   " + user.Name + "\n"
+	}
+
+	body += "Method: " + method
+
+	opsnotify.Notify(ctx, &opsnotify.Notice{
+		Event:   opsnotify.EventUserRegistered,
+		Subject: "[SolidPing] New signup: " + user.Email + " (" + method + ")",
+		Body:    body,
+		// The landing organization is resolved at delivery time — it does not
+		// exist yet at this point, on any signup path.
+		AboutUserUID: user.UID,
+	})
 }

@@ -25,6 +25,33 @@ var ErrSecretsUndecryptable = errors.New(
 	"check credentials could not be decrypted — re-save the check's credentials",
 )
 
+// ErrSecretsOrgKeyUndecryptable is the reason attached to a job whose
+// ORGANIZATION key could not be opened at all — the layer above this check's
+// envelope. Re-saving the check cannot help (the save path needs the same key),
+// so the message must not send the operator down that road: this is a wrong or
+// missing master key on this process, or an unreadable DEK row, and the answer
+// is in the worker's logs.
+var ErrSecretsOrgKeyUndecryptable = errors.New(
+	"this organization's encryption key could not be opened on this worker — " +
+		"re-saving the check will not help; check the worker logs for \"unwrap org DEK\"",
+)
+
+// ResultReason maps a failed secrets open to the static, user-visible reason to
+// record on the check result. It names WHICH layer failed — the org key or this
+// check's envelope — because the two have opposite remedies. The underlying
+// error is only ever logged: it can carry cryptographic detail.
+func ResultReason(outcome SecretMerge, err error) error {
+	switch {
+	case outcome == SecretMergeUnavailable:
+		return ErrSecretsUnavailable
+	case errors.Is(err, credentials.ErrOrgKeyUnavailable),
+		errors.Is(err, ErrSecretsOrgKeyUndecryptable):
+		return ErrSecretsOrgKeyUndecryptable
+	default:
+		return ErrSecretsUndecryptable
+	}
+}
+
 // SecretMerge is the outcome of MergeJobSecrets.
 type SecretMerge int
 
@@ -133,7 +160,8 @@ func OpenSecretsEnvelope(
 	default:
 		private, err := creds.DecryptForOrg(ctx, orgUID, *envelope)
 		if err != nil {
-			return nil, SecretMergeFailed, fmt.Errorf("%w: %w", ErrSecretsUndecryptable, err)
+			return nil, SecretMergeFailed,
+				fmt.Errorf("%w: %w", ResultReason(SecretMergeFailed, err), err)
 		}
 
 		return private, SecretMergeMerged, nil

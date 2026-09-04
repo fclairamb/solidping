@@ -119,6 +119,11 @@ jobs:
           mkdir -p internal/app/status0res/embed/v1
           echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
+          # Docusaurus emits 404.html into the real docs build; serveDocsFile
+          # falls back to it for an unknown path and only degrades to a plain
+          # http.Error when it is missing, so TestServeDocsFileResolutionAndHeaders
+          # sees text/plain instead of the 404 page without this.
+          echo "placeholder" > internal/app/docsres/404.html
           # docusaurus-plugin-llms emits these into the real docs build; the
           # root /llms.txt and /llms-full.txt routes resolve them out of the
           # embedded FS, so they must exist here too or those tests 404.

@@ -15,7 +15,8 @@
     "slack": "Slack",
     "analytics": "Analítica",
     "discord": "Discord",
-    "entitlements": "Límites"
+    "entitlements": "Límites",
+    "notifications": "Notificaciones"
   },
   "aggregation": {
     "title": "Agregación",
@@ -429,5 +430,27 @@
       "admin": "Anulación de administrador",
       "billing": "Sincronización de facturación"
     }
+  },
+  "notifications": {
+    "title": "Notificaciones para el operador",
+    "description": "Avisa a los superadministradores elegidos sobre eventos de la instancia — un nuevo mensaje de soporte, un nuevo registro — a través de las rutas de notificación que ya configuraron para sí mismos (correo, Telegram, mensaje directo de Slack, notificación web, SMS).",
+    "enabled": "Activar las notificaciones para el operador",
+    "enabledHelp": "Interruptor principal. Al desactivarlo se detiene toda entrega; los eventos siguen ocurriendo y quedan en los registros.",
+    "columnUser": "Superadministrador",
+    "columnRoutes": "Entregado por",
+    "events": {
+      "supportMessage": "Mensaje de soporte",
+      "userRegistered": "Nuevo registro"
+    },
+    "noRoutes": "Sin rutas de notificación — este administrador debe añadir una para recibir algo",
+    "noRoutesSelf": "Sin rutas de notificación — configura una en tu página de notificaciones",
+    "noRecipients": "Las notificaciones para el operador están activas, pero nadie está suscrito a nada. No se entregará nada.",
+    "noSuperAdmins": "Todavía no hay ningún superadministrador en esta instancia.",
+    "notSuperAdmin": "Ya no es superadministrador — omitido en la entrega",
+    "superAdminOnly": "Solo los superadministradores pueden ser destinatarios: una notificación puede citar el mensaje de soporte de un cliente, que solo un superadministrador puede abrir.",
+    "sendTest": "Enviarme una prueba",
+    "testDelivered_one": "Notificación de prueba entregada por {{count}} ruta.",
+    "testDelivered_other": "Notificación de prueba entregada por {{count}} rutas.",
+    "testUndeliverable": "No se entregó nada. Comprueba que tienes al menos una ruta de notificación activa."
   }
 }

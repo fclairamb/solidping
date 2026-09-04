@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,12 +23,35 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
-// memTestStore is a no-op DEKStore so the credentials service can cache DEKs
-// without a real database.
-type memTestStore struct{}
+// memTestStore is an in-memory DEKStore so the credentials service can cache
+// DEKs without a real database. It must actually round-trip what it is given:
+// EnsureOrgKey reads a freshly stored DEK back before caching it, so a store
+// that swallows writes is (correctly) rejected as a broken store.
+type memTestStore struct {
+	mu   sync.Mutex
+	data map[string][]byte
+}
 
-func (memTestStore) LoadDEK(context.Context, string) ([]byte, bool, error) { return nil, false, nil }
-func (memTestStore) SaveDEK(context.Context, string, []byte) error         { return nil }
+func newMemTestStore() *memTestStore {
+	return &memTestStore{data: map[string][]byte{}}
+}
+
+func (s *memTestStore) LoadDEK(_ context.Context, orgUID string) ([]byte, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	v, ok := s.data[orgUID]
+
+	return v, ok, nil
+}
+
+func (s *memTestStore) SaveDEK(_ context.Context, orgUID string, wrapped []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data[orgUID] = wrapped
+
+	return nil
+}
 
 func TestBuildMemorySnapshot(t *testing.T) {
 	t.Parallel()
@@ -36,7 +60,7 @@ func TestBuildMemorySnapshot(t *testing.T) {
 
 	// 32-byte key so encryption is enabled and DEKs get cached.
 	key := make([]byte, 32)
-	cred, err := credentials.NewService(key, memTestStore{})
+	cred, err := credentials.NewService(key, newMemTestStore())
 	r.NoError(err)
 	r.NoError(cred.EnsureOrgKey(context.Background(), "org-a"))
 	r.NoError(cred.EnsureOrgKey(context.Background(), "org-b"))
@@ -171,4 +195,106 @@ func TestGetMemoryAuthMatrix(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMemorySnapshotBreakdownShape pins the 1a additions: the new sections are
+// present, camelCase, and — on a machine with no /proc and no cgroup (macOS
+// dev, which is where this test usually runs) — report present=false rather
+// than failing the request.
+func TestMemorySnapshotBreakdownShape(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	srv := &Server{}
+	snap := srv.buildMemorySnapshot(prometheus.DefaultGatherer)
+
+	data, err := json.Marshal(memorySnapshotResponse{Data: snap})
+	r.NoError(err)
+
+	var decoded struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	r.NoError(json.Unmarshal(data, &decoded))
+
+	// Existing sections must survive untouched — this endpoint has consumers.
+	for _, key := range []string{"runtime", "process", "subsystems", "build"} {
+		r.Contains(decoded.Data, key)
+	}
+	// ...alongside the new ones.
+	for _, key := range []string{"cgroup", "derived", "sample"} {
+		r.Contains(decoded.Data, key)
+	}
+
+	var proc map[string]json.RawMessage
+	r.NoError(json.Unmarshal(decoded.Data["process"], &proc))
+	r.Contains(proc, "rssBytes") // the original field keeps its name
+	r.Contains(proc, "status")
+	r.Contains(proc, "smaps")
+
+	var status map[string]json.RawMessage
+	r.NoError(json.Unmarshal(proc["status"], &status))
+	for _, key := range []string{"present", "rssAnonBytes", "rssFileBytes", "vmHwmBytes", "threads"} {
+		r.Contains(status, key)
+	}
+	r.NotContains(status, "rss_anon_bytes")
+
+	var rt map[string]json.RawMessage
+	r.NoError(json.Unmarshal(decoded.Data["runtime"], &rt))
+	r.Contains(rt, "classes")
+
+	var classes map[string]json.RawMessage
+	r.NoError(json.Unmarshal(rt["classes"], &classes))
+	for _, key := range []string{"totalBytes", "heapObjectsBytes", "heapReleasedBytes", "osStacksBytes", "heapLiveBytes"} {
+		r.Contains(classes, key)
+	}
+
+	// runtime/metrics works everywhere, so the Go side of the off-heap
+	// subtraction is always populated — even where /proc is not.
+	r.Positive(snap.Runtime.Classes.TotalBytes)
+	r.Equal(snap.Runtime.Classes.TotalBytes-snap.Runtime.Classes.HeapReleasedBytes, snap.Derived.GoResidentBytes)
+
+	if !snap.Process.Status.Present {
+		// No /proc: the derived off-heap number must declare itself unknown
+		// rather than pass a fabricated zero off as a measurement.
+		r.False(snap.Derived.OffHeapKnown)
+		r.Zero(snap.Derived.OffHeapBytes)
+	}
+}
+
+// TestMemorySnapshotFloorMode pins ?gc=1: the sample mode is reported, and the
+// two modes are distinguishable in the payload so nobody compares a floor
+// reading with a steady-state one by accident.
+func TestMemorySnapshotFloorMode(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	srv := &Server{}
+
+	steady := srv.buildMemorySnapshotMode(prometheus.DefaultGatherer, false)
+	r.Equal("steady", steady.Sample.Mode)
+	r.False(steady.Sample.GCForced)
+	r.False(steady.Sample.TakenAt.IsZero())
+
+	floor := srv.buildMemorySnapshotMode(prometheus.DefaultGatherer, true)
+	r.Equal("floor", floor.Sample.Mode)
+	r.True(floor.Sample.GCForced)
+	// A forced GC ran, so the cycle counter must have advanced.
+	r.Greater(floor.Runtime.NumGC, steady.Runtime.NumGC)
+}
+
+func TestWantsFloorMode(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, query := range []string{"gc=1", "gc=true", "gc=yes"} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/mgmt/memory?"+query, nil)
+		r.True(wantsFloorMode(req), query)
+	}
+	for _, query := range []string{"", "gc=0", "gc=false", "gc=maybe"} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/mgmt/memory?"+query, nil)
+		r.False(wantsFloorMode(req), query)
+	}
+	r.False(wantsFloorMode(nil))
 }

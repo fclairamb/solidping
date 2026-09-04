@@ -42,11 +42,9 @@ func TestTLSStorage_Postgres(t *testing.T) {
 		t.Skipf("embedded postgres init failed: %v", initErr)
 	}
 
-	// The embedded server runs with max_connections=10 (3 of them reserved for
-	// superusers) and NewEmbedded does not apply pool limits, so bound the pool
-	// here: the lock race below wants real concurrent writers, not 16 raw
-	// connections and a "too many clients" failure that proves nothing.
-	s.DB().SetMaxOpenConns(4)
+	// NewEmbedded now bounds the pool itself (MaxOpenConns: 5, comfortably
+	// under the embedded server's 7 non-superuser connections) — see spec
+	// 2026-09-04-04 — so this suite no longer needs to hand-bound it.
 
 	const key = "certificates/acme-v02/status.acme.com/status.acme.com.key"
 

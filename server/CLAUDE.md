@@ -20,6 +20,15 @@ This file provides backend-specific guidance for the SolidPing monitoring system
 - **Run tests**: `make gotest` (uses gotestsum for enhanced test output)
 - **Generate code**: `make generate` (includes OpenAPI client generation and frontend codegen)
 - **Lint**: `make lint` (uses golangci-lint)
+- **Measure memory**: `make bench-memory` (`cmd/membench`) — boots a fresh
+  server per repetition, samples `/api/mgmt/memory` on a fixed protocol and
+  reports the inter-run spread, so a claimed reduction can be told apart from
+  GC phase. `BENCH_MEM_MODE=docker` runs the shipped image under a real cgroup
+  limit (build it from the working tree with `make bench-memory-image`) and is
+  the only authoritative mode. Runbook: `wiki/runbooks/memory-profiling.md`.
+  The measurement core (median/p95/spread and the "not significant" rule) is
+  pure, unit-tested code in `internal/membench`; `internal/meminfo` holds the
+  `/proc` + cgroup parsers behind `/api/mgmt/memory`.
 - **Set log level**: `LOG_LEVEL=debug ./solidping serve` (valid values: debug, info, warn, error)
 
 ## Architecture Overview

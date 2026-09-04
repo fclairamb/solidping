@@ -20,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
-	"github.com/uptrace/bun/driver/sqliteshim"
 	"github.com/uptrace/bun/migrate"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -29,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
+	"github.com/fclairamb/solidping/server/internal/db/sqlitedriver"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
@@ -46,6 +46,14 @@ var errResourceNotInSection = errors.New("resource not in section")
 // errSectionNotInPage signals that a status-page section reorder request
 // referenced a section UID that is not part of the targeted page.
 var errSectionNotInPage = errors.New("section not in status page")
+
+// errNoSQLiteDriver signals a build with neither SQLite driver linked: cgo off
+// on a platform modernc.org/sqlite does not support. Every other backend still
+// works, so this is an open-time error naming the fix rather than a link
+// failure.
+var errNoSQLiteDriver = errors.New(
+	"this build links no SQLite driver (cgo is off and modernc.org/sqlite does not support this platform) — " +
+		"rebuild with CGO_ENABLED=1 -tags cgosqlite, or use the postgres backend")
 
 // errForeignKeysNotEnabled signals that a freshly opened SQLite connection is
 // not enforcing foreign keys, which would let a hard delete leave orphaned
@@ -147,7 +155,11 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 			dbPath, foreignKeysDSNParam())
 	}
 
-	sqldb, err := sql.Open(sqliteshim.ShimName, connStr)
+	if sqlitedriver.Name == "" {
+		return nil, errNoSQLiteDriver
+	}
+
+	sqldb, err := sql.Open(sqlitedriver.Name, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
@@ -200,17 +212,11 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 }
 
 // foreignKeysDSNParam returns the connection-string parameter that turns on
-// foreign-key enforcement for whichever SQLite driver sqliteshim resolved at
-// build time. The Cgo mattn driver (registered as "sqlite3") reads
-// `_foreign_keys=on`; the pure-Go modernc driver (registered as "sqlite")
-// applies `_pragma=foreign_keys(1)` on every connection it opens. Selecting by
-// driver name keeps enforcement working regardless of the build target.
+// foreign-key enforcement for the SQLite driver this build linked. The choice
+// lives in internal/db/sqlitedriver, which links exactly one driver rather than
+// both.
 func foreignKeysDSNParam() string {
-	if sqliteshim.DriverName() == "sqlite3" {
-		return "_foreign_keys=on"
-	}
-
-	return "_pragma=foreign_keys(1)"
+	return sqlitedriver.ForeignKeysDSNParam()
 }
 
 // verifyForeignKeysEnabled reads PRAGMA foreign_keys back and fails fast if

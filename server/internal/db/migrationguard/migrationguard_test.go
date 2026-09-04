@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
-	"github.com/uptrace/bun/driver/sqliteshim"
 
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
+	"github.com/fclairamb/solidping/server/internal/db/sqlitedriver"
 )
 
 func sum(body string) string {
@@ -124,7 +124,7 @@ func newGuardTestDB(t *testing.T, applied []string, recorded map[string]string) 
 
 	ctx := context.Background()
 
-	sqldb, err := sql.Open(sqliteshim.ShimName, ":memory:")
+	sqldb, err := sql.Open(sqlitedriver.Name, ":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqldb.Close() })
 

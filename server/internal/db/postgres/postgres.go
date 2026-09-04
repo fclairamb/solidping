@@ -188,6 +188,26 @@ var _ db.Service = (*Service)(nil)
 // New creates a new PostgreSQL service with an external database.
 func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if cfg.Embedded {
+		// This branch serves SP_DATABASE_TYPE=postgres-embedded for real —
+		// main.go's openDB/runMigrations and internal/app/server.go all reach
+		// here in a genuine deployment, not just in tests.
+		//
+		// cfg's pool fields (MaxOpenConns, MaxIdleConns, ConnMaxLifetime,
+		// ConnMaxIdleTime) are ignored on this branch ON PURPOSE: NewEmbedded
+		// applies its own fixed, conservative bound (see applyPoolLimits call
+		// there) sized against the embedded Postgres server's own
+		// max_connections=10, which this same process also starts and
+		// controls. That ceiling, not whatever a caller happened to set on
+		// Config, is the binding constraint — honoring a larger
+		// cfg.MaxOpenConns here would just reopen the 53300 "too many clients
+		// already" failure the fixed bound exists to prevent. Raising
+		// embedded throughput requires raising both the client pool bound
+		// (NewEmbedded's applyPoolLimits call) and the server's
+		// max_connections together; changing only one reintroduces the bug in
+		// one direction or the other. So silently dropping cfg's pool fields
+		// is intentional rather than an oversight. (It used to be an
+		// oversight: see spec 2026-09-04-04, including its amendment — this
+		// is a real production code path, not test-only.)
 		suite := cfg.RunMode
 		if suite == "" {
 			suite = "app"
@@ -259,6 +279,21 @@ func NewEmbedded(
 	time.Sleep(1 * time.Second)
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(inst.DSN())))
+
+	// Bound the pool by default: the embedded server above is started with
+	// max_connections=10, three of which Postgres reserves for superusers,
+	// leaving 7 available. Left unbounded (database/sql's default is
+	// unlimited), a 50-goroutine concurrency test asks for ~50 backends and
+	// everything past the 7th is refused with `53300 sorry, too many clients
+	// already` — a test-infrastructure failure that reads exactly like a
+	// product bug (spec 2026-09-04-04). Reuse applyPoolLimits, the same
+	// function the non-embedded New path uses, so there is exactly one place
+	// that bounds a pool. NewEmbedded's positional signature is shared by many
+	// callers and intentionally not widened for this — the default lives here
+	// instead of another parameter; a caller needing a different bound can
+	// still call sqldb.SetMaxOpenConns via the returned Service's DB().
+	applyPoolLimits(sqldb, &Config{MaxOpenConns: 5, MaxIdleConns: 2})
+
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed for metrics; verbose slog logging is opt-in.

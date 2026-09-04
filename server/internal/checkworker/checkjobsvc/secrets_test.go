@@ -3,6 +3,7 @@ package checkjobsvc_test
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"io"
 	"sync"
 	"testing"
@@ -258,4 +259,62 @@ func TestMergeJobSecretsFailedOnBadEnvelope(t *testing.T) {
 	r.Equal(checkjobsvc.SecretMergeFailed, outcome)
 	r.ErrorIs(err, checkjobsvc.ErrSecretsUndecryptable)
 	r.Nil(job.Config["password"], "no secret may leak out of a failed decrypt")
+}
+
+// errBadCiphertext stands in for a per-check envelope failure with a healthy
+// org key.
+var errBadCiphertext = errors.New("bad ciphertext")
+
+// TestMergeJobSecretsNamesTheOrgKeyLayer pins the failure taxonomy the incident
+// asked for: when the ORG key itself cannot be opened — a worker holding the
+// wrong master key, or an unreadable DEK row — the reason must say so instead
+// of telling the operator to re-save the check, which cannot possibly help
+// because saving needs the same key.
+func TestMergeJobSecretsNamesTheOrgKeyLayer(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	// One shared DEK row, two different master keys: the reader can load the
+	// org's DEK envelope but cannot unwrap it.
+	store := newMemDEKStore()
+
+	writerKey := make([]byte, 32)
+	_, err := io.ReadFull(rand.Reader, writerKey)
+	r.NoError(err)
+
+	writer, err := credentials.NewService(writerKey, store)
+	r.NoError(err)
+
+	envelope, err := writer.EncryptForOrg(ctx, secretsTestOrg, map[string]any{"password": "s3cr3t"})
+	r.NoError(err)
+
+	readerKey := make([]byte, 32)
+	_, err = io.ReadFull(rand.Reader, readerKey)
+	r.NoError(err)
+
+	reader, err := credentials.NewService(readerKey, store)
+	r.NoError(err)
+
+	job := &models.CheckJob{
+		OrganizationUID: secretsTestOrg,
+		Config:          models.JSONMap{"url": "https://x.test"},
+		ConfigPrivate:   &envelope,
+		Encrypted:       true,
+	}
+
+	outcome, err := checkjobsvc.MergeJobSecrets(ctx, reader, job)
+	r.Equal(checkjobsvc.SecretMergeFailed, outcome)
+	r.ErrorIs(err, checkjobsvc.ErrSecretsOrgKeyUndecryptable)
+	r.NotErrorIs(err, checkjobsvc.ErrSecretsUndecryptable,
+		"an org-key failure must not carry the re-save-the-check advice")
+	r.Equal(checkjobsvc.ErrSecretsOrgKeyUndecryptable, checkjobsvc.ResultReason(outcome, err))
+	r.Nil(job.Config["password"], "no secret may leak out of a failed decrypt")
+
+	// The other two branches keep their own reasons.
+	r.Equal(checkjobsvc.ErrSecretsUnavailable,
+		checkjobsvc.ResultReason(checkjobsvc.SecretMergeUnavailable, err))
+	r.Equal(checkjobsvc.ErrSecretsUndecryptable,
+		checkjobsvc.ResultReason(checkjobsvc.SecretMergeFailed, errBadCiphertext))
 }

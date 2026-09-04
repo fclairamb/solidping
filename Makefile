@@ -197,7 +197,6 @@ BENCH_CHECKS   ?= 200
 BENCH_DURATION ?= 2m
 BENCH_PERIOD   ?= 10s
 BENCH_PORT     ?= 4001
-BENCH_PG_PORT  ?= 5435
 BENCH_DATA     := bench-data
 BENCH_OUT      := bench-results
 
@@ -210,7 +209,7 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 	@lsof -ti :$(BENCH_PORT) | xargs kill 2>/dev/null || true
 	@SP_RUNMODE=test \
 		SP_DB_TYPE=sqlite \
-		SP_DB_DATA_DIR=$(BENCH_DATA)/sqlite \
+		SP_DB_DIR=$(BENCH_DATA)/sqlite \
 		SP_DB_RESET=true \
 		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
 		LOG_LEVEL=warn \
@@ -224,14 +223,15 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 		-period $(BENCH_PERIOD) \
 		-output-dir $(BENCH_OUT)
 
+# No BENCH_DATA directory here: embedded PostgreSQL owns its data directory (a
+# temp dir created by internal/db/postgres/embeddedpg) and listens on a fixed
+# port, so neither is configurable from the environment.
 bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-backed test server (embedded PG)
 	@echo "==> Bench: PostgreSQL (embedded)"
-	@mkdir -p $(BENCH_DATA)/pg $(BENCH_OUT)
+	@mkdir -p $(BENCH_OUT)
 	@lsof -ti :$(BENCH_PORT) | xargs kill 2>/dev/null || true
 	@SP_RUNMODE=test \
 		SP_DB_TYPE=postgres-embedded \
-		SP_DB_EMBEDDED_DIR=$(BENCH_DATA)/pg \
-		SP_DB_PORT=$(BENCH_PG_PORT) \
 		SP_DB_RESET=true \
 		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
 		LOG_LEVEL=warn \
@@ -244,6 +244,50 @@ bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-b
 		-duration $(BENCH_DURATION) \
 		-period $(BENCH_PERIOD) \
 		-output-dir $(BENCH_OUT)
+
+# Memory bench knobs (override per invocation, e.g.
+# `make bench-memory BENCH_MEM_MODE=docker BENCH_MEM_SCENARIOS=all`).
+BENCH_MEM_MODE      ?= local
+BENCH_MEM_SCENARIOS ?= idle-all-sqlite,checks-500,docs-crawl
+BENCH_MEM_LABEL     ?= baseline
+BENCH_MEM_WARMUP    ?= 5m
+BENCH_MEM_INTERVAL  ?= 5s
+BENCH_MEM_DURATION  ?= 5m
+BENCH_MEM_REPS      ?= 3
+BENCH_MEM_IMAGE     ?= solidping-bench:local
+BENCH_MEM_MEMORY    ?= 1g
+BENCH_MEM_CPUS      ?= 1
+BENCH_MEM_PORT      ?= 4009
+BENCH_MEM_COMPARE   ?=
+
+build-membench: ## Build the memory bench harness
+	@echo "Building membench..."
+	@cd $(BACK_DIR) && go build -o ../bin/membench ./cmd/membench
+	@echo "Binary created: ./bin/membench"
+
+bench-memory-image: ## Build a Linux bench image from the CURRENT tree (needs `make build` first for the embedded assets)
+	@echo "==> Building $(BENCH_MEM_IMAGE) from the working tree"
+	@docker build -f Dockerfile.bench -t $(BENCH_MEM_IMAGE) $(BACK_DIR)
+
+bench-memory: build-backend build-membench ## Measure memory (see wiki/runbooks/memory-profiling.md); BENCH_MEM_MODE=docker for the authoritative run
+	@echo "==> Memory bench: mode=$(BENCH_MEM_MODE) scenarios=$(BENCH_MEM_SCENARIOS) reps=$(BENCH_MEM_REPS)"
+	@mkdir -p $(BENCH_OUT)
+	@lsof -ti :$(BENCH_MEM_PORT) | xargs kill 2>/dev/null || true
+	./bin/membench \
+		-mode $(BENCH_MEM_MODE) \
+		-image $(BENCH_MEM_IMAGE) \
+		-binary ./$(APP_NAME) \
+		-scenarios $(BENCH_MEM_SCENARIOS) \
+		-label $(BENCH_MEM_LABEL) \
+		-warmup $(BENCH_MEM_WARMUP) \
+		-interval $(BENCH_MEM_INTERVAL) \
+		-duration $(BENCH_MEM_DURATION) \
+		-reps $(BENCH_MEM_REPS) \
+		-memory $(BENCH_MEM_MEMORY) \
+		-cpus $(BENCH_MEM_CPUS) \
+		-port $(BENCH_MEM_PORT) \
+		-out-dir $(BENCH_OUT) \
+		$(if $(BENCH_MEM_COMPARE),-compare $(BENCH_MEM_COMPARE),)
 
 run: build ## Build and run the application
 	@echo "Running application..."

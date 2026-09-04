@@ -1021,7 +1021,7 @@ func (h *Handler) sealSecretsFor(
 		h.logger.ErrorContext(ctx, "cannot seal credentials for system agent",
 			"error", openErr, "kind", kind, "uid", uid, "agent", agent.UID)
 
-		return nil, checkjobsvc.ErrSecretsUndecryptable
+		return nil, checkjobsvc.ResultReason(outcome, openErr)
 	}
 
 	sealed, sealErr := credentials.SealForRecipients([]string{agent.X25519PublicKey}, secrets)

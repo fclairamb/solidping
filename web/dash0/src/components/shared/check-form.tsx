@@ -64,7 +64,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { NotifyViaSection } from "@/components/checks/form/sections/notifications";
 import { EscalationSelect } from "@/components/checks/form/sections/escalation";
-import { DependsOnFormSection } from "@/components/checks/form/sections/dependencies";
+import {
+  DependsOnFormSection,
+  type DependencyParentDraft,
+} from "@/components/checks/form/sections/dependencies";
+import type { DependencyDraft } from "@/lib/dependency-diff";
 import { checkTypeRegistry, authFieldsRegistry, advancedFieldsRegistry } from "@/components/checks/form/types";
 import { CheckFormFieldsProvider } from "@/components/checks/form/types/context";
 import { TunnelSelect } from "@/components/checks/form/tunnel-select";
@@ -302,8 +306,10 @@ export interface CheckFormData {
   recoveryPeriodSeconds?: number;
   labels?: Record<string, string>;
   connectionUids?: string[];
-  dependsOnParentUids?: string[];
-  initialDependsOnParentUids?: string[];
+  /** Staged "depends on" edges, with the kind + description for each. */
+  dependsOn?: DependencyDraft[];
+  /** The same list as it stood when the form loaded, so a caller can diff. */
+  initialDependsOn?: DependencyDraft[];
   /** "" = inherit (group → org default → none); a UID assigns that policy. */
   escalationPolicyUid?: string;
 }
@@ -458,13 +464,22 @@ export function CheckForm({
     mode === "edit" ? initialData?.uid : undefined,
   );
   const [dependsOnParents, setDependsOnParents] = useState<
-    { uid: string; label: string }[] | null
+    DependencyParentDraft[] | null
   >(null);
-  const initialParentUids = useMemo(
-    () => (existingDeps?.dependsOn ?? []).map((e) => e.parentCheck.uid),
+  const initialDependsOn = useMemo<DependencyDraft[]>(
+    () =>
+      (existingDeps?.dependsOn ?? []).map((e) => ({
+        parentCheckUid: e.parentCheck.uid,
+        kind: e.kind,
+        description: e.description ?? "",
+      })),
     [existingDeps],
   );
 
+  // Seed the staged edges from the API *including* each edge's kind and
+  // description. Dropping them here is what used to make the edit page a
+  // weaker editor than the (now read-only) detail card: the form could not
+  // show a hard edge from a soft one, so saving re-created everything as hard.
   useEffect(() => {
     if (dependsOnParents !== null) return;
     if (mode === "create") {
@@ -476,20 +491,30 @@ export function CheckForm({
         existingDeps.dependsOn.map((e) => ({
           uid: e.parentCheck.uid,
           label: resolveCheckRefLabel(e.parentCheck),
+          kind: e.kind,
+          description: e.description ?? "",
         })),
       );
     }
   }, [mode, existingDeps, dependsOnParents]);
 
-  function addParent(uid: string, label: string) {
+  function addParent(parent: DependencyParentDraft) {
     setDependsOnParents((prev) => {
       const cur = prev ?? [];
-      if (cur.some((p) => p.uid === uid)) return cur;
-      return [...cur, { uid, label }];
+      if (cur.some((p) => p.uid === parent.uid)) return cur;
+      return [...cur, parent];
     });
   }
   function removeParent(uid: string) {
     setDependsOnParents((prev) => (prev ?? []).filter((p) => p.uid !== uid));
+  }
+  function updateParent(
+    uid: string,
+    patch: Partial<Pick<DependencyParentDraft, "kind" | "description">>,
+  ) {
+    setDependsOnParents((prev) =>
+      (prev ?? []).map((p) => (p.uid === uid ? { ...p, ...patch } : p)),
+    );
   }
   const [period, setPeriod] = useState(
     canonicalPeriodHMS(initialData?.period) || getDefaultPeriodHMS(initialType),
@@ -876,8 +901,12 @@ export function CheckForm({
         ...(connectionUids !== null ? { connectionUids } : {}),
         ...(dependsOnParents !== null
           ? {
-              dependsOnParentUids: dependsOnParents.map((p) => p.uid),
-              initialDependsOnParentUids: initialParentUids,
+              dependsOn: dependsOnParents.map((p) => ({
+                parentCheckUid: p.uid,
+                kind: p.kind,
+                description: p.description,
+              })),
+              initialDependsOn,
             }
           : {}),
       });
@@ -918,8 +947,19 @@ export function CheckForm({
   const orgSummary = orgSummaryParts.join(" · ") || "slug auto-generated";
 
   const depCount = dependsOnParents?.length ?? 0;
+  const hardDepCount = (dependsOnParents ?? []).filter(
+    (p) => p.kind === "hard",
+  ).length;
+  const softDepCount = depCount - hardDepCount;
   const depsSummary =
-    depCount > 0 ? `${depCount} parent${depCount === 1 ? "" : "s"}` : "None";
+    depCount > 0
+      ? [
+          hardDepCount > 0 ? `${hardDepCount} hard` : null,
+          softDepCount > 0 ? `${softDepCount} soft` : null,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "None";
 
   const incidentCustomized =
     confirmationPeriodSeconds.trim() !== "" ||
@@ -1525,6 +1565,7 @@ export function CheckForm({
               parents={dependsOnParents ?? []}
               onAdd={addParent}
               onRemove={removeParent}
+              onChange={updateParent}
             />
           </CollapsibleSection>
 

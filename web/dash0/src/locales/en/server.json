@@ -15,7 +15,8 @@
     "slack": "Slack",
     "analytics": "Analytics",
     "discord": "Discord",
-    "entitlements": "Entitlements"
+    "entitlements": "Entitlements",
+    "notifications": "Notifications"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -429,5 +430,27 @@
       "admin": "Admin override",
       "billing": "Billing sync"
     }
+  },
+  "notifications": {
+    "title": "Operator notifications",
+    "description": "Tell chosen super admins about instance events — a new support message, a new signup — through the notification routes they already set up for themselves (email, Telegram, Slack DM, web push, SMS).",
+    "enabled": "Enable operator notifications",
+    "enabledHelp": "Master switch. Turning it off stops every delivery; the events themselves keep happening and stay in the logs.",
+    "columnUser": "Super admin",
+    "columnRoutes": "Delivered on",
+    "events": {
+      "supportMessage": "Support message",
+      "userRegistered": "New signup"
+    },
+    "noRoutes": "No notification routes — this admin must add one before anything is delivered",
+    "noRoutesSelf": "No notification routes — set one up on your notifications page",
+    "noRecipients": "Operator notifications are on, but nobody is subscribed to anything. Nothing will be delivered.",
+    "noSuperAdmins": "No super admin on this instance yet.",
+    "notSuperAdmin": "No longer a super admin — skipped at delivery",
+    "superAdminOnly": "Only super admins can be recipients: a notice may quote a customer's support message, which only a super admin may open.",
+    "sendTest": "Send me a test",
+    "testDelivered_one": "Test notice delivered on {{count}} route.",
+    "testDelivered_other": "Test notice delivered on {{count}} routes.",
+    "testUndeliverable": "Nothing was delivered. Check that you have at least one enabled notification route."
   }
 }

@@ -36,6 +36,7 @@
     "dismiss": "Ocultar la lista de primeros pasos",
     "doneLabel": "Completado",
     "todoLabel": "Pendiente",
+    "nextUp": "Siguiente",
     "reenableHint": "¿La ocultaste sin querer? Vuelve a mostrarla desde Cuenta → Perfil.",
     "allSet": {
       "title": "Todo listo",

@@ -11,6 +11,7 @@
 package credentials
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -38,6 +39,18 @@ var (
 	ErrUnknownVersion   = errors.New("unknown envelope version")
 	ErrDEKNotLoaded     = errors.New("org DEK not loaded after ensure")
 	ErrDEKBadType       = errors.New("org DEK has unexpected type in cache")
+	// ErrOrgKeyUnavailable marks every failure to obtain the ORG's key, as
+	// opposed to a failure to open one particular envelope with a key that is
+	// fine. Callers use it to tell an operator problem (wrong master key on
+	// this process, unreadable DEK row) apart from a per-check problem, so the
+	// user-facing advice stops being "re-save the check's credentials" when
+	// re-saving cannot possibly help.
+	ErrOrgKeyUnavailable = errors.New("organization encryption key could not be opened")
+	// ErrDEKRoundTrip marks a freshly generated DEK that did not survive a
+	// reload through the store. It means the storage shape changed under us;
+	// failing here keeps the damage to one request instead of poisoning every
+	// other process for the lifetime of the row.
+	ErrDEKRoundTrip = errors.New("newly stored org DEK did not survive a reload")
 )
 
 // envelopeJSON is the on-disk shape of an encrypted blob. The separation of
@@ -154,13 +167,13 @@ func (s *service) EnsureOrgKey(ctx context.Context, orgUID string) error {
 
 	wrapped, found, err := s.store.LoadDEK(ctx, orgUID)
 	if err != nil {
-		return fmt.Errorf("load org DEK: %w", err)
+		return fmt.Errorf("%w: load org DEK: %w", ErrOrgKeyUnavailable, err)
 	}
 
 	if found {
 		dek, dekErr := s.decryptWith(s.kek, wrapped)
 		if dekErr != nil {
-			return fmt.Errorf("unwrap org DEK: %w", dekErr)
+			return fmt.Errorf("%w: unwrap org DEK: %w", ErrOrgKeyUnavailable, dekErr)
 		}
 
 		s.dekCache.Store(orgUID, dek)
@@ -170,19 +183,54 @@ func (s *service) EnsureOrgKey(ctx context.Context, orgUID string) error {
 
 	dek := make([]byte, 32)
 	if _, randErr := io.ReadFull(rand.Reader, dek); randErr != nil {
-		return fmt.Errorf("generate org DEK: %w", randErr)
+		return fmt.Errorf("%w: generate org DEK: %w", ErrOrgKeyUnavailable, randErr)
 	}
 
 	wrappedEnvelope, err := s.encryptWith(s.kek, dek)
 	if err != nil {
-		return fmt.Errorf("wrap new org DEK: %w", err)
+		return fmt.Errorf("%w: wrap new org DEK: %w", ErrOrgKeyUnavailable, err)
 	}
 
 	if err := s.store.SaveDEK(ctx, orgUID, wrappedEnvelope); err != nil {
-		return fmt.Errorf("persist new org DEK: %w", err)
+		return fmt.Errorf("%w: persist new org DEK: %w", ErrOrgKeyUnavailable, err)
+	}
+
+	if err := s.verifyStoredDEK(ctx, orgUID, dek); err != nil {
+		return err
 	}
 
 	s.dekCache.Store(orgUID, dek)
+
+	return nil
+}
+
+// verifyStoredDEK reloads a just-written DEK through the store and unwraps it
+// with the KEK, before anything is cached.
+//
+// Without this the in-memory cache hides a storage-shape bug perfectly: the
+// process that generated the key keeps encrypting under the cached bytes and
+// sees nothing wrong, while every other process — and this one after its next
+// restart — cannot open the row. That is precisely how a write/read mismatch
+// stayed invisible for months. A round-trip failure must therefore break the
+// FIRST encrypt, loudly, rather than silently arm a cross-process outage.
+func (s *service) verifyStoredDEK(ctx context.Context, orgUID string, dek []byte) error {
+	stored, found, err := s.store.LoadDEK(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("%w: %w: reload: %w", ErrOrgKeyUnavailable, ErrDEKRoundTrip, err)
+	}
+
+	if !found {
+		return fmt.Errorf("%w: %w: not found after save", ErrOrgKeyUnavailable, ErrDEKRoundTrip)
+	}
+
+	reloaded, err := s.decryptWith(s.kek, stored)
+	if err != nil {
+		return fmt.Errorf("%w: %w: unwrap org DEK: %w", ErrOrgKeyUnavailable, ErrDEKRoundTrip, err)
+	}
+
+	if !bytes.Equal(reloaded, dek) {
+		return fmt.Errorf("%w: %w: reloaded key differs", ErrOrgKeyUnavailable, ErrDEKRoundTrip)
+	}
 
 	return nil
 }
@@ -238,21 +286,24 @@ func (s *service) DecryptForOrg(ctx context.Context, orgUID string, envelope str
 		return nil, ErrDisabled
 	}
 
-	if err := s.EnsureOrgKey(ctx, orgUID); err != nil {
-		return nil, err
+	plain, usedCachedDEK, err := s.openWithOrgKey(ctx, orgUID, envelope)
+	if err != nil && usedCachedDEK {
+		// The cached DEK is the only thing we can be wrong about here that a
+		// reload can fix: the row may have been rewritten (rotation, repair)
+		// since this process cached it. Drop that ONE entry and cold-reload
+		// EXACTLY once — no loop, no cache-wide flush. The absence of any
+		// invalidation is why the last bad DEK write was permanent and
+		// invisible to the process that made it.
+		s.dekCache.Delete(orgUID)
+
+		// Reload, never regenerate: if the row has gone missing, minting a new
+		// DEK here would make every already-encrypted secret for this org
+		// permanently unopenable. A failed reload keeps the original error.
+		if reloadErr := s.reloadOrgKey(ctx, orgUID); reloadErr == nil {
+			plain, _, err = s.openWithOrgKey(ctx, orgUID, envelope)
+		}
 	}
 
-	dekRaw, ok := s.dekCache.Load(orgUID)
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrDEKNotLoaded, orgUID)
-	}
-
-	dek, dekOk := dekRaw.([]byte)
-	if !dekOk {
-		return nil, ErrDEKBadType
-	}
-
-	plain, err := s.decryptWith(dek, []byte(envelope))
 	if err != nil {
 		return nil, err
 	}
@@ -263,6 +314,58 @@ func (s *service) DecryptForOrg(ctx context.Context, orgUID string, envelope str
 	}
 
 	return out, nil
+}
+
+// reloadOrgKey re-reads the org DEK from the store and caches it. Unlike
+// EnsureOrgKey it NEVER generates a key: it exists for the invalidation retry,
+// where an absent row means "something is wrong", not "this org has no key
+// yet". Generating there would orphan every secret already encrypted for the
+// org.
+func (s *service) reloadOrgKey(ctx context.Context, orgUID string) error {
+	wrapped, found, err := s.store.LoadDEK(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("%w: load org DEK: %w", ErrOrgKeyUnavailable, err)
+	}
+
+	if !found {
+		return fmt.Errorf("%w: org DEK row is gone", ErrOrgKeyUnavailable)
+	}
+
+	dek, err := s.decryptWith(s.kek, wrapped)
+	if err != nil {
+		return fmt.Errorf("%w: unwrap org DEK: %w", ErrOrgKeyUnavailable, err)
+	}
+
+	s.dekCache.Store(orgUID, dek)
+
+	return nil
+}
+
+// openWithOrgKey ensures the org DEK is available and opens one envelope with
+// it. The bool reports whether the failure happened while USING the key (as
+// opposed to while obtaining it), which is the only case where dropping the
+// cache entry and reloading could change the outcome.
+func (s *service) openWithOrgKey(ctx context.Context, orgUID, envelope string) ([]byte, bool, error) {
+	if err := s.EnsureOrgKey(ctx, orgUID); err != nil {
+		return nil, false, err
+	}
+
+	dekRaw, ok := s.dekCache.Load(orgUID)
+	if !ok {
+		return nil, false, fmt.Errorf("%w: %s", ErrDEKNotLoaded, orgUID)
+	}
+
+	dek, dekOk := dekRaw.([]byte)
+	if !dekOk {
+		return nil, false, ErrDEKBadType
+	}
+
+	plain, err := s.decryptWith(dek, []byte(envelope))
+	if err != nil {
+		return nil, true, err
+	}
+
+	return plain, false, nil
 }
 
 func (s *service) encryptWith(key, plaintext []byte) ([]byte, error) {

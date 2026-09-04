@@ -143,12 +143,7 @@ func (b *DirectBackend) mergeClaimedSecrets(
 			"error", err, "check_uid", job.CheckUID, "job_uid", job.UID,
 			"organization_uid", job.OrganizationUID)
 
-		reason := checkjobsvc.ErrSecretsUndecryptable
-		if outcome == checkjobsvc.SecretMergeUnavailable {
-			reason = checkjobsvc.ErrSecretsUnavailable
-		}
-
-		b.submitSecretsError(ctx, job, workerUID, reason)
+		b.submitSecretsError(ctx, job, workerUID, checkjobsvc.ResultReason(outcome, err))
 	}
 
 	return out

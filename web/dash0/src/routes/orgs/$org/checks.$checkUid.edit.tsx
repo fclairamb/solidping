@@ -8,9 +8,13 @@ import {
   useRegions,
   useSetCheckConnections,
   useCreateCheckDependency,
+  useUpdateCheckDependency,
   useDeleteCheckDependency,
   useCheckDependencies,
+  useDependencyGraph,
 } from "@/api/hooks";
+import { diffDependencies } from "@/lib/dependency-diff";
+import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckForm } from "@/components/shared/check-form";
@@ -25,7 +29,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
 });
 
 function CheckEditPage() {
-  const { t } = useTranslation("checks");
+  const { t } = useTranslation(["checks", "dependencies"]);
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();
   const { section } = Route.useSearch();
@@ -46,8 +50,10 @@ function CheckEditPage() {
   const updateCheck = useUpdateCheck(org, checkUid);
   const setConnections = useSetCheckConnections(org, checkUid);
   const createDep = useCreateCheckDependency(org, checkUid);
+  const updateDep = useUpdateCheckDependency(org, checkUid);
   const deleteDep = useDeleteCheckDependency(org, checkUid);
   const { data: existingDepsForSync } = useCheckDependencies(org, checkUid);
+  const { data: dependencyGraph } = useDependencyGraph(org);
   const { data: checkGroups } = useCheckGroups(org);
   const { data: regionsData } = useRegions(org);
 
@@ -111,9 +117,9 @@ function CheckEditPage() {
         // onSubmit builder puts in `data` (check-form.tsx) that also belong
         // in UpdateCheckRequest (hooks.ts) — a field added to the form but
         // missed here is silently dropped before the request is ever sent.
-        // `connectionUids`/`dependsOnParentUids`/`initialDependsOnParentUids`
-        // are intentionally excluded: they're not part of UpdateCheckRequest
-        // and are applied separately below via setConnections/createDep/deleteDep.
+        // `connectionUids`/`dependsOn`/`initialDependsOn` are intentionally
+        // excluded: they're not part of UpdateCheckRequest and are applied
+        // separately below via setConnections and the dependency mutations.
         await updateCheck.mutateAsync({
           enabled: data.enabled,
           name: data.name,
@@ -138,23 +144,45 @@ function CheckEditPage() {
         if (data.connectionUids !== undefined) {
           await setConnections.mutateAsync(data.connectionUids);
         }
-        if (data.dependsOnParentUids !== undefined) {
-          const desired = new Set(data.dependsOnParentUids);
-          const currentEdges = existingDepsForSync?.dependsOn ?? [];
-          const currentParentToEdge = new Map(
-            currentEdges.map((e) => [e.parentCheck.uid, e]),
+        if (data.dependsOn !== undefined) {
+          // Three buckets, not two: an edge whose kind or description changed
+          // is a PATCH, and used to be silently dropped — the form could only
+          // add and remove, so retuning hard -> soft was impossible here.
+          const { toAdd, toUpdate, toRemove } = diffDependencies(
+            data.dependsOn,
+            existingDepsForSync?.dependsOn ?? [],
           );
-          const toAdd = data.dependsOnParentUids.filter(
-            (uid) => !currentParentToEdge.has(uid),
-          );
-          const toRemove = currentEdges.filter(
-            (e) => !desired.has(e.parentCheck.uid),
-          );
-          for (const parentUid of toAdd) {
-            await createDep.mutateAsync({
-              parentCheckUid: parentUid,
-              kind: "hard",
-            });
+          for (const draft of toAdd) {
+            try {
+              await createDep.mutateAsync({
+                parentCheckUid: draft.parentCheckUid,
+                kind: draft.kind,
+                description: draft.description || undefined,
+              });
+            } catch (err) {
+              throw mapDependencySaveError(err, t, {
+                graph: dependencyGraph,
+                childUid: checkUid,
+                parentUid: draft.parentCheckUid,
+              });
+            }
+          }
+          for (const edge of toUpdate) {
+            try {
+              // An empty description is sent as "" on purpose: that is how the
+              // API clears one (a dropped field means "leave unchanged").
+              await updateDep.mutateAsync({
+                uid: edge.uid,
+                kind: edge.kind,
+                description: edge.description,
+              });
+            } catch (err) {
+              throw mapDependencySaveError(err, t, {
+                graph: dependencyGraph,
+                childUid: checkUid,
+                parentUid: edge.parentCheckUid,
+              });
+            }
           }
           for (const edge of toRemove) {
             await deleteDep.mutateAsync(edge.uid);

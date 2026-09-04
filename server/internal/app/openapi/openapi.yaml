@@ -173,11 +173,28 @@ paths:
       summary: Runtime memory snapshot
       description: >
         Returns a JSON snapshot of runtime memory (heap / stack / goroutines /
-        GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit
-        entries, event listeners) and build facts (cgo, SQLite driver, Go
-        version). Super-admin only; the raw pprof surface stays on the
+        GC and the runtime/metrics memory classes), the process RSS breakdown
+        from /proc (anon / file / shmem split, peak, threads, smaps_rollup
+        Pss), the container's own cgroup accounting, the derived off-heap gap,
+        suspect-subsystem cardinalities (DEK cache, rate-limit entries, event
+        listeners) and build facts (cgo, SQLite driver, Go version).
+        Linux-only sections report `present: false` on other platforms rather
+        than failing. Super-admin only; the raw pprof surface stays on the
         localhost-bound profiler server.
       operationId: getMemory
+      parameters:
+        - name: gc
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["1", "true", "yes"]
+          description: >
+            Force a GC and return free pages to the OS before sampling, giving
+            the *live floor* instead of the steady state. Reported back as
+            `sample.mode = floor`; the two modes are different measurements and
+            must not be compared with each other. Opt-in because the forced
+            collection is a real pause.
       security:
         - bearerAuth: []
       responses:
@@ -8847,6 +8864,124 @@ components:
           description: Effective GOMEMLIMIT soft cap; 0 means unlimited.
         goMaxProcs:
           type: integer
+        classes:
+          $ref: "#/components/schemas/MemoryRuntimeClasses"
+
+    MemoryRuntimeClasses:
+      type: object
+      description: >
+        The runtime/metrics `/memory/classes/*` breakdown plus `/gc/heap/live`.
+        Unlike MemStats it accounts for every byte the runtime obtained from the
+        OS, which is what makes the off-heap subtraction meaningful.
+      properties:
+        totalBytes: { type: integer, format: int64 }
+        heapObjectsBytes: { type: integer, format: int64 }
+        heapUnusedBytes: { type: integer, format: int64 }
+        heapFreeBytes: { type: integer, format: int64 }
+        heapReleasedBytes: { type: integer, format: int64 }
+        osStacksBytes: { type: integer, format: int64 }
+        metadataBytes: { type: integer, format: int64 }
+        otherBytes: { type: integer, format: int64 }
+        profilingBucketsBytes: { type: integer, format: int64 }
+        heapLiveBytes: { type: integer, format: int64 }
+
+    MemoryProcStatus:
+      type: object
+      description: >
+        /proc/self/status. Linux-only; `present` is false everywhere else and
+        the values are then meaningless zeros.
+      properties:
+        present: { type: boolean }
+        rssAnonBytes:
+          type: integer
+          format: int64
+          description: Resident anonymous memory — the only RSS component an OOM kill can be caused by.
+        rssFileBytes:
+          type: integer
+          format: int64
+          description: Resident file-backed memory (mapped binary/rodata), reclaimable.
+        rssShmemBytes: { type: integer, format: int64 }
+        vmHwmBytes:
+          type: integer
+          format: int64
+          description: Peak resident set size since process start (VmHWM).
+        threads:
+          type: integer
+          description: OS threads; each costs an anonymous stack the Go heap profiler does not show.
+
+    MemorySmapsRollup:
+      type: object
+      description: /proc/self/smaps_rollup. Linux-only.
+      properties:
+        present: { type: boolean }
+        pssBytes: { type: integer, format: int64 }
+        privateDirtyBytes: { type: integer, format: int64 }
+        privateCleanBytes: { type: integer, format: int64 }
+        sharedCleanBytes:
+          type: integer
+          format: int64
+          description: Dominated by the binary's mapped text/rodata — moves with binary size, not with the heap.
+
+    MemoryCgroup:
+      type: object
+      description: >
+        The container's own memory accounting, read from inside the process
+        (the image is distroless, so nothing else can read it). Absent outside a
+        container.
+      properties:
+        present: { type: boolean }
+        version:
+          type: integer
+          description: 2 for the unified hierarchy, 1 for the legacy controller, 0 when absent.
+        currentBytes: { type: integer, format: int64 }
+        peakBytes: { type: integer, format: int64 }
+        maxBytes:
+          type: integer
+          format: int64
+          description: Hard limit; 0 means unlimited.
+        anonBytes: { type: integer, format: int64 }
+        fileBytes: { type: integer, format: int64 }
+        fileMappedBytes: { type: integer, format: int64 }
+        kernelBytes: { type: integer, format: int64 }
+        slabBytes: { type: integer, format: int64 }
+        sockBytes: { type: integer, format: int64 }
+        shmemBytes: { type: integer, format: int64 }
+        unreclaimableBytes:
+          type: integer
+          format: int64
+          description: >
+            anon + kernel — what the kernel cannot reclaim, and therefore what
+            an OOM kill is decided on. The primary metric of the memory bench
+            harness.
+
+    MemoryDerived:
+      type: object
+      properties:
+        offHeapBytes:
+          type: integer
+          format: int64
+          description: >
+            RssAnon − (runtime total − heap released): resident anonymous memory
+            the Go runtime does not account for (a cgo allocator's arena, foreign
+            mmaps). Signed — a small negative value means the runtime holds
+            address space that is not resident.
+        offHeapKnown:
+          type: boolean
+          description: False when RssAnon was unavailable; offHeapBytes is then meaningless rather than zero.
+        goResidentBytes:
+          type: integer
+          format: int64
+          description: (runtime total − heap released), the subtrahend above.
+
+    MemorySample:
+      type: object
+      description: How this reading was taken, so two numbers are never compared across modes.
+      properties:
+        mode:
+          type: string
+          enum: [steady, floor]
+        gcForced: { type: boolean }
+        takenAt: { type: string, format: date-time }
 
     MemoryProcess:
       type: object
@@ -8855,6 +8990,11 @@ components:
         rssBytes:
           type: integer
           format: int64
+          description: process_resident_memory_bytes — anon + file + shmem, unsplit.
+        status:
+          $ref: "#/components/schemas/MemoryProcStatus"
+        smaps:
+          $ref: "#/components/schemas/MemorySmapsRollup"
 
     MemorySubsystems:
       type: object
@@ -8885,10 +9025,16 @@ components:
           $ref: "#/components/schemas/MemoryRuntime"
         process:
           $ref: "#/components/schemas/MemoryProcess"
+        cgroup:
+          $ref: "#/components/schemas/MemoryCgroup"
+        derived:
+          $ref: "#/components/schemas/MemoryDerived"
         subsystems:
           $ref: "#/components/schemas/MemorySubsystems"
         build:
           $ref: "#/components/schemas/MemoryBuild"
+        sample:
+          $ref: "#/components/schemas/MemorySample"
 
     MemorySnapshotResponse:
       type: object
