@@ -191,9 +191,11 @@ warm-up was controlled by the harness.
 
 **Protocol** (all overridable): boot a *fresh* server per repetition — reusing
 one carries its page cache, heap and GC phase into the next run — warm up
-`BENCH_MEM_WARMUP` (60 s), sample `/api/mgmt/memory` every `BENCH_MEM_INTERVAL`
-(5 s) for `BENCH_MEM_DURATION` (5 min), `BENCH_MEM_REPS` (3) times. Output is a
-markdown table and a JSON file, so two runs diff as text *and* mechanically.
+`BENCH_MEM_WARMUP` (**5 min** — see the headline result below for why it is not
+the 60 s originally proposed), sample `/api/mgmt/memory` every
+`BENCH_MEM_INTERVAL` (5 s) for `BENCH_MEM_DURATION` (5 min), `BENCH_MEM_REPS`
+(3) times. Output is a markdown table and a JSON file, so two runs diff as text
+*and* mechanically.
 
 **The primary metric is `cgroupUnreclaimableBytes` (cgroup `anon + kernel`)** —
 what the OOM killer cannot reclaim. `pssBytes` and `rssFileBytes` are reported
@@ -250,6 +252,10 @@ the three repetitions.
 At a 45 s warm-up, `idle-all-sqlite` sits at **148.6 MiB** while `checks-500`,
 doing real work, sits at **31.3 MiB** — a 5× inversion. Re-run the same idle
 scenario with a **300 s** warm-up and it settles at **23.0 MiB**:
+
+Same provenance as the table above — docker mode, linux/**arm64** image built
+from this tree, `--memory=1g --cpus=1`, 3 repetitions; not the production
+linux/amd64 image.
 
 | `idle-all-sqlite` | warm-up 45 s | warm-up 300 s |
 |---|---:|---:|
@@ -392,6 +398,13 @@ Measured with the protocol in §5 unless a row says otherwise. **A rejection is 
 result**: it is recorded with its numbers so the next person does not re-try it
 blind.
 
+Every Δ below comes from docker-mode runs of linux/**arm64** images built from
+this tree (`--memory=1g --cpus=1`, 45 s warm-up, 60 s window, 3 repetitions) —
+**not** the production linux/amd64 image. The verdicts are about the *direction
+and significance* of a change measured against its own noise floor, which is
+what survives the platform difference; the absolute numbers are not production
+figures.
+
 | # | Candidate | Δ primary metric | Verdict |
 |---|---|---|---|
 | 1 | GC levers as defaults (`GOGC` × `GOMEMLIMIT`) | not measured | **rejected for now, and the reason is a measurement.** The knob sweep was going to chase the 148.6 MiB idle figure — which turned out to be a warm-up artifact that the runtime resolves on its own within five minutes (23.0 MiB, §5). There is no idle overhang left for `GOGC` to attack, and `GOGC` cannot act on a process that does not allocate anyway. Appendix B's quoted "−47 % heap, −25 % RSS at `GOGC=25`" remains **unverified**; verifying it belongs with the `checks-N` scenarios, where allocation is continuous, not with idle. |
@@ -426,6 +439,18 @@ blind.
 scenarios needed to establish a baseline and to judge the one candidate that
 shipped.
 
+One scenario from the original set was **not implemented at all**, and saying so
+here is the point: **`browser check ×10`**, which would drive real browser checks
+with the `chromedp/headless-shell` sidecar measured as its own container.
+`membench` runs exactly one container per repetition, so the scenario needs a
+second container, a second sampler (the sidecar exposes no `/api/mgmt/memory`,
+so it would have to be read from `docker stats` or the host's cgroup files), and
+a fixture site to drive. That is a harness feature, not a scenario definition,
+and it was cut for scope rather than judged unnecessary — the `kubectl top`
+numbers above show the sidecar swinging 38–119 Mi and *outweighing* the Go
+process on several worker pods, so it is the most valuable scenario still
+missing.
+
 
 ---
 
@@ -435,6 +460,10 @@ shipped.
 required, rather than by assumption.
 
 What the numbers say:
+
+Spreads measured in docker mode on a linux/arm64 image built from this tree, on
+an otherwise idle laptop — the *best case* for precision. A shared CI runner is
+noisier, so treat these as a lower bound on the noise a CI job would see.
 
 | metric | inter-run spread (3 reps, quiet laptop) |
 |---|---|
@@ -449,10 +478,12 @@ would clear the noise floor), but the peak and file-backed metrics are not —
 their spread is larger than most changes anyone would want to detect, on a
 *quiet* machine. A shared CI runner is noisier and much slower.
 
-The cost side is decisive on its own: a single scenario is 3 repetitions ×
-(boot + 45 s warm-up + 60 s window) ≈ 6 minutes, plus building a Linux image
-from the tree. Three scenarios at the default 60 s / 5 min protocol is over an
-hour. That is not a per-PR job.
+The cost side is decisive on its own. Even the *shortened* protocol used for
+the tables above — 3 repetitions × (boot + 45 s warm-up + 60 s window) — is
+≈ 6 minutes per scenario, plus building a Linux image from the tree. At the
+harness defaults (5 min warm-up, 5 min window, 3 repetitions) one scenario is
+over half an hour, and the defaults are what a trustworthy number requires.
+That is not a per-PR job.
 
 **Recommendation:** keep it a deliberate, local measurement. If it is ever
 automated, the shape that would work is a **nightly** job on a dedicated

@@ -61,6 +61,15 @@ func checksScenario(count int) scenario {
 
 // allScenarios is the fixed scenario set. Fixed on purpose: a bench whose
 // scenario list drifts between runs cannot be diffed.
+//
+// Deliberately absent: `browser check ×10`. It needs the chromedp/headless-shell
+// sidecar measured as its own container, and this runner starts exactly one
+// container per repetition with one sampler. Adding it is a harness change (a
+// second container, a `docker stats`/cgroup sampler for a process that serves no
+// /api/mgmt/memory, and a fixture site to drive), not another entry in this
+// table. It is recorded as missing in wiki/runbooks/memory-profiling.md section
+// 9, because on several production worker pods the sidecar outweighs the Go
+// process.
 func allScenarios() []scenario {
 	return []scenario{
 		{

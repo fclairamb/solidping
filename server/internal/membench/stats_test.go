@@ -324,3 +324,47 @@ func TestFormatDeltaKeepsSign(t *testing.T) {
 		t.Errorf("FormatDelta(-2MiB) = %q", got)
 	}
 }
+
+// TestModeCaveatsAreDistinctAndHonest is the guard for a bug the audit found: a
+// switch that special-cased only "local" let `attach` inherit docker's "real
+// cgroup v2 accounting, the shipped image shape" header. Sampling a macOS
+// `make dev` process then produced a report claiming provenance it did not
+// have — the exact failure this harness exists to prevent.
+func TestModeCaveatsAreDistinctAndHonest(t *testing.T) {
+	t.Parallel()
+
+	caveats := map[string]string{}
+
+	for _, mode := range []string{"docker", "local", "attach", "something-new"} {
+		rep := report("run", baselineRuns, baselineRuns)
+		rep.Mode = mode
+
+		md := rep.Markdown()
+		caveats[mode] = md
+
+		if !strings.Contains(md, "- mode: **"+mode+"**") {
+			t.Errorf("%s: markdown does not name its own mode", mode)
+		}
+	}
+
+	// Only the containerized run may claim cgroup accounting and the shipped
+	// image shape.
+	for _, mode := range []string{"local", "attach", "something-new"} {
+		if strings.Contains(caveats[mode], "the shipped image shape") {
+			t.Errorf("%s inherited docker's provenance claim", mode)
+		}
+	}
+
+	if !strings.Contains(caveats["docker"], "real cgroup v2 accounting") {
+		t.Error("docker mode must state what it does guarantee")
+	}
+	if !strings.Contains(caveats["local"], "NOT authoritative") {
+		t.Error("local mode must state that it is not authoritative")
+	}
+	if !strings.Contains(caveats["attach"], "provenance unknown") {
+		t.Error("attach mode must state that its provenance is unknown")
+	}
+	if !strings.Contains(caveats["something-new"], "provenance unknown") {
+		t.Error("an unrecognized mode must degrade to 'unverified', not to docker's claim")
+	}
+}

@@ -29,9 +29,20 @@ RUN go mod download
 
 COPY . .
 
-# CGO on, matching the shipped image: sqliteshim then selects the mattn driver,
-# whose allocations are OFF the Go heap. Building this with CGO_ENABLED=0 would
-# silently measure a different memory shape.
+# CGO on, matching the shipped Dockerfile.
+#
+# Note what that does NOT mean, because this file used to claim the opposite:
+# cgo does not select the mattn SQLite driver. The build tags in
+# internal/db/sqlitedriver (copied verbatim from the sqliteshim they replaced)
+# select the pure-Go **modernc** driver on every platform we ship to unless
+# `-tags cgosqlite` is passed, so SQLite allocations here are ON the Go heap and
+# visible to pprof. See wiki/runbooks/memory-profiling.md section 4.
+#
+# CGO_ENABLED=1 still matters for the measurement: it changes the linker mode
+# (dynamic against the base image's glibc rather than a static binary), which
+# moves the file-backed mappings and the thread/stack accounting this bench
+# reports. Building with CGO_ENABLED=0 would measure a differently-shaped
+# process from the one we ship — just not a differently-driven one.
 RUN CGO_ENABLED=1 go build -o /solidping .
 
 # Same base as the production image, so the runtime's libc, page size and
