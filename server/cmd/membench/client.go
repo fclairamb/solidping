@@ -138,8 +138,13 @@ type memorySnapshot struct {
 // sample takes one reading. Absent sources contribute no value at all rather
 // than a zero: a missing metric must show up as "not measured here", never as
 // "measured zero".
-func (c *client) sample(ctx context.Context) (membench.Sample, error) {
-	resp, err := c.do(ctx, http.MethodGet, "/api/mgmt/memory", nil, true)
+func (c *client) sample(ctx context.Context, floor bool) (membench.Sample, error) {
+	path := "/api/mgmt/memory"
+	if floor {
+		path += "?gc=1"
+	}
+
+	resp, err := c.do(ctx, http.MethodGet, path, nil, true)
 	if err != nil {
 		return membench.Sample{}, err
 	}
