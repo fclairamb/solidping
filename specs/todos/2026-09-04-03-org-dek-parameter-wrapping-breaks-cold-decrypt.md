@@ -35,6 +35,13 @@ that stored the envelope string as-is. Its reader,
 (`ParamStore.LoadDEK`), still assumes that: it unquotes the value if it starts with
 `"`, otherwise passes the raw bytes through "so a raw envelope still works".
 
+> **⚠️ SUPERSEDED — this paragraph's timeline is wrong.** Verified against git
+> history during implementation: `SetOrgParameter` wrapped every scalar from the
+> **first commit** (`eef4383fd`, Sep 2025); `f1dd54833` only factored that literal
+> into `models.ParameterValue()`. Cold DEK loads have therefore been broken since
+> the DEK store shipped (`cf910d469`, 2026-05-08), **not** since v0.22.0 — the blast
+> radius is larger and older than described below. See `## Correction` further down.
+
 On 2026-08-10 (`f1dd54833`, #209, shipped in v0.22.0) both `SetOrgParameter`
 implementations started wrapping every value in the standard scalar envelope
 `models.ParameterValue(value)` = `{"value": <v>}`
@@ -134,6 +141,12 @@ select organization_uid, created_at, jsonb_typeof(value), left(value::text, 28)
    — see `project_k8xp_solidping_three_deployments_synced_tag`; there are now
    five). No SQL change is required once the reader accepts the wrapped shape.
    If a hot mitigation is wanted before the release, rewriting the row to the
+   **⚠️ DO NOT RUN THE SQL BELOW — it makes things worse.** `parameters.value`
+   decodes into `models.JSONMap`, so rewriting the row to a bare JSON string breaks
+   `GetOrgParameter` outright, turning a decrypt failure into an unreadable row.
+   No remediation SQL is needed: the shipped reader opens the wrapped shape as-is.
+   Retained only as a record of what was considered and rejected.
+
    bare string (`update parameters set value = value->'value' where key =
    'encryption.dek'`) makes the current readers work, because the value then
    starts with `"`; note this in the spec's closing notes if used, so the
