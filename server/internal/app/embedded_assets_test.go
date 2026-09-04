@@ -311,3 +311,59 @@ func BenchmarkServeEmbeddedReadFile(b *testing.B) {
 		}
 	}
 }
+
+// TestEmbeddedFileExistsRejectsDirectories is the regression guard for a real
+// bug this change introduced and a smoke test caught: fs.Stat succeeds on a
+// directory, so treating "path exists" as "file to serve" made the bare
+// /dash0/ and /status0/ requests 404 instead of falling back to the SPA shell.
+// Request paths land on directories routinely — "/" maps to "dash0res",
+// "/docs/features" to "docsres/features" — so this is the common case, not an
+// edge one.
+func TestEmbeddedFileExistsRejectsDirectories(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	fsys := assetFS()
+
+	r.True(embeddedFileExists(fsys, "docsres/index.html"))
+	r.False(embeddedFileExists(fsys, "docsres"), "a directory is not a file to serve")
+	r.False(embeddedFileExists(fsys, "docsres/assets"), "a nested directory is not a file to serve")
+	r.False(embeddedFileExists(fsys, "docsres/missing.html"))
+}
+
+// TestSPARootsServeTheShell pins the fallback end to end for both embedded
+// SPAs: a bare app root and a client-side route must both return the index
+// shell with the short cache, not a 404.
+func TestSPARootsServeTheShell(t *testing.T) {
+	t.Parallel()
+
+	srv := &Server{}
+
+	tests := []struct {
+		name    string
+		path    string
+		handler func(http.ResponseWriter, *http.Request) error
+	}{
+		{"dash0 root", "/dash0/", srv.serveDash0Static},
+		{"dash0 client route", "/dash0/orgs/acme/checks", srv.serveDash0Static},
+		{"status0 root", "/status0/", srv.serveStatus0Static},
+		{"status0 client route", "/status0/acme/status", srv.serveStatus0Static},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, testCase.path, nil)
+			rec := httptest.NewRecorder()
+
+			r.NoError(testCase.handler(rec, req))
+			r.Equal(http.StatusOK, rec.Code, "the SPA shell must be served, not a 404")
+			r.Contains(rec.Header().Get("Content-Type"), "text/html")
+			r.Equal("public, max-age=60", rec.Header().Get("Cache-Control"),
+				"the shell must not inherit the hashed assets' year-long cache")
+			r.Contains(strings.ToLower(rec.Body.String()), "<!doctype html")
+		})
+	}
+}
