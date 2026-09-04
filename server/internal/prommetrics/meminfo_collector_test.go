@@ -15,7 +15,7 @@ func linuxSnapshot() meminfo.Snapshot {
 	return meminfo.Snapshot{
 		Status: meminfo.ProcStatus{
 			Present: true, RssAnonBytes: 150, RssFileBytes: 48, RssShmemBytes: 1,
-			VmHWMBytes: 215, Threads: 38,
+			VMHWMBytes: 215, Threads: 38,
 		},
 		Smaps: meminfo.SmapsRollup{
 			Present: true, PssBytes: 182, PrivateDirtyBytes: 150,
@@ -51,6 +51,8 @@ func gatherNames(t *testing.T, c prometheus.Collector) map[string]float64 {
 }
 
 func TestMemInfoCollectorLinux(t *testing.T) {
+	t.Parallel()
+
 	got := gatherNames(t, newMemInfoCollector(linuxSnapshot))
 
 	want := map[string]float64{
@@ -75,6 +77,8 @@ func TestMemInfoCollectorLinux(t *testing.T) {
 // collector must emit no series at all — a zero RssAnon would read as "this
 // process uses no anonymous memory", which is worse than silence.
 func TestMemInfoCollectorAbsent(t *testing.T) {
+	t.Parallel()
+
 	got := gatherNames(t, newMemInfoCollector(func() meminfo.Snapshot { return meminfo.Snapshot{} }))
 
 	if len(got) != 0 {
@@ -85,6 +89,8 @@ func TestMemInfoCollectorAbsent(t *testing.T) {
 // TestMemInfoCollectorUnlimitedCgroup pins that an unlimited cgroup reports no
 // limit series rather than a limit of zero, which every alert would fire on.
 func TestMemInfoCollectorUnlimitedCgroup(t *testing.T) {
+	t.Parallel()
+
 	snap := linuxSnapshot()
 	snap.Cgroup.MaxBytes = 0
 	snap.Cgroup.PeakBytes = 0
@@ -107,6 +113,8 @@ func TestMemInfoCollectorUnlimitedCgroup(t *testing.T) {
 // meminfo collector) must register on one registry without a duplicate
 // descriptor panic, and the new series must actually appear.
 func TestRegisterNoDescriptorCollision(t *testing.T) {
+	t.Parallel()
+
 	reg := prometheus.NewRegistry()
 
 	// MustRegister panics on a duplicate descriptor; reaching the next line is

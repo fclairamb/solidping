@@ -70,7 +70,7 @@ type ProcStatus struct {
 	RssAnonBytes  uint64 `json:"rssAnonBytes"`
 	RssFileBytes  uint64 `json:"rssFileBytes"`
 	RssShmemBytes uint64 `json:"rssShmemBytes"`
-	VmHWMBytes    uint64 `json:"vmHwmBytes"`
+	VMHWMBytes    uint64 `json:"vmHwmBytes"`
 	Threads       int    `json:"threads"`
 }
 
@@ -162,14 +162,14 @@ func Collect(roots Roots) Snapshot {
 		Cgroup:  ReadCgroup(roots),
 		Classes: ReadRuntimeClasses(),
 	}
-	snap.OffHeapBytes, snap.OffHeapKnown = offHeap(snap.Status, snap.Classes)
+	snap.OffHeapBytes, snap.OffHeapKnown = offHeap(snap.Status, &snap.Classes)
 
 	return snap
 }
 
 // offHeap derives the off-heap gap, reporting whether it could be derived at
 // all.
-func offHeap(status ProcStatus, classes RuntimeClasses) (int64, bool) {
+func offHeap(status ProcStatus, classes *RuntimeClasses) (int64, bool) {
 	if !status.Present {
 		return 0, false
 	}
@@ -177,9 +177,9 @@ func offHeap(status ProcStatus, classes RuntimeClasses) (int64, bool) {
 	// Released pages have been handed back to the OS: the runtime still counts
 	// them in total, but they are no longer resident, so they must not be
 	// charged against RssAnon.
-	goResident := int64(classes.TotalBytes) - int64(classes.HeapReleasedBytes) //nolint:gosec // byte counts, far below int64 range
+	goResident := int64(classes.TotalBytes) - int64(classes.HeapReleasedBytes)
 
-	return int64(status.RssAnonBytes) - goResident, true //nolint:gosec // byte counts, far below int64 range
+	return int64(status.RssAnonBytes) - goResident, true
 }
 
 // ReadProcStatus reads <procDir>/status. Absent or unreadable → zero value.
@@ -207,7 +207,7 @@ func ParseProcStatus(data []byte) ProcStatus {
 		case "RssShmem":
 			status.RssShmemBytes = parseKB(value)
 		case "VmHWM":
-			status.VmHWMBytes = parseKB(value)
+			status.VMHWMBytes = parseKB(value)
 		case "Threads":
 			if n, err := strconv.Atoi(strings.TrimSpace(value)); err == nil {
 				status.Threads = n
@@ -271,37 +271,37 @@ func readCgroupV2(dir string) (Cgroup, bool) {
 		return Cgroup{}, false
 	}
 
-	cg := Cgroup{Present: true, Version: 2, CurrentBytes: current}
+	group := Cgroup{Present: true, Version: 2, CurrentBytes: current}
 	if peak, ok := readCgroupValue(filepath.Join(dir, "memory.peak")); ok {
-		cg.PeakBytes = peak
+		group.PeakBytes = peak
 	}
 	if maxBytes, ok := readCgroupValue(filepath.Join(dir, "memory.max")); ok {
-		cg.MaxBytes = maxBytes
+		group.MaxBytes = maxBytes
 	}
 
 	if data, err := os.ReadFile(filepath.Join(dir, "memory.stat")); err == nil {
-		applyCgroupV2Stat(&cg, ParseKeyValueBytes(data))
+		applyCgroupV2Stat(&group, ParseKeyValueBytes(data))
 	}
-	cg.UnreclaimableBytes = cg.AnonBytes + cg.KernelBytes
+	group.UnreclaimableBytes = group.AnonBytes + group.KernelBytes
 
-	return cg, true
+	return group, true
 }
 
 // applyCgroupV2Stat maps the cgroup v2 memory.stat keys onto the struct.
-func applyCgroupV2Stat(cg *Cgroup, stat map[string]uint64) {
-	cg.AnonBytes = stat["anon"]
-	cg.FileBytes = stat["file"]
-	cg.FileMappedBytes = stat["file_mapped"]
-	cg.KernelBytes = stat["kernel"]
-	cg.SlabBytes = stat["slab"]
-	cg.SockBytes = stat["sock"]
-	cg.ShmemBytes = stat["shmem"]
+func applyCgroupV2Stat(group *Cgroup, stat map[string]uint64) {
+	group.AnonBytes = stat["anon"]
+	group.FileBytes = stat["file"]
+	group.FileMappedBytes = stat["file_mapped"]
+	group.KernelBytes = stat["kernel"]
+	group.SlabBytes = stat["slab"]
+	group.SockBytes = stat["sock"]
+	group.ShmemBytes = stat["shmem"]
 
 	// `kernel` only exists on kernels ≥ 6.0. Older kernels expose the pieces,
 	// so approximate it from slab + sock + the page tables rather than
 	// reporting an unreclaimable total that is silently missing kernel memory.
-	if cg.KernelBytes == 0 {
-		cg.KernelBytes = stat["slab"] + stat["sock"] + stat["percpu"] + stat["kernel_stack"] + stat["pagetables"]
+	if group.KernelBytes == 0 {
+		group.KernelBytes = stat["slab"] + stat["sock"] + stat["percpu"] + stat["kernel_stack"] + stat["pagetables"]
 	}
 }
 
@@ -314,24 +314,24 @@ func readCgroupV1(dir string) (Cgroup, bool) {
 		return Cgroup{}, false
 	}
 
-	cg := Cgroup{Present: true, Version: 1, CurrentBytes: usage}
+	group := Cgroup{Present: true, Version: 1, CurrentBytes: usage}
 	if peak, ok := readCgroupValue(filepath.Join(dir, "memory.max_usage_in_bytes")); ok {
-		cg.PeakBytes = peak
+		group.PeakBytes = peak
 	}
 	if limit, ok := readCgroupValue(filepath.Join(dir, "memory.limit_in_bytes")); ok {
-		cg.MaxBytes = limit
+		group.MaxBytes = limit
 	}
 
 	if data, err := os.ReadFile(filepath.Join(dir, "memory.stat")); err == nil {
 		stat := ParseKeyValueBytes(data)
-		cg.AnonBytes = stat["rss"]
-		cg.FileBytes = stat["cache"]
-		cg.FileMappedBytes = stat["mapped_file"]
-		cg.ShmemBytes = stat["shmem"]
+		group.AnonBytes = stat["rss"]
+		group.FileBytes = stat["cache"]
+		group.FileMappedBytes = stat["mapped_file"]
+		group.ShmemBytes = stat["shmem"]
 	}
-	cg.UnreclaimableBytes = cg.AnonBytes + cg.KernelBytes
+	group.UnreclaimableBytes = group.AnonBytes + group.KernelBytes
 
-	return cg, true
+	return group, true
 }
 
 // readCgroupValue reads a single-value cgroup file, normalizing both versions'
@@ -348,24 +348,24 @@ func readCgroupValue(path string) (uint64, bool) {
 // ParseCgroupValue parses a single-value cgroup file. "max" (v2) and v1's
 // near-MaxInt64 sentinel both mean "no limit" and are reported as (0, true) —
 // the file exists, the limit does not.
-func ParseCgroupValue(s string) (uint64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" {
+func ParseCgroupValue(raw string) (uint64, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return 0, false
 	}
-	if s == "max" {
+	if trimmed == "max" {
 		return 0, true
 	}
 
-	v, err := strconv.ParseUint(s, 10, 64)
+	value, err := strconv.ParseUint(trimmed, 10, 64)
 	if err != nil {
 		return 0, false
 	}
-	if v >= cgroupUnlimitedFloor {
+	if value >= cgroupUnlimitedFloor {
 		return 0, true
 	}
 
-	return v, true
+	return value, true
 }
 
 // ParseKeyValueBytes parses the `key value` (space-separated, one per line)
@@ -421,9 +421,9 @@ func ReadRuntimeClasses() RuntimeClasses {
 	metrics.Read(samples)
 
 	values := make(map[string]uint64, len(samples))
-	for _, s := range samples {
-		if s.Value.Kind() == metrics.KindUint64 {
-			values[s.Name] = s.Value.Uint64()
+	for i := range samples {
+		if samples[i].Value.Kind() == metrics.KindUint64 {
+			values[samples[i].Name] = samples[i].Value.Uint64()
 		}
 	}
 
@@ -447,13 +447,13 @@ func ReadRuntimeClasses() RuntimeClasses {
 
 // forEachColonLine walks `Key:<whitespace>value` lines, which is the shape of
 // both /proc/<pid>/status and smaps_rollup.
-func forEachColonLine(data []byte, fn func(key, value string)) {
+func forEachColonLine(data []byte, visit func(key, value string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		key, value, found := strings.Cut(line, ":")
 		if !found {
 			continue
 		}
-		fn(strings.TrimSpace(key), value)
+		visit(strings.TrimSpace(key), value)
 	}
 }
 

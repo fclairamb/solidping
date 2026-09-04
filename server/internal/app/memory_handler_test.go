@@ -265,11 +265,11 @@ func TestWantsFloorMode(t *testing.T) {
 	r := require.New(t)
 
 	for _, query := range []string{"gc=1", "gc=true", "gc=yes"} {
-		req := httptest.NewRequest(http.MethodGet, "/api/mgmt/memory?"+query, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/mgmt/memory?"+query, nil)
 		r.True(wantsFloorMode(req), query)
 	}
 	for _, query := range []string{"", "gc=0", "gc=false", "gc=maybe"} {
-		req := httptest.NewRequest(http.MethodGet, "/api/mgmt/memory?"+query, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/mgmt/memory?"+query, nil)
 		r.False(wantsFloorMode(req), query)
 	}
 	r.False(wantsFloorMode(nil))

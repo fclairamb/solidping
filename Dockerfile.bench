@@ -1,0 +1,47 @@
+# Bench image: the CURRENT working tree, compiled for Linux and packaged in the
+# production base image, so `make bench-memory BENCH_MEM_MODE=docker` can measure
+# a *modified* build and not just a released tag.
+#
+# Why it is not the main Dockerfile: that one rebuilds dash0, status0 and the
+# whole Docusaurus site from source (minutes, and a build context that includes
+# every node_modules). This one takes the embedded assets already present in the
+# working tree — `server/internal/app/{res,dash0res,status0res,docsres}`,
+# produced by `make build` — and only recompiles Go. Same embedded bytes, same
+# base image, a fraction of the time.
+#
+# Consequence worth knowing before quoting a number from it: the embedded assets
+# are whatever `make build` last put in the tree. If they are stale, the binary's
+# rodata is stale too — which moves rssFile/Pss, not the anon numbers the primary
+# metric is made of.
+#
+# Build context is `server/` (the Go module root), which is what keeps
+# node_modules out of it:
+#
+#   docker build -f Dockerfile.bench -t solidping-bench:local server/
+
+FROM golang:1.27.0-trixie AS build
+
+WORKDIR /src
+
+# Dependencies first so a source-only change reuses the module cache.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# CGO on, matching the shipped image: sqliteshim then selects the mattn driver,
+# whose allocations are OFF the Go heap. Building this with CGO_ENABLED=0 would
+# silently measure a different memory shape.
+RUN CGO_ENABLED=1 go build -o /solidping .
+
+# Same base as the production image, so the runtime's libc, page size and
+# file-backed mappings match.
+FROM gcr.io/distroless/base-debian13:nonroot
+
+WORKDIR /app
+
+COPY --from=build /solidping /app/solidping
+
+EXPOSE 4000
+
+ENTRYPOINT ["/app/solidping", "serve"]

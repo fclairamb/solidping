@@ -67,6 +67,8 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestParseProcStatus(t *testing.T) {
+	t.Parallel()
+
 	got := ParseProcStatus([]byte(procStatusFixture))
 
 	if !got.Present {
@@ -80,7 +82,7 @@ func TestParseProcStatus(t *testing.T) {
 		{"RssAnon", got.RssAnonBytes, 150016 * 1024},
 		{"RssFile", got.RssFileBytes, 48304 * 1024},
 		{"RssShmem", got.RssShmemBytes, 0},
-		{"VmHWM", got.VmHWMBytes, 215044 * 1024},
+		{"VmHWM", got.VMHWMBytes, 215044 * 1024},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -93,6 +95,8 @@ func TestParseProcStatus(t *testing.T) {
 }
 
 func TestParseProcStatusGarbage(t *testing.T) {
+	t.Parallel()
+
 	// A truncated read mid-line, and a value that is not a number: neither may
 	// panic, and neither may poison the fields that did parse.
 	got := ParseProcStatus([]byte("RssAnon:\t   4096 kB\nRssFile:\tnot-a-number kB\nThreads:\tzz\nVmHW"))
@@ -109,6 +113,8 @@ func TestParseProcStatusGarbage(t *testing.T) {
 }
 
 func TestParseSmapsRollup(t *testing.T) {
+	t.Parallel()
+
 	got := ParseSmapsRollup([]byte(smapsRollupFixture))
 
 	if !got.Present {
@@ -129,6 +135,8 @@ func TestParseSmapsRollup(t *testing.T) {
 }
 
 func TestParseCgroupValue(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		in      string
 		want    uint64
@@ -150,6 +158,8 @@ func TestParseCgroupValue(t *testing.T) {
 }
 
 func TestReadCgroupV2(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	v2 := filepath.Join(dir, "cgroup")
 	writeFile(t, filepath.Join(v2, "memory.current"), "220200960\n")
@@ -181,6 +191,8 @@ func TestReadCgroupV2(t *testing.T) {
 // roll-up the unreclaimable total must still account for kernel memory rather
 // than silently reporting anon only.
 func TestReadCgroupV2NoKernelKey(t *testing.T) {
+	t.Parallel()
+
 	v2 := filepath.Join(t.TempDir(), "cgroup")
 	writeFile(t, filepath.Join(v2, "memory.current"), "100\n")
 	writeFile(t, filepath.Join(v2, "memory.stat"),
@@ -197,6 +209,8 @@ func TestReadCgroupV2NoKernelKey(t *testing.T) {
 }
 
 func TestReadCgroupV1(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	v1 := filepath.Join(dir, "memory")
 	writeFile(t, filepath.Join(v1, "memory.usage_in_bytes"), "220200960\n")
@@ -220,6 +234,8 @@ func TestReadCgroupV1(t *testing.T) {
 // TestCollectAbsentTree is the macOS / no-cgroup case: everything missing must
 // yield a usable zero snapshot, never an error and never a panic.
 func TestCollectAbsentTree(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	got := Collect(Roots{
 		Proc:     filepath.Join(dir, "nope"),
@@ -241,6 +257,8 @@ func TestCollectAbsentTree(t *testing.T) {
 }
 
 func TestCollectLinuxTree(t *testing.T) {
+	t.Parallel()
+
 	dir := t.TempDir()
 	proc := filepath.Join(dir, "proc")
 	writeFile(t, filepath.Join(proc, "status"), procStatusFixture)
@@ -266,6 +284,8 @@ func TestCollectLinuxTree(t *testing.T) {
 }
 
 func TestReadRuntimeClasses(t *testing.T) {
+	t.Parallel()
+
 	got := ReadRuntimeClasses()
 
 	if got.TotalBytes == 0 {

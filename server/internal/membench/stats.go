@@ -82,7 +82,7 @@ type MetricStats struct {
 	Samples int `json:"samples"`
 }
 
-// RunStats is one repetition: every metric summarised over its sample window.
+// RunStats is one repetition: every metric summarized over its sample window.
 type RunStats struct {
 	Metrics map[string]MetricStats `json:"metrics"`
 }
@@ -130,7 +130,7 @@ type ScenarioResult struct {
 	Notes []string `json:"notes,omitempty"`
 }
 
-// Report is the whole run: metadata plus one result per scenario. Serialised to
+// Report is the whole run: metadata plus one result per scenario. Serialized to
 // JSON so `--compare` can diff two runs mechanically.
 type Report struct {
 	// Label names the build under test ("baseline", "gogc-50", …).
@@ -164,8 +164,8 @@ func SummariseRun(samples []Sample) RunStats {
 	for _, key := range MetricKeys {
 		values := make([]float64, 0, len(samples))
 
-		for _, s := range samples {
-			if v, ok := s.Values[key]; ok {
+		for i := range samples {
+			if v, ok := samples[i].Values[key]; ok {
 				values = append(values, v)
 			}
 		}
@@ -240,7 +240,7 @@ type Delta struct {
 
 // PercentChange is the delta relative to the baseline. Zero when the baseline
 // is zero.
-func (d Delta) PercentChange() float64 {
+func (d *Delta) PercentChange() float64 {
 	if d.Baseline == 0 {
 		return 0
 	}
@@ -253,13 +253,15 @@ func (d Delta) PercentChange() float64 {
 // named one is how false results are manufactured.
 func Compare(baseline, current *Report) []Delta {
 	baseByName := make(map[string]ScenarioResult, len(baseline.Scenarios))
-	for _, s := range baseline.Scenarios {
-		baseByName[s.Scenario] = s
+	for i := range baseline.Scenarios {
+		baseByName[baseline.Scenarios[i].Scenario] = baseline.Scenarios[i]
 	}
 
 	var deltas []Delta
 
-	for _, cur := range current.Scenarios {
+	for i := range current.Scenarios {
+		cur := &current.Scenarios[i]
+
 		base, ok := baseByName[cur.Scenario]
 		if !ok {
 			continue
@@ -302,10 +304,10 @@ func Median(values []float64) float64 {
 	return Percentile(values, 0.5)
 }
 
-// Percentile returns the p-quantile (0..1) using nearest-rank on a sorted copy.
+// Percentile returns the quantile (0..1) using nearest-rank on a sorted copy.
 // Nearest-rank rather than interpolation: these are observed readings, and an
 // interpolated p95 is a number the process never actually had.
-func Percentile(values []float64, p float64) float64 {
+func Percentile(values []float64, quantile float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
@@ -314,14 +316,14 @@ func Percentile(values []float64, p float64) float64 {
 	copy(sorted, values)
 	sort.Float64s(sorted)
 
-	if p <= 0 {
+	if quantile <= 0 {
 		return sorted[0]
 	}
-	if p >= 1 {
+	if quantile >= 1 {
 		return sorted[len(sorted)-1]
 	}
 
-	rank := int(math.Ceil(p*float64(len(sorted)))) - 1
+	rank := int(math.Ceil(quantile*float64(len(sorted)))) - 1
 	if rank < 0 {
 		rank = 0
 	}
@@ -383,46 +385,48 @@ func FormatDelta(v float64) string {
 // Markdown renders the report as a fixed-schema table. The schema is fixed on
 // purpose: two runs of this tool must diff as text, not just as JSON.
 func (r *Report) Markdown() string {
-	var b strings.Builder
+	var out strings.Builder
 
-	fmt.Fprintf(&b, "# membench — %s\n\n", r.Label)
-	fmt.Fprintf(&b, "- mode: **%s**%s\n", r.Mode, modeCaveat(r.Mode))
-	fmt.Fprintf(&b, "- host: %s (%s)\n", r.Host, r.GoVersion)
+	fmt.Fprintf(&out, "# membench — %s\n\n", r.Label)
+	fmt.Fprintf(&out, "- mode: **%s**%s\n", r.Mode, modeCaveat(r.Mode))
+	fmt.Fprintf(&out, "- host: %s (%s)\n", r.Host, r.GoVersion)
 
 	if r.Image != "" {
-		fmt.Fprintf(&b, "- image: `%s`", r.Image)
+		fmt.Fprintf(&out, "- image: `%s`", r.Image)
 
 		if r.Memory != "" {
-			fmt.Fprintf(&b, ", `--memory=%s`", r.Memory)
+			fmt.Fprintf(&out, ", `--memory=%s`", r.Memory)
 		}
 
 		if r.CPUs != "" {
-			fmt.Fprintf(&b, ", `--cpus=%s`", r.CPUs)
+			fmt.Fprintf(&out, ", `--cpus=%s`", r.CPUs)
 		}
 
-		b.WriteString("\n")
+		out.WriteString("\n")
 	}
 
-	fmt.Fprintf(&b, "- protocol: warm-up %s, sample every %s for %s, %d repetitions\n",
+	fmt.Fprintf(&out, "- protocol: warm-up %s, sample every %s for %s, %d repetitions\n",
 		r.Protocol.WarmUp, r.Protocol.Interval, r.Protocol.Duration, r.Protocol.Reps)
-	fmt.Fprintf(&b, "- started: %s\n\n", r.StartedAt.Format(time.RFC3339))
-	b.WriteString("All byte columns are MiB. Primary metric (the one decisions are made on) " +
+	fmt.Fprintf(&out, "- started: %s\n\n", r.StartedAt.Format(time.RFC3339))
+	out.WriteString("All byte columns are MiB. Primary metric (the one decisions are made on) " +
 		"is `cgroupUnreclaimableBytes` = cgroup anon + kernel — what the OOM killer cannot reclaim. " +
 		"`pssBytes` / `rssFileBytes` move with binary size and with which pages were touched; they are " +
 		"reported so that is visible, never added to the heap numbers.\n\n")
 
-	b.WriteString("| scenario |")
+	out.WriteString("| scenario |")
 
 	for _, key := range MetricKeys {
-		fmt.Fprintf(&b, " %s med | %s p95 | %s max | %s spread |", key, key, key, key)
+		fmt.Fprintf(&out, " %s med | %s p95 | %s max | %s spread |", key, key, key, key)
 	}
 
-	b.WriteString("\n|---|")
-	b.WriteString(strings.Repeat("---:|", len(MetricKeys)*4))
-	b.WriteString("\n")
+	out.WriteString("\n|---|")
+	out.WriteString(strings.Repeat("---:|", len(MetricKeys)*4))
+	out.WriteString("\n")
 
-	for _, s := range r.Scenarios {
-		fmt.Fprintf(&b, "| %s |", s.Scenario)
+	for i := range r.Scenarios {
+		s := &r.Scenarios[i]
+
+		fmt.Fprintf(&out, "| %s |", s.Scenario)
 
 		for _, key := range MetricKeys {
 			agg := s.Metrics[key]
@@ -432,22 +436,22 @@ func (r *Report) Markdown() string {
 				spread = "n/a"
 			}
 
-			fmt.Fprintf(&b, " %s | %s | %s | %s |",
+			fmt.Fprintf(&out, " %s | %s | %s | %s |",
 				FormatBytes(agg.Median), FormatBytes(agg.P95), FormatBytes(agg.Max), spread)
 		}
 
-		b.WriteString("\n")
+		out.WriteString("\n")
 	}
 
-	b.WriteString("\n")
+	out.WriteString("\n")
 
-	for _, s := range r.Scenarios {
-		for _, note := range s.Notes {
-			fmt.Fprintf(&b, "> **%s**: %s\n", s.Scenario, note)
+	for i := range r.Scenarios {
+		for _, note := range r.Scenarios[i].Notes {
+			fmt.Fprintf(&out, "> **%s**: %s\n", r.Scenarios[i].Scenario, note)
 		}
 	}
 
-	return b.String()
+	return out.String()
 }
 
 // modeCaveat spells out, in the report itself, what a `--local` number is worth.
@@ -462,35 +466,37 @@ func modeCaveat(mode string) string {
 }
 
 // CompareMarkdown renders a comparison table, non-significant rows included and
-// labelled. Rejections are results too, and hiding them is how the same dead end
+// labeled. Rejections are results too, and hiding them is how the same dead end
 // gets retried a year later.
 func CompareMarkdown(baseline, current *Report, deltas []Delta) string {
-	var b strings.Builder
+	var out strings.Builder
 
-	fmt.Fprintf(&b, "# membench comparison — `%s` → `%s`\n\n", baseline.Label, current.Label)
-	fmt.Fprintf(&b, "- baseline mode: %s; current mode: %s\n", baseline.Mode, current.Mode)
+	fmt.Fprintf(&out, "# membench comparison — `%s` → `%s`\n\n", baseline.Label, current.Label)
+	fmt.Fprintf(&out, "- baseline mode: %s; current mode: %s\n", baseline.Mode, current.Mode)
 
 	if baseline.Mode != current.Mode {
-		b.WriteString("- ⚠️ **modes differ — these two runs are not comparable.** " +
+		out.WriteString("- ⚠️ **modes differ — these two runs are not comparable.** " +
 			"A local number and a containerized number measure different things.\n")
 	}
 
-	b.WriteString("\nA delta is only significant when it exceeds the larger of the two runs' " +
+	out.WriteString("\nA delta is only significant when it exceeds the larger of the two runs' " +
 		"own inter-run spreads (MiB).\n\n")
-	b.WriteString("| scenario | metric | baseline | current | delta | % | noise floor | verdict |\n")
-	b.WriteString("|---|---|---:|---:|---:|---:|---:|---|\n")
+	out.WriteString("| scenario | metric | baseline | current | delta | % | noise floor | verdict |\n")
+	out.WriteString("|---|---|---:|---:|---:|---:|---:|---|\n")
 
-	for _, d := range deltas {
+	for i := range deltas {
+		delta := &deltas[i]
+
 		verdict := "**significant**"
-		if !d.Significant {
-			verdict = d.Reason
+		if !delta.Significant {
+			verdict = delta.Reason
 		}
 
-		fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %+.1f%% | %s | %s |\n",
-			d.Scenario, d.Metric,
-			FormatBytes(d.Baseline), FormatBytes(d.Current), FormatDelta(d.Delta),
-			d.PercentChange(), FormatBytes(d.Threshold), verdict)
+		fmt.Fprintf(&out, "| %s | %s | %s | %s | %s | %+.1f%% | %s | %s |\n",
+			delta.Scenario, delta.Metric,
+			FormatBytes(delta.Baseline), FormatBytes(delta.Current), FormatDelta(delta.Delta),
+			delta.PercentChange(), FormatBytes(delta.Threshold), verdict)
 	}
 
-	return b.String()
+	return out.String()
 }
