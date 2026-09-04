@@ -433,6 +433,54 @@ figures.
 | 6 | SQLite driver and pool (mattn vs modernc) | not measured | **open, and now correctly framed.** The build runs modernc, so today's `derived.offHeapBytes` is ~0.3 MiB in an idle container — measured, and consistent with an on-heap driver. Comparing the two drivers means building with `-tags cgosqlite`; the harness can do it, this pass did not. |
 | 7 | Serve embedded assets without heap copies | **−0.1 MiB (not significant, floor 1.2)** on `docs-crawl`; **no change** on `idle-all-sqlite` | **shipped on an allocation measurement, not an RSS one — stated plainly.** The RSS harness cannot resolve it: the allocation removed is short-lived, so whether it shows in resident memory depends on whether a GC fired during the window. The Go benchmark can: on `search-index.json` (3.6 MB, fetched by the offline docs search) serving goes from **3.6 MB/op to 33 KB/op** and 460 µs to 72 µs (`BenchmarkServeEmbedded{ReadFile,Streamed}`). The `idle-all-sqlite` run alongside it is the **negative control** the spec asks for: every metric came back not-significant on the scenario the change does not touch. |
 
+### Ship-gate evidence
+
+The spec's gate for any shipped candidate is: primary metric improves beyond the
+noise floor on the scenarios it targets, nothing regresses, `bench-checks`
+throughput and p95 stay within 5 %, and the full suite passes on both database
+backends. Recorded here because a gate whose evidence is not written down is not
+a gate.
+
+**Throughput and latency (`loadgen`, 200 checks / 10 s period / 90 s, SQLite,
+three runs per side, alternated).** Pre-spec binary built from `a09a718fa` with
+the same embedded assets, so only the Go changes differ:
+
+| | run 1 | run 2 | run 3 | median | spread |
+|---|---:|---:|---:|---:|---:|
+| before — checks/min | 1324.7 | 1324.7 | 1202.7 | **1324.7** | 122.0 (9.2 %) |
+| after — checks/min | 1265.3 | 1318.7 | 1326.0 | **1318.7** | 60.7 (4.6 %) |
+
+Median delta **−0.45 %**, an order of magnitude inside the run-to-run spread.
+Latencies are flat to the millisecond: `execute` p50 30.0–30.1 ms and p95
+48.0–48.1 ms on *both* sides, `save_result` p95 4.8–5.0 ms, DB query p95
+3.7–4.5 ms. Note the first single run read −4.5 %, which would have squeaked
+through the 5 % gate as a "pass" while actually being noise — the reason the
+table has three runs a side.
+
+**Full dash0 Playwright suite**, `CI=true` against a side-car `SP_RUNMODE=test`
+server on port 4022 backed by the docker-compose **PostgreSQL** (never the
+`:4000` dev loop): **702 passed, 3 failed, 10 skipped** in 20.4 min.
+
+The three failures are **pre-existing on this branch, not caused by this spec**,
+and that was established rather than assumed: re-running exactly those three
+spec files against the pre-spec binary — same frontend build, same database,
+same server flags — reproduces the identical three failures.
+
+| spec | assertion |
+|---|---|
+| `check-ip-version.spec.ts:105` | `config.ipVersion` still `"ipv6"` after clearing back to auto |
+| `confirm-registration-no-org.spec.ts:23` | the registered email is not rendered on `/no-org` |
+| `magic-wand.spec.ts:495` | status-pages list wand with > 100 checks |
+
+None of them touches embedded-asset serving, the SQLite driver package or the
+memory endpoint. They belong to whoever owns those areas on this branch.
+
+**Both backends.** The Playwright run above is the Postgres path end to end
+(app + API + database). SQLite is covered by `make test` and by the
+`bench-checks` runs above. The Go Postgres-testcontainer packages
+(`internal/db/postgres/...`) were run separately; see the batch notes for that
+result.
+
 ### What the negative controls showed
 
 - **Untouched scenario, untouched numbers.** `idle-all-sqlite` between the
@@ -509,6 +557,30 @@ machine, pinned to `cgroupUnreclaimableBytes` on `idle-all-sqlite` and
 `checks-500` only, alerting on a >5 % move against a stored baseline — and
 explicitly *not* on the peak or Pss columns, which would cry wolf.
 
+
+---
+
+## 11. Known small gaps (deliberately not fixed here)
+
+Recorded so they are not rediscovered as surprises. None affects a number in
+this runbook.
+
+- **`-tags cgosqlite` with `CGO_ENABLED=0`** selects no SQLite driver at all
+  (`internal/db/sqlitedriver/driver_none.go`), so SQLite fails at open time with
+  a message naming the fix. That combination is a nonsense configuration — the
+  tag exists to *ask for* the cgo driver — and it fails loudly rather than
+  silently, so it was left as is.
+- **A client that disconnects mid-response** on an embedded asset makes
+  `writeEmbeddedFile`'s `io.Copy` return an error after `WriteHeader` has already
+  been sent; the docs handler's candidate walk then attempts the next candidate
+  and net/http logs a superfluous `WriteHeader` call. Cosmetic, log-only, and
+  not reachable from a normal 404 (existence is checked before any header is
+  written).
+- **`browser check ×10`** — see §9 "Not attempted"; the sidecar it would measure
+  is the larger consumer on several worker pods, so this is the most valuable
+  missing scenario.
+- **Continuous profiling** (Pyroscope / Parca) remains a possible follow-up and
+  is not set up.
 
 ---
 
