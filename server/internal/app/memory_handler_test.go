@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,12 +23,35 @@ import (
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
-// memTestStore is a no-op DEKStore so the credentials service can cache DEKs
-// without a real database.
-type memTestStore struct{}
+// memTestStore is an in-memory DEKStore so the credentials service can cache
+// DEKs without a real database. It must actually round-trip what it is given:
+// EnsureOrgKey reads a freshly stored DEK back before caching it, so a store
+// that swallows writes is (correctly) rejected as a broken store.
+type memTestStore struct {
+	mu   sync.Mutex
+	data map[string][]byte
+}
 
-func (memTestStore) LoadDEK(context.Context, string) ([]byte, bool, error) { return nil, false, nil }
-func (memTestStore) SaveDEK(context.Context, string, []byte) error         { return nil }
+func newMemTestStore() *memTestStore {
+	return &memTestStore{data: map[string][]byte{}}
+}
+
+func (s *memTestStore) LoadDEK(_ context.Context, orgUID string) ([]byte, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	v, ok := s.data[orgUID]
+
+	return v, ok, nil
+}
+
+func (s *memTestStore) SaveDEK(_ context.Context, orgUID string, wrapped []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data[orgUID] = wrapped
+
+	return nil
+}
 
 func TestBuildMemorySnapshot(t *testing.T) {
 	t.Parallel()
@@ -36,7 +60,7 @@ func TestBuildMemorySnapshot(t *testing.T) {
 
 	// 32-byte key so encryption is enabled and DEKs get cached.
 	key := make([]byte, 32)
-	cred, err := credentials.NewService(key, memTestStore{})
+	cred, err := credentials.NewService(key, newMemTestStore())
 	r.NoError(err)
 	r.NoError(cred.EnsureOrgKey(context.Background(), "org-a"))
 	r.NoError(cred.EnsureOrgKey(context.Background(), "org-b"))

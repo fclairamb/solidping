@@ -18,7 +18,7 @@ type countingStore struct {
 	mu     sync.Mutex
 	data   map[string][]byte
 	loads  int
-	corupt bool // when set, LoadDEK hands back an unopenable value
+	corrupt bool // when set, LoadDEK hands back an unopenable value
 }
 
 func newCountingStore() *countingStore {
@@ -31,7 +31,7 @@ func (s *countingStore) LoadDEK(_ context.Context, orgUID string) ([]byte, bool,
 
 	s.loads++
 
-	if s.corupt {
+	if s.corrupt {
 		return []byte(`{"v":1,"alg":"AES-256-GCM","nonce":"AAAAAAAAAAAAAAAA","ct":"AAAA"}`), true, nil
 	}
 
@@ -154,7 +154,7 @@ func TestEnsureOrgKeyFailsWhenTheStoredKeyCannotBeReloaded(t *testing.T) {
 	ctx := t.Context()
 
 	store := newCountingStore()
-	store.corupt = true
+	store.corrupt = true
 
 	svc, err := credentials.NewService(newKey(t), store)
 	r.NoError(err)
@@ -174,14 +174,16 @@ func TestEnsureOrgKeyMarksLoadFailuresAsOrgKeyUnavailable(t *testing.T) {
 
 	r := require.New(t)
 
-	boom := errors.New("database is down")
-	svc, err := credentials.NewService(newKey(t), failingStore{err: boom})
+	svc, err := credentials.NewService(newKey(t), failingStore{err: errStoreDown})
 	r.NoError(err)
 
 	err = svc.EnsureOrgKey(t.Context(), "org-1")
 	r.ErrorIs(err, credentials.ErrOrgKeyUnavailable)
-	r.ErrorIs(err, boom)
+	r.ErrorIs(err, errStoreDown)
 }
+
+// errStoreDown stands in for any storage-layer failure while loading the key.
+var errStoreDown = errors.New("database is down")
 
 type failingStore struct{ err error }
 
