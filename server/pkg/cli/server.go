@@ -187,7 +187,7 @@ func serverMemoryAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
-	resp, err := apiClient.GetMemoryWithResponse(ctx)
+	resp, err := apiClient.GetMemoryWithResponse(ctx, nil)
 	if err != nil {
 		return cliCtx.HandleError("Failed to get memory snapshot", err)
 	}

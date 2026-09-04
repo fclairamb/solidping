@@ -780,6 +780,21 @@ func (e DependencyGraphEdgeKind) Valid() bool {
 	}
 }
 
+// Defines values for DependencyWarningCode.
+const (
+	DependencyWarningCodeCONFIRMATIONMARGINTOOSHORT DependencyWarningCode = "CONFIRMATION_MARGIN_TOO_SHORT"
+)
+
+// Valid indicates whether the value is a known member of the DependencyWarningCode enum.
+func (e DependencyWarningCode) Valid() bool {
+	switch e {
+	case DependencyWarningCodeCONFIRMATIONMARGINTOOSHORT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeviceConsentInfoStatus.
 const (
 	DeviceConsentInfoStatusApproved DeviceConsentInfoStatus = "approved"
@@ -1458,6 +1473,24 @@ func (e MembershipRequestSummaryStatus) Valid() bool {
 	case MembershipRequestSummaryStatusPending:
 		return true
 	case MembershipRequestSummaryStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MemorySampleMode.
+const (
+	MemorySampleModeFloor  MemorySampleMode = "floor"
+	MemorySampleModeSteady MemorySampleMode = "steady"
+)
+
+// Valid indicates whether the value is a known member of the MemorySampleMode enum.
+func (e MemorySampleMode) Valid() bool {
+	switch e {
+	case MemorySampleModeFloor:
+		return true
+	case MemorySampleModeSteady:
 		return true
 	default:
 		return false
@@ -2412,6 +2445,27 @@ func (e ValidationErrorFieldSeverity) Valid() bool {
 	case ValidationErrorFieldSeverityInfo:
 		return true
 	case ValidationErrorFieldSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetMemoryParamsGc.
+const (
+	GetMemoryParamsGcN1   GetMemoryParamsGc = "1"
+	GetMemoryParamsGcTrue GetMemoryParamsGc = "true"
+	GetMemoryParamsGcYes  GetMemoryParamsGc = "yes"
+)
+
+// Valid indicates whether the value is a known member of the GetMemoryParamsGc enum.
+func (e GetMemoryParamsGc) Valid() bool {
+	switch e {
+	case GetMemoryParamsGcN1:
+		return true
+	case GetMemoryParamsGcTrue:
+		return true
+	case GetMemoryParamsGcYes:
 		return true
 	default:
 		return false
@@ -3733,6 +3787,9 @@ type CreateStatusPageRequest struct {
 	// AutoResolve What an auto-created publication does when its incident resolves. "if_untouched" (the default) resolves it only while nobody has edited it; once a human owns the narrative the automation posts a "component recovered" note and leaves the final resolve to them. Any other value is a VALIDATION_ERROR.
 	AutoResolve *CreateStatusPageRequestAutoResolve `json:"autoResolve,omitempty"`
 
+	// CheckUids Optional checks to seed the page with. Every new page always gets a default "Services" section (position 0, renamable/deletable like any other); each UID here becomes one resource in that section, in request order. Every UID must resolve to a check in this organization, or the WHOLE request is rejected with VALIDATION_ERROR naming the offending UID — page, section, and resources are created atomically, so a rejected request leaves no page behind.
+	CheckUids *[]string `json:"checkUids,omitempty"`
+
 	// CustomCss Optional custom stylesheet for the public page. Max 64 KB; @import is rejected (VALIDATION_ERROR). External url() references are allowed.
 	CustomCss *string `json:"customCss,omitempty"`
 
@@ -3786,6 +3843,9 @@ type CreateStatusPageResourceRequest struct {
 type CreateStatusPageSectionRequest struct {
 	Name     string `json:"name"`
 	Position *int   `json:"position,omitempty"`
+
+	// Selector Optional dynamic-membership rule. Omit it for a normal hand-curated section — a selector is never a default.
+	Selector *StatusPageSectionSelector `json:"selector,omitempty"`
 
 	// Slug URL-friendly identifier, unique within the status page. Omit it (or send "") to have one derived from `name`, disambiguated with a numeric suffix on collision. A slug you supply is never renamed: a collision returns VALIDATION_ERROR instead.
 	Slug *string `json:"slug,omitempty"`
@@ -3866,6 +3926,26 @@ type DependencyGraphNode struct {
 	Slug string             `json:"slug"`
 	Uid  openapi_types.UUID `json:"uid"`
 }
+
+// DependencyWarning One soft lint finding about a dependency edge.
+//
+// `CONFIRMATION_MARGIN_TOO_SHORT` is raised for a hard `dependsOn` edge where `child.confirmation < parent.confirmation + parent.period + parent.timeout`: the child can finish confirming before its parent could possibly have observed the same outage even once. The runtime confirmation hold already covers the gap at page time (the child stays `validating` while a hard parent is still validating), so this only explains why a page may arrive later than the child's configured confirmation suggests.
+type DependencyWarning struct {
+	// ChildConfirmationSeconds The child check's configured confirmation period, in seconds.
+	ChildConfirmationSeconds *int                   `json:"childConfirmationSeconds,omitempty"`
+	Code                     *DependencyWarningCode `json:"code,omitempty"`
+	DependencyUid            *string                `json:"dependencyUid,omitempty"`
+
+	// Message English fallback text; localized clients key off `code` instead.
+	Message     *string   `json:"message,omitempty"`
+	ParentCheck *CheckRef `json:"parentCheck,omitempty"`
+
+	// RecommendedConfirmationSeconds `parent.confirmation + parent.period + parent.timeoutOrDefault`, rounded up to whole seconds.
+	RecommendedConfirmationSeconds *int `json:"recommendedConfirmationSeconds,omitempty"`
+}
+
+// DependencyWarningCode defines model for DependencyWarning.Code.
+type DependencyWarningCode string
 
 // DeviceAuthorizationRequest defines model for DeviceAuthorizationRequest.
 type DeviceAuthorizationRequest struct {
@@ -4356,7 +4436,7 @@ type GetOrgResultResponse struct {
 	// NextUid Next-newer result in the same series. Omitted when this is the newest result in scope.
 	NextUid *openapi_types.UUID `json:"nextUid,omitempty"`
 
-	// Output Diagnostic output (with=output)
+	// Output Diagnostic output (with=output). Free-form and check-type specific. For passive checks (heartbeat, email), rows written by the scheduler rather than by an inbound signal carry `evaluation: true` plus `lastSignalAt` / `lastSignalResultUid`; see the "Two kinds of result rows" section of the Heartbeat documentation (/docs/features/check-types#heartbeat).
 	Output      *map[string]interface{} `json:"output,omitempty"`
 	PeriodEnd   *time.Time              `json:"periodEnd,omitempty"`
 	PeriodStart *time.Time              `json:"periodStart,omitempty"`
@@ -4515,24 +4595,27 @@ type IncidentListResponse struct {
 type IncidentPublication struct {
 	AffectedResources *[]string `json:"affectedResources,omitempty"`
 
-	// AutoCreated True when the auto-publish pipeline minted it. Only auto-created publications are candidates for auto-resolve and relapse reopen.
+	// AutoCreated True when the auto-publish pipeline minted it. It gates group CONSOLIDATION only — the automation never appends "also affecting X" notes to a narrative a person wrote. Candidacy for auto-resolve and relapse reopen is decided by `incidentUid` instead: a publication linked to an incident follows the page's `autoResolve` policy whether a machine or a person created it, and one that tracks no incident is never touched by either.
 	AutoCreated bool       `json:"autoCreated"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty"`
 
-	// HumanTouched True once a person edited the publication or posted an update on it. This flag is the whole basis of the `if_untouched` auto-resolve policy.
+	// HumanTouched True once a person edited the publication or posted an update on it. This flag is the whole basis of the `if_untouched` auto-resolve policy. Publishing an incident onto a page does not set it.
 	HumanTouched bool `json:"humanTouched"`
 
 	// IncidentUid The internal incident this publication tracks. Absent for a hand-authored publication, which tracks nothing.
-	IncidentUid   *openapi_types.UUID          `json:"incidentUid,omitempty"`
-	PublishedAt   time.Time                    `json:"publishedAt"`
-	ResolvedAt    *time.Time                   `json:"resolvedAt,omitempty"`
-	Severity      *IncidentPublicationSeverity `json:"severity,omitempty"`
-	State         IncidentPublicationState     `json:"state"`
-	StatusPageUid openapi_types.UUID           `json:"statusPageUid"`
-	Title         string                       `json:"title"`
-	Uid           openapi_types.UUID           `json:"uid"`
-	UpdatedAt     *time.Time                   `json:"updatedAt,omitempty"`
-	Updates       *[]PublicationUpdate         `json:"updates,omitempty"`
+	IncidentUid *openapi_types.UUID          `json:"incidentUid,omitempty"`
+	PublishedAt time.Time                    `json:"publishedAt"`
+	ResolvedAt  *time.Time                   `json:"resolvedAt,omitempty"`
+	Severity    *IncidentPublicationSeverity `json:"severity,omitempty"`
+
+	// Stale True when the publication is still open on the public page while the internal incident it tracks has already resolved. Always false for a resolved publication and for a hand-authored one that tracks no incident.
+	Stale         *bool                    `json:"stale,omitempty"`
+	State         IncidentPublicationState `json:"state"`
+	StatusPageUid openapi_types.UUID       `json:"statusPageUid"`
+	Title         string                   `json:"title"`
+	Uid           openapi_types.UUID       `json:"uid"`
+	UpdatedAt     *time.Time               `json:"updatedAt,omitempty"`
+	Updates       *[]PublicationUpdate     `json:"updates,omitempty"`
 }
 
 // IncidentPublicationSeverity defines model for IncidentPublication.Severity.
@@ -4967,16 +5050,78 @@ type MemoryBuild struct {
 	SqliteDriver *string `json:"sqliteDriver,omitempty"`
 }
 
+// MemoryCgroup The container's own memory accounting, read from inside the process (the image is distroless, so nothing else can read it). Absent outside a container.
+type MemoryCgroup struct {
+	AnonBytes       *int64 `json:"anonBytes,omitempty"`
+	CurrentBytes    *int64 `json:"currentBytes,omitempty"`
+	FileBytes       *int64 `json:"fileBytes,omitempty"`
+	FileMappedBytes *int64 `json:"fileMappedBytes,omitempty"`
+	KernelBytes     *int64 `json:"kernelBytes,omitempty"`
+
+	// MaxBytes Hard limit; 0 means unlimited.
+	MaxBytes   *int64 `json:"maxBytes,omitempty"`
+	PeakBytes  *int64 `json:"peakBytes,omitempty"`
+	Present    *bool  `json:"present,omitempty"`
+	ShmemBytes *int64 `json:"shmemBytes,omitempty"`
+	SlabBytes  *int64 `json:"slabBytes,omitempty"`
+	SockBytes  *int64 `json:"sockBytes,omitempty"`
+
+	// UnreclaimableBytes anon + kernel — what the kernel cannot reclaim, and therefore what an OOM kill is decided on. The primary metric of the memory bench harness.
+	UnreclaimableBytes *int64 `json:"unreclaimableBytes,omitempty"`
+
+	// Version 2 for the unified hierarchy, 1 for the legacy controller, 0 when absent.
+	Version *int `json:"version,omitempty"`
+}
+
+// MemoryDerived defines model for MemoryDerived.
+type MemoryDerived struct {
+	// GoResidentBytes (runtime total − heap released), the subtrahend above.
+	GoResidentBytes *int64 `json:"goResidentBytes,omitempty"`
+
+	// OffHeapBytes RssAnon − (runtime total − heap released): resident anonymous memory the Go runtime does not account for (a cgo allocator's arena, foreign mmaps). Signed — a small negative value means the runtime holds address space that is not resident.
+	OffHeapBytes *int64 `json:"offHeapBytes,omitempty"`
+
+	// OffHeapKnown False when RssAnon was unavailable; offHeapBytes is then meaningless rather than zero.
+	OffHeapKnown *bool `json:"offHeapKnown,omitempty"`
+}
+
+// MemoryProcStatus /proc/self/status. Linux-only; `present` is false everywhere else and the values are then meaningless zeros.
+type MemoryProcStatus struct {
+	Present *bool `json:"present,omitempty"`
+
+	// RssAnonBytes Resident anonymous memory — the only RSS component an OOM kill can be caused by.
+	RssAnonBytes *int64 `json:"rssAnonBytes,omitempty"`
+
+	// RssFileBytes Resident file-backed memory (mapped binary/rodata), reclaimable.
+	RssFileBytes  *int64 `json:"rssFileBytes,omitempty"`
+	RssShmemBytes *int64 `json:"rssShmemBytes,omitempty"`
+
+	// Threads OS threads; each costs an anonymous stack the Go heap profiler does not show.
+	Threads *int `json:"threads,omitempty"`
+
+	// VmHwmBytes Peak resident set size since process start (VmHWM).
+	VmHwmBytes *int64 `json:"vmHwmBytes,omitempty"`
+}
+
 // MemoryProcess OS-level process memory.
 type MemoryProcess struct {
+	// RssBytes process_resident_memory_bytes — anon + file + shmem, unsplit.
 	RssBytes *int64 `json:"rssBytes,omitempty"`
+
+	// Smaps /proc/self/smaps_rollup. Linux-only.
+	Smaps *MemorySmapsRollup `json:"smaps,omitempty"`
+
+	// Status /proc/self/status. Linux-only; `present` is false everywhere else and the values are then meaningless zeros.
+	Status *MemoryProcStatus `json:"status,omitempty"`
 }
 
 // MemoryRuntime runtime.MemStats / goroutine slice of the memory snapshot.
 type MemoryRuntime struct {
-	GcCpuFraction  *float64 `json:"gcCpuFraction,omitempty"`
-	GcPauseTotalNs *int64   `json:"gcPauseTotalNs,omitempty"`
-	GoMaxProcs     *int     `json:"goMaxProcs,omitempty"`
+	// Classes The runtime/metrics `/memory/classes/*` breakdown plus `/gc/heap/live`. Unlike MemStats it accounts for every byte the runtime obtained from the OS, which is what makes the off-heap subtraction meaningful.
+	Classes        *MemoryRuntimeClasses `json:"classes,omitempty"`
+	GcCpuFraction  *float64              `json:"gcCpuFraction,omitempty"`
+	GcPauseTotalNs *int64                `json:"gcPauseTotalNs,omitempty"`
+	GoMaxProcs     *int                  `json:"goMaxProcs,omitempty"`
 
 	// GoMemLimitBytes Effective GOMEMLIMIT soft cap; 0 means unlimited.
 	GoMemLimitBytes *int64 `json:"goMemLimitBytes,omitempty"`
@@ -4990,16 +5135,58 @@ type MemoryRuntime struct {
 	SysBytes        *int64 `json:"sysBytes,omitempty"`
 }
 
+// MemoryRuntimeClasses The runtime/metrics `/memory/classes/*` breakdown plus `/gc/heap/live`. Unlike MemStats it accounts for every byte the runtime obtained from the OS, which is what makes the off-heap subtraction meaningful.
+type MemoryRuntimeClasses struct {
+	HeapFreeBytes         *int64 `json:"heapFreeBytes,omitempty"`
+	HeapLiveBytes         *int64 `json:"heapLiveBytes,omitempty"`
+	HeapObjectsBytes      *int64 `json:"heapObjectsBytes,omitempty"`
+	HeapReleasedBytes     *int64 `json:"heapReleasedBytes,omitempty"`
+	HeapUnusedBytes       *int64 `json:"heapUnusedBytes,omitempty"`
+	MetadataBytes         *int64 `json:"metadataBytes,omitempty"`
+	OsStacksBytes         *int64 `json:"osStacksBytes,omitempty"`
+	OtherBytes            *int64 `json:"otherBytes,omitempty"`
+	ProfilingBucketsBytes *int64 `json:"profilingBucketsBytes,omitempty"`
+	TotalBytes            *int64 `json:"totalBytes,omitempty"`
+}
+
+// MemorySample How this reading was taken, so two numbers are never compared across modes.
+type MemorySample struct {
+	GcForced *bool             `json:"gcForced,omitempty"`
+	Mode     *MemorySampleMode `json:"mode,omitempty"`
+	TakenAt  *time.Time        `json:"takenAt,omitempty"`
+}
+
+// MemorySampleMode defines model for MemorySample.Mode.
+type MemorySampleMode string
+
+// MemorySmapsRollup /proc/self/smaps_rollup. Linux-only.
+type MemorySmapsRollup struct {
+	Present           *bool  `json:"present,omitempty"`
+	PrivateCleanBytes *int64 `json:"privateCleanBytes,omitempty"`
+	PrivateDirtyBytes *int64 `json:"privateDirtyBytes,omitempty"`
+	PssBytes          *int64 `json:"pssBytes,omitempty"`
+
+	// SharedCleanBytes Dominated by the binary's mapped text/rodata — moves with binary size, not with the heap.
+	SharedCleanBytes *int64 `json:"sharedCleanBytes,omitempty"`
+}
+
 // MemorySnapshot defines model for MemorySnapshot.
 type MemorySnapshot struct {
 	// Build Build facts relevant to off-heap accounting.
 	Build *MemoryBuild `json:"build,omitempty"`
+
+	// Cgroup The container's own memory accounting, read from inside the process (the image is distroless, so nothing else can read it). Absent outside a container.
+	Cgroup  *MemoryCgroup  `json:"cgroup,omitempty"`
+	Derived *MemoryDerived `json:"derived,omitempty"`
 
 	// Process OS-level process memory.
 	Process *MemoryProcess `json:"process,omitempty"`
 
 	// Runtime runtime.MemStats / goroutine slice of the memory snapshot.
 	Runtime *MemoryRuntime `json:"runtime,omitempty"`
+
+	// Sample How this reading was taken, so two numbers are never compared across modes.
+	Sample *MemorySample `json:"sample,omitempty"`
 
 	// Subsystems Cardinalities of the suspect subsystems.
 	Subsystems *MemorySubsystems `json:"subsystems,omitempty"`
@@ -5284,7 +5471,7 @@ type OrgResult struct {
 	// Metrics Performance metrics (with=metrics)
 	Metrics *map[string]interface{} `json:"metrics,omitempty"`
 
-	// Output Diagnostic output (with=output)
+	// Output Diagnostic output (with=output). Free-form and check-type specific. For passive checks (heartbeat, email), rows written by the scheduler rather than by an inbound signal carry `evaluation: true` plus `lastSignalAt` / `lastSignalResultUid`; see the "Two kinds of result rows" section of the Heartbeat documentation (/docs/features/check-types#heartbeat).
 	Output      *map[string]interface{} `json:"output,omitempty"`
 	PeriodEnd   *time.Time              `json:"periodEnd,omitempty"`
 	PeriodStart *time.Time              `json:"periodStart,omitempty"`
@@ -5359,6 +5546,9 @@ type PerCheckDependenciesResponse struct {
 	Data *struct {
 		DependedOnBy *[]Dependency `json:"dependedOnBy,omitempty"`
 		DependsOn    *[]Dependency `json:"dependsOn,omitempty"`
+
+		// Warnings Soft configuration lint over this check's hard `dependsOn` edges. Advisory only — never a validation error, and never a reason a write is rejected. Always present (possibly empty).
+		Warnings *[]DependencyWarning `json:"warnings,omitempty"`
 	} `json:"data,omitempty"`
 }
 
@@ -6032,6 +6222,9 @@ type StatusPage struct {
 	// FaviconUrl Public path of the page's uploaded favicon, if any.
 	FaviconUrl *string `json:"faviconUrl,omitempty"`
 
+	// HasKioskToken Whether a kiosk (TV mode) token is minted for this page. ADMIN payloads only — the public views strip it, and the token itself is returned exactly once, by the POST that mints it.
+	HasKioskToken *bool `json:"hasKioskToken,omitempty"`
+
 	// HasPassword Whether an unlock password is stored. The hash itself is never serialized.
 	HasPassword *bool `json:"hasPassword,omitempty"`
 
@@ -6047,6 +6240,9 @@ type StatusPage struct {
 	// LogoUrl Public path of the page's uploaded logo, if any.
 	LogoUrl *string `json:"logoUrl,omitempty"`
 	Name    string  `json:"name"`
+
+	// OverallAvailabilityPct PAGE-level uptime over the page's own historyPeriod: the arithmetic mean of the per-resource `availability.overallAvailabilityPct` values, with resources that have no data excluded from the mean (never counted as 0 or 100). Omitted when `showAvailability` is false, when no resource has any data, and on the authenticated admin payloads. Public view paths only, like overallStatus.
+	OverallAvailabilityPct *float64 `json:"overallAvailabilityPct,omitempty"`
 
 	// OverallStatus Page-level rollup computed server-side from the live status of every resource on the page, so the public views, the summary endpoint, and the SVG badge always agree. Only populated on the live public view paths (GET /api/v1/status-pages/{org} and GET /api/v1/status-pages/{org}/{slug}) — omitted on the authenticated admin listing, which doesn't load live resource data.
 	OverallStatus *StatusPageOverallStatus `json:"overallStatus,omitempty"`
@@ -6135,9 +6331,13 @@ type StatusPageResource struct {
 	CheckUid    *openapi_types.UUID `json:"checkUid,omitempty"`
 	CreatedAt   *time.Time          `json:"createdAt,omitempty"`
 	Explanation *string             `json:"explanation,omitempty"`
-	Position    int                 `json:"position"`
-	PublicName  *string             `json:"publicName,omitempty"`
-	Uid         openapi_types.UUID  `json:"uid"`
+
+	// ManagedBySelector True when the row was materialized by the section's selector and is owned by it (spec 2026-08-29-11). Deleting it, re-targeting it, writing its `position`, or reordering it away from the arrangement the reconciler maintains all answer `409 CONFLICT` — those edits would be undone on the next reconcile, and a write that reports success and then silently reverts is worse than a refusal. Change the selector instead, or add the check manually (which always wins, and takes over the managed row in place). Its `publicName`, `explanation` and `autoPublish` stay editable — the reconciler never touches them. Manual resources in the same section remain freely deletable and reorderable.
+	// Absent means a normal manual resource. AUTHENTICATED responses only — the public payload omits it, because a materialized component renders exactly like a manual one and how it got there is operator context.
+	ManagedBySelector *bool              `json:"managedBySelector,omitempty"`
+	Position          int                `json:"position"`
+	PublicName        *string            `json:"publicName,omitempty"`
+	Uid               openapi_types.UUID `json:"uid"`
 }
 
 // StatusPageResourceListResponse defines model for StatusPageResourceListResponse.
@@ -6151,13 +6351,33 @@ type StatusPageSection struct {
 	Name      string                `json:"name"`
 	Position  int                   `json:"position"`
 	Resources *[]StatusPageResource `json:"resources,omitempty"`
-	Slug      string                `json:"slug"`
-	Uid       openapi_types.UUID    `json:"uid"`
+
+	// Selector The section's dynamic-membership rule, absent on a hand-curated section. Returned on AUTHENTICATED responses only — the public page payload omits it, since a selector spells out the organization's internal label taxonomy.
+	Selector *StatusPageSectionSelector `json:"selector,omitempty"`
+
+	// SelectorMatchTotal How many checks the selector matches in total. Authenticated responses only.
+	SelectorMatchTotal *int `json:"selectorMatchTotal,omitempty"`
+
+	// SelectorTruncated True when the match count exceeds the per-section cap (200) and the section is therefore showing a stable alphabetical prefix. Authenticated responses only.
+	SelectorTruncated *bool              `json:"selectorTruncated,omitempty"`
+	Slug              string             `json:"slug"`
+	Uid               openapi_types.UUID `json:"uid"`
 }
 
 // StatusPageSectionListResponse defines model for StatusPageSectionListResponse.
 type StatusPageSectionListResponse struct {
 	Data *[]StatusPageSection `json:"data,omitempty"`
+}
+
+// StatusPageSectionSelector A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of `all` / `labels` is set; `{}` and an empty `labels` object are both rejected, because "select everything" has to be typed out rather than implied. Unknown keys are rejected too: a mistyped rule that silently matches nothing forever is the exact failure dynamic sections exist to remove.
+// The system MATERIALIZES the matching checks as real resources (`managedBySelector: true`), so a check created later appears with no manual action, and one that stops matching is removed. Internal checks are never matched. A check already placed MANUALLY anywhere on the same page is skipped — manual placement always wins.
+// On a `public` page this means every current AND future matching check becomes publicly visible. Prefer a label opt-in such as `{"labels": {"public": "true"}}`, which puts the publish decision on the check itself.
+type StatusPageSectionSelector struct {
+	// All Select every non-internal check in the organization.
+	All *bool `json:"all,omitempty"`
+
+	// Labels Select checks carrying ALL of these exact key=value labels (AND). Values are exact — there is no existence-only ("*") matching.
+	Labels *map[string]string `json:"labels,omitempty"`
 }
 
 // StatusPageSettings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
@@ -6223,7 +6443,10 @@ type StatusPageSummary struct {
 	// Counts Tallies the page's resources per overallStatus category.
 	Counts      StatusCounts `json:"counts"`
 	GeneratedAt time.Time    `json:"generatedAt"`
-	Page        struct {
+
+	// OverallAvailabilityPct Page-level uptime over the page's historyPeriod — the same number, by the same definition, as the full page view's field of this name. Omitted when the page hides availability or nothing has reported yet.
+	OverallAvailabilityPct *float64 `json:"overallAvailabilityPct,omitempty"`
+	Page                   struct {
 		Name string `json:"name"`
 		Slug string `json:"slug"`
 
@@ -6681,7 +6904,10 @@ type UpdateStatusPageResourceRequest struct {
 type UpdateStatusPageSectionRequest struct {
 	Name     *string `json:"name,omitempty"`
 	Position *int    `json:"position,omitempty"`
-	Slug     *string `json:"slug,omitempty"`
+
+	// Selector Three-state. Omit the key to leave the membership rule alone, send an object to replace it, or send `null` to clear it — which turns the section back into a hand-curated one and removes the resources the selector owned.
+	Selector *StatusPageSectionSelector `json:"selector,omitempty"`
+	Slug     *string                    `json:"slug,omitempty"`
 }
 
 // UpdateStatusUpdateRequest defines model for UpdateStatusUpdateRequest.
@@ -6892,6 +7118,9 @@ type JobTypeQuery = string
 // JobUidPath defines model for JobUidPath.
 type JobUidPath = openapi_types.UUID
 
+// KioskTokenQuery defines model for KioskTokenQuery.
+type KioskTokenQuery = string
+
 // MaintenanceWindowUidPath defines model for MaintenanceWindowUidPath.
 type MaintenanceWindowUidPath = openapi_types.UUID
 
@@ -6990,6 +7219,15 @@ type Unauthorized = Error
 
 // ValidationError defines model for ValidationError.
 type ValidationError = Error
+
+// GetMemoryParams defines parameters for GetMemory.
+type GetMemoryParams struct {
+	// Gc Force a GC and return free pages to the OS before sampling, giving the *live floor* instead of the steady state. Reported back as `sample.mode = floor`; the two modes are different measurements and must not be compared with each other. Opt-in because the forced collection is a real pause.
+	Gc *GetMemoryParamsGc `form:"gc,omitempty" json:"gc,omitempty"`
+}
+
+// GetMemoryParamsGc defines parameters for GetMemory.
+type GetMemoryParamsGc string
 
 // GetCostDistributionParams defines parameters for GetCostDistribution.
 type GetCostDistributionParams struct {
@@ -7425,6 +7663,9 @@ type ListStatusPageIncidentsParams struct {
 
 	// Active When "true", returns only publications that are not resolved.
 	Active *bool `form:"active,omitempty" json:"active,omitempty"`
+
+	// Stale When "true", returns only publications that are still open on the public page while the internal incident they track has already resolved. Combine with `active=true` for the operator's "needs closing by hand" feed.
+	Stale  *bool `form:"stale,omitempty" json:"stale,omitempty"`
 	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *int  `form:"offset,omitempty" json:"offset,omitempty"`
 }
@@ -7488,6 +7729,18 @@ type CustomDomainAllowedParams struct {
 	Domain string `form:"domain" json:"domain"`
 }
 
+// ViewDefaultStatusPageParams defines parameters for ViewDefaultStatusPage.
+type ViewDefaultStatusPageParams struct {
+	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
+	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+}
+
+// ViewStatusPageParams defines parameters for ViewStatusPage.
+type ViewStatusPageParams struct {
+	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
+	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+}
+
 // GetStatusPageBadgeParams defines parameters for GetStatusPageBadge.
 type GetStatusPageBadgeParams struct {
 	// Label Custom left-side label (default the page name)
@@ -7510,6 +7763,15 @@ type GetStatusPageBadgeParamsStyle string
 type ViewPublicStatusPageIncidentsParams struct {
 	// Active When "true", returns only incidents that are not resolved.
 	Active *bool `form:"active,omitempty" json:"active,omitempty"`
+
+	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
+	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+}
+
+// ViewStatusPageSummaryParams defines parameters for ViewStatusPageSummary.
+type ViewStatusPageSummaryParams struct {
+	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
+	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
 }
 
 // ListSupportThreadsParams defines parameters for ListSupportThreads.
@@ -7937,10 +8199,10 @@ type ClientInterface interface {
 
 	// GetMemory Runtime memory snapshot
 	//
-	// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
+	// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC and the runtime/metrics memory classes), the process RSS breakdown from /proc (anon / file / shmem split, peak, threads, smaps_rollup Pss), the container's own cgroup accounting, the derived off-heap gap, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Linux-only sections report `present: false` on other platforms rather than failing. Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
 	//
 	// Corresponds with GET /api/mgmt/memory (the `GetMemory` operationId).
-	GetMemory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetMemory(ctx context.Context, params *GetMemoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCostDistribution Scheduler cost/delay distribution
 	//
@@ -9777,6 +10039,22 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
 	CreateStatusPageIncidentUpdate(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RevokeStatusPageKioskToken Revoke a status page's kiosk token
+	//
+	// Clears the stored hash. Any screen still presenting the old token falls straight back to the page's ordinary visibility rules — 401 for a `password` page, 404 for a `private` one — with no distinguishable "revoked" answer. Idempotent: revoking a page that has no token succeeds.
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `RevokeStatusPageKioskToken` operationId).
+	RevokeStatusPageKioskToken(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GenerateStatusPageKioskToken Mint or regenerate a status page's kiosk (TV mode) token
+	//
+	// Mints the page's single kiosk token — a long-lived, revocable, per-page secret a wallboard presents as a `kiosk` query parameter so an office TV can render a `password` or `private` page unattended. It grants READ-ONLY view of this one page and nothing else.
+	//
+	// The plaintext is returned HERE AND NOWHERE ELSE: only its sha256 is stored, so an operator who loses it regenerates rather than recovers. Calling this on a page that already has a token REPLACES it, which immediately invalidates the screen using the old one.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `GenerateStatusPageKioskToken` operationId).
+	GenerateStatusPageKioskToken(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListStatusPageSections List sections of a status page
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections (the `ListStatusPageSections` operationId).
@@ -10119,7 +10397,7 @@ type ClientInterface interface {
 	// Renders the same payload as GET /api/v1/status-pages/{org}/{slug}, resolved to the organization's default page. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org} (the `ViewDefaultStatusPage` operationId).
-	ViewDefaultStatusPage(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ViewDefaultStatusPage(ctx context.Context, org OrgPath, params *ViewDefaultStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UnlockDefaultStatusPageWithBody Unlock an organization's password-protected default status page
 	//
@@ -10144,7 +10422,7 @@ type ClientInterface interface {
 	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
-	ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ViewStatusPage(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStatusPageBadge SVG badge for a status page's overall status
 	//
@@ -10174,7 +10452,7 @@ type ClientInterface interface {
 	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
-	ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UnlockStatusPageWithBody Unlock a password-protected status page
 	//
@@ -10562,11 +10840,11 @@ func (c *Client) GetLimits(ctx context.Context, reqEditors ...RequestEditorFn) (
 
 // GetMemory Runtime memory snapshot
 //
-// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
+// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC and the runtime/metrics memory classes), the process RSS breakdown from /proc (anon / file / shmem split, peak, threads, smaps_rollup Pss), the container's own cgroup accounting, the derived off-heap gap, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Linux-only sections report `present: false` on other platforms rather than failing. Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
 //
 // Corresponds with GET /api/mgmt/memory (the `GetMemory` operationId).
-func (c *Client) GetMemory(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetMemoryRequest(c.Server)
+func (c *Client) GetMemory(ctx context.Context, params *GetMemoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMemoryRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -15062,6 +15340,42 @@ func (c *Client) CreateStatusPageIncidentUpdate(ctx context.Context, org OrgPath
 	return c.Client.Do(req)
 }
 
+// RevokeStatusPageKioskToken Revoke a status page's kiosk token
+//
+// Clears the stored hash. Any screen still presenting the old token falls straight back to the page's ordinary visibility rules — 401 for a `password` page, 404 for a `private` one — with no distinguishable "revoked" answer. Idempotent: revoking a page that has no token succeeds.
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `RevokeStatusPageKioskToken` operationId).
+func (c *Client) RevokeStatusPageKioskToken(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeStatusPageKioskTokenRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GenerateStatusPageKioskToken Mint or regenerate a status page's kiosk (TV mode) token
+//
+// Mints the page's single kiosk token — a long-lived, revocable, per-page secret a wallboard presents as a `kiosk` query parameter so an office TV can render a `password` or `private` page unattended. It grants READ-ONLY view of this one page and nothing else.
+//
+// The plaintext is returned HERE AND NOWHERE ELSE: only its sha256 is stored, so an operator who loses it regenerates rather than recovers. Calling this on a page that already has a token REPLACES it, which immediately invalidates the screen using the old one.
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `GenerateStatusPageKioskToken` operationId).
+func (c *Client) GenerateStatusPageKioskToken(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGenerateStatusPageKioskTokenRequest(c.Server, org, statusPageUid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListStatusPageSections List sections of a status page
 //
 // Corresponds with GET /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections (the `ListStatusPageSections` operationId).
@@ -15864,8 +16178,8 @@ func (c *Client) CustomDomainAllowed(ctx context.Context, params *CustomDomainAl
 // Renders the same payload as GET /api/v1/status-pages/{org}/{slug}, resolved to the organization's default page. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org} (the `ViewDefaultStatusPage` operationId).
-func (c *Client) ViewDefaultStatusPage(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewViewDefaultStatusPageRequest(c.Server, org)
+func (c *Client) ViewDefaultStatusPage(ctx context.Context, org OrgPath, params *ViewDefaultStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewViewDefaultStatusPageRequest(c.Server, org, params)
 	if err != nil {
 		return nil, err
 	}
@@ -15919,8 +16233,8 @@ func (c *Client) UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body 
 // Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
-func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewViewStatusPageRequest(c.Server, org, slug)
+func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewViewStatusPageRequest(c.Server, org, slug, params)
 	if err != nil {
 		return nil, err
 	}
@@ -15989,8 +16303,8 @@ func (c *Client) ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath,
 // Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
-func (c *Client) ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewViewStatusPageSummaryRequest(c.Server, org, slug)
+func (c *Client) ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewViewStatusPageSummaryRequest(c.Server, org, slug, params)
 	if err != nil {
 		return nil, err
 	}
@@ -16787,7 +17101,7 @@ func NewGetLimitsRequest(server string) (*http.Request, error) {
 }
 
 // NewGetMemoryRequest constructs an http.Request for the GetMemory method
-func NewGetMemoryRequest(server string) (*http.Request, error) {
+func NewGetMemoryRequest(server string, params *GetMemoryParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -16803,6 +17117,33 @@ func NewGetMemoryRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Gc != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "gc", *params.Gc, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -26555,6 +26896,18 @@ func NewListStatusPageIncidentsRequest(server string, org OrgPath, statusPageUid
 
 		}
 
+		if params.Stale != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "stale", *params.Stale, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
@@ -26813,6 +27166,88 @@ func NewCreateStatusPageIncidentUpdateRequestWithBody(server string, org OrgPath
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeStatusPageKioskTokenRequest constructs an http.Request for the RevokeStatusPageKioskToken method
+func NewRevokeStatusPageKioskTokenRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/kiosk-token", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGenerateStatusPageKioskTokenRequest constructs an http.Request for the GenerateStatusPageKioskToken method
+func NewGenerateStatusPageKioskTokenRequest(server string, org OrgPath, statusPageUid StatusPageUidPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "statusPageUid", statusPageUid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/status-pages/%s/kiosk-token", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -28526,7 +28961,7 @@ func NewCustomDomainAllowedRequest(server string, params *CustomDomainAllowedPar
 }
 
 // NewViewDefaultStatusPageRequest constructs an http.Request for the ViewDefaultStatusPage method
-func NewViewDefaultStatusPageRequest(server string, org OrgPath) (*http.Request, error) {
+func NewViewDefaultStatusPageRequest(server string, org OrgPath, params *ViewDefaultStatusPageParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -28549,6 +28984,33 @@ func NewViewDefaultStatusPageRequest(server string, org OrgPath) (*http.Request,
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Kiosk != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kiosk", *params.Kiosk, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -28607,7 +29069,7 @@ func NewUnlockDefaultStatusPageRequestWithBody(server string, org OrgPath, conte
 }
 
 // NewViewStatusPageRequest constructs an http.Request for the ViewStatusPage method
-func NewViewStatusPageRequest(server string, org OrgPath, slug string) (*http.Request, error) {
+func NewViewStatusPageRequest(server string, org OrgPath, slug string, params *ViewStatusPageParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -28637,6 +29099,33 @@ func NewViewStatusPageRequest(server string, org OrgPath, slug string) (*http.Re
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Kiosk != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kiosk", *params.Kiosk, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -28846,6 +29335,18 @@ func NewViewPublicStatusPageIncidentsRequest(server string, org OrgPath, slug st
 
 		}
 
+		if params.Kiosk != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kiosk", *params.Kiosk, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -28861,7 +29362,7 @@ func NewViewPublicStatusPageIncidentsRequest(server string, org OrgPath, slug st
 }
 
 // NewViewStatusPageSummaryRequest constructs an http.Request for the ViewStatusPageSummary method
-func NewViewStatusPageSummaryRequest(server string, org OrgPath, slug string) (*http.Request, error) {
+func NewViewStatusPageSummaryRequest(server string, org OrgPath, slug string, params *ViewStatusPageSummaryParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -28891,6 +29392,33 @@ func NewViewStatusPageSummaryRequest(server string, org OrgPath, slug string) (*
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Kiosk != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kiosk", *params.Kiosk, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -30280,12 +30808,12 @@ type ClientWithResponsesInterface interface {
 
 	// GetMemoryWithResponse Runtime memory snapshot
 	//
-	// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
+	// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC and the runtime/metrics memory classes), the process RSS breakdown from /proc (anon / file / shmem split, peak, threads, smaps_rollup Pss), the container's own cgroup accounting, the derived off-heap gap, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Linux-only sections report `present: false` on other platforms rather than failing. Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/mgmt/memory (the `GetMemory` operationId).
-	GetMemoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMemoryResult, error)
+	GetMemoryWithResponse(ctx context.Context, params *GetMemoryParams, reqEditors ...RequestEditorFn) (*GetMemoryResult, error)
 
 	// GetCostDistributionWithResponse Scheduler cost/delay distribution
 	//
@@ -32374,6 +32902,26 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates (the `CreateStatusPageIncidentUpdate` operationId).
 	CreateStatusPageIncidentUpdateWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, uid PublicationUidPath, body CreateStatusPageIncidentUpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateStatusPageIncidentUpdateResult, error)
 
+	// RevokeStatusPageKioskTokenWithResponse Revoke a status page's kiosk token
+	//
+	// Clears the stored hash. Any screen still presenting the old token falls straight back to the page's ordinary visibility rules — 401 for a `password` page, 404 for a `private` one — with no distinguishable "revoked" answer. Idempotent: revoking a page that has no token succeeds.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `RevokeStatusPageKioskToken` operationId).
+	RevokeStatusPageKioskTokenWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*RevokeStatusPageKioskTokenResult, error)
+
+	// GenerateStatusPageKioskTokenWithResponse Mint or regenerate a status page's kiosk (TV mode) token
+	//
+	// Mints the page's single kiosk token — a long-lived, revocable, per-page secret a wallboard presents as a `kiosk` query parameter so an office TV can render a `password` or `private` page unattended. It grants READ-ONLY view of this one page and nothing else.
+	//
+	// The plaintext is returned HERE AND NOWHERE ELSE: only its sha256 is stored, so an operator who loses it regenerates rather than recovers. Calling this on a page that already has a token REPLACES it, which immediately invalidates the screen using the old one.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `GenerateStatusPageKioskToken` operationId).
+	GenerateStatusPageKioskTokenWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*GenerateStatusPageKioskTokenResult, error)
+
 	// ListStatusPageSectionsWithResponse List sections of a status page
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -32754,7 +33302,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/status-pages/{org} (the `ViewDefaultStatusPage` operationId).
-	ViewDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ViewDefaultStatusPageResult, error)
+	ViewDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, params *ViewDefaultStatusPageParams, reqEditors ...RequestEditorFn) (*ViewDefaultStatusPageResult, error)
 
 	// UnlockDefaultStatusPageWithBodyWithResponse Unlock an organization's password-protected default status page
 	//
@@ -32781,7 +33329,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
-	ViewStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*ViewStatusPageResult, error)
+	ViewStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*ViewStatusPageResult, error)
 
 	// GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 	//
@@ -32819,7 +33367,7 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
-	ViewStatusPageSummaryWithResponse(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*ViewStatusPageSummaryResult, error)
+	ViewStatusPageSummaryWithResponse(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*ViewStatusPageSummaryResult, error)
 
 	// UnlockStatusPageWithBodyWithResponse Unlock a password-protected status page
 	//
@@ -44304,6 +44852,119 @@ func (r CreateStatusPageIncidentUpdateResult) ContentType() string {
 	return ""
 }
 
+type RevokeStatusPageKioskTokenResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeStatusPageKioskTokenResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeStatusPageKioskTokenResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeStatusPageKioskTokenResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeStatusPageKioskTokenResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeStatusPageKioskTokenResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeStatusPageKioskTokenResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GenerateStatusPageKioskTokenResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *struct {
+		HasKioskToken bool `json:"hasKioskToken"`
+
+		// Token The plaintext kiosk token. Append it to the TV URL as the `kiosk` query parameter.
+		Token string `json:"token"`
+	}
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r GenerateStatusPageKioskTokenResult) GetJSON201() *struct {
+	HasKioskToken bool `json:"hasKioskToken"`
+
+	// Token The plaintext kiosk token. Append it to the TV URL as the `kiosk` query parameter.
+	Token string `json:"token"`
+} {
+	return r.JSON201
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GenerateStatusPageKioskTokenResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GenerateStatusPageKioskTokenResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GenerateStatusPageKioskTokenResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GenerateStatusPageKioskTokenResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GenerateStatusPageKioskTokenResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GenerateStatusPageKioskTokenResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListStatusPageSectionsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -48310,13 +48971,13 @@ func (c *ClientWithResponses) GetLimitsWithResponse(ctx context.Context, reqEdit
 
 // GetMemoryWithResponse Runtime memory snapshot
 //
-// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC), process RSS, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
+// Returns a JSON snapshot of runtime memory (heap / stack / goroutines / GC and the runtime/metrics memory classes), the process RSS breakdown from /proc (anon / file / shmem split, peak, threads, smaps_rollup Pss), the container's own cgroup accounting, the derived off-heap gap, suspect-subsystem cardinalities (DEK cache, rate-limit entries, event listeners) and build facts (cgo, SQLite driver, Go version). Linux-only sections report `present: false` on other platforms rather than failing. Super-admin only; the raw pprof surface stays on the localhost-bound profiler server.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/mgmt/memory (the `GetMemory` operationId).
-func (c *ClientWithResponses) GetMemoryWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMemoryResult, error) {
-	rsp, err := c.GetMemory(ctx, reqEditors...)
+func (c *ClientWithResponses) GetMemoryWithResponse(ctx context.Context, params *GetMemoryParams, reqEditors ...RequestEditorFn) (*GetMemoryResult, error) {
+	rsp, err := c.GetMemory(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -52000,6 +52661,38 @@ func (c *ClientWithResponses) CreateStatusPageIncidentUpdateWithResponse(ctx con
 	return ParseCreateStatusPageIncidentUpdateResult(rsp)
 }
 
+// RevokeStatusPageKioskTokenWithResponse Revoke a status page's kiosk token
+//
+// Clears the stored hash. Any screen still presenting the old token falls straight back to the page's ordinary visibility rules — 401 for a `password` page, 404 for a `private` one — with no distinguishable "revoked" answer. Idempotent: revoking a page that has no token succeeds.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `RevokeStatusPageKioskToken` operationId).
+func (c *ClientWithResponses) RevokeStatusPageKioskTokenWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*RevokeStatusPageKioskTokenResult, error) {
+	rsp, err := c.RevokeStatusPageKioskToken(ctx, org, statusPageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeStatusPageKioskTokenResult(rsp)
+}
+
+// GenerateStatusPageKioskTokenWithResponse Mint or regenerate a status page's kiosk (TV mode) token
+//
+// Mints the page's single kiosk token — a long-lived, revocable, per-page secret a wallboard presents as a `kiosk` query parameter so an office TV can render a `password` or `private` page unattended. It grants READ-ONLY view of this one page and nothing else.
+//
+// The plaintext is returned HERE AND NOWHERE ELSE: only its sha256 is stored, so an operator who loses it regenerates rather than recovers. Calling this on a page that already has a token REPLACES it, which immediately invalidates the screen using the old one.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token (the `GenerateStatusPageKioskToken` operationId).
+func (c *ClientWithResponses) GenerateStatusPageKioskTokenWithResponse(ctx context.Context, org OrgPath, statusPageUid StatusPageUidPath, reqEditors ...RequestEditorFn) (*GenerateStatusPageKioskTokenResult, error) {
+	rsp, err := c.GenerateStatusPageKioskToken(ctx, org, statusPageUid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGenerateStatusPageKioskTokenResult(rsp)
+}
+
 // ListStatusPageSectionsWithResponse List sections of a status page
 //
 // Returns a wrapper object for the known response body format(s).
@@ -52656,8 +53349,8 @@ func (c *ClientWithResponses) CustomDomainAllowedWithResponse(ctx context.Contex
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/status-pages/{org} (the `ViewDefaultStatusPage` operationId).
-func (c *ClientWithResponses) ViewDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ViewDefaultStatusPageResult, error) {
-	rsp, err := c.ViewDefaultStatusPage(ctx, org, reqEditors...)
+func (c *ClientWithResponses) ViewDefaultStatusPageWithResponse(ctx context.Context, org OrgPath, params *ViewDefaultStatusPageParams, reqEditors ...RequestEditorFn) (*ViewDefaultStatusPageResult, error) {
+	rsp, err := c.ViewDefaultStatusPage(ctx, org, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -52701,8 +53394,8 @@ func (c *ClientWithResponses) UnlockDefaultStatusPageWithResponse(ctx context.Co
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
-func (c *ClientWithResponses) ViewStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*ViewStatusPageResult, error) {
-	rsp, err := c.ViewStatusPage(ctx, org, slug, reqEditors...)
+func (c *ClientWithResponses) ViewStatusPageWithResponse(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*ViewStatusPageResult, error) {
+	rsp, err := c.ViewStatusPage(ctx, org, slug, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -52763,8 +53456,8 @@ func (c *ClientWithResponses) ViewPublicStatusPageIncidentsWithResponse(ctx cont
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
-func (c *ClientWithResponses) ViewStatusPageSummaryWithResponse(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*ViewStatusPageSummaryResult, error) {
-	rsp, err := c.ViewStatusPageSummary(ctx, org, slug, reqEditors...)
+func (c *ClientWithResponses) ViewStatusPageSummaryWithResponse(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*ViewStatusPageSummaryResult, error) {
+	rsp, err := c.ViewStatusPageSummary(ctx, org, slug, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -61572,6 +62265,87 @@ func ParseCreateStatusPageIncidentUpdateResult(rsp *http.Response) (*CreateStatu
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
 		var dest PublicationUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeStatusPageKioskTokenResult parses an HTTP response from a RevokeStatusPageKioskTokenWithResponse call
+func ParseRevokeStatusPageKioskTokenResult(rsp *http.Response) (*RevokeStatusPageKioskTokenResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeStatusPageKioskTokenResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGenerateStatusPageKioskTokenResult parses an HTTP response from a GenerateStatusPageKioskTokenWithResponse call
+func ParseGenerateStatusPageKioskTokenResult(rsp *http.Response) (*GenerateStatusPageKioskTokenResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GenerateStatusPageKioskTokenResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			HasKioskToken bool `json:"hasKioskToken"`
+
+			// Token The plaintext kiosk token. Append it to the TV URL as the `kiosk` query parameter.
+			Token string `json:"token"`
+		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
