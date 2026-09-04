@@ -3871,27 +3871,7 @@ func BuildCredentialsService(cfg *config.Config, dbService db.Service) (credenti
 		return nil, err
 	}
 
-	store := credentials.ParamStore{
-		Load: func(ctx context.Context, orgUID, key string) (json.RawMessage, bool, error) {
-			param, getErr := dbService.GetOrgParameter(ctx, orgUID, key)
-			if getErr != nil {
-				return nil, false, getErr
-			}
-			if param == nil {
-				return nil, false, nil
-			}
-			raw, mErr := json.Marshal(param.Value)
-			if mErr != nil {
-				return nil, false, mErr
-			}
-			return raw, true, nil
-		},
-		Save: func(ctx context.Context, orgUID, key string, value any, secret bool) error {
-			return dbService.SetOrgParameter(ctx, orgUID, key, value, secret)
-		},
-	}
-
-	return credentials.NewService(kek, store)
+	return credentials.NewService(kek, credentials.NewParamStore(dbService))
 }
 
 // loadEncryptionMasterKey returns the raw KEK bytes from the env-derived
