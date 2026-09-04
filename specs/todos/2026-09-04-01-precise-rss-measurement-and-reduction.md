@@ -331,3 +331,118 @@ spread is tight enough for a regression to be distinguishable from runner noise.
 If it is not, record the measured spread and the "not wired, and why" conclusion
 in `wiki/runbooks/memory-profiling.md` rather than shipping a job that will cry
 wolf. Either way the outcome is a documented number, not an unexplained absence.
+
+## Implementation Plan
+
+Sequenced so Part 1 exists before any Part 2 candidate is judged. Each numbered
+step is one commit.
+
+### Step 1 — `internal/meminfo`: pure parsers (1a, foundation)
+
+New package `server/internal/meminfo` with **pure, file-system-injectable**
+readers so every path is fixture-testable on macOS:
+
+- `ParseProcStatus` → `RssAnon`, `RssFile`, `RssShmem`, `VmHWM`, `Threads`.
+- `ParseSmapsRollup` → `Pss`, `Private_Dirty`, `Private_Clean`, `Shared_Clean`.
+- `ParseCgroupStat` + `ParseCgroupValue` → cgroup v2 `memory.{current,peak,max}`
+  and `memory.stat` (`anon`, `file`, `file_mapped`, `kernel`, `slab`, `sock`,
+  `shmem`), with the v1 layout detected and reported as `version: 1` with the
+  keys it actually has.
+- `RuntimeClasses()` over `runtime/metrics`: `/memory/classes/total:bytes`,
+  `heap/{objects,unused,free,released}`, `os-stacks`, `metadata/*` (summed),
+  `other`, `profiling/buckets`, `/gc/heap/live:bytes`.
+- `Collect(Roots)` composes them; missing files → `present: false`, zero values,
+  **never an error**. Roots default to `/proc/self` and `/sys/fs/cgroup`.
+- Derived: `OffHeapBytes = int64(RssAnon) − int64(goTotal − heapReleased)`
+  (signed: a negative value is real information, not an error) and
+  `UnreclaimableBytes = cgroup anon + kernel` — the harness's primary metric,
+  computed once server-side so tool and human agree.
+
+Fixture tests: real-shaped `status` / `smaps_rollup` / `memory.stat` samples,
+a cgroup-v1 tree, an empty tree (macOS), and a garbage/truncated file.
+
+### Step 2 — endpoint + metrics (1a, surface)
+
+- `MemorySnapshot` gains `process` fields (all the `/proc` numbers alongside the
+  existing `rssBytes`), `cgroup`, `runtime.classes`, `derived`, and `sample`
+  (`mode: steady|floor`, `gcForced`, `takenAt`). **Every existing field keeps its
+  name and place** — additive only.
+- `?gc=1` floor mode: `runtime.GC()` + `debug.FreeOSMemory()` before sampling,
+  reported as `sample.mode=floor`.
+- `prommetrics.NewMemInfoCollector`: gauges for the new numbers
+  (`solidping_process_rss_anon_bytes`, `…_rss_file_bytes`, `…_smaps_pss_bytes`,
+  `solidping_cgroup_memory_current_bytes`, `…_anon_bytes`, `…_kernel_bytes`,
+  `…_unreclaimable_bytes`, `solidping_offheap_bytes`, …), scrape-time read, no
+  descriptor collision with the Go/process collectors (test asserts it).
+- Handler tests: `{data}` envelope, camelCase, macOS/no-cgroup → omitted
+  sections rather than an error, `?gc=1` flips `sample.mode`.
+- Docs: `wiki/api-specification/management.md` + the docs-site management page.
+
+### Step 3 — `server/cmd/membench` + `make bench-memory` (1b)
+
+- `stats.go` — **pure** aggregation: median / p95 / max, inter-run spread across
+  K reps, and the `--compare` rule (a delta smaller than the baseline's own
+  spread is flagged `not significant`). Unit-tested with synthetic samples,
+  including the no-op-rerun negative control.
+- `scenario.go` — named scenarios: `idle-all-sqlite`, `idle-api-postgres`,
+  `idle-checks`, `checks-200/500/1000` (driving `loadgen`), `login-burst`,
+  `docs-crawl`, `dash0-reload`. Each is env + workload, declared in one table.
+- `runner.go` — `--mode local` (host binary, labelled non-authoritative) and
+  `--mode docker` (`docker run --memory --cpus` on a Linux image, real cgroup v2).
+  Protocol: warm-up `-warmup` (60s), sample `/api/mgmt/memory` every
+  `-interval` (5s) for `-duration` (5m), `-reps` (3). Auth: test-mode
+  `test@test.com` (SuperAdmin in `testdata.go`).
+- `report.go` — fixed-schema markdown table + JSON, so two runs diff cleanly.
+- `make bench-memory` (+ `bench-memory-image` building a Linux bench image from
+  the current tree so a *modified* build can be measured, not just a released
+  tag). Short smoke run wired into the Go test suite so the tool is proven to
+  start, sample and write both files.
+
+### Step 4 — Part 2, measured in this order
+
+Each candidate: implement behind a switch → measure with step 3 against the same
+baseline → ship only on a delta larger than the spread, with no regression.
+Numbers go in the commit message and the runbook, **including the rejections**.
+
+1. **GC levers** (`GOGC` × `GOMEMLIMIT`) — measurement first; defaults change
+   only if the numbers say so. Verify the runbook's "−47 % heap / −25 % RSS".
+2. **`GOMAXPROCS` from cgroup `cpu.max`** — own reader in `memlimit`
+   (`SP_RUNTIME_MAX_PROCS`, auto from `cpu.max`, native `GOMAXPROCS` wins), so
+   per-P caches match the CPU limit the pod actually has.
+3. **Init-time dead weight** — build-tagged direct SQLite driver import
+   replacing `sqliteshim`, keeping `buildinfo.SQLiteDriver()` truthful;
+   `GODEBUG=inittrace=1` totals before/after.
+4. **Per-role trimming** — `idle role=checks` vs `idle role=all`, then gate what
+   a checks worker demonstrably does not need on `config.NodeRole`.
+5. **Peak-signature suspects** — #1 `http.Client` per check, #5 10 MB body
+   buffer, on `checks-1000`.
+6. **SQLite driver/pool** — mattn (off-heap) vs modernc (on-heap) on `idle` and
+   `checks-500`; a measurement, not necessarily a change.
+7. **Embedded assets without heap copies** — `http.ServeContent`/`io.Copy` over
+   `fs.File` in place of `embed.FS.ReadFile`, same cache/content-type policy,
+   measured on `docs-crawl`; **expected flat on idle — that is the negative
+   control.**
+
+If the budget runs out, an unfinished candidate is left unimplemented and
+recorded in the runbook table as `not measured`, never as a guess.
+
+### Step 5 — runbook (1c) + ranked results table
+
+Fill `wiki/runbooks/memory-profiling.md` §4 (the off-heap rule with the derived
+field), §5 (the B2 baseline table, from real runs), §8 (the B7 suspects), add
+the `kubectl top --containers` corroboration with the working-set-vs-anon delta
+explained, state the primary metric (cgroup `anon + kernel`) and why `Pss` /
+`RssFile` are reported but not conflated with it, and close with the ranked
+`candidate → Δ ± spread → shipped / rejected / needs-decision` table.
+
+Also record the measured inter-run spread and the resulting CI decision (wire
+the non-blocking job only if a regression is distinguishable from runner noise).
+
+### Honesty rules for this spec
+
+- Every number carries its mode (`docker` vs `--local`) and its host.
+- No number is extrapolated. A measurement that could not be run is written down
+  as not run, with the reason.
+- A claimed reduction must be accompanied by (a) the harness showing *no* change
+  on an untouched scenario and (b) the `not significant` flag firing on a no-op
+  rerun of the baseline.
