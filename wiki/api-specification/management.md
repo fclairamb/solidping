@@ -16,8 +16,45 @@ clients that want to pace themselves and for support when diagnosing 429s.
 Auth: public
 
 ### GET /api/mgmt/memory
-Runtime memory statistics for the server process (Go heap/alloc counters).
+A precise memory breakdown of the server process, wrapped as `{ "data": {...} }`.
 Auth: super-admin
+
+Sections:
+
+| Section | Contents |
+|---|---|
+| `runtime` | MemStats (heap alloc/inuse/objects, stack, sys, GC counters), `goMemLimitBytes`, `goMaxProcs`, plus `classes` — the `runtime/metrics` `/memory/classes/*` breakdown and `/gc/heap/live` |
+| `process` | `rssBytes` (unchanged: `process_resident_memory_bytes` = anon + file + shmem), `status` (`/proc/self/status`: `rssAnonBytes`, `rssFileBytes`, `rssShmemBytes`, `vmHwmBytes`, `threads`), `smaps` (`/proc/self/smaps_rollup`: `pssBytes`, `privateDirtyBytes`, `privateCleanBytes`, `sharedCleanBytes`) |
+| `cgroup` | The container's own accounting: `version`, `currentBytes`, `peakBytes`, `maxBytes`, and the `memory.stat` keys `anon`, `file`, `fileMapped`, `kernel`, `slab`, `sock`, `shmem`, plus the derived `unreclaimableBytes` |
+| `derived` | `offHeapBytes` = `rssAnonBytes − (classes.totalBytes − classes.heapReleasedBytes)`, `offHeapKnown`, `goResidentBytes` |
+| `subsystems` | DEK cache / rate-limit / event-listener cardinalities |
+| `build` | `cgoEnabled`, `sqliteDriver`, `goVersion` |
+| `sample` | `mode` (`steady` \| `floor`), `gcForced`, `takenAt` |
+
+Three things worth knowing before quoting any of these numbers:
+
+- **They are not the same "RSS".** `kubectl top` shows the cgroup *working set*
+  (includes actively mapped pages of the binary); `rssBytes` is anon + file +
+  shmem with no split; the Go runtime sees neither the cgo arena nor the
+  binary's rodata. Only `cgroup.unreclaimableBytes` (`anon + kernel`) is what an
+  OOM kill is decided on — it is the primary metric of `make bench-memory`.
+- **Linux-only sections degrade, they do not fail.** On macOS, cgroup v1, or no
+  cgroup at all, `process.status`, `process.smaps` and `cgroup` report
+  `present: false` with zero values; `derived.offHeapKnown` goes false rather
+  than passing a fabricated zero off as a measurement. The request still
+  succeeds.
+- **`?gc=1` is a different measurement.** It runs `runtime.GC()` +
+  `debug.FreeOSMemory()` before sampling and reports `sample.mode: "floor"`.
+  The floor and the steady state are both legitimate; comparing one against the
+  other is how a "10 % reduction" turns out to be a GC phase.
+
+The same numbers are on `/metrics` as `solidping_process_rss_anon_bytes`,
+`solidping_process_rss_file_bytes`, `solidping_process_smaps_pss_bytes`,
+`solidping_cgroup_memory_{current,peak,max,anon,file,kernel,unreclaimable}_bytes`
+and `solidping_process_offheap_bytes`. Where a source is absent, **no series is
+emitted** rather than a zero.
+
+See `wiki/runbooks/memory-profiling.md` for how to use them.
 
 ### GET /api/mgmt/scheduling/cost-distribution
 Distribution of scheduling cost across checks/lanes — used to diagnose an
