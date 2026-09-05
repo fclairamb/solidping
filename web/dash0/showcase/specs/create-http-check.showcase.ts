@@ -43,7 +43,7 @@ import {
  * - the last move eases back out, so the looping `<video>` has a seamless
  *   join.
  */
-test("create an HTTP check", async ({ page }) => {
+test("create an HTTP check", async ({ page }, testInfo) => {
   // Provision (or wipe clean) a dedicated org and stage the demo data BEFORE
   // anything is filmed, so the only content that ever reaches the camera is
   // content this pipeline put there.
@@ -147,9 +147,12 @@ test("create an HTTP check", async ({ page }) => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 20000 });
     await page.waitForLoadState("networkidle");
 
-    // 9. Let the detail page settle so the first results have a chance to land.
+    // 9. Let the detail page settle: long enough for the first result to land
+    //    AND for the "Check created successfully" toast to expire, so the
+    //    published still is not a screenshot of a notification sitting on top
+    //    of the search box.
     await focus(page, null, { label: "detail-page" });
-    await beat(page, 4000);
+    await beat(page, 6500);
     await still(page, "03-check-detail");
 
     // 10. A slow Ken-Burns push-in toward the status / response-time area, then
@@ -166,7 +169,7 @@ test("create an HTTP check", async ({ page }) => {
   } finally {
     // The cue list is worth keeping even when the take failed — it is how you
     // find out whether the framing or the flow was the problem.
-    await writeCues(page, "create-http-check").catch(() => undefined);
+    await writeCues(page, testInfo).catch(() => undefined);
     // Leave the showcase org empty; the next run wipes it clean anyway.
     await deleteAllChecks(page, token);
     // And give the account its own name back — recording media must not

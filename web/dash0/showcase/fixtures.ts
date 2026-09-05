@@ -535,10 +535,15 @@ export async function installCursor(page: Page): Promise<void> {
       ).__showcaseCursor = {
         hide: () => {
           hidden = true;
+          // visibility, not just opacity: the opacity transition would still be
+          // fading when the screenshot fires, leaving a ghost arrow in a
+          // published still.
+          arrow.style.visibility = "hidden";
           arrow.style.opacity = "0";
         },
         show: () => {
           hidden = false;
+          arrow.style.visibility = "visible";
           if (seen) arrow.style.opacity = "1";
         },
       };
@@ -665,16 +670,43 @@ export async function typeHuman(
 let cueAnchorMs: number | null = null;
 const recordedCues: FocusCue[] = [];
 
+/** How long the sync clapper covers the frame, in ms. */
+const CLAPPER_MS = Number(process.env.SHOWCASE_CLAPPER_MS ?? 320);
+
 /**
- * Starts the cue timeline. `t = 0` is *now*.
+ * Starts the cue timeline, and leaves a mark in the footage saying where it
+ * started.
  *
- * Called from {@link uiLogin} the instant the login screen paints, because that
- * is precisely what ends the recording's opening frozen frame — the one
- * `postprocess.ts` already locates with `freezedetect`. That shared landmark is
- * how cue times survive the trim: Playwright never tells us when the video's
- * first frame was captured.
+ * Playwright never reveals when the video's first frame was captured, and the
+ * cue times are wall-clock offsets taken in Node — so the two timelines need a
+ * landmark visible from both sides. Guessing at one (the opening frozen frame)
+ * is unreliable: whether the recording even opens on a static frame depends on
+ * how fast the first navigation resolved.
+ *
+ * So this does what a film crew does: it claps. The page is covered with opaque
+ * black for a fraction of a second, and `t = 0` is the instant it is uncovered.
+ * `postprocess.ts` finds that same instant with ffmpeg's `blackdetect` and trims
+ * the clapper off, so it never reaches the published cut.
  */
-export function beginCueTimeline(): void {
+export async function beginCueTimeline(page: Page): Promise<void> {
+  await page.evaluate(async (durationMs) => {
+    const clapper = document.createElement("div");
+    clapper.style.cssText =
+      "position:fixed;inset:0;background:#000;z-index:2147483647;" +
+      "pointer-events:none;";
+    document.documentElement.appendChild(clapper);
+
+    const painted = (): Promise<void> =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+
+    await painted();
+    await new Promise((resolve) => setTimeout(resolve, durationMs));
+    clapper.remove();
+    await painted();
+  }, CLAPPER_MS);
+
   cueAnchorMs = Date.now();
   recordedCues.length = 0;
 }
@@ -735,23 +767,23 @@ export async function focus(
 /**
  * Writes the cue list next to the recording it belongs to.
  *
- * Keyed off the video's own directory name (Playwright names every recording
- * `video.webm` inside a per-test folder), so `postprocess.ts` pairs cues with
- * the right take even when several showcase specs each produce a video.
+ * Named after the test's output directory, which is exactly the folder
+ * Playwright drops `video.webm` into — so `postprocess.ts` pairs cues with the
+ * right take even when several showcase specs each produce a video. (`Video.path()`
+ * is not usable for this: mid-test it still points at the run's
+ * `.playwright-artifacts-*` scratch directory, and the file is only moved into
+ * place once the context closes.)
  *
  * Call it from a `finally` — a failed take's cues are still worth having when
  * debugging why the framing was off.
  */
-export async function writeCues(page: Page, fallbackName: string): Promise<void> {
+export async function writeCues(
+  page: Page,
+  testInfo: { outputDir: string },
+): Promise<void> {
   if (cueAnchorMs == null) return;
 
-  let name = fallbackName;
-  const video = page.video();
-  if (video) {
-    const videoPath = await video.path().catch(() => null);
-    if (videoPath) name = path.basename(path.dirname(videoPath));
-  }
-
+  const name = path.basename(testInfo.outputDir);
   const viewport = page.viewportSize() ?? { width: 1280, height: 800 };
   const file: CueFile = { version: 1, viewport, cues: recordedCues };
 
@@ -805,9 +837,10 @@ export async function uiLogin(page: Page): Promise<void> {
     .getByTestId("login-title")
     .waitFor({ state: "visible", timeout: 15000 });
 
-  // The blank opening frame of the recording ends here — this is the cue
-  // timeline's t = 0, and the landmark postprocess.ts realigns against.
-  beginCueTimeline();
+  // Clap: the frame goes black for a moment, and the instant it comes back is
+  // the cue timeline's t = 0 — the landmark postprocess.ts realigns against and
+  // then trims away.
+  await beginCueTimeline(page);
 
   await page.getByTestId("login-email").fill(BOOTSTRAP_EMAIL);
   await page.getByTestId("login-password").fill(effectivePassword);

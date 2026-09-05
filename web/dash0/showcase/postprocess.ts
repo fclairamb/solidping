@@ -286,27 +286,83 @@ function detectFreezes(file: string): Freeze[] {
   return freezes;
 }
 
+/**
+ * Finds the sync clapper: the moment `beginCueTimeline()` uncovered the page
+ * after briefly blacking it out. Returns the source time of the first frame
+ * after the black, or `null` when no clapper is in the footage.
+ *
+ * This is the one landmark both halves of the pipeline can see. Cue times are
+ * wall-clock offsets measured in Node; the video has its own zero that
+ * Playwright never discloses. Matching them by guesswork (the opening frozen
+ * frame) does not survive a run where the first navigation resolved quickly
+ * enough that there was no opening freeze — which is most of them.
+ */
+function detectClapper(file: string, duration: number): number | null {
+  const res = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-i",
+      file,
+      "-vf",
+      "blackdetect=d=0.12:pic_th=0.99:pix_th=0.06",
+      "-map",
+      "0:v:0",
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (res.error) return null;
+
+  for (const line of `${res.stderr ?? ""}`.split("\n")) {
+    const match = line.match(/black_start:\s*([0-9.]+)\s+black_end:\s*([0-9.]+)/);
+    if (!match) continue;
+    const end = Number(match[2]);
+    // The clapper is at the head of the take, and a black stretch running to
+    // the very end of the file is something else entirely.
+    if (end < Math.min(duration - 1, 20)) return end;
+  }
+  return null;
+}
+
 interface TrimWindow {
   start: number;
   end: number;
   /**
-   * Source time the cue timeline's `t = 0` corresponds to: the end of the
-   * opening frozen frame, which is the moment the first real page painted —
-   * exactly when the recording calls `beginCueTimeline()`.
+   * Source time the cue timeline's `t = 0` corresponds to — the clapper's last
+   * black frame, i.e. exactly when the recording called `beginCueTimeline()`.
    */
   anchor: number;
+  /** How the anchor was established, for the run log. */
+  anchorSource: "clapper" | "leading freeze" | "start of file";
 }
 
-/** Turns the detected freezes into a [start, end] window worth keeping. */
-function trimWindow(freezes: Freeze[], duration: number): TrimWindow {
+/** Turns the clapper and the detected freezes into a [start, end] window worth keeping. */
+function trimWindow(
+  freezes: Freeze[],
+  duration: number,
+  clapper: number | null,
+): TrimWindow {
   let start = 0;
   let end = duration;
   let anchor = 0;
+  let anchorSource: TrimWindow["anchorSource"] = "start of file";
 
-  const leading = freezes.find((f) => f.start <= 0.4);
-  if (leading?.end != null && leading.end < duration - 1) {
-    anchor = leading.end;
-    start = Math.max(0, leading.end - TRIM_PAD);
+  if (clapper != null) {
+    // Trim exactly at the clapper: everything before it is the black frame we
+    // put there on purpose, plus whatever preceded it.
+    anchor = clapper;
+    anchorSource = "clapper";
+    start = clapper;
+  } else {
+    const leading = freezes.find((f) => f.start <= 0.4);
+    if (leading?.end != null && leading.end < duration - 1) {
+      anchor = leading.end;
+      anchorSource = "leading freeze";
+      start = Math.max(0, leading.end - TRIM_PAD);
+    }
   }
 
   const last = freezes[freezes.length - 1];
@@ -318,8 +374,10 @@ function trimWindow(freezes: Freeze[], duration: number): TrimWindow {
   }
 
   // Never trim into nothing: fall back to the full clip if the maths went odd.
-  if (!(end > start + 0.5)) return { start: 0, end: duration, anchor };
-  return { start, end, anchor };
+  if (!(end > start + 0.5)) {
+    return { start: 0, end: duration, anchor, anchorSource };
+  }
+  return { start, end, anchor, anchorSource };
 }
 
 /**
@@ -330,16 +388,61 @@ function trimWindow(freezes: Freeze[], duration: number): TrimWindow {
  * ends the opening freeze, so `window.anchor` is the same instant expressed in
  * source seconds — the one landmark both halves of the pipeline can see.
  */
-function loadCues(recording: string, window: TrimWindow): CueFile | null {
+function readCueFile(recording: string): CueFile | null {
   const name = path.basename(path.dirname(recording));
-  const file = path.join(cuesDir, `${name}.json`);
-  if (!existsSync(file)) return null;
+  let file = path.join(cuesDir, `${name}.json`);
+  if (!existsSync(file)) {
+    // A take recorded before the cue file was named after the test output
+    // directory (or by a hand-run spec) still deserves its choreography.
+    const candidates = existsSync(cuesDir)
+      ? readdirSync(cuesDir).filter((f) => f.endsWith(".json"))
+      : [];
+    if (candidates.length !== 1) return null;
+    file = path.join(cuesDir, candidates[0]);
+    console.log(
+      `showcase: cue file  ${candidates[0]} does not match the take's name ` +
+        `(${name}.json) but is the only one present — using it.`,
+    );
+  }
 
-  const parsed = JSON.parse(readFileSync(file, "utf8")) as CueFile;
+  return JSON.parse(readFileSync(file, "utf8")) as CueFile;
+}
+
+/** Default ease duration, mirrored from `crop-window.ts`, for the tail maths. */
+const DEFAULT_TRANSITION_S = 0.6;
+
+/** Source time at which the last cue's move has finished playing out. */
+function lastCueEnd(file: CueFile, window: TrimWindow): number {
+  return file.cues.reduce((latest, cue) => {
+    const transition = (cue.transitionMs ?? DEFAULT_TRANSITION_S * 1000) / 1000;
+    return Math.max(latest, window.anchor + cue.t + transition);
+  }, 0);
+}
+
+/**
+ * Keeps the tail trim from cutting the final camera move in half.
+ *
+ * The last cue eases back out to the full frame so the looping `<video>` joins
+ * cleanly — but during that ease nothing on the *page* moves, which is exactly
+ * what `freezedetect` calls a dead tail. Trimming it away leaves the loop
+ * jumping from a zoomed frame to a wide one.
+ */
+function extendForCues(
+  window: TrimWindow,
+  file: CueFile,
+  duration: number,
+): TrimWindow {
+  const needed = Math.min(duration, lastCueEnd(file, window) + 0.4);
+  if (needed <= window.end) return window;
+  return { ...window, end: needed };
+}
+
+/** Maps cue times onto the trimmed timeline the filter graph will see. */
+function shiftCues(file: CueFile, window: TrimWindow): CueFile {
   const shift = window.anchor + CUE_OFFSET_S - window.start;
   return {
-    ...parsed,
-    cues: parsed.cues.map((cue) => ({ ...cue, t: cue.t + shift })),
+    ...file,
+    cues: file.cues.map((cue) => ({ ...cue, t: cue.t + shift })),
   };
 }
 
@@ -464,7 +567,10 @@ function main(): void {
 
   const recording = findRecording();
   const source = probeVideo(recording);
-  const window = trimWindow(detectFreezes(recording), source.duration);
+  const clapper = detectClapper(recording, source.duration);
+  const rawCues = readCueFile(recording);
+  let window = trimWindow(detectFreezes(recording), source.duration, clapper);
+  if (rawCues) window = extendForCues(window, rawCues, source.duration);
 
   console.log(
     `showcase: source     ${path.relative(showcaseDir, recording)} ` +
@@ -475,7 +581,7 @@ function main(): void {
       `(${(window.end - window.start).toFixed(2)}s kept)`,
   );
 
-  const cues = loadCues(recording, window);
+  const cues = rawCues ? shiftCues(rawCues, window) : null;
   const series = cues
     ? resolveCues(cues, { width: source.width, height: source.height })
     : null;
@@ -483,13 +589,22 @@ function main(): void {
     console.log(
       `showcase: cues       ${series.keys.length} points, ` +
         `max zoom ${Math.max(...series.keys.map((k) => k.zoom)).toFixed(2)}× ` +
-        `(anchor ${window.anchor.toFixed(2)}s` +
+        `(anchor ${window.anchor.toFixed(2)}s from the ${window.anchorSource}` +
         `${CUE_OFFSET_S ? `, offset ${CUE_OFFSET_S.toFixed(3)}s` : ""})`,
     );
   } else {
     console.log(
       "showcase: cues       none found — publishing the full frame throughout. " +
         "(Expected a file under output/cues/; the recording writes one.)",
+    );
+  }
+
+  if (cues && window.anchorSource !== "clapper") {
+    console.warn(
+      "showcase: WARNING   no sync clapper found in the footage, so the cue " +
+        `timeline was anchored on the ${window.anchorSource} instead. The zooms ` +
+        "are probably early or late; check a few frames and nudge with " +
+        "SHOWCASE_CUE_OFFSET_MS.",
     );
   }
 

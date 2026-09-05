@@ -47,12 +47,9 @@ export default defineConfig({
 
     // Fixed, predictable frame for every asset.
     //
-    // The viewport stays 1280x800 CSS px — that is the layout everything is
-    // composed for — but the pixels behind it are captured at 2x. The zoom is
-    // applied in post-production (see postprocess.ts), so without the extra
-    // density every push-in would be an upscale of 1x pixels, i.e. blur. At
-    // deviceScaleFactor 2 a zoom of up to 2x is pixel-exact; the choreography
-    // stays at or below 1.8x to keep a margin.
+    // deviceScaleFactor 2 buys genuinely 2x STILLS (page.screenshot() renders
+    // at the device scale, so the raw PNGs are 2560x1600). It does NOT buy a 2x
+    // VIDEO, however much one would like it to — see the note on `video` below.
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 2,
 
@@ -69,12 +66,27 @@ export default defineConfig({
       slowMo: Number(process.env.SHOWCASE_SLOW_MO ?? 0),
     },
 
-    // Always record — that is the whole point of this project. Recorded at 2x
-    // the published size so the post-production zoom has real pixels to crop
-    // into; postprocess.ts scales the finished cut back down to 1280x800.
+    // Always record — that is the whole point of this project.
+    //
+    // The size MUST match the viewport in CSS px. Playwright records Chromium
+    // by encoding CDP screencast frames, and those come back at the CSS-pixel
+    // size of the viewport no matter what deviceScaleFactor says: measured
+    // here, with deviceScaleFactor 2 the screenshots are 2560x1600 while the
+    // screencast frames stay 1280x800. Asking for a larger video does not
+    // upscale them — Playwright pastes each frame into the top-left corner of
+    // the requested canvas and leaves the rest flat grey, which silently ruins
+    // the take. (`Emulation.setDeviceMetricsOverride` with a `scale` of 2,
+    // issued over a raw CDP session, does not change it either.)
+    //
+    // The practical consequence, and it is a real one: the post-production
+    // zoom in postprocess.ts is an UPSCALE of 1x pixels, so a push-in trades
+    // some sharpness for the framing. That is why the choreography stays
+    // modest (<= 1.6x) and why the scale-down uses lanczos. Getting truly
+    // crisp zooms would mean recording a 2560x1600 CSS viewport with the app
+    // scaled up, i.e. filming a layout nobody ships — deliberately not done.
     video: {
       mode: "on",
-      size: { width: 2560, height: 1600 },
+      size: { width: 1280, height: 800 },
     },
     trace: "off",
     screenshot: "off",
