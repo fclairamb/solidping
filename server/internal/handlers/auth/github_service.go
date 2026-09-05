@@ -332,7 +332,9 @@ func (s *GitHubOAuthService) fetchPrimaryEmail(ctx context.Context, accessToken 
 // findOrCreateUser finds or creates a user by GitHub identity.
 //
 //nolint:dupl // OAuth provider findOrCreateUser methods share similar structure by design
-func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *GitHubUserInfo) (*models.User, bool, error) {
+func (s *GitHubOAuthService) findOrCreateUser(
+	ctx context.Context, userInfo *GitHubUserInfo,
+) (*models.User, bool, error) {
 	// created reports whether THIS call minted the account — the fact rule 6's
 	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
 	var created bool

@@ -298,7 +298,9 @@ func (s *GoogleOAuthService) fetchUserProfile(ctx context.Context, accessToken s
 }
 
 // findOrCreateUser finds or creates a user by Google identity.
-func (s *GoogleOAuthService) findOrCreateUser(ctx context.Context, userInfo *GoogleUserInfo) (*models.User, bool, error) {
+func (s *GoogleOAuthService) findOrCreateUser(
+	ctx context.Context, userInfo *GoogleUserInfo,
+) (*models.User, bool, error) {
 	// created reports whether THIS call minted the account — the fact rule 6's
 	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
 	var created bool

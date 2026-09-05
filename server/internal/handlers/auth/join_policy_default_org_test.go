@@ -87,8 +87,10 @@ func TestJoinOrgViaLoginDefaultOrgNewAccount(t *testing.T) {
 			org := joinTestOrg(ctx, t, dbSvc, tt.orgSlug, true)
 			user := joinTestUser(ctx, t, dbSvc, "newcomer@unknown.example")
 
-			opts := []LoginOption{WithLoginMethod(signupMethodGoogle)}
-			opts = append(opts, newlyCreatedUserOption(tt.newlyCreated))
+			opts := []LoginOption{
+				WithLoginMethod(signupMethodGoogle),
+				newlyCreatedUserOption(tt.newlyCreated),
+			}
 
 			member, pending, err := svc.JoinOrgViaLogin(ctx, org, user, opts...)
 			require.NoError(t, err)

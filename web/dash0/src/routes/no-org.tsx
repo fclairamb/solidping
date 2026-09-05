@@ -42,7 +42,7 @@ export const Route = createFileRoute("/no-org")({
 function NoOrgPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user, isLoading } = useAuth();
   const { membershipPending } = Route.useSearch();
 
   // "Here is an organization for you — click Create" is the whole point of this
@@ -55,12 +55,17 @@ function NoOrgPage() {
   // the field under the user's cursor.
   const [nameSeed] = useState(randomOrgNameSeed);
   const suggestedName = useMemo(() => {
+    // Withhold the proposal until the session has resolved: GET /auth/me lands
+    // after the first render, so proposing before it does would show a named
+    // user the random fallback and then swap it out from under them.
+    if (isLoading) return undefined;
+
     const suggestion = suggestOrgName(user?.name, nameSeed);
 
     return suggestion.kind === "personal"
       ? t("createOrg.suggestedPersonal", { firstName: suggestion.firstName })
       : suggestion.name;
-  }, [nameSeed, t, user?.name]);
+  }, [isLoading, nameSeed, t, user?.name]);
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-8 flex flex-col items-center">

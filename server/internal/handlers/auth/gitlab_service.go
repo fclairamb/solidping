@@ -297,7 +297,9 @@ func (s *GitLabOAuthService) fetchUserProfile(ctx context.Context, accessToken s
 // findOrCreateUser finds or creates a user by GitLab identity.
 //
 //nolint:dupl // OAuth provider findOrCreateUser methods share similar structure by design
-func (s *GitLabOAuthService) findOrCreateUser(ctx context.Context, userInfo *GitLabUserInfo) (*models.User, bool, error) {
+func (s *GitLabOAuthService) findOrCreateUser(
+	ctx context.Context, userInfo *GitLabUserInfo,
+) (*models.User, bool, error) {
 	// created reports whether THIS call minted the account — the fact rule 6's
 	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
 	var created bool

@@ -42,19 +42,26 @@ export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
   const createOrg = useCreateOrg();
   const { refreshUser } = useAuth();
 
-  // Lazy initial state, not an effect: the proposal is a starting VALUE, and
-  // syncing it after mount would fight the user's own typing.
-  const [name, setName] = useState(() => suggestedName ?? "");
-  const [slug, setSlug] = useState(() => orgSlugify(suggestedName ?? ""));
+  // `typedName` / `typedSlug` hold ONLY what the user typed; the rendered
+  // values are derived below. That matters because the proposal is not known at
+  // mount — /no-org builds it from useAuth()'s user and GET /auth/me resolves
+  // after the first render — so seeding it as initial state would leave a named
+  // user looking at the random fallback forever, and copying it in with an
+  // effect would be a cascading-render sync. Deriving needs neither: the field
+  // shows the proposal until the moment somebody types, and never again after.
+  const [typedName, setTypedName] = useState("");
+  const [typedSlug, setTypedSlug] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
   const [slugAdvancedOpen, setSlugAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const name = nameTouched ? typedName : (suggestedName ?? "");
+  const slug = slugTouched ? typedSlug : orgSlugify(name);
+
   const handleNameChange = (value: string) => {
-    setName(value);
-    if (!slugTouched) {
-      setSlug(orgSlugify(value));
-    }
+    setNameTouched(true);
+    setTypedName(value);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,7 +147,13 @@ export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
           {!slugAdvancedOpen ? (
             <button
               type="button"
-              onClick={() => setSlugAdvancedOpen(true)}
+              onClick={() => {
+                // Seed the editable field with exactly what the preview showed,
+                // so opening Advanced never blanks the slug the user was
+                // promised.
+                setTypedSlug(slug);
+                setSlugAdvancedOpen(true);
+              }}
               className="text-xs text-muted-foreground hover:underline"
               data-testid="no-org-advanced-toggle"
             >
@@ -155,8 +168,8 @@ export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
                 id="orgSlug"
                 value={slug}
                 onChange={(e) => {
-                  setSlug(e.target.value);
                   setSlugTouched(true);
+                  setTypedSlug(e.target.value);
                 }}
                 required
                 pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
