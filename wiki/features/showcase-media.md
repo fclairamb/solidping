@@ -94,8 +94,9 @@ regeneration can come later, once the recorded flows have proven stable.
 
 1. A Playwright recording (`video: "on"`, fixed 1280×800 viewport, light
    theme) of the canonical **create an HTTP check** flow: checks list → New
-   check → HTTP type → name + URL → interval → (regions, if offered) → save →
-   check detail page — driven with a painted cursor, eased pointer travel and
+   check → name + URL → interval → (regions, if offered) → save → check detail
+   page — no check-type step, because the form already opens on HTTP and
+   picking it filmed a no-op — driven with a painted cursor, eased travel and
    character-by-character typing rather than `fill()` and bare clicks.
 
    > **The regions beat is conditional.** `check-form.tsx` renders the region
@@ -176,31 +177,34 @@ output is committed. Sizes are KiB/MiB — the units `postprocess.ts` prints, so
 they match the run log line for line.
 
 - **Date:** 2026-09-05 (spec `2026-09-05-03-showcase-video-refresh-zoom-cursor`,
-  re-cut the same day for the 10-second cadence described below)
+  re-cut the same day for the tighter flow described below)
 - **App version on camera:** `v0.23.0-19-g1b4d3a74d` (sidebar footer of the
   stills)
 - **Filmed check:** `GET https://solidping.io/api/mgmt/health`, named
   "Production API", at a **10-second** interval
-- **Video:** 28.84 s, 1280×800, 25 fps, 721 frames
-- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 199 265 B
-  (1.14 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 151 855 B
-  (1.10 MB)
-- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 178 KB,
-  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 211 KB
-- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 260 KB / 239 KB /
-  304 KB — two of the three above the ~250 KB bar, which is why the 1× versions
+- **Video:** 33.48 s, 1280×800, 25 fps, 837 frames
+- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 385 992 B
+  (1.32 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 147 976 B
+  (1.09 MB)
+- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 177 KB,
+  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 198 KB
+- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 259 KB / 239 KB /
+  282 KB — two of the three above the ~250 KB bar, which is why the 1× versions
   are the ones published
-- **9 cue points, max zoom 1.60×.** There is deliberately **no push-in on the
-  New check button**: the click changes route, and a zoom that has to snap
-  straight back out for the navigation reads as a glitch rather than emphasis
+- **8 cue points, max zoom 1.50×.** Two beats are deliberately absent: there is
+  **no check-type step** (the form opens on HTTP, so picking it filmed "HTTP" →
+  "HTTP") and **no push-in on the New check button** (that click changes route,
+  and a zoom that snaps straight back out for the navigation reads as a glitch)
 - **No regions beat**, for the reason given under "What it produces": the run
   was filmed against a single-node side-car, so the cue list runs `interval` →
   `form-complete`
-- **The detail-page still waits for two results**, so the published frame shows
-  a populated response-time chart rather than an empty state. Note that the
-  scheduler aligns runs to wall-clock boundaries, so at a 10-second cadence the
-  second result can land only a second or two after the first — the chart is
-  guaranteed to have two points, not to span ten seconds
+- **The detail page is held for at least `MIN_DETAIL_DWELL_MS` (11 s) and until
+  two results have landed.** The dwell is what makes the chart meaningful:
+  waiting only for a second result is not enough, because the scheduler aligns
+  runs to wall-clock boundaries, so the tick after the creation run can land a
+  second or two later and the chart then plots two points across a two-second
+  window. Dwelling past the 10-second interval guarantees a real interval
+  between them
 - **`minterpolate` (50 fps frame interpolation): tried, rejected.** On screen
   content it ghosts — half-typed characters and the text caret double on every
   synthesised frame. The cut stays at its native 25 fps

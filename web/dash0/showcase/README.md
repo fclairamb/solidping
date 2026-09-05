@@ -160,10 +160,15 @@ Useful knobs:
 1. `specs/create-http-check.showcase.ts` bootstraps and cleans the showcase org
    (above), seeds realistic demo checks ("Marketing site", "Docs site",
    "Checkout API") through the REST API, logs in through the real form, then
-   drives the create-check flow on camera: checks list → **New check** → HTTP
-   type → name + target URL → interval → (regions, if offered) → save → check
-   detail page. Named still frames are written as it goes. The org is emptied
-   afterwards.
+   drives the create-check flow on camera: checks list → **New check** → name
+   + target URL → interval → (regions, if offered) → save → check detail page.
+   Named still frames are written as it goes. The org is emptied afterwards.
+
+   > **There is deliberately no check-type step.** The form defaults to HTTP
+   > (`initialType = initialData?.type || "http"`, `check-form.tsx`), so
+   > opening the combobox to choose the value already selected filmed "HTTP" →
+   > "HTTP" — dead time. The spec asserts the default instead, so a change to
+   > it fails the run rather than quietly filming the wrong type.
 
    > **The regions beat only fires against a server that offers more than one
    > region.** The form renders the region picker only when
@@ -241,9 +246,9 @@ viewport with the app scaled up — i.e. filming a layout nobody ships — which
 deliberately not done.
 
 Published stills stay at **1280×800**. The 2560×1600 PNGs from the last run
-measure 260 / 239 / 304 KB — two of the three above the ~250 KB-each bar that
+measure 259 / 239 / 282 KB — two of the three above the ~250 KB-each bar that
 would have justified publishing retina stills — while the 1× versions actually
-committed are 178 / 166 / 211 KB. The committed catalog staying small is the
+committed are 177 / 166 / 198 KB. The committed catalog staying small is the
 constraint that decides it. (KB here is KiB, the unit `postprocess.ts` prints,
 so these match the run log line for line.)
 

@@ -43,6 +43,13 @@ import {
  * - the last move eases back out, so the looping `<video>` has a seamless
  *   join.
  */
+/**
+ * How long to stay on the check detail page before the published still is
+ * taken, in ms. Must exceed the 10-second interval the flow selects, so a full
+ * period elapses and the two plotted results are a genuine interval apart.
+ */
+const MIN_DETAIL_DWELL_MS = 11_000;
+
 test("create an HTTP check", async ({ page }, testInfo) => {
   // Provision (or wipe clean) a dedicated org and stage the demo data BEFORE
   // anything is filmed, so the only content that ever reaches the camera is
@@ -80,17 +87,18 @@ test("create an HTTP check", async ({ page }, testInfo) => {
     await focus(page, null, { label: "form-loaded" });
     await beat(page, 1400);
 
-    // 3. Pick the HTTP check type from the searchable type combobox.
-    await focus(page, typeSelect, { zoom: 1.6, label: "type-picker" });
-    await clickOn(page, typeSelect);
-    const typeSearch = page.getByPlaceholder("Search check types...");
-    await expect(typeSearch).toBeVisible();
-    await typeHuman(page, typeSearch, "http");
-    await beat(page, 800);
-    await page.getByRole("option").first().click();
+    // 3. No check-type step. The form already opens on HTTP
+    //    (`initialType = initialData?.type || "http"` in check-form.tsx), so
+    //    opening the combobox and searching for the value that was already
+    //    selected filmed a no-op — "HTTP" in, "HTTP" out — which is dead time
+    //    in a demo that is meant to be tight.
+    //
+    //    Asserted rather than assumed: if that default ever changes, this
+    //    fails loudly instead of quietly filming a check of the wrong type
+    //    whose form has none of the fields the rest of this script drives.
+    await expect(typeSelect).toContainText("HTTP");
     const urlInput = page.getByTestId("check-url-input");
     await expect(urlInput).toBeVisible();
-    await beat(page, 700);
 
     // 4. Target URL and name, typed rather than injected.
     const nameInput = page.getByTestId("check-name-input");
@@ -171,6 +179,7 @@ test("create an HTTP check", async ({ page }, testInfo) => {
     await clickOn(page, submitButton);
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 20000 });
     await page.waitForLoadState("networkidle");
+    const detailArrivedAt = Date.now();
 
     // 9. Let the detail page settle: long enough for the "Check created
     //    successfully" toast to expire, so the published still is not a
@@ -178,11 +187,24 @@ test("create an HTTP check", async ({ page }, testInfo) => {
     await focus(page, null, { label: "detail-page" });
     await beat(page, 4000);
 
-    // 9b. Wait for the check to have actually reported TWICE before the still
-    //     is taken, so the published frame shows a populated results table and
-    //     a response-time chart with a line in it rather than an empty state.
-    //     At the 10-second cadence chosen above that is ~10-15 s from creation;
-    //     the rows arriving are themselves the motion, so the frame is held.
+    // 9b. Hold on the detail page for at least one FULL period before the
+    //     still is taken.
+    //
+    //     Waiting only for a second result is not enough: the scheduler aligns
+    //     runs to wall-clock boundaries, so the tick after the creation run can
+    //     land a second or two later, and the chart then plots two points
+    //     across a two-second window — technically two results, but it reads as
+    //     a glitch rather than as a check reporting on a cadence. Dwelling past
+    //     the 10-second interval guarantees the two points are a real interval
+    //     apart and the chart spans something meaningful.
+    const dwellRemaining = MIN_DETAIL_DWELL_MS - (Date.now() - detailArrivedAt);
+    if (dwellRemaining > 0) {
+      await beat(page, dwellRemaining);
+    }
+
+    // 9c. ...and only then confirm the check has actually reported twice, so
+    //     the published frame shows a populated results table and a
+    //     response-time chart with a line in it rather than an empty state.
     const resultRows = page.locator('[data-testid^="result-row-"]');
     await expect
       .poll(() => resultRows.count(), { timeout: 60_000, intervals: [500] })
