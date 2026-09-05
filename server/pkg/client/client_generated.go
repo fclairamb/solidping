@@ -3713,8 +3713,8 @@ type CreateOrgRequest struct {
 	// Name Human-readable organization name
 	Name string `json:"name"`
 
-	// Slug URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
-	Slug string `json:"slug"`
+	// Slug URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens). **Optional** — omit it and the server derives one from `name`, appending a numeric suffix on collision, so a first-time user never has to invent a URL identifier. A slug that IS supplied is taken literally: invalid answers 422, already taken answers 409.
+	Slug *string `json:"slug,omitempty"`
 }
 
 // CreateReportScheduleRequest defines model for CreateReportScheduleRequest.

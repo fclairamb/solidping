@@ -2960,6 +2960,13 @@ func (s *Service) revokeUserTokensOfType(ctx context.Context, userUID string, to
 // CreateOrgRequest contains the request data for creating an organization.
 type CreateOrgRequest struct {
 	Name string `json:"name"`
+	// Slug is OPTIONAL. Left empty, the server derives one from Name via
+	// orgslug.GenerateUnique — a newcomer creating their first organization
+	// from /no-org should not have to invent a URL identifier before they can
+	// see a single check (spec 2026-09-05-01). A slug that IS supplied keeps
+	// the strict contract: invalid -> 422, already taken -> 409. Never silently
+	// "fix up" a slug the caller chose, or an API client would end up owning an
+	// org at an address it never asked for.
 	Slug string `json:"slug"`
 }
 
@@ -3000,25 +3007,35 @@ type OrgResponse struct {
 func (s *Service) CreateOrg(
 	ctx context.Context, userUID string, req CreateOrgRequest, authContext Context,
 ) (*OrgResponse, error) {
-	// Validate slug
-	if !orgslug.IsValid(req.Slug) {
-		return nil, ErrInvalidOrgSlug
-	}
+	slug := req.Slug
 
-	// Check slug availability
-	existing, err := s.db.GetOrganizationBySlug(ctx, req.Slug)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
+	if slug == "" {
+		// No slug asked for: derive one from the name. GenerateUnique already
+		// normalizes, caps at MaxLen and appends 2, 3, ... on collision, so
+		// two people who both name their org "Acme" get "acme" and "acme2"
+		// instead of the second one meeting a 409 they cannot act on.
+		slug = orgslug.GenerateUnique(ctx, s.db, req.Name)
+	} else {
+		// Validate slug
+		if !orgslug.IsValid(slug) {
+			return nil, ErrInvalidOrgSlug
+		}
 
-	if existing != nil {
-		return nil, ErrOrgSlugTaken
+		// Check slug availability
+		existing, err := s.db.GetOrganizationBySlug(ctx, slug)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+
+		if existing != nil {
+			return nil, ErrOrgSlugTaken
+		}
 	}
 
 	// Create organization
 	org := &models.Organization{
 		UID:  uuid.New().String(),
-		Slug: req.Slug,
+		Slug: slug,
 		Name: req.Name,
 	}
 	now := time.Now()
