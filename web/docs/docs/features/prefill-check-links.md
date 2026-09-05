@@ -18,11 +18,11 @@ values and clicks **Create check**. Pre-filling applies to the create page only
 ## URL shape
 
 ```
-https://app.solidping.io/dash0/orgs/<org>/checks/new?<params>
+https://solidping.io/dash0/orgs/<org>/checks/new?<params>
 ```
 
-Replace `<org>` with your organization slug and `app.solidping.io` with your
-own host if you self-host.
+Replace `<org>` with your organization slug, and `solidping.io` with your own
+host if you self-host.
 
 ## Supported parameters
 
@@ -87,7 +87,7 @@ Monitor an HTTP endpoint every 30 seconds, expecting a `204`, tagged
 `env:staging`, in a group called `edge`:
 
 ```
-https://app.solidping.io/dash0/orgs/acme/checks/new?checkType=http&url=https://staging.example.com/health&checkPeriod=30&expectedStatus=204&label=env:staging&group=edge
+https://solidping.io/dash0/orgs/acme/checks/new?checkType=http&url=https://staging.example.com/health&checkPeriod=30&expectedStatus=204&label=env:staging&group=edge
 ```
 
 Unknown or malformed parameters are ignored, and an unrecognized `group` slug
