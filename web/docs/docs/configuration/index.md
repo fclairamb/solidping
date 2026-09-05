@@ -151,6 +151,9 @@ used, so edits made through the API are preserved across restarts.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `LOG_LEVEL` | `info` | Same, but read before the configuration system loads — use it to debug startup itself |
+| `NO_COLOR` | - | Set to any value to disable coloured terminal output ([no-color.org](https://no-color.org/)) |
+| `FORCE_COLOR` | - | Set to any value to force coloured output when the terminal is not detected as a TTY |
 
 ### Authentication
 
