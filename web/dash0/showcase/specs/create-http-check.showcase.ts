@@ -71,9 +71,9 @@ test("create an HTTP check", async ({ page }, testInfo) => {
     await beat(page, 1800);
     await still(page, "01-checks-list");
 
-    // 2. "New check" — a gentle push-in that travels with the cursor, then
-    //    straight back out because the click changes route.
-    await focus(page, newCheckButton, { zoom: 1.4, label: "new-check-button" });
+    // 2. "New check" — stays on the full frame. The click changes route, and
+    //    a push-in that has to snap straight back out for the navigation reads
+    //    as a glitch rather than as emphasis.
     await clickOn(page, newCheckButton);
     const typeSelect = page.getByTestId("check-type-select");
     await expect(typeSelect).toBeVisible();
@@ -102,21 +102,27 @@ test("create an HTTP check", async ({ page }, testInfo) => {
     await typeHuman(page, nameInput, FEATURED_CHECK.name);
     await beat(page, 900);
 
-    // 5. Interval — pick the shortest offered cadence so the detail page shows
-    //    results quickly.
+    // 5. Interval — 10 seconds, so two results land while the camera is still
+    //    on the detail page (step 9 waits for them).
+    //
+    //    Asserted rather than best-effort: the option ladder is filtered by the
+    //    check type's minPeriodSeconds and by the org's rate entitlement
+    //    (buildIntervalOptions in check-form.tsx), so if "10 seconds" is not on
+    //    offer the take would silently film a different cadence than the one
+    //    the docs describe. Fail loudly instead.
     const periodSelect = page.getByTestId("check-period-select");
-    if (await periodSelect.isVisible()) {
-      await focus(page, periodSelect, { zoom: 1.35, label: "interval" });
-      await clickOn(page, periodSelect);
-      await beat(page, 600);
-      const options = page.getByRole("option");
-      const preferred = options.filter({ hasText: /1 minute/ });
-      await ((await preferred.count()) > 0
-        ? preferred.first()
-        : options.first()
-      ).click();
-      await beat(page, 700);
-    }
+    await expect(periodSelect).toBeVisible();
+    await focus(page, periodSelect, { zoom: 1.35, label: "interval" });
+    await clickOn(page, periodSelect);
+    await beat(page, 600);
+    const tenSeconds = page.getByRole("option").filter({ hasText: /10 seconds/ });
+    await expect(
+      tenSeconds,
+      'the "10 seconds" interval must be offered — check minPeriodSeconds for ' +
+        "the http check type and the org's maxChecksPerMinute entitlement",
+    ).toHaveCount(1);
+    await tenSeconds.first().click();
+    await beat(page, 700);
 
     // 6. Regions — tick every offered region so the check runs from everywhere.
     const regions = page.locator('[data-testid^="region-option-"]');
@@ -142,17 +148,46 @@ test("create an HTTP check", async ({ page }, testInfo) => {
     await beat(page, 1400);
     await still(page, "02-check-form-filled");
 
-    // 8. Save → land on the check detail page.
-    await clickOn(page, page.getByTestId("check-submit-button"));
+    // 8. Scroll down to the submit button, then save → land on the check
+    //    detail page.
+    //
+    //    The scroll is explicit and on camera. Playwright would auto-scroll as
+    //    part of the click, but that happens instantly at click time, so the
+    //    painted cursor would appear to travel toward a button the viewer has
+    //    never seen. Smooth window scroll for the look; scrollIntoViewIfNeeded
+    //    is the guarantee, since it also handles the case where the form sits
+    //    in its own scrollable container rather than scrolling the window.
+    const submitButton = page.getByTestId("check-submit-button");
+    await page.evaluate(() =>
+      window.scrollTo({
+        top: document.documentElement.scrollHeight,
+        behavior: "smooth",
+      }),
+    );
+    await beat(page, 900);
+    await submitButton.scrollIntoViewIfNeeded();
+    await expect(submitButton).toBeInViewport();
+    await beat(page, 500);
+    await clickOn(page, submitButton);
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 20000 });
     await page.waitForLoadState("networkidle");
 
-    // 9. Let the detail page settle: long enough for the first result to land
-    //    AND for the "Check created successfully" toast to expire, so the
-    //    published still is not a screenshot of a notification sitting on top
-    //    of the search box.
+    // 9. Let the detail page settle: long enough for the "Check created
+    //    successfully" toast to expire, so the published still is not a
+    //    screenshot of a notification sitting on top of the search box.
     await focus(page, null, { label: "detail-page" });
-    await beat(page, 6500);
+    await beat(page, 4000);
+
+    // 9b. Wait for the check to have actually reported TWICE before the still
+    //     is taken, so the published frame shows a populated results table and
+    //     a response-time chart with a line in it rather than an empty state.
+    //     At the 10-second cadence chosen above that is ~10-15 s from creation;
+    //     the rows arriving are themselves the motion, so the frame is held.
+    const resultRows = page.locator('[data-testid^="result-row-"]');
+    await expect
+      .poll(() => resultRows.count(), { timeout: 60_000, intervals: [500] })
+      .toBeGreaterThanOrEqual(2);
+    await beat(page, 1200);
     await still(page, "03-check-detail");
 
     // 10. A slow Ken-Burns push-in toward the status / response-time area, then

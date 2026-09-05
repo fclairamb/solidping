@@ -172,26 +172,38 @@ follow-up spec.
 
 A record of what the committed media actually is, so nobody has to re-derive it
 from the binaries. Update this block whenever `make showcase` is re-run and the
-output is committed.
+output is committed. Sizes are KiB/MiB — the units `postprocess.ts` prints, so
+they match the run log line for line.
 
-- **Date:** 2026-09-05 (spec `2026-09-05-03-showcase-video-refresh-zoom-cursor`)
+- **Date:** 2026-09-05 (spec `2026-09-05-03-showcase-video-refresh-zoom-cursor`,
+  re-cut the same day for the 10-second cadence described below)
 - **App version on camera:** `v0.23.0-19-g1b4d3a74d` (sidebar footer of the
   stills)
-- **Video:** 28.52 s, 1280×800, 25 fps, 713 frames
-- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 439 847 B
-  (1.44 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 271 058 B
-  (1.27 MB)
-- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 182 KB,
-  `02-check-form-filled.png` 169 KB, `03-check-detail.png` 201 KB
-- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 265 KB / 242 KB /
-  296 KB — two of the three above the ~250 KB bar, which is why the 1× versions
+- **Filmed check:** `GET https://solidping.io/api/mgmt/health`, named
+  "Production API", at a **10-second** interval
+- **Video:** 28.84 s, 1280×800, 25 fps, 721 frames
+- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 199 265 B
+  (1.14 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 151 855 B
+  (1.10 MB)
+- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 178 KB,
+  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 211 KB
+- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 260 KB / 239 KB /
+  304 KB — two of the three above the ~250 KB bar, which is why the 1× versions
   are the ones published
+- **9 cue points, max zoom 1.60×.** There is deliberately **no push-in on the
+  New check button**: the click changes route, and a zoom that has to snap
+  straight back out for the navigation reads as a glitch rather than emphasis
 - **No regions beat**, for the reason given under "What it produces": the run
   was filmed against a single-node side-car, so the cue list runs `interval` →
   `form-complete`
+- **The detail-page still waits for two results**, so the published frame shows
+  a populated response-time chart rather than an empty state. Note that the
+  scheduler aligns runs to wall-clock boundaries, so at a 10-second cadence the
+  second result can land only a second or two after the first — the chart is
+  guaranteed to have two points, not to span ten seconds
 - **`minterpolate` (50 fps frame interpolation): tried, rejected.** On screen
   content it ghosts — half-typed characters and the text caret double on every
-  synthesised frame. The cut stays at its native 25 fps.
+  synthesised frame. The cut stays at its native 25 fps
 
 ## Where they are surfaced
 

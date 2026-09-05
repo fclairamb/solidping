@@ -241,10 +241,11 @@ viewport with the app scaled up — i.e. filming a layout nobody ships — which
 deliberately not done.
 
 Published stills stay at **1280×800**. The 2560×1600 PNGs from the last run
-measure 265 / 242 / 296 KB — two of the three above the ~250 KB-each bar that
+measure 260 / 239 / 304 KB — two of the three above the ~250 KB-each bar that
 would have justified publishing retina stills — while the 1× versions actually
-committed are 182 / 169 / 201 KB. The committed catalog staying small is the
-constraint that decides it.
+committed are 178 / 166 / 211 KB. The committed catalog staying small is the
+constraint that decides it. (KB here is KiB, the unit `postprocess.ts` prints,
+so these match the run log line for line.)
 
 Frame interpolation (`minterpolate` to 50 fps) was tried and **rejected**: on
 screen content it ghosts, doubling half-typed characters and the text caret on

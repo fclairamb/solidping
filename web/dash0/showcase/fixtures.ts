@@ -125,7 +125,7 @@ export const DEMO_CHECKS = [
 /** The check created on camera during the recording. */
 export const FEATURED_CHECK = {
   name: "Production API",
-  url: "https://api.solidping.io/v1/health",
+  url: "https://solidping.io/api/mgmt/health",
 };
 
 interface Json {
