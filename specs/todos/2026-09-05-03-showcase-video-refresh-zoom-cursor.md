@@ -218,3 +218,102 @@ switch to 2560×1600 if every one of them lands under ~250 KB. Report the
 measured sizes either way — the committed catalog staying small is the
 constraint that decides it, so state the numbers rather than the conclusion
 alone.
+
+## Implementation Plan
+
+### A. Pipeline runs again (`fixtures.ts`)
+
+1. `apiLogin()` gains a rotation-aware bootstrap:
+   - login with `SHOWCASE_PASSWORD` (`solidpass`); on `401` retry with
+     `SHOWCASE_ROTATED_PASSWORD` so a rerun against an already-rotated side-car
+     database still works;
+   - read `user.mustChangePassword` off the login response (and, as a
+     belt-and-braces second source, `GET /api/v1/auth/me`);
+   - when flagged, `POST /api/v1/auth/change-password` with
+     `{currentPassword, newPassword: SHOWCASE_ROTATED_PASSWORD}` and log loudly
+     that the side-car account now carries that password.
+   - `SHOWCASE_ROTATED_PASSWORD` defaults to `showcase-rotated-pass` — **not**
+     `solidpass`, because the resolved open question pins reuse to
+     `400 VALIDATION_ERROR` (`server/internal/handlers/auth/service.go` ≈2866,
+     `change_password_handler_test.go:137-142`). ≥ 8 chars (`minPasswordLength`).
+   - the effective password is remembered module-side; `uiLogin()` types *that*,
+     never the seeded constant.
+   - The rotation gate reads the DB flag in `RequireAuth`
+     (`server/internal/middleware/auth.go:91`), not a JWT claim, and
+     `ChangePassword` spares the caller's own refresh grant — so the bootstrap
+     token stays usable after the rotation. No re-login needed.
+2. Re-verify the flow on today's UI during the recording run; refresh
+   `tour.mdx` `alt` texts against the new stills.
+3. Update `web/dash0/showcase/README.md` and `wiki/features/showcase-media.md`.
+
+### B. Zoom, choreographed in post
+
+1. `playwright.config.ts`: `deviceScaleFactor: 2`, `video.size` 2560×1600,
+   viewport stays 1280×800 CSS px, `SHOWCASE_SLOW_MO` default `0`.
+2. **New pure module `showcase/crop-window.ts`** — no node/browser imports, so
+   it is unit-testable:
+   - `FocusCue { t, rect | null, zoom?, transitionMs?, holdMs? }` is what the
+     recording writes (CSS px);
+   - `resolveCues(cues, frame, viewport, opts)` maps each cue to a target
+     window in **source pixels**: `w = frameW / zoom`, `h = frameH / zoom`
+     (16:10 by construction), centred on the rect centre, clamped inside the
+     frame at the cue itself;
+   - `cropWindowAt(series, t)` interpolates with **smoothstep**
+     `S(u) = u²(3−2u)` over a per-cue transition (default 600 ms, clipped so
+     consecutive transitions can never overlap);
+   - the interpolation is a *flat sum* — `v₀ + Σ Δᵢ·S(clip((t−tᵢ)/Dᵢ,0,1))` —
+     which is exactly representable as one ffmpeg expression, and (because
+     `limit(z) = W(1−1/z)` is concave in z) an endpoint-clamped pair can never
+     interpolate to an out-of-frame window;
+   - `buildZoompanExpressions(series, frame)` renders the same sums as ffmpeg
+     `zoompan` expressions.
+3. **ffmpeg filter**: `fps=25` (forces CFR so `on/25` is exact time) →
+   `zoompan=z=…:x=…:y=…:d=1:s=<source>:fps=25` → `scale=1280:800:flags=lanczos`.
+   `zoompan` is used rather than a variable-size `crop` because a crop whose
+   output size changes per frame forces a filter-link reconfiguration that
+   ffmpeg does not reliably support. Mapping: with `zoompan` cropping `s` out of
+   an image scaled by `z`, a source rect of size `W/zoom` at `(sx,sy)` is
+   `z = zoom`, `x = sx·zoom`, `y = sy·zoom` (`x` is additionally wrapped in
+   `clip(…, 0, iw*zoom-ow)`).
+4. **Timeline anchor**: `beginCueTimeline()` fires in `uiLogin()` the moment
+   the login title paints — which is exactly what ends the recording's opening
+   freeze. `postprocess.ts` maps cue `t` → `leadingFreeze.end + t + SHOWCASE_CUE_OFFSET_MS`
+   → minus `window.start`. Cues are written to
+   `output/cues/<video-basename>.json` keyed off `page.video().path()`, so
+   postprocess pairs the cue list with the right recording even when two
+   showcase specs each produce a video.
+5. Choreography in `create-http-check.showcase.ts` per the spec's list.
+
+### C. Cursor + human input (`fixtures.ts`)
+
+1. `installCursor(page)` → `context.addInitScript` injecting a fixed-position,
+   `pointer-events:none` SVG arrow (24 CSS px) that follows `mousemove`, plus a
+   click ripple on `mousedown`. No-op when `SHOWCASE_CURSOR=0`. The SMS opt-in
+   spec never calls it (and says why): those frames are carrier evidence.
+   `still()` hides the overlay for the duration of the screenshot so published
+   stills stay clean.
+2. `moveTo(page, locator)` — eased `page.mouse.move()` travel (~420 ms,
+   smoothstep) to the element centre before each click; `clickOn()` = moveTo +
+   click.
+3. `typeHuman(locator, text)` — `pressSequentially` char by char with a
+   40–70 ms jittered delay.
+4. `slowMo` default drops to `0`; `SHOWCASE_SLOW_MO` stays as the escape hatch.
+
+### D. Encode + hand-off
+
+1. `postprocess.ts` emits AV1 (`create-http-check.mp4`, unchanged path) **plus**
+   H.264 (`create-http-check.h264.mp4`, `libx264`/`yuv420p`/`+faststart`), and
+   downscales the 2× stills to the published 1280×800 while reporting both the
+   2× and 1× byte sizes (the open question's decision criterion).
+   `tour.mdx` gets two `<source>` children, AV1 first.
+2. Regenerate against a fresh side-car, commit the new assets, produce a
+   contact sheet.
+3. README hand-off list for `../solidping-website` (separate repo, untouched).
+
+### Tests
+
+`showcase/crop-window.test.ts` (vitest `include` widened to
+`showcase/**/*.test.ts`): identity crop with no cues, aspect preservation at
+every sampled time, clamping at all four frame edges, easing monotonicity, and
+a cross-check that the rendered ffmpeg sum-expression evaluates to the same
+numbers as `cropWindowAt`.
