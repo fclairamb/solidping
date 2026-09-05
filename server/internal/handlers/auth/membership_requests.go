@@ -383,8 +383,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 		msg = *message
 	}
 
-	requestsURL := fmt.Sprintf("%s/dash0/orgs/%s/members?tab=requests",
-		s.fullCfg.Server.BaseURL, org.Slug)
+	requestsURL := s.fullCfg.Server.BaseURL + membershipRequestsPath(org.Slug)
 
 	for _, member := range members {
 		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil || member.User.Email == "" {

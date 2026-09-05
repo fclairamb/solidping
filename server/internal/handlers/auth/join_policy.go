@@ -38,6 +38,16 @@ const pendingMembershipParam = "membershipPending"
 // "request access / pending request" flow.
 const noOrgPath = "/dash0/no-org"
 
+// membershipRequestsPath is the dashboard path where org admins review
+// pending membership requests — the target of the "New membership request"
+// notification email. Keep in sync with the real route:
+// web/dash0/src/routes/orgs/$org/organization.requests.tsx registers
+// "/orgs/$org/organization/requests" (and organization.tsx wires it into the
+// sidebar); it does NOT live under "members".
+func membershipRequestsPath(orgSlug string) string {
+	return fmt.Sprintf("/dash0/orgs/%s/organization/requests", orgSlug)
+}
+
 // Admission rules, as recorded in the member.joined audit payload's `source`.
 const (
 	joinSourceBootstrap      = "org_bootstrap"
