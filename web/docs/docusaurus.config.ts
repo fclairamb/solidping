@@ -14,7 +14,7 @@ import type * as OpenApiPlugin from "docusaurus-plugin-openapi-docs";
 // repo — no cross-repo fetch), so it cannot drift from the server.
 const config: Config = {
   title: "SolidPing Docs",
-  tagline: "Documentation for SolidPing — open-source monitoring",
+  tagline: "Documentation for SolidPing — open-source uptime monitoring & alerting",
   favicon: "img/favicon.ico",
 
   url: "https://docs.solidping.io",
@@ -85,7 +85,7 @@ const config: Config = {
         ignoreFiles: [],
         title: "SolidPing",
         description:
-          "SolidPing is an open-source monitoring platform for HTTP, TCP, and ping checks with status pages, incident tracking, and notifications.",
+          "SolidPing is an open-source uptime monitoring and alerting platform: 40 check types (HTTP, TCP, DNS, SSL, databases, message queues, gRPC, Kubernetes and more), distributed workers, status pages, on-call and 16 notification channels. Free to self-host (AGPL-3.0), or hosted at solidping.io.",
         includeBlog: false,
       },
     ],
@@ -121,6 +121,14 @@ const config: Config = {
   ],
 
   themeConfig: {
+    // Open Graph / Twitter card shared with www.solidping.io (same file in the
+    // solidping-website repo) so links to the docs unfurl like links to the site.
+    image: "img/social-card.jpg",
+    metadata: [
+      { property: "og:site_name", content: "SolidPing" },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+    ],
     colorMode: {
       defaultMode: "light",
       respectPrefersColorScheme: true,
