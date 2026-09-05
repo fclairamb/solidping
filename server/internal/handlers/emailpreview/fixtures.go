@@ -277,7 +277,7 @@ func membershipRequestNewFixture() map[string]any {
 		"RequesterName":  "Bob Builder",
 		"RequesterEmail": "bob@example.com",
 		"Message":        "I'd like to help monitor our new services.",
-		"RequestsURL":    "https://solidping.example/dash0/orgs/acme/organization/membership-requests",
+		"RequestsURL":    "https://solidping.example/dash0/orgs/acme/organization/requests",
 	}
 }
 

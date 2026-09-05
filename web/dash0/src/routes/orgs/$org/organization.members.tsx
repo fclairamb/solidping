@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { Loader2, Trash2, BellPlus } from "lucide-react";
@@ -61,6 +61,16 @@ import {
 import { useMemberCoverage } from "@/api/hooks";
 
 export const Route = createFileRoute("/orgs/$org/organization/members")({
+  // Emails sent before the requests URL was fixed (spec
+  // 2026-09-05-02) still point here with ?tab=requests — keep them working.
+  beforeLoad: ({ params, location }) => {
+    if (new URLSearchParams(location.searchStr || "").get("tab") === "requests") {
+      throw redirect({
+        to: "/orgs/$org/organization/requests",
+        params: { org: params.org },
+      });
+    }
+  },
   component: MembersPage,
 });
 

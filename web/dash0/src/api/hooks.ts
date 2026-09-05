@@ -3505,7 +3505,9 @@ export function useUpdateProfile() {
 // into the org, or every org-scoped call 403s.
 export function useCreateOrg() {
   return useMutation({
-    mutationFn: (data: { name: string; slug: string }) =>
+    // `slug` is optional: omit it and the server derives one from the name
+    // (POST /api/v1/orgs, spec 2026-09-05-01).
+    mutationFn: (data: { name: string; slug?: string }) =>
       apiFetch<{
         uid: string;
         slug: string;

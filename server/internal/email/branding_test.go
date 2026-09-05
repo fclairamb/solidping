@@ -414,7 +414,7 @@ func TestApplyOrgBrandingWritesTheKeysBaseHTMLReads(t *testing.T) {
 	logo := "/pub/assets/org-logo-uid"
 	viewModel := map[string]any{"Existing": "kept"}
 
-	ApplyOrgBranding(viewModel, "Acme Corp", &logo)
+	ApplyOrgBranding(viewModel, "Acme Corp", "acme", &logo)
 
 	r.Equal("Acme Corp", viewModel["OrgName"])
 	r.Equal("Acme Corp", viewModel["BrandName"])
@@ -426,7 +426,7 @@ func TestApplyOrgBrandingWritesTheKeysBaseHTMLReads(t *testing.T) {
 	// separately from emptiness on purpose — a missing key is also "empty",
 	// and that is exactly the case this pins down.
 	logoless := map[string]any{}
-	ApplyOrgBranding(logoless, "Acme Corp", nil)
+	ApplyOrgBranding(logoless, "Acme Corp", "acme", nil)
 
 	logoValue, present := logoless["OrgLogoURL"]
 	r.True(present, "the key must be written, not omitted")
@@ -435,7 +435,7 @@ func TestApplyOrgBrandingWritesTheKeysBaseHTMLReads(t *testing.T) {
 
 	// A nil view model is a no-op, not a panic: several callers build the map
 	// conditionally.
-	r.NotPanics(func() { ApplyOrgBranding(nil, "Acme Corp", &logo) })
+	r.NotPanics(func() { ApplyOrgBranding(nil, "Acme Corp", "acme", &logo) })
 }
 
 // TestApplyOrgBrandingRendersThroughTheWrapper is the end-to-end half: the
@@ -457,7 +457,7 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	logo := "/pub/assets/org-logo-uid"
 
 	branded := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
-	ApplyOrgBranding(branded, "Acme Corp", &logo)
+	ApplyOrgBranding(branded, "Acme Corp", "acme", &logo)
 
 	_, html, _, err := formatter.Format("test-email.html", branded)
 	r.NoError(err)
@@ -467,7 +467,7 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	r.NotContains(html, "/dash0/logo.png")
 
 	logoless := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
-	ApplyOrgBranding(logoless, "Acme Corp", nil)
+	ApplyOrgBranding(logoless, "Acme Corp", "acme", nil)
 
 	_, plain, _, err := formatter.Format("test-email.html", logoless)
 	r.NoError(err)
@@ -475,4 +475,72 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	r.Contains(plain, brandingTestBaseURL+"/dash0/logo.png")
 	// The org is still named in the footer even without a logo.
 	r.Contains(plain, "Acme Corp — sent by SolidPing")
+}
+
+// TestApplyOrgBrandingFallsBackToSlugWhenNameIsBlank is table-driven per the
+// spec: a set org name always wins; a blank one (the observed shape of the
+// production `default` org, whose `name` column is empty) falls back to the
+// slug, which is never blank.
+func TestApplyOrgBrandingFallsBackToSlugWhenNameIsBlank(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		orgName  string
+		orgSlug  string
+		wantName string
+	}{
+		{"name set: name wins", "Acme Corp", "acme", "Acme Corp"},
+		{"name empty: falls back to slug", "", "default", "default"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			viewModel := map[string]any{}
+			ApplyOrgBranding(viewModel, tc.orgName, tc.orgSlug, nil)
+
+			r.Equal(tc.wantName, viewModel["OrgName"])
+			r.Equal(tc.wantName, viewModel["BrandName"])
+		})
+	}
+}
+
+// TestApplyOrgBrandingBlankNameNeverRendersAHole is the end-to-end half,
+// rendered through the actual membership_request_new.html template — the
+// exact defect from the screenshot that motivated this fix: "has asked to
+// join **on** SolidPing" and "you're an admin of **.**" with a blank
+// OrgName. Both the positive assertion (the slug fills the hole) and the
+// negative one (the hole itself never appears) are checked, in subject,
+// HTML body and plain-text fallback.
+func TestApplyOrgBrandingBlankNameNeverRendersAHole(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	formatter, err := NewFormatter(WithBaseURL(brandingTestBaseURL))
+	r.NoError(err)
+
+	viewModel := map[string]any{
+		"RequesterName":  "Bob Builder",
+		"RequesterEmail": "bob@example.com",
+		"RequestsURL":    "https://x.test/requests",
+	}
+	ApplyOrgBranding(viewModel, "", "default", nil)
+
+	subject, html, text, err := formatter.Format("membership_request_new.html", viewModel)
+	r.NoError(err)
+
+	r.Contains(subject, "on default")
+	r.Contains(html, "join <strong>default</strong> on SolidPing")
+	r.Contains(html, "admin of default.")
+	r.Contains(text, "join default on SolidPing")
+	r.Contains(text, "admin of default.")
+
+	r.NotContains(html, "join  on SolidPing")
+	r.NotContains(html, "admin of .")
+	r.NotContains(text, "join  on SolidPing")
+	r.NotContains(text, "admin of .")
 }

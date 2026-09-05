@@ -173,7 +173,8 @@ func TestGitLabHandleCallback(t *testing.T) {
 			Name:     "Existing GL User",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo)
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 	})
@@ -196,7 +197,8 @@ func TestGitLabHandleCallback(t *testing.T) {
 			Name:     "Match GL User",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo)
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 
@@ -219,7 +221,8 @@ func TestGitLabHandleCallback(t *testing.T) {
 			AvatarURL: "https://gitlab.com/uploads/-/system/user/avatar/77777/avatar.png",
 		}
 
-		user, err := svc.findOrCreateUser(ctx, userInfo)
+		user, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.True(t, created, "a brand-new account must be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, "brand-new-gl@example.com", user.Email)
 		assert.Equal(t, "Brand New GL User", user.Name)
@@ -415,7 +418,7 @@ func (m *gitLabMockService) handleCallbackMocked(
 		return nil, err
 	}
 
-	user, err := m.findOrCreateUser(ctx, userInfo)
+	user, _, err := m.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, err
 	}

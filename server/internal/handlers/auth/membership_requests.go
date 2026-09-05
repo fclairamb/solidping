@@ -383,8 +383,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 		msg = *message
 	}
 
-	requestsURL := fmt.Sprintf("%s/dash0/orgs/%s/members?tab=requests",
-		s.fullCfg.Server.BaseURL, org.Slug)
+	requestsURL := s.fullCfg.Server.BaseURL + membershipRequestsPath(org.Slug)
 
 	for _, member := range members {
 		if !member.Role.AtLeast(models.MemberRoleAdmin) || member.User == nil || member.User.Email == "" {
@@ -397,7 +396,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 			"Message":        msg,
 			"RequestsURL":    requestsURL,
 		}
-		email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+		email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html", viewModel)
 	}
@@ -424,7 +423,7 @@ func (s *Service) notifyRequesterOfDecision(
 		"Reason":       reason,
 		"DashboardURL": dashboardURL,
 	}
-	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html", viewModel)
 }

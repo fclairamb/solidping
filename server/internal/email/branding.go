@@ -27,13 +27,25 @@ const (
 // Empty values are written as empty strings rather than omitted: base.html
 // treats "" as "no org logo" and falls back to the SolidPing logo, so a
 // partially-branded org degrades instead of rendering a broken image.
-func ApplyOrgBranding(viewModel map[string]any, orgName string, logoURL *string) {
+//
+// orgName falls back to orgSlug when blank. An org with an empty `name`
+// column (observed on the long-lived production `default` org) would
+// otherwise leave a hole in every templated sentence that reads OrgName —
+// "has asked to join **on** SolidPing", "you're an admin of **.**" — and in
+// the subject line. Every org has a non-empty slug, so this is a strict
+// improvement over rendering nothing.
+func ApplyOrgBranding(viewModel map[string]any, orgName, orgSlug string, logoURL *string) {
 	if viewModel == nil {
 		return
 	}
 
-	viewModel[KeyOrgName] = orgName
-	viewModel[KeyBrandName] = orgName
+	name := orgName
+	if name == "" {
+		name = orgSlug
+	}
+
+	viewModel[KeyOrgName] = name
+	viewModel[KeyBrandName] = name
 	viewModel[KeyOrgLogoURL] = derefString(logoURL)
 }
 

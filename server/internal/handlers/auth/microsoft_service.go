@@ -62,6 +62,10 @@ type MicrosoftOAuthResult struct {
 	// the user: no membership was created, a membership request is awaiting
 	// admin approval, and the tokens above are an org-less session.
 	Pending bool
+	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
+	// when the pending outcome opened no membership request at all
+	// (see auth.ProviderLoginResult.PendingOrgSlug).
+	PendingOrgSlug string
 }
 
 // MicrosoftOAuthService handles Microsoft OAuth authentication logic.
@@ -193,7 +197,7 @@ func (s *MicrosoftOAuthService) HandleCallback(
 	}
 
 	// Find or create user
-	user, err := s.findOrCreateUser(ctx, userInfo, email)
+	user, userCreated, err := s.findOrCreateUser(ctx, userInfo, email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -201,18 +205,20 @@ func (s *MicrosoftOAuthService) HandleCallback(
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodMicrosoft))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
+		WithLoginMethod(signupMethodMicrosoft), newlyCreatedUserOption(userCreated))
 	if err != nil {
 		return nil, err
 	}
 
 	return &MicrosoftOAuthResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
+		AccessToken:    login.AccessToken,
+		RefreshToken:   login.RefreshToken,
+		ExpiresIn:      login.ExpiresIn,
+		OrgSlug:        org.Slug,
+		UserUID:        user.UID,
+		Pending:        login.Pending,
+		PendingOrgSlug: login.PendingOrgSlug,
 	}, nil
 }
 
@@ -313,11 +319,15 @@ func (s *MicrosoftOAuthService) fetchUserProfile(ctx context.Context, accessToke
 // findOrCreateUser finds or creates a user by Microsoft identity.
 func (s *MicrosoftOAuthService) findOrCreateUser(
 	ctx context.Context, userInfo *MicrosoftUserInfo, email string,
-) (*models.User, error) {
+) (*models.User, bool, error) {
+	// created reports whether THIS call minted the account — the fact rule 6's
+	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	var created bool
+
 	// Check by Microsoft user ID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeMicrosoft, userInfo.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user provider: %w", err)
+		return nil, false, fmt.Errorf("failed to get user provider: %w", err)
 	}
 
 	if err == nil && provider != nil {
@@ -326,11 +336,11 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 		// than failing this login (and every later one) forever.
 		user, resolveErr := ResolveLinkedUser(ctx, s.db, models.ProviderTypeMicrosoft, userInfo.ID, provider)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, false, resolveErr
 		}
 
 		if user != nil {
-			return user, nil
+			return user, false, nil
 		}
 
 		provider = nil
@@ -339,11 +349,12 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 	// Check by email
 	user, err := s.db.GetUserByEmail(ctx, email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user by email: %w", err)
+		return nil, false, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	// Create new user if not found
 	if user == nil {
+		created = true
 		user = models.NewUser(email)
 		user.Name = userInfo.DisplayName
 
@@ -353,7 +364,7 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 		// Routed through the package's single account-creation chokepoint so
 		// the user_signed_up product event fires for SSO signups too.
 		if err := createUserAndCapture(ctx, s.db, user, signupMethodMicrosoft); err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, false, fmt.Errorf("failed to create user: %w", err)
 		}
 	}
 
@@ -362,11 +373,11 @@ func (s *MicrosoftOAuthService) findOrCreateUser(
 		provider = models.NewUserProvider(user.UID, models.ProviderTypeMicrosoft, userInfo.ID)
 
 		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
-			return nil, fmt.Errorf("failed to create user provider: %w", err)
+			return nil, false, fmt.Errorf("failed to create user provider: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, created, nil
 }
 
 // getCallbackURL returns the OAuth callback URL for Microsoft.

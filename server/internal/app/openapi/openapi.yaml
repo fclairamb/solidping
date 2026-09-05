@@ -14814,14 +14814,19 @@ components:
     # Organization schemas
     CreateOrgRequest:
       type: object
-      required: [name, slug]
+      required: [name]
       properties:
         name:
           type: string
           description: Human-readable organization name
         slug:
           type: string
-          description: URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens)
+          description: >-
+            URL-friendly identifier (3-20 chars, lowercase alphanumeric with
+            hyphens). **Optional** — omit it and the server derives one from
+            `name`, appending a numeric suffix on collision, so a first-time
+            user never has to invent a URL identifier. A slug that IS supplied
+            is taken literally: invalid answers 422, already taken answers 409.
 
     DeleteOrgRequest:
       type: object

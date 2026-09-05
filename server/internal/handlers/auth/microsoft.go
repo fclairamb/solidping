@@ -91,7 +91,7 @@ func (h *MicrosoftOAuthHandler) Callback(writer http.ResponseWriter, req *http.R
 	// authorize/consent flow) work without a login-page refresh bounce.
 	return finishProviderCallback(writer, req,
 		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // buildMicrosoftAuthURL constructs the Microsoft authorization URL.

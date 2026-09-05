@@ -44,9 +44,13 @@ func TestCLICoverage_OrgCreate(t *testing.T) {
 
 	apiClient := cliCovAuthedClient(ctx, t, ts)
 
+	// Slug is optional in the schema now (spec 2026-09-05-01) — an explicit one
+	// still has to be honored verbatim, which is what this asserts.
+	explicitSlug := "cli-cov-org"
+
 	resp, err := apiClient.CreateOrgWithResponse(ctx, client.CreateOrgJSONRequestBody{
 		Name: "CLI Coverage Org",
-		Slug: "cli-cov-org",
+		Slug: &explicitSlug,
 	})
 	r.NoError(err)
 	r.Equal(201, resp.StatusCode())
@@ -62,10 +66,20 @@ func TestCLICoverage_OrgCreate(t *testing.T) {
 	// A duplicate slug conflicts.
 	dupResp, err := apiClient.CreateOrgWithResponse(ctx, client.CreateOrgJSONRequestBody{
 		Name: "Dup",
-		Slug: "cli-cov-org",
+		Slug: &explicitSlug,
 	})
 	r.NoError(err)
 	r.Equal(409, dupResp.StatusCode())
+
+	// ...and with no slug at all the server derives one from the name instead
+	// of rejecting the request.
+	derivedResp, err := apiClient.CreateOrgWithResponse(ctx, client.CreateOrgJSONRequestBody{
+		Name: "Derived Slug Org",
+	})
+	r.NoError(err)
+	r.Equal(201, derivedResp.StatusCode())
+	r.NotNil(derivedResp.JSON201)
+	r.Equal("derived-slug-org", derivedResp.JSON201.Slug)
 }
 
 // TestCLICoverage_OrgSettings covers getOrgSettings and updateOrgSettings with a

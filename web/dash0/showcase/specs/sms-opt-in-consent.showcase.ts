@@ -32,6 +32,20 @@ import {
  * or staged — a doctored consent screen shown to a carrier is a
  * misrepresentation. Re-run whenever the flow or its wording moves, so the
  * published images and the shipped UI cannot drift apart.
+ *
+ * ## No cursor overlay here, deliberately
+ *
+ * The create-http-check recording installs a synthetic pointer
+ * (`installCursor()` in ../fixtures) because headless Chromium paints none and
+ * a marketing video needs one. This capture must NOT: every pixel a carrier
+ * reviewer inspects has to be the shipped UI, and an arrow we drew ourselves is
+ * exactly the sort of embellishment that turns evidence into a mock-up. It is
+ * opt-in for that reason — this file simply never calls it, and
+ * `SHOWCASE_CURSOR=0` disables it globally as a second switch.
+ *
+ * (The 2x `deviceScaleFactor` the showcase project now records at is a
+ * different matter: it changes the pixel density of the capture, not the
+ * layout or a single word of the UI being evidenced.)
  */
 test("SMS opt-in flow", async ({ page }) => {
   const bootstrapToken = await apiLogin(page);

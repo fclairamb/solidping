@@ -91,7 +91,7 @@ func (h *GitLabOAuthHandler) Callback(writer http.ResponseWriter, req *http.Requ
 	// authorize/consent flow) work without a login-page refresh bounce.
 	return finishProviderCallback(writer, req,
 		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // buildGitLabAuthURL constructs the GitLab authorization URL.

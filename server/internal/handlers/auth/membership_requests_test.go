@@ -6,7 +6,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 // seedMembershipFixtures creates an admin, an org, and a candidate user
@@ -278,4 +283,66 @@ func TestAutoJoinMatchingOrgsSkipsBadStoredPattern(t *testing.T) {
 
 	_, err := dbSvc.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
 	r.Error(err) // no membership created
+}
+
+// TestNotifyAdminsOfMembershipRequest_RequestsURLIsExact pins the URL the
+// "New membership request" email hands admins to the CURRENT dash0 route.
+// The formatter tests only ever exercise opaque placeholder URLs
+// (https://x.test/requests), which is exactly why a route rename
+// (members?tab=requests -> organization/requests) went undetected. The
+// assertion is on the EXACT path, not Contains("requests"), so a future
+// rename fails loudly here instead of silently in an inbox.
+//
+// Cross-check: web/dash0/src/routes/orgs/$org/organization.requests.tsx
+// registers "/orgs/$org/organization/requests" in the dash0 route table
+// (routeTree.gen.ts) — keep this string in sync with that route.
+func TestNotifyAdminsOfMembershipRequest_RequestsURLIsExact(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx := t.Context()
+
+	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbService.Initialize(ctx))
+	t.Cleanup(func() { _ = dbService.Close() })
+
+	jobs := jobsvc.NewService(dbService.DB(), dbService, notifier.NewLocalEventNotifier(), nil)
+
+	fullCfg := &config.Config{
+		Server: config.ServerConfig{BaseURL: "http://127.0.0.1:4000"},
+		Auth: config.AuthConfig{
+			JWTSecret:          "test-jwt-secret",
+			AccessTokenExpiry:  time.Hour,
+			RefreshTokenExpiry: 7 * 24 * time.Hour,
+		},
+	}
+
+	svc := NewService(dbService, fullCfg.Auth, fullCfg, jobs, nil)
+
+	org := models.NewOrganization("mr-url-org", "URL Org")
+	r.NoError(dbService.CreateOrganization(ctx, org))
+
+	admin := models.NewUser("admin-mr-url@example.com")
+	r.NoError(dbService.CreateUser(ctx, admin))
+	r.NoError(dbService.CreateOrganizationMember(
+		ctx, models.NewOrganizationMember(org.UID, admin.UID, models.MemberRoleAdmin),
+	))
+
+	candidate := models.NewUser("candidate-mr-url@example.com")
+	r.NoError(dbService.CreateUser(ctx, candidate))
+
+	_, err = svc.CreateMembershipRequest(ctx, candidate.UID,
+		MembershipRequestCreateRequest{OrgSlug: org.Slug, Message: "let me in"})
+	r.NoError(err)
+
+	enqueued, err := dbService.ListJobs(ctx, &org.UID, 0)
+	r.NoError(err)
+	r.Len(enqueued, 1)
+	r.Equal(string(jobdef.JobTypeEmail), enqueued[0].Type)
+
+	templateData, ok := enqueued[0].Config["templateData"].(map[string]any)
+	r.True(ok, "templateData must decode as a map, got %T", enqueued[0].Config["templateData"])
+	r.Equal("http://127.0.0.1:4000/dash0/orgs/mr-url-org/organization/requests",
+		templateData["RequestsURL"])
 }

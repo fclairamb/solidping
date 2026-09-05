@@ -211,7 +211,8 @@ func TestMicrosoftHandleCallback(t *testing.T) {
 			UserPrincipalName: "existing-ms@example.onmicrosoft.com",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo, "existing-ms@example.com")
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo, "existing-ms@example.com")
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 	})
@@ -234,7 +235,8 @@ func TestMicrosoftHandleCallback(t *testing.T) {
 			UserPrincipalName: "match-ms@example.onmicrosoft.com",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo, "match-ms@example.com")
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo, "match-ms@example.com")
+		require.False(t, created, "an existing account matched by email must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 
@@ -256,7 +258,8 @@ func TestMicrosoftHandleCallback(t *testing.T) {
 			UserPrincipalName: "brand-new@example.onmicrosoft.com",
 		}
 
-		user, err := svc.findOrCreateUser(ctx, userInfo, "brand-new@example.com")
+		user, created, err := svc.findOrCreateUser(ctx, userInfo, "brand-new@example.com")
+		require.True(t, created, "a brand-new account must be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, "brand-new@example.com", user.Email)
 		assert.Equal(t, "Brand New User", user.Name)

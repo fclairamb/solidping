@@ -82,7 +82,7 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req *http.Reque
 	// authorize/consent flow) work without a login-page refresh bounce.
 	return finishProviderCallback(writer, req,
 		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // Exchange trades a single-use install-callback code for the freshly

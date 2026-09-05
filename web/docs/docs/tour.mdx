@@ -17,20 +17,36 @@ instead of quietly going stale.
 
 ## Creating an HTTP check
 
-The canonical flow, end to end: the checks list → **New check** → pick the
-HTTP check type → fill in the target URL and a name → choose how often it runs
-and from which regions → save, and land on the check's detail page as the first
-results arrive.
+The canonical flow, end to end: the checks list → **New check** → fill in the
+target URL and a name → choose how often it runs → save, and land on the
+check's detail page as the first results arrive. The form opens on the HTTP
+check type, so there is nothing to pick for the commonest case.
 
+The camera pushes in on whatever is being filled in and pulls back out for
+every navigation — that framing is added in post-production from cue points the
+recording writes, so the dashboard you see is the shipped UI at its real size,
+never a zoomed browser.
+
+{/* Two encodes of the same cut: AV1 first because it is roughly half the size,
+    H.264 behind it because Safari only decodes AV1 on Apple-silicon machines
+    with the hardware decoder. The browser takes the first <source> it can play,
+    so nobody lands on the fallback text. */}
 <video
-  src={useBaseUrl('/showcase/create-http-check.mp4')}
   controls
   loop
   muted
   playsInline
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 >
-  Your browser cannot play this AV1 video.
+  <source
+    src={useBaseUrl('/showcase/create-http-check.mp4')}
+    type='video/mp4; codecs="av01.0.05M.08"'
+  />
+  <source
+    src={useBaseUrl('/showcase/create-http-check.h264.mp4')}
+    type='video/mp4; codecs="avc1.640028"'
+  />
+  Your browser cannot play this video.
 </video>
 
 ## The checks list
@@ -40,7 +56,7 @@ grouped, filtered, and organised by host.
 
 <img
   src={useBaseUrl('/showcase/01-checks-list.png')}
-  alt="The SolidPing checks list, showing several monitored HTTP checks with their status"
+  alt="The SolidPing checks list for an organisation called Northwind Systems, with three HTTP checks listed by name, type, target URL, status and last response time"
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 />
 
@@ -48,12 +64,13 @@ grouped, filtered, and organised by host.
 
 One form for every protocol. Pick the check type and the form reshapes itself
 around it — method, URL and expected status codes for HTTP, host and port for
-TCP, and so on. Scheduling (how often the check runs, and from which regions)
-sits just below, as the video above shows.
+TCP, and so on. Scheduling — how often the check runs — sits just below, as the
+video above shows. Once you run more than one region, a region picker appears
+alongside it so you can choose where the check runs from.
 
 <img
   src={useBaseUrl('/showcase/02-check-form-filled.png')}
-  alt="The new-check form with the HTTP type selected, a GET request to an API health URL, an expected status of 200, and the name Production API"
+  alt="The new-check form with the HTTP type selected, a GET request to https://solidping.io/api/mgmt/health, an expected status of 200, the name Production API, and a check interval of ten seconds"
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 />
 
@@ -64,7 +81,7 @@ live status, response times over time (per region), and the raw result history.
 
 <img
   src={useBaseUrl('/showcase/03-check-detail.png')}
-  alt="A check's detail page showing its current status and response-time history"
+  alt="The Production API check's detail page: status, last-checked and open-incident tiles above a response-time chart, moments after the check was created"
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 />
 
