@@ -29,6 +29,12 @@ const (
 	routeDocs    = "/docs"
 	routeMetrics = "/metrics"
 
+	// The embeddable live widget. It is served on a custom host for the same
+	// reason it exists at all: the snippet a customer pastes into their own
+	// site points at the hostname they know their status page by, which for
+	// anyone using this feature IS the custom domain.
+	routeEmbed = "/embed/"
+
 	// Unauthenticated management endpoints the status0 SPA needs on a custom
 	// host (the footer renders the build it is talking to).
 	routeMgmtVersion = "/api/mgmt/version"
@@ -343,6 +349,13 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 		}
 
 		s.serveStatus0IndexForCustomHost(writer, req, page)
+	case strings.HasPrefix(reqPath, routeEmbed):
+		// Straight to the router: /embed/v1/widget.js is public, versioned and
+		// frozen by contract, and the summary endpoint it polls is already
+		// allowlisted below. Without this the default branch below hands the
+		// request to the status SPA, and the customer's <script> tag receives
+		// text/html — which fails to parse, silently, on their site.
+		s.router.ServeHTTP(writer, req)
 	case strings.HasPrefix(reqPath, "/api/"):
 		if isCustomHostAPIAllowed(reqPath) {
 			s.router.ServeHTTP(writer, req)
