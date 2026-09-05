@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/fclairamb/solidping/compare/v0.23.0...v0.23.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* echo the authorize redirect_uri when exchanging the Slack install code ([#327](https://github.com/fclairamb/solidping/issues/327)) ([7eed9a2](https://github.com/fclairamb/solidping/commit/7eed9a2825f403431a54ab753d095b5f7ee15f87))
+
 ## [0.23.0](https://github.com/fclairamb/solidping/compare/v0.22.1...v0.23.0) (2026-09-04)
 
 
