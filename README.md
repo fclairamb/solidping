@@ -1,6 +1,50 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/logo_256.png" alt="SolidPing" width="120">
+
 # SolidPing
 
-A distributed monitoring platform for checking availability and performance of services across multiple protocols.
+**Distributed, self-hostable uptime monitoring.**
+40 check types, multi-region workers, private agents, status pages,
+incidents and on-call escalation — in a single Go binary.
+
+[![Build](https://img.shields.io/github/actions/workflow/status/fclairamb/solidping/ci.yml?branch=main&label=build&logo=github)](https://github.com/fclairamb/solidping/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/fclairamb/solidping?label=release&logo=github)](https://github.com/fclairamb/solidping/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/fclairamb/solidping?filename=server%2Fgo.mod&logo=go)](https://github.com/fclairamb/solidping/blob/main/server/go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/fclairamb/solidping/server.svg)](https://pkg.go.dev/github.com/fclairamb/solidping/server)
+[![License](https://img.shields.io/github/license/fclairamb/solidping?color=blue)](LICENSE)
+
+[![Live](https://img.shields.io/badge/live-www.solidping.io-2ea44f?logo=icloud&logoColor=white)](https://www.solidping.io)
+[![Status](https://img.shields.io/badge/status-status.solidping.io-2ea44f?logo=statuspage&logoColor=white)](https://status.solidping.io)
+[![Docs](https://img.shields.io/badge/docs-docs.solidping.io-informational?logo=readthedocs&logoColor=white)](https://docs.solidping.io)
+[![Container](https://img.shields.io/badge/ghcr.io-fclairamb%2Fsolidping-blue?logo=docker&logoColor=white)](https://github.com/fclairamb/solidping/pkgs/container/solidping)
+
+</div>
+
+---
+
+<div align="center">
+
+### Create an HTTP check, start to finish — 18 seconds
+
+<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/create-http-check.gif" alt="Creating an HTTP check in SolidPing, from the new-check form to the first result" width="800">
+
+</div>
+
+## Screenshots
+
+| Checks list | New-check form | Check detail |
+|:---:|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/checks-list.png" alt="Checks list in the SolidPing dashboard" width="270"> | <img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/check-form.png" alt="New-check form, filled in" width="270"> | <img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/check-detail.png" alt="Check detail page with response-time history" width="270"> |
+
+## Try it
+
+| | |
+|---|---|
+| **Hosted** | [www.solidping.io](https://www.solidping.io) — sign up, no card needed |
+| **Live status page** | [status.solidping.io](https://status.solidping.io) — a real SolidPing instance watching the production one, from another provider in another country |
+| **Documentation** | [docs.solidping.io](https://docs.solidping.io) |
+| **Self-host** | `docker run -p 4000:4000 ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). |
 
 ## Overview
 
@@ -8,7 +52,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **39 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, 7 databases (Postgres, MySQL, MSSQL, Oracle, ClickHouse, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
+- **40 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, Prometheus, 7 databases (Postgres, MySQL, MSSQL, Oracle, ClickHouse, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
 - **Distributed workers**: Multi-region check execution with lease-based scheduling, per-region check periods with spread control, and per-org check-rate quotas
 - **Private locations**: Deported agents run checks from inside your own network over an outbound WebSocket, with per-org agent quotas
 - **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP), labels with autocomplete
@@ -111,6 +155,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | MySQL/MariaDB | Connection + query execution |
 | MSSQL | Connection + query execution |
 | Oracle | Connection + query execution |
+| ClickHouse | Connection + query execution |
 | MongoDB | Ping command |
 | Redis | PING command |
 
@@ -138,6 +183,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | gRPC | Service health |
 | A2S | Source / Steam game server query (Valve A2S) |
 | Minecraft | Minecraft server query |
+| Prometheus | Scrape a Prometheus endpoint and assert on a metric |
 
 ### Specialized
 | Type | Description |
