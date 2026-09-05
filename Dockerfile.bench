@@ -25,7 +25,7 @@
 # goVersion go1.27.0 — bumping the toolchain under a baseline measured on the
 # old one would make the two disagree silently. Bump this line and re-baseline
 # in the same change.
-FROM golang:1.27.0-trixie AS build
+FROM golang:1.27.1-trixie AS build
 
 WORKDIR /src
 
