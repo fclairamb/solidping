@@ -10,20 +10,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { ApiError, setSession } from "@/api/client";
 import { useCreateOrg } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
-
-// Org slugs are 3-20 chars: a lowercase letter/digit, 0-18 lowercase
-// letters/digits/hyphens, a lowercase letter/digit — mirrors the server's
-// `^[a-z0-9][a-z0-9-]{1,18}[a-z0-9]$` (ErrInvalidOrgSlug,
-// server/internal/handlers/auth/service.go). Kept module-private here
-// (distinct from the generic @/lib/utils slugify, which caps at 100 chars for
-// other resources) since it encodes an org-specific limit.
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 20);
-}
+import { orgSlugify } from "@/lib/org-slug";
 
 interface CreateOrgCardProps {
   /**
@@ -33,6 +20,14 @@ interface CreateOrgCardProps {
    * zero orgs) and omits it, keeping its existing single-button layout.
    */
   onCancel?: () => void;
+  /**
+   * A ready-to-submit organization name to pre-fill the form with, so a
+   * brand-new account can create its org without inventing anything (spec
+   * 2026-09-05-01). Only /no-org passes one — the account-section flow, where
+   * the user already has an org and is deliberately adding another, keeps an
+   * empty form. It is a DEFAULT, not a lock: the field stays editable.
+   */
+  suggestedName?: string;
 }
 
 /**
@@ -41,14 +36,16 @@ interface CreateOrgCardProps {
  * belongs to at least one org). Session adoption below is the load-bearing
  * part and must exist in exactly one place — do not fork this component.
  */
-export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
+export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
   const { t } = useTranslation(["auth", "common"]);
   const navigate = useNavigate();
   const createOrg = useCreateOrg();
   const { refreshUser } = useAuth();
 
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+  // Lazy initial state, not an effect: the proposal is a starting VALUE, and
+  // syncing it after mount would fight the user's own typing.
+  const [name, setName] = useState(() => suggestedName ?? "");
+  const [slug, setSlug] = useState(() => orgSlugify(suggestedName ?? ""));
   const [slugTouched, setSlugTouched] = useState(false);
   const [slugAdvancedOpen, setSlugAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +53,7 @@ export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
   const handleNameChange = (value: string) => {
     setName(value);
     if (!slugTouched) {
-      setSlug(slugify(value));
+      setSlug(orgSlugify(value));
     }
   };
 
@@ -64,7 +61,17 @@ export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
     e.preventDefault();
     setError(null);
     try {
-      const result = await createOrg.mutateAsync({ name, slug });
+      // The slug travels ONLY when the user opened Advanced and typed one.
+      // Otherwise it is omitted and the server derives it from the name with
+      // orgslug.GenerateUnique — which also appends a numeric suffix on
+      // collision, so a newcomer who accepted the proposed name never meets a
+      // 409 they cannot act on. orgSlugify mirrors the server's normalizer, so
+      // the preview line below shows the base the server will actually start
+      // from.
+      const result = await createOrg.mutateAsync({
+        name,
+        slug: slugTouched ? slug : undefined,
+      });
       // POST /api/v1/orgs returns 201 with a session freshly scoped to the
       // NEW org. The caller's current token — whether it's a zero-org token
       // (/no-org) or a perfectly valid token for a DIFFERENT org (the
@@ -84,7 +91,9 @@ export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
       // 422 VALIDATION_ERROR / 409 CONFLICT already carry a usable message
       // from the server (handlers/auth/handler.go CreateOrg) — surface it
       // verbatim instead of a generic failure.
-      setError(err instanceof ApiError ? err.message : t("auth:unexpectedError"));
+      setError(
+        err instanceof ApiError ? err.message : t("auth:unexpectedError"),
+      );
     }
   };
 
@@ -98,7 +107,11 @@ export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
       </CardHeader>
       <CardContent>
         {error && (
-          <Alert variant="destructive" className="mb-4" data-testid="create-org-error">
+          <Alert
+            variant="destructive"
+            className="mb-4"
+            data-testid="create-org-error"
+          >
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
@@ -117,7 +130,9 @@ export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
             />
             {slug && !slugAdvancedOpen && (
               <p className="text-xs text-muted-foreground">
-                {t("auth:createOrg.slugPreview", { defaultValue: "Will be reachable as " })}
+                {t("auth:createOrg.slugPreview", {
+                  defaultValue: "Will be reachable as ",
+                })}
                 <code className="font-mono">{slug}</code>
               </p>
             )}
@@ -129,7 +144,9 @@ export function CreateOrgCard({ onCancel }: CreateOrgCardProps) {
               className="text-xs text-muted-foreground hover:underline"
               data-testid="no-org-advanced-toggle"
             >
-              {t("auth:createOrg.advanced", { defaultValue: "Advanced — customize slug" })}
+              {t("auth:createOrg.advanced", {
+                defaultValue: "Advanced — customize slug",
+              })}
             </button>
           ) : (
             <div className="space-y-1.5">

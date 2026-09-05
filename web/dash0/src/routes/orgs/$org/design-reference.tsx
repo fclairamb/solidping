@@ -183,6 +183,7 @@ import {
 } from "@/components/notifications/member-coverage";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
+import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";
 import {
   Table,
   TableBody,
@@ -242,6 +243,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "dns-record-row", label: "DNS record row" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "collapsible-section", label: "Collapsible section" },
+  { id: "secondary-disclosure-card", label: "Secondary disclosure card" },
   { id: "sandboxed-preview", label: "Sandboxed preview (iframe)" },
   { id: "stepper", label: "Stepper" },
   { id: "feedback", label: "Feedback" },
@@ -298,6 +300,7 @@ function DesignReferencePage() {
       <CollapsibleCodeSection />
       <EvidenceImageSection />
       <CollapsibleSectionSection />
+      <SecondaryDisclosureCardSection />
       <SandboxedPreviewSection />
       <StepperSection />
       <FeedbackSection />
@@ -3413,6 +3416,33 @@ function CollapsibleSectionSection() {
         </div>
         <CodeSnippet
           code={`import { CollapsibleSection } from "@/components/ui/collapsible-section";\n\n<CollapsibleSection\n  id="flapping"\n  title="Flapping"\n  summary="window 6h, cooldown ×5 (defaults)"\n  customized={isCustomized}\n  defaultOpen={hasNonDefaults}\n  expandSignal={hasError ? submitNonce : 0}\n>\n  {/* fields */}\n</CollapsibleSection>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function SecondaryDisclosureCardSection() {
+  return (
+    <Section
+      id="secondary-disclosure-card"
+      title="Secondary disclosure card"
+      description="Two actions that used to sit side by side with equal weight, where one is now clearly the default: the primary form goes above, full width, and the rarer option becomes an outlined card whose heading and one-line description stay visible while its body collapses behind a trigger. Used by /no-org — 'here is an organization for you' first, 'join an existing one' below. Unlike Collapsible section (above), the heading is a SIBLING of the trigger, not inside it, so it stays a real heading for assistive tech and role-based tests. Reach for Collapsible section instead when you are taming a long form."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <SecondaryDisclosureCard
+          title="Join an existing organization"
+          description="Ask the admins of an organization to add you."
+          expandLabel="I'd rather join an existing organization"
+          collapseLabel="Hide"
+        >
+          <p className="text-sm text-muted-foreground">
+            The rarer path lives here — present, one click away, and visibly not
+            the thing we expect you to do.
+          </p>
+        </SecondaryDisclosureCard>
+        <CodeSnippet
+          code={`import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";\n\n<SecondaryDisclosureCard\n  title={t("noOrg.joinTitle")}\n  description={t("noOrg.joinDescription")}\n  expandLabel={t("noOrg.joinExpand")}\n  collapseLabel={t("noOrg.joinCollapse")}\n  data-testid="no-org-join-toggle"\n>\n  {/* the secondary form */}\n</SecondaryDisclosureCard>`}
         />
       </div>
     </Section>

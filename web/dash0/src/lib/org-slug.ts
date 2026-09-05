@@ -26,14 +26,18 @@ export const ORG_SLUG_MAX_LEN = 20;
  * candidate that normalizes to fewer than 3 characters.
  */
 export function orgSlugify(name: string): string {
-  let base = name.toLowerCase().replaceAll(" ", "-");
+  let base = name.toLowerCase().split(" ").join("-");
 
-  base = Array.from(base)
-    .filter((ch) => (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "-")
+  base = base
+    .split("")
+    .filter(
+      (ch) =>
+        (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9") || ch === "-",
+    )
     .join("");
 
   while (base.includes("--")) {
-    base = base.replaceAll("--", "-");
+    base = base.split("--").join("-");
   }
 
   base = trimHyphens(base);

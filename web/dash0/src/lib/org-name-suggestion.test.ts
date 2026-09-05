@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   firstNameOf,
   randomOrgName,
+  randomOrgNameSeed,
   suggestOrgName,
 } from "@/lib/org-name-suggestion";
 import { ORG_SLUG_MIN_LEN, orgSlugify } from "@/lib/org-slug";
@@ -80,6 +81,17 @@ describe("randomOrgName", () => {
 
   it("works without a seed", () => {
     expect(randomOrgName()).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+  });
+});
+
+describe("randomOrgNameSeed", () => {
+  it("produces a seed randomOrgName accepts", () => {
+    for (let i = 0; i < 20; i++) {
+      const seed = randomOrgNameSeed();
+      expect(Number.isInteger(seed)).toBe(true);
+      expect(seed).toBeGreaterThanOrEqual(0);
+      expect(randomOrgName(seed)).toBe(randomOrgName(seed));
+    }
   });
 });
 

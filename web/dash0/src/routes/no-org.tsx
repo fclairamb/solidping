@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ import {
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateOrgCard } from "@/components/shared/create-org-card";
+import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";
+import { randomOrgNameSeed, suggestOrgName } from "@/lib/org-name-suggestion";
 
 export const Route = createFileRoute("/no-org")({
   // `membershipPending` is set by the backend's federated-login callbacks
@@ -40,8 +42,25 @@ export const Route = createFileRoute("/no-org")({
 function NoOrgPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { membershipPending } = Route.useSearch();
+
+  // "Here is an organization for you — click Create" is the whole point of this
+  // screen for a brand-new account (spec 2026-09-05-01): the possessive form
+  // when we know a first name, a friendly two-word name otherwise.
+  //
+  // The randomness is drawn ONCE into state; the proposal itself is then a pure
+  // function of (name, seed, locale). Rolling the dice inside the memo would
+  // reshuffle the name whenever the translator's identity changed — i.e. rewrite
+  // the field under the user's cursor.
+  const [nameSeed] = useState(randomOrgNameSeed);
+  const suggestedName = useMemo(() => {
+    const suggestion = suggestOrgName(user?.name, nameSeed);
+
+    return suggestion.kind === "personal"
+      ? t("createOrg.suggestedPersonal", { firstName: suggestion.firstName })
+      : suggestion.name;
+  }, [nameSeed, t, user?.name]);
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-8 flex flex-col items-center">
@@ -67,10 +86,11 @@ function NoOrgPage() {
           </Alert>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <CreateOrgCard />
-          <JoinOrgCard />
-        </div>
+        {/* Create first and full width: it is the action we expect. Joining an
+            existing org stays available below, visibly secondary — invited
+            colleagues still need it. */}
+        <CreateOrgCard suggestedName={suggestedName} />
+        <JoinOrgCard />
 
         <PendingRequestsList />
 
@@ -119,79 +139,70 @@ function JoinOrgCard() {
     }
   };
 
-  if (success) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">{t("noOrg.joinTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Alert>
-            <AlertDescription>{t("noOrg.joinSent")}</AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">{t("noOrg.joinTitle")}</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          {t("noOrg.joinDescription")}
-        </p>
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+    <SecondaryDisclosureCard
+      title={t("noOrg.joinTitle")}
+      description={t("noOrg.joinDescription")}
+      expandLabel={t("noOrg.joinExpand")}
+      collapseLabel={t("noOrg.joinCollapse")}
+      data-testid="no-org-join-toggle"
+    >
+      {success ? (
+        <Alert>
+          <AlertDescription>{t("noOrg.joinSent")}</AlertDescription>
+        </Alert>
+      ) : (
+        <>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="joinOrgSlug">{t("noOrg.joinSlugLabel")}</Label>
-            <Input
-              id="joinOrgSlug"
-              value={orgSlug}
-              onChange={(e) => setOrgSlug(e.target.value)}
-              required
-              pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="joinOrgSlug">{t("noOrg.joinSlugLabel")}</Label>
+              <Input
+                id="joinOrgSlug"
+                value={orgSlug}
+                onChange={(e) => setOrgSlug(e.target.value)}
+                required
+                pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
+                disabled={createRequest.isPending}
+                placeholder={t("noOrg.joinSlugPlaceholder")}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="joinMessage">{t("noOrg.joinMessageLabel")}</Label>
+              <Textarea
+                id="joinMessage"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                disabled={createRequest.isPending}
+                placeholder={t("noOrg.joinMessagePlaceholder")}
+                rows={3}
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
               disabled={createRequest.isPending}
-              placeholder={t("noOrg.joinSlugPlaceholder")}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="joinMessage">{t("noOrg.joinMessageLabel")}</Label>
-            <Textarea
-              id="joinMessage"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              disabled={createRequest.isPending}
-              placeholder={t("noOrg.joinMessagePlaceholder")}
-              rows={3}
-            />
-          </div>
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={createRequest.isPending}
-            variant="outline"
-          >
-            {createRequest.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t("noOrg.joining")}
-              </>
-            ) : (
-              t("noOrg.requestJoin")
-            )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+              variant="outline"
+            >
+              {createRequest.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t("noOrg.joining")}
+                </>
+              ) : (
+                t("noOrg.requestJoin")
+              )}
+            </Button>
+          </form>
+        </>
+      )}
+    </SecondaryDisclosureCard>
   );
 }
 
@@ -203,7 +214,7 @@ function PendingRequestsList() {
   if (isLoading || !data || data.data.length === 0) return null;
 
   const visible = data.data.filter(
-    (r) => r.status === "pending" || r.status === "rejected"
+    (r) => r.status === "pending" || r.status === "rejected",
   );
 
   if (visible.length === 0) return null;

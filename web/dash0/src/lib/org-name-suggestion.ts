@@ -101,6 +101,18 @@ export function randomOrgName(seed?: number): string {
 }
 
 /**
+ * A fresh seed for {@link randomOrgName} / {@link suggestOrgName}.
+ *
+ * Exists so a component can draw the randomness ONCE — `useState(randomOrgNameSeed)`
+ * — and keep re-deriving the same proposal on every render. Calling
+ * `randomOrgName()` inside a render (or a `useMemo` whose deps include the
+ * translator) would reshuffle the name under the user's cursor.
+ */
+export function randomOrgNameSeed(): number {
+  return Math.floor(Math.random() * ADJECTIVES.length * NOUNS.length);
+}
+
+/**
  * The proposal for a given account: their first name when we have one, a random
  * friendly name otherwise.
  *
