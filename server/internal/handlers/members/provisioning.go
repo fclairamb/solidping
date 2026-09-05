@@ -222,7 +222,7 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 	link := s.appBaseURL + "/dash0/orgs/" + org.Slug + "/account/notifications"
 
 	viewModel := map[string]any{"NotificationsURL": link}
-	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 	subject, htmlBody, textBody, err := s.formatter.Format("paging-nudge.html", viewModel)
 	if err != nil {

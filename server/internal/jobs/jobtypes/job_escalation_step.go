@@ -1428,7 +1428,7 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 		"DocsURL":             escalationDocsURL(baseURL),
 	}
 	// The org row was loaded for the slug anyway, so branding is free here.
-	email.ApplyOrgBranding(viewModel, orgName, orgLogoURL)
+	email.ApplyOrgBranding(viewModel, orgName, orgSlug, orgLogoURL)
 
 	return viewModel
 }

@@ -3889,7 +3889,7 @@ func (s *Service) sendInvitationEmail(
 		"InviteURL":   inviteURL,
 		"ExpiresIn":   humanizeInviteExpiresIn(expiresIn),
 	}
-	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 	queued := s.enqueueEmail(ctx, org.UID, recipientEmail, "invitation.html", viewModel)
 

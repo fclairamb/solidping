@@ -396,7 +396,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 			"Message":        msg,
 			"RequestsURL":    requestsURL,
 		}
-		email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+		email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html", viewModel)
 	}
@@ -423,7 +423,7 @@ func (s *Service) notifyRequesterOfDecision(
 		"Reason":       reason,
 		"DashboardURL": dashboardURL,
 	}
-	email.ApplyOrgBranding(viewModel, org.Name, org.LogoURL)
+	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)
 
 	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html", viewModel)
 }
