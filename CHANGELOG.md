@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/fclairamb/solidping/compare/v0.23.0...v0.23.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **slack:** connecting a Slack workspace from **Integrations → New** works again. The install looked like it was going to succeed — Slack showed its usual permission screen, you pressed Allow — and then the browser landed on a generic "install failed" page that said nothing about what had gone wrong. SolidPing was telling Slack which address to send the finished install back to, but then leaving that same address out when it traded the resulting code for an access token, and Slack refuses the exchange outright when the two do not match. Signing in *with* Slack was never affected, which is why a completely broken install path went unnoticed for so long: the working sign-in sat next to it and hid it. Both steps now read the address from one shared place, so they cannot drift apart again ([#327](https://github.com/fclairamb/solidping/issues/327)) ([7eed9a2](https://github.com/fclairamb/solidping/commit/7eed9a2825f403431a54ab753d095b5f7ee15f87))
+
 ## [0.23.0](https://github.com/fclairamb/solidping/compare/v0.22.1...v0.23.0) (2026-09-04)
 
 
