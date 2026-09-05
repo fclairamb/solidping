@@ -105,6 +105,10 @@ type SAMLResult struct {
 	// the user: no membership was created, a membership request is awaiting
 	// admin approval, and the tokens above are an org-less session.
 	Pending bool
+	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
+	// when the pending outcome opened no membership request at all
+	// (see auth.ProviderLoginResult.PendingOrgSlug).
+	PendingOrgSlug string
 }
 
 // samlUserInfo is the set of identity fields extracted from a validated
@@ -552,7 +556,7 @@ func (s *SAMLService) HandleACS(
 		return nil, fmt.Errorf("organization not found: %w", err)
 	}
 
-	user, err := s.findOrCreateUser(ctx, userInfo)
+	user, userCreated, err := s.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -560,18 +564,20 @@ func (s *SAMLService) HandleACS(
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodSAML))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
+		WithLoginMethod(signupMethodSAML), newlyCreatedUserOption(userCreated))
 	if err != nil {
 		return nil, err
 	}
 
 	return &SAMLResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
+		AccessToken:    login.AccessToken,
+		RefreshToken:   login.RefreshToken,
+		ExpiresIn:      login.ExpiresIn,
+		OrgSlug:        org.Slug,
+		UserUID:        user.UID,
+		Pending:        login.Pending,
+		PendingOrgSlug: login.PendingOrgSlug,
 	}, nil
 }
 
@@ -646,7 +652,11 @@ func firstAttr(attrs map[string]string, candidates ...string) string {
 
 // findOrCreateUser finds or creates a user by SAML identity (NameID, falling
 // back to email when NameID is empty).
-func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserInfo) (*models.User, error) {
+func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserInfo) (*models.User, bool, error) {
+	// created reports whether THIS call minted the account — the fact rule 6's
+	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	var created bool
+
 	providerID := userInfo.NameID
 	if providerID == "" {
 		providerID = userInfo.Email
@@ -655,7 +665,7 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 	// Check by SAML NameID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeSAML, providerID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user provider: %w", err)
+		return nil, false, fmt.Errorf("failed to get user provider: %w", err)
 	}
 
 	if err == nil && provider != nil {
@@ -664,11 +674,11 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 		// than failing this login (and every later one) forever.
 		user, resolveErr := ResolveLinkedUser(ctx, s.db, models.ProviderTypeSAML, providerID, provider)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, false, resolveErr
 		}
 
 		if user != nil {
-			return user, nil
+			return user, false, nil
 		}
 
 		provider = nil
@@ -677,7 +687,7 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 	// Check by email
 	user, err := s.db.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user by email: %w", err)
+		return nil, false, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	// Create new user if not found. The email is trusted here because the
@@ -685,6 +695,7 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 	// validation against an admin-configured IdP — see SAMLService's doc
 	// comment for the full rationale.
 	if user == nil {
+		created = true
 		user = models.NewUser(userInfo.Email)
 		user.Name = userInfo.Name
 
@@ -694,7 +705,7 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 		// Routed through the package's single account-creation chokepoint so
 		// the user_signed_up product event fires for SSO signups too.
 		if err := createUserAndCapture(ctx, s.db, user, signupMethodSAML); err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, false, fmt.Errorf("failed to create user: %w", err)
 		}
 	}
 
@@ -703,9 +714,9 @@ func (s *SAMLService) findOrCreateUser(ctx context.Context, userInfo *samlUserIn
 		provider = models.NewUserProvider(user.UID, models.ProviderTypeSAML, providerID)
 
 		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
-			return nil, fmt.Errorf("failed to create user provider: %w", err)
+			return nil, false, fmt.Errorf("failed to create user provider: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, created, nil
 }

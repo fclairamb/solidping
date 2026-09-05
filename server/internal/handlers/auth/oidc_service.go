@@ -57,6 +57,10 @@ type OIDCOAuthResult struct {
 	// the user: no membership was created, a membership request is awaiting
 	// admin approval, and the tokens above are an org-less session.
 	Pending bool
+	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
+	// when the pending outcome opened no membership request at all
+	// (see auth.ProviderLoginResult.PendingOrgSlug).
+	PendingOrgSlug string
 }
 
 // oidcUserInfo is the set of claims extracted from a validated ID token, per
@@ -295,7 +299,7 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	}
 
 	// Find or create user
-	user, err := s.findOrCreateUser(ctx, userInfo)
+	user, userCreated, err := s.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -303,18 +307,20 @@ func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug str
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodOIDC))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
+		WithLoginMethod(signupMethodOIDC), newlyCreatedUserOption(userCreated))
 	if err != nil {
 		return nil, err
 	}
 
 	return &OIDCOAuthResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
+		AccessToken:    login.AccessToken,
+		RefreshToken:   login.RefreshToken,
+		ExpiresIn:      login.ExpiresIn,
+		OrgSlug:        org.Slug,
+		UserUID:        user.UID,
+		Pending:        login.Pending,
+		PendingOrgSlug: login.PendingOrgSlug,
 	}, nil
 }
 
@@ -369,11 +375,15 @@ func claimString(claims map[string]any, key string) string {
 }
 
 // findOrCreateUser finds or creates a user by generic OIDC identity.
-func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcUserInfo) (*models.User, error) {
+func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcUserInfo) (*models.User, bool, error) {
+	// created reports whether THIS call minted the account — the fact rule 6's
+	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	var created bool
+
 	// Check by OIDC subject first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeOIDC, userInfo.Subject)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user provider: %w", err)
+		return nil, false, fmt.Errorf("failed to get user provider: %w", err)
 	}
 
 	if err == nil && provider != nil {
@@ -382,11 +392,11 @@ func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcU
 		// than failing this login (and every later one) forever.
 		user, resolveErr := ResolveLinkedUser(ctx, s.db, models.ProviderTypeOIDC, userInfo.Subject, provider)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, false, resolveErr
 		}
 
 		if user != nil {
-			return user, nil
+			return user, false, nil
 		}
 
 		provider = nil
@@ -395,11 +405,12 @@ func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcU
 	// Check by email
 	user, err := s.db.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user by email: %w", err)
+		return nil, false, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	// Create new user if not found
 	if user == nil {
+		created = true
 		user = models.NewUser(userInfo.Email)
 		user.Name = userInfo.Name
 		user.AvatarURL = userInfo.AvatarURL
@@ -410,7 +421,7 @@ func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcU
 		// Routed through the package's single account-creation chokepoint so
 		// the user_signed_up product event fires for SSO signups too.
 		if err := createUserAndCapture(ctx, s.db, user, signupMethodOIDC); err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, false, fmt.Errorf("failed to create user: %w", err)
 		}
 	}
 
@@ -419,11 +430,11 @@ func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcU
 		provider = models.NewUserProvider(user.UID, models.ProviderTypeOIDC, userInfo.Subject)
 
 		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
-			return nil, fmt.Errorf("failed to create user provider: %w", err)
+			return nil, false, fmt.Errorf("failed to create user provider: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, created, nil
 }
 
 // getCallbackURL returns the OAuth callback URL for the generic OIDC provider.

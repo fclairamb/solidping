@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/defaults"
 )
 
 // registrationEmailPatternKey is the org parameter holding the regex that
@@ -56,6 +58,14 @@ type ProviderLoginResult struct {
 	// admitted to the org. No org-scoped session exists in that case: the
 	// access token carries an empty org slug and there is no refresh token.
 	Pending bool
+	// PendingOrgSlug is the org the no-org screen should NAME as "your sign-in
+	// succeeded but this org hasn't admitted you yet". It is the org's slug
+	// whenever a membership request was actually opened, and deliberately EMPTY
+	// when rule 6 suppressed one (a brand-new SaaS account that only met the
+	// platform default org through /login's fallback): naming an org nobody
+	// asked for and no admin will ever see a request from is worse than saying
+	// nothing. Meaningless unless Pending is true.
+	PendingOrgSlug string
 }
 
 // LoginOption carries a provider-verified fact about the login being
@@ -78,6 +88,12 @@ type loginOptions struct {
 	// It never comes from a query parameter, a form field, or any other
 	// browser-supplied value.
 	slackTeamID string
+
+	// newlyCreatedUser is true when the connector's find-or-create MINTED the
+	// account during this very callback — i.e. this is the person's first ever
+	// sign-in, not a returning user. Only the SaaS platform-default guard in
+	// rule 6 reads it; see suppressDefaultOrgJoinRequest.
+	newlyCreatedUser bool
 }
 
 // WithSlackWorkspace attests that the user completing this login is a member
@@ -87,6 +103,28 @@ func WithSlackWorkspace(teamID string) LoginOption {
 	return func(o *loginOptions) {
 		o.slackTeamID = teamID
 	}
+}
+
+// WithNewlyCreatedUser attests that the account completing this login did not
+// exist before this callback — the connector's find-or-create created it. A
+// connector that cannot tell simply does not pass it, which leaves every rule
+// that reads it inert (that is what LDAP and the older test call sites do).
+func WithNewlyCreatedUser() LoginOption {
+	return func(o *loginOptions) {
+		o.newlyCreatedUser = true
+	}
+}
+
+// newlyCreatedUserOption turns a connector's "find-or-create minted this
+// account" boolean into a LoginOption, so every callback threads the fact
+// identically instead of each growing its own `if`. A returning user yields a
+// nil option, which resolveLoginOptions skips.
+func newlyCreatedUserOption(created bool) LoginOption {
+	if !created {
+		return nil
+	}
+
+	return WithNewlyCreatedUser()
 }
 
 // WithLoginMethod names the connector completing this login, for the audit
@@ -221,11 +259,41 @@ func (s *Service) JoinOrgViaLogin(
 	slog.InfoContext(ctx, "federated login did not qualify for org membership",
 		"orgUID", org.UID, "userUID", user.UID)
 
+	// ...unless this is a brand-new SaaS account that only ever saw the
+	// platform default org because /login's fallback put it there. Asking the
+	// operator's own admins to admit every trial signup is noise for them and
+	// a dead end for the newcomer, who never chose that org (spec
+	// 2026-09-05-01). Such a login still yields an org-less pending session —
+	// the dashboard offers them an organization of their own instead.
+	if s.suppressDefaultOrgJoinRequest(org, resolveLoginOptions(opts)) {
+		slog.InfoContext(ctx, "skipping the join request for a brand-new account on the platform default org",
+			"orgUID", org.UID, "userUID", user.UID, "orgSlug", org.Slug)
+
+		return nil, true, nil
+	}
+
 	if reqErr := s.ensureMembershipRequestForLogin(ctx, org, user.UID); reqErr != nil {
 		return nil, false, reqErr
 	}
 
 	return nil, true, nil
+}
+
+// suppressDefaultOrgJoinRequest reports whether rule 6 should end in a silent
+// org-less session instead of a membership request. All THREE conditions must
+// hold; each one on its own is a case that must keep today's behavior:
+//
+//   - SaaS deployment. On a self-hosted install `default` is typically the one
+//     real org, and a colleague's Google sign-in SHOULD reach its admins.
+//   - The org is the platform default. An org the user deliberately named in
+//     the URL is a request they meant to make.
+//   - The account was created by this very callback. A returning user who
+//     signs in on /orgs/default/login is asking for that org on purpose.
+func (s *Service) suppressDefaultOrgJoinRequest(org *models.Organization, opts loginOptions) bool {
+	return s.fullCfg != nil &&
+		s.fullCfg.Deployment.Mode == config.DeploymentModeSaaS &&
+		org.Slug == defaults.Organization &&
+		opts.newlyCreatedUser
 }
 
 // CompleteOrgLogin is the shared tail of every federated callback: run the
@@ -247,7 +315,17 @@ func (s *Service) CompleteOrgLogin(
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
 
 	if pending {
-		return s.pendingSession(ctx, user)
+		result, sessionErr := s.pendingSession(ctx, user)
+		if sessionErr != nil {
+			return nil, sessionErr
+		}
+
+		// Name the org only when there is a request an admin can act on.
+		if !s.suppressDefaultOrgJoinRequest(org, resolved) {
+			result.PendingOrgSlug = org.Slug
+		}
+
+		return result, nil
 	}
 
 	role := RoleSuperAdmin
@@ -597,11 +675,17 @@ func (s *Service) ensureMembershipRequestForLogin(
 // the org-less session and an explicit flag naming the org that was refused.
 // Deliberately NOT the org dashboard, and deliberately without an `org` handoff
 // param — there is no org-scoped session to hand off.
+// An EMPTY orgSlug means "do not name an org": no membership request was
+// opened, so the dashboard must not render the "a join request was sent to its
+// admins" alert — there is nothing pending and nobody to wait for.
 func pendingMembershipRedirect(orgSlug, accessToken string, expiresIn int) string {
 	query := url.Values{}
 	query.Set("access_token", accessToken)
 	query.Set("expires_in", strconv.Itoa(expiresIn))
-	query.Set(pendingMembershipParam, orgSlug)
+
+	if orgSlug != "" {
+		query.Set(pendingMembershipParam, orgSlug)
+	}
 
 	return noOrgPath + "?" + query.Encode()
 }
@@ -627,13 +711,17 @@ func RedirectPendingMembership(
 // redirect or — when the org did not admit the user — the pending
 // request-access surface, and sets the SPA session cookie in both cases (the
 // pending session is org-less, so it grants nothing org-scoped).
+//
+// pendingOrgSlug is the org to NAME on that surface — pass the login result's
+// PendingOrgSlug, not its OrgSlug: an empty value means "a pending session, but
+// no join request and therefore no org to wait on".
 func finishProviderCallback(
 	writer http.ResponseWriter, req *http.Request,
-	successURL, orgSlug, accessToken string, expiresIn int, pending bool,
+	successURL, pendingOrgSlug, accessToken string, expiresIn int, pending bool,
 ) error {
 	redirectURL := successURL
 	if pending {
-		redirectURL = pendingMembershipRedirect(orgSlug, accessToken, expiresIn)
+		redirectURL = pendingMembershipRedirect(pendingOrgSlug, accessToken, expiresIn)
 	}
 
 	setAccessTokenCookie(writer, accessToken, expiresIn)
