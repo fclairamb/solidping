@@ -22,15 +22,31 @@ HTTP check type → fill in the target URL and a name → choose how often it ru
 and from which regions → save, and land on the check's detail page as the first
 results arrive.
 
+The camera pushes in on whatever is being filled in and pulls back out for
+every navigation — that framing is added in post-production from cue points the
+recording writes, so the dashboard you see is the shipped UI at its real size,
+never a zoomed browser.
+
+{/* Two encodes of the same cut: AV1 first because it is roughly half the size,
+    H.264 behind it because Safari only decodes AV1 on Apple-silicon machines
+    with the hardware decoder. The browser takes the first <source> it can play,
+    so nobody lands on the fallback text. */}
 <video
-  src={useBaseUrl('/showcase/create-http-check.mp4')}
   controls
   loop
   muted
   playsInline
   style={{ width: '100%', maxWidth: '1280px', borderRadius: '8px' }}
 >
-  Your browser cannot play this AV1 video.
+  <source
+    src={useBaseUrl('/showcase/create-http-check.mp4')}
+    type='video/mp4; codecs="av01.0.05M.08"'
+  />
+  <source
+    src={useBaseUrl('/showcase/create-http-check.h264.mp4')}
+    type='video/mp4; codecs="avc1.640028"'
+  />
+  Your browser cannot play this video.
 </video>
 
 ## The checks list

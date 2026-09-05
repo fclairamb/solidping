@@ -1,37 +1,48 @@
 /**
  * Showcase post-processing.
  *
- * Playwright emits VP8 `.webm` recordings into `showcase/output/run/`. This
- * script:
+ * Playwright emits VP8 `.webm` recordings into `showcase/output/run/`, now at
+ * 2560×1600 (deviceScaleFactor 2). This script:
  *
- *  1. finds the recording,
+ *  1. finds the recording of the create-HTTP-check flow,
  *  2. detects and trims the dead (frozen) frames at its head and tail,
- *  3. re-encodes it to **AV1** with ffmpeg's `libsvtav1` — screen captures
- *     compress extremely well under AV1, keeping the committed asset tiny,
- *  4. copies the finished video and the named still frames into
- *     `web/docs/static/showcase/`, which is what actually gets committed.
+ *  3. reads the cue list the recording wrote alongside it and turns it into a
+ *     **camera move** — an ffmpeg `zoompan` that pushes in and back out over
+ *     footage that was itself never zoomed,
+ *  4. scales the result down to the published 1280×800 and encodes it twice:
+ *     **AV1** (`libsvtav1`, tiny) and **H.264** (`libx264`, plays everywhere),
+ *  5. downscales the 2× still frames to 1280×800 and copies them, with the
+ *     video, into `web/docs/static/showcase/` — which is what gets committed.
  *
- * Raw `.webm` intermediates and everything else under `showcase/output/` stay
- * git-ignored.
+ * Raw `.webm` intermediates, cue lists and everything else under
+ * `showcase/output/` stay git-ignored.
  *
  * Run via `make showcase` (which runs the Playwright recording first).
  */
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  buildZoompanExpressions,
+  isIdentitySeries,
+  resolveCues,
+  type CueFile,
+  type CueSeries,
+} from "./crop-window";
 
 const showcaseDir = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(showcaseDir, "output");
 const runDir = path.join(outputDir, "run");
 const stillsDir = path.join(outputDir, "stills");
+const cuesDir = path.join(outputDir, "cues");
 const publishDir = path.resolve(showcaseDir, "../../docs/static/showcase");
 
 /** Stills that the docs Tour page embeds — only these get published. */
@@ -41,10 +52,41 @@ const PUBLISHED_STILLS = [
   "03-check-detail.png",
 ];
 
-const PUBLISHED_VIDEO = "create-http-check.mp4";
+/**
+ * The two encodes of the same cut.
+ *
+ * AV1 keeps its original filename because the docs page and the marketing site
+ * already point at it. The H.264 twin exists because Safari decodes AV1 only on
+ * Apple-silicon machines with the hardware decoder: without a fallback a slice
+ * of visitors gets the `<video>` element's error text, and a demo that does not
+ * play is worse than no demo.
+ */
+const PUBLISHED_VIDEO_AV1 = "create-http-check.mp4";
+const PUBLISHED_VIDEO_H264 = "create-http-check.h264.mp4";
+
+/** Published frame size. The recording is 2× this; the zoom crops into it. */
+const PUBLISHED_WIDTH = 1280;
+const PUBLISHED_HEIGHT = 800;
+
+/**
+ * Output frame rate. Forcing CFR is what lets the cue timeline be expressed as
+ * `on/FPS` inside the filter: Playwright's screencast is variable-rate, so a
+ * frame index would otherwise not map to a wall-clock second.
+ */
+const OUTPUT_FPS = 25;
+
+/**
+ * Which take to publish. `make showcase` runs every `*.showcase.ts`, and the
+ * SMS opt-in capture records a video too — picking "the newest .webm" would
+ * publish that one as the tour video.
+ */
+const RECORDING_MATCH = "create-http-check";
 
 /** Seconds of context kept around the trimmed region so it doesn't feel abrupt. */
 const TRIM_PAD = 0.25;
+
+/** Hand alignment knob for a run whose cue timeline drifted. */
+const CUE_OFFSET_S = Number(process.env.SHOWCASE_CUE_OFFSET_MS ?? 0) / 1000;
 
 class PipelineError extends Error {}
 
@@ -79,7 +121,7 @@ function missingFfmpegMessage(bin: string): string {
     `The showcase pipeline needs "${bin}", which is not on your PATH.`,
     "",
     "Install ffmpeg (it ships both ffmpeg and ffprobe, with the libsvtav1",
-    "AV1 encoder this pipeline uses):",
+    "AV1 encoder and the libx264 fallback encoder this pipeline uses):",
     "",
     "  macOS         brew install ffmpeg",
     "  Debian/Ubuntu sudo apt-get install -y ffmpeg",
@@ -90,19 +132,23 @@ function missingFfmpegMessage(bin: string): string {
   ].join("\n");
 }
 
-/** Fails early and clearly if ffmpeg exists but has no AV1 encoder. */
-function assertAv1Encoder(): void {
+/** Fails early and clearly if ffmpeg exists but lacks an encoder we need. */
+function assertEncoders(): void {
   const { stdout } = run("ffmpeg", ["-hide_banner", "-encoders"], "ffmpeg -encoders");
-  if (!stdout.includes("libsvtav1")) {
+  const missing = ["libsvtav1", "libx264"].filter((e) => !stdout.includes(e));
+  if (missing.length > 0) {
     fail(
       [
-        "Your ffmpeg build has no `libsvtav1` encoder, which the showcase",
-        "pipeline needs to produce AV1 video.",
+        `Your ffmpeg build has no ${missing.join(" and no ")} encoder.`,
         "",
-        "Install an ffmpeg built with SVT-AV1:",
+        "The showcase pipeline publishes the recording twice: AV1 (libsvtav1)",
+        "for size, and H.264 (libx264) so Safari without an AV1 hardware",
+        "decoder still plays it.",
         "",
-        "  macOS         brew install ffmpeg          (Homebrew enables libsvtav1)",
-        "  Debian/Ubuntu sudo apt-get install -y ffmpeg  (>= 22.04 ships SVT-AV1)",
+        "Install an ffmpeg built with both:",
+        "",
+        "  macOS         brew install ffmpeg",
+        "  Debian/Ubuntu sudo apt-get install -y ffmpeg",
         "",
         "Then re-run `make showcase`.",
       ].join("\n"),
@@ -110,7 +156,7 @@ function assertAv1Encoder(): void {
   }
 }
 
-/** Newest `.webm` under the Playwright output directory. */
+/** The recording of the flow we publish, newest take first. */
 function findRecording(): string {
   if (!existsSync(runDir)) {
     fail(
@@ -134,28 +180,61 @@ function findRecording(): string {
     );
   }
   found.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-  return found[0];
+
+  // Playwright names every recording `video.webm` inside a per-test folder, so
+  // the take is identified by that folder.
+  const match = found.find((file) =>
+    path.basename(path.dirname(file)).includes(RECORDING_MATCH),
+  );
+  if (!match) {
+    fail(
+      `No recording of the "${RECORDING_MATCH}" flow found under ${runDir} ` +
+        `(saw: ${found.map((f) => path.basename(path.dirname(f))).join(", ")}). ` +
+        "Publishing another spec's video under the tour's filename would be worse " +
+        "than failing, so this stops here.",
+    );
+  }
+  return match;
 }
 
-function probeDuration(file: string): number {
+interface VideoInfo {
+  duration: number;
+  width: number;
+  height: number;
+}
+
+function probeVideo(file: string): VideoInfo {
   const { stdout } = run(
     "ffprobe",
     [
       "-v",
       "error",
+      "-select_streams",
+      "v:0",
       "-show_entries",
-      "format=duration",
+      "format=duration:stream=width,height",
       "-of",
-      "default=noprint_wrappers=1:nokey=1",
+      "default=noprint_wrappers=1",
       file,
     ],
     "ffprobe",
   );
-  const duration = Number(stdout.trim());
-  if (!Number.isFinite(duration) || duration <= 0) {
+  const read = (key: string): number => {
+    const match = stdout.match(new RegExp(`^${key}=(.+)$`, "m"));
+    return match ? Number(match[1]) : NaN;
+  };
+  const info = {
+    duration: read("duration"),
+    width: read("width"),
+    height: read("height"),
+  };
+  if (!Number.isFinite(info.duration) || info.duration <= 0) {
     fail(`Could not read a duration from ${file} (ffprobe said "${stdout.trim()}")`);
   }
-  return duration;
+  if (!Number.isFinite(info.width) || !Number.isFinite(info.height)) {
+    fail(`Could not read the frame size of ${file} (ffprobe said "${stdout.trim()}")`);
+  }
+  return info;
 }
 
 interface Freeze {
@@ -207,16 +286,26 @@ function detectFreezes(file: string): Freeze[] {
   return freezes;
 }
 
+interface TrimWindow {
+  start: number;
+  end: number;
+  /**
+   * Source time the cue timeline's `t = 0` corresponds to: the end of the
+   * opening frozen frame, which is the moment the first real page painted —
+   * exactly when the recording calls `beginCueTimeline()`.
+   */
+  anchor: number;
+}
+
 /** Turns the detected freezes into a [start, end] window worth keeping. */
-function trimWindow(
-  freezes: Freeze[],
-  duration: number,
-): { start: number; end: number } {
+function trimWindow(freezes: Freeze[], duration: number): TrimWindow {
   let start = 0;
   let end = duration;
+  let anchor = 0;
 
   const leading = freezes.find((f) => f.start <= 0.4);
   if (leading?.end != null && leading.end < duration - 1) {
+    anchor = leading.end;
     start = Math.max(0, leading.end - TRIM_PAD);
   }
 
@@ -229,14 +318,59 @@ function trimWindow(
   }
 
   // Never trim into nothing: fall back to the full clip if the maths went odd.
-  if (!(end > start + 0.5)) return { start: 0, end: duration };
-  return { start, end };
+  if (!(end > start + 0.5)) return { start: 0, end: duration, anchor };
+  return { start, end, anchor };
 }
 
-function encodeAv1(
+/**
+ * Loads the cue list the recording wrote next to itself, with its times mapped
+ * onto the *trimmed* timeline the filter graph will see.
+ *
+ * Cue times are recorded relative to the first page paint. That paint is what
+ * ends the opening freeze, so `window.anchor` is the same instant expressed in
+ * source seconds — the one landmark both halves of the pipeline can see.
+ */
+function loadCues(recording: string, window: TrimWindow): CueFile | null {
+  const name = path.basename(path.dirname(recording));
+  const file = path.join(cuesDir, `${name}.json`);
+  if (!existsSync(file)) return null;
+
+  const parsed = JSON.parse(readFileSync(file, "utf8")) as CueFile;
+  const shift = window.anchor + CUE_OFFSET_S - window.start;
+  return {
+    ...parsed,
+    cues: parsed.cues.map((cue) => ({ ...cue, t: cue.t + shift })),
+  };
+}
+
+/**
+ * The filter chain: force CFR, apply the camera move, land on 1280×800.
+ *
+ * `zoompan` rather than a `crop` with expression-driven `w`/`h`, because a crop
+ * whose output size changes per frame forces a filter-link reconfiguration
+ * ffmpeg does not handle reliably mid-stream. See `crop-window.ts` for the
+ * coordinate mapping.
+ */
+function buildVideoFilter(series: CueSeries | null, source: VideoInfo): string {
+  const parts = [`fps=${OUTPUT_FPS}`];
+  if (series && !isIdentitySeries(series)) {
+    const exprs = buildZoompanExpressions(series, `on/${OUTPUT_FPS}`);
+    parts.push(
+      `zoompan=z='${exprs.zoom}':x='${exprs.x}':y='${exprs.y}':d=1:` +
+        `s=${source.width}x${source.height}:fps=${OUTPUT_FPS}`,
+    );
+  }
+  parts.push(`scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:flags=lanczos`);
+  return parts.join(",");
+}
+
+function encode(
   input: string,
   output: string,
-  window: { start: number; end: number },
+  window: TrimWindow,
+  filter: string,
+  codecArgs: string[],
+  what: string,
 ): void {
   rmSync(output, { force: true });
   run(
@@ -253,45 +387,127 @@ function encodeAv1(
       "-i",
       input,
       "-an",
-      "-c:v",
-      "libsvtav1",
-      "-crf",
-      "34",
-      "-preset",
-      "6",
-      "-g",
-      "240",
+      "-vf",
+      filter,
+      ...codecArgs,
       "-pix_fmt",
       "yuv420p",
       "-movflags",
       "+faststart",
       output,
     ],
-    "AV1 re-encode (libsvtav1)",
+    what,
   );
 }
 
+const AV1_ARGS = ["-c:v", "libsvtav1", "-crf", "34", "-preset", "6", "-g", "240"];
+
+/**
+ * H.264 tuned for a screen capture: large GOP (almost nothing moves between
+ * keyframes), `animation` tuning (flat colour, hard edges — nothing like film
+ * grain), and a high enough CRF that the file stays in the same league as the
+ * AV1 one.
+ */
+const H264_ARGS = [
+  "-c:v",
+  "libx264",
+  "-crf",
+  "26",
+  "-preset",
+  "veryslow",
+  "-tune",
+  "animation",
+  "-g",
+  "240",
+  "-profile:v",
+  "high",
+];
+
 function humanSize(file: string): string {
-  return `${(statSync(file).size / 1024 / 1024).toFixed(2)} MB`;
+  const bytes = statSync(file).size;
+  return bytes < 1024 * 1024
+    ? `${Math.round(bytes / 1024)} KB`
+    : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/**
+ * Publishes a still at the documented 1280×800.
+ *
+ * The recording now screenshots at 2×, so the raw stills are 2560×1600. Spec
+ * 2026-09-05-03 decided the published catalog stays at 1×; both sizes are
+ * printed so the decision can be re-checked against real numbers rather than
+ * re-argued.
+ */
+function publishStill(src: string, dst: string): string {
+  rmSync(dst, { force: true });
+  run(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      src,
+      "-vf",
+      `scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:flags=lanczos`,
+      dst,
+    ],
+    `still downscale (${path.basename(src)})`,
+  );
+  return `${humanSize(dst)} at ${PUBLISHED_WIDTH}×${PUBLISHED_HEIGHT}, ` +
+    `${humanSize(src)} at source resolution`;
 }
 
 function main(): void {
-  assertAv1Encoder();
+  assertEncoders();
 
   const recording = findRecording();
-  const duration = probeDuration(recording);
-  const window = trimWindow(detectFreezes(recording), duration);
+  const source = probeVideo(recording);
+  const window = trimWindow(detectFreezes(recording), source.duration);
 
-  console.log(`showcase: source     ${path.relative(showcaseDir, recording)} (${duration.toFixed(2)}s)`);
+  console.log(
+    `showcase: source     ${path.relative(showcaseDir, recording)} ` +
+      `(${source.duration.toFixed(2)}s, ${source.width}×${source.height})`,
+  );
   console.log(
     `showcase: trimmed to ${window.start.toFixed(2)}s → ${window.end.toFixed(2)}s ` +
       `(${(window.end - window.start).toFixed(2)}s kept)`,
   );
 
+  const cues = loadCues(recording, window);
+  const series = cues
+    ? resolveCues(cues, { width: source.width, height: source.height })
+    : null;
+  if (series) {
+    console.log(
+      `showcase: cues       ${series.keys.length} points, ` +
+        `max zoom ${Math.max(...series.keys.map((k) => k.zoom)).toFixed(2)}× ` +
+        `(anchor ${window.anchor.toFixed(2)}s` +
+        `${CUE_OFFSET_S ? `, offset ${CUE_OFFSET_S.toFixed(3)}s` : ""})`,
+    );
+  } else {
+    console.log(
+      "showcase: cues       none found — publishing the full frame throughout. " +
+        "(Expected a file under output/cues/; the recording writes one.)",
+    );
+  }
+
+  const filter = buildVideoFilter(series, source);
+
   mkdirSync(publishDir, { recursive: true });
-  const videoOut = path.join(publishDir, PUBLISHED_VIDEO);
-  encodeAv1(recording, videoOut, window);
-  console.log(`showcase: wrote      ${path.relative(process.cwd(), videoOut)} (${humanSize(videoOut)}, AV1)`);
+
+  const av1Out = path.join(publishDir, PUBLISHED_VIDEO_AV1);
+  encode(recording, av1Out, window, filter, AV1_ARGS, "AV1 re-encode (libsvtav1)");
+  console.log(
+    `showcase: wrote      ${path.relative(process.cwd(), av1Out)} (${humanSize(av1Out)}, AV1)`,
+  );
+
+  const h264Out = path.join(publishDir, PUBLISHED_VIDEO_H264);
+  encode(recording, h264Out, window, filter, H264_ARGS, "H.264 re-encode (libx264)");
+  console.log(
+    `showcase: wrote      ${path.relative(process.cwd(), h264Out)} (${humanSize(h264Out)}, H.264)`,
+  );
 
   const missing: string[] = [];
   for (const name of PUBLISHED_STILLS) {
@@ -301,8 +517,9 @@ function main(): void {
       continue;
     }
     const dst = path.join(publishDir, name);
-    copyFileSync(src, dst);
-    console.log(`showcase: wrote      ${path.relative(process.cwd(), dst)} (${humanSize(dst)})`);
+    console.log(
+      `showcase: wrote      ${path.relative(process.cwd(), dst)} (${publishStill(src, dst)})`,
+    );
   }
   if (missing.length > 0) {
     fail(
