@@ -174,7 +174,8 @@ func TestGoogleHandleCallback(t *testing.T) {
 			Name:          "Existing User",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo)
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 	})
@@ -197,7 +198,8 @@ func TestGoogleHandleCallback(t *testing.T) {
 			Name:          "Match User",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo)
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 
@@ -220,7 +222,8 @@ func TestGoogleHandleCallback(t *testing.T) {
 			Picture:       "https://example.com/new.jpg",
 		}
 
-		user, err := svc.findOrCreateUser(ctx, userInfo)
+		user, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.True(t, created, "a brand-new account must be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, "brand-new@example.com", user.Email)
 		assert.Equal(t, "Brand New User", user.Name)

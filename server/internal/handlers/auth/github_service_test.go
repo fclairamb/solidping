@@ -224,7 +224,8 @@ func TestGitHubHandleCallback(t *testing.T) {
 			Name:  "Existing User",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo)
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 	})
@@ -247,7 +248,8 @@ func TestGitHubHandleCallback(t *testing.T) {
 			Name:  "Match User",
 		}
 
-		foundUser, err := svc.findOrCreateUser(ctx, userInfo)
+		foundUser, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.False(t, created, "an existing account must not be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, user.UID, foundUser.UID)
 
@@ -270,7 +272,8 @@ func TestGitHubHandleCallback(t *testing.T) {
 			AvatarURL: "https://avatars.githubusercontent.com/u/77777",
 		}
 
-		user, err := svc.findOrCreateUser(ctx, userInfo)
+		user, created, err := svc.findOrCreateUser(ctx, userInfo)
+		require.True(t, created, "a brand-new account must be reported as newly created")
 		require.NoError(t, err)
 		assert.Equal(t, "brand-new@example.com", user.Email)
 		assert.Equal(t, "Brand New User", user.Name)
@@ -473,7 +476,7 @@ func (m *gitHubMockService) handleCallbackMocked(
 		return nil, err
 	}
 
-	user, err := m.findOrCreateUser(ctx, userInfo)
+	user, _, err := m.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, err
 	}

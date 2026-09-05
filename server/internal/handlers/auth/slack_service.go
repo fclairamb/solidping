@@ -107,6 +107,10 @@ type SlackOAuthResult struct {
 	// the user: no membership was created, a membership request is awaiting
 	// admin approval, and the tokens above are an org-less session.
 	Pending bool
+	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
+	// when the pending outcome opened no membership request at all
+	// (see auth.ProviderLoginResult.PendingOrgSlug).
+	PendingOrgSlug string
 }
 
 // SlackOAuthService handles Slack OAuth authentication logic.
@@ -363,7 +367,7 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	}
 
 	// Find or create user
-	user, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, orgName)
+	user, userCreated, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, orgName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -378,18 +382,20 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 	// policy still verifies, server-side, that this very org is the one
 	// linked to that workspace.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
-		WithSlackWorkspace(oauthResp.Team.ID), WithLoginMethod(signupMethodSlack))
+		WithSlackWorkspace(oauthResp.Team.ID), WithLoginMethod(signupMethodSlack),
+		newlyCreatedUserOption(userCreated))
 	if err != nil {
 		return nil, err
 	}
 
 	return &SlackOAuthResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
+		AccessToken:    login.AccessToken,
+		RefreshToken:   login.RefreshToken,
+		ExpiresIn:      login.ExpiresIn,
+		OrgSlug:        org.Slug,
+		UserUID:        user.UID,
+		Pending:        login.Pending,
+		PendingOrgSlug: login.PendingOrgSlug,
 	}, nil
 }
 
@@ -448,11 +454,15 @@ func (s *SlackOAuthService) findOrCreateOrganization(
 // findOrCreateUser finds or creates user by Slack identity.
 func (s *SlackOAuthService) findOrCreateUser(
 	ctx context.Context, userInfo *OpenIDUserInfo, teamID, teamName string,
-) (*models.User, error) {
+) (*models.User, bool, error) {
+	// created reports whether THIS call minted the account — the fact rule 6's
+	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	var created bool
+
 	// Check by Slack user ID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeSlack, userInfo.Sub)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user provider: %w", err)
+		return nil, false, fmt.Errorf("failed to get user provider: %w", err)
 	}
 
 	if err == nil && provider != nil {
@@ -460,11 +470,11 @@ func (s *SlackOAuthService) findOrCreateUser(
 			ctx, s.db, models.ProviderTypeSlack, userInfo.Sub, provider,
 		)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, false, resolveErr
 		}
 
 		if user != nil {
-			return user, nil
+			return user, false, nil
 		}
 
 		provider = nil
@@ -473,11 +483,12 @@ func (s *SlackOAuthService) findOrCreateUser(
 	// Check by email
 	user, err := s.db.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user by email: %w", err)
+		return nil, false, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	// Create new user if not found
 	if user == nil {
+		created = true
 		user = models.NewUser(userInfo.Email)
 		user.Name = userInfo.Name
 		user.AvatarURL = userInfo.Picture
@@ -490,7 +501,7 @@ func (s *SlackOAuthService) findOrCreateUser(
 		// Routed through the package's single account-creation chokepoint so
 		// the user_signed_up product event fires for SSO signups too.
 		if err := createUserAndCapture(ctx, s.db, user, signupMethodSlack); err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, false, fmt.Errorf("failed to create user: %w", err)
 		}
 	}
 
@@ -503,9 +514,9 @@ func (s *SlackOAuthService) findOrCreateUser(
 		}
 
 		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
-			return nil, fmt.Errorf("failed to create user provider: %w", err)
+			return nil, false, fmt.Errorf("failed to create user provider: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, created, nil
 }

@@ -70,6 +70,23 @@ test.describe("Membership requests", () => {
     await expect(page.getByText("✗").first()).toBeVisible();
   });
 
+  test("?tab=requests on the members page redirects to the requests route", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Emails sent before spec 2026-09-05-02 fixed the URL still point admins
+    // at /organization/members?tab=requests. That path never rendered a
+    // requests tab — a beforeLoad redirect keeps those old links working.
+    await page.goto("orgs/test/organization/members?tab=requests");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page).toHaveURL(/\/organization\/requests(?:$|\?)/);
+    await expect(
+      page.getByRole("heading", { name: /membership requests/i }),
+    ).toBeVisible();
+  });
+
   test("admin approve flow updates the requests list", async ({
     authenticatedPage,
   }) => {

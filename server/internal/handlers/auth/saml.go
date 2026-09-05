@@ -101,7 +101,7 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req *http.Request) error {
 	// authorize/consent flow) work without a login-page refresh bounce.
 	return finishProviderCallback(writer, req,
 		h.buildSuccessRedirect(state.RedirectURI, result),
-		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // Metadata serves this SP's own metadata document (entity ID, ACS URL,

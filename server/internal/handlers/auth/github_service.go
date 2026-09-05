@@ -72,6 +72,10 @@ type GitHubOAuthResult struct {
 	// the user: no membership was created, a membership request is awaiting
 	// admin approval, and the tokens above are an org-less session.
 	Pending bool
+	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
+	// when the pending outcome opened no membership request at all
+	// (see auth.ProviderLoginResult.PendingOrgSlug).
+	PendingOrgSlug string
 }
 
 // GitHubOAuthService handles GitHub OAuth authentication logic.
@@ -186,7 +190,7 @@ func (s *GitHubOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	}
 
 	// Find or create user
-	user, err := s.findOrCreateUser(ctx, userInfo)
+	user, userCreated, err := s.findOrCreateUser(ctx, userInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -194,18 +198,20 @@ func (s *GitHubOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
 	// login.Pending and an org-less session instead of a membership.
-	login, err := s.authService.CompleteOrgLogin(ctx, org, user, WithLoginMethod(signupMethodGitHub))
+	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
+		WithLoginMethod(signupMethodGitHub), newlyCreatedUserOption(userCreated))
 	if err != nil {
 		return nil, err
 	}
 
 	return &GitHubOAuthResult{
-		AccessToken:  login.AccessToken,
-		RefreshToken: login.RefreshToken,
-		ExpiresIn:    login.ExpiresIn,
-		OrgSlug:      org.Slug,
-		UserUID:      user.UID,
-		Pending:      login.Pending,
+		AccessToken:    login.AccessToken,
+		RefreshToken:   login.RefreshToken,
+		ExpiresIn:      login.ExpiresIn,
+		OrgSlug:        org.Slug,
+		UserUID:        user.UID,
+		Pending:        login.Pending,
+		PendingOrgSlug: login.PendingOrgSlug,
 	}, nil
 }
 
@@ -326,13 +332,19 @@ func (s *GitHubOAuthService) fetchPrimaryEmail(ctx context.Context, accessToken 
 // findOrCreateUser finds or creates a user by GitHub identity.
 //
 //nolint:dupl // OAuth provider findOrCreateUser methods share similar structure by design
-func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *GitHubUserInfo) (*models.User, error) {
+func (s *GitHubOAuthService) findOrCreateUser(
+	ctx context.Context, userInfo *GitHubUserInfo,
+) (*models.User, bool, error) {
+	// created reports whether THIS call minted the account — the fact rule 6's
+	// SaaS platform-default guard needs (WithNewlyCreatedUser, spec 2026-09-05-01).
+	var created bool
+
 	providerID := strconv.Itoa(userInfo.ID)
 
 	// Check by GitHub user ID first (via user_providers)
 	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeGitHub, providerID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user provider: %w", err)
+		return nil, false, fmt.Errorf("failed to get user provider: %w", err)
 	}
 
 	if err == nil && provider != nil {
@@ -341,11 +353,11 @@ func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *Git
 		// than failing this login (and every later one) forever.
 		user, resolveErr := ResolveLinkedUser(ctx, s.db, models.ProviderTypeGitHub, providerID, provider)
 		if resolveErr != nil {
-			return nil, resolveErr
+			return nil, false, resolveErr
 		}
 
 		if user != nil {
-			return user, nil
+			return user, false, nil
 		}
 
 		provider = nil
@@ -354,11 +366,12 @@ func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *Git
 	// Check by email
 	user, err := s.db.GetUserByEmail(ctx, userInfo.Email)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("failed to get user by email: %w", err)
+		return nil, false, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
 	// Create new user if not found
 	if user == nil {
+		created = true
 		user = models.NewUser(userInfo.Email)
 		user.Name = userInfo.Name
 		user.AvatarURL = userInfo.AvatarURL
@@ -369,7 +382,7 @@ func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *Git
 		// Routed through the package's single account-creation chokepoint so
 		// the user_signed_up product event fires for SSO signups too.
 		if err := createUserAndCapture(ctx, s.db, user, signupMethodGitHub); err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, false, fmt.Errorf("failed to create user: %w", err)
 		}
 	}
 
@@ -378,11 +391,11 @@ func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *Git
 		provider = models.NewUserProvider(user.UID, models.ProviderTypeGitHub, providerID)
 
 		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
-			return nil, fmt.Errorf("failed to create user provider: %w", err)
+			return nil, false, fmt.Errorf("failed to create user provider: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, created, nil
 }
 
 // getCallbackURL returns the OAuth callback URL for GitHub.

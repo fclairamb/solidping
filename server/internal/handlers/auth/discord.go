@@ -87,7 +87,7 @@ func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req *http.Req
 	// authorize/consent flow) work without a login-page refresh bounce.
 	return finishProviderCallback(writer, req,
 		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.OrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
 }
 
 // buildDiscordAuthURL constructs the Discord authorization URL.

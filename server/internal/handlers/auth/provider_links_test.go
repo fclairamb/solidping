@@ -223,44 +223,44 @@ func TestEveryProviderHealsStaleUserLinks(t *testing.T) {
 		{
 			name: "github", providerType: models.ProviderTypeGitHub, providerID: "4242",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return github.findOrCreateUser(ctx, &GitHubUserInfo{ID: 4242, Name: "GH", Email: email})
+				return dropCreatedFlag(github.findOrCreateUser(ctx, &GitHubUserInfo{ID: 4242, Name: "GH", Email: email}))
 			},
 		},
 		{
 			name: "gitlab", providerType: models.ProviderTypeGitLab, providerID: "4243",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return gitlab.findOrCreateUser(ctx, &GitLabUserInfo{ID: 4243, Name: "GL", Email: email})
+				return dropCreatedFlag(gitlab.findOrCreateUser(ctx, &GitLabUserInfo{ID: 4243, Name: "GL", Email: email}))
 			},
 		},
 		{
 			name: "google", providerType: models.ProviderTypeGoogle, providerID: "google-sub-1",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return google.findOrCreateUser(ctx, &GoogleUserInfo{
+				return dropCreatedFlag(google.findOrCreateUser(ctx, &GoogleUserInfo{
 					Sub: "google-sub-1", Email: email, EmailVerified: true, Name: "GO",
-				})
+				}))
 			},
 		},
 		{
 			name: "microsoft", providerType: models.ProviderTypeMicrosoft, providerID: "ms-user-1",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return microsoft.findOrCreateUser(
-					ctx, &MicrosoftUserInfo{ID: "ms-user-1", DisplayName: "MS"}, email)
+				return dropCreatedFlag(microsoft.findOrCreateUser(
+					ctx, &MicrosoftUserInfo{ID: "ms-user-1", DisplayName: "MS"}, email))
 			},
 		},
 		{
 			name: "oidc", providerType: models.ProviderTypeOIDC, providerID: "oidc-sub-1",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return oidc.findOrCreateUser(ctx, &oidcUserInfo{
+				return dropCreatedFlag(oidc.findOrCreateUser(ctx, &oidcUserInfo{
 					Subject: "oidc-sub-1", Email: email, EmailVerified: true, Name: "OI",
-				})
+				}))
 			},
 		},
 		{
 			name: "saml", providerType: models.ProviderTypeSAML, providerID: "saml-nameid-1",
 			signIn: func(ctx context.Context, email string) (*models.User, error) {
-				return saml.findOrCreateUser(ctx, &samlUserInfo{
+				return dropCreatedFlag(saml.findOrCreateUser(ctx, &samlUserInfo{
 					NameID: "saml-nameid-1", Email: email, Name: "SA",
-				})
+				}))
 			},
 		},
 		{
@@ -298,4 +298,12 @@ func TestEveryProviderHealsStaleUserLinks(t *testing.T) {
 			r.NotEqual(staleLink.UID, relinked.UID, "the stale row must have been cleared")
 		})
 	}
+}
+
+// dropCreatedFlag adapts a connector's findOrCreateUser — which also reports
+// whether it minted the account — to the (*models.User, error) shape this
+// table's signIn closures use. The link-resolution behavior under test is the
+// same either way.
+func dropCreatedFlag(user *models.User, _ bool, err error) (*models.User, error) {
+	return user, err
 }
