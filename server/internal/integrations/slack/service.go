@@ -330,6 +330,20 @@ func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*mo
 	return conns[0], nil
 }
 
+// installRedirectURI is the callback Slack returns the install to.
+//
+// It MUST be used both when building the authorize URL and when exchanging
+// the resulting code: Slack's oauth.v2.access rejects the exchange with
+// `bad_redirect_uri` when the authorize request carried a redirect_uri and
+// the exchange does not echo the identical value. The two drifted apart for
+// months — authorize sent it, the exchange passed "" with a comment claiming
+// it was optional — which broke every install started from our own OAuth URL
+// while Slack *login* (which passes it at both ends) kept working. One helper
+// for both call sites is what keeps them honest.
+func (s *Service) installRedirectURI() string {
+	return s.cfg.Server.BaseURL + "/api/v1/integrations/slack/oauth"
+}
+
 // BuildInstallURL mints a fresh CSRF state and returns the Slack OAuth
 // authorization URL the user should be redirected to. `source` (when set)
 // is stashed in the state payload for install-source analytics on the
@@ -353,13 +367,11 @@ func (s *Service) BuildInstallURL(ctx context.Context, source, channelUID, orgSl
 		return "", fmt.Errorf("generate install state: %w", err)
 	}
 
-	redirectURI := s.cfg.Server.BaseURL + "/api/v1/integrations/slack/oauth"
-
 	params := url.Values{}
 	params.Set("client_id", s.cfg.Slack.ClientID)
 	params.Set("scope", strings.Join(slackBotScopes, ","))
 	params.Set("user_scope", strings.Join(slackUserScopes, ","))
-	params.Set("redirect_uri", redirectURI)
+	params.Set("redirect_uri", s.installRedirectURI())
 	params.Set("state", nonce)
 
 	return "https://slack.com/oauth/v2/authorize?" + params.Encode(), nil
@@ -545,7 +557,9 @@ func (s *Service) exchangeCodeAndFetchUser(
 		s.cfg.Slack.ClientID,
 		s.cfg.Slack.ClientSecret,
 		code,
-		"", // redirect_uri is optional for token exchange
+		// Must be byte-identical to the authorize-time value, or Slack
+		// answers bad_redirect_uri. See installRedirectURI.
+		s.installRedirectURI(),
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to exchange OAuth code", "error", err)
