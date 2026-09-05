@@ -110,6 +110,15 @@ func newCustomHostTestServer(t *testing.T) *Server {
 		return nil
 	})
 
+	embed := main.NewGroup("/embed/v1")
+	embed.GET("/widget.js", func(w http.ResponseWriter, _ *http.Request) error {
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("embed-widget"))
+
+		return nil
+	})
+
 	mgmt := main.NewGroup("/api/mgmt")
 	mgmt.GET("/version", func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
@@ -207,6 +216,25 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			name: "custom host denied API is 404",
 			host: "status.acme.com", path: "/api/v1/orgs/acme/checks",
 			wantStatus: http.StatusNotFound,
+		},
+		{
+			// The embed snippet a customer pastes into their own site points at
+			// the hostname they know their status page by, which for anyone
+			// using custom domains IS this host. Before this case /embed/* fell
+			// through to the SPA and the <script> tag received text/html, so
+			// the widget silently never rendered.
+			name: "custom host serves the embed widget, not the SPA shell",
+			host: "status.acme.com", path: "/embed/v1/widget.js",
+			wantStatus: http.StatusOK, wantBody: "embed-widget",
+			wantNotBody: "sp-page",
+		},
+		{
+			// A demoted domain must not serve the widget either: it is still
+			// "ours but not servable", and a widget on a demoted page would
+			// report on a page nobody can open.
+			name: "demoted custom host does not serve the embed widget",
+			host: "demoted.acme.com", path: "/embed/v1/widget.js",
+			wantStatus: http.StatusServiceUnavailable, wantNotBody: "embed-widget",
 		},
 		{
 			// Regression: this used to serve the bare shell (no sp-page), so the
