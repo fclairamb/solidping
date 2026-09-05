@@ -39,11 +39,37 @@ Run this against your dev server and it *will* leave a mark. Specifically:
 | Effect | Persists? |
 |---|---|
 | The `northwind` / "Northwind Systems" org | **Yes, forever.** Created on the first run, reused (not recreated) afterwards; there is no delete-org endpoint. It will appear in that database's org switcher from then on. |
+| The bootstrap account's **password** | **Yes, when the server forced a rotation** — see below. |
 | The demo checks inside it | No — the org is emptied at the end of each run and wiped clean again at the start of the next. |
 | The bootstrap account's display name | No — read before the recording, set to `Alex Rivera` for its duration, restored in the `finally`. `PATCH /api/v1/auth/me` writes the *global* user row (`OrganizationMember` has no per-org name), so that restore is what stops a media run from renaming someone's admin account everywhere. A hard-killed run skips it. |
 
 This is the real reason to use the disposable side-car above, not merely a
 port-conflict argument.
+
+### The forced password rotation (why the recipe above was broken)
+
+Since spec 2026-08-23-04 a fresh default-mode database seeds
+`admin@solidping.io` with `MustChangePassword = true`
+(`server/internal/jobs/jobtypes/job_startup.go`). The login succeeds, but the
+session it hands back reaches only `POST /auth/change-password`,
+`GET /auth/me` and `POST /auth/logout` — everything else answers
+`403 PASSWORD_CHANGE_REQUIRED` (`server/internal/middleware/auth.go`). From
+2026-08-25 until spec 2026-09-05-03 that silently broke the side-car recipe
+above: the run died on its very next call, `POST /api/v1/orgs`.
+
+`apiLogin()` now detects the flag and rotates. Two consequences worth knowing
+before pointing the pipeline at anything you care about:
+
+- **The account ends up on `SHOWCASE_ROTATED_PASSWORD` (default
+  `showcase-rotated-pass`) and stays there.** Rotating back to `solidpass` is
+  not possible: `POST /auth/change-password` rejects a new password equal to
+  the current one with `400 VALIDATION_ERROR` (pinned by
+  `server/internal/handlers/auth/change_password_handler_test.go`). Hence the
+  default differs from the seeded password.
+- A rerun against an already-rotated database still works — the seeded password
+  is tried first and the rotated one on a `401`.
+
+Both are logged on every run.
 
 ## Nothing on camera is a fixture
 
@@ -67,22 +93,70 @@ regeneration can come later, once the recorded flows have proven stable.
 ## What it produces
 
 1. A Playwright recording (`video: "on"`, fixed 1280×800 viewport, light
-   theme, `slowMo` pacing) of the canonical **create an HTTP check** flow:
-   checks list → New check → HTTP type → name + URL → interval → regions →
-   save → check detail page.
-2. Named still frames captured during the same run.
-3. Post-processing: dead frames at head/tail trimmed via ffmpeg
-   `freezedetect`, then re-encoded to **AV1** (`libsvtav1`). Screen captures
-   compress extremely well under AV1, so the committed assets stay tiny.
+   theme) of the canonical **create an HTTP check** flow: checks list → New
+   check → name + URL → interval → (regions, if offered) → save → check detail
+   page — no check-type step, because the form already opens on HTTP and
+   picking it filmed a no-op — driven with a painted cursor, eased travel and
+   character-by-character typing rather than `fill()` and bare clicks.
+
+   > **The regions beat is conditional.** `check-form.tsx` renders the region
+   > picker only when `availableRegions.length > 1`, and the showcase spec
+   > gates the beat — cue included — on `regionCount > 0`. A single-node
+   > side-car (the recommended way to record) offers exactly one region, so
+   > the run silently omits the step and its cue list runs `interval` →
+   > `form-complete`. That is expected rather than a bug, and it is what the
+   > **currently committed cut** shows: no regions beat. Recording one means
+   > filming against a server with at least two regions configured.
+2. Named still frames captured during the same run (at 2×, published at 1×).
+3. Post-processing: head/tail trimmed, a **camera move** applied from the
+   recording's cue list, then encoded twice — **AV1** (`libsvtav1`, tiny) and
+   **H.264** (`libx264`, so Safari without an AV1 hardware decoder still
+   plays it).
 
 Pipeline scratch (`web/dash0/showcase/output/`, including the raw `.webm`
-intermediates) is git-ignored. Only the post-processed assets are committed.
+intermediates and the cue lists) is git-ignored. Only the post-processed assets
+are committed.
+
+### Zoom without touching the UI
+
+The browser is never zoomed. `focus(page, locator, { zoom })` records a **cue
+point** — what mattered, and when — and `postprocess.ts` turns that list into an
+ffmpeg `zoompan` easing between framings with a smoothstep curve. Two
+consequences: the motion is smooth regardless of how jerkily Playwright drove
+the UI, and re-timing the choreography never means re-recording.
+
+The two timelines are aligned with a **clapper**: `uiLogin()` blacks the page
+out for ~320 ms and takes `t = 0` as the moment it is uncovered;
+`postprocess.ts` finds the same instant with `blackdetect` and trims it away.
+(Anchoring on the opening *frozen* frame, as an earlier design did, fails
+whenever the first navigation resolved fast enough that there was no opening
+freeze — which is most runs.)
+
+The cue-list → crop-window generator is a pure, unit-tested function
+(`web/dash0/showcase/crop-window.ts`), and it is the only part of this pipeline
+CI exercises: `bun run test:unit` in `web/dash0` covers it.
+
+### One thing that does not work: recording at 2×
+
+`deviceScaleFactor: 2` gives 2× *stills*, but not a 2× *video*. Playwright
+records Chromium from CDP screencast frames, which come back at the CSS-pixel
+size of the viewport whatever the device scale factor says — measured: 2560×1600
+screenshots alongside 1280×800 screencast frames. Asking for a larger
+`video.size` does not upscale them; Playwright pastes each frame into the
+top-left corner of the requested canvas and leaves the rest flat grey, silently
+ruining the take. So `video.size` must equal the viewport in CSS px, and the
+post zoom is an upscale — which is why the choreography stays ≤ 1.6× and the
+scale-down uses `lanczos`.
+
+Frame interpolation to 50 fps (`minterpolate`) was tried and rejected: on screen
+content it ghosts, doubling half-typed characters and the text caret.
 
 ## Committed assets
 
 | Path | What |
 |---|---|
 | `web/docs/static/showcase/create-http-check.mp4` | AV1 recording of the HTTP-check creation flow |
+| `web/docs/static/showcase/create-http-check.h264.mp4` | The same cut in H.264, for browsers without AV1 |
 | `web/docs/static/showcase/01-checks-list.png` | Checks list |
 | `web/docs/static/showcase/02-check-form-filled.png` | New-check form, filled in |
 | `web/docs/static/showcase/03-check-detail.png` | Check detail page |
@@ -94,6 +168,46 @@ served at `/docs/showcase/<file>` on every host — e.g.
 Keep the catalog deliberately small: only assets that a published page actually
 embeds. If it ever grows big enough to bloat the repo, moving to a CDN is a
 follow-up spec.
+
+### Last regenerated
+
+A record of what the committed media actually is, so nobody has to re-derive it
+from the binaries. Update this block whenever `make showcase` is re-run and the
+output is committed. Sizes are KiB/MiB — the units `postprocess.ts` prints, so
+they match the run log line for line.
+
+- **Date:** 2026-09-05 (spec `2026-09-05-03-showcase-video-refresh-zoom-cursor`,
+  re-cut the same day for the tighter flow described below)
+- **App version on camera:** `v0.23.0-19-g1b4d3a74d` (sidebar footer of the
+  stills)
+- **Filmed check:** `GET https://solidping.io/api/mgmt/health`, named
+  "Production API", at a **10-second** interval
+- **Video:** 33.48 s, 1280×800, 25 fps, 837 frames
+- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 385 992 B
+  (1.32 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 147 976 B
+  (1.09 MB)
+- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 177 KB,
+  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 198 KB
+- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 259 KB / 239 KB /
+  282 KB — two of the three above the ~250 KB bar, which is why the 1× versions
+  are the ones published
+- **8 cue points, max zoom 1.50×.** Two beats are deliberately absent: there is
+  **no check-type step** (the form opens on HTTP, so picking it filmed "HTTP" →
+  "HTTP") and **no push-in on the New check button** (that click changes route,
+  and a zoom that snaps straight back out for the navigation reads as a glitch)
+- **No regions beat**, for the reason given under "What it produces": the run
+  was filmed against a single-node side-car, so the cue list runs `interval` →
+  `form-complete`
+- **The detail page is held for at least `MIN_DETAIL_DWELL_MS` (11 s) and until
+  two results have landed.** The dwell is what makes the chart meaningful:
+  waiting only for a second result is not enough, because the scheduler aligns
+  runs to wall-clock boundaries, so the tick after the creation run can land a
+  second or two later and the chart then plots two points across a two-second
+  window. Dwelling past the 10-second interval guarantees a real interval
+  between them
+- **`minterpolate` (50 fps frame interpolation): tried, rejected.** On screen
+  content it ghosts — half-typed characters and the text caret double on every
+  synthesised frame. The cut stays at its native 25 fps
 
 ## Where they are surfaced
 
@@ -119,3 +233,13 @@ Either way, the source of truth is `web/docs/static/showcase/` here, and the
 regeneration command is `make showcase` from the `solidping` repo root. When a
 flow's UI changes, regenerate here first; the website picks up the new assets
 from this same set.
+
+Two items the website side still owes, recorded when spec 2026-09-05-03 re-cut
+the media (that repo was deliberately out of scope):
+
+1. the homepage `<video>` needs two `<source>` children, AV1 first, mirroring
+   `web/docs/docs/tour.mdx` — otherwise Safari without an AV1 hardware decoder
+   shows fallback text where the demo should be;
+2. the caption hard-codes *"A 18-second setup"* (`src/pages/index.tsx`). The
+   duration moves with every re-cut — this one is ~28 s — so it must not name
+   one.

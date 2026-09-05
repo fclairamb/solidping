@@ -35,9 +35,8 @@ func orgsCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: flagName, Usage: usageHumanReadableName, Required: true},
 					&cli.StringFlag{
-						Name:     flagSlug,
-						Usage:    "URL-friendly slug (3-20 chars, lowercase alphanumeric with hyphens)",
-						Required: true,
+						Name:  flagSlug,
+						Usage: "URL-friendly slug (3-20 chars, lowercase alphanumeric with hyphens); derived from --name when omitted",
 					},
 				},
 				Action: orgsCreateAction,
@@ -81,7 +80,13 @@ func orgsCreateAction(ctx context.Context, cmd *cli.Command) error {
 
 	body := client.CreateOrgJSONRequestBody{
 		Name: cmd.String(flagName),
-		Slug: cmd.String(flagSlug),
+	}
+
+	// --slug is optional end to end now: left off, the server derives one from
+	// the name. Sending "" would be a *request* for the empty slug, so omit the
+	// field entirely instead.
+	if slug := cmd.String(flagSlug); slug != "" {
+		body.Slug = &slug
 	}
 
 	resp, err := apiClient.CreateOrgWithResponse(ctx, body)

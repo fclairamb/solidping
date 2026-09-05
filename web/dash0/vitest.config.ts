@@ -15,6 +15,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      // The showcase pipeline's pure helpers (cue list → crop window) are
+      // unit-tested too — they are the part of that pipeline that can be
+      // checked without a browser or ffmpeg.
+      "showcase/**/*.test.ts",
+    ],
   },
 });
