@@ -1,6 +1,50 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/logo_256.png" alt="SolidPing" width="120">
+
 # SolidPing
 
-A distributed monitoring platform for checking availability and performance of services across multiple protocols.
+**Distributed, self-hostable uptime monitoring.**
+40 check types, multi-region workers, private agents, status pages,
+incidents and on-call escalation — in a single Go binary.
+
+[![Build](https://img.shields.io/github/actions/workflow/status/fclairamb/solidping/ci.yml?branch=main&label=build&logo=github)](https://github.com/fclairamb/solidping/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/fclairamb/solidping?label=release&logo=github)](https://github.com/fclairamb/solidping/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/fclairamb/solidping?filename=server%2Fgo.mod&logo=go)](https://github.com/fclairamb/solidping/blob/main/server/go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/fclairamb/solidping/server.svg)](https://pkg.go.dev/github.com/fclairamb/solidping/server)
+[![License](https://img.shields.io/github/license/fclairamb/solidping?color=blue)](LICENSE)
+
+[![Live](https://img.shields.io/badge/live-www.solidping.io-2ea44f?logo=icloud&logoColor=white)](https://www.solidping.io)
+[![Status](https://img.shields.io/badge/status-status.solidping.io-2ea44f?logo=statuspage&logoColor=white)](https://status.solidping.io)
+[![Docs](https://img.shields.io/badge/docs-docs.solidping.io-informational?logo=readthedocs&logoColor=white)](https://docs.solidping.io)
+[![Container](https://img.shields.io/badge/ghcr.io-fclairamb%2Fsolidping-blue?logo=docker&logoColor=white)](https://github.com/fclairamb/solidping/pkgs/container/solidping)
+
+</div>
+
+---
+
+<div align="center">
+
+### Create an HTTP check, start to finish — 18 seconds
+
+<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/create-http-check.gif" alt="Creating an HTTP check in SolidPing, from the new-check form to the first result" width="800">
+
+</div>
+
+## Screenshots
+
+| Checks list | New-check form | Check detail |
+|:---:|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/checks-list.png" alt="Checks list in the SolidPing dashboard" width="270"> | <img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/check-form.png" alt="New-check form, filled in" width="270"> | <img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/check-detail.png" alt="Check detail page with response-time history" width="270"> |
+
+## Try it
+
+| | |
+|---|---|
+| **Hosted** | [www.solidping.io](https://www.solidping.io) — sign up, no card needed |
+| **Live status page** | [status.solidping.io](https://status.solidping.io) — a real SolidPing instance watching the production one, from another provider in another country |
+| **Documentation** | [docs.solidping.io](https://docs.solidping.io) |
+| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). |
 
 ## Overview
 
@@ -8,7 +52,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **39 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, 7 databases (Postgres, MySQL, MSSQL, Oracle, ClickHouse, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
+- **40 check types**: HTTP, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL/Domain, SSH, RDP, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, SIP, gRPC, Prometheus, 7 databases (Postgres, MySQL, MSSQL, Oracle, ClickHouse, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, Kubernetes, SNMP, Freebox line, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
 - **Distributed workers**: Multi-region check execution with lease-based scheduling, per-region check periods with spread control, and per-org check-rate quotas
 - **Private locations**: Deported agents run checks from inside your own network over an outbound WebSocket, with per-org agent quotas
 - **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP), labels with autocomplete
@@ -111,6 +155,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | MySQL/MariaDB | Connection + query execution |
 | MSSQL | Connection + query execution |
 | Oracle | Connection + query execution |
+| ClickHouse | Connection + query execution |
 | MongoDB | Ping command |
 | Redis | PING command |
 
@@ -138,6 +183,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | gRPC | Service health |
 | A2S | Source / Steam game server query (Valve A2S) |
 | Minecraft | Minecraft server query |
+| Prometheus | Scrape a Prometheus endpoint and assert on a metric |
 
 ### Specialized
 | Type | Description |
@@ -147,88 +193,81 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | Browser | Headless Chrome (Rod) — JS, CSS, full render |
 | Freebox Line | Freebox xDSL/fiber line quality (via connected Freebox) |
 
-## Environment Variables
+## Configuration
 
-All `SP_` prefixed variables are handled by the configuration system. Precedence: **Environment variables** > `config.local.yml` > `config.yml` > defaults.
+Everything is configured with `SP_`-prefixed environment variables. Precedence:
+**environment variables** > `config.local.yml` > `config.yml` > defaults.
 
-### Core
+You only need the database settings to get started — the defaults cover the rest.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SP_DB_TYPE` | Database type: `postgres`, `sqlite`, `sqlite-memory`, `postgres-embedded` | `sqlite` |
-| `SP_DB_URL` | PostgreSQL connection string | — |
-| `SP_DB_DIR` | SQLite data directory | `.` |
-| `SP_DB_RESET` | Reset database on startup (`true`/`1`) | `false` |
-| `SP_SERVER_LISTEN` | HTTP listen address | `:4000` |
-| `SP_BASE_URL` | Public URL where SolidPing is accessible | `http://localhost:4000` |
-| `SP_SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (duration) | `30s` |
-| `SP_RUN_MODE` | Runtime mode: `test`, `demo` | — |
-| `SP_LOG_LEVEL` | Log level: `debug`, `info`, `warn`, `error` | `info` |
-| `SP_NODE_ROLE` | Node role: `all`, `api`, `jobs`, `checks`, `agent` — or a comma-separated combination such as `api,jobs` | `all` |
-| `SP_NODE_REGION` | Worker region (required when the role includes `checks`) | — |
-| `SP_SERVER_JOB_WORKER_NB` | Concurrent job workers | `2` |
-| `SP_SERVER_CHECK_WORKER_NB` | Concurrent check workers | `3` |
-| `PORT` | HTTP port (overrides `SP_SERVER_LISTEN`) | — |
+### SQLite (the default — good for a single instance)
 
-### Authentication
+Nothing to configure. To keep the data across restarts, point `SP_DB_DIR` at a
+directory you mount in:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SP_AUTH_JWT_SECRET` | JWT signing secret (auto-generated if unset) | — |
-| `SP_AUTH_REGISTRATION_EMAIL_PATTERN` | Restrict registration by email regex | — |
+```bash
+mkdir -p ./solidping-data
 
-### Email (SMTP)
+docker run -p 4000:4000 \
+  --hostname solidping \
+  -u "$(id -u):$(id -g)" \
+  -v "$PWD/solidping-data:/data" \
+  -e SP_DB_DIR=/data \
+  ghcr.io/fclairamb/solidping
+```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SP_EMAIL_ENABLED` | Enable email sending | `false` |
-| `SP_EMAIL_HOST` | SMTP server hostname | — |
-| `SP_EMAIL_PORT` | SMTP port | `587` |
-| `SP_EMAIL_USERNAME` | SMTP username | — |
-| `SP_EMAIL_PASSWORD` | SMTP password | — |
-| `SP_EMAIL_FROM` | Sender email address | — |
-| `SP_EMAIL_FROMNAME` | Sender display name | — |
-| `SP_EMAIL_AUTHTYPE` | Auth type: `plain`, `login`, `cram-md5` | `login` |
-| `SP_EMAIL_PROTOCOL` | Encryption: `none`, `starttls`, `ssl` | `starttls` |
-| `SP_EMAIL_INSECURESKIPVERIFY` | Skip TLS certificate verification | `false` |
+Two flags there are not optional, and both are easy to trip over:
 
-### OAuth Providers
+- **`--hostname solidping`** — the worker name is derived from the hostname and
+  must match `^[a-z][a-z0-9-]{2,20}$`. Docker's default hostname is the random
+  container ID, which starts with a digit most of the time, and the server then
+  refuses to start. Pass `--hostname`, or set `SP_NODE_NAME` instead.
+- **`-u "$(id -u):$(id -g)"`** — the image runs as the nonroot user `65532`,
+  which cannot write to a directory your host created. Running as yourself, with
+  a directory you own, is the simplest thing that works. (A named Docker volume
+  hits the same wall: it is created root-owned.)
 
-Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable an OAuth provider.
+### PostgreSQL (recommended for production)
 
-| Provider | Variables |
-|----------|-----------|
-| Google | `SP_GOOGLE_CLIENT_ID`, `SP_GOOGLE_CLIENT_SECRET` |
-| GitHub | `SP_GITHUB_CLIENT_ID`, `SP_GITHUB_CLIENT_SECRET` |
-| GitLab | `SP_GITLAB_CLIENT_ID`, `SP_GITLAB_CLIENT_SECRET` |
-| Microsoft | `SP_MICROSOFT_CLIENT_ID`, `SP_MICROSOFT_CLIENT_SECRET`, `SP_MICROSOFT_TENANT_ID` (default `common`) |
+Schema migrations run on first boot, so point it at an empty database and let it
+create its own tables:
 
-### Slack Integration
+```bash
+docker run -p 4000:4000 \
+  --hostname solidping \
+  -e SP_DB_TYPE=postgres \
+  -e SP_DB_URL='postgresql://solidping:password@postgres:5432/solidping?sslmode=disable' \
+  ghcr.io/fclairamb/solidping
+```
 
-| Variable | Description |
-|----------|-------------|
-| `SP_SLACK_APP_ID` | Slack app ID |
-| `SP_SLACK_CLIENT_ID` | Slack client ID |
-| `SP_SLACK_CLIENT_SECRET` | Slack client secret |
-| `SP_SLACK_SIGNING_SECRET` | Slack signing secret |
+`sslmode=disable` is right for a database on the same private network, and is
+what a stock `postgres` container accepts — it serves no TLS, so `sslmode=require`
+fails against one with `SSL is not enabled on the server`. For a managed or
+remote database, use `sslmode=require` (or `verify-full`) instead.
 
-### Development
+### The variables you actually need
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SP_REDIRECTS` | Dev proxy redirects (format: `/path:host:port/target,...`) | — |
-| `LOG_LEVEL` | Log level (read early, before config loads) | `info` |
-| `NO_COLOR` | Disable colored terminal output | — |
-| `FORCE_COLOR` | Force colored terminal output | — |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SP_DB_TYPE` | `sqlite` | `sqlite` or `postgres` |
+| `SP_DB_URL` | — | PostgreSQL connection string (required when `SP_DB_TYPE=postgres`) |
+| `SP_DB_DIR` | `.` | Where the SQLite file lives — set it to a volume |
+| `SP_SERVER_LISTEN` | `:4000` | Listen address |
+| `SP_BASE_URL` | `http://localhost:4000` | Public URL, used in links and notifications |
+| `SP_NODE_NAME` | the hostname | Worker name, `^[a-z][a-z0-9-]{2,20}$`. Set it, or pass `--hostname` — the server will not start if the hostname does not match |
+| `SP_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
-### CLI
+That is the whole getting-started surface. Everything else — authentication and
+SSO, email and the other notification channels, custom domains and TLS,
+multi-region workers, data retention, storage — is optional and documented at
+**[docs.solidping.io](https://docs.solidping.io)**:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SOLIDPING_CONFIG` | CLI config file path | `~/.config/solidping/settings.json` |
-| `SOLIDPING_URL` | Server URL override | — |
-| `SOLIDPING_ORG` | Organization override | — |
-| `SOLIDPING_VERBOSE` | Verbose CLI logging | `false` |
+| | |
+|---|---|
+| [Configuration overview](https://docs.solidping.io/configuration/) | every variable, grouped by area |
+| [Database](https://docs.solidping.io/configuration/database) | connection strings, SSL modes, pooling, backups |
+| [Authentication](https://docs.solidping.io/configuration/authentication) | OAuth providers, OIDC, SAML, LDAP, 2FA |
+| [Notifications](https://docs.solidping.io/configuration/notifications) | Slack, Discord, email, webhooks and the rest |
 
 ## Architecture
 
