@@ -57,6 +57,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypePlatformWatchdog: func() jobdef.JobDefinition {
 		return &PlatformWatchdogJobDefinition{}
 	},
+	jobdef.JobTypeOperatorNotice: func() jobdef.JobDefinition {
+		return &OperatorNoticeJobDefinition{}
+	},
 }
 
 // GetJobDefinition retrieves a job definition by type.

@@ -187,6 +187,13 @@ type Service struct {
 	threadsPerIdentity *windowCounter
 	mirrorsPerHour     *windowCounter
 	mirrorFoldWindow   time.Duration
+
+	// operatorNotices / noticesPerHour are the anti-burst state for the
+	// instance-level operator notice (spec 2026-09-03-01). Deliberately
+	// PARALLEL to the mail mirror's: notices must still work on an instance
+	// with no support mailbox, where the mirror is off entirely.
+	operatorNotices *operatorNotices
+	noticesPerHour  *windowCounter
 }
 
 // Options configures a Service.
@@ -223,6 +230,8 @@ func NewService(dbSvc db.Service, opts Options) *Service {
 		threadsPerIdentity: newWindowCounter(24*time.Hour, DefaultThreadsPerIdentityPerDay),
 		mirrorsPerHour:     newWindowCounter(time.Hour, DefaultMirrorsPerHour),
 		mirrorFoldWindow:   DefaultMirrorFoldWindow,
+		operatorNotices:    newOperatorNotices(DefaultMirrorFoldWindow),
+		noticesPerHour:     newWindowCounter(time.Hour, DefaultMirrorsPerHour),
 	}
 }
 
@@ -467,6 +476,10 @@ func (s *Service) Capture(
 	// stored, and a bounced notification is a smaller problem than a lost
 	// message.
 	s.mirror(ctx, thread, msg, created)
+
+	// And the instance-level operator notice, which reaches whoever subscribed
+	// wherever they actually are. Additive: the mail mirror above is untouched.
+	s.raiseOperatorNotice(ctx, thread, msg, created)
 
 	return thread, msg, nil
 }

@@ -31,7 +31,7 @@ func TestCLICoverage_ServerMgmt(t *testing.T) {
 	// The ordinary admin user is refused on the super-admin mgmt endpoints.
 	adminClient := cliCovAuthedClient(ctx, t, ts)
 
-	forbiddenMem, err := adminClient.GetMemoryWithResponse(ctx)
+	forbiddenMem, err := adminClient.GetMemoryWithResponse(ctx, nil)
 	r.NoError(err)
 	r.Equal(403, forbiddenMem.StatusCode())
 
@@ -42,7 +42,7 @@ func TestCLICoverage_ServerMgmt(t *testing.T) {
 	apiClient := cliCovSuperAdminClient(ctx, t, ts)
 
 	// MEMORY — snapshot with runtime + build facts.
-	memResp, err := apiClient.GetMemoryWithResponse(ctx)
+	memResp, err := apiClient.GetMemoryWithResponse(ctx, nil)
 	r.NoError(err)
 	r.Equal(200, memResp.StatusCode())
 	r.NotNil(memResp.JSON200)

@@ -87,6 +87,13 @@ import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import { DependencyWarnings } from "@/components/checks/dependency-warnings";
+import {
+  DependencyEmptyRow,
+  DependencyKindBadge,
+  DependencyRow,
+  DependencyRowList,
+  DependencyRowText,
+} from "@/components/checks/dependency-row";
 import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -228,6 +235,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "data-display", label: "Data display" },
   { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
+  { id: "dependency-row", label: "Dependency row" },
   { id: "comment-bubble", label: "Comment bubble" },
   { id: "copyable-code", label: "Copyable code" },
   { id: "copyable-inline", label: "Copyable inline" },
@@ -282,6 +290,7 @@ function DesignReferencePage() {
       <DataDisplaySection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
+      <DependencyRowSection />
       <CommentBubbleSection />
       <CopyableCodeSection />
       <CopyableInlineSection />
@@ -4501,6 +4510,212 @@ function ListSurfaceSection() {
   );
 }
 
+function DependencyRowSection() {
+  const importLine = `import {
+  DependencyRowList,
+  DependencyRow,
+  DependencyRowText,
+  DependencyEmptyRow,
+  DependencyKindBadge,
+} from "@/components/checks/dependency-row";
+
+<DependencyRowList tone="muted">
+  <DependencyRow
+    interactive
+    identity={<Link className="font-medium hover:underline">{parent.name}</Link>}
+    kind={<DependencyKindBadge kind={edge.kind} />}
+    description={<DependencyRowText>{edge.description}</DependencyRowText>}
+  />
+  {/* Empty lists say so INSIDE the container, never as a bare paragraph. */}
+  <DependencyEmptyRow>No dependencies configured.</DependencyEmptyRow>
+  {/* The add row is a dashed footer inside the same box, not a second one. */}
+  <div className="border-dashed">
+    <DependencyRow identity={<CheckPicker … />} kind={<Select … />} … />
+  </div>
+</DependencyRowList>`;
+  return (
+    <Section
+      id="dependency-row"
+      title="Dependency row"
+      description="The canonical fix for a list of stacked, same-background items: one bordered container with divide-y rows, tinted a step off the panel behind it, instead of N separately-outlined rounded-md boxes floating on the page background. Columns are fixed — identity · kind · description · actions — so the eye can scan down each one; below sm the grid collapses to a single column and the description wraps under the identity. Rows keep a min-h-10 (40px) touch target. Built for the check Dependencies card and the check form's Dependencies section; reuse it for any short list of relationships."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Read-only rows (view surface)</h3>
+        <ExampleRow
+          preview={
+            <div className="w-full">
+              <DependencyRowList>
+                <DependencyRow
+                  interactive
+                  identity={
+                    <span className="font-medium hover:underline">
+                      api.example.com
+                    </span>
+                  }
+                  kind={<DependencyKindBadge kind="hard" />}
+                  description={
+                    <DependencyRowText>
+                      shares the primary database
+                    </DependencyRowText>
+                  }
+                />
+                <DependencyRow
+                  interactive
+                  identity={
+                    <span className="font-medium hover:underline">cdn.edge</span>
+                  }
+                  kind={<DependencyKindBadge kind="soft" />}
+                  description={
+                    <DependencyRowText>
+                      informational only — paging still fires
+                    </DependencyRowText>
+                  }
+                />
+              </DependencyRowList>
+            </div>
+          }
+          importLine={importLine}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Empty list</h3>
+        <p className="text-sm text-muted-foreground">
+          An empty list keeps the container and says so in a muted row inside
+          it, so the section does not collapse into a bare sentence under a
+          heading — and so the surface does not jump when the first row lands.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full">
+              <DependencyRowList>
+                <DependencyEmptyRow>
+                  No dependencies configured. Use Edit to add a parent and start
+                  cascading-incident rollup.
+                </DependencyEmptyRow>
+              </DependencyRowList>
+            </div>
+          }
+          importLine={`<DependencyRowList>
+  <DependencyEmptyRow>No dependencies configured…</DependencyEmptyRow>
+</DependencyRowList>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Editable rows + add row (edit surface)
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          On an edit form the same row hosts controls instead of text, and the
+          add row is a <strong>dashed footer inside the same container</strong>{" "}
+          — not a second floating dashed box below it. Removal is the standard
+          destructive trash icon.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full">
+              <DependencyRowList tone="card">
+                <DependencyRow
+                  identity="api.example.com"
+                  kind={
+                    <div className="flex h-10 w-full items-center rounded-md border px-3 text-sm sm:w-28">
+                      Hard
+                    </div>
+                  }
+                  description={
+                    <Input
+                      className="h-10"
+                      readOnly
+                      value="shares the primary database"
+                    />
+                  }
+                  actions={
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-10 w-10 text-destructive hover:text-destructive"
+                      aria-label="Remove dependency"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  }
+                />
+                <div className="border-dashed">
+                  <DependencyRow
+                    identity={
+                      <div className="flex h-10 items-center rounded-md border px-3 text-sm text-muted-foreground">
+                        Pick a check…
+                      </div>
+                    }
+                    kind={
+                      <div className="flex h-10 w-full items-center rounded-md border px-3 text-sm sm:w-28">
+                        Hard
+                      </div>
+                    }
+                    description={
+                      <Input
+                        className="h-10"
+                        readOnly
+                        placeholder="Optional — what is the relationship?"
+                      />
+                    }
+                    actions={
+                      <Button size="sm" className="h-10">
+                        Add dependency
+                      </Button>
+                    }
+                  />
+                </div>
+              </DependencyRowList>
+            </div>
+          }
+          importLine={`// The add row: a plain wrapper carrying border-dashed, so the
+// container's own divide-y rule renders dashed above it.
+<DependencyRowList tone="card">
+  {parents.map((p) => <DependencyRow key={p.uid} … />)}
+  <div className="border-dashed">
+    <DependencyRow identity={<CheckPicker … />} actions={<Button>Add dependency</Button>} />
+  </div>
+</DependencyRowList>`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Kind badge</h3>
+        <p className="text-sm text-muted-foreground">
+          A dot-pill, deliberately the same shape as the{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            customized
+          </code>{" "}
+          marker on{" "}
+          <a
+            href="#collapsible-section"
+            className="text-primary hover:underline"
+          >
+            Collapsible section
+          </a>
+          , so a kind reads at a glance without shouting like a full Badge. Red
+          = hard (a failure here suppresses paging downstream), blue = soft
+          (informational).
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <DependencyKindBadge kind="hard" />
+              <DependencyKindBadge kind="soft" />
+            </>
+          }
+          importLine={`import { DependencyKindBadge } from "@/components/checks/dependency-row";
+
+<DependencyKindBadge kind="hard" />
+<DependencyKindBadge kind="soft" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
 function CommentBubbleSection() {
   return (
     <Section
@@ -5618,13 +5833,18 @@ function OnboardingChecklistSection() {
 
 // Presentation only, for a surface that already has the data:
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
-<OnboardingChecklistCard org={org} steps={steps} allSet={false} onDismiss={hide} />`;
+<OnboardingChecklistCard org={org} steps={steps} allSet={false} onDismiss={hide} />
+
+// Reduced-motion convention (set by this card, reuse it everywhere):
+// put EVERY animation class behind motion-safe: so prefers-reduced-motion
+// drops the motion instead of the element.
+<div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both motion-safe:hover:-translate-y-px" />`;
 
   return (
     <Section
       id="onboarding-checklist"
       title="Onboarding checklist"
-      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back. Rows below carry their own background — bg-card for pending, a faint emerald-500/10 wash for done — so they read as items sitting on the card's bg-primary/5 tint rather than outlines the tint bleeds through; the fixture below mixes both states on purpose."
+      description="The dashboard's getting-started card. Every row's tick is DERIVED from a real resource — never a stored per-step flag — so it stays honest for a user who joins an already-configured org. The only persisted bit is the dismissal, held server-side per user per org so hiding it here hides it on every device; the account profile page brings it back. Reuse this pattern for any 'guide the user through setup' surface: derived state, one dismissal, an explicit way back. PRESENTATION (spec 2026-09-03-01): the card carries its depth in chrome, not in a flat tint — a primary→violet top accent bar, two heavily blurred low-alpha blobs (primary + chart-5) and shadow-primary, all on a normal bg-card surface. Every decorative layer is aria-hidden AND pointer-events-none, because each row is one stretched click target (the CTA link's after:absolute after:inset-0 over the row's relative box) that a decoration must never intercept. Rows come in THREE tones, not two: the first still-open step is the focal 'next up' row (primary ring, shadow-primary, a Next pill, and the card's only default-variant CTA), later pending rows are quiet, and done rows recede into a faint emerald wash with a filled emerald tick — never a strikethrough, which reads as deletion rather than achievement. The header progress bar passes destructiveWhenFull={false}: Progress defaults to TRUE and would paint a finished checklist red, the colour that means 'down' everywhere else here. MOTION: this is the surface that sets dash0's reduced-motion convention — every animation class is behind Tailwind's motion-safe: variant (staggered row reveal, the tick's zoom-in, the all-set strip, the hover lift), so prefers-reduced-motion simply drops them. Two fixtures below: a mixed in-progress state and the 5/5 all-set reward strip."
     >
       <ExampleRow
         preview={
@@ -5633,11 +5853,12 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
               org={org}
               steps={[
                 { id: "check", done: true },
-                // Pending with no test-alert button in the fixture (no
-                // onTestAlert prop below) — its CTA carries the same
-                // primary weight as any other pending step's, not the
-                // outline it used to be forced into.
+                // The first still-open step: this is the "next up" row —
+                // primary ring, Next pill, and the only default-variant CTA
+                // on the card (there is no onTestAlert prop in this fixture,
+                // so nothing else is competing for that weight).
                 { id: "alerts", done: false },
+                // Pending but not next: deliberately quieter, outline CTA.
                 { id: "report", done: false },
                 // Done — its CTA reads "View status pages" instead of
                 // reusing the pending "Create a status page" label.
@@ -5651,6 +5872,35 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
         }
         importLine={
           'import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";'
+        }
+      />
+      <p className="text-xs text-muted-foreground">
+        And the finish line — every step done. The emerald→primary strip is
+        the card&apos;s one celebratory moment; note that the progress bar
+        goes emerald at 5/5 rather than the destructive red{" "}
+        <code className="font-mono">Progress</code> would pick by default, and
+        that five done rows read as a completed set because nothing is struck
+        through.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="max-w-2xl">
+            <OnboardingChecklistCard
+              org={org}
+              steps={[
+                { id: "check", done: true },
+                { id: "alerts", done: true },
+                { id: "report", done: true },
+                { id: "statusPage", done: true },
+                { id: "team", done: true },
+              ]}
+              allSet
+              onDismiss={() => {}}
+            />
+          </div>
+        }
+        importLine={
+          '<OnboardingChecklistCard org={org} steps={allDoneSteps} allSet onDismiss={hide} />'
         }
       />
       <CodeSnippet code={snippet} />

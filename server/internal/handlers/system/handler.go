@@ -10,16 +10,27 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jmap"
+	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // paramValueField is the field name reported in a validation error for the
 // request body's "value" field.
 const paramValueField = "value"
 
+// invalidJSONMessage is the validation message every malformed-body branch in
+// this package returns, and bodyField the field it is attributed to.
+const (
+	invalidJSONMessage = "Invalid JSON format"
+	bodyField          = "body"
+)
+
 // Handler provides HTTP handlers for system parameter endpoints.
 type Handler struct {
 	base.HandlerBase
 	svc *Service
+	// cfg is kept alongside HandlerBase's own copy because the operator-notice
+	// test needs the instance base URL to build its deep link.
+	cfg *config.Config
 }
 
 // NewHandler creates a new system handler.
@@ -27,6 +38,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	return &Handler{
 		HandlerBase: base.NewHandlerBase(cfg),
 		svc:         service,
+		cfg:         cfg,
 	}
 }
 
@@ -69,7 +81,7 @@ func (h *Handler) SetParameter(writer http.ResponseWriter, req *http.Request) er
 	var setReq SetParameterRequest
 	if err := json.NewDecoder(req.Body).Decode(&setReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: bodyField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -105,7 +117,7 @@ func (h *Handler) TestEmail(writer http.ResponseWriter, req *http.Request) error
 	var body TestEmailRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: bodyField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -297,4 +309,65 @@ func (h *Handler) LaneLoad(writer http.ResponseWriter, req *http.Request) error 
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": report})
+}
+
+// GetOperatorNotifications handles GET /api/v1/system/operator-notifications.
+func (h *Handler) GetOperatorNotifications(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.GetOperatorNotifications(req.Context())
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// SetOperatorNotifications handles PUT /api/v1/system/operator-notifications.
+//
+// A dedicated endpoint rather than the raw parameter CRUD so the shape is
+// validated as a document — an unknown event name or a non-super-admin
+// recipient comes back as VALIDATION_ERROR while the operator is still looking
+// at the form.
+func (h *Handler) SetOperatorNotifications(writer http.ResponseWriter, req *http.Request) error {
+	var body OperatorNotificationsRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: bodyField, Message: invalidJSONMessage},
+		})
+	}
+
+	resp, err := h.svc.SetOperatorNotifications(req.Context(), &body)
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// SendOperatorNoticeTest handles POST /api/v1/system/operator-notifications/test.
+//
+// It always targets the CALLER, never an arbitrary user: "send me a test" is a
+// self-service confirmation, and letting a super admin push free text at
+// somebody else's phone would be a messaging primitive, not a diagnostic.
+func (h *Handler) SendOperatorNoticeTest(writer http.ResponseWriter, req *http.Request) error {
+	user, ok := middleware.GetUserFromContext(req.Context())
+	if !ok || user == nil {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	result, err := h.svc.SendOperatorNoticeTest(req.Context(), user, h.baseURL())
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, result)
+}
+
+// baseURL is the instance's public root, used to build the test notice's deep
+// link. Empty is fine — the notice simply carries no URL.
+func (h *Handler) baseURL() string {
+	if h.cfg == nil {
+		return ""
+	}
+
+	return h.cfg.Server.BaseURL
 }

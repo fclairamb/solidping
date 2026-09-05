@@ -106,23 +106,9 @@ func newTestCredentials(t *testing.T, dbSvc *sqlite.Service) credentials.Service
 	_, err := rand.Read(key)
 	r.NoError(err)
 
-	store := credentials.ParamStore{
-		Load: func(ctx context.Context, orgUID, key string) (json.RawMessage, bool, error) {
-			param, getErr := dbSvc.GetOrgParameter(ctx, orgUID, key)
-			if getErr != nil || param == nil {
-				return nil, false, getErr
-			}
-
-			raw, mErr := json.Marshal(param.Value)
-
-			return raw, true, mErr
-		},
-		Save: func(ctx context.Context, orgUID, key string, value any, secret bool) error {
-			return dbSvc.SetOrgParameter(ctx, orgUID, key, value, secret)
-		},
-	}
-
-	svc, err := credentials.NewService(key, store)
+	// The PRODUCTION adapter, not a copy of it: a test that wires its own
+	// version of this is what let the DEK write/read shape mismatch pass CI.
+	svc, err := credentials.NewService(key, credentials.NewParamStore(dbSvc))
 	r.NoError(err)
 	r.True(svc.Enabled())
 

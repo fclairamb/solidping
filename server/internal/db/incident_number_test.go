@@ -82,13 +82,13 @@ func TestIncidentNumbers_Postgres(t *testing.T) {
 		t.Skipf("embedded postgres init failed: %v", initErr)
 	}
 
-	// The embedded server runs with max_connections=10 and the embedded
-	// constructor leaves the pool unbounded, so the racing goroutines would each
-	// open their own connection and be refused with "sorry, too many clients
-	// already" long before the server could answer a duplicate key — masking the
-	// very contention this test exists to create. Bounded below 10, the extra
-	// goroutines queue on the pool instead.
-	svc.DB().SetMaxOpenConns(6)
+	// postgres.NewEmbedded now bounds the pool itself (MaxOpenConns: 5,
+	// comfortably under the embedded server's 7 non-superuser connections) —
+	// see spec 2026-09-04-04 — so this suite no longer needs to hand-bound it.
+	// Without a bound, the racing goroutines would each open their own
+	// connection and be refused with "sorry, too many clients already" long
+	// before the server could answer a duplicate key, masking the very
+	// contention this test exists to create.
 
 	testIncidentNumbers(t, svc)
 }

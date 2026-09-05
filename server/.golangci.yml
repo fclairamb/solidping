@@ -268,6 +268,31 @@ linters:
           - varnamelen
           - mnd
         path: ^cmd/loadgen/
+      # cmd/membench is the memory bench harness — a developer tool that shells
+      # out to docker, prints tables to stdout and reports dynamic errors. Same
+      # carve-out as cmd/loadgen; the part of it that turns numbers into
+      # conclusions lives in internal/membench and is held to the full rules.
+      - linters:
+          - contextcheck
+          - cyclop
+          - err113
+          - errcheck
+          - errchkjson
+          - forbidigo
+          - funlen
+          - gochecknoglobals
+          - gocognit
+          - goconst
+          - gocritic
+          - lll
+          - mnd
+          - noctx
+          - nolintlint
+          - paralleltest
+          - perfsprint
+          - unparam
+          - varnamelen
+        path: ^cmd/membench/
       # cmd/scenariodriver is a developer/ops tool for end-to-end scenario testing.
       # Most production-code rules don't apply to this CLI harness.
       - linters:

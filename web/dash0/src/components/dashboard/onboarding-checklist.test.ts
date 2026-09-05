@@ -50,6 +50,8 @@ const DASHBOARD_KEYS = [
   "onboarding.dismiss",
   "onboarding.doneLabel",
   "onboarding.todoLabel",
+  // The "Next" pill on the first still-open step (spec 2026-09-03-01).
+  "onboarding.nextUp",
   "onboarding.reenableHint",
   "onboarding.allSet.title",
   "onboarding.allSet.body",

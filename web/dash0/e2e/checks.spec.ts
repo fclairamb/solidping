@@ -290,7 +290,9 @@ test.describe("Checks", () => {
     expect(heartbeatUrlBefore).toContain("token=");
 
     // Navigate to edit page
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
@@ -399,7 +401,9 @@ test.describe("Checks", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
@@ -426,7 +430,9 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to edit page again to verify values were persisted
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
@@ -478,7 +484,9 @@ test.describe("Checks", () => {
 
     // The edit form seeds the timeout input from config.timeout ("10s" → 10),
     // so a fresh edit page proves the value was persisted in config.
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
     // A non-default timeout auto-opens Advanced; expand defensively regardless.
@@ -493,7 +501,9 @@ test.describe("Checks", () => {
 
     // Back on a fresh edit page the field is empty again (key removed). With the
     // timeout cleared, Advanced is collapsed by default, so expand it first.
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
     await expandSection(page, "section-advanced-trigger");
@@ -627,7 +637,9 @@ test.describe("Checks", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page to verify fields round-trip
-    await page.getByRole("link", { name: /Edit/i }).click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
     await page.waitForLoadState("networkidle");
 
@@ -687,7 +699,9 @@ test.describe("Checks", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page to verify fields round-trip
-    await page.getByRole("link", { name: /Edit/i }).click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
     await page.waitForLoadState("networkidle");
 
@@ -750,7 +764,9 @@ test.describe("Checks", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page to verify the auto-toggled tls:true persisted.
-    await page.getByRole("link", { name: /Edit/i }).click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit/);
     await page.waitForLoadState("networkidle");
 

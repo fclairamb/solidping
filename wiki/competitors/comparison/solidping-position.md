@@ -1,5 +1,28 @@
 # SolidPing Competitive Position
 
+## Which SolidPing is being compared
+
+SolidPing ships in two versions with different entitlements, and every comparison must say
+which one it means. The table below ("Advantages Over All Three") is written from the
+**self-hosted** build, which is why every row wins — a free, uncapped build always beats a
+paid plan, and that comparison proves nothing on its own.
+
+The rule used on the public `/compare` pages (solidping-website, 2026-09-04):
+
+- vs a **self-hosted** tool → **SolidPing self-hosted**: unlimited monitors, check rate,
+  workers and status-page domains; 30 members by default; SMS/voice/WhatsApp via the
+  operator's own Twilio account.
+- vs a **hosted service** → **SolidPing Cloud**: 100/1,000/2,000/5,000 monitors,
+  10/20/100/500 checks per minute, 5/10/50/250 seats, 1/2/3/5 private agents,
+  0/1/3/10 custom status-page domains, €0/€5/€15/€45 — six shared probe regions
+  (Gravelines, Paris, Lauterbourg, Nuremberg, Kansas City, Tokyo) — and **no SMS, voice or
+  WhatsApp on any plan**.
+- Tools that sell both (Healthchecks.io, OpenStatus) get both comparisons, separately.
+
+Numbers above come from `solidping-billing/server/internal/plans/plans.go` and
+`server/internal/entitlements/defaults.go`. Re-read them before quoting; they move.
+
+
 ## SolidPing Advantages Over All Three
 
 | Advantage | vs BetterStack | vs UptimeRobot | vs Pingdom |
@@ -33,7 +56,7 @@ Based on competitive analysis, prioritize these features:
 11. ✅ Domain expiration monitoring (RDAP-first, WHOIS fallback)
 12. ✅ Database monitoring (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis)
 13. ✅ Message-queue monitoring (Kafka, RabbitMQ, MQTT)
-14. ✅ Docker container, SNMP, A2S/Minecraft game server, custom JS check, browser (Rod) monitoring
+14. ✅ Docker container, SNMP, A2S/Minecraft game server, custom JS check, browser (chromedp/CDP) monitoring
 15. ✅ Multiple notification channels — 10 native: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, PagerDuty, Pushover, Web Push
 16. ✅ Public status pages with sections, resources, availability metrics, locale-aware date formatting
 17. ✅ Multi-location checking (distributed workers + multi-region)
@@ -63,7 +86,7 @@ Based on competitive analysis, prioritize these features:
 
 **Tier 2 - High-Impact Gaps** (not yet implemented, multiple competitors offer these):
 1. ❌ Telegram, Microsoft Teams notification channels — specs ready in `specs/ideas/2026-03-22-telegram-notifications.md` and `specs/ideas/2026-03-22-notification-channels.md`
-2. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec ready in `specs/ideas/2026-01-05-screenshots.md`
+2. ❌ Screenshot capture on **HTTP** failure (BetterStack, Checkly) — still missing. Browser checks *do* capture one on failure since spec `2026-08-21-01`, opt-in per check; the shipped implementation is **chromedp over CDP**, not the Rod engine the 2026-01-05 idea proposed
 3. ❌ Importers from BetterStack / UptimeRobot / Uptime Kuma (spec stub in `specs/ideas/2025-12-28-importers.md` — lowers switching friction)
 4. ⚠️ Terraform provider (Gatus, Checkly, BetterStack) — lives in a separate `terraform-provider-solidping` repo per a "done" spec; this repo only has an API-completeness audit (`../../terraform-provider-api-audit.md`), so its actual shipped/published state isn't verifiable from here
 
@@ -73,7 +96,7 @@ Based on competitive analysis, prioritize these features:
 3. ❌ Traceroute/MTR diagnostics on failure (BetterStack)
 4. ❌ Mobile applications (UptimeRobot, Pingdom) or installable PWA
 5. ❌ GitHub/GitLab issue integration (Gatus)
-6. ❌ SMS / Voice escalations (every major SaaS via Twilio)
+6. ⚠️ SMS / Voice / WhatsApp — **implemented** (Twilio sender in `server/internal/notifications/registry.go`) and working self-hosted with the operator's own credentials, but **not included on any hosted plan**: the carriers bill per message and the plans do not price them in. A commercial gap, not a technical one
 7. ❌ Heartbeat enhancements — `/start` endpoint, exit codes, log attachment (Healthchecks.io)
 8. ❌ Automatic application discovery — suggest healthcheck endpoints from URL (spec in `specs/ideas/2025-12-28-automatic-app-discovery.md` — no competitor has this)
 9. ❌ AIOps / anomaly detection on response-time series (Site24x7, Datadog)

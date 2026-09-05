@@ -55,6 +55,7 @@ func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
 	var granted atomic.Int64
 	var wg sync.WaitGroup
 	start := make(chan struct{})
+	failures := make(chan error, goroutines)
 
 	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
@@ -62,7 +63,11 @@ func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
 			defer wg.Done()
 			<-start
 			ok, reserveErr := s.ReserveMonthlyUsage(ctx, org.UID, models.UsageCounterKindSMS, period, limit)
-			if reserveErr == nil && ok {
+			if reserveErr != nil {
+				failures <- reserveErr
+				return
+			}
+			if ok {
 				granted.Add(1)
 			}
 		}()
@@ -70,6 +75,20 @@ func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
 
 	close(start)
 	wg.Wait()
+	close(failures)
+
+	// ReserveMonthlyUsage's only error return is a genuine failure of the
+	// conditional upsert itself (e.g. a refused/dropped connection) — an
+	// over-limit refusal is expressed as (false, nil), never as an error. So
+	// every value on this channel is an infrastructure failure the bounded
+	// embedded pool (postgres.NewEmbedded, spec 2026-09-04-04) exists to
+	// prevent, and swallowing it here would make this the same latent-flake
+	// bug the spec found: the assertion below would then prove nothing about
+	// connection availability, only about whichever goroutines happened to
+	// get a connection.
+	for failure := range failures {
+		r.NoError(failure, "a monthly-usage reservation must never fail with a connection/infrastructure error")
+	}
 
 	r.Equal(int64(limit), granted.Load(),
 		"concurrent reservations must never grant more than the monthly limit")

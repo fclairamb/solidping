@@ -15,7 +15,8 @@
     "slack": "Slack",
     "analytics": "Analyse",
     "discord": "Discord",
-    "entitlements": "Kontingente"
+    "entitlements": "Kontingente",
+    "notifications": "Benachrichtigungen"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -429,5 +430,27 @@
       "admin": "Admin-Übersteuerung",
       "billing": "Abrechnungs-Sync"
     }
+  },
+  "notifications": {
+    "title": "Betreiber-Benachrichtigungen",
+    "description": "Informieren Sie ausgewählte Super-Administratoren über Instanz-Ereignisse — eine neue Support-Nachricht, eine neue Registrierung — über die Benachrichtigungswege, die sie sich bereits selbst eingerichtet haben (E-Mail, Telegram, Slack-DM, Web-Push, SMS).",
+    "enabled": "Betreiber-Benachrichtigungen aktivieren",
+    "enabledHelp": "Hauptschalter. Ausgeschaltet wird nichts mehr zugestellt; die Ereignisse treten weiterhin auf und bleiben in den Protokollen.",
+    "columnUser": "Super-Administrator",
+    "columnRoutes": "Zugestellt über",
+    "events": {
+      "supportMessage": "Support-Nachricht",
+      "userRegistered": "Neue Registrierung"
+    },
+    "noRoutes": "Keine Benachrichtigungswege — dieser Administrator muss selbst einen hinzufügen",
+    "noRoutesSelf": "Keine Benachrichtigungswege — richten Sie einen auf Ihrer Benachrichtigungsseite ein",
+    "noRecipients": "Betreiber-Benachrichtigungen sind aktiv, aber niemand hat etwas abonniert. Es wird nichts zugestellt.",
+    "noSuperAdmins": "Auf dieser Instanz gibt es noch keinen Super-Administrator.",
+    "notSuperAdmin": "Kein Super-Administrator mehr — bei der Zustellung übersprungen",
+    "superAdminOnly": "Nur Super-Administratoren können Empfänger sein: eine Benachrichtigung kann die Support-Nachricht eines Kunden zitieren, die nur ein Super-Administrator öffnen darf.",
+    "sendTest": "Test an mich senden",
+    "testDelivered_one": "Test-Benachrichtigung über {{count}} Weg zugestellt.",
+    "testDelivered_other": "Test-Benachrichtigung über {{count}} Wege zugestellt.",
+    "testUndeliverable": "Es wurde nichts zugestellt. Prüfen Sie, ob Sie mindestens einen aktiven Benachrichtigungsweg haben."
   }
 }

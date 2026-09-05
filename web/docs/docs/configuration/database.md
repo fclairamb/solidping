@@ -16,6 +16,13 @@ SolidPing supports multiple database backends. PostgreSQL is recommended for pro
 | `sqlite-memory` | In-memory SQLite | Testing only |
 | `postgres-embedded` | Embedded PostgreSQL | Testing only |
 
+:::note `postgres-embedded` connection ceiling
+The embedded PostgreSQL server starts with `max_connections=10` (3 reserved for
+superusers), and SolidPing bounds its own client pool to 5 connections against it.
+Both numbers are fixed and not configurable via `SP_DB_MAX_OPEN_CONNS` or similar —
+this mode is sized for tests and light local use, not for meaningful concurrent load.
+:::
+
 ## PostgreSQL (Recommended)
 
 PostgreSQL 15+ is recommended for production deployments.

@@ -4,13 +4,14 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Bell,
-  CheckCircle2,
-  Circle,
+  Check,
   Globe,
   ListChecks,
   Loader2,
   Mail,
+  Rocket,
   Send,
+  Sparkles,
   Users,
   X,
 } from "lucide-react";
@@ -44,6 +45,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 
 // The checklist derives everything from list endpoints that barely change on
 // an onboarding timescale, so it holds its answers for a while instead of
@@ -233,6 +235,12 @@ export interface OnboardingChecklistCardProps {
 /**
  * The card's presentation, free of data fetching so the design reference can
  * render it with fixture props.
+ *
+ * Spec 2026-09-03-01 reworked the *look* only: gradient chrome with blurred
+ * accent blobs, a real progress bar, a "next up" focal row, a filled emerald
+ * tick instead of a strikethrough, a celebratory all-set strip, and a short
+ * staggered reveal. Every animation is behind Tailwind's `motion-safe:`
+ * variant — this card is the surface that sets that convention for dash0.
  */
 export function OnboardingChecklistCard({
   org,
@@ -244,18 +252,62 @@ export function OnboardingChecklistCard({
 }: OnboardingChecklistCardProps) {
   const { t } = useTranslation("dashboard");
   const done = completedStepCount(steps);
+  // The first still-open step is the card's focal point: it is the one thing
+  // the user is being asked to do next, so it gets the ring, the glow and the
+  // only `default`-variant CTA. -1 (nothing pending) simply matches no row.
+  const nextUpIndex = steps.findIndex((step) => !step.done);
+  const progressLabel = t("onboarding.progress", { done, total: steps.length });
 
   return (
     <Card
       data-testid="onboarding-checklist"
-      className="border-primary/30 bg-primary/5"
+      className="relative overflow-hidden border-primary/30 shadow-primary"
     >
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
-        <div className="min-w-0">
-          <CardTitle className="text-base">{t("onboarding.title")}</CardTitle>
-          <CardDescription data-testid="onboarding-progress">
-            {t("onboarding.progress", { done, total: steps.length })}
-          </CardDescription>
+      {/* Decoration only. Every layer here is `pointer-events-none` so it can
+          never intercept a click meant for a row's stretched link, and the
+          whole thing is `aria-hidden` so it adds nothing to the a11y tree.
+          Blobs use alpha tints (primary + chart-5 violet) so they read on
+          both the light and the dark card surface without a `dark:` variant;
+          no green/amber/red in the chrome, which mean up/degraded/down
+          everywhere else on this dashboard. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"
+      >
+        <span className="absolute inset-x-0 top-0 block h-1 bg-gradient-to-r from-primary via-chart-5 to-primary/30" />
+        <span className="absolute -right-16 -top-24 block h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+        <span className="absolute -bottom-24 -left-12 block h-52 w-52 rounded-full bg-chart-5/10 blur-3xl" />
+      </div>
+
+      <CardHeader className="relative flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-5 text-primary-foreground shadow-primary sm:flex"
+          >
+            <Rocket className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle className="text-base">{t("onboarding.title")}</CardTitle>
+            <CardDescription data-testid="onboarding-progress">
+              {progressLabel}
+            </CardDescription>
+            {/* Progress defaults to `destructiveWhenFull`, which would paint a
+                finished checklist RED — the one colour that means "down" on
+                this dashboard. Finishing is an achievement: emerald. */}
+            <Progress
+              value={done}
+              max={steps.length}
+              destructiveWhenFull={false}
+              aria-label={progressLabel}
+              className="h-1.5 max-w-xs bg-primary/10"
+              indicatorClassName={
+                allSet
+                  ? "bg-emerald-500"
+                  : "bg-gradient-to-r from-primary to-chart-5"
+              }
+            />
+          </div>
         </div>
         {onDismiss ? (
           <Button
@@ -270,27 +322,39 @@ export function OnboardingChecklistCard({
           </Button>
         ) : null}
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="relative space-y-3">
         {allSet ? (
           <div
-            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3"
+            className="rounded-lg border border-emerald-500/30 bg-gradient-to-r from-emerald-500/15 via-emerald-500/10 to-primary/10 p-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300"
             data-testid="onboarding-all-set"
           >
-            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-              {t("onboarding.allSet.title")}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("onboarding.allSet.body")}
-            </p>
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              >
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                  {t("onboarding.allSet.title")}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {t("onboarding.allSet.body")}
+                </p>
+              </div>
+            </div>
           </div>
         ) : null}
 
         <ul className="space-y-2">
-          {steps.map((step) => (
+          {steps.map((step, index) => (
             <li key={step.id}>
               <OnboardingStepRow
                 org={org}
                 step={step}
+                index={index}
+                isNext={index === nextUpIndex}
                 onTestAlert={onTestAlert}
                 testAlertPending={testAlertPending}
               />
@@ -309,34 +373,47 @@ export function OnboardingChecklistCard({
 function OnboardingStepRow({
   org,
   step,
+  index,
+  isNext,
   onTestAlert,
   testAlertPending,
 }: {
   org: string;
   step: OnboardingStep;
+  /** 0-based position in the list — drives the badge number and the stagger. */
+  index: number;
+  /** True for the first still-open step: the card's single focal point. */
+  isNext: boolean;
   onTestAlert?: () => void;
   testAlertPending: boolean;
 }) {
   const { t } = useTranslation("dashboard");
   const Icon = STEP_ICONS[step.id];
 
-  // Rows had no background of their own, so the card's own primary tint
-  // bled through every one of them — done and pending rows read identically
-  // apart from the tick. Give each row an explicit base (matching the card
-  // surface) so it reads as a crisp item sitting on the tint, and let done
-  // rows carry a faint emerald wash — the same alpha-based
-  // `emerald-500/…` pattern as the "all set" banner above, which needs no
-  // `dark:` variant because the alpha already reads correctly on both
-  // surfaces.
+  // Three tones, not two: done rows recede into a faint emerald wash, the
+  // next-up row is ringed and lifted so the eye lands on it first, and the
+  // remaining pending rows sit quietly in between. All three use alpha tints
+  // over the card surface so neither theme needs a `dark:` variant.
   const rowTone = step.done
-    ? "border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/15"
-    : "bg-card hover:bg-muted/50";
+    ? "border-emerald-500/25 bg-emerald-500/[0.07] hover:border-emerald-500/40 hover:shadow-card-hover"
+    : isNext
+      ? "border-primary/45 bg-card shadow-primary ring-1 ring-primary/15 hover:border-primary/60 hover:shadow-primary-hover"
+      : "border-border/70 bg-card/60 hover:border-primary/30 hover:bg-card hover:shadow-card-hover";
 
   return (
     <div
-      className={`relative flex cursor-pointer flex-col gap-2 rounded-md border p-3 transition-colors sm:flex-row sm:items-center sm:gap-3 ${rowTone}`}
+      className={`relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-all duration-200 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:fill-mode-both motion-safe:hover:-translate-y-px sm:flex-row sm:items-center sm:gap-3 ${rowTone}`}
+      // Short, one-shot stagger on mount (≤240ms of delay, 200ms each) so the
+      // list assembles instead of appearing. The delay is inert without an
+      // animation, which is exactly what `prefers-reduced-motion` produces:
+      // the `motion-safe:` classes above simply do not apply.
+      style={{ animationDelay: `${index * 60}ms` }}
       data-testid={`onboarding-step-${step.id}`}
       data-done={step.done ? "true" : "false"}
+      // Exposed so the e2e suite can pin the focal row rather than guessing
+      // it from a class name: exactly one row carries data-next="true", and
+      // it is always the first step still open.
+      data-next={isNext ? "true" : "false"}
     >
       <span
         className="shrink-0"
@@ -344,23 +421,54 @@ function OnboardingStepRow({
         data-done={step.done ? "true" : "false"}
         aria-label={step.done ? t("onboarding.doneLabel") : t("onboarding.todoLabel")}
       >
+        {/* Keyed on the state so React remounts the well when a step flips —
+            that is what replays the tick's zoom-in, making the transition
+            something the user sees rather than something that just happened. */}
         {step.done ? (
-          <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          <span
+            key="done"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-300"
+          >
+            <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" />
+          </span>
         ) : (
-          <Circle className="h-5 w-5 text-muted-foreground" />
+          <span
+            key="todo"
+            className={`flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold tabular-nums transition-colors ${
+              isNext
+                ? "border-primary/50 bg-primary/10 text-primary"
+                : "border-border bg-muted/60 text-muted-foreground"
+            }`}
+          >
+            {index + 1}
+          </span>
         )}
       </span>
 
       <div className="min-w-0 flex-1">
         <p
-          className={`flex items-center gap-1.5 text-sm font-medium ${
-            step.done ? "text-muted-foreground line-through" : ""
+          className={`flex flex-wrap items-center gap-1.5 text-sm font-medium ${
+            step.done ? "text-muted-foreground" : ""
           }`}
         >
-          <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <Icon
+            className={`h-3.5 w-3.5 shrink-0 ${
+              step.done
+                ? "text-emerald-600/70 dark:text-emerald-400/70"
+                : isNext
+                  ? "text-primary"
+                  : "text-muted-foreground"
+            }`}
+            aria-hidden="true"
+          />
           <span className="min-w-0 break-words">
             {t(`onboarding.steps.${step.id}.title`)}
           </span>
+          {isNext ? (
+            <span className="shrink-0 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold uppercase leading-4 tracking-wide text-primary-foreground">
+              {t("onboarding.nextUp")}
+            </span>
+          ) : null}
         </p>
         {step.done ? null : (
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -389,6 +497,7 @@ function OnboardingStepRow({
         <OnboardingStepLink
           org={org}
           step={step}
+          isNext={isNext}
           sharesRowWithTestAlert={step.id === "alerts" && Boolean(onTestAlert)}
         />
       </div>
@@ -399,10 +508,13 @@ function OnboardingStepRow({
 function OnboardingStepLink({
   org,
   step,
+  isNext,
   sharesRowWithTestAlert,
 }: {
   org: string;
   step: OnboardingStep;
+  /** True for the first still-open step. */
+  isNext: boolean;
   /** True only for the alerts row when the test-alert button is also shown. */
   sharesRowWithTestAlert: boolean;
 }) {
@@ -416,12 +528,13 @@ function OnboardingStepLink({
       ? t("onboarding.steps.statusPage.ctaDone")
       : t(`onboarding.steps.${step.id}.cta`);
   const testId = `onboarding-step-${step.id}-cta`;
-  // The step's own action is secondary once another button leads the row
-  // (the test-alert case) and once the step is done. When the alerts row has
-  // no test-alert button to defer to, its own CTA is the row's only action
-  // and should carry the same weight as any other pending step's.
+  // Exactly one filled step CTA per card: the next-up step's own. A done
+  // step, a pending step further down the list, and the alerts row that
+  // already has the test-alert button leading it all fall back to `outline`,
+  // so the eye lands on one obvious next action. (The test-alert button is
+  // its own affordance, not a step CTA, and keeps its own weight.)
   const variant =
-    step.done || sharesRowWithTestAlert ? "outline" : "default";
+    isNext && !step.done && !sharesRowWithTestAlert ? "default" : "outline";
 
   // The statusPage step used to land on the blank create form (pre-attaching
   // the org's first check via ?checkUid=, spec 2026-08-28-16). It now lands
@@ -447,7 +560,9 @@ function OnboardingStepLink({
         // Stretches over the whole row via the `after` pseudo-element
         // (positioned against the row's `relative` ancestor), so the entire
         // step row is one click/keyboard target instead of only this small
-        // CTA — without nesting a second interactive element.
+        // CTA — without nesting a second interactive element. The card's
+        // decorative blob layer is `pointer-events-none` precisely so it
+        // cannot steal this hit target.
         className="after:absolute after:inset-0"
         data-testid={testId}
       >

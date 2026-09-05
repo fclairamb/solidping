@@ -33,7 +33,9 @@ test.describe("Check edit — confirmation/recovery period persistence", () => {
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
     // Navigate to edit page
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
@@ -53,7 +55,9 @@ test.describe("Check edit — confirmation/recovery period persistence", () => {
     // Navigate to edit page again to verify the values were persisted
     // server-side (this bug's regression: a fresh fetch would show the old
     // defaults instead of the newly saved values).
-    await page.locator('a[href*="/edit"]').click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
     await page.waitForURL(/\/edit$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
