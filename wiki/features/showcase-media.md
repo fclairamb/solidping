@@ -94,9 +94,18 @@ regeneration can come later, once the recorded flows have proven stable.
 
 1. A Playwright recording (`video: "on"`, fixed 1280×800 viewport, light
    theme) of the canonical **create an HTTP check** flow: checks list → New
-   check → HTTP type → name + URL → interval → regions → save → check detail
-   page — driven with a painted cursor, eased pointer travel and
+   check → HTTP type → name + URL → interval → (regions, if offered) → save →
+   check detail page — driven with a painted cursor, eased pointer travel and
    character-by-character typing rather than `fill()` and bare clicks.
+
+   > **The regions beat is conditional.** `check-form.tsx` renders the region
+   > picker only when `availableRegions.length > 1`, and the showcase spec
+   > gates the beat — cue included — on `regionCount > 0`. A single-node
+   > side-car (the recommended way to record) offers exactly one region, so
+   > the run silently omits the step and its cue list runs `interval` →
+   > `form-complete`. That is expected rather than a bug, and it is what the
+   > **currently committed cut** shows: no regions beat. Recording one means
+   > filming against a server with at least two regions configured.
 2. Named still frames captured during the same run (at 2×, published at 1×).
 3. Post-processing: head/tail trimmed, a **camera move** applied from the
    recording's cue list, then encoded twice — **AV1** (`libsvtav1`, tiny) and
@@ -158,6 +167,31 @@ served at `/docs/showcase/<file>` on every host — e.g.
 Keep the catalog deliberately small: only assets that a published page actually
 embeds. If it ever grows big enough to bloat the repo, moving to a CDN is a
 follow-up spec.
+
+### Last regenerated
+
+A record of what the committed media actually is, so nobody has to re-derive it
+from the binaries. Update this block whenever `make showcase` is re-run and the
+output is committed.
+
+- **Date:** 2026-09-05 (spec `2026-09-05-03-showcase-video-refresh-zoom-cursor`)
+- **App version on camera:** `v0.23.0-19-g1b4d3a74d` (sidebar footer of the
+  stills)
+- **Video:** 28.52 s, 1280×800, 25 fps, 713 frames
+- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 439 847 B
+  (1.44 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 271 058 B
+  (1.27 MB)
+- **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 182 KB,
+  `02-check-form-filled.png` 169 KB, `03-check-detail.png` 201 KB
+- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 265 KB / 242 KB /
+  296 KB — two of the three above the ~250 KB bar, which is why the 1× versions
+  are the ones published
+- **No regions beat**, for the reason given under "What it produces": the run
+  was filmed against a single-node side-car, so the cue list runs `interval` →
+  `form-complete`
+- **`minterpolate` (50 fps frame interpolation): tried, rejected.** On screen
+  content it ghosts — half-typed characters and the text caret double on every
+  synthesised frame. The cut stays at its native 25 fps.
 
 ## Where they are surfaced
 

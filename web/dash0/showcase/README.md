@@ -161,8 +161,19 @@ Useful knobs:
    (above), seeds realistic demo checks ("Marketing site", "Docs site",
    "Checkout API") through the REST API, logs in through the real form, then
    drives the create-check flow on camera: checks list → **New check** → HTTP
-   type → name + target URL → interval → regions → save → check detail page.
-   Named still frames are written as it goes. The org is emptied afterwards.
+   type → name + target URL → interval → (regions, if offered) → save → check
+   detail page. Named still frames are written as it goes. The org is emptied
+   afterwards.
+
+   > **The regions beat only fires against a server that offers more than one
+   > region.** The form renders the region picker only when
+   > `availableRegions.length > 1` (`web/dash0/src/components/shared/check-form.tsx`),
+   > and the spec gates the whole beat — cue included — on `regionCount > 0`.
+   > A single-node side-car offers one region, so it silently records no
+   > regions step and the cue list goes straight from `interval` to
+   > `form-complete`. That is expected, not a bug: **the currently committed cut
+   > has no regions beat.** If you want one on camera, film against a server
+   > with at least two regions configured.
 2. `postprocess.ts` finds that recording (by spec name — the SMS capture below
    records a video too), trims it, applies the camera move, and encodes it as
    **AV1** *and* **H.264** into `web/docs/static/showcase/`.
@@ -229,9 +240,11 @@ That is why the choreography stays at or below 1.6× and the scale-down uses
 viewport with the app scaled up — i.e. filming a layout nobody ships — which is
 deliberately not done.
 
-Published stills stay at **1280×800**. The 2× PNGs measure 237–289 KB, above the
-~250 KB-each bar that would have justified publishing retina stills, and the
-committed catalog staying small is the constraint that decides it.
+Published stills stay at **1280×800**. The 2560×1600 PNGs from the last run
+measure 265 / 242 / 296 KB — two of the three above the ~250 KB-each bar that
+would have justified publishing retina stills — while the 1× versions actually
+committed are 182 / 169 / 201 KB. The committed catalog staying small is the
+constraint that decides it.
 
 Frame interpolation (`minterpolate` to 50 fps) was tried and **rejected**: on
 screen content it ghosts, doubling half-typed characters and the text caret on
