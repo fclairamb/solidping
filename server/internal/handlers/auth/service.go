@@ -96,6 +96,12 @@ var (
 	ErrOrgSlugTaken            = errors.New("organization slug is already taken")
 	ErrInvalidOrgSlug          = errors.New("invalid organization slug")
 	ErrPasswordResetExpired    = errors.New("password reset link has expired or is invalid")
+	// ErrDemoAccountNotResettable refuses a password reset aimed at the shared
+	// public-demo account (spec 2026-09-06-02). Its password is published by
+	// design; rotating it would lock every visitor out of the live demo, and
+	// the reset endpoint is unauthenticated, so the demo write guard cannot
+	// see it.
+	ErrDemoAccountNotResettable = errors.New("the shared demo account's password cannot be reset")
 	// ErrInvalidCurrentPassword is returned by ChangePassword when the caller
 	// supplies a currentPassword that does not match the stored hash. Kept
 	// distinct from ErrInvalidCredentials so the handler can emit the
@@ -183,6 +189,15 @@ type Claims struct {
 	// spare it. Empty for PAT-validated claims and 2FA temp tokens — neither
 	// is minted from a refresh-token row.
 	RefreshUID string `json:"refreshUid,omitempty"`
+	// Demo marks a session belonging to the shared public-demo user
+	// (users.demo, spec 2026-09-06-02). It rides in the token so the write
+	// guard in RequireAuth needs no extra lookup, and so a PAT issued by the
+	// demo user is a demo session too — which is what would make a published
+	// demo API key safe.
+	//
+	// omitempty: the field is only ever meaningful when true, and every
+	// ordinary session's token stays byte-identical to what it was before.
+	Demo bool `json:"demo,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -254,6 +269,17 @@ type UserInfo struct {
 	// admin view), where a user's pending-rotation state is none of the
 	// viewer's business — see newUserInfo's doc.
 	MustChangePassword bool `json:"mustChangePassword,omitempty"`
+	// Demo marks this session as the shared public-demo principal (spec
+	// 2026-09-06-02). Like MustChangePassword it rides on every login-shaped
+	// response and on /auth/me, so the dashboard shows the "everything here is
+	// shared and expires" banner and hides the actions the guard would refuse,
+	// PROACTIVELY, rather than by tripping a 403 it would render as a dead
+	// "Permission denied".
+	//
+	// omitempty for the same reason: it is only meaningful when true, and
+	// UserInfo also describes OTHER people (the membership-request admin
+	// view), where it would be noise.
+	Demo bool `json:"demo,omitempty"`
 }
 
 // newUserInfo builds the user payload every login-shaped response and /auth/me
@@ -278,6 +304,7 @@ func newUserInfo(user *models.User, role string) *UserInfo {
 		AvatarURL:          user.AvatarURL,
 		Role:               role,
 		MustChangePassword: user.MustChangePassword,
+		Demo:               user.Demo,
 	}
 }
 
@@ -696,7 +723,7 @@ func (s *Service) completeLogin(
 	userInfo := newUserInfo(user, role)
 
 	if resolvedOrg == nil {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "")
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -724,7 +751,7 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID)
+	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID, user.Demo)
 	if err != nil {
 		return nil, err
 	}
@@ -1336,7 +1363,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 	}
 
 	// Generate new access token, bound to the refresh-token row that issued it.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID, user.Demo)
 	if err != nil {
 		return nil, err
 	}
@@ -1470,7 +1497,11 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		UserUID: user.UID,
 		OrgSlug: org.Slug,
 		Role:    role,
-		Scopes:  scopesFromProperties(token.Properties),
+		// A personal access token owned by the demo user IS a demo session:
+		// the same allowlist applies to it, which is what would make a
+		// published demo API key safe (spec 2026-09-06-02).
+		Demo:   user.Demo,
+		Scopes: scopesFromProperties(token.Properties),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: expiresAt,
 			IssuedAt:  jwt.NewNumericDate(token.CreatedAt),
@@ -2009,7 +2040,7 @@ func (s *Service) SwitchOrg(
 	}
 
 	// Generate access token, bound to the new refresh-token row.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
 	if err != nil {
 		return nil, err
 	}
@@ -2079,14 +2110,16 @@ func (s *Service) GetAllUserTokens(
 // generateAccessToken mints an access-token JWT. refreshUID is the
 // user_tokens.uid of the refresh-token row this access token is bound to —
 // pass "" when there is no such row (no-org login, PAT validation, 2FA temp
-// tokens).
-func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string) (string, error) {
+// tokens). demo is the owning user's users.demo flag, which the write guard
+// reads straight off the claims (spec 2026-09-06-02).
+func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string, demo bool) (string, error) {
 	now := time.Now()
 	claims := &Claims{
 		UserUID:    userUID,
 		OrgSlug:    orgSlug,
 		Role:       role,
 		RefreshUID: refreshUID,
+		Demo:       demo,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -2114,13 +2147,26 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string)
 // only the access token can identify (isCurrent) and self-revoke the grant it
 // rides on. ttl is supplied by the caller so the OAuth service controls the
 // access-token lifetime independently of the dashboard's session expiry.
+//
+// The demo claim is resolved from the user row here rather than left to the
+// RequireMCPAuth backstop. The backstop does re-derive it, but §1 of spec
+// 2026-09-06-02 says the claim is populated wherever claims are minted, and a
+// guard that works only because a second layer repairs the first is exactly the
+// fragility the second layer exists to cover.
 func (s *Service) GenerateMCPAccessToken(
+	ctx context.Context,
 	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID string,
 ) (string, error) {
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil {
+		return "", fmt.Errorf("failed to load user for MCP access token: %w", err)
+	}
+
 	now := time.Now()
 	claims := &Claims{
 		UserUID:    userUID,
 		OrgSlug:    orgSlug,
+		Demo:       user.Demo,
 		Scopes:     scopes,
 		RefreshUID: refreshUID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -2215,7 +2261,7 @@ func (s *Service) GenerateTokensForOAuth(
 	}
 
 	// Generate access token, bound to the new refresh-token row.
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -2472,7 +2518,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID, user.Demo)
 	if err != nil {
 		return nil, err
 	}
@@ -2742,6 +2788,17 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	user, err := s.db.GetUser(ctx, userUID)
 	if err != nil || user == nil {
 		return nil, ErrPasswordResetExpired
+	}
+
+	// The shared demo password is published, not owned (spec 2026-09-06-02).
+	// This is one of exactly two paths the demo write guard cannot see, because
+	// it is unauthenticated — and it is the one that would let anybody holding
+	// the demo mailbox, or a visitor who clicked "forgot password" out of
+	// curiosity, silently lock every other visitor out of the live demo. The
+	// reset job is refused outright rather than made a no-op, so the caller
+	// learns the account cannot be reset instead of believing they changed it.
+	if user.Demo {
+		return nil, ErrDemoAccountNotResettable
 	}
 
 	hash, err := passwords.Hash(req.Password)
@@ -3565,7 +3622,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID)
+	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID, user.Demo)
 	if err != nil {
 		return nil, err
 	}
@@ -4184,7 +4241,7 @@ func (s *Service) completeLoginAfter2FA(
 
 	// No org case
 	if orgSlug == "" {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "")
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -4226,7 +4283,7 @@ func (s *Service) completeLoginAfter2FA(
 		return nil, createErr
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID)
+	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID, user.Demo)
 	if err != nil {
 		return nil, err
 	}

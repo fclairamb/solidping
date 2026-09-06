@@ -70,12 +70,29 @@ export interface SMSPublicConfig {
   voiceEnabled: boolean;
 }
 
+/**
+ * The shared public live demo, as returned by GET /api/v1/config.
+ *
+ * The password really is here, and really is public: the whole feature is
+ * "anyone can log in and look around", and the server serves the credential
+ * explicitly so this bundle does not have to hardcode a copy that drifts from
+ * whatever the operator configured. Nothing is emitted at all when the demo is
+ * off, so a self-hosted install advertises no account.
+ */
+export interface DemoPublicConfig {
+  enabled: boolean;
+  orgSlug?: string;
+  email?: string;
+  password?: string;
+}
+
 /** The public config document. Extra keys are ignored. */
 export interface PublicConfig {
   posthog?: PostHogPublicConfig;
   whatsapp?: WhatsAppPublicConfig;
   telegram?: TelegramPublicConfig;
   sms?: SMSPublicConfig;
+  demo?: DemoPublicConfig;
 }
 
 /**

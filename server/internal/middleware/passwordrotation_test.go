@@ -67,7 +67,7 @@ func (f *rotationFixture) user(t *testing.T, email string, flagged bool) (*model
 	user.MustChangePassword = flagged
 	require.NoError(t, f.dbSvc.CreateUser(f.ctx, user))
 
-	token, err := f.authSvc.GenerateMCPAccessToken(user.UID, "acme", nil, "", time.Hour, "")
+	token, err := f.authSvc.GenerateMCPAccessToken(f.ctx, user.UID, "acme", nil, "", time.Hour, "")
 	require.NoError(t, err)
 
 	return user, token
@@ -189,7 +189,7 @@ func TestRequireAuthUnflaggedUserUnaffected(t *testing.T) {
 	ssoUser := models.NewUser("sso@example.com")
 	ssoUser.PasswordHash = nil
 	require.NoError(t, fixture.dbSvc.CreateUser(fixture.ctx, ssoUser))
-	ssoToken, err := fixture.authSvc.GenerateMCPAccessToken(ssoUser.UID, "acme", nil, "", time.Hour, "")
+	ssoToken, err := fixture.authSvc.GenerateMCPAccessToken(fixture.ctx, ssoUser.UID, "acme", nil, "", time.Hour, "")
 	require.NoError(t, err)
 
 	for name, token := range map[string]string{"password user": ordinary, "sso user with no password": ssoToken} {
@@ -243,7 +243,7 @@ func TestRequireMCPAuthBlocksFlaggedUser(t *testing.T) {
 
 	resource := "https://solidping.test/api/v1/mcp"
 	token, err := fixture.authSvc.GenerateMCPAccessToken(
-		user.UID, "acme", []string{"mcp"}, resource, time.Hour, "")
+		fixture.ctx, user.UID, "acme", []string{"mcp"}, resource, time.Hour, "")
 	r.NoError(err)
 
 	var reached bool

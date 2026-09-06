@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -698,6 +699,12 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
+	case errors.Is(err, ErrDemoReadOnly):
+		return h.writeDemoReadOnlyError(writer, request, err)
+	case isDemoFieldError(err):
+		return h.WriteValidationError(writer, "Not available in the demo", []base.ValidationErrorField{
+			{Name: demoFieldName(err), Message: err.Error()},
+		})
 	case errors.Is(err, ErrInternalFieldNotWritable):
 		return h.writeInternalFieldError(writer)
 	case errors.Is(err, entcore.ErrEntitlementExceeded):
@@ -769,6 +776,12 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
+	case errors.Is(err, ErrDemoReadOnly):
+		return h.writeDemoReadOnlyError(writer, request, err)
+	case isDemoFieldError(err):
+		return h.WriteValidationError(writer, "Not available in the demo", []base.ValidationErrorField{
+			{Name: demoFieldName(err), Message: err.Error()},
+		})
 	case errors.Is(err, ErrInternalFieldNotWritable):
 		return h.writeInternalFieldError(writer)
 	case errors.Is(err, ErrOrganizationNotFound):
@@ -838,6 +851,12 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, request *http.Re
 	}
 
 	switch {
+	case errors.Is(err, ErrDemoReadOnly):
+		return h.writeDemoReadOnlyError(writer, request, err)
+	case isDemoFieldError(err):
+		return h.WriteValidationError(writer, "Not available in the demo", []base.ValidationErrorField{
+			{Name: demoFieldName(err), Message: err.Error()},
+		})
 	case errors.Is(err, ErrInternalFieldNotWritable):
 		return h.writeInternalFieldError(writer)
 	case errors.Is(err, ErrOrganizationNotFound):
@@ -861,6 +880,12 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, request *http.Re
 // handleDeleteError handles errors from DeleteCheck.
 func (h *Handler) handleDeleteError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrDemoReadOnly):
+		return h.writeDemoReadOnlyError(writer, request, err)
+	case isDemoFieldError(err):
+		return h.WriteValidationError(writer, "Not available in the demo", []base.ValidationErrorField{
+			{Name: demoFieldName(err), Message: err.Error()},
+		})
 	case errors.Is(err, ErrTunnelInUse):
 		return h.WriteErrorErr(
 			writer, request, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
@@ -878,6 +903,12 @@ func (h *Handler) handleDeleteError(writer http.ResponseWriter, request *http.Re
 // handleCloneError handles errors from CloneCheck.
 func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Request, err error) error {
 	switch {
+	case errors.Is(err, ErrDemoReadOnly):
+		return h.writeDemoReadOnlyError(writer, request, err)
+	case isDemoFieldError(err):
+		return h.WriteValidationError(writer, "Not available in the demo", []base.ValidationErrorField{
+			{Name: demoFieldName(err), Message: err.Error()},
+		})
 	case errors.Is(err, entcore.ErrEntitlementExceeded):
 		var qe *entcore.QuotaError
 		if !errors.As(err, &qe) {
@@ -911,4 +942,15 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Req
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
+}
+
+// writeDemoReadOnlyError answers the demo ownership refusal with the dedicated
+// DEMO_READ_ONLY code rather than a plain FORBIDDEN, matching the route-level
+// guard. The dashboard keys off that code to show a toast instead of the dead
+// "Permission denied" page.
+func (h *Handler) writeDemoReadOnlyError(
+	writer http.ResponseWriter, request *http.Request, err error,
+) error {
+	return h.WriteErrorErr(writer, request, http.StatusForbidden,
+		base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage, err)
 }

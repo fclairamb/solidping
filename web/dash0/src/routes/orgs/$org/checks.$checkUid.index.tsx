@@ -1,4 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
+import { canDemoEditCheck } from "@/lib/demo";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail, OrgResult } from "@/api/hooks";
@@ -18,6 +21,7 @@ import {
   RefreshCw,
   Trash2,
   X,
+  FlaskConical,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -725,6 +729,7 @@ function CheckDetailPage() {
   const { graphPeriod, graphFull, region, graphFrom, graphTo, graphSelected } =
     Route.useSearch();
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
@@ -737,6 +742,14 @@ function CheckDetailPage() {
     refetch,
     isRefetching,
   } = useCheck(org, checkUid);
+
+  const isDemoSession = useIsDemoSession();
+  const { t: tOrg } = useTranslation(["org"]);
+  const ownsThisCheck = canDemoEditCheck(
+    isDemoSession,
+    authUser?.uid,
+    check?.createdBy,
+  );
 
   const periodMs = useMemo(() => parsePeriodMs(check?.period), [check?.period]);
 
@@ -1027,6 +1040,20 @@ function CheckDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* The deletion IS the conversion hook (spec 2026-09-06-02). A visitor
+          looking at a check they just made needs to be told it is temporary
+          while they still care about it; one looking at a seeded catalogue
+          check needs to be told why the edit button is not there. */}
+      {isDemoSession && (
+        <Alert data-testid="demo-check-note">
+          <FlaskConical />
+          <AlertDescription>
+            {ownsThisCheck
+              ? tOrg("org:demo.checkExpires")
+              : tOrg("org:demo.seededCheck")}
+          </AlertDescription>
+        </Alert>
+      )}
       <div className="flex flex-col gap-3" data-testid="check-detail-header">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <StatusDot

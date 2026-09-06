@@ -1,4 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterCheckTypesForDemo } from "@/lib/demo";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
 import {
@@ -345,14 +347,25 @@ export function CheckForm({
   const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
   const { data: apiCheckTypes } = useCheckTypes(org);
+  const { user } = useAuth();
   const availableCheckTypes = useMemo(() => {
-    if (!apiCheckTypes || apiCheckTypes.length === 0) return checkTypes;
-    const enabledSet = new Set(
-      apiCheckTypes.filter((t) => t.enabled).map((t) => t.type)
+    const base =
+      !apiCheckTypes || apiCheckTypes.length === 0
+        ? checkTypes
+        : // Build list from API data, matching against local entries for labels
+          checkTypes.filter((ct) =>
+            new Set(apiCheckTypes.filter((t) => t.enabled).map((t) => t.type)).has(ct.value),
+          );
+
+    // A demo session may only create side-effect-free, credential-free probes
+    // (spec 2026-09-06-02). The server refuses the rest with a VALIDATION_ERROR
+    // naming the field; hiding them here just means the visitor never picks a
+    // type only to be told no. Politeness, not safety.
+    return filterCheckTypesForDemo(
+      user?.isDemo,
+      base.map((ct) => ({ ...ct, type: ct.value })),
     );
-    // Build list from API data, matching against local entries for labels
-    return checkTypes.filter((ct) => enabledSet.has(ct.value));
-  }, [apiCheckTypes]);
+  }, [apiCheckTypes, user?.isDemo]);
 
   // Build a lookup map for API check type info (for period constraints & samples)
   const checkTypeInfoMap = useMemo(() => {
@@ -439,6 +452,17 @@ export function CheckForm({
     if (connectionUids !== null) return;
     if (mode === "create") {
       if (!connections) return;
+      // A demo session cannot attach notification channels: PUT .../channels is
+      // not on the demo allowlist (spec 2026-09-06-02 §2). Preselecting the
+      // org's default channel made the create page PUT it immediately after a
+      // successful create, the PUT was refused, and the submit aborted before
+      // navigating — leaving the visitor on the form with the check silently
+      // already created. Seeded catalogue checks get their sink channel from
+      // the seeder; a visitor's own check does not need one.
+      if (user?.isDemo) {
+        setConnectionUids([]);
+        return;
+      }
       // Only notify-capable integrations can be a default notification target.
       setConnectionUids(
         connections
@@ -450,7 +474,7 @@ export function CheckForm({
     if (existingBindings) {
       setConnectionUids(existingBindings.map((c) => c.uid));
     }
-  }, [mode, connections, existingBindings, connectionUids]);
+  }, [mode, connections, existingBindings, connectionUids, user?.isDemo]);
 
   function toggleConnection(uid: string) {
     setConnectionUids((prev) => {

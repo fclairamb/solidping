@@ -39,6 +39,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { DemoBanner } from "@/components/shared/demo-banner";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth, isSwitchOrgInFlight } from "@/contexts/AuthContext";
@@ -1116,6 +1117,10 @@ function OrgLayout() {
           />
         )}
         <div className="flex-1 overflow-auto p-3 sm:p-4">
+          {/* Above the content on EVERY page of the org, not just the
+              dashboard: a visitor who deep-links into a check detail must
+              learn the sandbox rules there too. */}
+          <DemoBanner org={org} />
           <Outlet />
         </div>
       </SidebarInset>

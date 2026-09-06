@@ -502,6 +502,7 @@ type Config struct {
 	Audit        AuditConfig          `koanf:"audit"`
 	ACME         ACMEConfig           `koanf:"acme"`
 	Heartbeat    HeartbeatConfig      `koanf:"heartbeat"`
+	Demo         DemoConfig           `koanf:"demo"`
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -806,6 +807,87 @@ type AggregationConfig struct {
 	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
 	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 7)
 	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
+}
+
+// DemoConfig configures the shared public live demo (spec 2026-09-06-02): a
+// real organization and a real user on this very server, reached through the
+// ordinary login with a PUBLISHED password.
+//
+// Off by default, and that is the important half. A self-hosted install must
+// never wake up one morning with a world-readable account on it because it
+// pulled a new image; turning the demo on is an explicit operator decision.
+// The one exception is SP_RUN_MODE=test, which forces it on so the E2E suite
+// can exercise the whole flow (see Load).
+//
+// Every key here is multi-word, and koanf's SP_* env loader collapses
+// underscores to dots — SP_DEMO_ORG_SLUG would bind demo.org.slug, not
+// demo.org_slug — so they are read by applyDemoEnv rather than automatically.
+type DemoConfig struct {
+	// Enabled turns the demo org, user, catalog and cleanup job on.
+	// SP_DEMO_ENABLED.
+	Enabled bool `koanf:"enabled"`
+	// OrgSlug is the demo organization's slug. SP_DEMO_ORG_SLUG.
+	OrgSlug string `koanf:"org_slug"`
+	// Email is the demo user's address. SP_DEMO_EMAIL.
+	Email string `koanf:"email"`
+	// Password is the demo user's password. It is PUBLIC by design — it is
+	// served on /api/v1/config and printed on the login page — so it is not a
+	// secret and must never be treated as one. SP_DEMO_PASSWORD.
+	Password string `koanf:"password"`
+	// CheckTTL is how long a visitor-created check survives before the cleanup
+	// job removes it. SP_DEMO_CHECK_TTL.
+	CheckTTL time.Duration `koanf:"check_ttl"`
+	// CleanupInterval is how often the cleanup job runs. SP_DEMO_CLEANUP_INTERVAL.
+	CleanupInterval time.Duration `koanf:"cleanup_interval"`
+}
+
+// ResolvedOrgSlug returns the configured demo org slug, or the default.
+func (c DemoConfig) ResolvedOrgSlug() string {
+	if c.OrgSlug != "" {
+		return c.OrgSlug
+	}
+
+	return DefaultDemoOrgSlug
+}
+
+// ResolvedEmail returns the configured demo email, or the default.
+func (c DemoConfig) ResolvedEmail() string {
+	if c.Email != "" {
+		return c.Email
+	}
+
+	return DefaultDemoEmail
+}
+
+// ResolvedPassword returns the configured demo password, or the default.
+func (c DemoConfig) ResolvedPassword() string {
+	if c.Password != "" {
+		return c.Password
+	}
+
+	return DefaultDemoPassword
+}
+
+// ResolvedCheckTTL returns the configured check TTL, or the default. A
+// non-positive value is treated as unset rather than as "delete immediately":
+// a zero TTL would wipe every visitor's check the instant it was created,
+// which is a footgun, not a feature.
+func (c DemoConfig) ResolvedCheckTTL() time.Duration {
+	if c.CheckTTL > 0 {
+		return c.CheckTTL
+	}
+
+	return DefaultDemoCheckTTL
+}
+
+// ResolvedCleanupInterval returns the configured cleanup interval, or the
+// default. Same non-positive handling as ResolvedCheckTTL.
+func (c DemoConfig) ResolvedCleanupInterval() time.Duration {
+	if c.CleanupInterval > 0 {
+		return c.CleanupInterval
+	}
+
+	return DefaultDemoCleanupInterval
 }
 
 // AuditConfig tunes the security/configuration audit trail (spec 2026-08-21-09).
@@ -1554,6 +1636,14 @@ func Load() (*Config, error) {
 			RetentionHour: 7,
 			RetentionDay:  2,
 		},
+		Demo: DemoConfig{
+			Enabled:         false,
+			OrgSlug:         DefaultDemoOrgSlug,
+			Email:           DefaultDemoEmail,
+			Password:        DefaultDemoPassword,
+			CheckTTL:        DefaultDemoCheckTTL,
+			CleanupInterval: DefaultDemoCleanupInterval,
+		},
 		Audit: AuditConfig{
 			CaptureIP:                    true,
 			RetentionDays:                DefaultAuditRetentionDays,
@@ -1775,6 +1865,7 @@ func Load() (*Config, error) {
 	applyHeartbeatEnv(&cfg.Heartbeat)
 	applyEncryptionEnv(&cfg.Encryption)
 	applyAuditEnv(&cfg.Audit)
+	applyDemoEnv(&cfg.Demo, cfg.RunMode)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
@@ -2059,6 +2150,56 @@ func applyAgentEnv(cfg *AgentConfig) {
 	}
 }
 
+// applyDemoEnv reads the multi-word SP_DEMO_* knobs. koanf's env loader
+// collapses every underscore in an SP_*-prefixed name to a dot, so
+// SP_DEMO_ORG_SLUG would bind `demo.org.slug` and never reach the
+// `org_slug` koanf tag — the same trap documented for SP_RUN_MODE and the
+// entitlements caps.
+//
+// An unparseable duration is IGNORED rather than zeroing the field: a typo in
+// SP_DEMO_CHECK_TTL must not silently turn "delete checks after an hour" into
+// "delete checks immediately".
+func applyDemoEnv(cfg *DemoConfig, runMode string) {
+	if v := os.Getenv("SP_DEMO_ENABLED"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.Enabled = b
+		}
+	}
+
+	if v := os.Getenv("SP_DEMO_ORG_SLUG"); v != "" {
+		cfg.OrgSlug = v
+	}
+
+	if v := os.Getenv("SP_DEMO_EMAIL"); v != "" {
+		cfg.Email = v
+	}
+
+	if v := os.Getenv("SP_DEMO_PASSWORD"); v != "" {
+		cfg.Password = v
+	}
+
+	if v := os.Getenv("SP_DEMO_CHECK_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.CheckTTL = d
+		}
+	}
+
+	if v := os.Getenv("SP_DEMO_CLEANUP_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.CleanupInterval = d
+		}
+	}
+
+	// Test mode runs the demo unconditionally so the E2E suite can exercise
+	// the login button, the banner and the read-only refusals without a second
+	// server configuration. Deliberately LAST, so it is a floor and not an
+	// override: SP_RUN_MODE=test cannot turn the demo OFF, and the
+	// slug/email/password an E2E run sets are still honored.
+	if runMode == runModeTest {
+		cfg.Enabled = true
+	}
+}
+
 // applyAuthEnv reads the multi-word SP_AUTH_* token-lifetime knobs koanf's
 // env loader cannot bind (it collapses underscores to dots, so
 // SP_AUTH_ACCESS_TOKEN_EXPIRY would map to auth.access.token.expiry and miss
@@ -2243,6 +2384,18 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 const (
 	// DefaultAuditRetentionDays is one year of audit history.
 	DefaultAuditRetentionDays = 365
+	// DefaultDemoOrgSlug is the slug of the shared public-demo organization.
+	DefaultDemoOrgSlug = "demo"
+	// DefaultDemoEmail is the shared public-demo account.
+	DefaultDemoEmail = "demo@solidping.io"
+	// DefaultDemoPassword is the shared public-demo password. It is PUBLIC by
+	// design — it is served on /api/v1/config and shown on the login page —
+	// so a short, memorable value is correct here, not a weakness.
+	DefaultDemoPassword = "demo"
+	// DefaultDemoCheckTTL is how long a visitor-created demo check survives.
+	DefaultDemoCheckTTL = time.Hour
+	// DefaultDemoCleanupInterval is how often the demo cleanup job runs.
+	DefaultDemoCleanupInterval = 30 * time.Minute
 	// DefaultAuditFailedLoginFoldWindowMinutes is the failed-login fold window.
 	DefaultAuditFailedLoginFoldWindowMinutes = 10
 	// DefaultAuditFailedLoginMaxPerOrgPerHour is the per-org hourly ceiling on

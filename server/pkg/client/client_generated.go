@@ -2451,6 +2451,24 @@ func (e ValidationErrorFieldSeverity) Valid() bool {
 	}
 }
 
+// Defines values for VersionResponseDeploymentMode.
+const (
+	VersionResponseDeploymentModeSaas       VersionResponseDeploymentMode = "saas"
+	VersionResponseDeploymentModeSelfHosted VersionResponseDeploymentMode = "self-hosted"
+)
+
+// Valid indicates whether the value is a known member of the VersionResponseDeploymentMode enum.
+func (e VersionResponseDeploymentMode) Valid() bool {
+	switch e {
+	case VersionResponseDeploymentModeSaas:
+		return true
+	case VersionResponseDeploymentModeSelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetMemoryParamsGc.
 const (
 	GetMemoryParamsGcN1   GetMemoryParamsGc = "1"
@@ -7048,11 +7066,15 @@ type ValidationErrorFieldSeverity string
 
 // VersionResponse defines model for VersionResponse.
 type VersionResponse struct {
-	Commit  *string `json:"commit,omitempty"`
-	GitTime *string `json:"gitTime,omitempty"`
-	RunMode *string `json:"runMode,omitempty"`
-	Version *string `json:"version,omitempty"`
+	Commit         *string                        `json:"commit,omitempty"`
+	DeploymentMode *VersionResponseDeploymentMode `json:"deploymentMode,omitempty"`
+	GitTime        *string                        `json:"gitTime,omitempty"`
+	RunMode        *string                        `json:"runMode,omitempty"`
+	Version        *string                        `json:"version,omitempty"`
 }
+
+// VersionResponseDeploymentMode defines model for VersionResponse.DeploymentMode.
+type VersionResponseDeploymentMode string
 
 // WorkerLaneLoad defines model for WorkerLaneLoad.
 type WorkerLaneLoad struct {

@@ -1230,6 +1230,29 @@ func TestApplyPasswordHashingEnvIsIdempotent(t *testing.T) {
 
 // TestValidatePasswordConfig covers the fail-fast validation: defaults pass,
 // bcrypt with honored cost passes, and each misconfiguration is rejected.
+// TestValidateDeploymentMode covers spec 2026-09-06-01: /api/mgmt/version
+// exposes DeploymentMode to the dashboard, and the field must be populated
+// even when SP_DEPLOYMENT_MODE was never set — an unset mode resolves to
+// "self-hosted" here, in Validate(), before the server ever reads it.
+func TestValidateDeploymentMode(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	unset := validBaseConfig()
+	unset.Deployment.Mode = ""
+	r.NoError(unset.Validate())
+	r.Equal(DeploymentModeSelfHosted, unset.Deployment.Mode)
+
+	saas := validBaseConfig()
+	saas.Deployment.Mode = DeploymentModeSaaS
+	r.NoError(saas.Validate())
+	r.Equal(DeploymentModeSaaS, saas.Deployment.Mode)
+
+	invalid := validBaseConfig()
+	invalid.Deployment.Mode = "bogus"
+	r.ErrorIs(invalid.Validate(), ErrInvalidDeploymentMode)
+}
+
 func TestValidatePasswordConfig(t *testing.T) {
 	t.Parallel()
 

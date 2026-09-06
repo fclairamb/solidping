@@ -58,6 +58,8 @@ import {
 import { SMSModePanel } from "@/components/integrations/sms-mode-panel";
 import { useDebounce } from "@/lib/use-debounce";
 import { useAuth } from "@/contexts/AuthContext";
+import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { hasNotifiableIntegration } from "@/lib/onboarding-checklist";
 import { buildEmailAlertsWandPayload } from "@/lib/onboarding-wand";
 
@@ -74,6 +76,7 @@ export const Route = createFileRoute("/orgs/$org/integrations/")({
 
 function IntegrationsListPage() {
   const { t } = useTranslation("integrations");
+  const isDemoSession = useIsDemoSession();
   const { org } = Route.useParams();
   const {
     data: integrations,
@@ -138,7 +141,12 @@ function IntegrationsListPage() {
   // Visible only once we know the org actually lacks a notifiable channel —
   // guarding on isLoading avoids a flash-then-disappear for an org that
   // already has one.
-  const showWand = !isLoading && !hasNotifiableIntegration(integrations);
+  // Hidden for a demo session too: POST /integrations is not on the demo write
+  // allowlist, so the wand can only ever produce the read-only toast (spec
+  // 2026-09-06-02). Offering an action that cannot succeed is worse than
+  // offering none.
+  const showWand =
+    !isLoading && !isDemoSession && !hasNotifiableIntegration(integrations);
 
   const onWandClick = () => {
     if (!user?.email) return;
@@ -179,14 +187,22 @@ function IntegrationsListPage() {
                 </span>
               </Button>
             )}
-            <Button asChild aria-label={t("new", "New integration")}>
-              <Link to="/orgs/$org/integrations/new" params={{ org }}>
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t("new", "New integration")}
-                </span>
-              </Link>
-            </Button>
+            {isDemoSession ? (
+              // A demo session cannot create an integration — the server's
+              // write guard refuses every route but the four check ones — so
+              // the button is replaced rather than disabled (spec
+              // 2026-09-06-02).
+              <DemoReadOnlyNote testId="integrations-demo-note" />
+            ) : (
+              <Button asChild aria-label={t("new", "New integration")}>
+                <Link to="/orgs/$org/integrations/new" params={{ org }}>
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t("new", "New integration")}
+                  </span>
+                </Link>
+              </Button>
+            )}
           </div>
         }
         className="flex-wrap"

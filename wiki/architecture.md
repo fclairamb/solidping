@@ -376,7 +376,9 @@ solidping/
 - Soft delete support
 
 #### Users
-- Organization members with role-based access (owner, admin, user, viewer)
+- Organization members with role-based access (owner, admin, user, viewer). `viewer` —
+  read everything, change nothing, except your own notification settings and your own
+  API tokens
 - Password hash for local authentication
 - Optional auth provider link for OAuth
 - TOTP-based two-factor authentication
@@ -446,6 +448,9 @@ solidping/
 - JWT-based with refresh tokens
 - Middleware enforces organization-scoped access
 - Role-based permissions, hierarchical: owner > admin > user > viewer (an owner passes every admin gate)
+- `viewer` — read everything, change nothing, except your own notification settings and your
+  own API tokens. Enforced by `middleware.RequireOrgWrite`, applied structurally by the
+  `orgGroup` helper in `internal/app/server.go` so a new org route cannot ship without it
 
 ## API Design Principles
 

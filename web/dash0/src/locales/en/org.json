@@ -252,5 +252,14 @@
     "skippedToday_other": "{{count}} check executions were skipped today because your organization was over its execution rate limit.",
     "reviewScheduling": "Review scheduling",
     "upgrade": "Upgrade"
+  },
+  "demo": {
+    "title": "You're in the shared live demo",
+    "description": "Everything here is visible to other visitors, and anything you create is deleted after an hour. Sign up free to keep it.",
+    "signUp": "Sign up free",
+    "readOnly": "Read-only in the demo",
+    "readOnlyHint": "Sign up for a free account to change this.",
+    "checkExpires": "This check is live now and will be deleted in about an hour. Sign up free to keep it.",
+    "seededCheck": "This check is part of the demo catalogue and cannot be changed. Clone it to get a copy you can edit."
   }
 }

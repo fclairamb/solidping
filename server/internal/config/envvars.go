@@ -227,6 +227,12 @@ func manualReaderServerEnvVars() []string {
 // file storage and web push.
 func manualReaderPlatformEnvVars() []string {
 	names := []string{
+		// applyDemoEnv — every DemoConfig key with an underscore in it. The
+		// single-word ones (SP_DEMO_ENABLED / _EMAIL / _PASSWORD) are
+		// koanf-reachable and arrive from the reflection set.
+		"SP_DEMO_ORG_SLUG",
+		"SP_DEMO_CHECK_TTL",
+		"SP_DEMO_CLEANUP_INTERVAL",
 		// applyProfilerEnv
 		"SP_PROFILER_BLOCK_RATE",
 		"SP_PROFILER_MUTEX_FRACTION",

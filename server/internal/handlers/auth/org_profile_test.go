@@ -93,7 +93,7 @@ func TestUpdateOrgProfileOldTokenIsScopedToTheOldSlug(t *testing.T) {
 	svc, dbService, ctx := setupAuthTestService(t)
 	org, owner := seedOwnedOrg(ctx, t, dbService, "stale-old")
 
-	staleToken, err := svc.generateAccessToken(owner.UID, org.Slug, string(models.MemberRoleOwner), "session")
+	staleToken, err := svc.generateAccessToken(owner.UID, org.Slug, string(models.MemberRoleOwner), "session", false)
 	r.NoError(err)
 
 	staleClaims, err := svc.ValidateToken(ctx, staleToken)

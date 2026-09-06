@@ -70,6 +70,23 @@ type Registry struct {
 	// inbound human messages our bots cannot parse, and the retention sweep
 	// over them. Nil-guarded by every consumer.
 	Support *support.Service
+
+	// Checks is the check write path, exposed to jobs that must delete a check
+	// the way a user's DELETE does — resolving open incidents, removing check
+	// jobs and waking realtime subscribers — rather than with a raw soft
+	// delete. Used by the demo cleanup sweep (spec 2026-09-06-02).
+	//
+	// An interface rather than *checks.Service so this package keeps no
+	// dependency on the handler layer. Nil in processes that build no check
+	// service; every consumer nil-guards.
+	Checks CheckDeleter
+}
+
+// CheckDeleter is the narrow slice of the checks service a background sweep
+// needs. Kept minimal on purpose: a job that could reach the whole check
+// service would be one refactor away from creating checks too.
+type CheckDeleter interface {
+	DeleteCheck(ctx context.Context, orgSlug, identifier string) error
 }
 
 // NewRegistry creates a new services registry.

@@ -97,6 +97,21 @@ type Check struct {
 	Internal     bool               `bun:"internal,notnull"`
 	Period       timeutils.Duration `bun:"period,notnull"`
 
+	// CreatedBy is the users.uid of whoever created this check, or NULL when
+	// nobody did — the startup job's seeded samples, and every check that
+	// predates the column (spec 2026-09-06-02). It is recorded for EVERY
+	// creator, not only demo sessions: "who made this" is useful audit data in
+	// its own right, and a column populated on one code path only is a column
+	// nobody can trust.
+	//
+	// Deliberately not a foreign key: a check outlives the account that made
+	// it, and users are soft-deleted. This is a historical attribution.
+	//
+	// It is also what makes seeded demo checks immutable to a demo session
+	// without any "protected" flag: the ownership rule is
+	// `created_by == claims.UserUID`, and NULL never equals a UID.
+	CreatedBy *string `bun:"created_by,nullzero"`
+
 	// RegionSpread is the optional inter-region scheduling offset ("spread")
 	// applied between consecutive regions' phases (spec 2026-07-20-05). NULL =
 	// the default of Period / region_count (even coverage across the period);

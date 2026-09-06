@@ -160,6 +160,13 @@ export interface Check {
   internal?: boolean;
   period?: string;
   createdAt?: string;
+  /**
+   * The uid of whoever created this check, absent when nobody did — the
+   * catalogue the server seeds, and everything created before the column
+   * existed (spec 2026-09-06-02). Compared with the current user's uid to
+   * decide whether a demo visitor may be offered edit/delete on a row.
+   */
+  createdBy?: string | null;
   updatedAt?: string;
   status?: "up" | "down" | "validating" | "created" | "degraded" | "unknown";
   lastResult?: {
@@ -3980,6 +3987,7 @@ export function useVersion() {
         commit?: string;
         gitTime?: string;
         runMode?: string;
+        deploymentMode?: "saas" | "self-hosted";
       }>("/api/mgmt/version"),
     // Poll for server redeploys (spec 2026-08-28-01: dash0 has no way to
     // tell the user their loaded app is older than the running server).

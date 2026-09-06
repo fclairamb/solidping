@@ -249,5 +249,14 @@
     "skippedToday_other": "{{count}} exécutions de vérifications ont été ignorées aujourd'hui car votre organisation dépassait sa limite de débit d'exécution.",
     "reviewScheduling": "Revoir la planification",
     "upgrade": "Mettre à niveau"
+  },
+  "demo": {
+    "title": "Vous êtes dans la démo partagée",
+    "description": "Tout ce qui se trouve ici est visible par les autres visiteurs, et tout ce que vous créez est supprimé au bout d'une heure. Créez un compte gratuit pour le conserver.",
+    "signUp": "Créer un compte gratuit",
+    "readOnly": "Lecture seule dans la démo",
+    "readOnlyHint": "Créez un compte gratuit pour modifier ceci.",
+    "checkExpires": "Ce check est actif et sera supprimé dans une heure environ. Créez un compte gratuit pour le conserver.",
+    "seededCheck": "Ce check fait partie du catalogue de démonstration et ne peut pas être modifié. Clonez-le pour obtenir une copie modifiable."
   }
 }

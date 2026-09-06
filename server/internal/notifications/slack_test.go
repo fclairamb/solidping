@@ -351,6 +351,10 @@ func (m *mockDBService) ReleaseCheckJobLease(_ context.Context, _ string) error 
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateResults(_ context.Context, _ []*models.Result) error {
+	return nil
+}
+
 func (m *mockDBService) CreateResult(_ context.Context, _ *models.Result) error {
 	panic("not implemented")
 }

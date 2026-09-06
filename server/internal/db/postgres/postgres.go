@@ -843,6 +843,10 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("must_change_password = ?", *update.MustChangePassword)
 	}
 
+	if update.Demo != nil {
+		query = query.Set("demo = ?", *update.Demo)
+	}
+
 	if update.LastActiveAt != nil {
 		query = query.Set("last_active_at = ?", *update.LastActiveAt)
 	}
@@ -2281,6 +2285,18 @@ func (s *Service) ListDistinctLabelValues(
 }
 
 // Result operations
+
+// CreateResults inserts many raw results in a single statement. See the
+// db.Service declaration for why it exists and why it does not chunk.
+func (s *Service) CreateResults(ctx context.Context, results []*models.Result) error {
+	if len(results) == 0 {
+		return nil
+	}
+
+	_, err := s.db.NewInsert().Model(&results).Exec(ctx)
+
+	return err
+}
 
 func (s *Service) CreateResult(ctx context.Context, result *models.Result) error {
 	_, err := s.db.NewInsert().Model(result).Exec(ctx)

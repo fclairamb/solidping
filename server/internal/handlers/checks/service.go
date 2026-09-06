@@ -748,6 +748,12 @@ type CheckResponse struct {
 	LastResult       *LastResultResponse       `json:"lastResult,omitempty"`
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
+	// CreatedBy is the users.uid of whoever created the check, omitted when
+	// nobody did — the startup job's seeded checks, and everything created
+	// before the column existed (spec 2026-09-06-02). The dashboard compares
+	// it with the current user's uid to decide whether a demo visitor may
+	// offer edit/delete on this row.
+	CreatedBy *string `json:"createdBy,omitempty"`
 
 	// TracerouteOnFailure is the per-check path-trace policy (spec
 	// 2026-08-21-10): `inherit`, `on` or `off`.
@@ -1323,6 +1329,15 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
 	}
 
+	// Demo-session payload rules (spec 2026-09-06-02): the type allowlist, the
+	// period floor and public regions only. Deliberately AFTER
+	// ResolveRegionsForCheck so the region rule is applied to the resolved,
+	// about-to-be-stored set rather than to the raw request — an alias or an
+	// org default cannot smuggle a private region past it.
+	if demoErr := assertDemoCheckShape(ctx, req.Type, period, resolvedRegions); demoErr != nil {
+		return CheckResponse{}, demoErr
+	}
+
 	// Normalize the config into its canonical stored shape (e.g. HTTP's
 	// username/password → basicAuth fold) before validating it, so the rules
 	// below see exactly what will be persisted.
@@ -1374,6 +1389,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// Create check with unique slug
 	check := models.NewCheck(org.UID, finalSlug, req.Type)
+
+	// Record the creator for EVERY caller, not only demo sessions — "who made
+	// this" is useful audit data in its own right, and a column populated on
+	// one path only is a column nobody can trust. Nil when there is no human
+	// caller (the startup job's seeded catalog), which is precisely what
+	// makes those checks immutable to a demo session.
+	check.CreatedBy = createdByForCaller(ctx)
 
 	// Set check group
 	if req.CheckGroupUID != nil && *req.CheckGroupUID != "" {
@@ -1717,6 +1739,13 @@ func (s *Service) UpdateCheck(
 		return CheckResponse{}, ErrCheckNotFound
 	}
 
+	// A demo session edits only what it created (spec 2026-09-06-02). The
+	// seeded catalog carries created_by = NULL and is therefore immutable
+	// here without any "protected" column.
+	if demoErr := assertDemoMayWriteCheck(ctx, check); demoErr != nil {
+		return CheckResponse{}, demoErr
+	}
+
 	// Validate slug if provided
 	if req.Slug != nil && *req.Slug != "" {
 		if errSlug := s.validateAndCheckSlugConflict(ctx, org.UID, *req.Slug, check.Slug); errSlug != nil {
@@ -2014,6 +2043,10 @@ func (s *Service) UpsertCheck(
 		return CheckResponse{}, false, fmt.Errorf("failed to query check: %w", err)
 	}
 
+	// No demo assertion here on purpose: PUT-by-slug is not on the demo route
+	// allowlist, and both branches below delegate to UpdateCheck / CreateCheck,
+	// which enforce ownership and the payload rules themselves. Repeating them
+	// here would be a second copy to keep in step.
 	if existingCheck != nil {
 		// Check exists - update it
 		updateReq := UpdateCheckRequest{
@@ -2305,6 +2338,13 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, identifier)
 	if err != nil || check == nil {
 		return ErrCheckNotFound
+	}
+
+	// A demo session deletes only what it created (spec 2026-09-06-02). This
+	// is also what stops the demo cleanup job — which runs with no claims and
+	// therefore is not a demo session — from being blocked by its own rule.
+	if demoErr := assertDemoMayWriteCheck(ctx, check); demoErr != nil {
+		return demoErr
 	}
 
 	// Refuse to delete a bastion other checks tunnel through — they would all
@@ -3048,6 +3088,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		RegionSpread:              regionSpreadStr,
 		Status:                    check.Status.String(),
 		CreatedAt:                 &check.CreatedAt,
+		CreatedBy:                 check.CreatedBy,
 		ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
 		FlappingWindowSeconds:     check.FlappingWindowSeconds,
 		FlapBackoffFactor:         check.FlapBackoffFactor,
@@ -3983,6 +4024,23 @@ func (s *Service) CloneCheck(
 	}
 
 	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
+	clone.CreatedBy = createdByForCaller(ctx)
+
+	// Cloning is deliberately NOT ownership-gated, unlike PATCH and DELETE: it
+	// mutates nothing, and the spec's own rule ("cloning a seeded check
+	// produces an owned copy the visitor can then edit") is what turns the
+	// read-only catalog into something a visitor can experiment with. The
+	// clone lands with created_by = the caller, so the copy — and only the
+	// copy — is theirs to change.
+	//
+	// The clone's SHAPE is still checked, so a demo session cannot use clone
+	// as a side door around the type allowlist or the period floor by copying
+	// a seeded check the catalog is allowed to have but a visitor is not.
+	if demoErr := assertDemoCheckShape(
+		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
+	); demoErr != nil {
+		return CheckResponse{}, demoErr
+	}
 
 	// Clone bypasses CreateCheck (calls s.db.CreateCheck directly), so the
 	// MaxChecks quota guard must be applied here too. Every clone is metered:

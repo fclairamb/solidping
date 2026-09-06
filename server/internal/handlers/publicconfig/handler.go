@@ -98,6 +98,25 @@ type SMSPublicConfig struct {
 	VoiceEnabled bool `json:"voiceEnabled"`
 }
 
+// DemoPublicConfig advertises the shared public live demo (spec 2026-09-06-02)
+// so the login page can offer a one-click entry.
+//
+// The PASSWORD IS DELIBERATELY IN HERE. That looks alarming and is not: the
+// demo credential is public by design — the whole feature is "anyone can log
+// in and look around" — and the alternative is hardcoding the same string into
+// the JavaScript bundle, where it would be just as public but would also drift
+// from the server's own configuration the moment an operator changed
+// SP_DEMO_PASSWORD. Serving it explicitly keeps one source of truth.
+//
+// Nothing is emitted at all when the demo is off, so a self-hosted install
+// that never turns it on advertises nothing.
+type DemoPublicConfig struct {
+	Enabled  bool   `json:"enabled"`
+	OrgSlug  string `json:"orgSlug,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
@@ -105,6 +124,7 @@ type Response struct {
 	WhatsApp WhatsAppPublicConfig `json:"whatsapp"`
 	Telegram TelegramPublicConfig `json:"telegram"`
 	SMS      SMSPublicConfig      `json:"sms"`
+	Demo     DemoPublicConfig     `json:"demo"`
 }
 
 // Handler serves the public config document.
@@ -144,6 +164,15 @@ func Build(cfg *config.Config) Response {
 		resp.Telegram = TelegramPublicConfig{
 			Enabled:     true,
 			BotUsername: cfg.Telegram.ResolvedBotUsername(),
+		}
+	}
+
+	if cfg != nil && cfg.Demo.Enabled {
+		resp.Demo = DemoPublicConfig{
+			Enabled:  true,
+			OrgSlug:  cfg.Demo.ResolvedOrgSlug(),
+			Email:    cfg.Demo.ResolvedEmail(),
+			Password: cfg.Demo.ResolvedPassword(),
 		}
 	}
 

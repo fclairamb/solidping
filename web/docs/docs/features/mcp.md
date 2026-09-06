@@ -95,6 +95,28 @@ Whichever path a token arrives by — OAuth consent or a manual PAT (below) — 
 
 A token without either scope is rejected with a `403`. Read-only (`mcp:read`) tokens can use every listing and inspection tool; tools that change state require the full `mcp` scope. The OAuth consent screen shows which one a connecting client is requesting and renders a distinct read-only variant when it's `mcp:read`.
 
+### Your role gates mutations too
+
+Scope is only half the gate. A mutating tool also requires **at least the `user` role** in the organization you are calling — the same read-only floor the REST API applies. See [Member roles](/configuration/authentication#member-roles). A member with the `viewer` role can read everything and change nothing, so their tokens list and inspect fine but are refused on every create/update/delete/set tool, **even with the full `mcp` scope**:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32002,
+    "message": "Tool create_check requires the user role in this organization"
+  }
+}
+```
+
+Two consequences worth knowing:
+
+- **Granting the `mcp` scope does not grant write access.** If your client reports this error while the consent screen clearly asked for full `mcp`, the token is fine — your role is the limit. Ask an org admin to raise it to `user`.
+- **The role is read from your membership, not from the token.** Demoting someone to `viewer` disarms their existing MCP tokens on the very next tool call; there is nothing to revoke or re-issue.
+
+So a refusal on a mutating tool means one of two things: the token carries only `mcp:read` (fix the token), or the person behind it is a `viewer` (fix the role). The message says which.
+
 ## Capabilities
 
 The server exposes tools covering the core SolidPing surface, including:

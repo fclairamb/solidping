@@ -249,5 +249,14 @@
     "skippedToday_other": "Hoy se omitieron {{count}} ejecuciones de comprobaciones porque tu organización superó su límite de ejecuciones.",
     "reviewScheduling": "Revisar la programación",
     "upgrade": "Mejorar plan"
+  },
+  "demo": {
+    "title": "Estás en la demo compartida en vivo",
+    "description": "Todo lo que hay aquí es visible para otros visitantes, y todo lo que crees se eliminará al cabo de una hora. Regístrate gratis para conservarlo.",
+    "signUp": "Registrarse gratis",
+    "readOnly": "Solo lectura en la demo",
+    "readOnlyHint": "Regístrate gratis para poder cambiar esto.",
+    "checkExpires": "Este check está activo y se eliminará dentro de una hora aproximadamente. Regístrate gratis para conservarlo.",
+    "seededCheck": "Este check forma parte del catálogo de la demo y no se puede modificar. Clónalo para obtener una copia editable."
   }
 }

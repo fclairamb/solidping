@@ -10,10 +10,31 @@ const (
 	samplePort       = 443             // HTTPS port for sample checks
 	sampleTimeout    = 5 * time.Second // Default timeout for sample TCP checks
 	sampleHostGoogle = "google.com"
+	// demoHost is the only host the public live demo's TCP catalog probes:
+	// our own.
+	demoHost = "solidping.io"
 )
 
 // GetSampleConfigs returns sample TCP check configurations.
-func (c *TCPChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
+func (c *TCPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
+	// The public live demo's catalog probes SOLIDPING-OWNED HOSTS ONLY (spec
+	// 2026-09-06-02): it runs from every public region, forever, on a page
+	// anyone can open, and that is not bandwidth to spend on a third party.
+	if opts != nil && opts.Type == checkerdef.Demo {
+		return []checkerdef.CheckSpec{
+			{
+				Name:   "solidping.io TLS port",
+				Slug:   "demo-tcp-solidping",
+				Period: time.Minute,
+				Config: (&TCPConfig{
+					Host:    demoHost,
+					Port:    samplePort,
+					Timeout: sampleTimeout,
+				}).GetConfig(),
+			},
+		}
+	}
+
 	return []checkerdef.CheckSpec{
 		{
 			Name:   "Google HTTPS (443)",

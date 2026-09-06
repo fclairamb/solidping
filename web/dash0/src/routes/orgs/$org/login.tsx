@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   createFileRoute,
   Link,
@@ -16,9 +16,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
-import { AlertCircle, KeyRound, Loader2, Building2 } from "lucide-react";
+import {
+  AlertCircle,
+  KeyRound,
+  Loader2,
+  Building2,
+  PlayCircle,
+} from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
+import { useDemoConfig } from "@/api/public-config";
 import {
   getLastAuthMethod,
   setLastAuthMethod,
@@ -41,6 +48,7 @@ import {
   type LoginDestination,
 } from "@/lib/login-destination";
 import { refreshAccessToken } from "@/lib/token-refresh";
+import { CHANGELOG_URL, marketingSiteUrl } from "@/lib/marketing-url";
 
 // App base path (build-time constant). `returnTo` values captured on the way
 // into /login already include it, so the destination resolver matches against
@@ -48,7 +56,9 @@ import { refreshAccessToken } from "@/lib/token-refresh";
 const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
 
 export const Route = createFileRoute("/orgs/$org/login")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { session_expired: boolean; returnTo?: string; demo?: boolean } => ({
     // TanStack Router's default search parser already coerces "true"/"false"
     // query-string values to native booleans before validateSearch runs, so
     // a bare `=== "true"` string comparison silently always evaluates to
@@ -59,6 +69,21 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // the "your session expired" banner silently suppressed.
     session_expired: search.session_expired === true || search.session_expired === "true",
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
+    // `?demo=1` signs the visitor straight into the shared live demo on load
+    // (spec 2026-09-06-02), so the marketing site can deep-link into a working
+    // dashboard rather than into a login form. Same coercion caveat as
+    // session_expired above: TanStack already turned "true" into a boolean,
+    // so a bare string comparison would silently never match.
+    // Optional in the emitted type, deliberately: every existing
+    // `navigate({ to: "/orgs/$org/login", search: … })` in the app predates
+    // this param and must keep compiling without naming it.
+    demo:
+      search.demo === true ||
+      search.demo === "true" ||
+      search.demo === "1" ||
+      search.demo === 1
+        ? true
+        : undefined,
   }),
   component: LoginPage,
 });
@@ -234,7 +259,9 @@ function LoginPage() {
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
   const { org } = Route.useParams();
-  const { session_expired, returnTo } = useSearch({ from: "/orgs/$org/login" });
+  const { session_expired, returnTo, demo: demoAutoLogin } = useSearch({
+    from: "/orgs/$org/login",
+  });
   const auth = useAuth();
   const {
     login,
@@ -329,8 +356,15 @@ function LoginPage() {
     }
   }, [isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
 
+  // `loginOrg` is the org the credentials were actually for. It defaults to the
+  // org whose login page we are on, which is right for every ordinary sign-in —
+  // you land on /orgs/<yours>/login and log into <yours>. The live-demo button
+  // (spec 2026-09-06-02) is the first caller where the two differ: it is offered
+  // on EVERY org's login page and signs you into `demo`. Without the override,
+  // a response that carries no explicit resolution falls back to the URL's org
+  // and drops the visitor into an organization they are not a member of.
   const routeResult = useCallback(
-    (result: LoginResult) => {
+    (result: LoginResult, loginOrg: string = org) => {
       if (result.requires2FA && result.tempToken) {
         setTwoFAState({ tempToken: result.tempToken });
         return;
@@ -343,7 +377,7 @@ function LoginPage() {
         case "orgChoice":
           setAvailableOrgs(result.organizations);
           setShowOrgPicker(true);
-          if (result.resolvedOrg && result.resolvedOrg !== org) {
+          if (result.resolvedOrg && result.resolvedOrg !== loginOrg) {
             navigate({
               to: "/orgs/$org/login",
               params: { org: result.resolvedOrg },
@@ -361,7 +395,7 @@ function LoginPage() {
           break;
         default:
           goToDestination(
-            resolveDestination(result.resolvedOrg || org, returnTo, BASE_PATH),
+            resolveDestination(result.resolvedOrg || loginOrg, returnTo, BASE_PATH),
           );
           break;
       }
@@ -379,6 +413,59 @@ function LoginPage() {
     },
     [tc],
   );
+
+  // The shared public live demo (spec 2026-09-06-02). Nothing is rendered when
+  // the instance has no demo, so a self-hosted install shows exactly what it
+  // showed before.
+  const demoConfig = useDemoConfig();
+  const demoAvailable = Boolean(
+    demoConfig.enabled && demoConfig.orgSlug && demoConfig.email && demoConfig.password,
+  );
+
+  // Signing into the demo goes through the ORDINARY login — the same
+  // login(org, email, password) the form calls, and the same routeResult
+  // afterwards. There is deliberately no session-minting shortcut: the demo is
+  // a real account, and giving it a bespoke entry point would be a second
+  // authentication path to keep correct forever.
+  const enterDemo = useCallback(async () => {
+    if (!demoAvailable) return;
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const result = await login(
+        demoConfig.orgSlug as string,
+        demoConfig.email as string,
+        demoConfig.password as string,
+      );
+      // Pass the demo org explicitly: the response carries no resolvedOrg for
+      // an ordinary single-org login, and the fallback would otherwise be the
+      // org whose login page this is. resolveDestination already refuses a
+      // returnTo whose org does not match, so a stale one cannot drag the
+      // visitor back out of the demo.
+      routeResult(result, demoConfig.orgSlug as string);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [demoAvailable, demoConfig, login, routeResult, reportError]);
+
+  // `?demo=1` enters the demo on load. A REF, not state: the flag exists only
+  // to make the effect fire once — the public-config query resolving is itself
+  // a re-render, and without the latch that second pass would start a second
+  // login while the first is still in flight. Writing state here would also
+  // trip react-hooks' cascading-render rule for no benefit, since nothing
+  // renders off this value.
+  const demoAutoLoginStarted = useRef(false);
+
+  useEffect(() => {
+    if (!demoAutoLogin || !demoAvailable || demoAutoLoginStarted.current) return;
+
+    demoAutoLoginStarted.current = true;
+    void enterDemo();
+  }, [demoAutoLogin, demoAvailable, enterDemo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -873,6 +960,28 @@ function LoginPage() {
                     </Button>
                   )}
               </form>
+
+              {/* The live demo. Secondary to the real sign-in — an evaluator
+                  wants it, a returning customer must not trip over it — and
+                  rendered only when the instance actually offers one. */}
+              {demoAvailable && (
+                <div className="mt-4 border-t pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => void enterDemo()}
+                    disabled={isLoading}
+                    data-testid="login-demo"
+                  >
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    {t("demo.tryLiveDemo")}
+                  </Button>
+                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                    {t("demo.loginHint")}
+                  </p>
+                </div>
+              )}
             </>
           )}
 
@@ -891,9 +1000,24 @@ function LoginPage() {
 
           {versionData && (
             <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground">
-              <span data-testid="login-version">
+              <a
+                href={marketingSiteUrl(versionData.deploymentMode)}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="login-brand-link"
+                className="underline-offset-4 hover:underline"
+              >
+                SolidPing
+              </a>{" "}
+              <a
+                href={CHANGELOG_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="login-version"
+                className="underline-offset-4 hover:underline"
+              >
                 v{versionData.version || "unknown"}
-              </span>
+              </a>
               {(versionData.runMode === "demo" ||
                 versionData.runMode === "test") && (
                 <span

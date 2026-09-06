@@ -93,6 +93,20 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
 		}
 
+		// The shared public demo (spec 2026-09-06-02). Same reasoning as the
+		// rotation gate above: RequireAuth is THE choke point every
+		// authenticated route passes through — the orgGroup helper, the
+		// admin/owner groups that spell their chain out by hand, and the
+		// user-level rootAuthProtected routes — so one rule here covers a
+		// route table nobody could enumerate reliably. Putting it anywhere
+		// narrower reintroduces the "forgot one group" failure the orgGroup
+		// comment describes.
+		if applyDemoClaim(claims, user) &&
+			!auth.IsDemoWriteAllowed(req.Method, httpx.RoutePattern(req)) {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage)
+		}
+
 		// Add claims and user to context
 		ctx := req.Context()
 		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
@@ -107,6 +121,31 @@ func (m *AuthMiddleware) RequireAuth(next httpx.HandlerFunc) httpx.HandlerFunc {
 
 		return next(writer, req.WithContext(ctx))
 	}
+}
+
+// applyDemoClaim reconciles the demo flag on a set of claims with the user row
+// the request just loaded, and reports the result.
+//
+// The flag is minted into the token at every claims site, so this is normally a
+// no-op. It exists because the guard must not depend on that being exhaustive:
+// a mint site added later and forgotten, a token issued before the field
+// existed, or a user promoted to the demo principal after their token was
+// signed would all otherwise produce an UNGUARDED demo session. The user row is
+// the authority and is read on every authenticated request anyway.
+//
+// It only ever turns the flag ON. A token that claims demo for a user whose row
+// says otherwise stays guarded — a stale claim should not be a way to widen
+// access, and it costs a demo user nothing.
+func applyDemoClaim(claims *auth.Claims, user *models.User) bool {
+	if claims == nil {
+		return user != nil && user.Demo
+	}
+
+	if user != nil && user.Demo {
+		claims.Demo = true
+	}
+
+	return claims.Demo
 }
 
 // actorTypeForToken classifies the credential a request authenticated with, for
@@ -190,6 +229,16 @@ func (m *AuthMiddleware) RequireMCPAuth(next httpx.HandlerFunc) httpx.HandlerFun
 			!auth.IsPasswordRotationExempt(req.Method, req.URL.Path) {
 			return m.WriteError(writer, http.StatusForbidden,
 				base.ErrorCodePasswordChangeRequired, auth.PasswordRotationMessage)
+		}
+
+		// The demo write guard covers MCP too. No /mcp route is on the
+		// allowlist, so for a demo principal this is an unconditional deny of
+		// every non-safe MCP call — written through the same predicate as
+		// RequireAuth so the two can never disagree about what "demo" means.
+		if applyDemoClaim(claims, user) &&
+			!auth.IsDemoWriteAllowed(req.Method, httpx.RoutePattern(req)) {
+			return m.WriteError(writer, http.StatusForbidden,
+				base.ErrorCodeDemoReadOnly, auth.DemoWriteMessage)
 		}
 
 		ctx := req.Context()
@@ -514,6 +563,64 @@ func GetClaimsFromContext(ctx context.Context) (*auth.Claims, bool) {
 	claims, claimsOK := ctx.Value(base.ContextKeyClaims).(*auth.Claims)
 
 	return claims, claimsOK
+}
+
+// ViewerWriteMessage is the human half of every role-floor denial. It says what
+// the role IS rather than what the caller lacks, and names the two things a
+// viewer may still write, so a curl user or a CLI reading only the JSON body
+// understands why a perfectly valid credential was refused (a bare "Forbidden"
+// would read as a permission bug).
+//
+// It is also the assertion target of the route-table proof in internal/app: the
+// walk asserts on this exact string, not merely on the 403, so an unrelated
+// forbidden answer cannot masquerade as the gate working.
+const ViewerWriteMessage = "Write access requires at least the user role in this organization. " +
+	"The viewer role is read-only: read everything, change nothing, " +
+	"except your own notification settings and your own API tokens."
+
+// RequireOrgWrite is the read-only floor under every state-changing org route:
+// the caller's membership must be at least models.MemberRoleUser, so the
+// `viewer` role stops meaning "read-only in the members UI" and starts meaning
+// read-only in the request path.
+//
+// Three things pass through untouched:
+//
+//   - GET / HEAD / OPTIONS. Reading is what a viewer is for, and OPTIONS is a
+//     CORS preflight that carries no credentials and mutates nothing.
+//   - Trusted service requests (ServiceSignature / ServiceTokenBypass), exactly
+//     as RequireOrgAccess skips membership for them: they are cross-org by
+//     design and have no membership row to read.
+//   - Super admins, via requireOrgRole.
+//
+// The role is read from the MEMBERSHIP ROW, never from claims.Role: a demotion
+// to viewer must take effect on the next request rather than at the next token
+// refresh, and a PAT minted while its owner was a `user` must stop writing the
+// moment they are demoted.
+//
+// Must be used after RequireAuth and RequireOrgAccess (it relies on the user
+// and the organization being resolved into the context). It is applied
+// structurally by the orgGroup helper in internal/app rather than group by
+// group — see orgGroupSelf there for the two deliberate exemptions.
+func (m *AuthMiddleware) RequireOrgWrite(next httpx.HandlerFunc) httpx.HandlerFunc {
+	roleGate := m.requireOrgRole(models.MemberRoleUser, ViewerWriteMessage)(next)
+
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		// Safe methods are the whole point of the viewer role. The comparison
+		// is case-exact on purpose: net/http normalizes nothing here, and a
+		// lowercase "get" is not a method chi ever routes.
+		switch req.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			return next(writer, req)
+		}
+
+		// Trusted service requests are cross-org by design; they carry no
+		// membership row, so the role gate below would deny them outright.
+		if isServiceAuthorized(req.Context()) {
+			return next(writer, req)
+		}
+
+		return roleGate(writer, req)
+	}
 }
 
 // RequireOrgAdmin is a middleware that requires the authenticated user to hold

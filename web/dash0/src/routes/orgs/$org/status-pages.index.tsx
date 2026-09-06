@@ -23,6 +23,8 @@ import {
   type Check,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { buildStatusPageWandAutoCreatePayload } from "@/lib/onboarding-wand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -163,6 +165,7 @@ function StatusPageRow({
 
 function StatusPagesIndexPage() {
   const { t } = useTranslation(["statusPages", "common"]);
+  const isDemoSession = useIsDemoSession();
   const { org } = Route.useParams();
   const { q: qParam } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -286,28 +289,38 @@ function StatusPagesIndexPage() {
         docsHref="/docs/features/status-pages"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleWandCreate}
-              disabled={!allChecksLoaded || wandPending}
-              data-testid="wand-create-status-page"
-              aria-label={t("statusPages:wand.createForMe")}
-            >
-              {!allChecksLoaded || wandPending ? (
-                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
-              ) : (
-                <Wand2 className="h-4 w-4 sm:mr-2" />
-              )}
-              <span className="hidden sm:inline">
-                {t("statusPages:wand.createForMe")}
-              </span>
-            </Button>
-            <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                {t("statusPages:newStatusPage")}
+            {/* Hidden for a demo session, like the New button beside it:
+                POST /status-pages is not on the demo write allowlist, so the
+                wand can only ever produce the read-only toast (spec
+                2026-09-06-02). */}
+            {!isDemoSession && (
+              <Button
+                variant="outline"
+                onClick={handleWandCreate}
+                disabled={!allChecksLoaded || wandPending}
+                data-testid="wand-create-status-page"
+                aria-label={t("statusPages:wand.createForMe")}
+              >
+                {!allChecksLoaded || wandPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                ) : (
+                  <Wand2 className="h-4 w-4 sm:mr-2" />
+                )}
+                <span className="hidden sm:inline">
+                  {t("statusPages:wand.createForMe")}
+                </span>
               </Button>
-            </Link>
+            )}
+            {isDemoSession ? (
+              <DemoReadOnlyNote testId="status-pages-demo-note" />
+            ) : (
+              <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t("statusPages:newStatusPage")}
+                </Button>
+              </Link>
+            )}
           </div>
         }
         className="flex-wrap"
@@ -386,19 +399,21 @@ function StatusPagesIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("statusPages:noStatusPagesHint")}
           </p>
-          <Button
-            variant="outline"
-            onClick={handleWandCreate}
-            disabled={!allChecksLoaded || wandPending}
-            data-testid="wand-create-status-page-empty"
-          >
-            {!allChecksLoaded || wandPending ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Wand2 className="h-4 w-4 mr-2" />
-            )}
-            {t("statusPages:wand.createForMe")}
-          </Button>
+          {!isDemoSession && (
+            <Button
+              variant="outline"
+              onClick={handleWandCreate}
+              disabled={!allChecksLoaded || wandPending}
+              data-testid="wand-create-status-page-empty"
+            >
+              {!allChecksLoaded || wandPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
+              {t("statusPages:wand.createForMe")}
+            </Button>
+          )}
         </div>
       )}
 

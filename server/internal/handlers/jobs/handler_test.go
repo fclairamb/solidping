@@ -80,10 +80,14 @@ func newJobsFixture(t *testing.T) *jobsFixture {
 	fixture.viewer = fixture.newMember(t, "viewer@jobs.example", models.MemberRoleViewer, orgA)
 
 	// The exact wiring app/server.go uses (minus the slug-alias redirect, which
-	// carries no authorization meaning): membership for every route, org admin
-	// on top for POST.
+	// carries no authorization meaning): membership for every route, the
+	// read-only write floor of spec 2026-09-06-03 on top of it (a viewer may
+	// list and read a job but not cancel one), and org admin on top of that
+	// for POST.
 	jobs.NewHandler(jobSvc).RegisterRoutes(fixture.router.NewGroup("/api/v1"), jobs.RouteMiddleware{
-		Shared:     []httpx.Middleware{authMW.RequireAuth, authMW.RequireOrgAccess},
+		Shared: []httpx.Middleware{
+			authMW.RequireAuth, authMW.RequireOrgAccess, authMW.RequireOrgWrite,
+		},
 		CreateOnly: []httpx.Middleware{authMW.RequireOrgAdmin},
 	})
 

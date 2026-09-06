@@ -22,10 +22,15 @@ import (
 )
 
 // installURLTestEnv wires a real router with the actual RequireAuth +
-// RequireOrgAccess middleware chain in front of BuildInstallURLForOrg —
-// exactly as server.go registers it — so the 401/403/404 acceptance
-// criteria in spec 2026-07-05-01 are proven against the real middleware,
-// not simulated by injecting context.
+// RequireOrgAccess + RequireOrgWrite middleware chain in front of
+// BuildInstallURLForOrg — exactly as server.go registers it, via the orgGroup
+// helper — so the 401/403/404 acceptance criteria in spec 2026-07-05-01 are
+// proven against the real middleware, not simulated by injecting context.
+//
+// RequireOrgWrite is part of the chain and must stay part of it: minting an
+// install URL is a POST, so the read-only floor of spec 2026-09-06-03 applies
+// and a viewer is refused. Dropping it here would leave the tests below
+// asserting a behavior production does not have.
 type installURLTestEnv struct {
 	router  *httpx.Router
 	db      *sqlite.Service
@@ -69,7 +74,7 @@ func newInstallURLTestEnv(t *testing.T) *installURLTestEnv {
 
 	router := httpx.New()
 	group := router.NewGroup("/api/v1/orgs/:org/integrations/slack").
-		Use(authMw.RequireAuth, authMw.RequireOrgAccess)
+		Use(authMw.RequireAuth, authMw.RequireOrgAccess, authMw.RequireOrgWrite)
 	group.POST("/install-url", slackHandler.BuildInstallURLForOrg)
 
 	return &installURLTestEnv{
@@ -181,17 +186,16 @@ func TestBuildInstallURLForOrg_UnknownOrgNotFound(t *testing.T) {
 }
 
 // TestBuildInstallURLForOrg_MemberSucceeds asserts a member of the org gets
-// a 200 with a Slack authorize URL when no channelUid is given. Uses a
-// viewer role deliberately: RequireOrgAccess gates on membership only, not
-// role, so even the least-privileged member must be able to mint an
-// install URL for their own org.
+// a 200 with a Slack authorize URL when no channelUid is given. Uses the
+// `user` role — the lowest role that may write — as the positive control for
+// the viewer refusal asserted just below.
 func TestBuildInstallURLForOrg_MemberSucceeds(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := newInstallURLTestEnv(t)
 
-	token := env.mintToken(t, env.orgA, models.MemberRoleViewer)
+	token := env.mintToken(t, env.orgA, models.MemberRoleUser)
 
 	rec := env.do(t, env.orgA.Slug, token, map[string]string{})
 	r.Equal(http.StatusOK, rec.Code)
@@ -202,6 +206,31 @@ func TestBuildInstallURLForOrg_MemberSucceeds(t *testing.T) {
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.Contains(resp.URL, "https://slack.com/oauth/v2/authorize?")
 	r.Contains(resp.URL, "client_id=test-client-id")
+}
+
+// TestBuildInstallURLForOrg_ViewerForbidden pins the read-only floor of spec
+// 2026-09-06-03 on this route: minting an install URL binds a Slack workspace
+// to the org, which is a write, so a viewer — a member in good standing of
+// this very org — is refused with 403. The `user` case above is the positive
+// control that this is a role floor and not a broken fixture.
+func TestBuildInstallURLForOrg_ViewerForbidden(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newInstallURLTestEnv(t)
+
+	token := env.mintToken(t, env.orgA, models.MemberRoleViewer)
+
+	rec := env.do(t, env.orgA.Slug, token, map[string]string{})
+	r.Equal(http.StatusForbidden, rec.Code)
+
+	// Assert on the gate's own message, not merely on the 403: an unrelated
+	// forbidden answer must not be able to masquerade as the floor working.
+	var errResp struct {
+		Title string `json:"title"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &errResp))
+	r.Equal(middleware.ViewerWriteMessage, errResp.Title)
 }
 
 // TestBuildInstallURLForOrg_ChannelInOtherOrgNotFound asserts a channelUid

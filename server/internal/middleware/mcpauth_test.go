@@ -100,7 +100,7 @@ func TestRequireMCPAuthValidAudienceBoundToken(t *testing.T) {
 
 	resource := mcpTestIssuer + "/api/v1/mcp"
 	token, err := authSvc.GenerateMCPAccessToken(
-		user.UID, "mcp-auth-org", []string{"mcp"}, resource, time.Hour, "",
+		ctx, user.UID, "mcp-auth-org", []string{"mcp"}, resource, time.Hour, "",
 	)
 	require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func TestRequireMCPAuthWrongAudienceRejected(t *testing.T) {
 
 	// Token minted for a DIFFERENT resource → must be rejected at the MCP gate.
 	token, err := authSvc.GenerateMCPAccessToken(
-		user.UID, "mcp-auth-org", []string{"mcp"},
+		ctx, user.UID, "mcp-auth-org", []string{"mcp"},
 		"https://other.example.com/api/v1/mcp", time.Hour, "",
 	)
 	require.NoError(t, err)

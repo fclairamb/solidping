@@ -421,6 +421,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	)
 	svcList.Entitlements = entitlementsService
 
+	// The check write path, exposed to background jobs that must delete a
+	// check the way a user's DELETE does. Registered HERE rather than in
+	// SetupRoutes because a worker-only process runs the job scheduler and
+	// never builds a router — the demo cleanup sweep must work there too
+	// (spec 2026-09-06-02).
+	svcList.Checks = checks.NewService(
+		dbService, svcList.EventNotifier, credSvc, entitlementsService)
+
 	// Instance-level SMS/voice providers, built ONCE here and shared by every
 	// org that has not brought its own account. A misconfiguration (unknown
 	// provider, bad region, unreachable OVH endpoint) must surface as a startup
@@ -762,9 +770,36 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// real route table and fails on any org-scoped route that does not redirect
 	// (the realtime WS is the single documented exception).
 	orgSlugRedirect := middleware.NewOrgSlugRedirect(s.dbService)
-	orgGroup := func(path string) *httpx.Group {
+
+	// orgGroupSelf is the org chain WITHOUT the read-only floor: authenticated
+	// membership, nothing more. It exists for the handful of routes where a
+	// `viewer` legitimately writes, because what it writes is only ever their
+	// OWN row:
+	//
+	//   - /orgs/:org/users/me/*  — the member's own notification contacts,
+	//     routes, verification round-trips and Telegram link. Nothing here
+	//     touches anyone else's configuration. (Web push subscriptions arrive
+	//     through the same notification-contact routes, so they need no entry
+	//     of their own; /orgs/:org/webpush is GET-only.)
+	//   - /orgs/:org/tokens      — the member's own PAT. The token authenticates
+	//     AS the member, so it is bound by this very gate on every request it
+	//     makes: a viewer can automate reading, and nothing more.
+	//
+	// The exemption is expressed here, at registration, rather than as a path
+	// matcher inside the middleware: the exception is then visible in review
+	// next to the routes it covers, and TestEveryOrgScopedWriteRouteRefusesViewers
+	// enforces the boundary by walking the real route table.
+	orgGroupSelf := func(path string) *httpx.Group {
 		return api.NewGroup(path).
 			Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	}
+
+	// orgGroup adds RequireOrgWrite: every non-GET route registered through it
+	// requires at least the `user` role, so the `viewer` role documented as
+	// read-only actually is. Structural for the same reason the redirect above
+	// is — a new org route cannot silently ship without the floor.
+	orgGroup := func(path string) *httpx.Group {
+		return orgGroupSelf(path).Use(authMiddleware.RequireOrgWrite)
 	}
 
 	// publicOrgAPI carries the previous-slug redirect for the intentionally
@@ -791,8 +826,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// renaming the slug moves every URL of the organization (spec 2026-08-08-12).
 	orgOwnerGroup.PATCH("", authHandler.UpdateOrgProfile)
 
-	// Org-scoped token management (protected)
-	orgTokens := orgGroup("/orgs/:org/tokens")
+	// Org-scoped token management (protected). orgGroupSelf, not orgGroup: a
+	// PAT is the member's OWN credential and inherits their membership role,
+	// so a viewer minting one gains nothing beyond automating the reads they
+	// already have — every request that token makes still meets the write
+	// floor.
+	orgTokens := orgGroupSelf("/orgs/:org/tokens")
 	orgTokens.GET("", authHandler.GetOrgTokens)
 	orgTokens.POST("", authHandler.CreateToken)
 
@@ -952,6 +991,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	jobHandler.RegisterRoutes(api, jobs.RouteMiddleware{
 		Shared: []httpx.Middleware{
 			orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess,
+			// Canceling a job is a write; a viewer may list and read one, and
+			// RequireOrgWrite passes GET through untouched.
+			authMiddleware.RequireOrgWrite,
 		},
 		CreateOnly: []httpx.Middleware{authMiddleware.RequireOrgAdmin},
 	})
@@ -1363,7 +1405,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	userNotifHandler := usernotifications.NewHandler(
 		userNotifService, s.config, emailAdapter, slackAdapter, s.services.WebPushOptions,
 	)
-	orgUserNotif := orgGroup("/orgs/:org/users/me")
+	// orgGroupSelf, not orgGroup: everything under users/me is the member's own
+	// notification configuration. A viewer choosing where THEY get paged
+	// changes nothing for anybody else.
+	orgUserNotif := orgGroupSelf("/orgs/:org/users/me")
 	orgUserNotif.GET("/notification-routes", userNotifHandler.ListRoutes)
 	orgUserNotif.POST("/notification-contacts", userNotifHandler.CreateContact)
 	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
@@ -1563,7 +1608,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		Use(authMiddleware.ServiceTokenBypass(
 			entitlements.ParamServiceToken, entitlements.ParamAllowLegacyServiceToken)).
 		Use(authMiddleware.RequireAuth).
-		Use(authMiddleware.RequireOrgAccess)
+		Use(authMiddleware.RequireOrgAccess).
+		// The write floor applies to the admin-user fallback too. The signed /
+		// bearer service path is untouched: RequireOrgWrite short-circuits on
+		// isServiceAuthorized, exactly as RequireOrgAccess above does.
+		Use(authMiddleware.RequireOrgWrite)
 	orgEntitlements.GET("", entitlementsHandler.Get)
 	orgEntitlements.PUT("", entitlementsHandler.Put)
 	orgEntitlements.PATCH("", entitlementsHandler.Patch)
@@ -2031,8 +2080,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// proof-of-possession entry point: the org comes from the verified route
 	// context, and the code it mints is the only thing that can bind a
 	// Microsoft 365 tenant to this org.
-	msTeamsOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/msteams").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	msTeamsOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/msteams")
 	msTeamsOrgIntegrationRoutes.POST("/link-code", msTeamsHandler.StartLink)
 	msTeamsOrgIntegrationRoutes.GET("/status", msTeamsHandler.GetStatus)
 	msTeamsOrgIntegrationRoutes.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
@@ -2042,8 +2090,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// param, so a workspace already connected to another org can be installed
 	// again here without landing the user in — or joining them to — that
 	// other org.
-	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	slackOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/slack")
 	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
 
 	// Discord destinations picker (authenticated, org-scoped).
@@ -2052,8 +2099,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
 	// org comes from the authenticated route context, never from a query param.
-	discordOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/discord").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discordOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/discord")
 	discordOrgIntegrationRoutes.POST("/install-url", discordHandler.BuildInstallURLForOrg)
 
 	// Incident events (authentication required)
@@ -2455,6 +2501,7 @@ func (s *Server) getVersion(writer http.ResponseWriter, _ *http.Request) error {
 
 	versionInfo := version.Get()
 	versionInfo.RunMode = s.config.RunMode
+	versionInfo.DeploymentMode = s.config.Deployment.Mode
 
 	data, err := json.Marshal(versionInfo)
 	if err != nil {

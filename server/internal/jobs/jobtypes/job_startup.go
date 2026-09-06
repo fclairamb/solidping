@@ -52,6 +52,16 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
+	// The public live demo (spec 2026-09-06-02). Deliberately OUTSIDE
+	// ensureDefaultOrganization: that function returns early the moment any
+	// organization exists, which is the state every production database is in,
+	// so a demo provisioned from inside it would only ever appear on a virgin
+	// install — i.e. never where it is wanted. This is idempotent at every
+	// step and a no-op when demo.enabled is false.
+	if err := r.ensureDemoOrganization(ctx, jctx); err != nil {
+		return err
+	}
+
 	// Ensure aggregation jobs exist for all organizations
 	if err := r.ensureAggregationJobs(ctx, jctx); err != nil {
 		return err
@@ -426,15 +436,7 @@ func (r *StartupJobRun) createSampleCheck(
 	log.InfoContext(ctx, "Created sample check", "type", checkType, "slug", slug, "name", sample.Name)
 
 	// Emit check.created audit event
-	event := models.NewEvent(orgUID, models.EventTypeCheckCreated, models.ActorTypeSystem)
-	event.CheckUID = &check.UID
-	event.Payload = models.JSONMap{
-		"check_uid":  check.UID,
-		"check_slug": check.Slug,
-		"check_name": check.Name,
-		"check_type": check.Type,
-		"source":     "startup_samples",
-	}
+	event := newCheckCreatedEvent(orgUID, check, "startup_samples")
 	if createErr := jctx.DBService.CreateEvent(ctx, event); createErr != nil {
 		log.InfoContext(ctx, "Failed to create check.created event (non-fatal)", "error", createErr)
 	}
@@ -449,6 +451,24 @@ func (r *StartupJobRun) createSampleCheck(
 	}
 
 	return nil
+}
+
+// newCheckCreatedEvent builds the check.created audit event that the seeding
+// paths emit. Shared between the `default` sample loader and the demo catalog
+// so the payload shape cannot drift between them; source names which one wrote
+// the check.
+func newCheckCreatedEvent(orgUID string, check *models.Check, source string) *models.Event {
+	event := models.NewEvent(orgUID, models.EventTypeCheckCreated, models.ActorTypeSystem)
+	event.CheckUID = &check.UID
+	event.Payload = models.JSONMap{
+		"check_uid":  check.UID,
+		"check_slug": check.Slug,
+		"check_name": check.Name,
+		"check_type": check.Type,
+		"source":     source,
+	}
+
+	return event
 }
 
 // ensureAggregationJobs provisions aggregation jobs for all organizations.
