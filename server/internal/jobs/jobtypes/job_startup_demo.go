@@ -36,10 +36,16 @@ const (
 // charts are not empty on launch day. Real results take over from there.
 const demoBackfillDays = 30
 
-// demoBackfillPeriod is the sampling interval of the synthetic history. A
-// coarser interval than the checks' own 60s period on purpose: 30 days at 60s
-// is 43k rows PER CHECK, and the charts read identically at 15 minutes.
-const demoBackfillPeriod = 15 * time.Minute
+// demoBackfillPeriod is the sampling interval of the synthetic history.
+//
+// MUCH coarser than the checks' own 60s period, deliberately. 30 days at 60s is
+// 43,200 rows PER CHECK — a seed that would write half a million rows before
+// the server finishes booting. The aggregation job rolls raw results up to
+// hourly buckets anyway, and every chart wider than a day reads from those, so
+// an hourly sample is visually identical to a per-minute one at the timescales
+// a backfill exists to fill. Real per-minute results take over from the moment
+// the workers pick the checks up.
+const demoBackfillPeriod = time.Hour
 
 // demoEntitlementHeadroom is how many checks visitors may add on top of the
 // seeded catalogue before MaxChecks refuses. The cap is what bounds the demo's
@@ -95,12 +101,16 @@ func (r *StartupJobRun) ensureDemoOrganization(ctx context.Context, jctx *jobdef
 		return nil
 	}
 
-	if entErr := r.ensureDemoEntitlements(ctx, jctx, org); entErr != nil {
-		log.ErrorContext(ctx, "Failed to pin demo entitlements (non-fatal)", "error", entErr)
-	}
-
 	if seedErr := r.ensureDemoContent(ctx, jctx, org); seedErr != nil {
 		log.ErrorContext(ctx, "Failed to seed demo content (non-fatal)", "error", seedErr)
+	}
+
+	// AFTER the catalogue, not before: MaxChecks is "the seeded count plus the
+	// visitors' headroom", and computing it against an empty org would hand the
+	// demo a cap below its own catalogue — visitors could then create nothing
+	// at all, which is the one thing the demo exists for.
+	if entErr := r.ensureDemoEntitlements(ctx, jctx, org); entErr != nil {
+		log.ErrorContext(ctx, "Failed to pin demo entitlements (non-fatal)", "error", entErr)
 	}
 
 	if jctx.Services != nil && jctx.Services.Jobs != nil {

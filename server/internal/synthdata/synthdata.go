@@ -24,9 +24,18 @@ import (
 // ResultWriter is the slice of the database service this package needs.
 // Narrow on purpose: a generator that could reach the whole db.Service would
 // invite it to start creating checks and orgs too, which is the caller's job.
+//
+// Batched rather than row-at-a-time: 30 days of history across a dozen checks
+// is tens of thousands of rows, and one INSERT each turned the demo's seed into
+// a forty-second startup pause.
 type ResultWriter interface {
-	CreateResult(ctx context.Context, result *models.Result) error
+	CreateResults(ctx context.Context, results []*models.Result) error
 }
+
+// insertBatchSize bounds one INSERT. Large enough that the per-statement cost
+// disappears, small enough to stay well inside SQLite's default 32k bound
+// parameter limit for a row of this width.
+const insertBatchSize = 500
 
 // Options describes the history to synthesize for ONE check.
 type Options struct {
@@ -106,6 +115,7 @@ func Generate(ctx context.Context, writer ResultWriter, opts Options) (int, erro
 	rng := rand.New(rand.NewSource(seed)) //nolint:gosec // synthetic sample data, not cryptography
 
 	count := 0
+	batch := make([]*models.Result, 0, insertBatchSize)
 
 	for cursor := opts.Start; cursor.Before(end) && count < maxResults; cursor = cursor.Add(opts.Period) {
 		if ctx.Err() != nil {
@@ -116,7 +126,7 @@ func Generate(ctx context.Context, writer ResultWriter, opts Options) (int, erro
 		statusInt := int(status)
 		regionValue := region
 
-		result := &models.Result{
+		batch = append(batch, &models.Result{
 			UID:             uuid.Must(uuid.NewV7()).String(),
 			OrganizationUID: opts.OrganizationUID,
 			CheckUID:        opts.CheckUID,
@@ -128,13 +138,23 @@ func Generate(ctx context.Context, writer ResultWriter, opts Options) (int, erro
 			Metrics:         make(models.JSONMap),
 			Output:          make(models.JSONMap),
 			CreatedAt:       cursor,
-		}
-
-		if err := writer.CreateResult(ctx, result); err != nil {
-			return count, err
-		}
+		})
 
 		count++
+
+		if len(batch) >= insertBatchSize {
+			if err := writer.CreateResults(ctx, batch); err != nil {
+				return count - len(batch), err
+			}
+
+			batch = batch[:0]
+		}
+	}
+
+	if len(batch) > 0 {
+		if err := writer.CreateResults(ctx, batch); err != nil {
+			return count - len(batch), err
+		}
 	}
 
 	return count, nil

@@ -387,6 +387,13 @@ type Service interface {
 
 	// Result operations
 	CreateResult(ctx context.Context, result *models.Result) error
+	// CreateResults inserts many raw results in one statement. It exists for
+	// bulk writers — today the demo's synthetic backfill (spec 2026-09-06-02),
+	// which produces tens of thousands of rows at seed time and took tens of
+	// seconds one INSERT at a time. Callers chunk; this does no chunking of its
+	// own, because the right chunk size depends on the row shape and the
+	// driver's parameter limit, which the caller knows and this does not.
+	CreateResults(ctx context.Context, results []*models.Result) error
 	// UpsertAggregatedResult writes an aggregated (non-raw) result idempotently:
 	// it replaces any existing row for the same bucket key
 	// (organization_uid, check_uid, coalesce(region,''), period_type,
