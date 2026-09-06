@@ -293,6 +293,16 @@ func (r *StartupJobRun) ensureDemoEntitlements(
 		seeded = int(total)
 	}
 
+	// maxSlos is the SEEDED count, not zero: the catalog's two objectives are
+	// written straight to the database and so bypass the quota, but a Usage
+	// page reading "2 / 0 SLOs" would look like a bug on the one org whose
+	// whole job is to look right. Visitors cannot create more — SLO routes are
+	// not on the demo write allowlist.
+	sloCount := 0
+	if slos, sloErr := jctx.DBService.ListSLOs(ctx, org.UID, models.ListSLOsFilter{}); sloErr == nil {
+		sloCount = len(slos)
+	}
+
 	maxChecks := seeded + demoEntitlementHeadroom
 	maxUsers := 1
 	perMinute := demoMaxChecksPerMinute
@@ -310,7 +320,7 @@ func (r *StartupJobRun) ensureDemoEntitlements(
 		MaxSmsPerMonth:      &zero,
 		MaxCallsPerMonth:    &zero,
 		MaxWhatsappPerMonth: &zero,
-		MaxSlos:             &zero,
+		MaxSlos:             &sloCount,
 	}
 	ent.Payload.DisplayName = &displayName
 	ent.Payload.DisplayEmoji = &displayEmoji
@@ -464,6 +474,14 @@ func (r *StartupJobRun) loadDemoCatalog(
 		log.WarnContext(ctx, "Failed to create demo status page (non-fatal)", "error", pageErr)
 	}
 
+	if sloErr := r.ensureDemoSLOs(ctx, jctx, org); sloErr != nil {
+		log.WarnContext(ctx, "Failed to create demo SLOs (non-fatal)", "error", sloErr)
+	}
+
+	if mwErr := r.ensureDemoMaintenanceWindow(ctx, jctx, org); mwErr != nil {
+		log.WarnContext(ctx, "Failed to create demo maintenance window (non-fatal)", "error", mwErr)
+	}
+
 	if paramErr := jctx.DBService.SetOrgParameter(ctx, org.UID, ParamSamplesLoaded, true, false); paramErr != nil {
 		return fmt.Errorf("failed to set %s for demo org: %w", ParamSamplesLoaded, paramErr)
 	}
@@ -563,6 +581,121 @@ func (r *StartupJobRun) ensureDemoStatusPage(
 
 	return jctx.DBService.CreateStatusPage(ctx, page)
 }
+
+// ensureDemoSLOs seeds two objectives: one comfortably met and one that the
+// permanently-down catalog check is burning through.
+//
+// TWO, not one, and that is the point of the pair: an SLO page showing a single
+// green 100% says nothing about what the feature is for. A visitor needs to see
+// an error budget being spent — the burn rate, the projected exhaustion, the
+// alert policy that would fire — and that only exists next to a healthy one to
+// compare it against.
+func (r *StartupJobRun) ensureDemoSLOs(
+	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
+) error {
+	checks, _, err := jctx.DBService.ListChecks(ctx, org.UID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to list demo checks for SLOs: %w", err)
+	}
+
+	healthy := findDemoCheck(checks, demoSlugAPIHealth)
+	burning := findDemoCheck(checks, demoSlugHardDown)
+
+	if healthy != nil {
+		slo := models.NewSLO(org.UID, "API availability", "demo-api-availability", demoHealthySLOTarget)
+		slo.CheckUID = &healthy.UID
+
+		if createErr := jctx.DBService.CreateSLO(ctx, slo); createErr != nil {
+			return fmt.Errorf("failed to create the healthy demo SLO: %w", createErr)
+		}
+	}
+
+	if burning != nil {
+		slo := models.NewSLO(org.UID, "Legacy billing availability", "demo-legacy-billing", demoBurningSLOTarget)
+		slo.CheckUID = &burning.UID
+
+		if createErr := jctx.DBService.CreateSLO(ctx, slo); createErr != nil {
+			return fmt.Errorf("failed to create the burning demo SLO: %w", createErr)
+		}
+	}
+
+	return nil
+}
+
+// ensureDemoMaintenanceWindow seeds one RECURRING window on a single check, so
+// the demo shows what a planned outage looks like — suppressed notifications, a
+// banner on the status page, probes excluded from the SLO denominator — rather
+// than only what an unplanned one does.
+//
+// Deliberately attached to exactly one check: an empty window suppresses
+// nothing at all, and an org-wide one would hide the very incidents the demo
+// exists to display.
+func (r *StartupJobRun) ensureDemoMaintenanceWindow(
+	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
+) error {
+	checks, _, err := jctx.DBService.ListChecks(ctx, org.UID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to list demo checks for the maintenance window: %w", err)
+	}
+
+	target := findDemoCheck(checks, demoSlugSlowEndpoint)
+	if target == nil {
+		return nil
+	}
+
+	// Anchored on the next whole hour so the window is always in the future on
+	// a freshly seeded instance, and repeats weekly from there.
+	start := time.Now().Truncate(time.Hour).Add(time.Hour)
+	window := models.NewMaintenanceWindow(
+		org.UID, "Weekly database maintenance", start, start.Add(demoMaintenanceDuration))
+	window.Recurrence = models.RecurrenceWeekly
+	description := "A recurring planned window. Alerts are suppressed and these probes " +
+		"are excluded from the SLO denominator while it is open."
+	window.Description = &description
+
+	if createErr := jctx.DBService.CreateMaintenanceWindow(ctx, window); createErr != nil {
+		return fmt.Errorf("failed to create the demo maintenance window: %w", createErr)
+	}
+
+	if attachErr := jctx.DBService.SetMaintenanceWindowChecks(
+		ctx, window.UID, []string{target.UID}, nil,
+	); attachErr != nil {
+		return fmt.Errorf("failed to attach the demo maintenance window: %w", attachErr)
+	}
+
+	return nil
+}
+
+// findDemoCheck locates one seeded catalog check by slug.
+func findDemoCheck(checks []*models.Check, slug string) *models.Check {
+	for _, check := range checks {
+		if check.Slug != nil && *check.Slug == slug {
+			return check
+		}
+	}
+
+	return nil
+}
+
+// Catalog slugs the SLOs and the maintenance window attach to. They must match
+// the samples in internal/checkers/checkhttp/samples.go; a rename there simply
+// means the objective is not seeded (findDemoCheck returns nil), never a
+// startup failure.
+const (
+	demoSlugAPIHealth    = "demo-api-health"
+	demoSlugHardDown     = "demo-legacy-billing"
+	demoSlugSlowEndpoint = "demo-slow-endpoint"
+)
+
+const (
+	// demoHealthySLOTarget is comfortably met by the always-up catalog check.
+	demoHealthySLOTarget = 99.0
+	// demoBurningSLOTarget is set against the permanently-down one, so its
+	// error budget is visibly exhausted.
+	demoBurningSLOTarget = 99.9
+	// demoMaintenanceDuration is how long the recurring window stays open.
+	demoMaintenanceDuration = 2 * time.Hour
+)
 
 // backfillDemoHistory writes 30 days of synthetic results for the seeded
 // catalog, once, so the charts are not empty on launch day. Real results take

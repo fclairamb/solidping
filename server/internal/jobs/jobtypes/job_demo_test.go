@@ -3,6 +3,7 @@ package jobtypes
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +140,81 @@ func TestDemoSeedProvisionsTheWholeAccount(t *testing.T) {
 
 	// The catalog's headroom is what visitors get to use.
 	r.Equal(int(total)+demoEntitlementHeadroom, *ent.Payload.Limits.MaxChecks)
+}
+
+// TestDemoSeedProvisionsTheCatalog covers §5: what a visitor actually LOOKS at.
+//
+// The two assertions that matter most are the negative ones. "Own targets
+// only" is a decision with a real failure mode — walking every registered
+// checker would have seeded the Minecraft, NTP-pool and DNSBL samples and
+// pointed the whole public region fleet at strangers' servers, forever — and
+// the sink rule is what keeps a demo incident from paging a human.
+func TestDemoSeedProvisionsTheCatalog(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jctx, dbSvc, _ := newDemoTestContext(t, true)
+	ctx := t.Context()
+
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	org, err := dbSvc.GetOrganizationBySlug(ctx, "demo")
+	r.NoError(err)
+
+	checks, _, err := dbSvc.ListChecks(ctx, org.UID, nil)
+	r.NoError(err)
+	r.NotEmpty(checks)
+
+	allowedTypes := map[string]bool{
+		"http": true, "tcp": true, "icmp": true, "dns": true, "ssl": true, "heartbeat": true,
+	}
+
+	for _, check := range checks {
+		r.Truef(allowedTypes[check.Type],
+			"the demo catalog seeded a %s check; only the demo-owned types may be seeded", check.Type)
+		r.NotNilf(check.Slug, "check %s has no slug", check.UID)
+		r.Truef(strings.HasPrefix(*check.Slug, "demo-"),
+			"check %s is not from the Demo catalog — a checker that ignores ListSampleOptions "+
+				"leaked its DEFAULT samples, which probe third-party hosts", *check.Slug)
+
+		// Every check must be grouped and carry the sink escalation policy, or
+		// the demo shows an incident with no visible notification trail.
+		r.NotNilf(check.CheckGroupUID, "check %s is ungrouped", *check.Slug)
+		r.NotNilf(check.EscalationPolicyUID, "check %s has no escalation policy", *check.Slug)
+	}
+
+	// The escalation policy must target a SINK, never a person.
+	integrations, err := dbSvc.ListChannels(ctx, &models.ListIntegrationsFilter{OrganizationUID: org.UID})
+	r.NoError(err)
+	r.Len(integrations, 1, "the demo org must have exactly one integration: the sink")
+	r.Equal(models.ConnectionTypeWebhook, integrations[0].Type)
+	r.Contains(integrations[0].Settings["url"], "/api/v1/fake",
+		"the demo's only notification target must be our own fake endpoint")
+
+	pages, err := dbSvc.ListStatusPages(ctx, org.UID)
+	r.NoError(err)
+	r.NotEmpty(pages, "the demo must publish a status page")
+
+	slos, err := dbSvc.ListSLOs(ctx, org.UID, models.ListSLOsFilter{})
+	r.NoError(err)
+	r.Len(slos, 2, "the demo needs a healthy SLO and a burning one, not just one of each mood")
+
+	windows, err := dbSvc.ListMaintenanceWindows(ctx, org.UID, models.ListMaintenanceWindowsFilter{})
+	r.NoError(err)
+	r.Len(windows, 1)
+	r.Equal(models.RecurrenceWeekly, windows[0].Recurrence)
+
+	attached, err := dbSvc.ListMaintenanceWindowChecks(ctx, windows[0].UID)
+	r.NoError(err)
+	r.NotEmpty(attached,
+		"a maintenance window with no attached check suppresses NOTHING and is pure decoration")
+
+	// And the pinned entitlements must admit the SLOs the seed just wrote,
+	// or the Usage page reads "2 / 0".
+	ent, err := dbSvc.GetOrgEntitlements(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(ent.Payload.Limits.MaxSlos)
+	r.Equal(len(slos), *ent.Payload.Limits.MaxSlos)
 }
 
 // TestDemoSeedIsIdempotent is the restart property. It matters more than it
