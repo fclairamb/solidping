@@ -141,7 +141,12 @@ function IntegrationsListPage() {
   // Visible only once we know the org actually lacks a notifiable channel —
   // guarding on isLoading avoids a flash-then-disappear for an org that
   // already has one.
-  const showWand = !isLoading && !hasNotifiableIntegration(integrations);
+  // Hidden for a demo session too: POST /integrations is not on the demo write
+  // allowlist, so the wand can only ever produce the read-only toast (spec
+  // 2026-09-06-02). Offering an action that cannot succeed is worse than
+  // offering none.
+  const showWand =
+    !isLoading && !isDemoSession && !hasNotifiableIntegration(integrations);
 
   const onWandClick = () => {
     if (!user?.email) return;

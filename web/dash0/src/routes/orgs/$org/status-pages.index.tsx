@@ -289,22 +289,28 @@ function StatusPagesIndexPage() {
         docsHref="/docs/features/status-pages"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleWandCreate}
-              disabled={!allChecksLoaded || wandPending}
-              data-testid="wand-create-status-page"
-              aria-label={t("statusPages:wand.createForMe")}
-            >
-              {!allChecksLoaded || wandPending ? (
-                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
-              ) : (
-                <Wand2 className="h-4 w-4 sm:mr-2" />
-              )}
-              <span className="hidden sm:inline">
-                {t("statusPages:wand.createForMe")}
-              </span>
-            </Button>
+            {/* Hidden for a demo session, like the New button beside it:
+                POST /status-pages is not on the demo write allowlist, so the
+                wand can only ever produce the read-only toast (spec
+                2026-09-06-02). */}
+            {!isDemoSession && (
+              <Button
+                variant="outline"
+                onClick={handleWandCreate}
+                disabled={!allChecksLoaded || wandPending}
+                data-testid="wand-create-status-page"
+                aria-label={t("statusPages:wand.createForMe")}
+              >
+                {!allChecksLoaded || wandPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                ) : (
+                  <Wand2 className="h-4 w-4 sm:mr-2" />
+                )}
+                <span className="hidden sm:inline">
+                  {t("statusPages:wand.createForMe")}
+                </span>
+              </Button>
+            )}
             {isDemoSession ? (
               <DemoReadOnlyNote testId="status-pages-demo-note" />
             ) : (
@@ -393,19 +399,21 @@ function StatusPagesIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("statusPages:noStatusPagesHint")}
           </p>
-          <Button
-            variant="outline"
-            onClick={handleWandCreate}
-            disabled={!allChecksLoaded || wandPending}
-            data-testid="wand-create-status-page-empty"
-          >
-            {!allChecksLoaded || wandPending ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Wand2 className="h-4 w-4 mr-2" />
-            )}
-            {t("statusPages:wand.createForMe")}
-          </Button>
+          {!isDemoSession && (
+            <Button
+              variant="outline"
+              onClick={handleWandCreate}
+              disabled={!allChecksLoaded || wandPending}
+              data-testid="wand-create-status-page-empty"
+            >
+              {!allChecksLoaded || wandPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Wand2 className="h-4 w-4 mr-2" />
+              )}
+              {t("statusPages:wand.createForMe")}
+            </Button>
+          )}
         </div>
       )}
 
