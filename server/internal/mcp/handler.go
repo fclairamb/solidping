@@ -400,10 +400,21 @@ func (h *Handler) handleToolsCall(
 		return &resp, http.StatusOK
 	}
 
-	if isMCPReadOnly(claims) && isMutationTool(params.Name) {
-		resp := errorResponse(req.ID, CodeForbidden,
-			"Tool "+params.Name+" requires the mcp scope; current token has mcp:read only")
-		return &resp, http.StatusOK
+	if isMutationTool(params.Name) {
+		// Scope gate: was this credential minted for writing at all?
+		if isMCPReadOnly(claims) {
+			resp := errorResponse(req.ID, CodeForbidden,
+				"Tool "+params.Name+" requires the mcp scope; current token has mcp:read only")
+			return &resp, http.StatusOK
+		}
+
+		// Role gate: may the human behind it write at all? A full-scope PAT
+		// belonging to a `viewer` would otherwise reach the services directly,
+		// bypassing the REST write floor entirely.
+		if denial := h.mutationRoleDenial(ctx, orgSlug, params.Name, claims); denial != "" {
+			resp := errorResponse(req.ID, CodeForbidden, denial)
+			return &resp, http.StatusOK
+		}
 	}
 
 	result := toolFn(ctx, orgSlug, params.Arguments)
