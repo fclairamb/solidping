@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -453,4 +454,191 @@ func seedDemoCheck(
 	require.NoError(t, dbSvc.CreateCheck(t.Context(), check))
 
 	return check.UID
+}
+
+// TestDemoMaxChecksDoesNotRatchetUnderTraffic is §4's cap, stated as the
+// property that actually matters.
+//
+// The first implementation computed maxChecks from the LIVE check total plus
+// the headroom, and the cleanup job re-pinned on the same formula every thirty
+// minutes. Under exactly the traffic the cap exists to bound, that climbs
+// monotonically: every visitor check raises the total, the next sweep raises
+// the ceiling, and the demo's load bounding quietly stops bounding anything.
+//
+// The cap must be a CONSTANT — seeded count plus headroom — so this asserts the
+// number is unchanged after visitors have created checks and a sweep has run.
+func TestDemoMaxChecksDoesNotRatchetUnderTraffic(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jctx, dbSvc, _ := newDemoTestContext(t, true)
+	ctx := t.Context()
+
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	org, err := dbSvc.GetOrganizationBySlug(ctx, "demo")
+	r.NoError(err)
+
+	user, err := dbSvc.GetUserByEmail(ctx, "demo@solidping.example")
+	r.NoError(err)
+
+	before, err := dbSvc.GetOrgEntitlements(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(before.Payload.Limits.MaxChecks)
+
+	seededCount, _, err := dbSvc.ListChecks(ctx, org.UID, nil)
+	r.NoError(err)
+	r.Equal(len(seededCount)+demoEntitlementHeadroom, *before.Payload.Limits.MaxChecks,
+		"the cap must be the seeded count plus the headroom")
+
+	// Ten visitors do the one thing the demo is for.
+	for i := range 10 {
+		seedDemoCheck(t, dbSvc, org.UID, "visitor-check-"+string(rune('a'+i)), &user.UID, time.Now())
+	}
+
+	// A sweep (which re-pins) and another boot (which also re-pins).
+	r.NoError((&DemoCleanupJobRun{}).Run(ctx, jctx))
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	after, err := dbSvc.GetOrgEntitlements(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(after.Payload.Limits.MaxChecks)
+	r.Equalf(*before.Payload.Limits.MaxChecks, *after.Payload.Limits.MaxChecks,
+		"maxChecks ratcheted from %d to %d under visitor traffic",
+		*before.Payload.Limits.MaxChecks, *after.Payload.Limits.MaxChecks)
+}
+
+// TestDemoSeededCheckCountSurvivesAMissingParameter covers the back-fill path:
+// a demo org seeded by a binary that predates demo.seeded_checks must still
+// pin a constant cap, derived from the NULL-owned (i.e. seeded) rows rather
+// than from the live total.
+func TestDemoSeededCheckCountSurvivesAMissingParameter(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jctx, dbSvc, _ := newDemoTestContext(t, true)
+	ctx := t.Context()
+
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	org, err := dbSvc.GetOrganizationBySlug(ctx, "demo")
+	r.NoError(err)
+
+	user, err := dbSvc.GetUserByEmail(ctx, "demo@solidping.example")
+	r.NoError(err)
+
+	seeded, _, err := dbSvc.ListChecks(ctx, org.UID, nil)
+	r.NoError(err)
+
+	// Simulate the older schema: drop the parameter, then add visitor traffic.
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, ParamDemoSeededChecks, nil, false))
+	seedDemoCheck(t, dbSvc, org.UID, "visitor-one", &user.UID, time.Now())
+	seedDemoCheck(t, dbSvc, org.UID, "visitor-two", &user.UID, time.Now())
+
+	r.Equal(len(seeded), (&StartupJobRun{}).demoSeededCheckCount(ctx, jctx, org),
+		"the fallback counted visitor checks as seeded ones")
+}
+
+// TestDemoSeededHeartbeatCarriesAPingToken is the concrete defect behind §5's
+// catalog: the heartbeat sample ships an empty config on purpose, because
+// Validate is what MINTS the token. The demo seeding path used to be the only
+// seeding path that skipped Validate, so the demo's heartbeat landed with no
+// ping URL to copy — and rotate-token is not on the demo write allowlist, so it
+// could not be repaired from inside the demo either.
+func TestDemoSeededHeartbeatCarriesAPingToken(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jctx, dbSvc, _ := newDemoTestContext(t, true)
+	ctx := t.Context()
+
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	org, err := dbSvc.GetOrganizationBySlug(ctx, "demo")
+	r.NoError(err)
+
+	checks, _, err := dbSvc.ListChecks(ctx, org.UID, nil)
+	r.NoError(err)
+
+	found := 0
+
+	for _, check := range checks {
+		if check.Type != "heartbeat" {
+			continue
+		}
+
+		found++
+
+		token, ok := check.Config["token"].(string)
+		r.Truef(ok, "the seeded heartbeat %s has no token in its config", *check.Slug)
+		r.NotEmptyf(token, "the seeded heartbeat %s has an EMPTY ping token", *check.Slug)
+	}
+
+	r.Positive(found, "the demo catalog must seed a heartbeat — it is the clearest dead-man's-switch demo")
+}
+
+// TestDemoCatalogPinsPublicRegions is §5's "three or more public regions on
+// every check", asserted rather than assumed.
+//
+// Leaving check.Regions empty resolves through the org default, then the system
+// default, then every defined region. In production that happens to be the full
+// public fleet — but on an instance with a narrow default_regions the demo's
+// headline claim would silently become a single-region one. The fixture here
+// defines four regions precisely so "it got three" is a real result and not an
+// artifact of there being only one to pick.
+func TestDemoCatalogPinsPublicRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jctx, dbSvc, _ := newDemoTestContext(t, true)
+	ctx := t.Context()
+
+	defs := []regions.RegionDefinition{
+		{Slug: "eu2", Name: "Europe"},
+		{Slug: "us1", Name: "United States"},
+		{Slug: "jp1", Name: "Japan"},
+		{Slug: "default", Name: "Default"},
+	}
+	r.NoError(dbSvc.SetSystemParameter(ctx, regions.ParamRegions, defs, false))
+
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	org, err := dbSvc.GetOrganizationBySlug(ctx, "demo")
+	r.NoError(err)
+
+	checks, _, err := dbSvc.ListChecks(ctx, org.UID, nil)
+	r.NoError(err)
+	r.NotEmpty(checks)
+
+	for _, check := range checks {
+		r.Lenf(check.Regions, 3, "check %s does not run from three public regions", *check.Slug)
+
+		for _, region := range check.Regions {
+			r.Falsef(regions.IsPrivateRegion(region),
+				"check %s runs from the PRIVATE region %s", *check.Slug, region)
+		}
+	}
+}
+
+// TestDemoCatalogTakesWhatRegionsExist is the dev-laptop case: one defined
+// region must produce a one-region catalog, not a failed boot.
+func TestDemoCatalogTakesWhatRegionsExist(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jctx, dbSvc, _ := newDemoTestContext(t, true)
+	ctx := t.Context()
+
+	r.NoError((&StartupJobRun{}).ensureDemoOrganization(ctx, jctx))
+
+	org, err := dbSvc.GetOrganizationBySlug(ctx, "demo")
+	r.NoError(err)
+
+	checks, _, err := dbSvc.ListChecks(ctx, org.UID, nil)
+	r.NoError(err)
+	r.NotEmpty(checks, "seeding must succeed with fewer than three regions defined")
+
+	for _, check := range checks {
+		r.NotEmptyf(check.Regions, "check %s was left with no region at all", *check.Slug)
+	}
 }

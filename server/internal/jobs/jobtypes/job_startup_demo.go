@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/synthdata"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -30,6 +31,16 @@ const (
 	// ParamSamplesLoaded is the existing per-org "samples already seeded" flag,
 	// reused unchanged for the demo catalog.
 	ParamSamplesLoaded = "samples.loaded"
+	// ParamDemoSeededChecks records how many checks the catalog seeded.
+	//
+	// It exists so MaxChecks is a CONSTANT. Recomputing the cap from the live
+	// check count — which is what the first implementation did — makes it
+	// ratchet: every visitor-created check raises the total, the cleanup job
+	// re-pins seeded+headroom against that larger total half an hour later, and
+	// the ceiling the demo's load bounding depends on climbs monotonically
+	// under exactly the traffic it exists to bound. Persisting the seeded count
+	// at seed time makes every later re-pin arrive at the same number.
+	ParamDemoSeededChecks = "demo.seeded_checks"
 )
 
 // demoBackfillDays is how much synthetic history the demo starts with, so the
@@ -273,6 +284,64 @@ func ensureDemoMembership(
 	return nil
 }
 
+// demoSeededCheckCount returns the number of checks the catalog seeded, which
+// is what MaxChecks is pinned against.
+//
+// Read order matters:
+//  1. the demo.seeded_checks org parameter, written once at seed time. This is
+//     the authoritative answer and the reason the cap does not ratchet.
+//  2. a count of checks with created_by = NULL, for a demo org seeded by an
+//     older binary that never wrote the parameter. NULL-owned is exactly the
+//     seeded set — every visitor-created check carries its creator — so this
+//     back-fill is precise, and it is persisted so step 1 answers next time.
+//
+// It never falls back to the live total: that is the ratchet this exists to
+// remove.
+func (r *StartupJobRun) demoSeededCheckCount(
+	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
+) int {
+	if param, err := jctx.DBService.GetOrgParameter(ctx, org.UID, ParamDemoSeededChecks); err == nil && param != nil {
+		if count, ok := numericParamValue(param.Value["value"]); ok {
+			return count
+		}
+	}
+
+	seeded := 0
+
+	checks, _, err := jctx.DBService.ListChecks(ctx, org.UID, nil)
+	if err != nil {
+		return seeded
+	}
+
+	for _, check := range checks {
+		if check.CreatedBy == nil {
+			seeded++
+		}
+	}
+
+	if setErr := jctx.DBService.SetOrgParameter(ctx, org.UID, ParamDemoSeededChecks, seeded, false); setErr != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to persist the demo seeded-check count", "error", setErr)
+	}
+
+	return seeded
+}
+
+// numericParamValue reads an org parameter back as an int. Parameters
+// round-trip through JSON, so an int written on this boot comes back as an int
+// but the same value read from the database comes back as a float64.
+func numericParamValue(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	default:
+		return 0, false
+	}
+}
+
 // ensureDemoEntitlements pins the demo org's limits.
 //
 // BILLING SAFETY (verified in ../solidping-billing at f583fe7, and the reason
@@ -288,10 +357,7 @@ func ensureDemoMembership(
 func (r *StartupJobRun) ensureDemoEntitlements(
 	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
 ) error {
-	seeded := 0
-	if _, total, listErr := jctx.DBService.ListChecks(ctx, org.UID, nil); listErr == nil {
-		seeded = int(total)
-	}
+	seeded := r.demoSeededCheckCount(ctx, jctx, org)
 
 	// maxSlos is the SEEDED count, not zero: the catalog's two objectives are
 	// written straight to the database and so bypass the quota, but a Usage
@@ -455,12 +521,18 @@ func (r *StartupJobRun) loadDemoCatalog(
 		group = nil
 	}
 
-	opts := &checkerdef.ListSampleOptions{Type: checkerdef.Demo, BaseURL: demoBaseURL(jctx)}
+	seed := &demoCatalogSeed{
+		org:       org,
+		opts:      &checkerdef.ListSampleOptions{Type: checkerdef.Demo, BaseURL: demoBaseURL(jctx)},
+		group:     group,
+		policyUID: policyUID,
+		regions:   demoPublicRegions(ctx, jctx),
+	}
 
 	count := 0
 
 	for _, checkType := range demoCatalogTypes {
-		loaded, loadErr := r.loadDemoSamplesForChecker(ctx, jctx, org, checkType, opts, group, policyUID)
+		loaded, loadErr := r.loadDemoSamplesForChecker(ctx, jctx, seed, checkType)
 		if loadErr != nil {
 			return loadErr
 		}
@@ -469,6 +541,14 @@ func (r *StartupJobRun) loadDemoCatalog(
 	}
 
 	log.InfoContext(ctx, "Loaded demo catalog", "checks", count)
+
+	// Pinned here, once, so every later re-pin (startup and the 30-minute
+	// cleanup sweep alike) computes MaxChecks from the same constant.
+	if paramErr := jctx.DBService.SetOrgParameter(
+		ctx, org.UID, ParamDemoSeededChecks, count, false,
+	); paramErr != nil {
+		return fmt.Errorf("failed to set %s for demo org: %w", ParamDemoSeededChecks, paramErr)
+	}
 
 	if pageErr := r.ensureDemoStatusPage(ctx, jctx, org); pageErr != nil {
 		log.WarnContext(ctx, "Failed to create demo status page (non-fatal)", "error", pageErr)
@@ -489,46 +569,168 @@ func (r *StartupJobRun) loadDemoCatalog(
 	return nil
 }
 
+// demoCatalogSeed carries everything every seeded catalog check needs, so the
+// per-checker seeding call does not grow an eighth positional parameter.
+type demoCatalogSeed struct {
+	org       *models.Organization
+	opts      *checkerdef.ListSampleOptions
+	group     *models.CheckGroup
+	policyUID *string
+	// regions is the PUBLIC region set, resolved once at seed time. See
+	// demoPublicRegions for why the demo pins it explicitly instead of letting
+	// region resolution fall through to the defaults.
+	regions []string
+}
+
+// demoMaxCatalogRegions is how many public regions each catalog check runs
+// from. The spec's headline claim is "three or more public regions on every
+// check"; more than three multiplies the catalog's per-minute cost against
+// demoMaxChecksPerMinute for no extra storytelling.
+const demoMaxCatalogRegions = 3
+
+// demoPublicRegions resolves up to demoMaxCatalogRegions PUBLIC region slugs.
+//
+// Public is structural: GetGlobalRegions reads the system-wide `regions`
+// parameter, while private (deported-agent) regions live in a per-org
+// `custom_regions` parameter the demo org will never own, so nothing here can
+// return an `@`-prefixed slug.
+//
+// Resolved and pinned onto each check rather than left empty, because an empty
+// check.Regions falls through to the org default, then the system default, then
+// every defined region. In production that happens to be the full public fleet
+// — but on an instance with a narrow default_regions the demo's multi-region
+// claim would silently become a single-region one, with nothing to notice it.
+//
+// Fewer than three defined regions (a dev laptop has exactly one) takes what
+// there is: a thin demo is better than a failed boot.
+func demoPublicRegions(ctx context.Context, jctx *jobdef.JobContext) []string {
+	defs, err := regions.NewService(jctx.DBService).GetGlobalRegions(ctx)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to resolve public regions for the demo catalog", "error", err)
+
+		return nil
+	}
+
+	slugs := make([]string, 0, demoMaxCatalogRegions)
+
+	for i := range defs {
+		if regions.IsPrivateRegion(defs[i].Slug) {
+			continue
+		}
+
+		slugs = append(slugs, defs[i].Slug)
+
+		if len(slugs) == demoMaxCatalogRegions {
+			break
+		}
+	}
+
+	return slugs
+}
+
 // loadDemoSamplesForChecker seeds one checker's Demo samples.
 func (r *StartupJobRun) loadDemoSamplesForChecker(
 	ctx context.Context,
 	jctx *jobdef.JobContext,
-	org *models.Organization,
+	seed *demoCatalogSeed,
 	checkType checkerdef.CheckType,
-	opts *checkerdef.ListSampleOptions,
-	group *models.CheckGroup,
-	policyUID *string,
 ) (int, error) {
-	samples := demoSamplesFor(checkType, opts)
+	checker, found := registry.GetChecker(checkType)
+	if !found {
+		return 0, nil
+	}
+
+	samples := demoSamplesFor(checkType, seed.opts)
 	count := 0
 
 	for i := range samples {
-		check := models.NewCheck(org.UID, samples[i].Slug, string(checkType))
-		name := samples[i].Name
-		check.Name = &name
-		check.Config = samples[i].Config
-		check.Enabled = true
-		check.Period = timeutils.Duration(samples[i].Period)
-		check.EscalationPolicyUID = policyUID
-
-		if group != nil {
-			check.CheckGroupUID = &group.UID
+		created, err := r.createDemoCatalogCheck(ctx, jctx, seed, checker, &samples[i])
+		if err != nil {
+			return count, err
 		}
 
-		// created_by stays NULL: nobody created these, and that is what makes
-		// them immutable to a demo session.
-		if createErr := jctx.DBService.CreateCheck(ctx, check); createErr != nil {
-			return count, fmt.Errorf("failed to create demo check %s: %w", samples[i].Slug, createErr)
+		if created {
+			count++
 		}
-
-		if label, labelErr := jctx.DBService.GetOrCreateLabel(ctx, org.UID, "env", "demo"); labelErr == nil {
-			_ = jctx.DBService.SetCheckLabels(ctx, check.UID, []string{label.UID})
-		}
-
-		count++
 	}
 
 	return count, nil
+}
+
+// createDemoCatalogCheck seeds one catalog check.
+//
+// It runs the checker's Validate first, exactly as createSampleCheck does for
+// the `default` org's samples. That is not cosmetic: Validate is where the
+// heartbeat checker MINTS ITS PING TOKEN, so a demo seeded without it lands a
+// heartbeat with an empty config and no ping URL to copy — and `rotate-token`
+// is not on the demo write allowlist, so it could not be repaired from inside
+// the demo either. It also gets the config validated, the check.created audit
+// event emitted and the runners woken, all of which this path used to skip.
+func (r *StartupJobRun) createDemoCatalogCheck(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	seed *demoCatalogSeed,
+	checker checkerdef.Checker,
+	sample *checkerdef.CheckSpec,
+) (bool, error) {
+	log := jctx.Logger
+
+	// Validate BEFORE reading sample.Config: it mutates the spec (heartbeat
+	// tokens, defaulted fields), and the check must carry the mutated version.
+	if validationErr := checker.Validate(sample); validationErr != nil {
+		log.InfoContext(ctx, "Demo sample config validation failed, skipping",
+			"type", checker.Type(), "name", sample.Name, "error", validationErr)
+
+		return false, nil
+	}
+
+	check := models.NewCheck(seed.org.UID, sample.Slug, string(checker.Type()))
+	name := sample.Name
+	check.Name = &name
+	check.Config = sample.Config
+	check.Enabled = true
+	check.Period = timeutils.Duration(sample.Period)
+	check.EscalationPolicyUID = seed.policyUID
+	check.Regions = seed.regions
+
+	if seed.group != nil {
+		check.CheckGroupUID = &seed.group.UID
+	}
+
+	// created_by stays NULL: nobody created these, and that is what makes
+	// them immutable to a demo session.
+	if createErr := jctx.DBService.CreateCheck(ctx, check); createErr != nil {
+		return false, fmt.Errorf("failed to create demo check %s: %w", sample.Slug, createErr)
+	}
+
+	if label, labelErr := jctx.DBService.GetOrCreateLabel(ctx, seed.org.UID, "env", "demo"); labelErr == nil {
+		_ = jctx.DBService.SetCheckLabels(ctx, check.UID, []string{label.UID})
+	}
+
+	r.recordDemoCheckCreated(ctx, jctx, seed.org.UID, check)
+
+	return true, nil
+}
+
+// recordDemoCheckCreated emits the check.created audit event and wakes the
+// runners, mirroring createSampleCheck. Both are best-effort.
+func (r *StartupJobRun) recordDemoCheckCreated(
+	ctx context.Context, jctx *jobdef.JobContext, orgUID string, check *models.Check,
+) {
+	log := jctx.Logger
+
+	event := newCheckCreatedEvent(orgUID, check, "demo_catalog")
+	if createErr := jctx.DBService.CreateEvent(ctx, event); createErr != nil {
+		log.InfoContext(ctx, "Failed to create demo check.created event (non-fatal)", "error", createErr)
+	}
+
+	if jctx.Services != nil && jctx.Services.EventNotifier != nil {
+		if err := jctx.Services.EventNotifier.Notify(
+			ctx, string(models.EventTypeCheckCreated), "{}",
+		); err != nil {
+			log.InfoContext(ctx, "Failed to notify check runners (non-fatal)", "error", err)
+		}
+	}
 }
 
 // demoCatalogTypes is the ONLY set of check types the demo catalog is drawn

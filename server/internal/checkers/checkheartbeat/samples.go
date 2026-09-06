@@ -16,8 +16,10 @@ import (
 // illustration of what "dead man's switch monitoring" means, and the demo's
 // whole job is to show the product's shapes.
 //
-// The token is left empty on purpose: the create path mints one, and a sample
-// that shipped a fixed token would publish it.
+// The token is left empty on purpose: Validate mints one (see checker.go), and
+// a sample that shipped a fixed token would publish the same secret to every
+// install. Every seeding path must therefore run Validate before persisting the
+// check, or the heartbeat lands with no ping URL to copy.
 func (c *HeartbeatChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	if opts == nil || opts.Type != checkerdef.Demo {
 		return nil
