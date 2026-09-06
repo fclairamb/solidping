@@ -266,7 +266,7 @@ func TestMCPMutationRoleGateReadsTheMembershipRow(t *testing.T) {
 // TestIsMutationToolCoversEveryRegisteredWriteTool guards the reuse decision in
 // §3: the role gate keys off isMutationTool's prefix list rather than a second
 // table, so that list has to actually describe the tool set. Every registered
-// tool whose name starts with a mutation verb must be recognised, and no
+// tool whose name starts with a mutation verb must be recognized, and no
 // obviously-read tool may be.
 func TestIsMutationToolCoversEveryRegisteredWriteTool(t *testing.T) {
 	t.Parallel()
