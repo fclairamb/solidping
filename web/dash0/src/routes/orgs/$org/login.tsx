@@ -41,6 +41,7 @@ import {
   type LoginDestination,
 } from "@/lib/login-destination";
 import { refreshAccessToken } from "@/lib/token-refresh";
+import { CHANGELOG_URL, marketingSiteUrl } from "@/lib/marketing-url";
 
 // App base path (build-time constant). `returnTo` values captured on the way
 // into /login already include it, so the destination resolver matches against
@@ -891,9 +892,24 @@ function LoginPage() {
 
           {versionData && (
             <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground">
-              <span data-testid="login-version">
+              <a
+                href={marketingSiteUrl(versionData.deploymentMode)}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="login-brand-link"
+                className="underline-offset-4 hover:underline"
+              >
+                SolidPing
+              </a>{" "}
+              <a
+                href={CHANGELOG_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="login-version"
+                className="underline-offset-4 hover:underline"
+              >
                 v{versionData.version || "unknown"}
-              </span>
+              </a>
               {(versionData.runMode === "demo" ||
                 versionData.runMode === "test") && (
                 <span

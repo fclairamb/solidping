@@ -299,6 +299,7 @@ function DesignReferencePage() {
       <DnsRecordRowSection />
       <CollapsibleCodeSection />
       <EvidenceImageSection />
+      <MutedInlineExternalLinkSection />
       <CollapsibleSectionSection />
       <SecondaryDisclosureCardSection />
       <SandboxedPreviewSection />
@@ -3360,6 +3361,40 @@ function EvidenceImageSection() {
         </figure>
         <CodeSnippet
           code={`<figure className="space-y-2">\n  <a href={url} target="_blank" rel="noopener noreferrer"\n     className="block overflow-hidden rounded-md border bg-muted">\n    <img src={url} alt={alt} loading="lazy" className="h-auto w-full max-w-full" />\n  </a>\n  <figcaption className="text-xs text-muted-foreground">{caption}</figcaption>\n</figure>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function MutedInlineExternalLinkSection() {
+  return (
+    <Section
+      id="muted-inline-external-link"
+      title="Muted inline external link"
+      description="A quiet outbound link inline in muted text — for a footer or aside where the link is a courtesy, not a call to action, so it must not compete with the page's real actions. Keeps text-muted-foreground even on hover, gains underline-offset-4 hover:underline for the click affordance, and always carries target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; (dash0's standard for any link leaving the app). Used by the login page footer's brand and changelog links."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="text-center text-xs text-muted-foreground">
+          <a
+            href="https://www.solidping.io/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline-offset-4 hover:underline"
+          >
+            SolidPing
+          </a>{" "}
+          <a
+            href="https://solidping.io/docs/changelog"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline-offset-4 hover:underline"
+          >
+            v0.24.0
+          </a>
+        </div>
+        <CodeSnippet
+          code={`<a href={url} target="_blank" rel="noopener noreferrer"\n   className="text-muted-foreground underline-offset-4 hover:underline">\n  {label}\n</a>`}
         />
       </div>
     </Section>

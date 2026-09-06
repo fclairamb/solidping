@@ -3980,6 +3980,7 @@ export function useVersion() {
         commit?: string;
         gitTime?: string;
         runMode?: string;
+        deploymentMode?: "saas" | "self-hosted";
       }>("/api/mgmt/version"),
     // Poll for server redeploys (spec 2026-08-28-01: dash0 has no way to
     // tell the user their loaded app is older than the running server).
