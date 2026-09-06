@@ -226,3 +226,88 @@ should land on its own.
   MCP open would be a half-fix that reads as a full one.
 - **Independent from the demo guard.** Different key (role vs. `users.demo`),
   different shape (floor vs. allowlist), different failure modes.
+
+## Implementation Plan
+
+### §1 — `RequireOrgWrite` (server/internal/middleware/auth.go)
+
+- New exported const `ViewerWriteMessage`, the single human string every
+  role-floor denial carries. It is also the assertion target of the §4 walk, so
+  an unrelated 403 cannot masquerade as the gate working.
+- `RequireOrgWrite(next)` sits next to `RequireOrgAdmin` / `RequireOrgOwner`:
+  - `GET` / `HEAD` / `OPTIONS` → `next` (case-exact switch).
+  - `isServiceAuthorized(ctx)` → `next` (cross-org by design, no membership row).
+  - otherwise → `requireOrgRole(models.MemberRoleUser, ViewerWriteMessage)`,
+    which reads the **membership row** (`GetMemberByUserAndOrg`), lets super
+    admins through, and denies with `403` / `FORBIDDEN`. No new error code.
+
+### §1b — wiring (server/internal/app/server.go)
+
+- Split the existing `orgGroup` helper in two:
+  - `orgGroupSelf(path)` = `orgSlugRedirect → RequireAuth → RequireOrgAccess`
+    (today's chain, unchanged).
+  - `orgGroup(path)` = `orgGroupSelf(path).Use(RequireOrgWrite)`.
+  Every existing `orgGroup(...)` call site therefore gains the floor with no
+  edit, and a new org route cannot silently ship without it.
+- Add `RequireOrgWrite` to the hand-built **entitlements** chain as well. It is
+  the one org-scoped non-GET group outside `orgGroup` that authenticates as a
+  user (its admin-user fallback); the service-signature path is unaffected
+  because `isServiceAuthorized` short-circuits ahead of the role gate.
+
+### §2 — the self-scoped exemptions
+
+Registration-time, not a path table inside the middleware:
+
+| Group | Helper |
+|---|---|
+| `/orgs/:org/users/me` (notification contacts, routes, verification, Telegram link) | `orgGroupSelf` |
+| `/orgs/:org/tokens` (the member's own PAT) | `orgGroupSelf` |
+
+**Web push: confirmed not applicable.** `orgWebPush` registers exactly one
+route, `GET /orgs/:org/webpush/vapid-public-key`. A browser subscription is
+stored as an ordinary notification contact through
+`POST /orgs/:org/users/me/notification-contacts`, which is already exempt. No
+third entry.
+
+### §3 — the same floor inside MCP (server/internal/mcp/)
+
+- `handleToolsCall` gains, right after the existing `mcp:read` scope check:
+  when `isMutationTool(params.Name)` (reused, not duplicated), resolve
+  `claims.UserUID` → user, `orgSlug` → org, then
+  `GetMemberByUserAndOrg`; refuse with `CodeForbidden` and
+  *"Tool X requires the user role in this organization"* unless the member is
+  `Role.AtLeast(MemberRoleUser)` or the user is a super admin.
+- Fails closed: an unresolvable user, org or membership is a refusal.
+
+### §4 — tests
+
+- `server/internal/app/viewer_write_guard_route_table_test.go`
+  - `TestEveryOrgScopedWriteRouteRefusesViewers` — walks the REAL route table
+    for every non-GET pattern under `/api/v1/orgs/{org}` and sorts each into
+    exactly one of three buckets: a named public-by-design list (proved still
+    public by an anonymous probe), the §2 self-scoped exemptions, or a `403`
+    whose body message is the write floor or a stricter admin/owner gate.
+    Anti-vacuity floors on the walk size and on each named list.
+  - Positive control in the same test: the identical walk as a **`user`**
+    session must never see `ViewerWriteMessage`.
+  - `TestViewerSelfScopedRoutesAreNotRefusedByTheWriteGate` — the exemptions
+    pinned by name, so a reader sees *why* those chains differ.
+- `server/internal/middleware/orgwrite_test.go` —
+  `TestRequireOrgWrite_AuthMatrix`: viewer GET/HEAD/OPTIONS pass; viewer
+  POST/PATCH/PUT/DELETE denied; user/admin/owner/super-admin pass;
+  service-authorized passes; missing org context denied; non-member denied;
+  lowercase "get" is not treated as safe.
+- PAT path, demotion-takes-effect-immediately and the MCP viewer/user pair get
+  their own tests alongside the route-table proof.
+
+### §5 — documentation
+
+- `web/docs/` members/roles page: one sentence per role, viewer spelled out.
+- `wiki/` role listings.
+- `CHANGELOG.md` under the security heading.
+- `server/internal/app/openapi/openapi.yaml` role-enum description.
+
+### Explicitly out of scope
+
+dash0 still renders every write affordance for a viewer; the interim behaviour
+is the honest 403. A separate frontend spec hides them.
