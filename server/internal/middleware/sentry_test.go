@@ -105,7 +105,7 @@ func (f *sentryAuthFixture) mcpToken(t *testing.T) string {
 	t.Helper()
 
 	token, err := f.authSvc.GenerateMCPAccessToken(
-		f.user.UID, sentryTestOrg, []string{"mcp"}, sentryTestIssuer+"/api/v1/mcp", time.Hour, "",
+		t.Context(), f.user.UID, sentryTestOrg, []string{"mcp"}, sentryTestIssuer+"/api/v1/mcp", time.Hour, "",
 	)
 	require.NoError(t, err)
 

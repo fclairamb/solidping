@@ -2147,13 +2147,26 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string,
 // only the access token can identify (isCurrent) and self-revoke the grant it
 // rides on. ttl is supplied by the caller so the OAuth service controls the
 // access-token lifetime independently of the dashboard's session expiry.
+//
+// The demo claim is resolved from the user row here rather than left to the
+// RequireMCPAuth backstop. The backstop does re-derive it, but §1 of spec
+// 2026-09-06-02 says the claim is populated wherever claims are minted, and a
+// guard that works only because a second layer repairs the first is exactly the
+// fragility the second layer exists to cover.
 func (s *Service) GenerateMCPAccessToken(
+	ctx context.Context,
 	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration, refreshUID string,
 ) (string, error) {
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil {
+		return "", fmt.Errorf("failed to load user for MCP access token: %w", err)
+	}
+
 	now := time.Now()
 	claims := &Claims{
 		UserUID:    userUID,
 		OrgSlug:    orgSlug,
+		Demo:       user.Demo,
 		Scopes:     scopes,
 		RefreshUID: refreshUID,
 		RegisteredClaims: jwt.RegisteredClaims{

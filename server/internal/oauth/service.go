@@ -456,7 +456,7 @@ func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResul
 	s.recordGrantIssued(ctx, input, refreshRow.UID)
 
 	accessToken, err := s.authSvc.GenerateMCPAccessToken(
-		input.userUID, input.orgSlug, scopes, input.resource, accessTokenTTL, refreshRow.UID,
+		ctx, input.userUID, input.orgSlug, scopes, input.resource, accessTokenTTL, refreshRow.UID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("mint access token: %w", err)
