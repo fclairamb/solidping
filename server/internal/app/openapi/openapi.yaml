@@ -8719,6 +8719,9 @@ components:
           type: string
         runMode:
           type: string
+        deploymentMode:
+          type: string
+          enum: [saas, self-hosted]
 
     CostDistributionPercentiles:
       type: object

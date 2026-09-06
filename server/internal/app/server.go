@@ -2455,6 +2455,7 @@ func (s *Server) getVersion(writer http.ResponseWriter, _ *http.Request) error {
 
 	versionInfo := version.Get()
 	versionInfo.RunMode = s.config.RunMode
+	versionInfo.DeploymentMode = s.config.Deployment.Mode
 
 	data, err := json.Marshal(versionInfo)
 	if err != nil {
