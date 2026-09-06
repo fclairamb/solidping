@@ -5,16 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math"
-	"math/rand"
 	"net/http"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/synthdata"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -124,72 +121,21 @@ func (h *Handler) GenerateData(writer http.ResponseWriter, req *http.Request) er
 	})
 }
 
+// generateResults delegates to internal/synthdata, which is the shared
+// implementation this endpoint used to own outright. The public live demo's
+// 30-day backfill (spec 2026-09-06-02) needs exactly these shapes with no HTTP
+// request, no handler and no test-mode gate behind them, so the generator moved
+// out and this became a thin adapter over the request body.
 func (h *Handler) generateResults(
 	ctx context.Context, orgUID, checkUID string, startTime time.Time, body *GenerateDataRequest,
 ) (int, error) {
-	now := time.Now()
-	period := time.Duration(body.CheckPeriodSec) * time.Second
-	rng := rand.New(rand.NewSource(now.UnixNano()))
-
-	count := 0
-	cursor := startTime
-
-	for cursor.Before(now) {
-		status, duration := simulateResult(rng, body, cursor)
-
-		statusInt := int(status)
-		region := "default"
-		result := &models.Result{
-			UID:             uuid.Must(uuid.NewV7()).String(),
-			OrganizationUID: orgUID,
-			CheckUID:        checkUID,
-			PeriodType:      "raw",
-			PeriodStart:     cursor,
-			Region:          &region,
-			Status:          &statusInt,
-			Duration:        &duration,
-			Metrics:         make(models.JSONMap),
-			Output:          make(models.JSONMap),
-			CreatedAt:       cursor,
-		}
-
-		if err := h.dbService.CreateResult(ctx, result); err != nil {
-			return count, err
-		}
-
-		count++
-		cursor = cursor.Add(period)
-	}
-
-	return count, nil
-}
-
-func simulateResult(
-	rng *rand.Rand, body *GenerateDataRequest, timestamp time.Time,
-) (models.ResultStatus, float32) {
-	duration := float32(body.AvgDurationMs + rng.NormFloat64()*body.AvgDurationMs*0.2)
-	if duration < 1 {
-		duration = 1
-	}
-
-	if body.FailureRate <= 0 {
-		return models.ResultStatusUp, duration
-	}
-
-	if body.FailureBurstSec > 0 {
-		cycleSec := float64(body.FailureBurstSec) / body.FailureRate
-		posInCycle := math.Mod(float64(timestamp.Unix()), cycleSec)
-
-		if posInCycle < float64(body.FailureBurstSec) {
-			return models.ResultStatusDown, 0
-		}
-
-		return models.ResultStatusUp, duration
-	}
-
-	if rng.Float64() < body.FailureRate {
-		return models.ResultStatusDown, 0
-	}
-
-	return models.ResultStatusUp, duration
+	return synthdata.Generate(ctx, h.dbService, synthdata.Options{
+		OrganizationUID: orgUID,
+		CheckUID:        checkUID,
+		Start:           startTime,
+		Period:          time.Duration(body.CheckPeriodSec) * time.Second,
+		AvgDurationMs:   body.AvgDurationMs,
+		FailureRate:     body.FailureRate,
+		FailureBurstSec: body.FailureBurstSec,
+	})
 }
