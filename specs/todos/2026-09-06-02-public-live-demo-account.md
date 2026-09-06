@@ -444,3 +444,124 @@ not add a demo-slug skip there. Pin the finding instead — a comment next to th
 demo `org_entitlements` seeding in the startup job recording that billing only
 pushes for orgs with a Polar customer, so the pinned row is safe, and that this
 is the assumption to re-check if billing ever grows an all-orgs sweep.
+
+## Implementation Plan
+
+Ordered so every step compiles on top of the previous one. One commit per step.
+
+### P1 — Schema (§1, §3)
+
+`019_v0_25_0.{up,down}.sql` for **both** dialects (018 shipped with v0.24.0;
+019 is the next free number):
+
+- `users.demo boolean not null default false`
+- `checks.created_by varchar(36) null`
+
+Models: `models.User.Demo` (+ `UserUpdate.Demo`), `models.Check.CreatedBy`.
+
+### P2 — Claims carry `demo` (§1)
+
+- `auth.Claims` gains `Demo bool \`json:"demo,omitempty"\``.
+- `generateAccessToken` gains a `demo bool` parameter; every call site passes
+  `user.Demo` (`mintOrgSession` threads it from its two callers).
+- `ValidatePATToken` sets it from the owning user row.
+- Belt and braces: `RequireAuth` / `RequireMCPAuth` already load the user row,
+  so they OR `user.Demo` into the claims after parsing. A mint site that is
+  ever added and forgotten therefore still fails closed.
+
+### P3 — The guard (§2)
+
+New `internal/handlers/auth/demo_guard.go`, modelled 1:1 on
+`password_rotation.go`:
+
+- `DemoWriteMessage`, `ErrorCodeDemoReadOnly = "DEMO_READ_ONLY"` in
+  `handlers/base`.
+- `IsDemoWriteAllowed(method, routePattern string) bool` — GET/HEAD/OPTIONS
+  pass; otherwise the pattern must be in the written-out allowlist:
+  `POST /api/v1/auth/logout`, `POST /api/v1/orgs/{org}/checks`,
+  `POST /api/v1/orgs/{org}/checks/validate`,
+  `PATCH|DELETE /api/v1/orgs/{org}/checks/{checkUid}`,
+  `POST /api/v1/orgs/{org}/checks/{checkUid}/clone`, plus the non-GET
+  check-diagnostics probes.
+- Enforced inside `RequireAuth` and `RequireMCPAuth` right after the claims are
+  parsed, matching on `httpx.RoutePattern(req)` (chi's resolved pattern, never
+  the raw path).
+- `POST /auth/reset-password` (unauthenticated, so invisible to the guard)
+  refuses to complete for a `users.demo` user.
+
+### P4 — Checks service rules (§3)
+
+In `checks.Service`, a shared `demoClaims(ctx)` helper (claims come off the
+request context, the package already imports `internal/middleware`):
+
+- `created_by` set from `claims.UserUID` on **every** create/clone for **all**
+  users; exposed as `createdBy` on `CheckResponse`. Startup-seeded checks keep
+  `NULL`.
+- Demo-session rules on create/upsert/clone: type in
+  {http,tcp,icmp,dns,ssl}, period >= 60s, public regions only — each rejected
+  with a `VALIDATION_ERROR` naming the field.
+- Ownership on patch/delete/clone: `created_by == claims.UserUID` or
+  `403 DEMO_READ_ONLY`.
+
+### P5 — Config (§7)
+
+`config.DemoConfig` (`demo.enabled|org_slug|email|password|check_ttl|cleanup_interval`)
+plus `applyDemoEnv` in the manual-env-reader block (underscored keys never
+survive koanf's `SP_*` transform). `SP_RUN_MODE=test` forces `Enabled` on.
+
+### P6 — Seeding + entitlements (§1, §4)
+
+`jobtypes/job_startup.go` gains `ensureDemoOrganization`, running unconditionally
+after the default org (it is idempotent by slug/email, and it must survive a
+database that already has orgs — the `count > 0` early return in
+`ensureDefaultOrganization` is exactly the case a production demo lands in):
+
+org by slug, `demo.enabled=true` org param, `auth.session_max_duration=3600`,
+user by email (role `user`, `demo=true`, never superadmin, never
+must-change-password), pinned `org_entitlements` row (with the comment recording
+the billing finding from the resolved open question), a sink `webhook`
+integration + escalation policy pointing at our own `/api/v1/fake`, the `Demo`
+catalogue, and the 30-day backfill.
+
+### P7 — The catalogue (§5)
+
+`checkerdef.Demo` implemented in `GetSampleConfigs` for `http`, `tcp`, `icmp`,
+`dns`, `ssl` and `heartbeat`. SolidPing-owned targets only; the fake-backed
+checks sized well under the 60 rpm-per-IP `/fake` limiter, with the arithmetic
+in a comment. Seeded with a check group, labels, two SLOs, a maintenance
+window and one public status page.
+
+### P8 — Backfill (§5)
+
+Extract the `POST /test/generate-data` generator into `internal/synthdata`
+(pure, no HTTP, no testapi dependency); `testapi` becomes a thin caller. The
+demo seed runs it once for 30 days behind the `demo.backfilled` org parameter.
+
+### P9 — Cleanup job (§6)
+
+`jobdef.JobTypeDemoCleanup` + `jobtypes/job_demo_cleanup.go` on the
+`events_cleanup` self-rescheduling shape, seeded from the startup job:
+expired demo-owned checks deleted **through `checks.Service.DeleteCheck`**,
+then the identity/entitlements/session-cap reconciliation, no-op when
+`demo.enabled` is false.
+
+### P10 — API shapes (§7)
+
+`GET /api/v1/config` gains `demo: {enabled, orgSlug, email, password}`;
+`GET /auth/me` (and every login-shaped response, via `newUserInfo`) gains
+`demo: true`.
+
+### P11 — Dashboard (§8)
+
+`login.tsx` demo button + `?demo=1` autologin; a non-dismissable banner in the
+org layout; `DEMO_READ_ONLY` special-cased in `api/client.ts` as a toast rather
+than the 403 page; `createdBy`/`me.demo` used to hide what cannot be done;
+strings in `de`/`en`/`es`/`fr`.
+
+### P12 — Tests (§9)
+
+Route-table proof (walk every non-GET route with demo claims), guard unit
+tests, checks-service ownership/type/period/region tests, reset-password
+refusal, seeding idempotence, cleanup-job behaviour, public-config and
+`/auth/me` shapes; dash0 `e2e/demo-account.spec.ts` and unit tests for the
+banner and the client.
