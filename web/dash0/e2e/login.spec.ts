@@ -535,4 +535,41 @@ test.describe("Login: passkey error handling", () => {
     await expect(error).toContainText("domain");
     await expect(error).not.toContainText("unexpected error");
   });
+
+  test("the footer brand and version are links to the marketing site and changelog", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    const brandLink = page.getByTestId("login-brand-link");
+    const versionLink = page.getByTestId("login-version");
+    await expect(brandLink).toBeVisible();
+    await expect(versionLink).toBeVisible();
+
+    // "SolidPing v1.2.3" as one line of text (brand, a space, then the
+    // version link) — spec 2026-09-06-01.
+    const footerText = `${await brandLink.textContent()} ${await versionLink.textContent()}`;
+    expect(footerText).toMatch(/^SolidPing v\d+\.\d+\.\d+/);
+
+    // The brand link opens the marketing site in a new tab, tagged with the
+    // self-hosted campaign (the test server runs self-hosted — no
+    // SP_DEPLOYMENT_MODE override).
+    await expect(brandLink).toHaveAttribute("target", "_blank");
+    const brandHref = await brandLink.getAttribute("href");
+    expect(brandHref).toBeTruthy();
+    const brandUrl = new URL(brandHref!);
+    expect(brandUrl.origin).toBe("https://www.solidping.io");
+    expect(brandUrl.searchParams.get("utm_campaign")).toBe("self-hosted");
+
+    // The version link goes straight to the unadorned docs changelog page.
+    await expect(versionLink).toHaveAttribute("target", "_blank");
+    await expect(versionLink).toHaveAttribute(
+      "href",
+      "https://solidping.io/docs/changelog",
+    );
+
+    // The run-mode badge is untouched by this change.
+    await expect(page.getByTestId("login-runmode")).toHaveText("test");
+  });
 });
