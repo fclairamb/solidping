@@ -52,6 +52,16 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
+	// The public live demo (spec 2026-09-06-02). Deliberately OUTSIDE
+	// ensureDefaultOrganization: that function returns early the moment any
+	// organization exists, which is the state every production database is in,
+	// so a demo provisioned from inside it would only ever appear on a virgin
+	// install — i.e. never where it is wanted. This is idempotent at every
+	// step and a no-op when demo.enabled is false.
+	if err := r.ensureDemoOrganization(ctx, jctx); err != nil {
+		return err
+	}
+
 	// Ensure aggregation jobs exist for all organizations
 	if err := r.ensureAggregationJobs(ctx, jctx); err != nil {
 		return err

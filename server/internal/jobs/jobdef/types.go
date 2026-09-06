@@ -93,6 +93,12 @@ const (
 	// no retention at all, which stopped being survivable once every login and
 	// config change started landing in it.
 	JobTypeEventsCleanup JobType = "events_cleanup"
+	// JobTypeDemoCleanup sweeps the public live demo (spec 2026-09-06-02):
+	// expired visitor-created checks are deleted through the checks service,
+	// and the demo identity (password, flags, memberships, entitlements,
+	// session cap) is reconciled back to what the startup job provisioned.
+	// Global, self-rescheduling every 30 minutes, a no-op when the demo is off.
+	JobTypeDemoCleanup JobType = "demo_cleanup"
 	// JobTypeSupportCleanup purges closed support threads past the retention
 	// window (spec 2026-08-22-02). Message bodies are personal data.
 	JobTypeSupportCleanup JobType = "support_cleanup"

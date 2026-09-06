@@ -421,6 +421,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	)
 	svcList.Entitlements = entitlementsService
 
+	// The check write path, exposed to background jobs that must delete a
+	// check the way a user's DELETE does. Registered HERE rather than in
+	// SetupRoutes because a worker-only process runs the job scheduler and
+	// never builds a router — the demo cleanup sweep must work there too
+	// (spec 2026-09-06-02).
+	svcList.Checks = checks.NewService(
+		dbService, svcList.EventNotifier, credSvc, entitlementsService)
+
 	// Instance-level SMS/voice providers, built ONCE here and shared by every
 	// org that has not brought its own account. A misconfiguration (unknown
 	// provider, bad region, unreachable OVH endpoint) must surface as a startup
