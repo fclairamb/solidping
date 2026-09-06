@@ -49,7 +49,22 @@ func TestSchemaVanishesWhenDatabaseFileIsDeleted(t *testing.T) {
 		return svc.db.QueryRowContext(ctx, "SELECT count(*) FROM jobs").Scan(&n)
 	}
 
+	// Counts user tables in whatever database currently lives at dbPath. Used
+	// twice on purpose: once here as a positive control, once at the end. A
+	// bare "zero tables" assertion proves nothing unless the same query is
+	// shown returning non-zero first.
+	countUserTables := func() int {
+		var n int
+
+		r.NoError(svc.db.QueryRowContext(ctx,
+			"SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+		).Scan(&n))
+
+		return n
+	}
+
 	r.NoError(countJobs(), "baseline: the migrated schema answers")
+	r.Positive(countUserTables(), "baseline: the migrated schema has tables")
 
 	// Step 1: the file (and its WAL sidecars, if any) vanish.
 	dbPath := filepath.Join(dir, "solidping-test.db")
@@ -83,9 +98,20 @@ func TestSchemaVanishesWhenDatabaseFileIsDeleted(t *testing.T) {
 		r.Equal("undefined_table", fault.Reason)
 	}
 
-	// And the smoking gun: mode=rwc recreated an empty database in place, so
-	// nothing at the filesystem level looks broken either.
-	info, statErr := os.Stat(dbPath)
+	// And the smoking gun: mode=rwc recreated a database in place, so nothing
+	// at the filesystem level looks broken either.
+	_, statErr := os.Stat(dbPath)
 	r.NoError(statErr, "the DSN recreated the database file")
-	r.Zero(info.Size(), "…and it is empty: the schema is not coming back")
+
+	// …and it carries no schema: the tables are not coming back.
+	//
+	// Asserted against sqlite_master rather than the file's size. How many
+	// bytes a freshly created database occupies is a driver implementation
+	// detail — modernc.org/sqlite v1.58 writes the 4096-byte page header
+	// eagerly where v1.52 left a zero-byte file — so the old
+	// `r.Zero(info.Size())` failed on a routine dependency bump even though
+	// the behavior this test documents had not changed at all. The claim
+	// worth pinning is that the database has no tables, which is precisely
+	// what makes the "no such table" failure above permanent.
+	r.Zero(countUserTables(), "the recreated database carries no schema")
 }
