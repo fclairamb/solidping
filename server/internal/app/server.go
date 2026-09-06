@@ -991,6 +991,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	jobHandler.RegisterRoutes(api, jobs.RouteMiddleware{
 		Shared: []httpx.Middleware{
 			orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess,
+			// Canceling a job is a write; a viewer may list and read one, and
+			// RequireOrgWrite passes GET through untouched.
+			authMiddleware.RequireOrgWrite,
 		},
 		CreateOnly: []httpx.Middleware{authMiddleware.RequireOrgAdmin},
 	})
@@ -2077,8 +2080,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// proof-of-possession entry point: the org comes from the verified route
 	// context, and the code it mints is the only thing that can bind a
 	// Microsoft 365 tenant to this org.
-	msTeamsOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/msteams").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	msTeamsOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/msteams")
 	msTeamsOrgIntegrationRoutes.POST("/link-code", msTeamsHandler.StartLink)
 	msTeamsOrgIntegrationRoutes.GET("/status", msTeamsHandler.GetStatus)
 	msTeamsOrgIntegrationRoutes.GET("/manifest.zip", msTeamsHandler.DownloadManifest)
@@ -2088,8 +2090,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// param, so a workspace already connected to another org can be installed
 	// again here without landing the user in — or joining them to — that
 	// other org.
-	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	slackOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/slack")
 	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
 
 	// Discord destinations picker (authenticated, org-scoped).
@@ -2098,8 +2099,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
 	// org comes from the authenticated route context, never from a query param.
-	discordOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/discord").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discordOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/discord")
 	discordOrgIntegrationRoutes.POST("/install-url", discordHandler.BuildInstallURLForOrg)
 
 	// Incident events (authentication required)
