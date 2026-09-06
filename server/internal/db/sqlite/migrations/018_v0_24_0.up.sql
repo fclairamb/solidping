@@ -1,0 +1,21 @@
+-- v0.24.0 — SQLite mirror of the ONE consolidated migration for the (still
+-- unreleased) v0.24.0 release. 017_v0_21_0 is the last RELEASED migration, so
+-- everything this cycle produces lands here, in a single file per dialect,
+-- per the repo convention documented in wiki/conventions/database.md.
+--
+--   SECTION: worker-slug-leading-digit   nothing to do on SQLite (see below)
+
+-- ==========================================================================
+-- SECTION: worker-slug-leading-digit
+--
+-- Postgres relaxes the workers.slug CHECK from `^[a-z][a-z0-9-]{2,20}$` to
+-- `^[a-z0-9][a-z0-9-]{2,20}$` so Docker's default hex-ID hostname can boot —
+-- see postgres/migrations/018_v0_24_0.up.sql for the full rationale.
+--
+-- SQLite never carried the regex: its CHECK has been length-only
+-- (`length(slug) >= 3 and length(slug) <= 20`, 001_v0_1_0) since the first
+-- release, so a digit-leading slug was always storable here and the
+-- leading-letter rule lived solely in config.WorkerSlugPattern. This file is
+-- deliberately statement-free; it exists so both dialects keep the same NNN
+-- sequence, as the convention requires.
+-- ==========================================================================

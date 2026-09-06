@@ -81,7 +81,9 @@ Every process that runs check or job runners registers one `workers` row. Its
    **15 characters**.
 
 The slug must satisfy the database CHECK constraint
-`^[a-z][a-z0-9-]{2,20}$` (see `001_v0_1_0.up.sql`). It is validated at
+`^[a-z0-9][a-z0-9-]{2,20}$` (declared in `001_v0_1_0.up.sql`, relaxed to admit
+a leading digit in `018_v0_24_0.up.sql` so Docker's default hex container-ID
+hostname boots). It is validated at
 **startup** — an invalid value aborts the process with a message naming the
 offending slug and `SP_NODE_NAME`, instead of surfacing later as an opaque
 `SQLSTATE=23514` on INSERT. The resolution lives in one place,

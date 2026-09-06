@@ -10,14 +10,20 @@ import (
 	"strings"
 )
 
-// WorkerSlugPattern mirrors the `workers.slug` CHECK constraint declared in
-// server/internal/db/postgres/migrations/001_v0_1_0.up.sql:
+// WorkerSlugPattern mirrors the `workers.slug` CHECK constraint as last
+// rewritten in server/internal/db/postgres/migrations/018_v0_24_0.up.sql:
 //
-//	slug text not null check (slug ~ '^[a-z][a-z0-9-]{2,20}$')
+//	check (slug ~ '^[a-z0-9][a-z0-9-]{2,20}$')
 //
 // Keeping the two in sync is what lets a bad worker identity fail at startup
 // with an actionable message instead of as an opaque SQLSTATE=23514 on INSERT.
-const WorkerSlugPattern = `^[a-z][a-z0-9-]{2,20}$`
+//
+// A leading digit is allowed on purpose: Docker's default hostname is the
+// hex container ID, which starts with a digit ten times out of sixteen, and
+// the original leading-letter rule made `docker run` a coin flip. The slug is
+// an opaque upsert key, never a DNS label or an identifier, so nothing needed
+// the letter (spec 2026-09-05-04).
+const WorkerSlugPattern = `^[a-z0-9][a-z0-9-]{2,20}$`
 
 // WorkerHostnameMaxLen is how much of the OS hostname is kept when no explicit
 // SP_NODE_NAME override is configured. Historic value: the slug column allows
@@ -133,10 +139,11 @@ func resolveWorkerIdentity(override string, hostnameFn func() (string, error)) W
 // clean up residue *introduced by substitution* (a run of illegal characters
 // becoming a run of dashes, or truncation landing right after one), so they
 // must never run on a hostname that never needed substitution in the first
-// place. The pathological residue that remains after substitution (starts
-// with a digit, shorter than 3 chars, or empty after collapsing) is left for
-// Validate() to reject with its existing actionable error — sanitizing is
-// not a promise that the result is valid.
+// place. The pathological residue that remains after substitution (shorter
+// than 3 chars, or empty after collapsing) is left for Validate() to reject
+// with its existing actionable error — sanitizing is not a promise that the
+// result is valid. A leading digit is not residue: WorkerSlugPattern admits
+// it, so "10.0.0.1" sanitizes to a perfectly valid "10-0-0-1".
 func sanitizeHostnameSlug(hostname string) string {
 	if workerSlugRegexp.MatchString(hostname) {
 		return hostname

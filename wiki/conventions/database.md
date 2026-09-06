@@ -193,12 +193,13 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
-**There is no unreleased migration right now.** `017_v0_21_0` is the last
-migration file and v0.22.0 is the last released version, so the next schema
-change of any kind opens `018_vX_Y_Z` — and `018` is free. Whoever opens it
-names it after the release it will ship in (see the note below on resolving
-that suffix) and **updates this paragraph**, because a stale pointer here is
-what causes the mistake it is meant to prevent.
+**The unreleased migration right now is `018_v0_24_0`** (opened 2026-09-06 by
+spec 2026-09-05-04, the workers.slug leading-digit relaxation). `017_v0_21_0`
+is the last RELEASED migration and v0.23.1 the last released version, so any
+further schema change this cycle is appended to `018` as a new SECTION — do
+not open `019`. Whoever ships or renames it **updates this paragraph**,
+because a stale pointer here is what causes the mistake it is meant to
+prevent.
 
 Once a number is unreleased-and-open, appending to it costs dev databases
 nothing: a database that already ran `017` simply picks `018` up as the next

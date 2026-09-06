@@ -104,6 +104,15 @@ func TestResolveWorkerIdentity_HostnameFallback(t *testing.T) {
 			wantTruncated: true,
 		},
 		{
+			// Docker's default hostname: the 12-char hex container ID. Ten of
+			// its sixteen possible first characters are digits, and this used
+			// to be a hard startup failure (spec 2026-09-05-04).
+			name:         "docker default hex container id boots",
+			hostnameFn:   staticHostname("063429309bca"),
+			wantSlug:     "063429309bca",
+			wantWorkName: "063429309bca",
+		},
+		{
 			name:         "hostname error falls back to unknown",
 			hostnameFn:   func() (string, error) { return "", os.ErrNotExist },
 			wantSlug:     unknownHostname,
@@ -183,11 +192,20 @@ func TestResolveWorkerIdentity_HostnameSanitization(t *testing.T) {
 			// The hostNetwork failure mode this spec fixes: the host UTS
 			// namespace hands the pod a dotted node name, and it used to be a
 			// hard startup failure — see TestWorkerIdentityValidate_Invalid
-			// for the still-pathological residue cases (e.g. a leading digit).
+			// for the still-pathological residue cases (e.g. nothing but dots).
 			name:         "kubernetes hostNetwork dotted hostname now boots",
 			hostname:     "eu2.example.com",
 			wantSlug:     "eu2-example-com",
 			wantWorkName: "eu2.example.com",
+		},
+		{
+			// A dotted IPv4 hostname used to be "pathological residue": the
+			// dots sanitized away but the leading digit still failed the old
+			// leading-letter pattern. WorkerSlugPattern admits it now.
+			name:         "dotted ipv4 hostname now boots",
+			hostname:     "10.0.0.1",
+			wantSlug:     "10-0-0-1",
+			wantWorkName: "10.0.0.1",
 		},
 	}
 
@@ -347,9 +365,9 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 			wantIn:   []string{"SP_NODE_NAME"},
 		},
 		{
-			name:     "override with a leading digit",
-			override: "1solidping",
-			wantIn:   []string{"1solidping", "SP_NODE_NAME"},
+			name:     "override with a leading dash",
+			override: "-solidping",
+			wantIn:   []string{"-solidping", "SP_NODE_NAME"},
 		},
 		{
 			name:     "override with uppercase",
@@ -360,14 +378,6 @@ func TestWorkerIdentityValidate_Invalid(t *testing.T) {
 			name:     "override too short",
 			override: "ab",
 			wantIn:   []string{"SP_NODE_NAME"},
-		},
-		{
-			// Pathological residue: sanitization substitutes the dots but the
-			// result still starts with a digit, which the CHECK constraint
-			// (and WorkerSlugPattern) rejects regardless of origin.
-			name:     "hostname sanitizes to a leading digit",
-			hostname: "10.0.0.1",
-			wantIn:   []string{"10.0.0.1", "SP_NODE_NAME", "hostname"},
 		},
 		{
 			// Pathological residue: nothing survives collapsing/trimming, so
@@ -567,13 +577,13 @@ func TestValidate_WorkerIdentity(t *testing.T) {
 }
 
 // TestWorkerSlugPatternMatchesMigration guards the copy of the CHECK constraint
-// against drift: the pattern here must stay literally identical to the one in
-// the initial Postgres migration, or startup validation would start accepting
-// slugs the database still rejects.
+// against drift: the pattern here must stay literally identical to the one the
+// latest Postgres migration (018_v0_24_0) rewrote the CHECK to, or startup
+// validation would start accepting slugs the database still rejects.
 func TestWorkerSlugPatternMatchesMigration(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	r.Equal(`^[a-z][a-z0-9-]{2,20}$`, WorkerSlugPattern)
+	r.Equal(`^[a-z0-9][a-z0-9-]{2,20}$`, WorkerSlugPattern)
 	r.NotContains(WorkerSlugPattern, " ")
 }
