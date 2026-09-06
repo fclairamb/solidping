@@ -10,10 +10,31 @@ const (
 	sampleTimeout          = 5 * time.Second // Default timeout for sample DNS checks
 	sampleHostGoogle       = "google.com"
 	sampleNameserverGoogle = "8.8.8.8:53" // Google Public DNS resolver (host:port)
+	// demoHost is the only name the public live demo's DNS catalogue resolves:
+	// our own.
+	demoHost = "solidping.io"
 )
 
 // GetSampleConfigs returns sample DNS check configurations.
-func (c *DNSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
+func (c *DNSChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
+	// Demo catalogue: resolve our own name, through the region's own resolver
+	// (spec 2026-09-06-02). No custom nameserver, so no third party's resolver
+	// is queried on the demo's behalf either.
+	if opts != nil && opts.Type == checkerdef.Demo {
+		return []checkerdef.CheckSpec{
+			{
+				Name:   "solidping.io A record",
+				Slug:   "demo-dns-solidping",
+				Period: time.Minute,
+				Config: (&DNSConfig{
+					Host:       demoHost,
+					RecordType: recordTypeA,
+					Timeout:    sampleTimeout,
+				}).GetConfig(),
+			},
+		}
+	}
+
 	return []checkerdef.CheckSpec{
 		{
 			Name:   "Google DNS A Record",
