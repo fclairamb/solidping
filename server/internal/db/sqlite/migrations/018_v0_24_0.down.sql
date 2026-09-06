@@ -1,0 +1,4 @@
+-- Teardown/parity half of the consolidated v0.24.0 migration — never run in
+-- production. Mirrors 018_v0_24_0.up.sql, which is statement-free on SQLite:
+-- the workers.slug CHECK here was always length-only, so there is nothing to
+-- restore. See postgres/migrations/018_v0_24_0.down.sql for the Postgres half.

@@ -102,7 +102,8 @@ Rules:
 
 `SP_NODE_NAME` pins the identity a node registers under. By default the slug
 is the OS hostname, lowercased and cut to 15 characters, and it must match
-`^[a-z][a-z0-9-]{2,20}$`. Registration is an upsert on that slug, so set
+`^[a-z0-9][a-z0-9-]{2,20}$` (a leading digit is fine, so Docker's default
+hex container-ID hostname works out of the box). Registration is an upsert on that slug, so set
 `SP_NODE_NAME` whenever the hostname is not stable, not unique within its
 first 15 characters, or not slug-legal:
 
