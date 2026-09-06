@@ -106,6 +106,14 @@ const (
 	// user to the password-rotation form — which is still reachable and is the
 	// one action that clears the condition.
 	ErrorCodePasswordChangeRequired ErrorCode = "PASSWORD_CHANGE_REQUIRED"
+	// ErrorCodeDemoReadOnly accompanies the 403 a shared public-demo session
+	// gets for anything outside its four-route write allowlist (spec
+	// 2026-09-06-02). Deliberately NOT ErrorCodeForbidden: a client that
+	// cannot tell the two apart renders the dead "Permission denied" page,
+	// when the correct behavior is a toast saying the demo is read-only and
+	// offering sign-up — the session is perfectly valid, it is the demo that
+	// is bounded.
+	ErrorCodeDemoReadOnly ErrorCode = "DEMO_READ_ONLY"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

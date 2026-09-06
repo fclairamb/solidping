@@ -708,6 +708,9 @@ func (h *Handler) handlePasswordResetError(writer http.ResponseWriter, request *
 	case errors.Is(err, ErrPasswordResetExpired):
 		return h.WriteErrorErr(writer, request, http.StatusGone, base.ErrorCodePasswordResetExpired,
 			"Reset link has expired or is invalid", err)
+	case errors.Is(err, ErrDemoAccountNotResettable):
+		return h.WriteErrorErr(writer, request, http.StatusForbidden, base.ErrorCodeDemoReadOnly,
+			demoResetRefusedTitle, err)
 	case errors.Is(err, ErrInvalidCredentials):
 		return h.WriteErrorErr(writer, request, http.StatusBadRequest, base.ErrorCodeValidationError,
 			err.Error(), err)
@@ -715,6 +718,9 @@ func (h *Handler) handlePasswordResetError(writer http.ResponseWriter, request *
 		return h.WriteInternalError(writer, request, err)
 	}
 }
+
+// demoResetRefusedTitle is the human message for a refused demo password reset.
+const demoResetRefusedTitle = "The shared demo account's password cannot be reset"
 
 // CreateOrg handles organization creation.
 func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error {

@@ -350,7 +350,19 @@ func (s *Service) mintOrgSession(
 		return nil, createTokenErr
 	}
 
-	accessToken, err := s.generateAccessToken(userUID, org.Slug, role, refreshToken.UID)
+	// The demo flag lives on the user row, and this is the one mint site that
+	// is handed a bare UID rather than the loaded user. Read it rather than
+	// assuming false: a session minted here would otherwise be an unguarded
+	// session for a demo principal. A miss (the row cannot be read) is not
+	// fatal — RequireAuth re-derives the flag from the user row it loads on
+	// every request — so the lookup failure only costs the claim, not the
+	// guard.
+	demo := false
+	if u, userErr := s.db.GetUser(ctx, userUID); userErr == nil && u != nil {
+		demo = u.Demo
+	}
+
+	accessToken, err := s.generateAccessToken(userUID, org.Slug, role, refreshToken.UID, demo)
 	if err != nil {
 		return nil, err
 	}
