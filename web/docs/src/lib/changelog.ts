@@ -26,6 +26,8 @@ export const SCOPE_LABELS: Record<string, string> = {
   "status-pages": "Status pages",
   statuspages: "Status pages",
   status0: "Status pages",
+  worker: "Workers",
+  workers: "Workers",
   sftp: "SFTP checks",
   api: "API",
   openapi: "API",
