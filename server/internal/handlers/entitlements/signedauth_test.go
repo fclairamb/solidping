@@ -28,8 +28,15 @@ import (
 
 // This file drives the REAL middleware chain the billing service hits —
 // ServiceSignature -> ServiceTokenBypass -> RequireAuth -> RequireOrgAccess ->
-// handler — over an httptest server, so every assertion is about what an
-// attacker on the wire can and cannot do, not about an internal helper.
+// RequireOrgWrite -> handler — over an httptest server, so every assertion is
+// about what an attacker on the wire can and cannot do, not about an internal
+// helper.
+//
+// RequireOrgWrite (spec 2026-09-06-03) is part of that chain and must stay
+// here: a signed push carries no membership row, so it survives only because
+// the floor short-circuits on isServiceAuthorized. Omitting it would leave
+// these tests green while production 403s. The end-to-end proof over the real
+// route table lives in internal/app/entitlements_signed_push_route_test.go.
 
 const (
 	sigKeyID     = "billing-2026-08"
@@ -76,7 +83,7 @@ func newSignedSetup(t *testing.T) *signedSetup {
 			authMw.ServiceTokenBypass(
 				enthandler.ParamServiceToken, enthandler.ParamAllowLegacyServiceToken,
 			)(
-				authMw.RequireAuth(authMw.RequireOrgAccess(h)),
+				authMw.RequireAuth(authMw.RequireOrgAccess(authMw.RequireOrgWrite(h))),
 			),
 		)
 	}
