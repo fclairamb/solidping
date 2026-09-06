@@ -231,6 +231,32 @@ SP_DISCORD_CLIENT_SECRET=your-discord-client-secret
 2. Create an application and open **OAuth2**
 3. Add redirect URL: `{SP_BASE_URL}/api/v1/auth/discord/callback`
 
+## Member roles
+
+Every member of an organization holds one of four roles, ordered
+**owner > admin > user > viewer**. They are hierarchical: an owner can do
+everything an admin can, an admin everything a user can, and so on.
+
+| Role | What it can do |
+|---|---|
+| `owner` | Everything an admin can, **plus** deleting the organization, renaming it, and granting or revoking ownership |
+| `admin` | Full read/write on the organization's resources, plus member management |
+| `user` | Read/write on monitoring resources — checks, incidents, status pages, notifications |
+| `viewer` | Read everything, change nothing — except their own notification settings and their own API tokens |
+
+`viewer` is genuinely read-only: every state-changing API call is refused with
+`403 FORBIDDEN`, including acknowledging or resolving an incident, which changes
+what the whole team is paged about. A viewer may still choose where *they*
+personally get notified, and mint their own API token — that token inherits
+their role, so it can automate reading and nothing more.
+
+The rule is enforced from the member's current role, not from the token they are
+holding: demote someone to `viewer` and their very next request stops writing,
+without waiting for a sign-out or a token refresh. It applies to the REST API,
+personal access tokens and the [MCP server](../features/mcp.md) alike.
+
+If you want someone to acknowledge incidents, give them `user`.
+
 ## Two-Factor Authentication (2FA)
 
 Users can secure their accounts with **TOTP** two-factor authentication (compatible with Google Authenticator, Authy, 1Password, etc.). 2FA is enabled per user from account settings — no server configuration is required.

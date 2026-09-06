@@ -16,7 +16,28 @@ comes from a JWT claim.
 | `owner` | Everything an admin can do, **plus** deleting the organization and granting/revoking ownership |
 | `admin` | Full read/write on the org's resources, member management (except owners) |
 | `user` | Read/write on monitoring resources |
-| `viewer` | Read-only |
+| `viewer` | Read everything, change nothing — except their own notification settings and their own API tokens |
+
+**The read-only floor is enforced, not merely documented.** `RequireOrgWrite`
+(`internal/middleware/auth.go`) is applied structurally by the `orgGroup` helper
+in `internal/app/server.go`: every non-GET route registered through it requires
+at least `user`, and a viewer is refused with `403` / `FORBIDDEN`. The role is
+read from the **membership row**, not from the JWT claim, so a demotion takes
+effect on the next request and a PAT minted while its owner was a `user` stops
+writing the moment they are demoted. The same floor is repeated inside the MCP
+server (`internal/mcp`), whose tool calls never pass through this middleware.
+
+Two groups deliberately keep the un-floored chain (`orgGroupSelf`), because what
+they write is only ever the caller's own row: `/orgs/:org/users/me/*` (their own
+notification contacts, routes, verification and Telegram link) and
+`POST /orgs/:org/tokens` (their own PAT — which inherits their role, so it is
+bound by this very gate). Everything else is a write, incident acknowledgement
+and resolution included: those change what the whole team is paged about. A team
+that wants someone to ack incidents gives them `user`.
+
+`TestEveryOrgScopedWriteRouteRefusesViewers` (`internal/app`) walks the real
+route table and fails on any org-scoped write route that does not refuse a
+viewer, so a route added later is covered on the day it is registered.
 
 Ownership rules:
 

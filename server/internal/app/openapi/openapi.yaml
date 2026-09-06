@@ -11080,6 +11080,11 @@ components:
         role:
           type: string
           enum: [owner, admin, user, viewer]
+          description: >-
+            Member role, ordered `owner` > `admin` > `user` > `viewer` and
+            hierarchical. `viewer` is read-only: it reads everything and changes
+            nothing, except its own notification settings and its own API
+            tokens.
         joinedAt:
           type: string
           format: date-time
@@ -11098,8 +11103,14 @@ components:
           type: string
           enum: [owner, admin, user, viewer]
           description: >-
-            Member role. `owner` may only be granted by a caller who is already
+            Member role, ordered `owner` > `admin` > `user` > `viewer` and
+            hierarchical. `owner` may only be granted by a caller who is already
             an owner of the organization; anybody else gets 403 FORBIDDEN.
+            `viewer` is read-only and enforced as such: every state-changing
+            request is refused with 403 FORBIDDEN — a viewer reads everything
+            and changes nothing, except their own notification settings and
+            their own API tokens. Incident acknowledgement and resolution are
+            writes.
 
     UpdateMemberRequest:
       type: object
@@ -11108,7 +11119,11 @@ components:
           type: string
           enum: [owner, admin, user, viewer]
           description: >-
-            New member role. Granting `owner`, or changing the role of a member
+            New member role. Demoting a member to `viewer` takes effect on their
+            very next request — the role is read from the membership row, not
+            from the token they are holding, so existing sessions and personal
+            access tokens stop writing immediately.
+            Granting `owner`, or changing the role of a member
             who currently IS an owner, requires the caller to be an owner
             (403 FORBIDDEN otherwise). The organization's last owner can never
             be demoted (409 CONFLICT) — transfer ownership by promoting a second
@@ -15008,7 +15023,12 @@ components:
         role:
           type: string
           enum: [admin, user, viewer]
-          description: Member role granted on acceptance (default user)
+          description: >-
+            Member role granted on acceptance (default `user`). `viewer` is
+            read-only and enforced as such: every state-changing request is
+            refused with 403 FORBIDDEN — a viewer reads everything and changes
+            nothing, except their own notification settings and their own API
+            tokens.
         expiresIn:
           type: string
           enum: ["1h", "6h", "12h", "24h", "48h", "1w"]
@@ -15120,7 +15140,11 @@ components:
         role:
           type: string
           enum: [admin, user, viewer]
-          description: Role to grant the new member (default user)
+          description: >-
+            Role to grant the new member (default `user`). `viewer` is read-only
+            and enforced as such: every state-changing request is refused with
+            403 FORBIDDEN — a viewer reads everything and changes nothing,
+            except their own notification settings and their own API tokens.
 
     RejectMembershipRequestRequest:
       type: object
