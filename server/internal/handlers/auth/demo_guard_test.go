@@ -35,25 +35,41 @@ func TestIsDemoWriteAllowed(t *testing.T) {
 		{"clone check", http.MethodPost, "/api/v1/orgs/{org}/checks/{checkUid}/clone", true},
 
 		// Denied — and each for its own reason.
-		{"upsert by slug can overwrite a seeded check", http.MethodPut,
-			"/api/v1/orgs/{org}/checks/{slug}", false},
-		{"import rewrites the whole check set", http.MethodPost,
-			"/api/v1/orgs/{org}/checks/import", false},
+		{
+			"upsert by slug can overwrite a seeded check", http.MethodPut,
+			"/api/v1/orgs/{org}/checks/{slug}", false,
+		},
+		{
+			"import rewrites the whole check set", http.MethodPost,
+			"/api/v1/orgs/{org}/checks/import", false,
+		},
 		{"apply can delete by absence", http.MethodPost, "/api/v1/orgs/{org}/checks/apply", false},
-		{"rotating a heartbeat token breaks a seeded check", http.MethodPost,
-			"/api/v1/orgs/{org}/checks/{checkUid}/rotate-token", false},
-		{"minting a PAT would outlive the session", http.MethodPost,
-			"/api/v1/orgs/{org}/tokens", false},
-		{"changing the shared password locks everyone out", http.MethodPost,
-			"/api/v1/auth/change-password", false},
+		{
+			"rotating a heartbeat token breaks a seeded check", http.MethodPost,
+			"/api/v1/orgs/{org}/checks/{checkUid}/rotate-token", false,
+		},
+		{
+			"minting a PAT would outlive the session", http.MethodPost,
+			"/api/v1/orgs/{org}/tokens", false,
+		},
+		{
+			"changing the shared password locks everyone out", http.MethodPost,
+			"/api/v1/auth/change-password", false,
+		},
 		{"editing the shared profile", http.MethodPatch, "/api/v1/auth/me", false},
-		{"enrolling 2FA on a shared account locks everyone out", http.MethodPost,
-			"/api/v1/auth/2fa/setup", false},
+		{
+			"enrolling 2FA on a shared account locks everyone out", http.MethodPost,
+			"/api/v1/auth/2fa/setup", false,
+		},
 		{"creating a second org escapes the demo entirely", http.MethodPost, "/api/v1/orgs", false},
-		{"integrations could page a real person", http.MethodPost,
-			"/api/v1/orgs/{org}/integrations", false},
-		{"status pages are public artifacts", http.MethodPost,
-			"/api/v1/orgs/{org}/status-pages", false},
+		{
+			"integrations could page a real person", http.MethodPost,
+			"/api/v1/orgs/{org}/integrations", false,
+		},
+		{
+			"status pages are public artifacts", http.MethodPost,
+			"/api/v1/orgs/{org}/status-pages", false,
+		},
 		{"deleting the org", http.MethodDelete, "/api/v1/orgs/{org}", false},
 
 		// Fail-closed: an unmatched route has no pattern, and a write with no
@@ -61,10 +77,14 @@ func TestIsDemoWriteAllowed(t *testing.T) {
 		{"POST with no route pattern fails closed", http.MethodPost, "", false},
 
 		// The allowlist is method-specific, not path-specific.
-		{"PUT on the checks collection is not POST", http.MethodPut,
-			"/api/v1/orgs/{org}/checks", false},
-		{"DELETE on the checks collection is not POST", http.MethodDelete,
-			"/api/v1/orgs/{org}/checks", false},
+		{
+			"PUT on the checks collection is not POST", http.MethodPut,
+			"/api/v1/orgs/{org}/checks", false,
+		},
+		{
+			"DELETE on the checks collection is not POST", http.MethodDelete,
+			"/api/v1/orgs/{org}/checks", false,
+		},
 
 		// Raw paths must never match: the guard reads chi's resolved pattern.
 		{"a concrete path is not the pattern", http.MethodPost, "/api/v1/orgs/demo/checks", false},

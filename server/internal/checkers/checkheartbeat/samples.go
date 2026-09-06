@@ -8,7 +8,7 @@ import (
 
 // GetSampleConfigs returns sample heartbeat check configurations.
 //
-// ONLY the Demo catalogue gets one (spec 2026-09-06-02). A heartbeat is a
+// ONLY the Demo catalog gets one (spec 2026-09-06-02). A heartbeat is a
 // passive check: it goes down unless something out there pings it, so seeding
 // one into a fresh self-hosted install's `default` org would hand a new
 // operator a red check on their first login with nothing to fix. In the demo

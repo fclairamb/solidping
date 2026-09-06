@@ -55,9 +55,9 @@ func TestCreatedByIsRecordedForEveryCreator(t *testing.T) {
 }
 
 // TestSeededChecksHaveNoCreator is the other half of the ownership model: a
-// check created with no claims on the context — the startup job's catalogue —
+// check created with no claims on the context — the startup job's catalog —
 // has created_by = NULL, and NULL never equals a user's UID. That, and nothing
-// else, is what makes the seeded catalogue immutable to a demo session.
+// else, is what makes the seeded catalog immutable to a demo session.
 func TestSeededChecksHaveNoCreator(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -227,7 +227,7 @@ func TestDemoPeriodFloor(t *testing.T) {
 
 // TestCloneIsNotOwnershipGatedButKeepsTheShapeRules pins the deliberate
 // asymmetry the spec describes: cloning a SEEDED check must work — it is what
-// turns a read-only catalogue into something a visitor can experiment with —
+// turns a read-only catalog into something a visitor can experiment with —
 // and the copy lands owned by the cloner. Clone mutates nothing, so gating it
 // on ownership would buy no safety at all (a visitor can already POST /checks)
 // while removing the demo's main affordance.

@@ -22,7 +22,7 @@ import (
 // they live here, in the service, on every path that writes a check.
 var (
 	// ErrDemoReadOnly is the ownership refusal: a demo session tried to edit,
-	// delete or clone a check it did not create. Seeded catalogue checks carry
+	// delete or clone a check it did not create. Seeded catalog checks carry
 	// created_by = NULL, so they are immutable to every demo session by
 	// construction — no "protected" column anywhere.
 	ErrDemoReadOnly = errors.New("the demo can only change checks it created")
@@ -73,7 +73,7 @@ func DemoAllowedCheckTypes() []string {
 //
 // A zero value (no claims — a startup job, a background sweep, a unit test
 // calling the service directly) is deliberately "not a demo session, and no
-// creator to record". That is exactly what makes the seeded catalogue's checks
+// creator to record". That is exactly what makes the seeded catalog's checks
 // created_by = NULL.
 type callerIdentity struct {
 	userUID string
@@ -103,8 +103,13 @@ func createdByForCaller(ctx context.Context) *string {
 	return &uid
 }
 
-// assertDemoMayWriteCheck enforces ownership: a demo session may PATCH, DELETE
-// or clone only a check it created itself.
+// assertDemoMayWriteCheck enforces ownership: a demo session may PATCH or
+// DELETE only a check it created itself.
+//
+// A nil check — no such row — is refused for a demo caller rather than waved
+// through. That is the fail-closed reading, and it is what makes the upsert
+// path (PUT by slug, which is not on the route allowlist) refuse a demo write
+// whether it would create or overwrite.
 //
 // Non-demo callers pass untouched — this is not a general authorization rule,
 // and the org-membership check has already run in RequireOrgAccess.

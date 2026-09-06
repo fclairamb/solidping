@@ -9,14 +9,14 @@ import (
 const (
 	sampleCount   = 2               // Number of pings per sample check
 	sampleTimeout = 5 * time.Second // Default timeout for sample ping checks
-	// demoHost is the only host the public live demo's ICMP catalogue pings:
+	// demoHost is the only host the public live demo's ICMP catalog pings:
 	// our own.
 	demoHost = "solidping.io"
 )
 
 // GetSampleConfigs returns sample ICMP check configurations.
 func (c *ICMPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
-	// Demo catalogue: our own host only (spec 2026-09-06-02). An ICMP probe is
+	// Demo catalog: our own host only (spec 2026-09-06-02). An ICMP probe is
 	// cheap, but "cheap" times every public region times forever is still
 	// somebody else's traffic if the target is not ours.
 	if opts != nil && opts.Type == checkerdef.Demo {

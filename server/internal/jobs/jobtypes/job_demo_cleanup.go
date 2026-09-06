@@ -70,9 +70,12 @@ func (r *DemoCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		return nil
 	}
 
-	org, err := jctx.DBService.GetOrganizationBySlug(ctx, cfg.ResolvedOrgSlug())
-	if err != nil || org == nil {
-		log.InfoContext(ctx, "Demo org not found; nothing to clean")
+	// A missing demo org is not an error to retry: the seed simply has not run
+	// yet (or the demo was turned on since the last boot), and the next sweep
+	// will find it. Retrying would only fill the jobs table with failures.
+	org, orgErr := jctx.DBService.GetOrganizationBySlug(ctx, cfg.ResolvedOrgSlug())
+	if orgErr != nil || org == nil {
+		log.InfoContext(ctx, "Demo org not found; nothing to clean", "error", orgErr)
 		r.rescheduleSelf(ctx, jctx)
 
 		return nil
@@ -90,9 +93,10 @@ func (r *DemoCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		return nil
 	}
 
-	user, err := jctx.DBService.GetUserByEmail(ctx, cfg.ResolvedEmail())
-	if err != nil || user == nil {
-		log.InfoContext(ctx, "Demo user not found; skipping demo cleanup")
+	// Same reasoning as the org above.
+	user, userErr := jctx.DBService.GetUserByEmail(ctx, cfg.ResolvedEmail())
+	if userErr != nil || user == nil {
+		log.InfoContext(ctx, "Demo user not found; skipping demo cleanup", "error", userErr)
 		r.rescheduleSelf(ctx, jctx)
 
 		return nil
@@ -123,7 +127,7 @@ func isDemoOrg(ctx context.Context, jctx *jobdef.JobContext, org *models.Organiz
 // TTL ago, and returns how many went.
 //
 // Two things it deliberately does not touch: checks with created_by = NULL (the
-// seeded catalogue — nobody created them, so nothing expires them) and checks
+// seeded catalog — nobody created them, so nothing expires them) and checks
 // created by anyone else (there is nobody else in the demo org today, and if
 // there ever is, their rows are not this sweep's business).
 //

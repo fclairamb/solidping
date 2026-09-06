@@ -129,7 +129,7 @@ func (h *Handler) GenerateData(writer http.ResponseWriter, req *http.Request) er
 func (h *Handler) generateResults(
 	ctx context.Context, orgUID, checkUID string, startTime time.Time, body *GenerateDataRequest,
 ) (int, error) {
-	return synthdata.Generate(ctx, h.dbService, synthdata.Options{
+	return synthdata.Generate(ctx, h.dbService, &synthdata.Options{
 		OrganizationUID: orgUID,
 		CheckUID:        checkUID,
 		Start:           startTime,

@@ -809,13 +809,6 @@ type AggregationConfig struct {
 	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 2)
 }
 
-// AuditConfig tunes the security/configuration audit trail (spec 2026-08-21-09).
-//
-// BOTH KEYS ARE SNAKE_CASE AND THEREFORE UNREACHABLE BY koanf's ENV LOADER —
-// SP_AUDIT_CAPTURE_IP would land on audit.capture.ip, not capture_ip. They are
-// bound by hand in applyAuditEnv, the same quirk as rate_limiting /
-// shutdown_timeout, and listed in manualReaderEnvVars so the startup env check
-// does not flag them as typos. See project_koanf_env_quirk.
 // DemoConfig configures the shared public live demo (spec 2026-09-06-02): a
 // real organization and a real user on this very server, reached through the
 // ordinary login with a PUBLISHED password.
@@ -830,7 +823,7 @@ type AggregationConfig struct {
 // underscores to dots — SP_DEMO_ORG_SLUG would bind demo.org.slug, not
 // demo.org_slug — so they are read by applyDemoEnv rather than automatically.
 type DemoConfig struct {
-	// Enabled turns the demo org, user, catalogue and cleanup job on.
+	// Enabled turns the demo org, user, catalog and cleanup job on.
 	// SP_DEMO_ENABLED.
 	Enabled bool `koanf:"enabled"`
 	// OrgSlug is the demo organization's slug. SP_DEMO_ORG_SLUG.
@@ -897,6 +890,13 @@ func (c DemoConfig) ResolvedCleanupInterval() time.Duration {
 	return DefaultDemoCleanupInterval
 }
 
+// AuditConfig tunes the security/configuration audit trail (spec 2026-08-21-09).
+//
+// BOTH KEYS ARE SNAKE_CASE AND THEREFORE UNREACHABLE BY koanf's ENV LOADER —
+// SP_AUDIT_CAPTURE_IP would land on audit.capture.ip, not capture_ip. They are
+// bound by hand in applyAuditEnv, the same quirk as rate_limiting /
+// shutdown_timeout, and listed in manualReaderEnvVars so the startup env check
+// does not flag them as typos. See project_koanf_env_quirk.
 type AuditConfig struct {
 	// CaptureIP controls whether events.source_ip is populated. Default true.
 	// A GDPR-sensitive self-hoster sets it false and every audit row is
@@ -1865,16 +1865,7 @@ func Load() (*Config, error) {
 	applyHeartbeatEnv(&cfg.Heartbeat)
 	applyEncryptionEnv(&cfg.Encryption)
 	applyAuditEnv(&cfg.Audit)
-	applyDemoEnv(&cfg.Demo)
-
-	// Test mode runs the demo unconditionally so the E2E suite can exercise
-	// the login button, the banner and the read-only refusals without a second
-	// server configuration. Deliberately AFTER applyDemoEnv, so it is a floor
-	// and not an override: SP_RUN_MODE=test cannot turn the demo OFF, and the
-	// slug/email/password an E2E run sets are still honored.
-	if cfg.RunMode == runModeTest {
-		cfg.Demo.Enabled = true
-	}
+	applyDemoEnv(&cfg.Demo, cfg.RunMode)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
@@ -2168,7 +2159,7 @@ func applyAgentEnv(cfg *AgentConfig) {
 // An unparseable duration is IGNORED rather than zeroing the field: a typo in
 // SP_DEMO_CHECK_TTL must not silently turn "delete checks after an hour" into
 // "delete checks immediately".
-func applyDemoEnv(cfg *DemoConfig) {
+func applyDemoEnv(cfg *DemoConfig, runMode string) {
 	if v := os.Getenv("SP_DEMO_ENABLED"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {
 			cfg.Enabled = b
@@ -2197,6 +2188,15 @@ func applyDemoEnv(cfg *DemoConfig) {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.CleanupInterval = d
 		}
+	}
+
+	// Test mode runs the demo unconditionally so the E2E suite can exercise
+	// the login button, the banner and the read-only refusals without a second
+	// server configuration. Deliberately LAST, so it is a floor and not an
+	// override: SP_RUN_MODE=test cannot turn the demo OFF, and the
+	// slug/email/password an E2E run sets are still honored.
+	if runMode == runModeTest {
+		cfg.Enabled = true
 	}
 }
 

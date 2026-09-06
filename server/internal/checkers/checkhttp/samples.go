@@ -84,7 +84,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 		}
 	}
 
-	// Demo samples — the public live demo's catalogue (spec 2026-09-06-02).
+	// Demo samples — the public live demo's catalog (spec 2026-09-06-02).
 	//
 	// TARGETS ARE SOLIDPING-OWNED ONLY. The demo runs from every public region
 	// we have, forever, on a page anyone can open; pointing that at somebody
@@ -137,7 +137,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				}).GetConfig(),
 			},
 			{
-				// The slow one: up, but visibly worse than its neighbours, so
+				// The slow one: up, but visibly worse than its neighbors, so
 				// the response-time chart has something to say.
 				Name:   "Slow endpoint",
 				Slug:   "demo-slow-endpoint",

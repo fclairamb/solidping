@@ -82,37 +82,22 @@ const (
 
 // Generate writes synthetic raw results for one check and returns how many rows
 // it created. It stops early — without an error — at the MaxResults ceiling.
-func Generate(ctx context.Context, writer ResultWriter, opts Options) (int, error) {
-	if writer == nil || opts.Period <= 0 {
+func Generate(ctx context.Context, writer ResultWriter, opts *Options) (int, error) {
+	if writer == nil || opts == nil || opts.Period <= 0 {
 		return 0, nil
 	}
 
-	end := opts.End
-	if end.IsZero() {
-		end = time.Now()
-	}
+	resolved := opts.withDefaults()
 
-	region := opts.Region
-	if region == "" {
-		region = "default"
-	}
+	// math/rand, not crypto/rand: this is sample data whose only requirement
+	// is that it be reproducible from a seed.
+	rng := rand.New(rand.NewSource(resolved.Seed))
 
-	avg := opts.AvgDurationMs
-	if avg <= 0 {
-		avg = defaultAvgDurationMs
-	}
-
-	maxResults := opts.MaxResults
-	if maxResults <= 0 {
-		maxResults = DefaultMaxResults
-	}
-
-	seed := opts.Seed
-	if seed == 0 {
-		seed = time.Now().UnixNano()
-	}
-
-	rng := rand.New(rand.NewSource(seed)) //nolint:gosec // synthetic sample data, not cryptography
+	end := resolved.End
+	region := resolved.Region
+	avg := resolved.AvgDurationMs
+	maxResults := resolved.MaxResults
+	opts = &resolved
 
 	count := 0
 	batch := make([]*models.Result, 0, insertBatchSize)
@@ -160,6 +145,35 @@ func Generate(ctx context.Context, writer ResultWriter, opts Options) (int, erro
 	return count, nil
 }
 
+// withDefaults returns a copy of the options with every unset field filled in.
+// Split out of Generate so the write loop reads as a loop rather than as a
+// wall of fallbacks.
+func (o *Options) withDefaults() Options {
+	out := *o
+
+	if out.End.IsZero() {
+		out.End = time.Now()
+	}
+
+	if out.Region == "" {
+		out.Region = "default"
+	}
+
+	if out.AvgDurationMs <= 0 {
+		out.AvgDurationMs = defaultAvgDurationMs
+	}
+
+	if out.MaxResults <= 0 {
+		out.MaxResults = DefaultMaxResults
+	}
+
+	if out.Seed == 0 {
+		out.Seed = time.Now().UnixNano()
+	}
+
+	return out
+}
+
 // Simulate produces one sample's status and duration.
 //
 // Exported so a caller can unit-test the failure model without a database.
@@ -167,7 +181,9 @@ func Generate(ctx context.Context, writer ResultWriter, opts Options) (int, erro
 // wall-clock time — the same second always produces the same verdict — which is
 // what makes multi-region synthetic history agree with itself instead of
 // showing three unrelated random walks.
-func Simulate(rng *rand.Rand, opts Options, avgDurationMs float64, timestamp time.Time) (models.ResultStatus, float32) {
+func Simulate(
+	rng *rand.Rand, opts *Options, avgDurationMs float64, timestamp time.Time,
+) (models.ResultStatus, float32) {
 	duration := float32(avgDurationMs + rng.NormFloat64()*avgDurationMs*durationJitterRatio)
 	if duration < minDurationMs {
 		duration = minDurationMs

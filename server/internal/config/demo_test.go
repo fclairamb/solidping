@@ -35,7 +35,7 @@ func TestDemoConfigEnvBinding(t *testing.T) {
 // TestDemoIsOffByDefault is the self-hosted protection, asserted at the
 // configuration layer: pulling a new image must never turn a private instance
 // into one with a world-readable account on it.
-func TestDemoIsOffByDefault(t *testing.T) {
+func TestDemoIsOffByDefault(t *testing.T) { //nolint:paralleltest // Load reads process env
 	cfg, err := config.Load()
 	require.NoError(t, err)
 

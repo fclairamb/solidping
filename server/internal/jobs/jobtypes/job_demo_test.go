@@ -77,7 +77,7 @@ func newDemoTestContext(t *testing.T, enabled bool) (*jobdef.JobContext, db.Serv
 
 // TestDemoSeedProvisionsTheWholeAccount covers §1 and §4 in one pass: the org,
 // its demo flag, the one-hour session cap, the user (role `user`, not
-// superadmin, not forced to rotate), the pinned entitlements and the catalogue.
+// superadmin, not forced to rotate), the pinned entitlements and the catalog.
 func TestDemoSeedProvisionsTheWholeAccount(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -130,21 +130,21 @@ func TestDemoSeedProvisionsTheWholeAccount(t *testing.T) {
 
 	checks, total, err := dbSvc.ListChecks(ctx, org.UID, nil)
 	r.NoError(err)
-	r.Positive(total, "the demo catalogue must not be empty")
+	r.Positive(total, "the demo catalog must not be empty")
 
 	for _, check := range checks {
 		r.Nilf(check.CreatedBy,
 			"seeded check %s must have created_by = NULL — that is what makes it immutable", check.UID)
 	}
 
-	// The catalogue's headroom is what visitors get to use.
+	// The catalog's headroom is what visitors get to use.
 	r.Equal(int(total)+demoEntitlementHeadroom, *ent.Payload.Limits.MaxChecks)
 }
 
 // TestDemoSeedIsIdempotent is the restart property. It matters more than it
 // looks: the seed runs on EVERY boot, against a production database that
 // already has organizations, so a non-idempotent step would duplicate the
-// catalogue (and its history) once per deploy.
+// catalog (and its history) once per deploy.
 func TestDemoSeedIsIdempotent(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -170,7 +170,7 @@ func TestDemoSeedIsIdempotent(t *testing.T) {
 
 	_, secondCount, err := dbSvc.ListChecks(ctx, org.UID, nil)
 	r.NoError(err)
-	r.Equal(firstCount, secondCount, "a restart duplicated the demo catalogue")
+	r.Equal(firstCount, secondCount, "a restart duplicated the demo catalog")
 
 	r.Equal(firstResults, countRawResults(t, dbSvc), "a restart duplicated the backfilled history")
 

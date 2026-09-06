@@ -1393,7 +1393,7 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// Record the creator for EVERY caller, not only demo sessions — "who made
 	// this" is useful audit data in its own right, and a column populated on
 	// one path only is a column nobody can trust. Nil when there is no human
-	// caller (the startup job's seeded catalogue), which is precisely what
+	// caller (the startup job's seeded catalog), which is precisely what
 	// makes those checks immutable to a demo session.
 	check.CreatedBy = createdByForCaller(ctx)
 
@@ -1740,7 +1740,7 @@ func (s *Service) UpdateCheck(
 	}
 
 	// A demo session edits only what it created (spec 2026-09-06-02). The
-	// seeded catalogue carries created_by = NULL and is therefore immutable
+	// seeded catalog carries created_by = NULL and is therefore immutable
 	// here without any "protected" column.
 	if demoErr := assertDemoMayWriteCheck(ctx, check); demoErr != nil {
 		return CheckResponse{}, demoErr
@@ -2043,15 +2043,10 @@ func (s *Service) UpsertCheck(
 		return CheckResponse{}, false, fmt.Errorf("failed to query check: %w", err)
 	}
 
-	// PUT-by-slug is the third door into a check write. A demo session cannot
-	// reach it at all (it is not on the route allowlist), but the rule is
-	// asserted here too so the service is correct independently of the router.
-	if existingCheck != nil {
-		if demoErr := assertDemoMayWriteCheck(ctx, existingCheck); demoErr != nil {
-			return CheckResponse{}, false, demoErr
-		}
-	}
-
+	// No demo assertion here on purpose: PUT-by-slug is not on the demo route
+	// allowlist, and both branches below delegate to UpdateCheck / CreateCheck,
+	// which enforce ownership and the payload rules themselves. Repeating them
+	// here would be a second copy to keep in step.
 	if existingCheck != nil {
 		// Check exists - update it
 		updateReq := UpdateCheckRequest{
@@ -4034,13 +4029,13 @@ func (s *Service) CloneCheck(
 	// Cloning is deliberately NOT ownership-gated, unlike PATCH and DELETE: it
 	// mutates nothing, and the spec's own rule ("cloning a seeded check
 	// produces an owned copy the visitor can then edit") is what turns the
-	// read-only catalogue into something a visitor can experiment with. The
+	// read-only catalog into something a visitor can experiment with. The
 	// clone lands with created_by = the caller, so the copy — and only the
 	// copy — is theirs to change.
 	//
 	// The clone's SHAPE is still checked, so a demo session cannot use clone
 	// as a side door around the type allowlist or the period floor by copying
-	// a seeded check the catalogue is allowed to have but a visitor is not.
+	// a seeded check the catalog is allowed to have but a visitor is not.
 	if demoErr := assertDemoCheckShape(
 		ctx, clone.Type, time.Duration(clone.Period), clone.Regions,
 	); demoErr != nil {

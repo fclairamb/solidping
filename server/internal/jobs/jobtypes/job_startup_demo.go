@@ -28,7 +28,7 @@ const (
 	// loop would multiply it.
 	ParamDemoBackfilled = "demo.backfilled"
 	// ParamSamplesLoaded is the existing per-org "samples already seeded" flag,
-	// reused unchanged for the demo catalogue.
+	// reused unchanged for the demo catalog.
 	ParamSamplesLoaded = "samples.loaded"
 )
 
@@ -48,7 +48,7 @@ const demoBackfillDays = 30
 const demoBackfillPeriod = time.Hour
 
 // demoEntitlementHeadroom is how many checks visitors may add on top of the
-// seeded catalogue before MaxChecks refuses. The cap is what bounds the demo's
+// seeded catalog before MaxChecks refuses. The cap is what bounds the demo's
 // load no matter how many people show up at once.
 const demoEntitlementHeadroom = 20
 
@@ -66,7 +66,7 @@ const demoDisplayEmoji = "🎬"
 const demoSessionMaxDurationSeconds = 3600
 
 // ensureDemoOrganization provisions the shared public live demo (spec
-// 2026-09-06-02): a real org, a real user, a catalogue, a sink escalation
+// 2026-09-06-02): a real org, a real user, a catalog, a sink escalation
 // policy, pinned entitlements and a 30-day backfill.
 //
 // It runs on EVERY startup and is idempotent at every step, because a
@@ -105,9 +105,9 @@ func (r *StartupJobRun) ensureDemoOrganization(ctx context.Context, jctx *jobdef
 		log.ErrorContext(ctx, "Failed to seed demo content (non-fatal)", "error", seedErr)
 	}
 
-	// AFTER the catalogue, not before: MaxChecks is "the seeded count plus the
+	// AFTER the catalog, not before: MaxChecks is "the seeded count plus the
 	// visitors' headroom", and computing it against an empty org would hand the
-	// demo a cap below its own catalogue — visitors could then create nothing
+	// demo a cap below its own catalog — visitors could then create nothing
 	// at all, which is the one thing the demo exists for.
 	if entErr := r.ensureDemoEntitlements(ctx, jctx, org); entErr != nil {
 		log.ErrorContext(ctx, "Failed to pin demo entitlements (non-fatal)", "error", entErr)
@@ -326,7 +326,7 @@ func (r *StartupJobRun) ensureDemoEntitlements(
 	return nil
 }
 
-// ensureDemoContent seeds the catalogue, the sink escalation policy and the
+// ensureDemoContent seeds the catalog, the sink escalation policy and the
 // backfill — each behind its own idempotence flag.
 func (r *StartupJobRun) ensureDemoContent(
 	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
@@ -336,7 +336,7 @@ func (r *StartupJobRun) ensureDemoContent(
 		jctx.Logger.WarnContext(ctx, "Failed to seed demo sink escalation policy (non-fatal)", "error", err)
 	}
 
-	if loadErr := r.loadDemoCatalogue(ctx, jctx, org, policyUID); loadErr != nil {
+	if loadErr := r.loadDemoCatalog(ctx, jctx, org, policyUID); loadErr != nil {
 		return loadErr
 	}
 
@@ -414,7 +414,7 @@ func demoBaseURL(jctx *jobdef.JobContext) string {
 	return "http://localhost:4000"
 }
 
-// loadDemoCatalogue seeds the checkerdef.Demo samples into the demo org,
+// loadDemoCatalog seeds the checkerdef.Demo samples into the demo org,
 // exactly as loadSampleChecks seeds Default into `default`, plus the demo's
 // group, labels, status page and escalation policy.
 //
@@ -422,7 +422,7 @@ func demoBaseURL(jctx *jobdef.JobContext) string {
 // duplicates it. Checks created here go through db.CreateCheck directly and so
 // carry created_by = NULL — which is precisely what makes them untouchable to a
 // demo session, with no "protected" column anywhere.
-func (r *StartupJobRun) loadDemoCatalogue(
+func (r *StartupJobRun) loadDemoCatalog(
 	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization, policyUID *string,
 ) error {
 	log := jctx.Logger
@@ -458,7 +458,7 @@ func (r *StartupJobRun) loadDemoCatalogue(
 		count += loaded
 	}
 
-	log.InfoContext(ctx, "Loaded demo catalogue", "checks", count)
+	log.InfoContext(ctx, "Loaded demo catalog", "checks", count)
 
 	if pageErr := r.ensureDemoStatusPage(ctx, jctx, org); pageErr != nil {
 		log.WarnContext(ctx, "Failed to create demo status page (non-fatal)", "error", pageErr)
@@ -515,7 +515,7 @@ func (r *StartupJobRun) loadDemoSamplesForChecker(
 
 // demoSamplesFor returns a checker's Demo sample configs, or nothing when the
 // checker provides none. Only the types the demo allows produce samples — the
-// catalogue is defined in the checkers themselves (see each samples.go).
+// catalog is defined in the checkers themselves (see each samples.go).
 func demoSamplesFor(checkType checkerdef.CheckType, opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	checker, found := registry.GetChecker(checkType)
 	if !found {
@@ -530,7 +530,7 @@ func demoSamplesFor(checkType checkerdef.CheckType, opts *checkerdef.ListSampleO
 	return provider.GetSampleConfigs(opts)
 }
 
-// ensureDemoStatusPage publishes one public status page listing the catalogue.
+// ensureDemoStatusPage publishes one public status page listing the catalog.
 func (r *StartupJobRun) ensureDemoStatusPage(
 	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
 ) error {
@@ -541,11 +541,11 @@ func (r *StartupJobRun) ensureDemoStatusPage(
 }
 
 // backfillDemoHistory writes 30 days of synthetic results for the seeded
-// catalogue, once, so the charts are not empty on launch day. Real results take
+// catalog, once, so the charts are not empty on launch day. Real results take
 // over from the moment the workers pick the checks up.
 //
 // Guarded by its own org parameter rather than by samples.loaded: the two
-// answer different questions ("does the catalogue exist" vs "has history been
+// answer different questions ("does the catalog exist" vs "has history been
 // written"), and a restart between them must not skip the second.
 func (r *StartupJobRun) backfillDemoHistory(
 	ctx context.Context, jctx *jobdef.JobContext, org *models.Organization,
@@ -570,7 +570,7 @@ func (r *StartupJobRun) backfillDemoHistory(
 	total := 0
 
 	for i, check := range checks {
-		written, genErr := synthdata.Generate(ctx, jctx.DBService, synthdata.Options{
+		written, genErr := synthdata.Generate(ctx, jctx.DBService, &synthdata.Options{
 			OrganizationUID: org.UID,
 			CheckUID:        check.UID,
 			Start:           start,
