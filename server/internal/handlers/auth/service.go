@@ -269,6 +269,17 @@ type UserInfo struct {
 	// admin view), where a user's pending-rotation state is none of the
 	// viewer's business — see newUserInfo's doc.
 	MustChangePassword bool `json:"mustChangePassword,omitempty"`
+	// Demo marks this session as the shared public-demo principal (spec
+	// 2026-09-06-02). Like MustChangePassword it rides on every login-shaped
+	// response and on /auth/me, so the dashboard shows the "everything here is
+	// shared and expires" banner and hides the actions the guard would refuse,
+	// PROACTIVELY, rather than by tripping a 403 it would render as a dead
+	// "Permission denied".
+	//
+	// omitempty for the same reason: it is only meaningful when true, and
+	// UserInfo also describes OTHER people (the membership-request admin
+	// view), where it would be noise.
+	Demo bool `json:"demo,omitempty"`
 }
 
 // newUserInfo builds the user payload every login-shaped response and /auth/me
@@ -293,6 +304,7 @@ func newUserInfo(user *models.User, role string) *UserInfo {
 		AvatarURL:          user.AvatarURL,
 		Role:               role,
 		MustChangePassword: user.MustChangePassword,
+		Demo:               user.Demo,
 	}
 }
 
