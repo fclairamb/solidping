@@ -565,6 +565,64 @@ func GetClaimsFromContext(ctx context.Context) (*auth.Claims, bool) {
 	return claims, claimsOK
 }
 
+// ViewerWriteMessage is the human half of every role-floor denial. It says what
+// the role IS rather than what the caller lacks, and names the two things a
+// viewer may still write, so a curl user or a CLI reading only the JSON body
+// understands why a perfectly valid credential was refused (a bare "Forbidden"
+// would read as a permission bug).
+//
+// It is also the assertion target of the route-table proof in internal/app: the
+// walk asserts on this exact string, not merely on the 403, so an unrelated
+// forbidden answer cannot masquerade as the gate working.
+const ViewerWriteMessage = "Write access requires at least the user role in this organization. " +
+	"The viewer role is read-only: read everything, change nothing, " +
+	"except your own notification settings and your own API tokens."
+
+// RequireOrgWrite is the read-only floor under every state-changing org route:
+// the caller's membership must be at least models.MemberRoleUser, so the
+// `viewer` role stops meaning "read-only in the members UI" and starts meaning
+// read-only in the request path.
+//
+// Three things pass through untouched:
+//
+//   - GET / HEAD / OPTIONS. Reading is what a viewer is for, and OPTIONS is a
+//     CORS preflight that carries no credentials and mutates nothing.
+//   - Trusted service requests (ServiceSignature / ServiceTokenBypass), exactly
+//     as RequireOrgAccess skips membership for them: they are cross-org by
+//     design and have no membership row to read.
+//   - Super admins, via requireOrgRole.
+//
+// The role is read from the MEMBERSHIP ROW, never from claims.Role: a demotion
+// to viewer must take effect on the next request rather than at the next token
+// refresh, and a PAT minted while its owner was a `user` must stop writing the
+// moment they are demoted.
+//
+// Must be used after RequireAuth and RequireOrgAccess (it relies on the user
+// and the organization being resolved into the context). It is applied
+// structurally by the orgGroup helper in internal/app rather than group by
+// group — see orgGroupSelf there for the two deliberate exemptions.
+func (m *AuthMiddleware) RequireOrgWrite(next httpx.HandlerFunc) httpx.HandlerFunc {
+	roleGate := m.requireOrgRole(models.MemberRoleUser, ViewerWriteMessage)(next)
+
+	return func(writer http.ResponseWriter, req *http.Request) error {
+		// Safe methods are the whole point of the viewer role. The comparison
+		// is case-exact on purpose: net/http normalizes nothing here, and a
+		// lowercase "get" is not a method chi ever routes.
+		switch req.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			return next(writer, req)
+		}
+
+		// Trusted service requests are cross-org by design; they carry no
+		// membership row, so the role gate below would deny them outright.
+		if isServiceAuthorized(req.Context()) {
+			return next(writer, req)
+		}
+
+		return roleGate(writer, req)
+	}
+}
+
 // RequireOrgAdmin is a middleware that requires the authenticated user to hold
 // at least the admin role in the organization (so an owner passes too) or to be
 // a super admin. Must be used after RequireAuth and RequireOrgAccess (it relies
