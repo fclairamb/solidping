@@ -30,7 +30,7 @@ import (
 // RequireOrgWrite is part of the chain and must stay part of it: minting an
 // install URL is a POST, so the read-only floor of spec 2026-09-06-03 applies
 // and a viewer is refused. Dropping it here would leave the tests below
-// asserting a behaviour production does not have.
+// asserting a behavior production does not have.
 type installURLTestEnv struct {
 	router  *httpx.Router
 	db      *sqlite.Service

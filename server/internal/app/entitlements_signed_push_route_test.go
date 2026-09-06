@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"testing"
@@ -81,12 +82,10 @@ func (e *billingPushEnv) putEntitlements(body []byte, sign func(*http.Request)) 
 
 	defer func() { _ = resp.Body.Close() }()
 
-	var decoded map[string]any
-	_ = json.NewDecoder(resp.Body).Decode(&decoded)
+	respBody, err := io.ReadAll(resp.Body)
+	r.NoError(err)
 
-	rendered, _ := json.Marshal(decoded)
-
-	return resp.StatusCode, string(rendered)
+	return resp.StatusCode, string(respBody)
 }
 
 // signBillingPush stamps the wire contract: HMAC over
