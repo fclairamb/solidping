@@ -843,6 +843,10 @@ func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.Use
 		query = query.Set("must_change_password = ?", *update.MustChangePassword)
 	}
 
+	if update.Demo != nil {
+		query = query.Set("demo = ?", *update.Demo)
+	}
+
 	if update.LastActiveAt != nil {
 		query = query.Set("last_active_at = ?", *update.LastActiveAt)
 	}

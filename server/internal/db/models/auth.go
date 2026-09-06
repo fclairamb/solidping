@@ -78,11 +78,20 @@ type User struct {
 	//
 	// Defaults to false, which is what keeps OAuth/SSO/LDAP users — who may
 	// carry a nil PasswordHash and could not satisfy a rotation — unaffected.
-	MustChangePassword bool       `bun:"must_change_password,notnull"`
-	LastActiveAt       *time.Time `bun:"last_active_at"`
-	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt          *time.Time `bun:"deleted_at"`
+	MustChangePassword bool `bun:"must_change_password,notnull"`
+	// Demo marks the shared public-demo principal (spec 2026-09-06-02). Like
+	// MustChangePassword it is a GENERAL user-level capability, not a property
+	// of one seeded email: the JWT/PAT claims minted for such a user carry it,
+	// the write guard in RequireAuth keys off it, and the demo cleanup job
+	// reconciles whatever it names. Nothing anywhere matches on the address.
+	//
+	// A demo session may write exactly four things (see
+	// handlers/auth/demo_guard.go); everything else answers 403 DEMO_READ_ONLY.
+	Demo         bool       `bun:"demo,notnull"`
+	LastActiveAt *time.Time `bun:"last_active_at"`
+	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt    *time.Time `bun:"deleted_at"`
 }
 
 // NewUser creates a new user with generated UID.
@@ -112,7 +121,9 @@ type UserUpdate struct {
 	// alone — so an unrelated profile update can never silently un-force a
 	// pending rotation.
 	MustChangePassword *bool
-	LastActiveAt       *time.Time
+	// Demo sets or clears the shared-demo-principal flag. Nil leaves it alone.
+	Demo         *bool
+	LastActiveAt *time.Time
 }
 
 // ProviderType represents an external auth provider type.
