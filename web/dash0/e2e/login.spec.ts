@@ -547,10 +547,17 @@ test.describe("Login: passkey error handling", () => {
     await expect(brandLink).toBeVisible();
     await expect(versionLink).toBeVisible();
 
-    // "SolidPing v1.2.3" as one line of text (brand, a space, then the
+    // "SolidPing v0.24.0" as one line of text (brand, a space, then the
     // version link) — spec 2026-09-06-01.
+    //
+    // The version is deliberately NOT asserted as a semver. The binary is
+    // stamped from `git describe --tags --always` (Makefile), and CI checks out
+    // without tags, so the server there reports a bare commit sha — the shape
+    // under test is "brand, space, v-prefixed version", which is what the footer
+    // promises; how the build happens to be versioned is not this test's
+    // business.
     const footerText = `${await brandLink.textContent()} ${await versionLink.textContent()}`;
-    expect(footerText).toMatch(/^SolidPing v\d+\.\d+\.\d+/);
+    expect(footerText).toMatch(/^SolidPing v\S+/);
 
     // The brand link opens the marketing site in a new tab, tagged with the
     // self-hosted campaign (the test server runs self-hosted — no

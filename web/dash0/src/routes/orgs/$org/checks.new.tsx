@@ -8,7 +8,7 @@ import {
   useRegions,
   useDependencyGraph,
 } from "@/api/hooks";
-import { apiFetch } from "@/api/client";
+import { ApiError, apiFetch } from "@/api/client";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
@@ -206,10 +206,23 @@ function CheckNewPage() {
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
         if (data.connectionUids && data.connectionUids.length > 0) {
-          await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/channels`, {
-            method: "PUT",
-            body: JSON.stringify({ connectionUids: data.connectionUids }),
-          });
+          try {
+            await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/channels`, {
+              method: "PUT",
+              body: JSON.stringify({ connectionUids: data.connectionUids }),
+            });
+          } catch (err) {
+            // The check itself is already created. A demo session is refused
+            // this route by design (spec 2026-09-06-02 §2), and aborting here
+            // would strand the visitor on the form with the check silently
+            // made — the opposite of the flow the demo exists to show. Only
+            // DEMO_READ_ONLY is swallowed; every other failure still surfaces,
+            // because for an ordinary user a dropped channel binding is a real
+            // error worth seeing.
+            if (!(err instanceof ApiError && err.code === "DEMO_READ_ONLY")) {
+              throw err;
+            }
+          }
         }
         if (data.dependsOn && data.dependsOn.length > 0) {
           // Post the kind and description the form staged. This used to

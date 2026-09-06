@@ -452,6 +452,17 @@ export function CheckForm({
     if (connectionUids !== null) return;
     if (mode === "create") {
       if (!connections) return;
+      // A demo session cannot attach notification channels: PUT .../channels is
+      // not on the demo allowlist (spec 2026-09-06-02 §2). Preselecting the
+      // org's default channel made the create page PUT it immediately after a
+      // successful create, the PUT was refused, and the submit aborted before
+      // navigating — leaving the visitor on the form with the check silently
+      // already created. Seeded catalogue checks get their sink channel from
+      // the seeder; a visitor's own check does not need one.
+      if (user?.isDemo) {
+        setConnectionUids([]);
+        return;
+      }
       // Only notify-capable integrations can be a default notification target.
       setConnectionUids(
         connections
@@ -463,7 +474,7 @@ export function CheckForm({
     if (existingBindings) {
       setConnectionUids(existingBindings.map((c) => c.uid));
     }
-  }, [mode, connections, existingBindings, connectionUids]);
+  }, [mode, connections, existingBindings, connectionUids, user?.isDemo]);
 
   function toggleConnection(uid: string) {
     setConnectionUids((prev) => {

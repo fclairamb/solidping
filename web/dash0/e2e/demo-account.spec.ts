@@ -102,12 +102,24 @@ test.describe("Public live demo", () => {
 
   test("a demo session can create a check and is told it will expire", async ({
     page,
+    request,
   }) => {
-    await page.goto("orgs/test/login?demo=1");
-    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    const demo = await demoConfig(request);
+    const org = demo?.orgSlug as string;
+    expect(org).toBeTruthy();
 
-    const url = new URL(page.url());
-    const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
+    await page.goto("orgs/test/login?demo=1");
+
+    // Entering the demo from ANOTHER org's login page must land in the DEMO
+    // org, not in the org whose login page this happened to be. Waited for
+    // explicitly rather than read off page.url() once the banner shows: the
+    // app settles on the demo org but transiently passes back through the
+    // originating org on the way, so a single read can catch the intermediate
+    // URL and then drive the rest of the test against an org this session is
+    // not a member of. Asserting the destination is also the point — it is the
+    // regression this test exists to catch.
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
 
     await page.goto(`orgs/${org}/checks/new`);
     await page.waitForLoadState("networkidle");

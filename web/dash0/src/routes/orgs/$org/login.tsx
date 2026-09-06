@@ -356,8 +356,15 @@ function LoginPage() {
     }
   }, [isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
 
+  // `loginOrg` is the org the credentials were actually for. It defaults to the
+  // org whose login page we are on, which is right for every ordinary sign-in —
+  // you land on /orgs/<yours>/login and log into <yours>. The live-demo button
+  // (spec 2026-09-06-02) is the first caller where the two differ: it is offered
+  // on EVERY org's login page and signs you into `demo`. Without the override,
+  // a response that carries no explicit resolution falls back to the URL's org
+  // and drops the visitor into an organization they are not a member of.
   const routeResult = useCallback(
-    (result: LoginResult) => {
+    (result: LoginResult, loginOrg: string = org) => {
       if (result.requires2FA && result.tempToken) {
         setTwoFAState({ tempToken: result.tempToken });
         return;
@@ -370,7 +377,7 @@ function LoginPage() {
         case "orgChoice":
           setAvailableOrgs(result.organizations);
           setShowOrgPicker(true);
-          if (result.resolvedOrg && result.resolvedOrg !== org) {
+          if (result.resolvedOrg && result.resolvedOrg !== loginOrg) {
             navigate({
               to: "/orgs/$org/login",
               params: { org: result.resolvedOrg },
@@ -388,7 +395,7 @@ function LoginPage() {
           break;
         default:
           goToDestination(
-            resolveDestination(result.resolvedOrg || org, returnTo, BASE_PATH),
+            resolveDestination(result.resolvedOrg || loginOrg, returnTo, BASE_PATH),
           );
           break;
       }
@@ -432,7 +439,12 @@ function LoginPage() {
         demoConfig.email as string,
         demoConfig.password as string,
       );
-      routeResult(result);
+      // Pass the demo org explicitly: the response carries no resolvedOrg for
+      // an ordinary single-org login, and the fallback would otherwise be the
+      // org whose login page this is. resolveDestination already refuses a
+      // returnTo whose org does not match, so a stale one cannot drag the
+      // visitor back out of the demo.
+      routeResult(result, demoConfig.orgSlug as string);
     } catch (err) {
       reportError(err);
     } finally {
