@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.24.0](https://github.com/fclairamb/solidping/compare/v0.23.1...v0.24.0) (2026-09-06)
+
+
+### Features
+
+* offer fresh accounts their own org, fix the membership-request email link, re-cut the showcase ([#333](https://github.com/fclairamb/solidping/issues/333)) ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#326](https://github.com/fclairamb/solidping/issues/326)) ([0022efb](https://github.com/fclairamb/solidping/commit/0022efb7d3506f84a510b0bfa06a53497ab0bb0f))
+* **status-pages:** serve the embed widget on custom domains ([#330](https://github.com/fclairamb/solidping/issues/330)) ([2b33972](https://github.com/fclairamb/solidping/commit/2b33972912729d2a51345905747f50dec77f337b))
+* **worker:** accept worker slugs that start with a digit ([#334](https://github.com/fclairamb/solidping/issues/334)) ([a092444](https://github.com/fclairamb/solidping/commit/a092444a12297249e5ccc2a9994db206b524b941))
+
 ## [0.23.1](https://github.com/fclairamb/solidping/compare/v0.23.0...v0.23.1) (2026-09-05)
 
 
