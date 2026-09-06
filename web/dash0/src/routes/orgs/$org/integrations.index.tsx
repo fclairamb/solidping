@@ -58,6 +58,8 @@ import {
 import { SMSModePanel } from "@/components/integrations/sms-mode-panel";
 import { useDebounce } from "@/lib/use-debounce";
 import { useAuth } from "@/contexts/AuthContext";
+import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { hasNotifiableIntegration } from "@/lib/onboarding-checklist";
 import { buildEmailAlertsWandPayload } from "@/lib/onboarding-wand";
 
@@ -74,6 +76,7 @@ export const Route = createFileRoute("/orgs/$org/integrations/")({
 
 function IntegrationsListPage() {
   const { t } = useTranslation("integrations");
+  const isDemoSession = useIsDemoSession();
   const { org } = Route.useParams();
   const {
     data: integrations,
@@ -179,14 +182,22 @@ function IntegrationsListPage() {
                 </span>
               </Button>
             )}
-            <Button asChild aria-label={t("new", "New integration")}>
-              <Link to="/orgs/$org/integrations/new" params={{ org }}>
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t("new", "New integration")}
-                </span>
-              </Link>
-            </Button>
+            {isDemoSession ? (
+              // A demo session cannot create an integration — the server's
+              // write guard refuses every route but the four check ones — so
+              // the button is replaced rather than disabled (spec
+              // 2026-09-06-02).
+              <DemoReadOnlyNote testId="integrations-demo-note" />
+            ) : (
+              <Button asChild aria-label={t("new", "New integration")}>
+                <Link to="/orgs/$org/integrations/new" params={{ org }}>
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t("new", "New integration")}
+                  </span>
+                </Link>
+              </Button>
+            )}
           </div>
         }
         className="flex-wrap"

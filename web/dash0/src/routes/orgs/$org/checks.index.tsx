@@ -116,6 +116,7 @@ import {
 } from "@/lib/faceted-filter";
 import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { canDemoEditCheck } from "@/lib/demo";
 import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 // The checks index can bucket its rows by check group (server-side entity,

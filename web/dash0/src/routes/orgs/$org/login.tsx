@@ -16,9 +16,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
-import { AlertCircle, KeyRound, Loader2, Building2 } from "lucide-react";
+import {
+  AlertCircle,
+  KeyRound,
+  Loader2,
+  Building2,
+  PlayCircle,
+} from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
+import { useDemoConfig } from "@/api/public-config";
 import {
   getLastAuthMethod,
   setLastAuthMethod,
@@ -60,6 +67,16 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // the "your session expired" banner silently suppressed.
     session_expired: search.session_expired === true || search.session_expired === "true",
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
+    // `?demo=1` signs the visitor straight into the shared live demo on load
+    // (spec 2026-09-06-02), so the marketing site can deep-link into a working
+    // dashboard rather than into a login form. Same coercion caveat as
+    // session_expired above: TanStack already turned "true" into a boolean,
+    // so a bare string comparison would silently never match.
+    demo:
+      search.demo === true ||
+      search.demo === "true" ||
+      search.demo === "1" ||
+      search.demo === 1,
   }),
   component: LoginPage,
 });
@@ -235,7 +252,9 @@ function LoginPage() {
   const { t: tc } = useTranslation("common");
   const navigate = useNavigate();
   const { org } = Route.useParams();
-  const { session_expired, returnTo } = useSearch({ from: "/orgs/$org/login" });
+  const { session_expired, returnTo, demo: demoAutoLogin } = useSearch({
+    from: "/orgs/$org/login",
+  });
   const auth = useAuth();
   const {
     login,
@@ -380,6 +399,51 @@ function LoginPage() {
     },
     [tc],
   );
+
+  // The shared public live demo (spec 2026-09-06-02). Nothing is rendered when
+  // the instance has no demo, so a self-hosted install shows exactly what it
+  // showed before.
+  const demoConfig = useDemoConfig();
+  const demoAvailable = Boolean(
+    demoConfig.enabled && demoConfig.orgSlug && demoConfig.email && demoConfig.password,
+  );
+
+  // Signing into the demo goes through the ORDINARY login — the same
+  // login(org, email, password) the form calls, and the same routeResult
+  // afterwards. There is deliberately no session-minting shortcut: the demo is
+  // a real account, and giving it a bespoke entry point would be a second
+  // authentication path to keep correct forever.
+  const enterDemo = useCallback(async () => {
+    if (!demoAvailable) return;
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const result = await login(
+        demoConfig.orgSlug as string,
+        demoConfig.email as string,
+        demoConfig.password as string,
+      );
+      routeResult(result);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [demoAvailable, demoConfig, login, routeResult, reportError]);
+
+  // `?demo=1` enters the demo on load. Guarded by a ref-like state flag so a
+  // re-render (the public-config query resolving, for instance) cannot fire a
+  // second login while the first is still in flight.
+  const [demoAutoLoginStarted, setDemoAutoLoginStarted] = useState(false);
+
+  useEffect(() => {
+    if (!demoAutoLogin || !demoAvailable || demoAutoLoginStarted) return;
+
+    setDemoAutoLoginStarted(true);
+    void enterDemo();
+  }, [demoAutoLogin, demoAvailable, demoAutoLoginStarted, enterDemo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -874,6 +938,28 @@ function LoginPage() {
                     </Button>
                   )}
               </form>
+
+              {/* The live demo. Secondary to the real sign-in — an evaluator
+                  wants it, a returning customer must not trip over it — and
+                  rendered only when the instance actually offers one. */}
+              {demoAvailable && (
+                <div className="mt-4 border-t pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => void enterDemo()}
+                    disabled={isLoading}
+                    data-testid="login-demo"
+                  >
+                    <PlayCircle className="mr-2 h-4 w-4" />
+                    {t("demo.tryLiveDemo")}
+                  </Button>
+                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                    {t("demo.loginHint")}
+                  </p>
+                </div>
+              )}
             </>
           )}
 

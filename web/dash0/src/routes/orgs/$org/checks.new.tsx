@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -105,6 +106,8 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
 
 function CheckNewPage() {
   const { t } = useTranslation(["checks", "dependencies"]);
+  const { t: tOrg } = useTranslation(["org"]);
+  const isDemoSession = useIsDemoSession();
   const navigate = useNavigate();
   const { org } = Route.useParams();
   const search = Route.useSearch();
@@ -236,7 +239,14 @@ function CheckNewPage() {
             }
           }
         }
+        // The deletion IS the conversion hook (spec 2026-09-06-02): a visitor
+        // who just watched results arrive from three continents is the moment
+        // to say "this disappears in an hour, keep it".
         toast.success(t("toast.created"));
+
+        if (isDemoSession) {
+          toast.info(tOrg("org:demo.checkExpires"), { duration: 10000 });
+        }
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: check.uid },

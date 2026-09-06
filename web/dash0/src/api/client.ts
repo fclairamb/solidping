@@ -248,6 +248,32 @@ export const PASSWORD_CHANGE_REQUIRED_CODE = "PASSWORD_CHANGE_REQUIRED";
  * Idempotent, so the several failing requests a page fires concurrently do not
  * fight over the navigation.
  */
+/**
+ * The machine-readable code the API returns (with HTTP 403) when a shared
+ * public-demo session attempts a write outside its allowlist. Deliberately
+ * distinct from FORBIDDEN, for the same reason PASSWORD_CHANGE_REQUIRED is: the
+ * session is perfectly valid and the user lacks no permission — the demo is
+ * simply bounded. See server/internal/handlers/auth/demo_guard.go.
+ */
+export const DEMO_READ_ONLY_CODE = "DEMO_READ_ONLY";
+
+/**
+ * Announces a refused demo write as a toast rather than by routing to the 403
+ * page.
+ *
+ * A "Permission denied" screen would be actively wrong here: the visitor has
+ * not lost access to anything, they have hit the edge of a sandbox that says so
+ * on every page. The toast is also DEDUPLICATED by a fixed id, because a
+ * dashboard page fires many background writes at once (UI state, read receipts,
+ * last-seen markers) and a demo session would otherwise stack a dozen identical
+ * toasts on its first render — the "degrade silently" requirement in §8.
+ */
+function announceDemoReadOnly(message: string): void {
+  void import("sonner").then(({ toast }) => {
+    toast.info(message, { id: DEMO_READ_ONLY_CODE });
+  });
+}
+
 export function redirectToPasswordChange(): void {
   const basepath = import.meta.env.VITE_BASE_URL || "";
   if (window.location.pathname === `${basepath}${PASSWORD_CHANGE_PATH}`) return;
@@ -368,6 +394,12 @@ export async function handleResponse<T>(
       error.code === PASSWORD_CHANGE_REQUIRED_CODE
     ) {
       redirectToPasswordChange();
+    }
+
+    // A refused demo write is not a permission problem. Surface it, do not
+    // navigate — see announceDemoReadOnly.
+    if (response.status === 403 && error.code === DEMO_READ_ONLY_CODE) {
+      announceDemoReadOnly(error.title || "This is a read-only demo.");
     }
 
     throw new ApiError(

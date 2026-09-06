@@ -249,5 +249,14 @@
     "skippedToday_other": "{{count}} Prüfungsausführungen wurden heute übersprungen, weil Ihre Organisation ihr Ausführungslimit überschritten hat.",
     "reviewScheduling": "Planung überprüfen",
     "upgrade": "Upgrade"
+  },
+  "demo": {
+    "title": "Sie befinden sich in der gemeinsamen Live-Demo",
+    "description": "Alles hier ist für andere Besucher sichtbar, und alles, was Sie anlegen, wird nach einer Stunde gelöscht. Registrieren Sie sich kostenlos, um es zu behalten.",
+    "signUp": "Kostenlos registrieren",
+    "readOnly": "In der Demo nur lesbar",
+    "readOnlyHint": "Registrieren Sie sich kostenlos, um dies zu ändern.",
+    "checkExpires": "Dieser Check läuft jetzt und wird in etwa einer Stunde gelöscht. Registrieren Sie sich kostenlos, um ihn zu behalten.",
+    "seededCheck": "Dieser Check gehört zum Demo-Katalog und kann nicht geändert werden. Klonen Sie ihn, um eine bearbeitbare Kopie zu erhalten."
   }
 }

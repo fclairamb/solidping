@@ -150,3 +150,54 @@ describe("handleResponse — forced password rotation", () => {
     expect(location.href).toBe("");
   });
 });
+
+// The demo write guard's client half (spec 2026-09-06-02). A shared demo
+// session's refused write is NOT a permission problem: the session is valid,
+// the demo is simply bounded. Routing to the 403 page would strand a visitor
+// on a dead screen; the correct reaction is a toast and an unchanged page.
+//
+// The plain-FORBIDDEN and PASSWORD_CHANGE_REQUIRED cases above are the positive
+// controls for this one: they prove the branch is code-specific rather than
+// "every 403 now shows a toast".
+describe("handleResponse — DEMO_READ_ONLY", () => {
+  const opts = { skipAuth: true, suppress401Redirect: true };
+
+  const stubWindow = (pathname: string) => {
+    const location = { pathname, href: "" };
+    (globalThis as { window?: unknown }).window = { location };
+
+    return location;
+  };
+
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+    vi.restoreAllMocks();
+  });
+
+  const forbidden = (code: string, title = "Read-only in the demo") =>
+    new Response(JSON.stringify({ title, code }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  it("throws an ApiError carrying the code, and navigates nowhere", async () => {
+    const location = stubWindow("/dash0/orgs/demo/status-pages");
+
+    await expect(handleResponse(forbidden("DEMO_READ_ONLY"), opts)).rejects.toMatchObject({
+      code: "DEMO_READ_ONLY",
+      status: 403,
+    });
+
+    // The whole point: a refused demo write must never bounce the browser.
+    expect(location.href).toBe("");
+  });
+
+  it("does not send a demo refusal to the password-rotation screen", async () => {
+    const location = stubWindow("/dash0/orgs/demo/checks");
+
+    await expect(handleResponse(forbidden("DEMO_READ_ONLY"), opts)).rejects.toBeInstanceOf(
+      ApiError
+    );
+    expect(location.href).not.toContain("/change-password");
+  });
+});

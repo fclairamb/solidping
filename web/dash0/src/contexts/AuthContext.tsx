@@ -32,6 +32,11 @@ interface User {
   isAdmin: boolean;
   isOwner: boolean;
   isSuperAdmin: boolean;
+  // isDemo marks the shared public live demo session (spec 2026-09-06-02).
+  // Everything this session can see is shared with every other visitor, and
+  // anything it creates is deleted within the hour — so the UI says so, and
+  // hides the actions the server's write guard would refuse anyway.
+  isDemo: boolean;
 }
 
 export interface OrganizationSummary {
@@ -76,6 +81,8 @@ export interface DeletedOrgSession {
     name?: string;
     avatarUrl?: string;
     role: string;
+    // See AuthResponse.user.demo.
+    demo?: boolean;
   };
   organization?: { uid: string; slug: string; name?: string };
   organizations?: OrganizationSummary[];
@@ -171,6 +178,11 @@ interface AuthResponse {
     // "set a new password" screen instead of letting them walk into a wall of
     // 403s on the dashboard's first data fetch.
     mustChangePassword?: boolean;
+    // Present (and true) only for the shared public-demo account. It rides on
+    // every login-shaped response and on /auth/me so the dashboard shows the
+    // demo banner and hides what the write guard refuses PROACTIVELY, instead
+    // of discovering the state by tripping a 403.
+    demo?: boolean;
   };
   organization?: {
     uid: string;
@@ -301,6 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data.user.role === "superadmin",
         isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
+        isDemo: Boolean(data.user.demo),
       });
       // Update org from server response
       if (data.organization?.slug) {
@@ -388,6 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data.user.role === "superadmin",
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
+      isDemo: Boolean(data.user.demo),
     });
 
     const orgs = data.organizations || [];
@@ -459,6 +473,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data.user.role === "superadmin",
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
+      isDemo: Boolean(data.user.demo),
     });
     setOrganizations(data.organizations || []);
   };
@@ -490,6 +505,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data.user.role === "superadmin",
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
+      isDemo: Boolean(data.user.demo),
     });
     setOrganizations(data.organizations || []);
   };
@@ -521,6 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data.user.role === "superadmin",
         isOwner: data.user.role === "owner" || data.user.role === "superadmin",
         isSuperAdmin: data.user.role === "superadmin",
+        isDemo: Boolean(data.user.demo),
       });
       // Re-fetch organizations from /me (consistent with login)
       try {
@@ -596,6 +613,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwner:
           session.user.role === "owner" || session.user.role === "superadmin",
         isSuperAdmin: session.user.role === "superadmin",
+        isDemo: Boolean(session.user.demo),
       });
     }
 
@@ -621,6 +639,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         data.user.role === "superadmin",
       isOwner: data.user.role === "owner" || data.user.role === "superadmin",
       isSuperAdmin: data.user.role === "superadmin",
+      isDemo: Boolean(data.user.demo),
     });
     setOrganizations(data.organizations || []);
   }, []);

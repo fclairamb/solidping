@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchPublicConfig,
+  type DemoPublicConfig,
   type PublicConfig,
   type SMSPublicConfig,
 } from "@/lib/analytics";
@@ -83,5 +84,28 @@ export function useInstanceSMSConfig(): SMSPublicConfig {
     sender: data?.sms?.sender,
     provider: data?.sms?.provider,
     voiceEnabled: Boolean(data?.sms?.voiceEnabled),
+  };
+}
+
+/**
+ * The instance's shared live demo, if it has one.
+ *
+ * Returns a fully-populated object rather than a possibly-undefined one so
+ * callers never have to guard: while the document is loading, and on any
+ * instance that has the demo off, the answer is simply "there is no demo",
+ * which is the safe default for a login page that would otherwise flash a
+ * button nobody can use.
+ *
+ * Over the same cached query as the other public-config hooks — one document,
+ * one fetch.
+ */
+export function useDemoConfig(): DemoPublicConfig {
+  const { data } = usePublicConfig();
+
+  return {
+    enabled: Boolean(data?.demo?.enabled),
+    orgSlug: data?.demo?.orgSlug,
+    email: data?.demo?.email,
+    password: data?.demo?.password,
   };
 }
