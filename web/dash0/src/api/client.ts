@@ -6,6 +6,10 @@
 // behavior synchronous-enough to unit test without extra await hops.
 import { refreshAccessToken } from "@/lib/token-refresh";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
+// A refused demo write is announced, not navigated away from (see
+// announceDemoReadOnly). Static, because sonner is already in every page's
+// bundle — a dynamic import here bought nothing and split no chunk.
+import { toast } from "sonner";
 
 const TOKEN_KEY = "solidping_session_token";
 const REFRESH_TOKEN_KEY = "solidping_refresh_token";
@@ -269,9 +273,7 @@ export const DEMO_READ_ONLY_CODE = "DEMO_READ_ONLY";
  * toasts on its first render — the "degrade silently" requirement in §8.
  */
 function announceDemoReadOnly(message: string): void {
-  void import("sonner").then(({ toast }) => {
-    toast.info(message, { id: DEMO_READ_ONLY_CODE });
-  });
+  toast.info(message, { id: DEMO_READ_ONLY_CODE });
 }
 
 export function redirectToPasswordChange(): void {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   createFileRoute,
   Link,
@@ -56,7 +56,9 @@ import { CHANGELOG_URL, marketingSiteUrl } from "@/lib/marketing-url";
 const BASE_PATH = import.meta.env.VITE_BASE_URL || "";
 
 export const Route = createFileRoute("/orgs/$org/login")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { session_expired: boolean; returnTo?: string; demo?: boolean } => ({
     // TanStack Router's default search parser already coerces "true"/"false"
     // query-string values to native booleans before validateSearch runs, so
     // a bare `=== "true"` string comparison silently always evaluates to
@@ -72,11 +74,16 @@ export const Route = createFileRoute("/orgs/$org/login")({
     // dashboard rather than into a login form. Same coercion caveat as
     // session_expired above: TanStack already turned "true" into a boolean,
     // so a bare string comparison would silently never match.
+    // Optional in the emitted type, deliberately: every existing
+    // `navigate({ to: "/orgs/$org/login", search: … })` in the app predates
+    // this param and must keep compiling without naming it.
     demo:
       search.demo === true ||
       search.demo === "true" ||
       search.demo === "1" ||
-      search.demo === 1,
+      search.demo === 1
+        ? true
+        : undefined,
   }),
   component: LoginPage,
 });
@@ -433,17 +440,20 @@ function LoginPage() {
     }
   }, [demoAvailable, demoConfig, login, routeResult, reportError]);
 
-  // `?demo=1` enters the demo on load. Guarded by a ref-like state flag so a
-  // re-render (the public-config query resolving, for instance) cannot fire a
-  // second login while the first is still in flight.
-  const [demoAutoLoginStarted, setDemoAutoLoginStarted] = useState(false);
+  // `?demo=1` enters the demo on load. A REF, not state: the flag exists only
+  // to make the effect fire once — the public-config query resolving is itself
+  // a re-render, and without the latch that second pass would start a second
+  // login while the first is still in flight. Writing state here would also
+  // trip react-hooks' cascading-render rule for no benefit, since nothing
+  // renders off this value.
+  const demoAutoLoginStarted = useRef(false);
 
   useEffect(() => {
-    if (!demoAutoLogin || !demoAvailable || demoAutoLoginStarted) return;
+    if (!demoAutoLogin || !demoAvailable || demoAutoLoginStarted.current) return;
 
-    setDemoAutoLoginStarted(true);
+    demoAutoLoginStarted.current = true;
     void enterDemo();
-  }, [demoAutoLogin, demoAvailable, demoAutoLoginStarted, enterDemo]);
+  }, [demoAutoLogin, demoAvailable, enterDemo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

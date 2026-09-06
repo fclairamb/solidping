@@ -210,6 +210,10 @@ interface MeResponse {
     // cold page load with a stored token can learn its own state here rather
     // than by failing somewhere less legible.
     mustChangePassword?: boolean;
+    // See AuthResponse.user.demo. /auth/me is how a cold page load with a
+    // stored token learns it is a demo session, so the banner survives a
+    // refresh instead of only appearing right after the login call.
+    demo?: boolean;
   };
   // Optional — a zero-org session (a user who belongs to no organization yet)
   // gets a 200 from /auth/me with no organization. Mirrors the sibling

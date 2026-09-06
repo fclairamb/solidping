@@ -447,7 +447,12 @@ function CheckRow({
   checksByUid: Map<string, Check>;
 }) {
   const { t } = useTranslation("checks");
+  const { user } = useAuth();
   const { data: emailDomain } = useEmailAddressDomain();
+  // Politeness, never safety (spec 2026-09-06-02): the server refuses a demo
+  // session's edit or delete of a check it did not create. Hiding the actions
+  // just spares the visitor a menu whose only outcome would be a toast.
+  const canEdit = canDemoEditCheck(user?.isDemo, user?.uid, check.createdBy);
   const tunnelUid = tunnelCheckUidOf(check);
   const bastion = tunnelUid ? checksByUid.get(tunnelUid) : undefined;
 
@@ -566,15 +571,17 @@ function CheckRow({
                 {t("menu.viewDetails")}
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/orgs/$org/checks/$checkUid/edit"
-                params={{ org, checkUid: check.uid }}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                {t("menu.edit")}
-              </Link>
-            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem asChild>
+                <Link
+                  to="/orgs/$org/checks/$checkUid/edit"
+                  params={{ org, checkUid: check.uid }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  {t("menu.edit")}
+                </Link>
+              </DropdownMenuItem>
+            )}
             {groups.length > 0 && (
               <>
                 <DropdownMenuSeparator />
@@ -587,14 +594,18 @@ function CheckRow({
                 </DropdownMenuItem>
               </>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => onDelete(check.uid)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {t("menu.delete")}
-            </DropdownMenuItem>
+            {canEdit && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => onDelete(check.uid)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t("menu.delete")}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </TableCell>

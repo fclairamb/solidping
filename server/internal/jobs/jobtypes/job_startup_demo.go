@@ -449,7 +449,7 @@ func (r *StartupJobRun) loadDemoCatalog(
 
 	count := 0
 
-	for _, checkType := range checkerdef.ListCheckTypes(opts) {
+	for _, checkType := range demoCatalogTypes {
 		loaded, loadErr := r.loadDemoSamplesForChecker(ctx, jctx, org, checkType, opts, group, policyUID)
 		if loadErr != nil {
 			return loadErr
@@ -513,9 +513,33 @@ func (r *StartupJobRun) loadDemoSamplesForChecker(
 	return count, nil
 }
 
+// demoCatalogTypes is the ONLY set of check types the demo catalog is drawn
+// from, and it is enumerated rather than derived from ListCheckTypes.
+//
+// That is not belt-and-braces, it is a correctness requirement. Most checkers'
+// GetSampleConfigs takes `_ *ListSampleOptions` and returns its default
+// samples unconditionally — walking every registered type would therefore seed
+// the demo org with the Minecraft, NTP-pool, DNSBL and browser samples, every
+// one of which probes somebody else's servers from every public region,
+// forever. "Own targets only" is the spec's decision and this list is what
+// enforces it.
+//
+// It also matches the demo's write allowlist (checks.DemoAllowedCheckTypes)
+// plus heartbeat, which the catalog may seed but a visitor may not create.
+//
+//nolint:gochecknoglobals // Effectively a constant table; Go has no const slices.
+var demoCatalogTypes = []checkerdef.CheckType{
+	checkerdef.CheckTypeHTTP,
+	checkerdef.CheckTypeTCP,
+	checkerdef.CheckTypeICMP,
+	checkerdef.CheckTypeDNS,
+	checkerdef.CheckTypeSSL,
+	checkerdef.CheckTypeHeartbeat,
+}
+
 // demoSamplesFor returns a checker's Demo sample configs, or nothing when the
-// checker provides none. Only the types the demo allows produce samples — the
-// catalog is defined in the checkers themselves (see each samples.go).
+// checker provides none. Only the types in demoCatalogTypes are ever asked —
+// see that list for why walking the whole registry would be wrong.
 func demoSamplesFor(checkType checkerdef.CheckType, opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	checker, found := registry.GetChecker(checkType)
 	if !found {
