@@ -1,18 +1,17 @@
 # Changelog
 
-## Unreleased
+## [0.25.0](https://github.com/fclairamb/solidping/compare/v0.24.0...v0.25.0) (2026-09-06)
 
 
 ### Security
 
 * **auth:** the **viewer** role is now genuinely read-only. It was offered in the members list, in invitations and in membership-request approvals as the read-only tier, and an admin who granted it reasonably believed the member could look but not touch — but nothing in the request path told `viewer` apart from `user`. Every state-changing endpoint registered under `/api/v1/orgs/:org/…` was open to a viewer exactly as it was to a full member: creating and deleting checks, acknowledging, snoozing and **resolving** incidents, commenting on them, editing notification integrations and channels, publishing to the public status page, sending test reports, deleting file attachments, cancelling background jobs, and minting Slack/Discord/Teams install links. Nothing ever answered 403, so there was nothing to trip over. A single floor now sits under every one of those routes and refuses anything below the `user` role with `403 FORBIDDEN`; the dashboard already renders that as "Permission Denied". Two things a viewer legitimately owns are deliberately still writable: their **own** notification contacts, routes and verification (choosing where *they* get paged changes nothing for anybody else) and their **own** API token — which inherits their role, so it can automate reading and nothing more. Incident actions are deliberately *not* exempt: acknowledging or resolving changes what the whole team is paged about. A team that wants someone to ack incidents gives them `user`. The rule is read from the member's current role rather than from the token they are holding, so demoting somebody takes effect on their very next request instead of at their next sign-in, and a personal access token minted while they were a `user` stops writing at the same moment. The **MCP server** gets the same floor: its tool calls never pass through the REST middleware, so a full-scope MCP token belonging to a viewer could otherwise still have created a check. **If you have been relying on viewers being able to write, that stops working with this release — move those members to `user`.**
 
-## [0.25.0](https://github.com/fclairamb/solidping/compare/v0.24.0...v0.25.0) (2026-09-06)
-
 
 ### Features
 
-* a public live demo, a read-only viewer role, and links out of the login footer ([#336](https://github.com/fclairamb/solidping/issues/336)) ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
+* **demo:** SolidPing now has a **public live demo** you can hand a prospect: a real organization on the production service, signed into with one click from the login page, with weeks of history across the real multi-region fleet, a status page, SLOs and an escalation policy already firing. Visitors can do the one thing that matters — create a check and watch results arrive — and edit or delete the checks they created, and nothing else; everything they did not create is untouchable, and every other write is refused. Their checks are cleaned up after an hour, and notifications from the demo go to an internal sink rather than to anybody. The catalogue only ever probes SolidPing's own endpoints, never a third party's. It is **off by default** (`SP_DEMO_ENABLED`), so a self-hosted install is unaffected until it is switched on ([#336](https://github.com/fclairamb/solidping/issues/336)) ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
+* **dash0:** the login page's footer says what it is and leads somewhere. It rendered a bare version number as plain text, so a visitor who wanted to know what SolidPing is, or what changed in the release they are looking at, had to leave and search. It now reads **SolidPing v0.25.0**, with the name linking to the product site and the version to this changelog ([#336](https://github.com/fclairamb/solidping/issues/336)) ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
 
 ## [0.24.0](https://github.com/fclairamb/solidping/compare/v0.23.1...v0.24.0) (2026-09-06)
 
