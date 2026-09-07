@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo } from "@/lib/demo";
+import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
 import {
@@ -1483,12 +1484,25 @@ export function CheckForm({
               <CardDescription>Who gets paged when this check fails</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <NotifyViaSection
-                org={org}
-                connections={connections}
-                selected={connectionUids ?? []}
-                onToggle={toggleConnection}
-              />
+              {/* A demo session cannot bind notification channels: PUT
+                  .../channels is outside the demo allowlist by design (spec
+                  2026-09-06-02 §2 — binding a visitor's check to the org's
+                  real sinks is the spam vector the allowlist exists to close).
+                  Offering the picker anyway only produced a refusal toast, and
+                  on the EDIT page it took the whole save down with it. Same
+                  politeness principle as lib/demo.ts: don't show a control
+                  whose only outcome is "no". The escalation select below stays
+                  — it feeds the PATCH body, which IS allowlisted. */}
+              {user?.isDemo ? (
+                <DemoReadOnlyNote testId="check-notifications-demo-note" />
+              ) : (
+                <NotifyViaSection
+                  org={org}
+                  connections={connections}
+                  selected={connectionUids ?? []}
+                  onToggle={toggleConnection}
+                />
+              )}
               <EscalationSelect
                 org={org}
                 value={escalationPolicyUid}
@@ -1583,14 +1597,23 @@ export function CheckForm({
             customized={depCount > 0}
             defaultOpen={sectionOpen("dependencies", depCount > 0)}
           >
-            <DependsOnFormSection
-              org={org}
-              checkUid={mode === "edit" ? initialData?.uid : undefined}
-              parents={dependsOnParents ?? []}
-              onAdd={addParent}
-              onRemove={removeParent}
-              onChange={updateParent}
-            />
+            {/* Dependency edges are POST/PATCH/DELETE .../dependencies —
+                also outside the demo allowlist, so the picker could only ever
+                end in a refusal. (Allowlisting edges BETWEEN two visitor-owned
+                checks would be a reasonable ownership-bounded extension later;
+                it is not needed to fix the save.) */}
+            {user?.isDemo ? (
+              <DemoReadOnlyNote testId="check-dependencies-demo-note" />
+            ) : (
+              <DependsOnFormSection
+                org={org}
+                checkUid={mode === "edit" ? initialData?.uid : undefined}
+                parents={dependsOnParents ?? []}
+                onAdd={addParent}
+                onRemove={removeParent}
+                onChange={updateParent}
+              />
+            )}
           </CollapsibleSection>
 
           <CollapsibleSection

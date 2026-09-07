@@ -66,6 +66,7 @@ import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
 import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
+import { demoFlagFromLocation } from "@/lib/demo";
 import { useTranslation } from "react-i18next";
 
 /** Parses the `?from=` search param used by the notification detail route. */
@@ -94,6 +95,28 @@ export const Route = createFileRoute("/orgs/$org")({
     // Don't redirect if we're on a public page (login, register).
     if (isOrgPublicRoute(location.pathname)) {
       return { org: params.org, isLoginPage: true };
+    }
+    // `?demo=true` anywhere under /orgs/<slug> is a deep link into the shared
+    // live demo (spec 2026-09-07-02). It is answered here, ahead of the
+    // authentication check, for two reasons:
+    //
+    //  - unauthenticated, the generic bounce below folds the WHOLE URL into
+    //    `returnTo`, burying `demo` where the login page's own search params
+    //    never see it;
+    //  - authenticated, there is no bounce at all, so a visitor already
+    //    holding a session would simply land in the URL's org — which for a
+    //    demo session is an org they are not a member of.
+    //
+    // No `returnTo` is carried: the destination of a demo entry is always the
+    // demo org's root, and a returnTo pointing at another org is refused by
+    // resolveDestination anyway.
+    if (demoFlagFromLocation(location.search, location.searchStr)) {
+      throw redirect({
+        to: "/orgs/$org/login",
+        params: { org: params.org },
+        search: { session_expired: false, returnTo: undefined, demo: true },
+        replace: true,
+      });
     }
     // Allow through if OAuth callback tokens are present in the URL
     if (hasOAuthTokenInURL()) {

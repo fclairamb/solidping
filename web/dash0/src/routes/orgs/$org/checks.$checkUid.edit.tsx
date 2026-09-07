@@ -7,6 +7,7 @@ import {
   useCheckGroups,
   useRegions,
   useSetCheckConnections,
+  useCheckConnections,
   useCreateCheckDependency,
   useUpdateCheckDependency,
   useDeleteCheckDependency,
@@ -15,6 +16,8 @@ import {
 } from "@/api/hooks";
 import { diffDependencies } from "@/lib/dependency-diff";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
+import { connectionBindingsChanged } from "@/lib/connection-bindings";
+import { isDemoReadOnlyError } from "@/lib/demo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckForm } from "@/components/shared/check-form";
@@ -49,6 +52,11 @@ function CheckEditPage() {
   } = useCheck(org, checkUid, { refetchOnMount: "always" });
   const updateCheck = useUpdateCheck(org, checkUid);
   const setConnections = useSetCheckConnections(org, checkUid);
+  // The bindings the check actually has right now — the baseline the submitted
+  // selection is compared against, so a save that changed nothing about
+  // notifications does not PUT them back. (The form reads the same query to
+  // seed its picker, so this is a cache hit, not a second round trip.)
+  const { data: existingBindings } = useCheckConnections(org, checkUid);
   const createDep = useCreateCheckDependency(org, checkUid);
   const updateDep = useUpdateCheckDependency(org, checkUid);
   const deleteDep = useDeleteCheckDependency(org, checkUid);
@@ -141,10 +149,40 @@ function CheckEditPage() {
           recoveryPeriodSeconds: data.recoveryPeriodSeconds,
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
-        if (data.connectionUids !== undefined) {
-          await setConnections.mutateAsync(data.connectionUids);
+        // Only PUT the channel bindings when they actually changed.
+        //
+        // `connectionUids` is ALWAYS defined in edit mode — the form seeds it
+        // from the check's existing bindings, and an empty array is still an
+        // array — so this used to fire on every single save, writing back
+        // exactly what was already stored. Wasteful for everyone; fatal in the
+        // demo, where PUT .../channels is deliberately outside the allowlist:
+        // the no-op write was refused with 403 DEMO_READ_ONLY, the mutation
+        // threw, and the toast + navigate below never ran, stranding the
+        // visitor on the form with their (successfully PATCHed) rename applied.
+        if (connectionBindingsChanged(
+          data.connectionUids,
+          existingBindings?.map((c) => c.uid),
+        )) {
+          try {
+            await setConnections.mutateAsync(data.connectionUids ?? []);
+          } catch (err) {
+            // Degrade the way the create page does: the check itself is
+            // already updated, and a demo session is refused this route by
+            // design. apiFetch has already toasted the refusal, so the visitor
+            // is told what was declined without the form dead-ending. Every
+            // other failure still surfaces — for an ordinary user a dropped
+            // channel binding is a real error worth seeing.
+            if (!isDemoReadOnlyError(err)) throw err;
+          }
         }
         if (data.dependsOn !== undefined) {
+          // Same degradation rule as the channels write above, around the whole
+          // dependency sync: the dependency routes are not on the demo
+          // allowlist either, so a refusal here must not throw away a
+          // successful PATCH. mapDependencySaveError passes a DEMO_READ_ONLY
+          // through untouched (it only rewrites the dependency-specific
+          // codes), so the refusal still reaches this catch intact.
+          try {
           // Three buckets, not two: an edge whose kind or description changed
           // is a PATCH, and used to be silently dropped — the form could only
           // add and remove, so retuning hard -> soft was impossible here.
@@ -186,6 +224,9 @@ function CheckEditPage() {
           }
           for (const edge of toRemove) {
             await deleteDep.mutateAsync(edge.uid);
+          }
+          } catch (err) {
+            if (!isDemoReadOnlyError(err)) throw err;
           }
         }
         toast.success(t("toast.updated"));
