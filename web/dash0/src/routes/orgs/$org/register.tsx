@@ -13,6 +13,7 @@ import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { ApiError } from "@/api/client";
 import { useRegister } from "@/api/hooks";
+import { clearSignupAttribution, readSignupAttribution } from "@/lib/attribution";
 
 export const Route = createFileRoute("/orgs/$org/register")({
   component: RegisterPage,
@@ -43,7 +44,13 @@ function RegisterPage() {
         name: name || undefined,
         email,
         password,
+        // Where this signup came from, if a tagged link brought the visitor
+        // here. The server keeps it on the pending registration and stores
+        // it on the account at confirmation (spec 2026-09-07-03).
+        attribution: readSignupAttribution(),
       });
+      // Handed over; a second account from this tab must not inherit it.
+      clearSignupAttribution();
       setSuccess(true);
     } catch (err) {
       if (err instanceof ApiError) {

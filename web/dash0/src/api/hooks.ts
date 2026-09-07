@@ -18,6 +18,7 @@ export interface ListQueryOptions {
   enabled?: boolean;
   staleTime?: number;
 }
+import type { SignupAttribution } from "@/lib/attribution";
 import { mergeResultTiers } from "@/lib/result-tiers";
 import { isStalePublication } from "@/lib/stale-publications";
 import {
@@ -3425,7 +3426,13 @@ export function useProviders() {
 // Registration hooks
 export function useRegister() {
   return useMutation({
-    mutationFn: (data: { name?: string; email: string; password: string }) =>
+    mutationFn: (data: {
+      name?: string;
+      email: string;
+      password: string;
+      // Campaign context from the landing URL; see lib/attribution.ts.
+      attribution?: SignupAttribution;
+    }) =>
       apiFetch<{ message: string }>("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify(data),
@@ -3513,8 +3520,12 @@ export function useUpdateProfile() {
 export function useCreateOrg() {
   return useMutation({
     // `slug` is optional: omit it and the server derives one from the name
-    // (POST /api/v1/orgs, spec 2026-09-05-01).
-    mutationFn: (data: { name: string; slug?: string }) =>
+    // (POST /api/v1/orgs, spec 2026-09-05-01). `slugBase` is a hint consulted
+    // only when `slug` is omitted — normalized and suffixed on collision like
+    // the name-derived fallback, but never answering 422/409 for it (spec
+    // 2026-09-07-01, server/internal/handlers/auth/service.go
+    // CreateOrgRequest.SlugBase).
+    mutationFn: (data: { name: string; slug?: string; slugBase?: string }) =>
       apiFetch<{
         uid: string;
         slug: string;

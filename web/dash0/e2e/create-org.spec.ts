@@ -247,7 +247,13 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     page,
   }) => {
     const stamp = Date.now().toString(36);
-    const firstName = `Alice${stamp}`;
+    const firstName = `Zoe${stamp}`;
+    // A unique first name is what keeps this idempotent on a persistent dev
+    // database, where a fixed "Alice" would drift to "alice2", "alice3" and
+    // break the exact-slug assertions below (spec 2026-09-07-01). The stamp
+    // is already lowercase base36, so this is exactly what orgSlugify(name)
+    // and the server's Slugify(name) both produce.
+    const expectedSlug = firstName.toLowerCase();
 
     await landOnNoOrg(
       page,
@@ -256,9 +262,23 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     );
 
     // 1. The create form arrives pre-filled with the possessive form built from
-    //    the user's FIRST name (en: "Alice's organization").
+    //    the user's FIRST name (en: "Zoe...'s organization").
     const orgName = page.locator("#orgName");
     await expect(orgName).toHaveValue(new RegExp(firstName));
+
+    // 1b. The slug preview is built from the FIRST NAME alone, not the
+    //     possessive sentence above — every locale's sentence leads with
+    //     boilerplate ("L'organisation de …") that used to dominate the
+    //     20-char slug cap and bury the name (spec 2026-09-07-01). It must
+    //     read EXACTLY the lowercased first name, not merely contain it.
+    const slugPreview = page.getByTestId("create-org-slug-preview");
+    await expect(slugPreview).toHaveText(expectedSlug);
+
+    // 1c. Opening "Advanced — customize slug" seeds the editable field with
+    //     exactly what the preview showed — the proposed base, not a blank or
+    //     the possessive sentence's own (wrong) slug.
+    await page.getByTestId("no-org-advanced-toggle").click();
+    await expect(page.locator("#orgSlug")).toHaveValue(expectedSlug);
 
     // 2. The join path is present but secondary: its trigger is visible, its
     //    form is not until you ask for it.
@@ -279,9 +299,9 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     const bodyText = await page.locator("body").innerText();
     expect(bodyText).not.toMatch(/\bdefault\b/i);
 
-    // 4. Create with NOTHING typed lands on a working dashboard — the server
-    //    derives the slug from the proposed name (POST /api/v1/orgs with no
-    //    `slug`).
+    // 4. Create with NOTHING typed lands on a working dashboard at EXACTLY the
+    //    previewed slug — the server derives it from `slugBase` (the first
+    //    name), not from the possessive sentence in `name`.
     const forbiddenUrls: string[] = [];
     page.on("response", (response) => {
       if (response.status() === 403) forbiddenUrls.push(response.url());
@@ -297,9 +317,7 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
     const landedSlug = new URL(page.url()).pathname
       .split("/orgs/")[1]
       ?.split("/")[0];
-    expect(landedSlug).toBeTruthy();
-    expect(landedSlug).not.toBe("default");
-    expect(landedSlug).toContain(firstName.toLowerCase());
+    expect(landedSlug).toBe(expectedSlug);
 
     await expect(
       page.getByText(/access to this organization is denied/i),
@@ -308,6 +326,14 @@ test.describe("/no-org proposes an organization to a fresh account", () => {
       forbiddenUrls,
       `unexpected 403s: ${forbiddenUrls.join(", ")}`,
     ).toEqual([]);
+
+    // 5. The org's DISPLAY NAME is still the full localized possessive
+    //    sentence — this spec fixes the address, not the name (see "Must not
+    //    change" in spec 2026-09-07-01). It shows up in more than one place
+    //    (dashboard header, sidebar org switcher) — .first() is enough here.
+    await expect(
+      page.getByText(`${firstName}'s organization`).first(),
+    ).toBeVisible();
   });
 
   test("an unnamed fresh user still gets a non-empty proposal", async ({

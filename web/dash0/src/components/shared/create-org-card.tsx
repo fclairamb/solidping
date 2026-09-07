@@ -28,6 +28,16 @@ interface CreateOrgCardProps {
    * empty form. It is a DEFAULT, not a lock: the field stays editable.
    */
   suggestedName?: string;
+  /**
+   * The org-slug BASE that goes with `suggestedName` — derived from the
+   * user's first name, not the (localized, boilerplate-prefixed) possessive
+   * sentence `suggestedName` renders (spec 2026-09-07-01). Shown in the "will
+   * be reachable as …" preview and sent to the server as `slugBase` when the
+   * user submits without touching the slug field themselves. Once the user
+   * types into either the name or the slug field, this proposal is gone for
+   * good — see the `slug` derivation below.
+   */
+  suggestedSlug?: string;
 }
 
 /**
@@ -36,7 +46,11 @@ interface CreateOrgCardProps {
  * belongs to at least one org). Session adoption below is the load-bearing
  * part and must exist in exactly one place — do not fork this component.
  */
-export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
+export function CreateOrgCard({
+  onCancel,
+  suggestedName,
+  suggestedSlug,
+}: CreateOrgCardProps) {
   const { t } = useTranslation(["auth", "common"]);
   const navigate = useNavigate();
   const createOrg = useCreateOrg();
@@ -57,7 +71,17 @@ export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
   const [error, setError] = useState<string | null>(null);
 
   const name = nameTouched ? typedName : (suggestedName ?? "");
-  const slug = slugTouched ? typedSlug : orgSlugify(name);
+  // Precedence: what the user typed into the slug field; else, once they
+  // typed into the NAME field, orgSlugify of that (the proposal — and its
+  // dedicated slug base — is gone the moment the name changes); else the
+  // proposed slug base, which is NOT orgSlugify(suggestedName) — it comes
+  // from the first name alone (spec 2026-09-07-01). `suggestedSlug` is
+  // undefined for the account-section caller, which never proposes anything.
+  const slug = slugTouched
+    ? typedSlug
+    : nameTouched
+      ? orgSlugify(name)
+      : (suggestedSlug ?? orgSlugify(name));
 
   const handleNameChange = (value: string) => {
     setNameTouched(true);
@@ -68,16 +92,19 @@ export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
     e.preventDefault();
     setError(null);
     try {
-      // The slug travels ONLY when the user opened Advanced and typed one.
-      // Otherwise it is omitted and the server derives it from the name with
-      // orgslug.GenerateUnique — which also appends a numeric suffix on
-      // collision, so a newcomer who accepted the proposed name never meets a
-      // 409 they cannot act on. orgSlugify mirrors the server's normalizer, so
-      // the preview line below shows the base the server will actually start
-      // from.
+      // `slug` (strict: 422 invalid, 409 taken) travels ONLY when the user
+      // opened Advanced and typed one themselves. Otherwise the rendered
+      // preview travels as `slugBase` — a HINT the server normalizes and
+      // suffixes on collision via orgslug.GenerateUnique, never answering 422
+      // or 409 for it. That is what lets a newcomer who accepts the proposal
+      // as-is never meet a 409 they cannot act on, whether the proposal came
+      // from `suggestedSlug` or (once they typed a name) from orgSlugify(name)
+      // — the same value the server would have derived from the name anyway,
+      // so the preview stays honest either way.
       const result = await createOrg.mutateAsync({
         name,
         slug: slugTouched ? slug : undefined,
+        slugBase: slugTouched ? undefined : slug || undefined,
       });
       // POST /api/v1/orgs returns 201 with a session freshly scoped to the
       // NEW org. The caller's current token — whether it's a zero-org token
@@ -140,7 +167,9 @@ export function CreateOrgCard({ onCancel, suggestedName }: CreateOrgCardProps) {
                 {t("auth:createOrg.slugPreview", {
                   defaultValue: "Will be reachable as ",
                 })}
-                <code className="font-mono">{slug}</code>
+                <code className="font-mono" data-testid="create-org-slug-preview">
+                  {slug}
+                </code>
               </p>
             )}
           </div>

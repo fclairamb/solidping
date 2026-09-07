@@ -737,7 +737,8 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 	}
 
 	// Name is the only required field. `slug` is optional: omitted, CreateOrg
-	// derives one from the name (spec 2026-09-05-01). A slug that IS supplied
+	// derives one from `slugBase` (a hint, e.g. a first name) or else the name
+	// (spec 2026-09-05-01, spec 2026-09-07-01). A slug that IS supplied
 	// still has to be valid and free — see the error switch below.
 	if createReq.Name == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
