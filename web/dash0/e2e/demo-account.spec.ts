@@ -171,7 +171,10 @@ test.describe("Public live demo", () => {
     const checkUrl = page.url();
 
     // Now edit it — the bug.
-    await page.getByRole("link", { name: "Edit", exact: true }).click();
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit", exact: true })
+      .click();
     await page.waitForURL(/\/checks\/[0-9a-f-]{36}\/edit/, { timeout: 20000 });
     await page.getByTestId("check-name-input").waitFor({
       state: "visible",
@@ -202,12 +205,12 @@ test.describe("Public live demo", () => {
     await page.goto(checkUrl);
     await page.waitForLoadState("networkidle");
     await page
+      .getByTestId("check-detail-header")
       .getByRole("button", { name: "Delete", exact: true })
-      .first()
       .click();
     await page
+      .getByRole("alertdialog")
       .getByRole("button", { name: "Delete", exact: true })
-      .last()
       .click();
     await page.waitForURL(/\/checks(\?.*)?$/, { timeout: 20000 });
     await expect(page.getByText(renamed)).toHaveCount(0);
