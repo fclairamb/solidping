@@ -10,6 +10,11 @@ import { isOrgPublicRoute } from "@/lib/org-public-routes";
 // announceDemoReadOnly). Static, because sonner is already in every page's
 // bundle — a dynamic import here bought nothing and split no chunk.
 import { toast } from "sonner";
+// i18next is usable outside React components/hooks — this module runs below
+// any component tree, so it calls the singleton directly rather than going
+// through useTranslation. Used to localize the DEMO_READ_ONLY message (see
+// announceDemoReadOnly and the ApiError construction below).
+import i18n from "@/i18n";
 
 const TOKEN_KEY = "solidping_session_token";
 const REFRESH_TOKEN_KEY = "solidping_refresh_token";
@@ -399,13 +404,25 @@ export async function handleResponse<T>(
     }
 
     // A refused demo write is not a permission problem. Surface it, do not
-    // navigate — see announceDemoReadOnly.
-    if (response.status === 403 && error.code === DEMO_READ_ONLY_CODE) {
-      announceDemoReadOnly(error.title || "This is a read-only demo.");
+    // navigate — see announceDemoReadOnly. Translate by CODE, not by title:
+    // `error.title` is always the server's English sentence (kept in the JSON
+    // body verbatim for curl/CLI users — see auth.DemoWriteMessage), so a
+    // French/German/Spanish dashboard printing `err.message` would otherwise
+    // show English inside an otherwise-localized UI. Every `ApiError.message`
+    // consumer — this toast, the check-form banner, anything added later —
+    // gets the localized string for free from a single translation point.
+    const isDemoReadOnly =
+      response.status === 403 && error.code === DEMO_READ_ONLY_CODE;
+    const message = isDemoReadOnly
+      ? i18n.t("demo.writeRefused", { ns: "org" })
+      : error.title || "An error occurred";
+
+    if (isDemoReadOnly) {
+      announceDemoReadOnly(message);
     }
 
     throw new ApiError(
-      error.title || "An error occurred",
+      message,
       error.code || "UNKNOWN_ERROR",
       error.detail,
       response.status,

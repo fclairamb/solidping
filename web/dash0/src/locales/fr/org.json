@@ -53,7 +53,10 @@
       "description": "Quand un check tombe parce que sa cible n'a pas pu être JOINTE, capturer un traceroute façon MTR et l'attacher à l'incident.",
       "label": "Traceroute en cas de panne réseau",
       "help": "S'applique à tous les checks réglés sur « hériter ». Seuls les échecs d'accessibilité déclenchent une capture : timeouts de connexion, refus, perte ICMP, handshakes TLS bloqués. Un HTTP 5xx, un mot-clé absent ou un certificat qui expire, jamais — le serveur a répondu. Les traces s'exécutent après que le résultat en échec a déjà été rapporté et sont limitées par organisation : elles ne retardent jamais un incident et n'inondent pas une panne massive."
-    }
+    },
+    "defaultEscalation": "Politique d'escalade par défaut",
+    "defaultEscalationDescription": "Appliquée aux checks qui ne résolvent à aucune politique propre (check → groupe → défaut de l'organisation → aucune). Laissez non défini pour aucun repli à l'échelle de l'organisation.",
+    "defaultEscalationNone": "Aucune (pas de repli)"
   },
   "usage": {
     "title": "Utilisation",
@@ -257,6 +260,7 @@
     "readOnly": "Lecture seule dans la démo",
     "readOnlyHint": "Créez un compte gratuit pour modifier ceci.",
     "checkExpires": "Ce check est actif et sera supprimé dans une heure environ. Créez un compte gratuit pour le conserver.",
-    "seededCheck": "Ce check fait partie du catalogue de démonstration et ne peut pas être modifié. Clonez-le pour obtenir une copie modifiable."
+    "seededCheck": "Ce check fait partie du catalogue de démonstration et ne peut pas être modifié. Clonez-le pour obtenir une copie modifiable.",
+    "writeRefused": "Ceci est la démo publique partagée. Seuls les checks que vous créez ici peuvent être modifiés — inscrivez-vous gratuitement pour changer le reste."
   }
 }

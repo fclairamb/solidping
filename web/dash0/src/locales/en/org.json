@@ -260,6 +260,7 @@
     "readOnly": "Read-only in the demo",
     "readOnlyHint": "Sign up for a free account to change this.",
     "checkExpires": "This check is live now and will be deleted in about an hour. Sign up free to keep it.",
-    "seededCheck": "This check is part of the demo catalogue and cannot be changed. Clone it to get a copy you can edit."
+    "seededCheck": "This check is part of the demo catalogue and cannot be changed. Clone it to get a copy you can edit.",
+    "writeRefused": "This is the shared live demo. Only checks you create here can be changed — sign up free to change anything else."
   }
 }

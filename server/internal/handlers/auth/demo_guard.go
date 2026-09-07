@@ -9,9 +9,16 @@ import (
 // still do, so a curl user or a CLI reading only the JSON body understands why
 // a perfectly valid credential was refused (a bare "Forbidden" would read as a
 // permission bug).
-const DemoWriteMessage = "This is the shared read-only live demo. " +
-	"Creating and editing your own checks is allowed; everything else is not. " +
-	"Sign up for a free account to make changes."
+//
+// The wording has to be true for BOTH refusal paths that reuse it: the
+// route-level guard here (an endpoint entirely outside the allowlist) and the
+// ownership check in checks.ErrDemoReadOnly (an allowlisted endpoint refusing
+// because this particular check was not created by this session). "Only
+// checks you create here can be changed" covers both without contradicting
+// either — see the dashboard's localized org:demo.writeRefused key, which must
+// stay in sync with this string.
+const DemoWriteMessage = "This is the shared live demo. " +
+	"Only checks you create here can be changed — sign up free to change anything else."
 
 // Route patterns a demo session may write to. These are chi's RESOLVED route
 // patterns (httpx.RoutePattern), never raw request paths: matching on the raw

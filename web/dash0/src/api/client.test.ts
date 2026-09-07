@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, getToken, handleResponse, setSession } from "./client";
+import i18n from "@/i18n";
+import frOrg from "@/locales/fr/org.json";
+import enOrg from "@/locales/en/org.json";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
 
 // Regression test for spec 2026-08-29-06: a login-shaped response missing
 // its access token (the confirm-registration zero-org bug) used to reach
@@ -199,5 +207,44 @@ describe("handleResponse — DEMO_READ_ONLY", () => {
       ApiError
     );
     expect(location.href).not.toContain("/change-password");
+  });
+
+  // Translate by CODE, not by title (spec
+  // 2026-09-07-02-untranslated-strings-and-demo-refusal-message §B.1): the
+  // server's `error.title` is always English (kept in the JSON body verbatim
+  // for curl/CLI users), so a French dashboard printing `err.message` used to
+  // show an English sentence. Asserting against the `fr` bundle rather than
+  // hardcoding the string keeps this test honest if the copy changes.
+  it("localizes ApiError.message by code, ignoring the server's English title", async () => {
+    stubWindow("/dash0/orgs/demo/checks");
+    await i18n.changeLanguage("fr");
+
+    try {
+      const err = await handleResponse(forbidden("DEMO_READ_ONLY"), opts).catch(
+        (e) => e as ApiError,
+      );
+
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).message).toBe(frOrg.demo.writeRefused);
+      // The server's English title must never leak into the localized UI.
+      expect((err as ApiError).message).not.toBe(enOrg.demo.writeRefused);
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  // One surface, one variant (spec §B.2): the toast is the single
+  // announcement for a refused demo write, and it must be an info/warning
+  // toast — never `toast.error`, since the refusal is not the visitor's
+  // mistake.
+  it("announces exactly one toast, never toast.error", async () => {
+    stubWindow("/dash0/orgs/demo/checks");
+    vi.mocked(toast.info).mockClear();
+    vi.mocked(toast.error).mockClear();
+
+    await handleResponse(forbidden("DEMO_READ_ONLY"), opts).catch(() => {});
+
+    expect(toast.info).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

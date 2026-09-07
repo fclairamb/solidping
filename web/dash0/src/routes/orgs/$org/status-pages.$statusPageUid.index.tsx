@@ -3,6 +3,9 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { StatusPageTvCard } from "@/components/shared/status-page-tv-card";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
+import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
+import { isDemoReadOnlyError } from "@/lib/demo";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -195,6 +198,7 @@ function AddSectionDialog({
     labels: {},
   });
   const createSection = useCreateSection(org, statusPageUid);
+  const isDemoSession = useIsDemoSession();
 
   const handleSubmit = async () => {
     try {
@@ -212,6 +216,12 @@ function AddSectionDialog({
       setMembership({ mode: "manual", labels: {} });
       setOpen(false);
     } catch (err) {
+      // One surface, one variant (spec 2026-09-07-02 §B.2): a refused demo
+      // write already gets the deduplicated toast from api/client.ts. This
+      // trigger is hidden entirely for a demo session (see the early return
+      // below), but guard the catch too — belt and braces against a stale
+      // render reaching submit.
+      if (isDemoReadOnlyError(err)) return;
       toast.error(
         err instanceof ApiError
           ? err.message
@@ -219,6 +229,14 @@ function AddSectionDialog({
       );
     }
   };
+
+  // POST .../sections is not on the demo write allowlist (spec
+  // 2026-09-06-02), so the dialog behind this trigger could only ever end in
+  // a refusal toast — hide what cannot be done, like status-pages.index.tsx
+  // does for the New status page button (spec 2026-09-07-02 §B.5).
+  if (isDemoSession) {
+    return <DemoReadOnlyNote testId="status-page-add-section-demo-note" />;
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -633,6 +651,7 @@ function AddResourceDialog({
   const [selectedUid, setSelectedUid] = useState<string | undefined>();
   const [selectedLabel, setSelectedLabel] = useState<string | undefined>();
   const createResource = useCreateResource(org, statusPageUid, sectionUid);
+  const isDemoSession = useIsDemoSession();
 
   const reset = () => {
     setKind("check");
@@ -666,6 +685,13 @@ function AddResourceDialog({
       );
     }
   };
+
+  // Same story as AddSectionDialog above: POST .../resources is outside the
+  // demo write allowlist, so offering the picker would only end in a refusal
+  // toast (spec 2026-09-07-02 §B.5).
+  if (isDemoSession) {
+    return <DemoReadOnlyNote testId="status-page-add-resource-demo-note" />;
+  }
 
   return (
     <Dialog

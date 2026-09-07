@@ -53,7 +53,10 @@
       "description": "Cuando un check caiga porque no se pudo ALCANZAR su destino, captura un traceroute estilo MTR y adjúntalo a la incidencia.",
       "label": "Traceroute ante fallo de red",
       "help": "Se aplica a todos los checks configurados como «heredar». Solo los fallos de alcanzabilidad activan una captura: tiempos de conexión agotados, rechazos, pérdida ICMP, handshakes TLS colgados. Un HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo hacen, porque el servidor respondió. Los trazados se ejecutan después de que el resultado fallido ya se haya reportado y están limitados por organización: nunca retrasan una incidencia ni inundan un apagón masivo."
-    }
+    },
+    "defaultEscalation": "Política de escalada predeterminada",
+    "defaultEscalationDescription": "Se aplica a los checks que no resuelven a ninguna política propia (check → grupo → predeterminado de la organización → ninguna). Déjelo sin definir para no tener respaldo a nivel de organización.",
+    "defaultEscalationNone": "Ninguna (sin respaldo)"
   },
   "usage": {
     "title": "Uso",
@@ -257,6 +260,7 @@
     "readOnly": "Solo lectura en la demo",
     "readOnlyHint": "Regístrate gratis para poder cambiar esto.",
     "checkExpires": "Este check está activo y se eliminará dentro de una hora aproximadamente. Regístrate gratis para conservarlo.",
-    "seededCheck": "Este check forma parte del catálogo de la demo y no se puede modificar. Clónalo para obtener una copia editable."
+    "seededCheck": "Este check forma parte del catálogo de la demo y no se puede modificar. Clónalo para obtener una copia editable.",
+    "writeRefused": "Esta es la demo pública compartida. Solo se pueden modificar los checks que crea aquí — regístrese gratis para cambiar cualquier otra cosa."
   }
 }
