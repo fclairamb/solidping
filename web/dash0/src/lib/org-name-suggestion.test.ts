@@ -4,9 +4,14 @@ import {
   firstNameOf,
   randomOrgName,
   randomOrgNameSeed,
+  suggestedSlugBase,
   suggestOrgName,
 } from "@/lib/org-name-suggestion";
-import { ORG_SLUG_MIN_LEN, orgSlugify } from "@/lib/org-slug";
+import {
+  ORG_SLUG_MAX_LEN,
+  ORG_SLUG_MIN_LEN,
+  orgSlugify,
+} from "@/lib/org-slug";
 
 describe("firstNameOf", () => {
   it("takes the first token of a multi-token name", () => {
@@ -118,5 +123,52 @@ describe("suggestOrgName", () => {
     const suggestion = suggestOrgName(null, 5);
     expect(suggestion.kind).toBe("random");
     expect(JSON.stringify(suggestion)).not.toContain("@");
+  });
+});
+
+describe("suggestedSlugBase", () => {
+  it("slugifies the first name alone, not the possessive sentence", () => {
+    // The bug this pins: slugifying "Florent's organization" (or its fr/de/es
+    // translations) yields a truncated boilerplate-prefixed slug. Slugifying
+    // the bare first name does not.
+    expect(suggestedSlugBase({ kind: "personal", firstName: "Florent" })).toBe(
+      "florent",
+    );
+    expect(
+      suggestedSlugBase({ kind: "personal", firstName: "Alexandra" }),
+    ).toBe("alexandra");
+  });
+
+  it("keeps a hyphenated first name intact", () => {
+    expect(
+      suggestedSlugBase({ kind: "personal", firstName: "Jean-Pierre" }),
+    ).toBe("jean-pierre");
+  });
+
+  it("caps a long first name at 20 chars with no trailing hyphen", () => {
+    const firstName = "Abcdefghijklmnopqrstuvwxyz"; // 26 letters
+    const base = suggestedSlugBase({ kind: "personal", firstName });
+    expect(base).toBe("abcdefghijklmnopqrst");
+    expect(base.length).toBe(ORG_SLUG_MAX_LEN);
+    expect(base.endsWith("-")).toBe(false);
+  });
+
+  it("falls back to the seeded random name for a non-Latin first name", () => {
+    // "李雷" has no [a-z0-9] at all: orgSlugify("李雷") is "" and must not be
+    // sent to the server as an unusable, empty slugBase.
+    const base = suggestedSlugBase({ kind: "personal", firstName: "李雷" }, 7);
+    expect(base).not.toBe("");
+    expect(base).toBe(orgSlugify(randomOrgName(7)));
+
+    // Deterministic for a given seed, like every other proposal here.
+    expect(
+      suggestedSlugBase({ kind: "personal", firstName: "李雷" }, 7),
+    ).toBe(base);
+  });
+
+  it("slugifies the generated name for a random proposal", () => {
+    expect(suggestedSlugBase({ kind: "random", name: randomOrgName(9) })).toBe(
+      orgSlugify(randomOrgName(9)),
+    );
   });
 });

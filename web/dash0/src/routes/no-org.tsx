@@ -19,7 +19,11 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { CreateOrgCard } from "@/components/shared/create-org-card";
 import { SecondaryDisclosureCard } from "@/components/ui/secondary-disclosure-card";
-import { randomOrgNameSeed, suggestOrgName } from "@/lib/org-name-suggestion";
+import {
+  randomOrgNameSeed,
+  suggestOrgName,
+  suggestedSlugBase,
+} from "@/lib/org-name-suggestion";
 
 export const Route = createFileRoute("/no-org")({
   // `membershipPending` is set by the backend's federated-login callbacks
@@ -54,18 +58,28 @@ function NoOrgPage() {
   // reshuffle the name whenever the translator's identity changed — i.e. rewrite
   // the field under the user's cursor.
   const [nameSeed] = useState(randomOrgNameSeed);
+  // Withhold the proposal until the session has resolved: GET /auth/me lands
+  // after the first render, so proposing before it does would show a named
+  // user the random fallback and then swap it out from under them.
+  const suggestion = useMemo(
+    () => (isLoading ? undefined : suggestOrgName(user?.name, nameSeed)),
+    [isLoading, nameSeed, user?.name],
+  );
   const suggestedName = useMemo(() => {
-    // Withhold the proposal until the session has resolved: GET /auth/me lands
-    // after the first render, so proposing before it does would show a named
-    // user the random fallback and then swap it out from under them.
-    if (isLoading) return undefined;
-
-    const suggestion = suggestOrgName(user?.name, nameSeed);
+    if (!suggestion) return undefined;
 
     return suggestion.kind === "personal"
       ? t("createOrg.suggestedPersonal", { firstName: suggestion.firstName })
       : suggestion.name;
-  }, [isLoading, nameSeed, t, user?.name]);
+  }, [suggestion, t]);
+  // The slug proposal is derived from the FIRST NAME, not the localized
+  // possessive sentence above — every locale's sentence leads with boilerplate
+  // ("L'organisation de …") that would dominate the 20-char slug cap and bury
+  // the part that actually identifies the person (spec 2026-09-07-01).
+  const suggestedSlug = useMemo(
+    () => (suggestion ? suggestedSlugBase(suggestion, nameSeed) : undefined),
+    [suggestion, nameSeed],
+  );
 
   return (
     <div className="min-h-screen bg-background p-4 sm:p-8 flex flex-col items-center">
@@ -94,7 +108,10 @@ function NoOrgPage() {
         {/* Create first and full width: it is the action we expect. Joining an
             existing org stays available below, visibly secondary — invited
             colleagues still need it. */}
-        <CreateOrgCard suggestedName={suggestedName} />
+        <CreateOrgCard
+          suggestedName={suggestedName}
+          suggestedSlug={suggestedSlug}
+        />
         <JoinOrgCard />
 
         <PendingRequestsList />

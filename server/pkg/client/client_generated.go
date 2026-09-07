@@ -3731,8 +3731,11 @@ type CreateOrgRequest struct {
 	// Name Human-readable organization name
 	Name string `json:"name"`
 
-	// Slug URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens). **Optional** — omit it and the server derives one from `name`, appending a numeric suffix on collision, so a first-time user never has to invent a URL identifier. A slug that IS supplied is taken literally: invalid answers 422, already taken answers 409.
+	// Slug URL-friendly identifier (3-20 chars, lowercase alphanumeric with hyphens). **Optional** — omit it and the server derives one from `slugBase` or `name` (see below), appending a numeric suffix on collision, so a first-time user never has to invent a URL identifier. A slug that IS supplied is taken literally: invalid answers 422, already taken answers 409.
 	Slug *string `json:"slug,omitempty"`
+
+	// SlugBase A preferred candidate to derive the slug from, consulted only when `slug` is omitted — e.g. a first name, when `name` is a localized possessive sentence whose boilerplate prefix would otherwise dominate the 20-char slug cap. Unlike `slug`, this is a HINT: it is normalized and suffixed on collision the same way as `name`, and silently ignored (falling back to `name`) when it normalizes to nothing usable — it never answers 422 or 409. Ignored entirely when `slug` is also supplied.
+	SlugBase *string `json:"slugBase,omitempty"`
 }
 
 // CreateReportScheduleRequest defines model for CreateReportScheduleRequest.
