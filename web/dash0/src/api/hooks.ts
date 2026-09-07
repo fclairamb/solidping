@@ -18,6 +18,7 @@ export interface ListQueryOptions {
   enabled?: boolean;
   staleTime?: number;
 }
+import type { SignupAttribution } from "@/lib/attribution";
 import { mergeResultTiers } from "@/lib/result-tiers";
 import { isStalePublication } from "@/lib/stale-publications";
 import {
@@ -3425,7 +3426,13 @@ export function useProviders() {
 // Registration hooks
 export function useRegister() {
   return useMutation({
-    mutationFn: (data: { name?: string; email: string; password: string }) =>
+    mutationFn: (data: {
+      name?: string;
+      email: string;
+      password: string;
+      // Campaign context from the landing URL; see lib/attribution.ts.
+      attribution?: SignupAttribution;
+    }) =>
       apiFetch<{ message: string }>("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify(data),

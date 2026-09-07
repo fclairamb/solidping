@@ -14,6 +14,13 @@ Refresh an expired access token using a refresh token.
 ### POST /api/v1/auth/register
 Register a new user account. Sends a confirmation email.
 
+Body: `{ name?, email, password, attribution? }`. `attribution` is the campaign
+context the dashboard captured from the landing URL — `{ utmSource, utmMedium,
+utmCampaign, utmTerm, utmContent, clickIdKind, clickId, landingPath, capturedAt }`,
+all optional. It is normalized (unknown keys dropped, values capped at 200
+characters, `clickIdKind` limited to `gclid`/`gbraid`/`wbraid`/`msclkid`) and
+stored on the user at confirmation, never updated afterwards.
+
 ### POST /api/v1/auth/confirm-registration
 Confirm a registration via email token. Returns access token.
 

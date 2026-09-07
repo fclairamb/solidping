@@ -87,11 +87,55 @@ type User struct {
 	//
 	// A demo session may write exactly four things (see
 	// handlers/auth/demo_guard.go); everything else answers 403 DEMO_READ_ONLY.
-	Demo         bool       `bun:"demo,notnull"`
-	LastActiveAt *time.Time `bun:"last_active_at"`
-	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt    *time.Time `bun:"deleted_at"`
+	Demo bool `bun:"demo,notnull"`
+	// SignupAttribution records where the signup came from — the campaign tags
+	// and ad click identifier the marketing site forwarded on the link that
+	// led here (spec 2026-09-07-03). Set once, at account creation, and never
+	// updated: it is a historical fact about the signup, not a live property
+	// of the user. Nil for every account that did not arrive from a tagged
+	// link, which is most of them. Stored as JSON so the shape can grow
+	// (another ad network's click id) without a migration.
+	SignupAttribution *SignupAttribution `bun:"signup_attribution,type:jsonb"`
+	LastActiveAt      *time.Time         `bun:"last_active_at"`
+	CreatedAt         time.Time          `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt         time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt         *time.Time         `bun:"deleted_at"`
+}
+
+// SignupAttribution is the campaign context of a signup, as forwarded by the
+// marketing site (www.solidping.io appends it to every link into the
+// dashboard). Every field is optional and every value is an opaque string
+// chosen by whoever wrote the ad campaign — none of it identifies the person.
+//
+// The click identifier is the one field with a purpose beyond reporting: an
+// offline conversion upload to the ad network needs the click id and the
+// time the account was created, and nothing else. That is the whole reason
+// this is persisted rather than only counted in analytics.
+type SignupAttribution struct {
+	Source   string `json:"utmSource,omitempty"`
+	Medium   string `json:"utmMedium,omitempty"`
+	Campaign string `json:"utmCampaign,omitempty"`
+	Term     string `json:"utmTerm,omitempty"`
+	Content  string `json:"utmContent,omitempty"`
+	// ClickIDKind names the query parameter the click id arrived in — gclid,
+	// gbraid, wbraid (Google) or msclkid (Microsoft) — so the upload goes to
+	// the right network.
+	ClickIDKind string `json:"clickIdKind,omitempty"`
+	ClickID     string `json:"clickId,omitempty"`
+	// LandingPath is the dashboard path the tagged link opened, without its
+	// query string. Useful for telling an ad landing from a docs deep link.
+	LandingPath string `json:"landingPath,omitempty"`
+	// CapturedAt is when the dashboard first saw the tags, which can be days
+	// before the account exists (the confirmation email is not always opened
+	// at once).
+	CapturedAt *time.Time `json:"capturedAt,omitempty"`
+}
+
+// IsEmpty reports whether nothing at all was captured, so callers can store a
+// nil pointer instead of an empty object.
+func (a *SignupAttribution) IsEmpty() bool {
+	return a == nil || (a.Source == "" && a.Medium == "" && a.Campaign == "" &&
+		a.Term == "" && a.Content == "" && a.ClickID == "")
 }
 
 // NewUser creates a new user with generated UID.

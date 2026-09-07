@@ -13,12 +13,19 @@ import {
   parseOAuthHandoff,
   resolveHandoffDestination,
 } from "@/lib/oauth-handoff";
+import { captureLandingAttribution } from "@/lib/attribution";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource-variable/jetbrains-mono/index.css";
 import "./i18n";
 import "./index.css";
 
 installErrorCollector();
+
+// Campaign attribution forwarded by the marketing site (gclid, utm_*). Read
+// here, before the router mounts: the first thing `/login` does is redirect to
+// the org login with a rewritten query string, and the tags would be gone.
+// See lib/attribution.ts for why this lives in memory and not in storage.
+captureLandingAttribution(window.location.search, window.location.pathname);
 
 // Get base URL from Vite config (empty string means root "/")
 const basepath = import.meta.env.VITE_BASE_URL || "";

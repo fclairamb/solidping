@@ -2283,6 +2283,11 @@ type RegisterRequest struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// Attribution is the campaign context the dashboard captured from its
+	// landing URL (spec 2026-09-07-03). Optional; normalized and bounded by
+	// normalizeSignupAttribution before it is stored, so a client cannot use
+	// it to park arbitrary data on a user row.
+	Attribution *models.SignupAttribution `json:"attribution,omitempty"`
 }
 
 // RegisterResponse contains the response after registration.
@@ -2380,6 +2385,14 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		keyName:        req.Name,
 		"passwordHash": hash,
 	}
+
+	// The account does not exist yet, so the attribution rides along in the
+	// pending entry and is applied at confirmation. It goes in only when there
+	// is something to keep: the common untagged signup stores nothing extra.
+	if attribution := normalizeSignupAttribution(req.Attribution); attribution != nil {
+		(*stateValue)[keyAttribution] = attribution
+	}
+
 	ttl := registrationTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, registrationKeyPrefix+req.Email, stateValue, &ttl); err != nil {
@@ -2457,6 +2470,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	user := models.NewUser(regEmail)
 	user.Name = regName
 	user.PasswordHash = &regHash
+	user.SignupAttribution = signupAttributionFromState(val[keyAttribution])
 
 	now := time.Now()
 	user.EmailVerifiedAt = &now
