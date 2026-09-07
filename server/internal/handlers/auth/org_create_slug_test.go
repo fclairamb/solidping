@@ -90,6 +90,64 @@ func TestCreateOrgExplicitSlugStillStrict(t *testing.T) {
 	require.ErrorIs(t, err, ErrOrgSlugTaken)
 }
 
+// TestCreateOrgSlugBaseHint is the proof for spec 2026-09-07-01: `slugBase` is
+// a preferred candidate consulted only when `slug` is omitted, normalized and
+// suffixed like a name-derived slug, silently ignored when unusable, and
+// entirely subordinate to an explicit `slug`.
+func TestCreateOrgSlugBaseHint(t *testing.T) {
+	t.Parallel()
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	user := models.NewUser("slugbase@acme.example")
+	require.NoError(t, dbSvc.CreateUser(ctx, user))
+
+	// 1. slugBase wins over the (possessive-sentence) name.
+	first, err := svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Florent's organization", SlugBase: "florent"}, Context{})
+	require.NoError(t, err)
+	require.Equal(t, "florent", first.Slug)
+
+	// 2. A second create with the same slugBase gets the numeric suffix, not
+	//    a 409 — GenerateUnique's collision handling applies to slugBase
+	//    exactly like it does to name.
+	second, err := svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Florent's organization", SlugBase: "florent"}, Context{})
+	require.NoError(t, err)
+	require.Equal(t, "florent2", second.Slug)
+
+	// 3. An unusable slugBase (normalizes to "") is silently skipped, falling
+	//    through to Name — never a 422.
+	fallback, err := svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Acme Corp", SlugBase: "!!"}, Context{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-corp", fallback.Slug)
+
+	// 4. An explicit slug wins over slugBase entirely — slugBase is ignored,
+	//    not merely deprioritized.
+	explicit, err := svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Acme", Slug: "acme-x", SlugBase: "acme-y"}, Context{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-x", explicit.Slug)
+
+	// 5. slugBase is normalized just like name would be.
+	normalized, err := svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Whatever Inc", SlugBase: "Florent"}, Context{})
+	require.NoError(t, err)
+	require.Equal(t, "florent3", normalized.Slug,
+		"slugBase is lowercased by Slugify like any other candidate, and still collides with the two Florents above")
+
+	// Positive controls: adding slugBase parsing must not have softened the
+	// strict `slug` contract on the very same request path.
+	_, err = svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Other Co", Slug: "acme-x", SlugBase: "unused"}, Context{})
+	require.ErrorIs(t, err, ErrOrgSlugTaken, "acme-x was already claimed by case 4 above")
+
+	_, err = svc.CreateOrg(ctx, user.UID,
+		CreateOrgRequest{Name: "Other Co", Slug: "a", SlugBase: "unused"}, Context{})
+	require.ErrorIs(t, err, ErrInvalidOrgSlug)
+}
+
 // TestCreateOrgHandlerSlugOptional drives the change through the real HTTP
 // handler, which is where the "Slug is required" 422 used to live: a body with
 // only a name must now answer 201, while an empty name still answers 422.
