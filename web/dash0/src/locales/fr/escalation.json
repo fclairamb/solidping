@@ -22,7 +22,9 @@
     "unused": "Inutilisée",
     "emptyTitle": "Aucune politique d'escalade",
     "stepsLabel_one": "étape",
-    "stepsLabel_other": "étapes"
+    "stepsLabel_other": "étapes",
+    "deleteUsage": "Utilisé par {{checks}} checks et {{groups}} groupes — ils reviendront à l'escalade héritée.",
+    "silentBadge": "0 étape — silencieux"
   },
   "new": {
     "title": "Nouvelle politique d'escalade"

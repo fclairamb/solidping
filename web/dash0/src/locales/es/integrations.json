@@ -155,7 +155,14 @@
     "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
     "slackDmUnavailableTitle": "Los mensajes directos no se están capturando",
     "slackDmUnavailableBody": "Este espacio de trabajo se conectó antes de que SolidPing pidiera el permiso im:history. Slack no concede permisos nuevos a una instalación existente, así que los mensajes directos al bot nunca llegan a la bandeja de soporte. Reinstala la aplicación para activar la captura: nada más cambia en esta integración.",
-    "slackReinstallButton": "Reinstalar la aplicación de Slack"
+    "slackReinstallButton": "Reinstalar la aplicación de Slack",
+    "sendTest": "Enviar prueba",
+    "slackConnectButton": "Instalar la app de Slack",
+    "slackNotConnectedBody": "Este canal no tiene un espacio de trabajo de Slack vinculado. Instale la app de Slack de SolidPing para conectar uno.",
+    "slackNotConnectedTitle": "Espacio de trabajo de Slack no conectado",
+    "testDelivered": "Entregado",
+    "testHelp": "Envíe una alerta de muestra para confirmar que esta integración está configurada. La prueba usa la configuración guardada.",
+    "testTitle": "Enviar una notificación de prueba"
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -195,7 +202,8 @@
     "twilio": "Enviar SMS y realizar llamadas de voz mediante Twilio",
     "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos",
     "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)",
-    "msteams-bot": "Bot de Teams bidireccional: alertas, comandos con @mención y actualizaciones agrupadas"
+    "msteams-bot": "Bot de Teams bidireccional: alertas, comandos con @mención y actualizaciones agrupadas",
+    "freebox": "Supervisar una Freebox de Free (calidad de línea, velocidad de sincronización, estado de red)"
   },
   "sms": {
     "title": "SMS y llamadas",
@@ -231,5 +239,22 @@
     "defaultName": "Alertas por correo",
     "created": "Alertas por correo creadas",
     "createFailed": "No se pudieron configurar las alertas por correo"
+  },
+  "freebox": {
+    "baseUrl": "URL base de la Freebox",
+    "baseUrlHint": "Déjelo como está si SolidPing se ejecuta en la misma LAN que la Freebox. Para acceso remoto, use el nombre de host público configurado en el admin de la Freebox en Ajustes → API de Freebox OS.",
+    "cancel": "Cancelar",
+    "description": "Supervise la calidad de línea y el estado de red de su Freebox",
+    "deviceName": "Etiqueta del dispositivo",
+    "deviceNameHint": "Se muestra en el admin de la Freebox bajo Aplicaciones autorizadas. Elija algo que reconocerá más tarde.",
+    "name": "Freebox",
+    "pairButton": "Emparejar con la Freebox",
+    "paired": "Emparejado — conexión lista",
+    "pairing": "Iniciando emparejamiento…",
+    "pairingDenied": "El emparejamiento fue rechazado en la Freebox.",
+    "pairingFailed": "No se pudo contactar con la Freebox. Verifique la URL base.",
+    "pairingTimeout": "El aviso LCD de la Freebox expiró antes de la aprobación. Inténtelo de nuevo.",
+    "pressArrow": "Vaya a su Freebox y pulse → en la pantalla LCD en los próximos 30 segundos",
+    "waitingApproval": "Esperando la aprobación en la pantalla LCD…"
   }
 }
