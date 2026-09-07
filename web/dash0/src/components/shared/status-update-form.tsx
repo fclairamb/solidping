@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useStatusPages, useStatusPage, type StatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,6 +83,7 @@ export function StatusUpdateForm({
   onSubmit,
   onCancel,
 }: StatusUpdateFormProps) {
+  const { t } = useTranslation("statusUpdates");
   const { data: pages } = useStatusPages(org);
 
   const [form, setForm] = useState<StatusUpdateFormData>(() =>
@@ -152,24 +154,24 @@ export function StatusUpdateForm({
 
   const cardDescription =
     mode === "create"
-      ? "Publish a new update on your status page."
-      : (initialData?.title ?? "Edit this status update.");
+      ? t("form.createDescription")
+      : (initialData?.title ?? t("form.editDescription"));
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>{t("form.details")}</CardTitle>
           <CardDescription>{cardDescription}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Status Page field */}
           <div className="space-y-1">
-            <Label htmlFor="statusPage">Status page</Label>
+            <Label htmlFor="statusPage">{t("form.statusPage")}</Label>
             {mode === "create" ? (
               <Select value={form.statusPageUid} onValueChange={handlePageChange}>
                 <SelectTrigger id="statusPage">
-                  <SelectValue placeholder="Select a status page" />
+                  <SelectValue placeholder={t("form.selectStatusPage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {(pages ?? []).map((p) => (
@@ -200,17 +202,17 @@ export function StatusUpdateForm({
 
           {/* Section field (optional) */}
           <div className="space-y-1">
-            <Label htmlFor="section">Section (optional)</Label>
+            <Label htmlFor="section">{t("form.section")}</Label>
             <Select
               value={form.sectionUid}
               onValueChange={handleSectionChange}
               disabled={!form.statusPageUid}
             >
               <SelectTrigger id="section" data-testid="status-update-form-section">
-                <SelectValue placeholder="No section" />
+                <SelectValue placeholder={t("form.noSection")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No section</SelectItem>
+                <SelectItem value="none">{t("form.noSection")}</SelectItem>
                 {sections.map((s) => (
                   <SelectItem key={s.uid} value={s.uid}>
                     {s.name}
@@ -222,17 +224,17 @@ export function StatusUpdateForm({
 
           {/* Check field (optional) */}
           <div className="space-y-1">
-            <Label htmlFor="check">Check (optional)</Label>
+            <Label htmlFor="check">{t("form.check")}</Label>
             <Select
               value={effectiveCheckUid}
               onValueChange={(v) => setForm((f) => ({ ...f, checkUid: v }))}
               disabled={!form.statusPageUid}
             >
               <SelectTrigger id="check" data-testid="status-update-form-check">
-                <SelectValue placeholder="No check" />
+                <SelectValue placeholder={t("form.noCheck")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No check</SelectItem>
+                <SelectItem value="none">{t("form.noCheck")}</SelectItem>
                 {checkOptions.map((r) => (
                   <SelectItem key={r.checkUid} value={r.checkUid}>
                     {r.check?.name ?? r.checkUid.slice(0, 8)}
@@ -244,7 +246,7 @@ export function StatusUpdateForm({
 
           {/* Kind field */}
           <div className="space-y-1">
-            <Label htmlFor="kind">Kind</Label>
+            <Label htmlFor="kind">{t("form.kind")}</Label>
             <Select
               value={form.kind}
               onValueChange={(v) => setForm((f) => ({ ...f, kind: v }))}
@@ -255,7 +257,7 @@ export function StatusUpdateForm({
               <SelectContent>
                 {STATUS_UPDATE_KINDS.map((k) => (
                   <SelectItem key={k.value} value={k.value}>
-                    {k.label}
+                    {t(`kinds.${k.value}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -264,48 +266,48 @@ export function StatusUpdateForm({
 
           {/* Title field */}
           <div className="space-y-1">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title">{t("form.title")}</Label>
             <Input
               id="title"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               maxLength={200}
               required
-              placeholder="Investigating elevated error rates"
+              placeholder={t("form.titlePlaceholder")}
               data-testid="status-update-form-title"
             />
           </div>
 
           {/* Body field */}
           <div className="space-y-1">
-            <Label htmlFor="body">Body</Label>
+            <Label htmlFor="body">{t("form.body")}</Label>
             <Textarea
               id="body"
               value={form.bodyMarkdown}
               onChange={(e) => setForm((f) => ({ ...f, bodyMarkdown: e.target.value }))}
               required
               rows={4}
-              placeholder="We are investigating an issue with..."
+              placeholder={t("form.bodyPlaceholder")}
               data-testid="status-update-form-body"
             />
           </div>
 
           {/* Link URL field */}
           <div className="space-y-1">
-            <Label htmlFor="linkUrl">Link URL (optional)</Label>
+            <Label htmlFor="linkUrl">{t("form.linkUrl")}</Label>
             <Input
               id="linkUrl"
               type="url"
               value={form.linkUrl}
               onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
-              placeholder="https://status.example.com/incident/123"
+              placeholder={t("form.linkUrlPlaceholder")}
               data-testid="status-update-form-link-url"
             />
           </div>
 
           {/* Published at field */}
           <div className="space-y-1">
-            <Label htmlFor="publishedAt">Published at</Label>
+            <Label htmlFor="publishedAt">{t("form.publishedAt")}</Label>
             <Input
               id="publishedAt"
               type="datetime-local"
@@ -319,7 +321,7 @@ export function StatusUpdateForm({
       {/* Submit row */}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
+          {t("form.cancel")}
         </Button>
         <Button
           type="submit"
@@ -331,7 +333,7 @@ export function StatusUpdateForm({
           disabled={isPending || selectedPageLoading}
           data-testid="status-update-form-submit"
         >
-          {isPending ? "Saving…" : mode === "create" ? "Create" : "Save changes"}
+          {isPending ? t("form.saving") : mode === "create" ? t("form.create") : t("form.saveChanges")}
         </Button>
       </div>
     </form>

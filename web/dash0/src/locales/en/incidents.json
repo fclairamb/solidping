@@ -218,5 +218,37 @@
   "group": {
     "header": "{{name}} — {{down}} down",
     "headerWithTotal": "{{name}} — {{down}}/{{total}} down"
+  },
+  "statusUpdatesCard": {
+    "title": "Status updates",
+    "addUpdate": "Add update",
+    "description": "Narrative updates published to your status page for this incident.",
+    "selectStatusPage": "Select a status page",
+    "saving": "Saving…",
+    "saveChanges": "Save changes"
+  },
+  "notificationsCard": {
+    "title": "Notifications",
+    "description": "Who was notified and the delivery status.",
+    "empty": "No notifications recorded for this incident yet.",
+    "columns": {
+      "time": "Time",
+      "event": "Event",
+      "status": "Status",
+      "target": "Target",
+      "source": "Source",
+      "channel": "Channel",
+      "error": "Error"
+    }
+  },
+  "publications": {
+    "publishedOn": "Published on",
+    "description": "Status pages where customers can see this incident. Publishing writes a customer-readable title — never the internal one.",
+    "notPublished": "Not published on any status page.",
+    "publishOn": "Publish on",
+    "selectStatusPage": "Select a status page",
+    "severity": "Severity",
+    "noBadge": "No badge",
+    "publish": "Publish"
   }
 }

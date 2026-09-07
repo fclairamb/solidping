@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { Globe, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -60,6 +61,7 @@ export function IncidentPublicationsPanel({
   org: string;
   incidentUid: string;
 }) {
+  const { t } = useTranslation("incidents");
   const { data: publications, isLoading } = useIncidentPublicationsForIncident(
     org,
     incidentUid,
@@ -84,11 +86,10 @@ export function IncidentPublicationsPanel({
       <CardHeader>
         <div className="flex items-center gap-2">
           <Globe className="h-4 w-4 text-muted-foreground" />
-          <CardTitle>Published on</CardTitle>
+          <CardTitle>{t("publications.publishedOn")}</CardTitle>
         </div>
         <CardDescription>
-          Status pages where customers can see this incident. Publishing writes
-          a customer-readable title — never the internal one.
+          {t("publications.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -96,7 +97,7 @@ export function IncidentPublicationsPanel({
           <Skeleton className="h-16 w-full" />
         ) : (publications ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Not published on any status page.
+            {t("publications.notPublished")}
           </p>
         ) : (
           <ul className="space-y-2" data-testid="incident-publications-list">
@@ -147,13 +148,13 @@ export function IncidentPublicationsPanel({
         {availablePages.length > 0 && (
           <div className="space-y-3 border-t border-border pt-4">
             <div className="space-y-2">
-              <Label htmlFor="publishTargetPage">Publish on</Label>
+              <Label htmlFor="publishTargetPage">{t("publications.publishOn")}</Label>
               <Select value={targetPage} onValueChange={setTargetPage}>
                 <SelectTrigger
                   id="publishTargetPage"
                   data-testid="incident-publish-page-select"
                 >
-                  <SelectValue placeholder="Select a status page" />
+                  <SelectValue placeholder={t("publications.selectStatusPage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availablePages.map((page) => (
@@ -166,7 +167,7 @@ export function IncidentPublicationsPanel({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="publishSeverity">Severity</Label>
+              <Label htmlFor="publishSeverity">{t("publications.severity")}</Label>
               <Select value={severity} onValueChange={setSeverity}>
                 <SelectTrigger
                   id="publishSeverity"
@@ -175,7 +176,7 @@ export function IncidentPublicationsPanel({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No badge</SelectItem>
+                  <SelectItem value="none">{t("publications.noBadge")}</SelectItem>
                   <SelectItem value="minor">Minor</SelectItem>
                   <SelectItem value="major">Major</SelectItem>
                   <SelectItem value="critical">Critical</SelectItem>
@@ -206,7 +207,7 @@ export function IncidentPublicationsPanel({
               {publish.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              Publish
+              {t("publications.publish")}
             </Button>
           </div>
         )}

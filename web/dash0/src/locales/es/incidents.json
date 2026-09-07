@@ -218,5 +218,37 @@
   "group": {
     "header": "{{name}} — {{down}} caídos",
     "headerWithTotal": "{{name}} — {{down}}/{{total}} caídos"
+  },
+  "statusUpdatesCard": {
+    "title": "Actualizaciones de estado",
+    "addUpdate": "Añadir actualización",
+    "description": "Actualizaciones narrativas publicadas en su página de estado para este incidente.",
+    "selectStatusPage": "Seleccionar una página de estado",
+    "saving": "Guardando…",
+    "saveChanges": "Guardar cambios"
+  },
+  "notificationsCard": {
+    "title": "Notificaciones",
+    "description": "Quién fue notificado y el estado de la entrega.",
+    "empty": "Aún no se han registrado notificaciones para este incidente.",
+    "columns": {
+      "time": "Hora",
+      "event": "Evento",
+      "status": "Estado",
+      "target": "Objetivo",
+      "source": "Origen",
+      "channel": "Canal",
+      "error": "Error"
+    }
+  },
+  "publications": {
+    "publishedOn": "Publicado en",
+    "description": "Páginas de estado donde los clientes pueden ver este incidente. Publicar escribe un título legible por el cliente — nunca el interno.",
+    "notPublished": "No publicado en ninguna página de estado.",
+    "publishOn": "Publicar en",
+    "selectStatusPage": "Seleccionar una página de estado",
+    "severity": "Gravedad",
+    "noBadge": "Sin insignia",
+    "publish": "Publicar"
   }
 }

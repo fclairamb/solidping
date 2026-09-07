@@ -218,5 +218,37 @@
   "group": {
     "header": "{{name}} — {{down}} ausgefallen",
     "headerWithTotal": "{{name}} — {{down}}/{{total}} ausgefallen"
+  },
+  "statusUpdatesCard": {
+    "title": "Status-Updates",
+    "addUpdate": "Update hinzufügen",
+    "description": "Erzählende Updates, die für diesen Vorfall auf Ihrer Statusseite veröffentlicht wurden.",
+    "selectStatusPage": "Statusseite auswählen",
+    "saving": "Wird gespeichert…",
+    "saveChanges": "Änderungen speichern"
+  },
+  "notificationsCard": {
+    "title": "Benachrichtigungen",
+    "description": "Wer benachrichtigt wurde und der Zustellstatus.",
+    "empty": "Für diesen Vorfall wurden noch keine Benachrichtigungen erfasst.",
+    "columns": {
+      "time": "Zeit",
+      "event": "Ereignis",
+      "status": "Status",
+      "target": "Ziel",
+      "source": "Quelle",
+      "channel": "Kanal",
+      "error": "Fehler"
+    }
+  },
+  "publications": {
+    "publishedOn": "Veröffentlicht auf",
+    "description": "Statusseiten, auf denen Kunden diesen Vorfall sehen können. Beim Veröffentlichen wird ein kundenlesbarer Titel geschrieben — niemals der interne.",
+    "notPublished": "Auf keiner Statusseite veröffentlicht.",
+    "publishOn": "Veröffentlichen auf",
+    "selectStatusPage": "Statusseite auswählen",
+    "severity": "Schweregrad",
+    "noBadge": "Kein Badge",
+    "publish": "Veröffentlichen"
   }
 }

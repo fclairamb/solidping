@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -58,6 +59,7 @@ function stateBadgeVariant(state: string) {
  * a page you can re-read, not a dialog you dismiss by clicking outside it.
  */
 function PublicationEditorPage() {
+  const { t } = useTranslation("incidents");
   const navigate = useNavigate();
   const { org, statusPageUid, uid } = Route.useParams();
   const {
@@ -180,7 +182,7 @@ function PublicationEditorPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No badge</SelectItem>
+                <SelectItem value="none">{t("publications.noBadge")}</SelectItem>
                 <SelectItem value="minor">Minor</SelectItem>
                 <SelectItem value="major">Major</SelectItem>
                 <SelectItem value="critical">Critical</SelectItem>

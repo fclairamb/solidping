@@ -274,6 +274,7 @@ function IncidentStatusUpdateDialog({
   incidentUid,
   editTarget,
 }: IncidentStatusUpdateDialogProps) {
+  const { t } = useTranslation("incidents");
   const { data: pages } = useStatusPages(org);
   const createMutation = useCreateStatusUpdate(org);
   const updateMutation = useUpdateStatusUpdate(org, editTarget?.uid ?? "");
@@ -358,7 +359,7 @@ function IncidentStatusUpdateDialog({
                 }
               >
                 <SelectTrigger id="su-page">
-                  <SelectValue placeholder="Select a status page" />
+                  <SelectValue placeholder={t("statusUpdatesCard.selectStatusPage")} />
                 </SelectTrigger>
                 <SelectContent>
                   {(pages ?? []).map((p) => (
@@ -440,10 +441,10 @@ function IncidentStatusUpdateDialog({
             </Button>
             <Button type="submit" disabled={isLoading}>
               {isLoading
-                ? "Saving…"
+                ? t("statusUpdatesCard.saving")
                 : editTarget
-                  ? "Save changes"
-                  : "Add update"}
+                  ? t("statusUpdatesCard.saveChanges")
+                  : t("statusUpdatesCard.addUpdate")}
             </Button>
           </DialogFooter>
         </form>
@@ -459,6 +460,7 @@ function StatusUpdatesPanel({
   org: string;
   incidentUid: string;
 }) {
+  const { t } = useTranslation("incidents");
   const { data: updates, isLoading } = useStatusUpdates(org, {
     incident: incidentUid,
     limit: 50,
@@ -486,7 +488,7 @@ function StatusUpdatesPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <CardTitle>Status updates</CardTitle>
+            <CardTitle>{t("statusUpdatesCard.title")}</CardTitle>
           </div>
           <Button
             size="sm"
@@ -497,11 +499,11 @@ function StatusUpdatesPanel({
             }}
           >
             <Plus className="h-3 w-3 mr-1" />
-            Add update
+            {t("statusUpdatesCard.addUpdate")}
           </Button>
         </div>
         <CardDescription>
-          Narrative updates published to your status page for this incident.
+          {t("statusUpdatesCard.description")}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -1773,7 +1775,7 @@ function NotificationsCard({
   org: string;
   incidentUid: string;
 }) {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation(["common", "incidents"]);
   const { t: tEvents } = useTranslation("events");
   const navigate = useNavigate();
   const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
@@ -1791,7 +1793,7 @@ function NotificationsCard({
     <Card data-testid="notifications-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Notifications
+          {t("incidents:notificationsCard.title")}
           {rows && rows.length > 0 && (
             <Badge variant="outline" className="text-xs">
               {rows.length}
@@ -1799,27 +1801,27 @@ function NotificationsCard({
           )}
         </CardTitle>
         <CardDescription>
-          Who was notified and the delivery status.
+          {t("incidents:notificationsCard.description")}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading && <Skeleton className="h-24 w-full" />}
         {!isLoading && (!rows || rows.length === 0) && (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No notifications recorded for this incident yet.
+            {t("incidents:notificationsCard.empty")}
           </p>
         )}
         {!isLoading && rows && rows.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Channel</TableHead>
-                {hasErrors && <TableHead>Error</TableHead>}
+                <TableHead>{t("incidents:notificationsCard.columns.time")}</TableHead>
+                <TableHead>{t("incidents:notificationsCard.columns.event")}</TableHead>
+                <TableHead>{t("incidents:notificationsCard.columns.status")}</TableHead>
+                <TableHead>{t("incidents:notificationsCard.columns.target")}</TableHead>
+                <TableHead>{t("incidents:notificationsCard.columns.source")}</TableHead>
+                <TableHead>{t("incidents:notificationsCard.columns.channel")}</TableHead>
+                {hasErrors && <TableHead>{t("incidents:notificationsCard.columns.error")}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>

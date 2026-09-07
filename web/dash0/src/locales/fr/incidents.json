@@ -218,5 +218,37 @@
   "group": {
     "header": "{{name}} — {{down}} en panne",
     "headerWithTotal": "{{name}} — {{down}}/{{total}} en panne"
+  },
+  "statusUpdatesCard": {
+    "title": "Mises à jour de statut",
+    "addUpdate": "Ajouter une mise à jour",
+    "description": "Mises à jour narratives publiées sur votre page de statut pour cet incident.",
+    "selectStatusPage": "Sélectionner une page de statut",
+    "saving": "Enregistrement…",
+    "saveChanges": "Enregistrer les modifications"
+  },
+  "notificationsCard": {
+    "title": "Notifications",
+    "description": "Qui a été notifié et le statut de la livraison.",
+    "empty": "Aucune notification enregistrée pour cet incident pour le moment.",
+    "columns": {
+      "time": "Heure",
+      "event": "Événement",
+      "status": "Statut",
+      "target": "Cible",
+      "source": "Source",
+      "channel": "Canal",
+      "error": "Erreur"
+    }
+  },
+  "publications": {
+    "publishedOn": "Publié sur",
+    "description": "Pages de statut où les clients peuvent voir cet incident. La publication écrit un titre lisible par les clients — jamais le titre interne.",
+    "notPublished": "Non publié sur aucune page de statut.",
+    "publishOn": "Publier sur",
+    "selectStatusPage": "Sélectionner une page de statut",
+    "severity": "Gravité",
+    "noBadge": "Aucun badge",
+    "publish": "Publier"
   }
 }

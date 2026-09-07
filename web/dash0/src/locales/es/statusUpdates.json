@@ -36,5 +36,28 @@
     "updated": "Actualización de estado guardada",
     "deleted": "Actualización de estado eliminada",
     "deleteFailed": "Error al eliminar la actualización de estado"
+  },
+  "form": {
+    "details": "Detalles",
+    "createDescription": "Publicar una nueva actualización en su página de estado.",
+    "editDescription": "Editar esta actualización de estado.",
+    "statusPage": "Página de estado",
+    "selectStatusPage": "Seleccionar una página de estado",
+    "section": "Sección (opcional)",
+    "noSection": "Sin sección",
+    "check": "Check (opcional)",
+    "kind": "Tipo",
+    "title": "Título",
+    "noCheck": "Sin check",
+    "titlePlaceholder": "Investigando tasas de error elevadas",
+    "body": "Contenido",
+    "bodyPlaceholder": "Estamos investigando un problema con...",
+    "linkUrl": "URL del enlace (opcional)",
+    "linkUrlPlaceholder": "https://status.ejemplo.com/incident/123",
+    "publishedAt": "Publicado el",
+    "cancel": "Cancelar",
+    "saving": "Guardando…",
+    "create": "Crear",
+    "saveChanges": "Guardar cambios"
   }
 }
