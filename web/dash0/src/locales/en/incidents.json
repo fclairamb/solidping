@@ -261,6 +261,23 @@
     "published": "Incident published",
     "publishFailed": "Failed to publish incident",
     "unpublished": "Incident unpublished",
-    "unpublishFailed": "Failed to unpublish incident"
+    "unpublishFailed": "Failed to unpublish incident",
+    "edited": "edited",
+    "autopilotTitle": "This incident is on autopilot",
+    "autopilotDescription": "It was published automatically and will resolve itself when the underlying incident recovers. The moment you edit it or post an update, it becomes yours — the automation will then only report the recovery and leave the final resolve to you.",
+    "publicDetails": "Public details",
+    "publicDetailsDescription": "Everything here is shown to customers. Never paste probe output, error strings, internal hostnames or IP addresses into it.",
+    "updated": "Incident updated",
+    "postUpdate": "Post an update",
+    "postUpdateDescription": "Updates are append-only: there is no edit and no delete. Choosing investigating, identified, monitoring or resolved also moves the incident to that state.",
+    "updateBody": "Message (Markdown)",
+    "updateBodyPlaceholder": "We have identified the cause and are deploying a fix.",
+    "updatePosted": "Update posted",
+    "postUpdateSubmit": "Post update",
+    "timeline": "Timeline",
+    "affected": "Affected: {{resources}}",
+    "noAffected": "No affected components resolved for this page.",
+    "noUpdates": "No updates yet.",
+    "automated": "automated"
   }
 }

@@ -261,6 +261,23 @@
     "published": "Incidente publicado",
     "publishFailed": "Error al publicar el incidente",
     "unpublished": "Publicación del incidente retirada",
-    "unpublishFailed": "Error al retirar la publicación del incidente"
+    "unpublishFailed": "Error al retirar la publicación del incidente",
+    "edited": "editado",
+    "autopilotTitle": "Este incidente está en piloto automático",
+    "autopilotDescription": "Se publicó automáticamente y se resolverá solo cuando el incidente subyacente se recupere. En cuanto lo edites o publiques una actualización, pasa a ser tuyo: la automatización solo informará de la recuperación y te dejará la resolución final.",
+    "publicDetails": "Detalles públicos",
+    "publicDetailsDescription": "Todo lo que aparece aquí se muestra a los clientes. Nunca pegues aquí salidas de sondas, mensajes de error, nombres de host internos ni direcciones IP.",
+    "updated": "Incidente actualizado",
+    "postUpdate": "Publicar una actualización",
+    "postUpdateDescription": "Las actualizaciones son solo de adición: no se pueden editar ni eliminar. Elegir «Investigando», «Identificado», «Monitoreando» o «Resuelto» también mueve el incidente a ese estado.",
+    "updateBody": "Mensaje (Markdown)",
+    "updateBodyPlaceholder": "Hemos identificado la causa y estamos desplegando una corrección.",
+    "updatePosted": "Actualización publicada",
+    "postUpdateSubmit": "Publicar actualización",
+    "timeline": "Cronología",
+    "affected": "Afectado: {{resources}}",
+    "noAffected": "No se han identificado componentes afectados para esta página.",
+    "noUpdates": "Todavía no hay actualizaciones.",
+    "automated": "automática"
   }
 }

@@ -261,6 +261,23 @@
     "published": "Vorfall veröffentlicht",
     "publishFailed": "Veröffentlichen des Vorfalls fehlgeschlagen",
     "unpublished": "Veröffentlichung des Vorfalls zurückgezogen",
-    "unpublishFailed": "Zurückziehen der Veröffentlichung fehlgeschlagen"
+    "unpublishFailed": "Zurückziehen der Veröffentlichung fehlgeschlagen",
+    "edited": "bearbeitet",
+    "autopilotTitle": "Dieser Vorfall läuft im Autopilot",
+    "autopilotDescription": "Er wurde automatisch veröffentlicht und löst sich selbst auf, sobald der zugrunde liegende Vorfall behoben ist. Sobald Sie ihn bearbeiten oder ein Update posten, gehört er Ihnen — die Automatisierung meldet dann nur noch die Wiederherstellung und überlässt Ihnen die endgültige Auflösung.",
+    "publicDetails": "Öffentliche Details",
+    "publicDetailsDescription": "Alles hier wird Kunden angezeigt. Fügen Sie niemals Prüfausgaben, Fehlermeldungen, interne Hostnamen oder IP-Adressen ein.",
+    "updated": "Vorfall aktualisiert",
+    "postUpdate": "Update posten",
+    "postUpdateDescription": "Updates können nur hinzugefügt werden: kein Bearbeiten, kein Löschen. Die Wahl von „Untersuchung läuft“, „Identifiziert“, „Überwachung“ oder „Behoben“ versetzt den Vorfall zugleich in diesen Zustand.",
+    "updateBody": "Nachricht (Markdown)",
+    "updateBodyPlaceholder": "Wir haben die Ursache identifiziert und spielen eine Korrektur aus.",
+    "updatePosted": "Update veröffentlicht",
+    "postUpdateSubmit": "Update posten",
+    "timeline": "Verlauf",
+    "affected": "Betroffen: {{resources}}",
+    "noAffected": "Für diese Seite wurden keine betroffenen Komponenten ermittelt.",
+    "noUpdates": "Noch keine Updates.",
+    "automated": "automatisch"
   }
 }

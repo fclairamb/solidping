@@ -31,13 +31,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
-import { publicationStateLabel } from "@/lib/publication-labels";
+import {
+  publicationSeverityLabel,
+  publicationStateLabel,
+} from "@/lib/publication-labels";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-pages/$statusPageUid/incidents/$uid",
 )({
   component: PublicationEditorPage,
 });
+
+// Mirrors the panel on the incident page: one list feeds the picker, and the
+// same helper labels both it and the badge, so the two can never disagree.
+const SEVERITIES: PublicationSeverity[] = ["minor", "major", "critical"];
 
 const UPDATE_KINDS = [
   "investigating",
@@ -130,10 +137,12 @@ function PublicationEditorPage() {
               {publicationStateLabel(t, publication.state)}
             </Badge>
             {publication.autoCreated && (
-              <Badge variant="secondary">auto-published</Badge>
+              <Badge variant="secondary">
+                {t("publications.autoPublished")}
+              </Badge>
             )}
             {publication.humanTouched && (
-              <Badge variant="outline">edited</Badge>
+              <Badge variant="outline">{t("publications.edited")}</Badge>
             )}
           </div>
         </div>
@@ -141,27 +150,23 @@ function PublicationEditorPage() {
 
       {publication.autoCreated && !publication.humanTouched && (
         <Alert>
-          <AlertTitle>This incident is on autopilot</AlertTitle>
+          <AlertTitle>{t("publications.autopilotTitle")}</AlertTitle>
           <AlertDescription>
-            It was published automatically and will resolve itself when the
-            underlying incident recovers. The moment you edit it or post an
-            update, it becomes yours — the automation will then only report the
-            recovery and leave the final resolve to you.
+            {t("publications.autopilotDescription")}
           </AlertDescription>
         </Alert>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle>Public details</CardTitle>
+          <CardTitle>{t("publications.publicDetails")}</CardTitle>
           <CardDescription>
-            Everything here is shown to customers. Never paste probe output,
-            error strings, internal hostnames or IP addresses into it.
+            {t("publications.publicDetailsDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="publicationTitle">Title</Label>
+            <Label htmlFor="publicationTitle">{t("statusUpdates:form.title")}</Label>
             <Input
               id="publicationTitle"
               value={effectiveTitle}
@@ -171,7 +176,7 @@ function PublicationEditorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="publicationSeverity">Severity</Label>
+            <Label htmlFor="publicationSeverity">{t("publications.severity")}</Label>
             <Select
               value={effectiveSeverity}
               onValueChange={(v) => setSeverity(v)}
@@ -184,9 +189,11 @@ function PublicationEditorPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">{t("publications.noBadge")}</SelectItem>
-                <SelectItem value="minor">Minor</SelectItem>
-                <SelectItem value="major">Major</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
+                {SEVERITIES.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {publicationSeverityLabel(t, value)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -203,7 +210,7 @@ function PublicationEditorPage() {
                     ? ""
                     : (effectiveSeverity as PublicationSeverity),
               });
-              toast.success("Incident updated");
+              toast.success(t("publications.updated"));
               setTitle(null);
               setSeverity(null);
             }}
@@ -211,23 +218,21 @@ function PublicationEditorPage() {
             {updatePublication.isPending && (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             )}
-            Save changes
+            {t("statusUpdates:form.saveChanges")}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Post an update</CardTitle>
+          <CardTitle>{t("publications.postUpdate")}</CardTitle>
           <CardDescription>
-            Updates are append-only: there is no edit and no delete. Choosing
-            investigating, identified, monitoring or resolved also moves the
-            incident to that state.
+            {t("publications.postUpdateDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="updateKind">Kind</Label>
+            <Label htmlFor="updateKind">{t("statusUpdates:form.kind")}</Label>
             <Select value={updateKind} onValueChange={setUpdateKind}>
               <SelectTrigger
                 id="updateKind"
@@ -238,7 +243,7 @@ function PublicationEditorPage() {
               <SelectContent>
                 {UPDATE_KINDS.map((kind) => (
                   <SelectItem key={kind} value={kind}>
-                    {kind}
+                    {publicationStateLabel(t, kind)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -246,13 +251,13 @@ function PublicationEditorPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="updateBody">Message (Markdown)</Label>
+            <Label htmlFor="updateBody">{t("publications.updateBody")}</Label>
             <Textarea
               id="updateBody"
               rows={5}
               value={updateBody}
               onChange={(e) => setUpdateBody(e.target.value)}
-              placeholder="We have identified the cause and are deploying a fix."
+              placeholder={t("publications.updateBodyPlaceholder")}
               data-testid="publication-update-body"
             />
           </div>
@@ -266,7 +271,7 @@ function PublicationEditorPage() {
                 kind: updateKind,
                 bodyMarkdown: updateBody,
               });
-              toast.success("Update posted");
+              toast.success(t("publications.updatePosted"));
               setUpdateBody("");
             }}
           >
@@ -275,24 +280,28 @@ function PublicationEditorPage() {
             ) : (
               <Send className="mr-2 h-4 w-4" />
             )}
-            Post update
+            {t("publications.postUpdateSubmit")}
           </Button>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Timeline</CardTitle>
+          <CardTitle>{t("publications.timeline")}</CardTitle>
           <CardDescription>
             {publication.affectedResources &&
             publication.affectedResources.length > 0
-              ? `Affected: ${publication.affectedResources.join(", ")}`
-              : "No affected components resolved for this page."}
+              ? t("publications.affected", {
+                  resources: publication.affectedResources.join(", "),
+                })
+              : t("publications.noAffected")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {(publication.updates ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No updates yet.</p>
+            <p className="text-sm text-muted-foreground">
+              {t("publications.noUpdates")}
+            </p>
           ) : (
             <ul className="space-y-4" data-testid="publication-timeline">
               {(publication.updates ?? []).map((update) => (
@@ -309,7 +318,7 @@ function PublicationEditorPage() {
                     </time>
                     {!update.authorUid && (
                       <span className="text-xs text-muted-foreground">
-                        · automated
+                        · {t("publications.automated")}
                       </span>
                     )}
                   </div>
