@@ -258,8 +258,16 @@ unchanged, one definition).
     is swallowed and the `toast.success` + navigate still run; any other error surfaces.
 - `components/shared/check-form.tsx`: for a demo session render `DemoReadOnlyNote` in
   place of `NotifyViaSection` and in place of `DependsOnFormSection`, in **both** create
-  and edit mode. `EscalationSelect` stays — it only feeds the PATCH body, which is
-  allowlisted, so it is a working control rather than one that ends in a refusal toast.
+  and edit mode. `EscalationSelect` stays, but not untouched: every branch of it feeds
+  the allowlisted PATCH body EXCEPT its "No escalation (silent)" shortcut, which `POST`s
+  a zero-step policy to `/orgs/:org/escalation-policies` (not allowlisted) whenever the
+  org owns none — and the demo org's single seeded policy has a step. For a demo session
+  that option was therefore exactly the control §C.2 forbids, and its failure is
+  swallowed, so the selection snapped back with no explanation. The picker now takes a
+  `canCreatePolicy` prop and withholds the shortcut when the session may not create a
+  policy and there is no existing silent one to reuse
+  (`canOfferSilentEscalationShortcut` in `lib/demo.ts`). The server allowlist is
+  unchanged.
 - `routes/orgs/$org/checks.new.tsx`: reuse `isDemoReadOnlyError` (no behaviour change).
 
 ### 5. Docs + changelog

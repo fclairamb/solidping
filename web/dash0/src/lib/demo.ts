@@ -129,3 +129,55 @@ export function isDemoReadOnlyError(err: unknown): boolean {
     (err as { code?: unknown }).code === "DEMO_READ_ONLY"
   );
 }
+
+/**
+ * Whether the escalation picker may offer its "No escalation (silent)"
+ * shortcut.
+ *
+ * The shortcut looks like a pure selection, but it is not: when the
+ * organization owns no zero-step policy yet, picking it `POST`s one to
+ * `/orgs/:org/escalation-policies` and then selects the result. That route is
+ * NOT on the demo allowlist, and the demo org is seeded with exactly one
+ * policy, which has a step — so for a demo visitor the option was always the
+ * thing spec 2026-09-07-02 §C.2 forbids: a control whose only outcome is a
+ * refusal toast. Worse, the picker swallows the failure, so the selection just
+ * snapped back with no explanation.
+ *
+ * Reusing an ALREADY-EXISTING silent policy is a plain `onChange` that only
+ * feeds the allowlisted `PATCH /checks/:uid` body, so the shortcut stays
+ * offered in that case — the rule is "no session is offered a control that can
+ * only fail", not "the demo loses the feature".
+ */
+export function canOfferSilentEscalationShortcut(
+  canCreatePolicy: boolean,
+  hasSilentPolicy: boolean,
+): boolean {
+  return canCreatePolicy || hasSilentPolicy;
+}
+
+/**
+ * Whether the org login page's demo auto-login owns the post-authentication
+ * redirect, i.e. whether the "redirect if already authenticated" effect must
+ * stand down.
+ *
+ * Three inputs, because two of them are not the same question. `demoFlag` says
+ * the visitor asked for the demo; `demoAvailable` says this instance actually
+ * has one. Standing down on the flag ALONE strands an authenticated visitor of
+ * a demo-less instance on a blank page: the auto-login effect declines to run,
+ * the redirect effect has been disabled, and the page renders `null` for an
+ * authenticated session. Standing down on `demoAvailable` alone is equally
+ * wrong in the other direction — it is false while the public-config document
+ * is still in flight, so the redirect would fire before the instance has had a
+ * chance to say it has a demo.
+ *
+ * Hence: stand down while the demo is real, or might still turn out to be.
+ */
+export function demoAutoLoginOwnsRedirect(
+  demoFlag: boolean | undefined,
+  demoAvailable: boolean,
+  demoConfigLoading: boolean,
+): boolean {
+  if (!demoFlag) return false;
+
+  return demoAvailable || demoConfigLoading;
+}

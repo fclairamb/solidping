@@ -54,8 +54,12 @@ function CheckEditPage() {
   const setConnections = useSetCheckConnections(org, checkUid);
   // The bindings the check actually has right now — the baseline the submitted
   // selection is compared against, so a save that changed nothing about
-  // notifications does not PUT them back. (The form reads the same query to
-  // seed its picker, so this is a cache hit, not a second round trip.)
+  // notifications does not PUT them back. (The form reads the same query, so
+  // this is usually a cache hit — not always: when the URL carries a slug
+  // rather than a uid, the form keys its copy off `initialData.uid` and the
+  // two query keys differ, making this a real second fetch. Harmless either
+  // way: an unresolved baseline makes connectionBindingsChanged answer "yes",
+  // which is exactly the pre-fix behaviour, and the refusal is swallowed.)
   const { data: existingBindings } = useCheckConnections(org, checkUid);
   const createDep = useCreateCheckDependency(org, checkUid);
   const updateDep = useUpdateCheckDependency(org, checkUid);

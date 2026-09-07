@@ -25,8 +25,8 @@ import {
 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
-import { useDemoConfig } from "@/api/public-config";
-import { parseDemoFlag } from "@/lib/demo";
+import { useDemoConfig, usePublicConfigLoading } from "@/api/public-config";
+import { demoAutoLoginOwnsRedirect, parseDemoFlag } from "@/lib/demo";
 import {
   getLastAuthMethod,
   setLastAuthMethod,
@@ -344,6 +344,16 @@ function LoginPage() {
     [navigate],
   );
 
+  // The shared public live demo (spec 2026-09-06-02). Nothing is rendered when
+  // the instance has no demo, so a self-hosted install shows exactly what it
+  // showed before. Declared up here, above the redirect effect, because that
+  // effect's dependency array reads `demoAvailable` during render.
+  const demoConfig = useDemoConfig();
+  const demoAvailable = Boolean(
+    demoConfig.enabled && demoConfig.orgSlug && demoConfig.email && demoConfig.password,
+  );
+  const demoConfigLoading = usePublicConfigLoading();
+
   // Redirect if already authenticated (but not when showing org picker). When
   // a valid `returnTo` deep link is present, honor it instead of the org root
   // — this also matches routeResult's default case, so the two paths racing on
@@ -353,14 +363,28 @@ function LoginPage() {
   // the demo", not "put me wherever my token points". This effect used to win
   // the race against the auto-login one below, so a visitor who already held a
   // session — their own org, or even the demo itself — followed a demo link and
-  // landed on /orgs/<the URL's org> instead. Skipping it here hands the
+  // landed on /orgs/<the URL's org> instead. Standing down here hands the
   // decision to the demo effect, which either re-enters or short-circuits.
+  //
+  // It stands down only when that effect will actually act, though. On a
+  // self-hosted install with the demo OFF, the auto-login effect declines to
+  // run (it requires demoAvailable), and an authenticated visitor following a
+  // …/login?demo=true link would be left on the `return null` render guard
+  // below — a blank page, forever. demoAutoLoginOwnsRedirect keeps the two in
+  // agreement, including during the window where the public-config document
+  // has not answered yet and "no demo" is not yet knowable.
+  const demoOwnsRedirect = demoAutoLoginOwnsRedirect(
+    demoAutoLogin,
+    demoAvailable,
+    demoConfigLoading,
+  );
+
   useEffect(() => {
-    if (demoAutoLogin) return;
+    if (demoOwnsRedirect) return;
     if (isAuthenticated && !showOrgPicker) {
       goToDestination(resolveDestination(org, returnTo, BASE_PATH), true);
     }
-  }, [demoAutoLogin, isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
+  }, [demoOwnsRedirect, isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
 
   // `loginOrg` is the org the credentials were actually for. It defaults to the
   // org whose login page we are on, which is right for every ordinary sign-in —
@@ -418,14 +442,6 @@ function LoginPage() {
       }
     },
     [tc],
-  );
-
-  // The shared public live demo (spec 2026-09-06-02). Nothing is rendered when
-  // the instance has no demo, so a self-hosted install shows exactly what it
-  // showed before.
-  const demoConfig = useDemoConfig();
-  const demoAvailable = Boolean(
-    demoConfig.enabled && demoConfig.orgSlug && demoConfig.email && demoConfig.password,
   );
 
   // Signing into the demo goes through the ORDINARY login — the same

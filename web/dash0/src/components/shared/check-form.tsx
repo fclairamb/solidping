@@ -1492,7 +1492,11 @@ export function CheckForm({
                   on the EDIT page it took the whole save down with it. Same
                   politeness principle as lib/demo.ts: don't show a control
                   whose only outcome is "no". The escalation select below stays
-                  — it feeds the PATCH body, which IS allowlisted. */}
+                  — every branch of it feeds the PATCH body, which IS
+                  allowlisted, EXCEPT its "No escalation (silent)" shortcut,
+                  which POSTs a zero-step policy when the org owns none. That
+                  one branch is withheld via canCreatePolicy; see
+                  canOfferSilentEscalationShortcut in lib/demo.ts. */}
               {user?.isDemo ? (
                 <DemoReadOnlyNote testId="check-notifications-demo-note" />
               ) : (
@@ -1509,6 +1513,7 @@ export function CheckForm({
                 onChange={setEscalationPolicyUid}
                 checkGroupUid={checkGroupUid}
                 checkGroups={checkGroups}
+                canCreatePolicy={!user?.isDemo}
               />
             </CardContent>
           </Card>

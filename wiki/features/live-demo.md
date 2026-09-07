@@ -34,6 +34,18 @@ rule is simply that a control whose only possible outcome is a refusal toast is
 replaced by the read-only note. That covers the check form's Notifications card
 and its dependency editor, in create *and* edit mode.
 
+The escalation-policy picker sits on the same card and is **not** wholesale
+hidden — the check's `escalationPolicyUid` travels in the allowlisted PATCH
+body, so choosing an existing policy works. One branch of it is the exception:
+"No escalation (silent)" `POST`s a zero-step policy to
+`/orgs/:org/escalation-policies` when the organization owns none, and the demo
+org's single seeded policy has a step. That branch is withheld for a demo
+session (`canOfferSilentEscalationShortcut` in `lib/demo.ts`, wired through
+`EscalationSelect`'s `canCreatePolicy` prop); it is still offered whenever a
+silent policy already exists, because reusing one is a plain selection. The
+refusal was doubly invisible before: the picker swallows the create error, so
+the selection simply snapped back.
+
 The corollary bit us once: the check edit page issued
 `PUT …/channels` on **every** save (the form always carries a `connectionUids`
 array in edit mode), so a demo visitor renaming their own check got a

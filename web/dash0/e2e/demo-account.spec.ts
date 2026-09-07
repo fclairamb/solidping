@@ -151,6 +151,24 @@ test.describe("Public live demo", () => {
     const demo = await demoConfig(request);
     const org = demo?.orgSlug as string;
 
+    // §C.2 has a second, subtler instance: the escalation picker's
+    // "No escalation (silent)" option is not a plain selection — when the org
+    // owns no zero-step policy (and the demo org's single seeded policy has a
+    // step), it POSTs one to /orgs/:org/escalation-policies, which is NOT on
+    // the demo allowlist. Count those POSTs for the whole flow; the assertion
+    // is that the option is never even offered, so there are none.
+    const policyPosts: string[] = [];
+    page.on("request", (req) => {
+      if (
+        req.method() === "POST" &&
+        /\/api\/v1\/orgs\/[^/]+\/escalation-policies$/.test(
+          new URL(req.url()).pathname,
+        )
+      ) {
+        policyPosts.push(req.url());
+      }
+    });
+
     await page.goto("orgs/test/login?demo=1");
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
 
@@ -190,6 +208,17 @@ test.describe("Public live demo", () => {
     await expect(page.getByTestId("check-dependencies-demo-note")).toBeVisible();
     await expect(page.getByTestId("dependency-add-button")).toHaveCount(0);
 
+    // The escalation picker itself STAYS — escalationPolicyUid rides the
+    // allowlisted PATCH body — so the option list opening at all is the
+    // positive control here. What is missing from it is the silent shortcut.
+    await page.getByTestId("escalation-policy-select").click();
+    await expect(page.getByTestId("escalation-option-inherit")).toBeVisible({
+      timeout: 20000,
+    });
+    await expect(page.getByTestId("escalation-option-silent")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("escalation-option-inherit")).toHaveCount(0);
+
     const renamed = `${name}-renamed`;
     await page.getByTestId("check-name-input").fill(renamed);
     await page.getByTestId("check-submit-button").click();
@@ -214,6 +243,44 @@ test.describe("Public live demo", () => {
       .click();
     await page.waitForURL(/\/checks(\?.*)?$/, { timeout: 20000 });
     await expect(page.getByText(renamed)).toHaveCount(0);
+
+    expect(
+      policyPosts,
+      "a demo session must never be able to create an escalation policy",
+    ).toHaveLength(0);
+  });
+
+  test("an ordinary session is still offered the silent-escalation shortcut", async ({
+    page,
+  }) => {
+    // The negative control for the test above. Withholding the shortcut is a
+    // demo boundary, not a feature removal: a customer whose org owns no
+    // zero-step policy must still be able to create one from the picker, which
+    // is exactly the branch the demo may not take.
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 20000 });
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+    // Not a /orgs/test regex: the login page's own URL matches that too, so a
+    // failed sign-in would sail past and fail later on something unrelated.
+    await page.waitForURL((url) => !url.pathname.includes("login"), {
+      timeout: 20000,
+    });
+
+    await page.goto("orgs/test/checks/new");
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("check-name-input").waitFor({
+      state: "visible",
+      timeout: 20000,
+    });
+
+    await page.getByTestId("escalation-policy-select").click();
+    await expect(page.getByTestId("escalation-option-silent")).toBeVisible({
+      timeout: 20000,
+    });
+    await page.keyboard.press("Escape");
   });
 
   test("the banner is on every page and cannot be dismissed", async ({ page }) => {

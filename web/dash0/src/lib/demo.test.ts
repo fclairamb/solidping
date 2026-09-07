@@ -13,6 +13,8 @@ import {
   DEMO_ALLOWED_CHECK_TYPES,
   DEMO_MIN_PERIOD_SECONDS,
   canDemoEditCheck,
+  canOfferSilentEscalationShortcut,
+  demoAutoLoginOwnsRedirect,
   demoFlagFromLocation,
   filterCheckTypesForDemo,
   isDemoReadOnlyError,
@@ -216,5 +218,59 @@ describe("isDemoReadOnlyError", () => {
     expect(isDemoReadOnlyError(null)).toBe(false);
     expect(isDemoReadOnlyError(undefined)).toBe(false);
     expect(isDemoReadOnlyError("DEMO_READ_ONLY")).toBe(false);
+  });
+});
+
+describe("canOfferSilentEscalationShortcut", () => {
+  it("never withholds the shortcut from an ordinary session", () => {
+    // The most important case: this is a demo boundary, not a feature flag.
+    // A customer with no silent policy yet must still be able to create one
+    // from the picker — that is the whole point of the shortcut.
+    expect(canOfferSilentEscalationShortcut(true, false)).toBe(true);
+    expect(canOfferSilentEscalationShortcut(true, true)).toBe(true);
+  });
+
+  it("withholds it when creating is refused and there is nothing to reuse", () => {
+    // Spec 2026-09-07-02 §C.2. This is the demo org as seeded: exactly one
+    // policy, and it has a step. Picking the shortcut would POST
+    // /orgs/:org/escalation-policies, which the write guard refuses — and the
+    // picker swallows the error, so the selection snapped back silently.
+    expect(canOfferSilentEscalationShortcut(false, false)).toBe(false);
+  });
+
+  it("keeps it when an existing silent policy can simply be selected", () => {
+    // Reusing a zero-step policy is a plain onChange feeding the allowlisted
+    // PATCH body — no POST, so no reason to hide it from anyone.
+    expect(canOfferSilentEscalationShortcut(false, true)).toBe(true);
+  });
+});
+
+describe("demoAutoLoginOwnsRedirect", () => {
+  it("leaves the ordinary login page alone", () => {
+    // No flag, no change: every flag-less path (form, OAuth, 2FA, org picker,
+    // returnTo) must keep redirecting an authenticated visitor as before.
+    expect(demoAutoLoginOwnsRedirect(undefined, true, false)).toBe(false);
+    expect(demoAutoLoginOwnsRedirect(undefined, false, false)).toBe(false);
+    expect(demoAutoLoginOwnsRedirect(undefined, false, true)).toBe(false);
+  });
+
+  it("stands the redirect down when the instance has a demo", () => {
+    expect(demoAutoLoginOwnsRedirect(true, true, false)).toBe(true);
+  });
+
+  it("stands it down while the public config has not answered", () => {
+    // demoAvailable is false during the fetch. Reading that as "no demo"
+    // would redirect the visitor away before the instance got to say it has
+    // one — the race the auto-login effect exists to win.
+    expect(demoAutoLoginOwnsRedirect(true, false, true)).toBe(true);
+  });
+
+  it("keeps redirecting on an instance with the demo switched off", () => {
+    // The regression this predicate exists to prevent: the auto-login effect
+    // requires demoAvailable, so with the demo off nothing would take over
+    // from the redirect, and an authenticated visitor following
+    // .../login?demo=true would sit on the page's `return null` guard — a
+    // blank page, forever.
+    expect(demoAutoLoginOwnsRedirect(true, false, false)).toBe(false);
   });
 });
