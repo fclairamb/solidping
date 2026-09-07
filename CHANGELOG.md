@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1](https://github.com/fclairamb/solidping/compare/v0.25.0...v0.25.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 70ad66e ([#338](https://github.com/fclairamb/solidping/issues/338)) ([7bae0fe](https://github.com/fclairamb/solidping/commit/7bae0fed144ed1a0e9479a6a85278ebf84a69321))
+* **onboarding:** the organization offered to a brand-new account on the "you have no organization yet" screen now takes its **address** from the person's first name instead of from the sentence in the name field. "Florent's organization" was becoming `florents-organizatio` — the display sentence run through the 20-character address cap — and in French, German or Spanish the boilerplate led and the *name* was what got cut, so `L'organisation de Florent` and `L'organisation de Florence` both landed on `lorganisation-de-flo`, the second with a collision suffix on top. A first name in a non-Latin script disappeared from the address altogether. The proposal is now simply `florent`: it is what the "Will be reachable as …" line shows before you click, and what the Advanced field starts from if you want to change it. The organization's display name is untouched — it is only the address that was wrong. For API clients, `POST /api/v1/orgs` gains an optional `slugBase`: unlike `slug`, which is still taken literally and still answers 409 when it is already claimed, `slugBase` is a hint the server normalizes and numbers on collision, so accepting the proposed organization can never produce an error the newcomer cannot act on ([#341](https://github.com/fclairamb/solidping/issues/341)) ([83e6e27](https://github.com/fclairamb/solidping/commit/83e6e27954695e09cafa69d345b74663c3d791cc))
+
 ## [0.25.0](https://github.com/fclairamb/solidping/compare/v0.24.0...v0.25.0) (2026-09-06)
 
 
