@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { publicationStateLabel } from "@/lib/publication-labels";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-pages/$statusPageUid/incidents/$uid",
@@ -126,7 +127,7 @@ function PublicationEditorPage() {
               variant={stateBadgeVariant(publication.state)}
               data-testid="publication-state-badge"
             >
-              {publication.state}
+              {publicationStateLabel(t, publication.state)}
             </Badge>
             {publication.autoCreated && (
               <Badge variant="secondary">auto-published</Badge>
@@ -298,7 +299,7 @@ function PublicationEditorPage() {
                 <li key={update.uid} className="border-l-2 border-border pl-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={stateBadgeVariant(update.kind)}>
-                      {update.kind}
+                      {publicationStateLabel(t, update.kind)}
                     </Badge>
                     <time
                       dateTime={update.publishedAt}

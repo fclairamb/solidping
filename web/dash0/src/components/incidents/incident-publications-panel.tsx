@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { Link } from "@tanstack/react-router";
 import { Globe, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +10,10 @@ import {
   useStatusPages,
   type PublicationSeverity,
 } from "@/api/hooks";
+import {
+  publicationSeverityLabel,
+  publicationStateLabel,
+} from "@/lib/publication-labels";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -44,15 +47,6 @@ import {
 // and the badge on an already-published incident can never drift apart — the
 // badge used to print the raw enum value, which stayed English in a French UI.
 const SEVERITIES: PublicationSeverity[] = ["minor", "major", "critical"];
-
-function severityLabel(
-  t: TFunction<"incidents">,
-  severity: PublicationSeverity,
-): string {
-  if (severity === "minor") return t("publications.severityMinor");
-  if (severity === "major") return t("publications.severityMajor");
-  return t("publications.severityCritical");
-}
 
 function stateBadgeVariant(state: string) {
   if (state === "resolved") return "success" as const;
@@ -135,11 +129,11 @@ export function IncidentPublicationsPanel({
                   </Link>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={stateBadgeVariant(publication.state)}>
-                      {publication.state}
+                      {publicationStateLabel(t, publication.state)}
                     </Badge>
                     {publication.severity && (
                       <Badge variant="secondary">
-                        {severityLabel(t, publication.severity)}
+                        {publicationSeverityLabel(t, publication.severity)}
                       </Badge>
                     )}
                     {publication.autoCreated && (
@@ -198,7 +192,7 @@ export function IncidentPublicationsPanel({
                   <SelectItem value="none">{t("publications.noBadge")}</SelectItem>
                   {SEVERITIES.map((value) => (
                     <SelectItem key={value} value={value}>
-                      {severityLabel(t, value)}
+                      {publicationSeverityLabel(t, value)}
                     </SelectItem>
                   ))}
                 </SelectContent>
