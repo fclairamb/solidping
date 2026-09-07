@@ -3513,8 +3513,12 @@ export function useUpdateProfile() {
 export function useCreateOrg() {
   return useMutation({
     // `slug` is optional: omit it and the server derives one from the name
-    // (POST /api/v1/orgs, spec 2026-09-05-01).
-    mutationFn: (data: { name: string; slug?: string }) =>
+    // (POST /api/v1/orgs, spec 2026-09-05-01). `slugBase` is a hint consulted
+    // only when `slug` is omitted — normalized and suffixed on collision like
+    // the name-derived fallback, but never answering 422/409 for it (spec
+    // 2026-09-07-01, server/internal/handlers/auth/service.go
+    // CreateOrgRequest.SlugBase).
+    mutationFn: (data: { name: string; slug?: string; slugBase?: string }) =>
       apiFetch<{
         uid: string;
         slug: string;

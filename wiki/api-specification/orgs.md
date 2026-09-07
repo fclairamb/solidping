@@ -58,10 +58,20 @@ Ownership rules:
 
 ### POST /api/v1/orgs
 Create a new organization. Auth: required (any authenticated user).
-The caller becomes the org's **owner**, and the response carries a session
-scoped to the new org. The org is always created for the caller — the owner
-comes from the access token, never from the body. A slug freed by a deleted
-organization can be claimed again.
+Body: `{name, slug?, slugBase?}`. The caller becomes the org's **owner**, and
+the response carries a session scoped to the new org. The org is always
+created for the caller — the owner comes from the access token, never from
+the body. A slug freed by a deleted organization can be claimed again.
+
+`slug`, when supplied, is strict: normalized to nothing (invalid) answers
+`422`, already taken answers `409` — never fixed up behind the caller's back.
+Omit it and the server derives one instead, preferring `slugBase` over `name`
+as the candidate to slugify — both go through the same normalize-cap-suffix
+pipeline and an unusable candidate is silently skipped, never an error.
+`slugBase` exists because `name` can be a display sentence (e.g. a localized
+"Alice's organization") whose slug would be dominated by its boilerplate
+prefix; a caller that already knows the meaningful part (a first name) can
+pass it separately. `slugBase` is ignored entirely when `slug` is supplied.
 
 ### PATCH /api/v1/orgs/:org
 Update the organization's profile — `{name?, slug?, logoUrl?}`. Auth: required

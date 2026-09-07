@@ -14,6 +14,8 @@
  * are not the same sentence with a name glued on.
  */
 
+import { orgSlugify } from "./org-slug";
+
 /**
  * What /no-org should propose. `personal` carries the first name for the
  * caller's i18n interpolation; `random` carries a ready-to-use display name
@@ -110,6 +112,36 @@ export function randomOrgName(seed?: number): string {
  */
 export function randomOrgNameSeed(): number {
   return Math.floor(Math.random() * ADJECTIVES.length * NOUNS.length);
+}
+
+/**
+ * The proposed org-slug BASE for a given proposal — what /no-org shows in the
+ * "will be reachable as …" preview and sends the server as `slugBase` (spec
+ * 2026-09-07-01).
+ *
+ * `personal` slugifies the first name alone, not the localized possessive
+ * sentence: every locale's sentence leads with boilerplate ("L'organisation
+ * de …", "Organisation von …") that would otherwise dominate the 20-char cap
+ * and bury the one part that actually identifies the person. When the first
+ * name itself has nothing `[a-z0-9]` in it (non-Latin script, e.g. "李雷"),
+ * slugifying it yields "" — fall back to the same random name the caller would
+ * get for an unnamed account, using the SAME seed so the base does not
+ * reshuffle on every render.
+ *
+ * `random` just slugifies the generated name — unchanged behavior, made
+ * explicit here so both branches go through one function.
+ */
+export function suggestedSlugBase(
+  suggestion: OrgNameSuggestion,
+  seed?: number,
+): string {
+  if (suggestion.kind === "random") {
+    return orgSlugify(suggestion.name);
+  }
+
+  const base = orgSlugify(suggestion.firstName);
+
+  return base || orgSlugify(randomOrgName(seed));
 }
 
 /**

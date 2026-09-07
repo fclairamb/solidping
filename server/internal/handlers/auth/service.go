@@ -3017,14 +3017,28 @@ func (s *Service) revokeUserTokensOfType(ctx context.Context, userUID string, to
 // CreateOrgRequest contains the request data for creating an organization.
 type CreateOrgRequest struct {
 	Name string `json:"name"`
-	// Slug is OPTIONAL. Left empty, the server derives one from Name via
-	// orgslug.GenerateUnique — a newcomer creating their first organization
-	// from /no-org should not have to invent a URL identifier before they can
-	// see a single check (spec 2026-09-05-01). A slug that IS supplied keeps
-	// the strict contract: invalid -> 422, already taken -> 409. Never silently
-	// "fix up" a slug the caller chose, or an API client would end up owning an
-	// org at an address it never asked for.
+	// Slug is OPTIONAL. Left empty, the server derives one from Name (or
+	// SlugBase, see below) via orgslug.GenerateUnique — a newcomer creating
+	// their first organization from /no-org should not have to invent a URL
+	// identifier before they can see a single check (spec 2026-09-05-01). A
+	// slug that IS supplied keeps the strict contract: invalid -> 422, already
+	// taken -> 409. Never silently "fix up" a slug the caller chose, or an API
+	// client would end up owning an org at an address it never asked for.
 	Slug string `json:"slug"`
+	// SlugBase is an OPTIONAL hint, consulted only when Slug is empty — a
+	// preferred candidate to derive the slug from instead of Name (spec
+	// 2026-09-07-01). /no-org sends the user's first name here: Name is a
+	// localized possessive sentence ("L'organisation de Florent") whose
+	// boilerplate prefix would otherwise dominate the 20-char slug cap and
+	// bury the one part that identifies the person.
+	//
+	// Unlike Slug, SlugBase is a HINT, not a claim: it goes through the same
+	// orgslug.Slugify + GenerateUnique pipeline as Name (normalized, capped,
+	// suffixed 2/3/... on collision) and is silently ignored — falling
+	// through to Name — when it normalizes to nothing usable. It never
+	// answers 422 or 409. When both Slug and SlugBase are sent, Slug wins and
+	// keeps its strict contract; SlugBase is ignored entirely.
+	SlugBase string `json:"slugBase"`
 }
 
 // OrgResponse contains the response for org creation. It carries a fresh
@@ -3067,11 +3081,14 @@ func (s *Service) CreateOrg(
 	slug := req.Slug
 
 	if slug == "" {
-		// No slug asked for: derive one from the name. GenerateUnique already
-		// normalizes, caps at MaxLen and appends 2, 3, ... on collision, so
-		// two people who both name their org "Acme" get "acme" and "acme2"
-		// instead of the second one meeting a 409 they cannot act on.
-		slug = orgslug.GenerateUnique(ctx, s.db, req.Name)
+		// No slug asked for: derive one, preferring SlugBase (a hint — e.g.
+		// the first name behind a localized possessive Name) and falling back
+		// to Name when SlugBase is empty or normalizes to nothing usable.
+		// GenerateUnique already tries candidates in order, normalizes, caps
+		// at MaxLen and appends 2, 3, ... on collision, so two people who both
+		// end up with "acme" get "acme" and "acme2" instead of the second one
+		// meeting a 409 they cannot act on.
+		slug = orgslug.GenerateUnique(ctx, s.db, req.SlugBase, req.Name)
 	} else {
 		// Validate slug
 		if !orgslug.IsValid(slug) {
