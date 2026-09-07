@@ -55,10 +55,32 @@ func createUserAndCapture(
 		return err
 	}
 
+	properties := map[string]any{"signupMethod": method}
+
+	// Campaign tags are ours (we wrote the ad), low-cardinality, and exactly
+	// what a "which campaign produced signups" chart needs. The click id is
+	// NOT included: it is a per-click token with no analytical value and no
+	// business being in a second system (spec 2026-09-07-03).
+	if attribution := user.SignupAttribution; attribution != nil {
+		if attribution.Source != "" {
+			properties["utmSource"] = attribution.Source
+		}
+
+		if attribution.Medium != "" {
+			properties["utmMedium"] = attribution.Medium
+		}
+
+		if attribution.Campaign != "" {
+			properties["utmCampaign"] = attribution.Campaign
+		}
+
+		properties["hasClickId"] = attribution.ClickID != ""
+	}
+
 	analytics.Capture(ctx, analytics.Event{
 		Name:       analytics.EventUserSignedUp,
 		UserUID:    user.UID,
-		Properties: map[string]any{"signupMethod": method},
+		Properties: properties,
 	})
 
 	NotifyUserRegistered(ctx, user, method)
