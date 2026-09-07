@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { FlaskConical, Copy } from "lucide-react";
 import {
   useCheck,
   useUpdateCheck,
@@ -13,14 +14,19 @@ import {
   useDeleteCheckDependency,
   useCheckDependencies,
   useDependencyGraph,
+  useCloneCheck,
 } from "@/api/hooks";
 import { diffDependencies } from "@/lib/dependency-diff";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { connectionBindingsChanged } from "@/lib/connection-bindings";
-import { isDemoReadOnlyError } from "@/lib/demo";
+import { canDemoEditCheck, isDemoReadOnlyError } from "@/lib/demo";
+import { useIsDemoSession } from "@/hooks/use-is-demo-session";
+import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckForm } from "@/components/shared/check-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
   // `?section=<name>` deep-link only: expand + scroll that collapsible on load.
@@ -32,10 +38,13 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
 });
 
 function CheckEditPage() {
-  const { t } = useTranslation(["checks", "dependencies"]);
+  const { t } = useTranslation(["checks", "dependencies", "org"]);
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();
   const { section } = Route.useSearch();
+  const { user: authUser } = useAuth();
+  const isDemoSession = useIsDemoSession();
+  const cloneCheck = useCloneCheck(org);
   // refetchOnMount "always": the form below seeds its field state ONCE from
   // initialData, so it must never seed from a stale cache entry (e.g.
   // re-opening the editor right after a save, when react-query returns the
@@ -98,6 +107,44 @@ function CheckEditPage() {
 
   if (!check) {
     return null;
+  }
+
+  // A visitor should never be able to fill a form the server will refuse
+  // (spec 2026-09-07-02 §B.4): the detail page already explains this with
+  // `org:demo.seededCheck` and offers a Clone button instead of an edit link
+  // that dead-ends on save — the edit ROUTE must make the same call, since a
+  // demo visitor can also reach it directly (checks list row menu, a
+  // breadcrumb, a bookmarked URL) without passing through the detail page.
+  if (isDemoSession && !canDemoEditCheck(isDemoSession, authUser?.uid, check.createdBy)) {
+    const handleClone = async () => {
+      try {
+        const newCheck = await cloneCheck.mutateAsync(checkUid);
+        toast.success(t("checks:detail.cloned"));
+        navigate({
+          to: "/orgs/$org/checks/$checkUid/edit",
+          params: { org, checkUid: newCheck.uid! },
+        });
+      } catch {
+        toast.error(t("checks:detail.cloneFailed"));
+      }
+    };
+
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <Alert data-testid="demo-check-note">
+          <FlaskConical />
+          <AlertDescription>{t("org:demo.seededCheck")}</AlertDescription>
+        </Alert>
+        <Button
+          onClick={handleClone}
+          disabled={cloneCheck.isPending}
+          data-testid="check-edit-clone-button"
+        >
+          <Copy className="mr-2 h-4 w-4" />
+          {t("checks:detail.clone")}
+        </Button>
+      </div>
+    );
   }
 
   // Always redirect to UID-based URL after edit
