@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { filterCheckTypesForDemo } from "@/lib/demo";
+import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
@@ -850,7 +850,7 @@ export function CheckForm({
     if (!isPassiveType(type) && timeoutSeconds !== "") {
       const timeoutValue = parseInt(timeoutSeconds, 10);
       if (isNaN(timeoutValue) || timeoutValue < 1 || timeoutValue > 30) {
-        setError("Timeout must be between 1 and 30 seconds");
+        setError(t("form.timeoutRangeError"));
         return;
       }
       config.timeout = `${timeoutValue}s`;
@@ -866,11 +866,11 @@ export function CheckForm({
     const periodSec = hmsToSeconds(isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period);
     const { minSec, maxSec } = getPeriodConstraints(type);
     if (periodSec < minSec) {
-      setError(`Minimum check interval for ${type} is ${secondsToHMS(minSec)}`);
+      setError(t("form.minIntervalError", { type, value: secondsToHMS(minSec) }));
       return;
     }
     if (maxSec > 0 && periodSec > maxSec) {
-      setError(`Maximum check interval for ${type} is ${secondsToHMS(maxSec)}`);
+      setError(t("form.maxIntervalError", { type, value: secondsToHMS(maxSec) }));
       return;
     }
 
@@ -936,21 +936,29 @@ export function CheckForm({
           : {}),
       });
     } catch (err) {
+      // One surface, one variant (spec 2026-09-07-02 §B.2): a refused demo
+      // write already gets the deduplicated toast from api/client.ts. Setting
+      // `error` here would render a second, redundant copy in the destructive
+      // Alert above — mirrors how checks.new.tsx swallows the same code for
+      // its secondary (channel/dependency) writes.
+      if (isDemoReadOnlyError(err)) {
+        return;
+      }
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(
-          mode === "create" ? "Failed to create check" : "Failed to update check"
+          mode === "create" ? t("form.failedToCreate") : t("form.failedToUpdate")
         );
       }
     }
   };
 
   const isEdit = mode === "edit";
-  const title = isEdit ? "Edit Check" : "New Check";
-  const subtitle = isEdit ? "Update the monitoring check parameters" : "Create a new monitoring check";
-  const submitLabel = isEdit ? "Save Changes" : "Create Check";
-  const pendingLabel = isEdit ? "Saving..." : "Creating...";
+  const title = isEdit ? t("form.editCheck") : t("form.newCheck");
+  const subtitle = isEdit ? t("form.editCheckSubtitle") : t("form.newCheckSubtitle");
+  const submitLabel = isEdit ? t("form.saveChanges") : t("form.createCheck");
+  const pendingLabel = isEdit ? t("form.savingEllipsis") : t("form.creating");
 
   const selectedTypeLabel = checkTypes.find((t) => t.value === type)?.label || type;
 
@@ -1034,7 +1042,7 @@ export function CheckForm({
     advancedTypeSummary?.customized ? advancedTypeSummary.text : "",
   ]
     .filter(Boolean)
-    .join(" · ") || "timeout 15s (default)";
+    .join(" · ") || t("form.advancedDefaultSummary");
   const showGroup = (checkGroups?.length ?? 0) > 0;
 
   // A section opens on load when it holds non-default values OR is the target of
@@ -1076,14 +1084,14 @@ export function CheckForm({
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
               <div className="space-y-1.5">
-                <CardTitle>Identity &amp; target</CardTitle>
-                <CardDescription>What to monitor, and how to find it later</CardDescription>
+                <CardTitle>{t("form.identityTitle")}</CardTitle>
+                <CardDescription>{t("form.identityDescription")}</CardDescription>
               </div>
               <label
                 htmlFor="check-enabled"
                 className="flex shrink-0 items-center gap-2 pt-1 text-sm font-medium"
               >
-                <span className="text-muted-foreground">Enabled</span>
+                <span className="text-muted-foreground">{t("form.enabled")}</span>
                 <Switch
                   id="check-enabled"
                   checked={enabled}
@@ -1095,7 +1103,7 @@ export function CheckForm({
             <CardContent className="space-y-4">
               {/* Check Type - searchable combobox + template button */}
               <div className="space-y-2">
-                <Label htmlFor="type">Type</Label>
+                <Label htmlFor="type">{t("form.type")}</Label>
                 {isEdit ? (
                   <Input id="type" value={selectedTypeLabel} disabled data-testid="check-type-select" />
                 ) : (
@@ -1480,7 +1488,7 @@ export function CheckForm({
           {/* 3. Notifications — always visible */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Notifications</CardTitle>
+              <CardTitle className="text-base">{t("form.notifications")}</CardTitle>
               <CardDescription>Who gets paged when this check fails</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1632,7 +1640,7 @@ export function CheckForm({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
-                <Input id="confirmationPeriodSeconds" data-testid="confirmation-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
+                <Input id="confirmationPeriodSeconds" data-testid="confirmation-period-input" type="number" min={0} max={86400} placeholder={t("form.defaultPlaceholder", { value: 120 })} value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
                 {confirmationPeriodSeconds.trim() !== "" && (
                   <p className="text-xs text-muted-foreground break-words" data-testid="confirmation-period-estimate">
@@ -1647,7 +1655,7 @@ export function CheckForm({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
-                <Input id="recoveryPeriodSeconds" data-testid="recovery-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
+                <Input id="recoveryPeriodSeconds" data-testid="recovery-period-input" type="number" min={0} max={86400} placeholder={t("form.defaultPlaceholder", { value: 120 })} value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
                 {recoveryPeriodSeconds.trim() !== "" && (
                   <p className="text-xs text-muted-foreground break-words" data-testid="recovery-period-estimate">
@@ -1675,7 +1683,7 @@ export function CheckForm({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
-                <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
+                <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder={t("form.defaultPlaceholder", { value: 5 })} value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
                 <p className="text-xs text-muted-foreground break-words" data-testid="reopen-cooldown-estimate">
                   {describeReopenCooldown(reopenCooldownMultiplierValue, regionPeriodSeconds, t)}
@@ -1683,7 +1691,7 @@ export function CheckForm({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
-                <Input id="flappingWindowSeconds" data-testid="flapping-window-input" type="number" min={0} placeholder="21600 (default)" value={flappingWindowSeconds} onChange={(e) => setFlappingWindowSeconds(e.target.value)} />
+                <Input id="flappingWindowSeconds" data-testid="flapping-window-input" type="number" min={0} placeholder={t("form.defaultPlaceholder", { value: 21600 })} value={flappingWindowSeconds} onChange={(e) => setFlappingWindowSeconds(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.flappingWindowHelp")}</p>
                 {flappingWindowSeconds.trim() !== "" && (parseInt(flappingWindowSeconds, 10) || 0) > 0 && (
                   <p className="text-xs text-muted-foreground break-words" data-testid="flapping-window-estimate">
@@ -1693,12 +1701,12 @@ export function CheckForm({
               </div>
               <div className="space-y-1">
                 <Label htmlFor="flapBackoffFactor" className="text-sm">{t("form.flapBackoffFactor")}</Label>
-                <Input id="flapBackoffFactor" data-testid="flap-backoff-input" type="number" min={1} placeholder="2 (default)" value={flapBackoffFactor} onChange={(e) => setFlapBackoffFactor(e.target.value)} />
+                <Input id="flapBackoffFactor" data-testid="flap-backoff-input" type="number" min={1} placeholder={t("form.defaultPlaceholder", { value: 2 })} value={flapBackoffFactor} onChange={(e) => setFlapBackoffFactor(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.flapBackoffFactorHelp")}</p>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="maxRecoveryMultiplier" className="text-sm">{t("form.maxRecoveryMultiplier")}</Label>
-                <Input id="maxRecoveryMultiplier" data-testid="max-recovery-multiplier-input" type="number" min={1} placeholder="8 (default)" value={maxRecoveryMultiplier} onChange={(e) => setMaxRecoveryMultiplier(e.target.value)} />
+                <Input id="maxRecoveryMultiplier" data-testid="max-recovery-multiplier-input" type="number" min={1} placeholder={t("form.defaultPlaceholder", { value: 8 })} value={maxRecoveryMultiplier} onChange={(e) => setMaxRecoveryMultiplier(e.target.value)} />
                 <p className="text-xs text-muted-foreground">{t("form.maxRecoveryMultiplierHelp")}</p>
               </div>
             </div>
@@ -1708,7 +1716,7 @@ export function CheckForm({
             <CollapsibleSection
               id="advanced"
               data-testid="section-advanced-trigger"
-              title="Advanced"
+              title={t("form.advanced")}
               summary={advancedSummary}
               customized={advancedCustomized}
               defaultOpen={sectionOpen("advanced", advancedCustomized || !!timeoutError)}
@@ -1722,7 +1730,7 @@ export function CheckForm({
                   min={1}
                   max={30}
                   step={1}
-                  placeholder="15 seconds (default)"
+                  placeholder={t("form.defaultPlaceholderSeconds", { value: 15 })}
                   value={timeoutSeconds}
                   onChange={(e) => setTimeoutSeconds(e.target.value)}
                   className={cn(getFieldError(fieldErrors, "timeout") && "border-destructive")}
@@ -1824,7 +1832,7 @@ export function CheckForm({
 
           {/* Sticky footer — save without scrolling past the tuning knobs */}
           <div className="sticky bottom-0 z-10 flex justify-end gap-2 rounded-lg border bg-background/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onCancel}>{t("form.cancel")}</Button>
             <Button type="submit" disabled={isPending} data-testid="check-submit-button">
               {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{pendingLabel}</>) : submitLabel}
             </Button>

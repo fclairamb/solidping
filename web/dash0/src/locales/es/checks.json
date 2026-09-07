@@ -238,7 +238,26 @@
     "tracerouteOff": "No capturar nunca",
     "tracerouteOnFailureHelp": "Cuando este check caiga porque no se pudo ALCANZAR el destino (tiempo de conexión agotado, rechazo, pérdida ICMP, handshake TLS colgado), captura un traceroute estilo MTR y adjúntalo a la incidencia. Los fallos de aplicación como HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo activan: el servidor respondió, así que la ruta está bien.",
     "customPeriod": "{{period}} (personalizado)",
-    "reviewScheduling": "Revisar la planificación de checks"
+    "reviewScheduling": "Revisar la planificación de checks",
+    "editCheckSubtitle": "Actualizar los parámetros de monitoreo del check",
+    "newCheckSubtitle": "Crear un nuevo check de monitoreo",
+    "createCheck": "Crear check",
+    "savingEllipsis": "Guardando...",
+    "identityTitle": "Identidad y objetivo",
+    "identityDescription": "Qué monitorear y cómo encontrarlo más tarde",
+    "enabled": "Habilitado",
+    "type": "Tipo",
+    "advanced": "Avanzado",
+    "advancedDefaultSummary": "tiempo de espera 15 s (predeterminado)",
+    "cancel": "Cancelar",
+    "notifications": "Notificaciones",
+    "defaultPlaceholder": "{{value}} (predeterminado)",
+    "defaultPlaceholderSeconds": "{{value}} segundos (predeterminado)",
+    "timeoutRangeError": "El tiempo de espera debe estar entre 1 y 30 segundos",
+    "minIntervalError": "El intervalo mínimo para {{type}} es {{value}}",
+    "maxIntervalError": "El intervalo máximo para {{type}} es {{value}}",
+    "failedToCreate": "No se pudo crear el check",
+    "failedToUpdate": "No se pudo actualizar el check"
   },
   "types": {
     "http": "HTTP",
@@ -296,7 +315,9 @@
     "rdp": "RDP",
     "rdpDescription": "Monitorizar servidores RDP (Escritorio remoto)",
     "sleep": "Sleep",
-    "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)"
+    "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)",
+    "freebox_line": "Calidad de línea Freebox",
+    "freebox_lineDescription": "Supervisar la calidad de línea xDSL/FTTH mediante Freebox OS"
   },
   "dnsbl": {
     "target": "IP o nombre de host objetivo",
@@ -685,5 +706,51 @@
     "addSecretMetadata": "Añadir metadato secreto",
     "metadataKeyPlaceholder": "x-tenant",
     "metadataValuePlaceholder": "valor"
-  }
+  },
+  "addSecretHeader": "Añadir encabezado secreto",
+  "freebox": {
+    "cancel": "Cancelar",
+    "discover": "Descubrir desde la Freebox",
+    "discoverDescription": "Elija un host visible para su Freebox para rellenar previamente un check ICMP.",
+    "discoverTitle": "Descubrir hosts desde la Freebox",
+    "error": "No se pudieron cargar los hosts desde la Freebox.",
+    "hostType": {
+      "ip_camera": "Cámara",
+      "laptop": "Portátil",
+      "nas": "NAS",
+      "other": "Dispositivo",
+      "player": "Reproductor multimedia",
+      "printer": "Impresora",
+      "router": "Router",
+      "smartphone": "Teléfono",
+      "tablet": "Tableta",
+      "workstation": "Escritorio"
+    },
+    "loading": "Cargando hosts…",
+    "noHosts": "No hay hosts visibles en esta Freebox.",
+    "noMatches": "Ningún host coincide con su búsqueda.",
+    "reachable": "Accesible",
+    "retry": "Reintentar",
+    "searchPlaceholder": "Buscar por nombre o IP…",
+    "unreachable": "Inaccesible",
+    "useSelected": "Usar el host seleccionado"
+  },
+  "freeboxLine": {
+    "advancedThresholds": "Umbrales avanzados",
+    "connectionUid": "Conexión Freebox",
+    "connectionUidHelp": "Elija una conexión Freebox emparejada. Si no tiene ninguna, empareje una en Canales.",
+    "linkType": "Tipo de enlace",
+    "linkTypeFtth": "Fibra FTTH",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "maxAttenuationDb": "Atenuación máxima (dB)",
+    "maxCrcErrorsPerRun": "Errores CRC máximos por check",
+    "maxRxPowerMw": "Potencia Rx máxima (mW)",
+    "minRxPowerMw": "Potencia Rx mínima (mW)",
+    "minSnrMarginDownDb": "Margen SNR mínimo (dB)",
+    "minSyncRateDownKbps": "Velocidad de sincronización mínima (Kbps)",
+    "noConnections": "No hay conexiones Freebox emparejadas. Empareje una para empezar.",
+    "thresholdsHelp": "Solidping marca el check como caído si se supera algún umbral configurado. Deje un campo en 0 para omitir ese umbral."
+  },
+  "secretHeaders": "Encabezados secretos",
+  "secretHeadersDescription": "Valores de encabezado almacenados cifrados — úselo para claves API y tokens Bearer."
 }

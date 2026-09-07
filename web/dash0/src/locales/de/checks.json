@@ -238,7 +238,26 @@
     "tracerouteOff": "Nie aufzeichnen",
     "tracerouteOnFailureHelp": "Wenn dieser Check ausfällt, weil das Ziel nicht ERREICHT werden konnte (Verbindungs-Timeout, Ablehnung, ICMP-Verlust, hängender TLS-Handshake), einen Traceroute im MTR-Stil aufzeichnen und an den Vorfall anhängen. Anwendungsfehler wie HTTP 5xx, ein fehlendes Schlüsselwort oder ein ablaufendes Zertifikat lösen nie einen aus — der Server hat geantwortet, der Pfad ist also in Ordnung.",
     "customPeriod": "{{period}} (benutzerdefiniert)",
-    "reviewScheduling": "Check-Planung überprüfen"
+    "reviewScheduling": "Check-Planung überprüfen",
+    "editCheckSubtitle": "Die Überwachungsparameter des Checks aktualisieren",
+    "newCheckSubtitle": "Einen neuen Überwachungscheck erstellen",
+    "createCheck": "Check erstellen",
+    "savingEllipsis": "Wird gespeichert...",
+    "identityTitle": "Identität & Ziel",
+    "identityDescription": "Was überwacht werden soll und wie man es später wiederfindet",
+    "enabled": "Aktiviert",
+    "type": "Typ",
+    "advanced": "Erweitert",
+    "advancedDefaultSummary": "Timeout 15 s (Standard)",
+    "cancel": "Abbrechen",
+    "notifications": "Benachrichtigungen",
+    "defaultPlaceholder": "{{value}} (Standard)",
+    "defaultPlaceholderSeconds": "{{value}} Sekunden (Standard)",
+    "timeoutRangeError": "Das Timeout muss zwischen 1 und 30 Sekunden liegen",
+    "minIntervalError": "Das minimale Prüfintervall für {{type}} beträgt {{value}}",
+    "maxIntervalError": "Das maximale Prüfintervall für {{type}} beträgt {{value}}",
+    "failedToCreate": "Erstellen des Checks fehlgeschlagen",
+    "failedToUpdate": "Aktualisieren des Checks fehlgeschlagen"
   },
   "types": {
     "http": "HTTP",
@@ -296,7 +315,9 @@
     "rdp": "RDP",
     "rdpDescription": "RDP-Server (Remotedesktop) überwachen",
     "sleep": "Sleep",
-    "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)"
+    "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)",
+    "freebox_line": "Freebox-Leitungsqualität",
+    "freebox_lineDescription": "xDSL/FTTH-Leitungsqualität über Freebox OS überwachen"
   },
   "dnsbl": {
     "target": "Ziel-IP oder Hostname",
@@ -685,5 +706,51 @@
     "addSecretMetadata": "Geheimes Metadatum hinzufügen",
     "metadataKeyPlaceholder": "x-tenant",
     "metadataValuePlaceholder": "Wert"
-  }
+  },
+  "addSecretHeader": "Geheimen Header hinzufügen",
+  "freebox": {
+    "cancel": "Abbrechen",
+    "discover": "Von der Freebox erkennen",
+    "discoverDescription": "Wählen Sie einen für Ihre Freebox sichtbaren Host, um einen ICMP-Check vorauszufüllen.",
+    "discoverTitle": "Hosts von der Freebox erkennen",
+    "error": "Hosts konnten nicht von der Freebox geladen werden.",
+    "hostType": {
+      "ip_camera": "Kamera",
+      "laptop": "Laptop",
+      "nas": "NAS",
+      "other": "Gerät",
+      "player": "Media-Player",
+      "printer": "Drucker",
+      "router": "Router",
+      "smartphone": "Telefon",
+      "tablet": "Tablet",
+      "workstation": "Desktop"
+    },
+    "loading": "Hosts werden geladen…",
+    "noHosts": "Keine Hosts auf dieser Freebox sichtbar.",
+    "noMatches": "Keine Hosts entsprechen Ihrer Suche.",
+    "reachable": "Erreichbar",
+    "retry": "Erneut versuchen",
+    "searchPlaceholder": "Nach Name oder IP suchen…",
+    "unreachable": "Nicht erreichbar",
+    "useSelected": "Ausgewählten Host verwenden"
+  },
+  "freeboxLine": {
+    "advancedThresholds": "Erweiterte Schwellenwerte",
+    "connectionUid": "Freebox-Verbindung",
+    "connectionUidHelp": "Wählen Sie eine gekoppelte Freebox-Verbindung. Falls Sie keine haben, koppeln Sie eine unter Kanäle.",
+    "linkType": "Verbindungstyp",
+    "linkTypeFtth": "FTTH-Glasfaser",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "maxAttenuationDb": "Max. Dämpfung (dB)",
+    "maxCrcErrorsPerRun": "Max. CRC-Fehler pro Check",
+    "maxRxPowerMw": "Max. Rx-Leistung (mW)",
+    "minRxPowerMw": "Min. Rx-Leistung (mW)",
+    "minSnrMarginDownDb": "Minimale SNR-Marge (dB)",
+    "minSyncRateDownKbps": "Minimale Sync-Rate (Kbps)",
+    "noConnections": "Keine gekoppelten Freebox-Verbindungen. Koppeln Sie eine, um zu starten.",
+    "thresholdsHelp": "Solidping meldet den Check als ausgefallen, wenn ein konfigurierter Schwellenwert überschritten wird. Lassen Sie ein Feld auf 0, um diesen Schwellenwert zu überspringen."
+  },
+  "secretHeaders": "Geheime Header",
+  "secretHeadersDescription": "Header-Werte werden verschlüsselt gespeichert — für API-Schlüssel und Bearer-Token verwenden."
 }
