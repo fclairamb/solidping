@@ -434,6 +434,74 @@ test.describe("Public live demo", () => {
     await page.close();
   });
 
+  // The edit ROUTE, not just the detail page, must refuse to render a form
+  // the server would reject on save (spec
+  // 2026-09-07-02-untranslated-strings-and-demo-refusal-message §B.4). A demo
+  // visitor can reach /checks/<uid>/edit directly — the checks-list row menu,
+  // a breadcrumb, a bookmarked URL — without ever seeing the detail page's
+  // explanation.
+  test("a seeded catalogue check's edit route shows the read-only note and a Clone button, not a form", async ({
+    page,
+    request,
+  }) => {
+    const demo = await demoConfig(request);
+
+    const login = await request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { org: demo?.orgSlug, email: demo?.email, password: demo?.password },
+    });
+    const { accessToken } = await login.json();
+
+    const list = await request.get(`${API_BASE}/api/v1/orgs/${demo?.orgSlug}/checks`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const { data } = await list.json();
+
+    const seeded = (data as { uid: string; createdBy?: string | null }[]).find(
+      (check) => !check.createdBy,
+    );
+    expect(seeded, "the demo org should carry a seeded, un-owned catalogue").toBeTruthy();
+
+    await page.goto("orgs/test/login?demo=1");
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    const url = new URL(page.url());
+    const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
+
+    await page.goto(`orgs/${org}/checks/${seeded?.uid}/edit`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("demo-check-note")).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId("check-edit-clone-button")).toBeVisible();
+    // The form itself must never have rendered — not just be hidden behind
+    // the note — since the whole point is a visitor never fills out fields
+    // the server will refuse on submit.
+    await expect(page.getByTestId("check-name-input")).toHaveCount(0);
+  });
+
+  // Hide what cannot be done on the status page detail too (spec §B.5):
+  // POST .../sections and .../resources are outside the demo write
+  // allowlist, so offering the add affordances would only end in a refusal
+  // toast — mirrors status-pages.index.tsx and integrations.index.tsx.
+  test("the status page detail hides the add-section affordance for a demo session", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/login?demo=1");
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    const url = new URL(page.url());
+    const org = url.pathname.split("/orgs/")[1]?.split("/")[0];
+
+    await page.goto(`orgs/${org}/status-pages/demo`);
+    await page.waitForLoadState("networkidle");
+
+    // AddSectionDialog renders once in the header and again in the empty
+    // state when the page has no sections yet — both instances render the
+    // note for a demo session, so assert on the first rather than a single
+    // match.
+    await expect(
+      page.getByTestId("status-page-add-section-demo-note").first(),
+    ).toBeVisible({ timeout: 20000 });
+    await expect(page.getByLabel("Add Section")).toHaveCount(0);
+  });
+
   test("the demo account's password cannot be reset", async ({ request }) => {
     // The unauthenticated path the write guard cannot see. A bare request
     // without a valid token is refused anyway; what matters here is that
