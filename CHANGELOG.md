@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1](https://github.com/fclairamb/solidping/compare/v0.25.0...v0.25.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 70ad66e ([#338](https://github.com/fclairamb/solidping/issues/338)) ([7bae0fe](https://github.com/fclairamb/solidping/commit/7bae0fed144ed1a0e9479a6a85278ebf84a69321))
+* propose an organization slug from the first name, not the possessive sentence ([#341](https://github.com/fclairamb/solidping/issues/341)) ([83e6e27](https://github.com/fclairamb/solidping/commit/83e6e27954695e09cafa69d345b74663c3d791cc))
+
 ## [0.25.0](https://github.com/fclairamb/solidping/compare/v0.24.0...v0.25.0) (2026-09-06)
 
 
