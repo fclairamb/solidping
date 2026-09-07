@@ -186,6 +186,8 @@ github.com/dop251/goja v0.0.0-20260901132549-43234fa61381 h1:vzmJ+R9qxuaksCAB+Kn
 github.com/dop251/goja v0.0.0-20260901132549-43234fa61381/go.mod h1:u8yZRUavu+N4EnFFy6J5fVtjE7lEcZ2YyV2GcBXY9c8=
 github.com/dop251/goja v0.0.0-20260903201622-f87b40ad7341 h1:Xw5BlyA4EmkkAR09eEHJ/EzZr+VwcIiHDXQKxv41fDU=
 github.com/dop251/goja v0.0.0-20260903201622-f87b40ad7341/go.mod h1:u8yZRUavu+N4EnFFy6J5fVtjE7lEcZ2YyV2GcBXY9c8=
+github.com/dop251/goja v0.0.0-20260906210903-70ad66ec7ce4 h1:GsWm9G80nlJAmJE/r9qdyqQWieJVdJObCMxmu4cZ5dQ=
+github.com/dop251/goja v0.0.0-20260906210903-70ad66ec7ce4/go.mod h1:u8yZRUavu+N4EnFFy6J5fVtjE7lEcZ2YyV2GcBXY9c8=
 github.com/dprotaso/go-yit v0.0.0-20191028211022-135eb7262960/go.mod h1:9HQzr9D/0PGwMEbC3d5AB7oi67+h4TsQqItC1GVYG58=
 github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 h1:PRxIJD8XjimM5aTknUK9w6DHLDox2r2M3DI4i2pnd3w=
 github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936/go.mod h1:ttYvX5qlB+mlV1okblJqcSMtR4c52UKxDiX9GRBS8+Q=
