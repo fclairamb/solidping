@@ -257,7 +257,9 @@
     "minIntervalError": "Minimum check interval for {{type}} is {{value}}",
     "maxIntervalError": "Maximum check interval for {{type}} is {{value}}",
     "failedToCreate": "Failed to create check",
-    "failedToUpdate": "Failed to update check"
+    "failedToUpdate": "Failed to update check",
+    "notificationsDescription": "Who gets paged when this check fails",
+    "timeout": "Timeout (optional)"
   },
   "types": {
     "http": "HTTP",

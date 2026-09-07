@@ -257,7 +257,9 @@
     "minIntervalError": "El intervalo mínimo para {{type}} es {{value}}",
     "maxIntervalError": "El intervalo máximo para {{type}} es {{value}}",
     "failedToCreate": "No se pudo crear el check",
-    "failedToUpdate": "No se pudo actualizar el check"
+    "failedToUpdate": "No se pudo actualizar el check",
+    "notificationsDescription": "A quién se avisa cuando esta comprobación falla",
+    "timeout": "Tiempo de espera (opcional)"
   },
   "types": {
     "http": "HTTP",

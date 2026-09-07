@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Link } from "@tanstack/react-router";
 import { Globe, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +39,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+// The three severities the API accepts. Rendered from one list so the picker
+// and the badge on an already-published incident can never drift apart — the
+// badge used to print the raw enum value, which stayed English in a French UI.
+const SEVERITIES: PublicationSeverity[] = ["minor", "major", "critical"];
+
+function severityLabel(
+  t: TFunction<"incidents">,
+  severity: PublicationSeverity,
+): string {
+  if (severity === "minor") return t("publications.severityMinor");
+  if (severity === "major") return t("publications.severityMajor");
+  return t("publications.severityCritical");
+}
 
 function stateBadgeVariant(state: string) {
   if (state === "resolved") return "success" as const;
@@ -123,17 +138,21 @@ export function IncidentPublicationsPanel({
                       {publication.state}
                     </Badge>
                     {publication.severity && (
-                      <Badge variant="secondary">{publication.severity}</Badge>
+                      <Badge variant="secondary">
+                        {severityLabel(t, publication.severity)}
+                      </Badge>
                     )}
                     {publication.autoCreated && (
-                      <Badge variant="outline">auto-published</Badge>
+                      <Badge variant="outline">
+                        {t("publications.autoPublished")}
+                      </Badge>
                     )}
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Unpublish"
+                  aria-label={t("publications.unpublish")}
                   className="text-destructive"
                   onClick={() => setUnpublishUid(publication.uid)}
                   data-testid="incident-unpublish-button"
@@ -177,9 +196,11 @@ export function IncidentPublicationsPanel({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">{t("publications.noBadge")}</SelectItem>
-                  <SelectItem value="minor">Minor</SelectItem>
-                  <SelectItem value="major">Major</SelectItem>
-                  <SelectItem value="critical">Critical</SelectItem>
+                  {SEVERITIES.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {severityLabel(t, value)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -197,10 +218,10 @@ export function IncidentPublicationsPanel({
                         ? undefined
                         : (severity as PublicationSeverity),
                   });
-                  toast.success("Incident published");
+                  toast.success(t("publications.published"));
                   setTargetPage("");
                 } catch {
-                  toast.error("Failed to publish incident");
+                  toast.error(t("publications.publishFailed"));
                 }
               }}
             >
@@ -219,30 +240,28 @@ export function IncidentPublicationsPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Unpublish this incident?</AlertDialogTitle>
+            <AlertDialogTitle>{t("publications.unpublishTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              It disappears from the public status page immediately. The
-              publication and its updates are kept for audit, and the incident
-              can be published again later.
+              {t("publications.unpublishDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("publications.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (!unpublishUid) return;
                 try {
                   await unpublish.mutateAsync(unpublishUid);
-                  toast.success("Incident unpublished");
+                  toast.success(t("publications.unpublished"));
                 } catch {
-                  toast.error("Failed to unpublish incident");
+                  toast.error(t("publications.unpublishFailed"));
                 } finally {
                   setUnpublishUid(null);
                 }
               }}
             >
-              Unpublish
+              {t("publications.unpublish")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

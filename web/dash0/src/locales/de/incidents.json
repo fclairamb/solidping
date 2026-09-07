@@ -249,6 +249,18 @@
     "selectStatusPage": "Statusseite auswählen",
     "severity": "Schweregrad",
     "noBadge": "Kein Badge",
-    "publish": "Veröffentlichen"
+    "publish": "Veröffentlichen",
+    "severityMinor": "Gering",
+    "severityMajor": "Schwerwiegend",
+    "severityCritical": "Kritisch",
+    "autoPublished": "automatisch veröffentlicht",
+    "unpublish": "Veröffentlichung zurückziehen",
+    "unpublishTitle": "Veröffentlichung dieses Vorfalls zurückziehen?",
+    "unpublishDescription": "Er verschwindet sofort von der öffentlichen Statusseite. Die Veröffentlichung und ihre Updates bleiben zu Prüfzwecken erhalten, und der Vorfall kann später erneut veröffentlicht werden.",
+    "cancel": "Abbrechen",
+    "published": "Vorfall veröffentlicht",
+    "publishFailed": "Veröffentlichen des Vorfalls fehlgeschlagen",
+    "unpublished": "Veröffentlichung des Vorfalls zurückgezogen",
+    "unpublishFailed": "Zurückziehen der Veröffentlichung fehlgeschlagen"
   }
 }

@@ -249,6 +249,18 @@
     "selectStatusPage": "Select a status page",
     "severity": "Severity",
     "noBadge": "No badge",
-    "publish": "Publish"
+    "publish": "Publish",
+    "severityMinor": "Minor",
+    "severityMajor": "Major",
+    "severityCritical": "Critical",
+    "autoPublished": "auto-published",
+    "unpublish": "Unpublish",
+    "unpublishTitle": "Unpublish this incident?",
+    "unpublishDescription": "It disappears from the public status page immediately. The publication and its updates are kept for audit, and the incident can be published again later.",
+    "cancel": "Cancel",
+    "published": "Incident published",
+    "publishFailed": "Failed to publish incident",
+    "unpublished": "Incident unpublished",
+    "unpublishFailed": "Failed to unpublish incident"
   }
 }

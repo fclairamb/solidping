@@ -249,6 +249,18 @@
     "selectStatusPage": "Seleccionar una página de estado",
     "severity": "Gravedad",
     "noBadge": "Sin insignia",
-    "publish": "Publicar"
+    "publish": "Publicar",
+    "severityMinor": "Menor",
+    "severityMajor": "Mayor",
+    "severityCritical": "Crítico",
+    "autoPublished": "publicado automáticamente",
+    "unpublish": "Retirar publicación",
+    "unpublishTitle": "¿Retirar la publicación de este incidente?",
+    "unpublishDescription": "Desaparece de inmediato de la página de estado pública. La publicación y sus actualizaciones se conservan para auditoría, y el incidente puede publicarse de nuevo más tarde.",
+    "cancel": "Cancelar",
+    "published": "Incidente publicado",
+    "publishFailed": "Error al publicar el incidente",
+    "unpublished": "Publicación del incidente retirada",
+    "unpublishFailed": "Error al retirar la publicación del incidente"
   }
 }

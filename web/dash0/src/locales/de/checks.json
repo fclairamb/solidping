@@ -257,7 +257,9 @@
     "minIntervalError": "Das minimale Prüfintervall für {{type}} beträgt {{value}}",
     "maxIntervalError": "Das maximale Prüfintervall für {{type}} beträgt {{value}}",
     "failedToCreate": "Erstellen des Checks fehlgeschlagen",
-    "failedToUpdate": "Aktualisieren des Checks fehlgeschlagen"
+    "failedToUpdate": "Aktualisieren des Checks fehlgeschlagen",
+    "notificationsDescription": "Wer benachrichtigt wird, wenn diese Prüfung fehlschlägt",
+    "timeout": "Timeout (optional)"
   },
   "types": {
     "http": "HTTP",

@@ -1489,7 +1489,7 @@ export function CheckForm({
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{t("form.notifications")}</CardTitle>
-              <CardDescription>Who gets paged when this check fails</CardDescription>
+              <CardDescription>{t("form.notificationsDescription")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* A demo session cannot bind notification channels: PUT
@@ -1723,7 +1723,7 @@ export function CheckForm({
               expandSignal={timeoutError ? submitAttempts : 0}
             >
               <div className="space-y-2">
-                <Label htmlFor="check-timeout">Timeout (optional)</Label>
+                <Label htmlFor="check-timeout">{t("form.timeout")}</Label>
                 <Input
                   id="check-timeout"
                   type="number"

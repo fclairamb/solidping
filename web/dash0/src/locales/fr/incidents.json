@@ -249,6 +249,18 @@
     "selectStatusPage": "Sélectionner une page de statut",
     "severity": "Gravité",
     "noBadge": "Aucun badge",
-    "publish": "Publier"
+    "publish": "Publier",
+    "severityMinor": "Mineur",
+    "severityMajor": "Majeur",
+    "severityCritical": "Critique",
+    "autoPublished": "publié automatiquement",
+    "unpublish": "Dépublier",
+    "unpublishTitle": "Dépublier cet incident ?",
+    "unpublishDescription": "Il disparaît immédiatement de la page de statut publique. La publication et ses mises à jour sont conservées pour l'audit, et l'incident pourra être publié à nouveau plus tard.",
+    "cancel": "Annuler",
+    "published": "Incident publié",
+    "publishFailed": "Échec de la publication de l'incident",
+    "unpublished": "Incident dépublié",
+    "unpublishFailed": "Échec de la dépublication de l'incident"
   }
 }
