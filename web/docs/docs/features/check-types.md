@@ -5,7 +5,17 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **39 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **40 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+
+<!--
+  Keep this number equal to the number of `###` sections above "Common Options"
+  on this page. `GET /api/v1/check-types` returns 41; the extra one is `sleep`
+  ("Sleep for a fixed duration (synthetic/testing)"), which is a testing type
+  rather than a monitoring capability and is deliberately not documented here.
+  So: API count minus the synthetic types = the number in the sentence above.
+  It drifted to 39 while every section below stayed correct, and the marketing
+  site was left looking as though it were inflating a number it had right.
+-->
 
 ## Network Checks
 
