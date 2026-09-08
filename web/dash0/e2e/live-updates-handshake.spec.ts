@@ -185,12 +185,31 @@ test.describe("Live updates handshake", () => {
   test("a valid cookie for a DIFFERENT org is closed by the server with no hello and lands on the disabled live badge", async ({
     page,
   }) => {
-    // Reproduce the incident's exact credential shape: a *fresh, valid*
-    // non-super-admin token scoped to another org. The seeded test user is a
-    // super-admin (claims role "superadmin"), which bypasses the WS org check,
-    // so it cannot reproduce the 4403 — mint a regular user + their own org
-    // instead. `POST /api/v1/test/users` is SP_RUNMODE=test only; skip cleanly
-    // when it is unavailable, mirroring create-org.spec.ts.
+    // Reproduce the incident's exact credential shape — a *fresh, valid*
+    // non-super-admin token scoped to another org, on a page the app parks you
+    // on — under two constraints:
+    //
+    //   1. The seeded test user is a super-admin (claims role "superadmin"),
+    //      which bypasses the WS org check, so it cannot produce a 4403 at all.
+    //      Mint a regular user instead. `POST /api/v1/test/users` is
+    //      SP_RUNMODE=test only; skip cleanly when it is unavailable, mirroring
+    //      create-org.spec.ts.
+    //   2. Parking a NON-member on a foreign org — this test's original vehicle
+    //      — is no longer a reachable state: spec 2026-09-08-01 §C redirects
+    //      that session to an org it can use, so the socket never dials with
+    //      the wrong-org token. The incident's state survives where it is still
+    //      genuinely reachable, and where it always was the more likely cause
+    //      in production: a *member* of the URL's org whose session token is
+    //      scoped to ANOTHER of their orgs, for whom the automatic re-mint
+    //      (`switchOrg`) fails. `$org.tsx` deliberately drops its loading gate
+    //      in that case ("better to render and let per-request 403s surface
+    //      than to hang"), so the page mounts with a token scoped to org B
+    //      while the URL says org A — precisely the (token-org × target-org)
+    //      mismatch the server answers with a 4403, and the shape the backend
+    //      pins down in realtimews' TestServe_TwoOrgMemberMatchesREST.
+    //
+    // So: one regular user, TWO orgs of their own, a token for the second, a
+    // failing switch-org, and a navigation to the first.
     const stamp = Date.now();
     const email = `wrong-org-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
@@ -206,9 +225,9 @@ test.describe("Live updates handshake", () => {
       );
     }
 
-    // Log in (zero org), then create the user's own org — the create-org
+    // Log in (zero org), then create the user's two orgs. Each create-org
     // response mints a fresh org-scoped token with role "admin" (NOT
-    // super-admin), whose orgSlug claim is this new org.
+    // super-admin), whose orgSlug claim is that new org.
     const loginResp = await page.request.post(
       `${API_BASE}/api/v1/auth/login`,
       { data: { email, password } },
@@ -216,24 +235,52 @@ test.describe("Live updates handshake", () => {
     expect(loginResp.status()).toBe(200);
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `wrongorg-${stamp.toString(36)}`;
-    const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
-      headers: { Authorization: `Bearer ${session.accessToken}` },
-      data: { name: `Wrong Org Co ${stamp}`, slug: orgSlug },
-    });
-    expect(createOrgResp.status()).toBe(201);
-    const orgSession = (await createOrgResp.json()) as {
-      accessToken: string;
-      refreshToken?: string;
-      expiresIn?: number;
+    const createOrg = async (slug: string, name: string) => {
+      const resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+        data: { name, slug },
+      });
+      expect(resp.status()).toBe(201);
+      return (await resp.json()) as {
+        accessToken: string;
+        refreshToken?: string;
+        expiresIn?: number;
+      };
     };
-    expect(orgSession.accessToken).toBeTruthy();
+
+    // Org A is the one the URL will name; org B is the one the token is scoped
+    // to. The user is a genuine member (owner) of both.
+    const orgA = `visitedorg-${stamp.toString(36)}`;
+    const orgB = `tokenorg-${stamp.toString(36)}`;
+    await createOrg(orgA, `Visited Org ${stamp}`);
+    const orgBSession = await createOrg(orgB, `Token Org ${stamp}`);
+    expect(orgBSession.accessToken).toBeTruthy();
+
+    // The org layout auto-re-mints the session for the URL's org
+    // (`needsOrgSwitch` → `auth.switchOrg`). Fail that call the way a transient
+    // backend hiccup would: the layout records the failure and renders anyway,
+    // leaving the page on org A holding org B's token. Without this the switch
+    // succeeds and the socket connects — so count the calls and assert the
+    // vehicle actually engaged.
+    let switchOrgAttempts = 0;
+    await page.route("**/api/v1/auth/switch-org", async (route) => {
+      switchOrgAttempts++;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          title: "Service unavailable",
+          code: "INTERNAL_ERROR",
+          detail: "switch-org is unavailable (simulated)",
+        }),
+      });
+    });
 
     // Seed the wrong-org session before the app loads: localStorage gates the
     // run() loop's dial (getToken must be non-null) and its pre-dial expiry
     // check, while the access_token COOKIE is what actually authenticates the
     // handshake now (HTTP-level auth). Both carry the org-B token so the socket
-    // dials /orgs/test/events/ws and is upgraded, then closed 4403.
+    // dials /orgs/<orgA>/events/ws and is upgraded, then closed 4403.
     await page.addInitScript(
       ({ accessToken, refreshToken, expiresIn }) => {
         localStorage.setItem("solidping_session_token", accessToken as string);
@@ -249,19 +296,19 @@ test.describe("Live updates handshake", () => {
         }
       },
       {
-        accessToken: orgSession.accessToken,
-        refreshToken: orgSession.refreshToken ?? "",
-        expiresIn: orgSession.expiresIn ?? 0,
+        accessToken: orgBSession.accessToken,
+        refreshToken: orgBSession.refreshToken ?? "",
+        expiresIn: orgBSession.expiresIn ?? 0,
       },
     );
     // The browser attaches this cookie to the same-origin WS handshake — it is
     // the credential the server validates before upgrading.
     await page.context().addCookies([
-      { name: "access_token", value: orgSession.accessToken, url: API_BASE },
+      { name: "access_token", value: orgBSession.accessToken, url: API_BASE },
     ]);
 
     const hs = watchHandshake(page);
-    await page.goto("orgs/test/checks");
+    await page.goto(`orgs/${orgA}/checks`);
 
     // The sidebar live-status dot must reach the terminal "disabled" state:
     // that is the client's reaction to a 4403 (or 4404) permanent close only —
@@ -272,6 +319,18 @@ test.describe("Live updates handshake", () => {
     await expect(dot).toHaveAttribute("data-status", "disabled", {
       timeout: 20000,
     });
+
+    // The vehicle really did what it claims: the app tried to re-mint for org
+    // A, was refused, and stayed put rather than redirecting elsewhere. If a
+    // future change makes the app navigate away (or makes the switch succeed),
+    // these fail loudly instead of letting the assertion above pass vacuously
+    // on a page that never held a wrong-org token.
+    expect(
+      switchOrgAttempts,
+      "the layout must have attempted (and failed) the org re-mint",
+    ).toBeGreaterThan(0);
+    expect(page.url()).toContain(`/orgs/${orgA}`);
+    expect(page.url()).not.toContain(`/orgs/${orgB}`);
 
     // The server rejected the wrong-org socket after the upgrade (close 4403):
     // no `hello` ever arrived and no scope was subscribed. With HTTP-level auth
