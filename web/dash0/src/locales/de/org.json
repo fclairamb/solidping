@@ -372,5 +372,8 @@
       "actions": "Aktionen",
       "cancel": "Token abbrechen"
     }
+  },
+  "accessRedirect": {
+    "toast": "Sie haben keinen Zugriff auf {{requested}} — stattdessen wird {{shown}} angezeigt."
   }
 }

@@ -4270,6 +4270,27 @@ func (s *Service) completeLoginAfter2FA(
 
 	userInfo := newUserInfo(user, role)
 
+	// Every OTHER login shape carries the caller's full organization list:
+	// completeLogin gets it from resolveOrgPreference (password, LDAP, OAuth,
+	// passkey) and the invitation accept re-reads it here. 2FA was the one
+	// path that returned none, because resolveOrgPreference ran before the
+	// challenge and its summaries were dropped along with everything else the
+	// temp token does not carry.
+	//
+	// That asymmetry is load-bearing on the client: the dashboard decides
+	// which org a fresh session may land on from this list, and an absent one
+	// reads as "this user belongs to no organization at all" until a
+	// follow-up /auth/me lands. One shape for every login path.
+	orgSummaries, orgsErr := s.getOrganizationsForUser(ctx, user.UID)
+	if orgsErr != nil {
+		// Decorative, and the client refetches from /auth/me when the payload
+		// carries none — never worth failing an otherwise valid login for.
+		slog.ErrorContext(ctx, "Failed to list organizations after 2FA login",
+			"error", orgsErr, "userUID", user.UID)
+
+		orgSummaries = nil
+	}
+
 	// No org case
 	if orgSlug == "" {
 		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "", user.Demo)
@@ -4278,10 +4299,11 @@ func (s *Service) completeLoginAfter2FA(
 		}
 
 		return &LoginResponse{
-			AccessToken: accessToken,
-			ExpiresIn:   int(s.cfg.AccessTokenExpiry.Seconds()),
-			TokenType:   tokenTypeBearer,
-			User:        userInfo,
+			AccessToken:   accessToken,
+			ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
+			TokenType:     tokenTypeBearer,
+			User:          userInfo,
+			Organizations: orgSummaries,
 		}, nil
 	}
 
@@ -4320,11 +4342,12 @@ func (s *Service) completeLoginAfter2FA(
 	}
 
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenValue,
-		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    tokenTypeBearer,
-		User:         userInfo,
-		Organization: newOrganizationInfo(org),
+		AccessToken:   accessToken,
+		RefreshToken:  refreshTokenValue,
+		ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
+		TokenType:     tokenTypeBearer,
+		User:          userInfo,
+		Organization:  newOrganizationInfo(org),
+		Organizations: orgSummaries,
 	}, nil
 }

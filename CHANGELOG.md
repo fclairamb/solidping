@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+
+### Bug Fixes
+
+* **dash0:** landing on an organization you cannot use now takes you to one you can, instead of a dead end. Following a link, a bookmark or an old email to an organization you are not a member of used to answer 403 on every request and show "Permission Denied" — whose only button linked back to the same organization you could not reach. You are now sent to your own organization (the one this browser used last, else your first membership) with a short note saying so, and to the "no organization" screen only if you genuinely have none. Administrators with cross-organization access are unaffected.
+* **demo:** entering the live demo from another organization's login page no longer strands you in *that* organization. The "Try the live demo" button raced its own sign-in — whichever navigation committed last won, and the losing one left you on an organization the demo account is not a member of, staring at Permission Denied. A returning visitor who still held a demo session hit the same wall just by opening an ordinary login link, with no race involved.
+* **auth:** signing in with a two-factor code now returns the same information as every other way of signing in. It was the one login path that omitted the caller's organization list, which briefly read as "this account belongs to no organization" and could flash the no-organization screen on the way to the dashboard.
+
 ## [0.26.0](https://github.com/fclairamb/solidping/compare/v0.25.1...v0.26.0) (2026-09-08)
 
 

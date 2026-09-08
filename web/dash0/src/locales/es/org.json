@@ -372,5 +372,8 @@
       "actions": "Acciones",
       "cancel": "Cancelar token"
     }
+  },
+  "accessRedirect": {
+    "toast": "No tienes acceso a {{requested}}: se muestra {{shown}} en su lugar."
   }
 }

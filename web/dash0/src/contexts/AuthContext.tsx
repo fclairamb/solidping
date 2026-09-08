@@ -412,11 +412,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (orgs.length > 0) {
       setOrganizations(orgs);
     } else {
+      // The payload carried no list, so /auth/me has to fill it in — and that
+      // `await` ends React's auto-batch. Everything set above (user, org,
+      // isAuthenticated) therefore COMMITS a render before the list arrives,
+      // and in that render `organizations` is still the initial [].
+      //
+      // Consumers that decide where to send a fresh session from that list
+      // (pickAccessibleOrg, spec 2026-09-08-01) read the gap as "this user
+      // belongs to no organization at all" and bounce to /no-org. `isLoading`
+      // is the session's existing "still resolving" signal — the org layout
+      // already gates on it — so hold it up across the fetch instead of
+      // inventing a second flag. It is raised in the same batch as setUser, so
+      // no render ever sees an authenticated session with a half-built org
+      // list.
+      setIsLoading(true);
       try {
         const meData = await apiFetch<MeResponse>(`/api/v1/auth/me`);
         setOrganizations(meData.organizations || []);
       } catch {
         setOrganizations([]);
+      } finally {
+        setIsLoading(false);
       }
     }
 

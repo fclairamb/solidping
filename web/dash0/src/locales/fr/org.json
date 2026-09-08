@@ -372,5 +372,8 @@
       "actions": "Actions",
       "cancel": "Annuler le jeton"
     }
+  },
+  "accessRedirect": {
+    "toast": "Vous n'avez pas accès à {{requested}} — voici {{shown}} à la place."
   }
 }
