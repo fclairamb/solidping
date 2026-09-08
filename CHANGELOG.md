@@ -12,6 +12,18 @@
 * **dash0:** the incident "Published on" panel and the status-page incident editor are translated too. The editor was almost entirely English — the autopilot notice, both card headers, the Title/Severity/Kind/Message labels, the severity and update-kind pickers, the timeline copy and its three toasts — and the state badge on both screens printed the raw value ("investigating", "monitoring") whatever language the dashboard was in. The severity and state labels now come from one shared helper, so a picker and the badge beside it can no longer disagree, and an unknown value coming from a newer server renders readably instead of leaking a translation key
 * **dash0:** the dashboard is now translated throughout. Around 500 strings across 55 components and pages still rendered English inside an otherwise French, German or Spanish dashboard — most of the check form (the database, mail, game, web, ClickHouse, infrastructure, messaging and network panels had no translations at all), the account device and OAuth consent pages, the status-page and integration forms, the notification detail page, the sidebar and the dashboard tiles. Relative timestamps ("just now", "3d ago") were English everywhere, as were the values in an incident's notification history. A further 129 strings looked translated but were not: they carried an English fallback and no entry in any locale file, so every language got the English. The private locations feature was entirely in that state. A new test now fails the build if a string is left that way again
 
+## [0.26.0](https://github.com/fclairamb/solidping/compare/v0.25.1...v0.26.0) (2026-09-08)
+
+
+### Features
+
+* **auth:** keep the campaign that produced a signup ([#342](https://github.com/fclairamb/solidping/issues/342)) ([1e46764](https://github.com/fclairamb/solidping/commit/1e4676497a6458b1932f2d779372f121c8cc4fac))
+
+
+### Bug Fixes
+
+* **dash0:** the live demo's deep link, editing your own demo check, and the untranslated dashboard ([#344](https://github.com/fclairamb/solidping/issues/344)) ([a4ed4ff](https://github.com/fclairamb/solidping/commit/a4ed4fffa5302f110a8d5bc3057de7bbbd7f6fa3))
+
 ## [0.25.1](https://github.com/fclairamb/solidping/compare/v0.25.0...v0.25.1) (2026-09-07)
 
 
