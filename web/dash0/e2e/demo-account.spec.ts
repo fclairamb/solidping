@@ -38,7 +38,19 @@ test.describe("Public live demo", () => {
     expect(demo?.password).toBeTruthy();
   });
 
-  test("the login page offers a one-click entry into the demo", async ({ page }) => {
+  test("the login page offers a one-click entry into the demo", async ({
+    page,
+    request,
+  }) => {
+    // Spec 2026-09-08-01 §D. This assertion used to be
+    // `waitForURL(/\/orgs\/[^/]+/)` + the demo banner — a pattern the LOGIN
+    // page's own URL already matches, and a banner `DemoBanner` renders off
+    // `user.isDemo` on every org page including the wrong one. A visitor
+    // stranded on /orgs/test with a demo session passed it. Name the demo org
+    // and refuse the URL's org instead, exactly like the ?demo flag tests do.
+    const demo = await demoConfig(request);
+    const org = demo?.orgSlug as string;
+
     await page.goto("orgs/test/login");
     await page.waitForLoadState("networkidle");
 
@@ -47,9 +59,10 @@ test.describe("Public live demo", () => {
 
     await demoButton.click();
 
-    // One click must land inside the demo org, banner and all.
-    await page.waitForURL(/\/orgs\/[^/]+/, { timeout: 20000 });
+    // One click must land inside the DEMO org, banner and all.
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
     await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    expect(page.url()).not.toContain("/orgs/test");
   });
 
   test("?demo=1 signs the visitor in on load", async ({ page }) => {

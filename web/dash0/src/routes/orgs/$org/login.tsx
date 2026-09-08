@@ -27,6 +27,7 @@ import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
 import { useDemoConfig, usePublicConfigLoading } from "@/api/public-config";
 import { demoAutoLoginOwnsRedirect, parseDemoFlag } from "@/lib/demo";
+import { pickAccessibleOrg } from "@/lib/accessible-org";
 import {
   getLastAuthMethod,
   setLastAuthMethod,
@@ -379,12 +380,58 @@ function LoginPage() {
     demoConfigLoading,
   );
 
+  // The destination is the org this session can actually USE, not the org the
+  // URL happens to name (spec 2026-09-08-01 §B). The URL's org is only ever a
+  // hint here: /orgs/<slug>/login is reachable from a marketing link, a
+  // bookmark, an old email, or the "Try the live demo" button offered on EVERY
+  // org's login page. Sending an authenticated visitor to an org they are not
+  // a member of dead-ends them on "Permission Denied", whose only button links
+  // back to that same org.
+  //
+  // This is also the second half of the demo race (spec 2026-09-07-02 fixed
+  // only the ?demo-flag branch): the button's own `routeResult` navigates to
+  // /orgs/demo while login() flips isAuthenticated, and whichever navigation
+  // commits last wins. Now both branches resolve to the same org, so the race
+  // has no wrong outcome left to reach.
+  //
+  // The dependency list carries the session fields the pick reads
+  // (auth.org / auth.organizations / isSuperAdmin) so the effect re-evaluates
+  // against the session applyLoginResponse just stored rather than a stale one.
+  const sessionOrg = auth.org;
+  const sessionOrganizations = auth.organizations;
+  const isSuperAdmin = user?.isSuperAdmin === true;
+
   useEffect(() => {
     if (demoOwnsRedirect) return;
     if (isAuthenticated && !showOrgPicker) {
-      goToDestination(resolveDestination(org, returnTo, BASE_PATH), true);
+      const accessibleOrg = pickAccessibleOrg(org, {
+        org: sessionOrg,
+        organizations: sessionOrganizations,
+        isSuperAdmin,
+      });
+      // No organization at all — /no-org is the screen that offers creating or
+      // joining one, and is where every other org-less path already lands.
+      if (accessibleOrg === null) {
+        navigate({ to: "/no-org", replace: true });
+        return;
+      }
+      // resolveDestination needs no change: it already drops a `returnTo`
+      // whose org segment differs from the resolved org, so a stale
+      // returnTo=/dash0/orgs/<url org>/… cannot drag the visitor back.
+      goToDestination(resolveDestination(accessibleOrg, returnTo, BASE_PATH), true);
     }
-  }, [demoOwnsRedirect, isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
+  }, [
+    demoOwnsRedirect,
+    isAuthenticated,
+    showOrgPicker,
+    org,
+    returnTo,
+    goToDestination,
+    navigate,
+    sessionOrg,
+    sessionOrganizations,
+    isSuperAdmin,
+  ]);
 
   // `loginOrg` is the org the credentials were actually for. It defaults to the
   // org whose login page we are on, which is right for every ordinary sign-in —
