@@ -65,6 +65,42 @@ test.describe("Public live demo", () => {
     expect(page.url()).not.toContain("/orgs/test");
   });
 
+  test("a returning demo session opening another org's login page lands in the demo", async ({
+    page,
+    request,
+  }) => {
+    // Spec 2026-09-08-01, case (b) — deterministic, no race involved. The demo
+    // session refreshes like any other, so a returning visitor following the
+    // marketing site's plain login link (or a bookmark, or URL completion)
+    // arrives on /orgs/test/login with NO ?demo flag. No login happens at all;
+    // the already-authenticated effect used to send them straight to
+    // /orgs/test, an org the demo account is not a member of, where every
+    // request 403s and "Permission Denied" links back to that same org.
+    const demo = await demoConfig(request);
+    const org = demo?.orgSlug as string;
+
+    await page.goto("orgs/test/login?demo=1");
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+
+    // Now the returning visit: the plain login URL of a DIFFERENT org.
+    const forbiddenUrls: string[] = [];
+    page.on("response", (response) => {
+      if (response.status() === 403) forbiddenUrls.push(response.url());
+    });
+
+    await page.goto("orgs/test/login");
+
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+    expect(page.url()).not.toContain("/orgs/test");
+    await page.waitForLoadState("networkidle");
+    expect(
+      forbiddenUrls,
+      "the visitor must never reach the dead-end 403 in an org they cannot use",
+    ).toEqual([]);
+  });
+
   test("?demo=1 signs the visitor in on load", async ({ page }) => {
     // The marketing site's deep link: land in a working dashboard, not a form.
     await page.goto("orgs/test/login?demo=1");

@@ -67,6 +67,8 @@ import { useFeedback } from "@/components/feedback/useFeedback";
 import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { demoFlagFromLocation } from "@/lib/demo";
+import { pickAccessibleOrg } from "@/lib/accessible-org";
+import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
 /** Parses the `?from=` search param used by the notification detail route. */
@@ -992,6 +994,7 @@ function OrgLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const auth = useAuth();
+  const { t } = useTranslation("org");
   // Anchored to the org-level login/register routes — see isOrgPublicRoute for
   // why a bare `.endsWith("/register")` is wrong, and why the org param must
   // not be interpolated into the pattern here.
@@ -1045,6 +1048,67 @@ function OrgLayout() {
     auth.switchOrg(org).catch(() => setOrgSwitchFailed(org));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsOrgSwitch, org, orgSwitchFailed]);
+
+  // The complementary case (spec 2026-09-08-01 §C): the URL names an org this
+  // session is NOT a member of. Until now those "fell through to the normal
+  // 403 handling" — every child query answered 403, QueryErrorView rendered
+  // "Permission Denied", and its "Return to dashboard" button linked back to
+  // the very same org. A dead end, reachable from a bookmark to an org you
+  // were removed from, a link a colleague pasted from THEIR org, or a slug in
+  // an old email — even though the client already holds the list of orgs the
+  // user can use.
+  //
+  // Redirect to the ORG ROOT of the picked org, never the current sub-path:
+  // check / status-page / incident uids do not carry across organizations, so
+  // a preserved sub-path would just 404 one hop later.
+  //
+  // Super admins are untouched (pickAccessibleOrg step 1), and so is a member
+  // who merely lacks a ROLE for one page — that still gets Permission Denied
+  // from QueryErrorView. This removes only the non-member dead end.
+  const accessibleOrg = pickAccessibleOrg(org, {
+    org: auth.org,
+    organizations: auth.organizations,
+    isSuperAdmin: auth.user?.isSuperAdmin === true,
+  });
+  const redirectingForOrgRef = useRef<string | null>(null);
+  const needsAccessibleOrgRedirect =
+    auth.isAuthenticated &&
+    !auth.isLoading &&
+    !isLoginPage &&
+    // The OAuth callback does its own hard redirect below; the session it is
+    // about to adopt is not the one `auth` currently describes.
+    !hasOAuthTokenInURL() &&
+    accessibleOrg !== org;
+
+  useEffect(() => {
+    if (!needsAccessibleOrgRedirect) {
+      redirectingForOrgRef.current = null;
+      return;
+    }
+    // At most one redirect per URL org — the same loop guard the switch effect
+    // above uses, and what makes a helper that disagreed with itself a bounded
+    // bug rather than an infinite ping-pong.
+    if (redirectingForOrgRef.current === org) return;
+    // A switcher UI is mid-`switchOrg()`: auth.org transiently disagrees with
+    // a URL its caller has not navigated away from yet. See
+    // isSwitchOrgInFlight's doc comment in AuthContext.tsx.
+    if (isSwitchOrgInFlight()) return;
+    redirectingForOrgRef.current = org;
+
+    if (accessibleOrg === null) {
+      navigate({ to: "/no-org", replace: true });
+      return;
+    }
+    toast.warning(
+      t("accessRedirect.toast", { requested: org, shown: accessibleOrg }),
+    );
+    navigate({
+      to: "/orgs/$org",
+      params: { org: accessibleOrg },
+      replace: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsAccessibleOrgRedirect, org, accessibleOrg]);
 
   // Handle OAuth callback tokens in URL
   useEffect(() => {
@@ -1102,6 +1166,20 @@ function OrgLayout() {
   // session token is scoped to the URL's org. Skip the gate if the switch
   // failed — better to render and let per-request 403s surface than to hang.
   if (needsOrgSwitch && orgSwitchFailed !== org) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Same gate for the non-member redirect (spec 2026-09-08-01 §C). Without it
+  // the children mount and fire their org-scoped queries during the render
+  // that precedes the redirect effect — child effects run before the parent's
+  // — so the user would collect a burst of 403s (and a 4403 WS close) on the
+  // way OUT of an org they were never allowed into. No escape hatch is needed
+  // here: unlike a switch, this decision is local and cannot fail.
+  if (needsAccessibleOrgRedirect) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
