@@ -9,6 +9,13 @@
 * **demo:** entering the live demo from another organization's login page no longer strands you in *that* organization. The "Try the live demo" button raced its own sign-in — whichever navigation committed last won, and the losing one left you on an organization the demo account is not a member of, staring at Permission Denied. A returning visitor who still held a demo session hit the same wall just by opening an ordinary login link, with no race involved.
 * **auth:** signing in with a two-factor code now returns the same information as every other way of signing in. It was the one login path that omitted the caller's organization list, which briefly read as "this account belongs to no organization" and could flash the no-organization screen on the way to the dashboard.
 
+## [0.26.1](https://github.com/fclairamb/solidping/compare/v0.26.0...v0.26.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **dash0:** send a session that lands on an unusable org to one it can use ([#346](https://github.com/fclairamb/solidping/issues/346)) ([0defd69](https://github.com/fclairamb/solidping/commit/0defd69b28c3065d13a26d0de11dda299aa28e6b))
+
 ## [0.26.0](https://github.com/fclairamb/solidping/compare/v0.25.1...v0.26.0) (2026-09-08)
 
 
