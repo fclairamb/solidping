@@ -9,9 +9,12 @@ async function getAuthToken(page: Page): Promise<string> {
 }
 
 async function deleteConnection(page: Page, token: string, uid: string) {
-  await page.request.delete(`${API_BASE}/api/v1/orgs/test/integrations/${uid}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  await page.request.delete(
+    `${API_BASE}/api/v1/orgs/test/integrations/${uid}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 }
 
 test.describe("Matrix channel", () => {
@@ -43,7 +46,9 @@ test.describe("Matrix channel", () => {
     await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
     await expect(page.getByText(name)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText("Matrix", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText("Matrix", { exact: true }).first(),
+    ).toBeVisible();
 
     // 3. Edit: the homeserver URL and room persist; the access token is
     // never echoed back (it round-trips server-side, see the Go
@@ -57,8 +62,20 @@ test.describe("Matrix channel", () => {
     await expect(page.locator("#ch-matrix-token")).toHaveValue("");
 
     await page.getByLabel(/^room/i).fill("!updated:matrix.org");
+    // Wait for the PATCH itself, not for the page to look idle. The reload
+    // below refetches the integration, so if it starts before the save lands
+    // the form renders the PRE-EDIT room and the assertion reads a stale
+    // value rather than a wrong one. `networkidle` only mostly covered that:
+    // the batch E2E gate caught this failing once and passing on retry.
+    const saved = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/v1/orgs/test/integrations/${uid}`) &&
+        res.request().method() === "PATCH" &&
+        res.status() < 400,
+      { timeout: 15000 },
+    );
     await page.getByTestId("integration-save").click();
-    await page.waitForLoadState("networkidle");
+    await saved;
 
     await page.goto(`orgs/test/integrations/${uid}`);
     await page.waitForLoadState("networkidle");
