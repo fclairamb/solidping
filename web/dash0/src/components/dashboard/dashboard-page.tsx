@@ -457,20 +457,20 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 icon={<ListChecks className="h-4 w-4 text-primary" />}
                 badge={
                   <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                    {enabledCount} Active
+                    {t("kpi.activeCount", { count: enabledCount })}
                   </span>
                 }
                 sub={
                   disabledCount > 0
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
-                    : `${totalChecksCount} total endpoints`
+                    : t("kpi.totalEndpoints", { count: totalChecksCount })
                 }
                 className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
             <div className="block" data-testid="kpi-tile-availability">
               <KpiTile
-                label="24h Availability"
+                label={t("kpi.availability")}
                 value={
                   availabilityPct === null
                     ? "—"
@@ -491,7 +491,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 sub={
                   availabilityPct === null
                     ? t("kpi.availabilityNoDataSub")
-                    : "Fleet uptime health"
+                    : t("kpi.availabilitySub")
                 }
                 className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
@@ -721,7 +721,7 @@ function OverallStatusBanner({
           {availabilityPct !== null ? (
             <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
               <CheckCircle className="h-3.5 w-3.5" />
-              <span>24h SLA Operational</span>
+              <span>{t("banner.slaOperational")}</span>
             </div>
           ) : null}
         </div>
@@ -754,7 +754,7 @@ function OverallStatusBanner({
             </div>
             <div className="flex items-center gap-1.5 text-xs font-medium text-destructive bg-destructive/15 px-2.5 py-1 rounded-full border border-destructive/30">
               <AlertTriangle className="h-3.5 w-3.5" />
-              <span>Active Outage</span>
+              <span>{t("banner.activeOutage")}</span>
             </div>
           </div>
         </div>
@@ -779,7 +779,7 @@ function OverallStatusBanner({
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-500/15 px-2.5 py-1 rounded-full border border-amber-500/30">
-            <span>Degraded Performance</span>
+            <span>{t("banner.degradedPerformance")}</span>
           </div>
         </div>
       </div>

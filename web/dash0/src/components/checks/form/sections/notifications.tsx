@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,21 +32,22 @@ export function NotifyViaSection({
   // Disabled channels stay listed if currently bound so the user can unbind
   // them; otherwise they're hidden from the picker.
   const visible = list.filter((c) => c.enabled || selected.includes(c.uid));
+  const { t } = useTranslation("checks");
 
   if (visible.length === 0) {
     return (
       <div className="space-y-2">
-        <Label>Notify via</Label>
+        <Label>{t("form.notifyVia")}</Label>
         <div className="rounded border border-dashed p-3 text-sm text-muted-foreground">
-          No channels yet.{" "}
+          {t("form.noChannelsYet")}{" "}
           <Link
             to="/orgs/$org/integrations/new"
             params={{ org }}
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            Create one
+            {t("form.createOneChannel")}
           </Link>{" "}
-          to be paged when this check fails.
+          {t("form.notifyViaCreateHelp")}
         </div>
       </div>
     );
@@ -53,7 +55,7 @@ export function NotifyViaSection({
 
   return (
     <div className="space-y-2">
-      <Label>Notify via</Label>
+      <Label>{t("form.notifyVia")}</Label>
       <div className="grid gap-2 sm:grid-cols-2">
         {visible.map((c) => {
           const checked = selected.includes(c.uid);
@@ -79,7 +81,7 @@ export function NotifyViaSection({
               </span>
               {!c.enabled && (
                 <Badge variant="outline" className="text-xs">
-                  disabled
+                  {t("form.disabledBadge")}
                 </Badge>
               )}
             </label>
@@ -87,13 +89,13 @@ export function NotifyViaSection({
         })}
       </div>
       <p className="text-xs text-muted-foreground">
-        Channels selected here are notified on incident events.{" "}
+        {t("form.notifyViaSelectedHelp")}{" "}
         <Link
           to="/orgs/$org/integrations"
           params={{ org }}
           className="text-primary underline-offset-4 hover:underline"
         >
-          Manage channels
+          {t("form.manageChannels")}
         </Link>
       </p>
     </div>

@@ -90,7 +90,10 @@
     "issuesSubIncidents_one": "{{count}} active incident",
     "issuesSubIncidents_other": "{{count}} active incidents",
     "warning": "Some checks degraded",
-    "warningSub": "Timeouts detected on {{count}} checks"
+    "warningSub": "Timeouts detected on {{count}} checks",
+    "slaOperational": "24h SLA Operational",
+    "activeOutage": "Active Outage",
+    "degradedPerformance": "Degraded Performance"
   },
   "kpi": {
     "monitored": "Monitored checks",
@@ -105,7 +108,11 @@
       "degraded": "Degraded",
       "down": "Down"
     },
-    "availabilityNoDataSub": "No data yet"
+    "availabilityNoDataSub": "No data yet",
+    "availability": "24h Availability",
+    "availabilitySub": "Fleet uptime health",
+    "activeCount": "{{count}} Active",
+    "totalEndpoints": "{{count}} total endpoints"
   },
   "glance": {
     "title": "Checks at a glance",

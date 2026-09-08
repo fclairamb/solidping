@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatRelativeTime } from "@/lib/time-ago";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Plus,
@@ -64,22 +65,6 @@ export const Route = createFileRoute("/orgs/$org/account/tokens")({
   component: TokensPage,
 });
 
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-
-  if (diffDay > 30) return date.toLocaleDateString();
-  if (diffDay > 0) return `${diffDay}d ago`;
-  if (diffHour > 0) return `${diffHour}h ago`;
-  if (diffMin > 0) return `${diffMin}m ago`;
-  return "just now";
-}
-
 function formatExpiry(dateStr: string | undefined, never: string, expired: string): string {
   if (!dateStr) return never;
   const date = new Date(dateStr);
@@ -96,14 +81,15 @@ function TokenRow({
   onRevoke: (uid: string) => void;
 }) {
   const { t } = useTranslation("account");
+  const { t: tCommon } = useTranslation("common");
   return (
     <TableRow>
       <TableCell className="font-medium">{token.name || t("tokens.unnamed")}</TableCell>
       <TableCell className="text-muted-foreground">
-        {formatRelativeTime(token.createdAt)}
+        {formatRelativeTime(new Date(token.createdAt), tCommon)}
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {token.lastUsedAt ? formatRelativeTime(token.lastUsedAt) : t("tokens.never")}
+        {token.lastUsedAt ? formatRelativeTime(new Date(token.lastUsedAt), tCommon) : t("tokens.never")}
       </TableCell>
       <TableCell data-testid="token-expiry" className="text-muted-foreground">
         {formatExpiry(token.expiresAt, t("tokens.never"), t("tokens.expired"))}

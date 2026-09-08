@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import {
@@ -84,6 +85,7 @@ export function EscalationSelect({
   variant = "check",
   canCreatePolicy = true,
 }: EscalationSelectProps) {
+  const { t } = useTranslation("checks");
   const { data: policies } = useEscalationPolicies(org);
   // Org settings is admin-only; a non-admin editing a check simply won't see
   // the org-default half of the inherit label (the query errors and we treat
@@ -112,8 +114,8 @@ export function EscalationSelect({
     undefined;
   const inheritedPolicy = inheritedUid ? policyByUid.get(inheritedUid) : undefined;
   const inheritedName = inheritedPolicy
-    ? `${inheritedPolicy.name}${isSilent(inheritedPolicy) ? " (silent)" : ""}`
-    : "nothing";
+    ? `${inheritedPolicy.name}${isSilent(inheritedPolicy) ? ` ${t("escalation.silentSuffixParen")}` : ""}`
+    : t("escalation.nothing");
 
   const selected = value ? policyByUid.get(value) : undefined;
   const selectValue = value ? value : INHERIT;
@@ -184,14 +186,14 @@ export function EscalationSelect({
   // label ourselves so it always reflects current state.
   const currentLabel =
     selectValue === INHERIT
-      ? `Inherit — currently: ${inheritedName}`
+      ? t("escalation.inheritCurrently", { name: inheritedName })
       : selected
-        ? `${selected.name}${isSilent(selected) ? " — silent" : ""}`
+        ? `${selected.name}${isSilent(selected) ? ` ${t("escalation.silentSuffixDash")}` : ""}`
         : undefined;
 
   return (
     <div className="space-y-2">
-      <Label htmlFor="escalation-policy-select">Escalation policy</Label>
+      <Label htmlFor="escalation-policy-select">{t("escalation.policy")}</Label>
       <Select value={selectValue} onValueChange={handleChange}>
         <SelectTrigger
           id="escalation-policy-select"
@@ -201,15 +203,15 @@ export function EscalationSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={INHERIT} data-testid="escalation-option-inherit">
-            Inherit — currently: {inheritedName}
+            {t("escalation.inheritCurrently", { name: inheritedName })}
           </SelectItem>
           {(policies ?? []).length > 0 && (
             <SelectGroup>
-              <SelectLabel>Policies</SelectLabel>
+              <SelectLabel>{t("escalation.policies")}</SelectLabel>
               {(policies ?? []).map((p) => (
                 <SelectItem key={p.uid} value={p.uid}>
                   {p.name}
-                  {isSilent(p) ? " — silent" : ""}
+                  {isSilent(p) ? ` ${t("escalation.silentSuffixDash")}` : ""}
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -221,7 +223,7 @@ export function EscalationSelect({
                 value={SILENT_SHORTCUT}
                 data-testid="escalation-option-silent"
               >
-                No escalation (silent)
+                {t("escalation.noEscalationSilent")}
               </SelectItem>
             </>
           )}
@@ -232,17 +234,17 @@ export function EscalationSelect({
           className="text-xs text-muted-foreground"
           data-testid="escalation-silent-note"
         >
-          This policy has no steps — this check will never page anyone.
+          {t("escalation.silentNote")}
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Who gets paged, in order, when this check fails.{" "}
+          {t("escalation.help")}{" "}
           <Link
             to="/orgs/$org/escalation-policies"
             params={{ org }}
             className="text-primary underline-offset-4 hover:underline"
           >
-            Manage policies
+            {t("escalation.managePolicies")}
           </Link>
         </p>
       )}

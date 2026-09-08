@@ -225,7 +225,30 @@
     "description": "Mises à jour narratives publiées sur votre page de statut pour cet incident.",
     "selectStatusPage": "Sélectionner une page de statut",
     "saving": "Enregistrement…",
-    "saveChanges": "Enregistrer les modifications"
+    "saveChanges": "Enregistrer les modifications",
+    "empty": "Aucune mise à jour de statut pour cet incident pour le moment.",
+    "dialog": {
+      "addTitle": "Ajouter une mise à jour de statut",
+      "editTitle": "Modifier la mise à jour de statut",
+      "linkedDescription": "Cette mise à jour sera liée à cet incident sur la page de statut.",
+      "statusPageLabel": "Page de statut",
+      "kindLabel": "Type",
+      "titleLabel": "Titre",
+      "bodyLabel": "Corps",
+      "linkUrlLabel": "URL du lien (optionnel)",
+      "publishedAtLabel": "Publiée le",
+      "cancel": "Annuler",
+      "saved": "Mise à jour de statut enregistrée",
+      "added": "Mise à jour de statut ajoutée",
+      "saveFailed": "Échec de l'enregistrement de la mise à jour de statut",
+      "deleted": "Mise à jour de statut supprimée",
+      "deleteFailed": "Échec de la suppression de la mise à jour de statut",
+      "editAria": "Modifier",
+      "deleteAria": "Supprimer",
+      "deleteConfirmTitle": "Supprimer cette mise à jour de statut ?",
+      "deleteConfirmDescription": "Cela supprimera la mise à jour de la page de statut.",
+      "deleteConfirmAction": "Supprimer"
+    }
   },
   "notificationsCard": {
     "title": "Notifications",

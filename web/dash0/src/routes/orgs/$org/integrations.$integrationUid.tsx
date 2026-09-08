@@ -63,6 +63,7 @@ function RecentNotificationsSection({
   integrationUid: string;
 }) {
   const navigate = useNavigate();
+  const { t } = useTranslation("integrations");
   const { t: tEvents } = useTranslation("events");
   const { data: rows, isLoading, error } = useIntegrationNotifications(
     org,
@@ -73,7 +74,7 @@ function RecentNotificationsSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Recent notifications</CardTitle>
+        <CardTitle className="text-base">{t("recentNotifications.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -85,23 +86,23 @@ function RecentNotificationsSection({
         )}
         {!isLoading && error && (
           <p className="text-sm text-destructive py-4 text-center">
-            Failed to load notifications.
+            {t("recentNotifications.loadFailed")}
           </p>
         )}
         {!isLoading && !error && (!rows || rows.length === 0) && (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No notifications sent through this integration yet.
+            {t("recentNotifications.empty")}
           </p>
         )}
         {!isLoading && !error && rows && rows.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Created</TableHead>
+                <TableHead>{t("recentNotifications.columns.status")}</TableHead>
+                <TableHead>{t("recentNotifications.columns.channel")}</TableHead>
+                <TableHead>{t("recentNotifications.columns.event")}</TableHead>
+                <TableHead>{t("recentNotifications.columns.target")}</TableHead>
+                <TableHead>{t("recentNotifications.columns.created")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -164,22 +165,23 @@ function RecentNotificationsSection({
  * since that's the natural place a user configuring email alerts would
  * look for "who's opted out." */
 function SuppressionsSection({ org }: { org: string }) {
+  const { t } = useTranslation("integrations");
   const { data: rows, isLoading, error } = useEmailSuppressions(org);
   const deleteSuppression = useDeleteEmailSuppression(org);
 
   const handleResubscribe = async (uid: string, email: string) => {
     try {
       await deleteSuppression.mutateAsync(uid);
-      toast.success(`${email} re-subscribed`);
+      toast.success(t("suppressions.resubscribed", { email }));
     } catch {
-      toast.error("Failed to re-subscribe");
+      toast.error(t("suppressions.resubscribeFailed"));
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Unsubscribed recipients</CardTitle>
+        <CardTitle className="text-base">{t("suppressions.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading && (
@@ -190,12 +192,12 @@ function SuppressionsSection({ org }: { org: string }) {
         )}
         {!isLoading && error && (
           <p className="text-sm text-destructive py-4 text-center">
-            Failed to load unsubscribed recipients.
+            {t("suppressions.loadFailed")}
           </p>
         )}
         {!isLoading && !error && (!rows || rows.length === 0) && (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No one has unsubscribed from alert emails in this organization.
+            {t("suppressions.empty")}
           </p>
         )}
         {!isLoading && !error && rows && rows.length > 0 && (
@@ -203,9 +205,9 @@ function SuppressionsSection({ org }: { org: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Unsubscribed</TableHead>
+                  <TableHead>{t("suppressions.columns.email")}</TableHead>
+                  <TableHead>{t("suppressions.columns.scope")}</TableHead>
+                  <TableHead>{t("suppressions.columns.unsubscribed")}</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -220,7 +222,7 @@ function SuppressionsSection({ org }: { org: string }) {
                         row.checkName || row.checkUid
                       ) : (
                         <span className="text-muted-foreground">
-                          All checks
+                          {t("suppressions.allChecks")}
                         </span>
                       )}
                     </TableCell>
@@ -235,7 +237,7 @@ function SuppressionsSection({ org }: { org: string }) {
                         variant="ghost"
                         size="icon"
                         className="text-destructive hover:text-destructive"
-                        aria-label={`Re-subscribe ${row.email}`}
+                        aria-label={t("suppressions.resubscribeAria", { email: row.email })}
                         disabled={deleteSuppression.isPending}
                         onClick={() => handleResubscribe(row.uid, row.email)}
                       >

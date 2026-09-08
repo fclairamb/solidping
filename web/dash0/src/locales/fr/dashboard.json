@@ -90,7 +90,10 @@
     "issuesSubIncidents_one": "{{count}} incident actif",
     "issuesSubIncidents_other": "{{count}} incidents actifs",
     "warning": "Sondes dégradées",
-    "warningSub": "Délais d'attente détectés sur {{count}} sondes"
+    "warningSub": "Délais d'attente détectés sur {{count}} sondes",
+    "slaOperational": "SLA 24 h opérationnel",
+    "activeOutage": "Panne active",
+    "degradedPerformance": "Performance dégradée"
   },
   "kpi": {
     "monitored": "Sondes surveillées",
@@ -105,7 +108,11 @@
       "degraded": "Dégradé",
       "down": "En panne"
     },
-    "availabilityNoDataSub": "Pas encore de données"
+    "availabilityNoDataSub": "Pas encore de données",
+    "availability": "Disponibilité 24 h",
+    "availabilitySub": "Santé de la disponibilité de la flotte",
+    "activeCount": "{{count}} actif(s)",
+    "totalEndpoints": "{{count}} points de contrôle au total"
   },
   "glance": {
     "title": "Sondes en un coup d'œil",

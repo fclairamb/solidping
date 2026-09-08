@@ -1,6 +1,7 @@
 import { Component, useEffect } from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import { useRouter, type ErrorComponentProps } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,6 +25,7 @@ export function ErrorFallbackCard({
   error?: unknown;
   onRetry?: () => void;
 }) {
+  const { t } = useTranslation("common");
   const detail =
     error instanceof Error ? error.message : error ? String(error) : null;
 
@@ -33,17 +35,14 @@ export function ErrorFallbackCard({
         <div className="flex justify-center mb-2">
           <AlertTriangle className="h-10 w-10 text-destructive" />
         </div>
-        <CardTitle>Something went wrong</CardTitle>
+        <CardTitle>{t("somethingWentWrong")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-muted-foreground">
-          An unexpected error occurred. This is usually transient — trying
-          again should bring the page back.
-        </p>
+        <p className="text-muted-foreground">{t("errorBoundary.description")}</p>
         {detail ? (
           <details className="rounded-md border bg-muted/40 px-3 py-2 text-left text-xs">
             <summary className="cursor-pointer select-none text-muted-foreground">
-              Technical details
+              {t("errorBoundary.technicalDetails")}
             </summary>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words">
               {detail}
@@ -54,14 +53,14 @@ export function ErrorFallbackCard({
           {onRetry ? (
             <Button onClick={onRetry}>
               <RotateCw />
-              Try again
+              {t("errorBoundary.tryAgain")}
             </Button>
           ) : null}
           <Button
             variant={onRetry ? "outline" : "default"}
             onClick={() => window.location.reload()}
           >
-            Reload page
+            {t("errorBoundary.reloadPage")}
           </Button>
         </div>
       </CardContent>

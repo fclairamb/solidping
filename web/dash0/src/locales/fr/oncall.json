@@ -14,7 +14,8 @@
       "timezone": "Fuseau horaire",
       "rotation": "Rotation",
       "currentlyOnCall": "D'astreinte maintenant"
-    }
+    },
+    "activeOnDuty": "En astreinte actuellement"
   },
   "detail": {
     "back": "Retour aux astreintes",

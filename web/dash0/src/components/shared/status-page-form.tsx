@@ -230,7 +230,7 @@ export function StatusPageForm({
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <h1 className="text-3xl font-bold tracking-tight">
-          {mode === "create" ? "New Status Page" : "Edit Status Page"}
+          {mode === "create" ? t("form.newTitle") : t("form.editTitle")}
         </h1>
         {showWand && (
           <Button
@@ -256,11 +256,11 @@ export function StatusPageForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Status Page Details</CardTitle>
+          <CardTitle>{t("form.detailsTitle")}</CardTitle>
           <CardDescription>
             {mode === "create"
-              ? "Create a new public status page for your services"
-              : "Update your status page settings"}
+              ? t("form.detailsDescriptionCreate")
+              : t("form.detailsDescriptionEdit")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -298,18 +298,18 @@ export function StatusPageForm({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{t("form.name")}</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Production Services"
+              placeholder={t("form.namePlaceholder")}
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="slug">Slug</Label>
+            <Label htmlFor="slug">{t("form.slug")}</Label>
             <Input
               id="slug"
               value={slug}
@@ -317,23 +317,23 @@ export function StatusPageForm({
                 setSlug(e.target.value);
                 setSlugManuallyEdited(true);
               }}
-              placeholder="production-services"
+              placeholder={t("form.slugPlaceholder")}
               required
               pattern="^[a-z][a-z0-9-]{2,99}$"
-              title="3-100 characters, lowercase letters, digits, and hyphens"
+              title={t("form.slugPatternHint")}
             />
             <p className="text-xs text-muted-foreground">
-              Used in the public URL. Lowercase letters, digits, and hyphens only.
+              {t("form.slugHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("form.description")}</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Current status of our production services"
+              placeholder={t("form.descriptionPlaceholder")}
               rows={3}
             />
           </div>
@@ -392,9 +392,9 @@ export function StatusPageForm({
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Default Status Page</Label>
+              <Label>{t("form.defaultLabel")}</Label>
               <p className="text-xs text-muted-foreground">
-                The default page is shown when visiting the organization's status URL
+                {t("form.defaultHint")}
               </p>
             </div>
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />
@@ -431,9 +431,9 @@ export function StatusPageForm({
           {mode === "edit" && (
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Enabled</Label>
+                <Label>{t("enabled")}</Label>
                 <p className="text-xs text-muted-foreground">
-                  Disabled pages are not accessible publicly
+                  {t("form.enabledHint")}
                 </p>
               </div>
               <Switch checked={enabled} onCheckedChange={setEnabled} />
@@ -444,17 +444,17 @@ export function StatusPageForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Display Options</CardTitle>
+          <CardTitle>{t("form.displayOptionsTitle")}</CardTitle>
           <CardDescription>
-            Configure what information is shown on the public status page
+            {t("form.displayOptionsDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Show Availability</Label>
+              <Label>{t("form.showAvailability")}</Label>
               <p className="text-xs text-muted-foreground">
-                Display availability percentage and daily uptime bars
+                {t("form.showAvailabilityHint")}
               </p>
             </div>
             <Switch checked={showAvailability} onCheckedChange={setShowAvailability} />
@@ -463,7 +463,7 @@ export function StatusPageForm({
           {mode === "edit" && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" data-testid="availability-thresholds">
               <div className="space-y-2">
-                <Label htmlFor="thresholdUp">Up threshold (%)</Label>
+                <Label htmlFor="thresholdUp">{t("form.thresholdUpLabel")}</Label>
                 <Input
                   id="thresholdUp"
                   type="number"
@@ -473,11 +473,11 @@ export function StatusPageForm({
                   inputMode="decimal"
                   value={thresholdUpInput}
                   onChange={(e) => setThresholdUpInput(e.target.value)}
-                  placeholder="99.9 (default)"
+                  placeholder={t("form.thresholdUpPlaceholder")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="thresholdDegraded">Degraded threshold (%)</Label>
+                <Label htmlFor="thresholdDegraded">{t("form.thresholdDegradedLabel")}</Label>
                 <Input
                   id="thresholdDegraded"
                   type="number"
@@ -487,12 +487,10 @@ export function StatusPageForm({
                   inputMode="decimal"
                   value={thresholdDegradedInput}
                   onChange={(e) => setThresholdDegradedInput(e.target.value)}
-                  placeholder="99.0 (default)"
+                  placeholder={t("form.thresholdDegradedPlaceholder")}
                 />
                 <p className="text-xs text-muted-foreground sm:col-span-2">
-                  Availability bars render green at or above the up threshold, amber
-                  between the two, and red below the degraded threshold. Leave a field
-                  empty to use the platform default.
+                  {t("form.thresholdHint")}
                 </p>
               </div>
             </div>
@@ -500,16 +498,16 @@ export function StatusPageForm({
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Show Response Time</Label>
+              <Label>{t("form.showResponseTime")}</Label>
               <p className="text-xs text-muted-foreground">
-                Display response time chart for each check
+                {t("form.showResponseTimeHint")}
               </p>
             </div>
             <Switch checked={showResponseTime} onCheckedChange={setShowResponseTime} />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="historyPeriod">History Period</Label>
+            <Label htmlFor="historyPeriod">{t("form.historyPeriod")}</Label>
             <Select
               value={historyPeriod}
               onValueChange={(v) => setHistoryPeriod(v as StatusPagePeriod)}
@@ -518,10 +516,10 @@ export function StatusPageForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="24h">24 hours</SelectItem>
-                <SelectItem value="7d">7 days</SelectItem>
-                <SelectItem value="30d">30 days</SelectItem>
-                <SelectItem value="90d">90 days</SelectItem>
+                <SelectItem value="24h">{t("form.historyPeriod24h")}</SelectItem>
+                <SelectItem value="7d">{t("form.historyPeriod7d")}</SelectItem>
+                <SelectItem value="30d">{t("form.historyPeriod30d")}</SelectItem>
+                <SelectItem value="90d">{t("form.historyPeriod90d")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -530,19 +528,17 @@ export function StatusPageForm({
 
       <Card data-testid="status-page-auto-publish-card">
         <CardHeader>
-          <CardTitle>Incident publication</CardTitle>
+          <CardTitle>{t("form.publicationTitle")}</CardTitle>
           <CardDescription>
-            Turn monitoring incidents into public incidents on this page,
-            automatically.
+            {t("form.publicationDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <Label htmlFor="autoPublish">Auto-publish incidents</Label>
+              <Label htmlFor="autoPublish">{t("form.autoPublishLabel")}</Label>
               <p className="text-xs text-muted-foreground">
-                Publish an incident affecting this page's components as a public
-                incident, with a templated title and a first update.
+                {t("form.autoPublishHint")}
               </p>
             </div>
             <Switch
@@ -555,7 +551,7 @@ export function StatusPageForm({
 
           <div className="space-y-2">
             <Label htmlFor="autoPublishDelaySeconds">
-              Publication delay (seconds)
+              {t("form.autoPublishDelayLabel")}
             </Label>
             <Input
               id="autoPublishDelaySeconds"
@@ -568,13 +564,12 @@ export function StatusPageForm({
               data-testid="status-page-auto-publish-delay"
             />
             <p className="text-xs text-muted-foreground">
-              An incident that recovers within this window is never published —
-              a short blip stays private. 0 publishes immediately.
+              {t("form.autoPublishDelayHint")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="autoResolve">When the incident resolves</Label>
+            <Label htmlFor="autoResolve">{t("form.autoResolveLabel")}</Label>
             <Select
               value={autoResolve}
               onValueChange={(v) =>
@@ -590,15 +585,14 @@ export function StatusPageForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="if_untouched">
-                  Resolve it, unless someone edited it
+                  {t("form.autoResolveIfUntouched")}
                 </SelectItem>
-                <SelectItem value="always">Always resolve it</SelectItem>
-                <SelectItem value="never">Leave it open</SelectItem>
+                <SelectItem value="always">{t("form.autoResolveAlways")}</SelectItem>
+                <SelectItem value="never">{t("form.autoResolveNever")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Once you edit a published incident it is yours: the default posts
-              a "component recovered" note and leaves the final word to you.
+              {t("form.autoResolveHint")}
             </p>
           </div>
         </CardContent>
@@ -606,11 +600,11 @@ export function StatusPageForm({
 
       <div className="flex gap-3">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
+          {t("form.cancel")}
         </Button>
         <Button type="submit" disabled={isPending || !name || !slug}>
           {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {mode === "create" ? "Create Status Page" : "Save Changes"}
+          {mode === "create" ? t("form.createStatusPage") : t("form.saveChanges")}
         </Button>
       </div>
     </form>

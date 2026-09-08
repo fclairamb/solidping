@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatRelativeTime } from "@/lib/time-ago";
 import { createFileRoute } from "@tanstack/react-router";
 import { Monitor, Smartphone, Tablet, Trash2, LogOut } from "lucide-react";
 import { toast } from "sonner";
@@ -33,22 +34,6 @@ export const Route = createFileRoute("/orgs/$org/account/sessions")({
   component: SessionsPage,
 });
 
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-
-  if (diffDay > 30) return date.toLocaleDateString();
-  if (diffDay > 0) return `${diffDay}d ago`;
-  if (diffHour > 0) return `${diffHour}h ago`;
-  if (diffMin > 0) return `${diffMin}m ago`;
-  return "just now";
-}
-
 function formatExpiry(dateStr: string | undefined, never: string, expired: string): string {
   if (!dateStr) return never;
   const date = new Date(dateStr);
@@ -71,6 +56,7 @@ function SessionRow({
   onRevoke: (session: SessionInfo) => void;
 }) {
   const { t } = useTranslation("account");
+  const { t: tCommon } = useTranslation("common");
   const parsed = parseUserAgent(session.createdWith?.userAgent);
   const method = methodLabel(session.createdWith?.method, t);
   const browserLabel = [parsed.browser, parsed.browserVersion].filter(Boolean).join(" ");
@@ -101,12 +87,12 @@ function SessionRow({
               {session.createdWith?.userAgent || t("sessions.unknownAgent")}
             </div>
             <div className="text-xs text-muted-foreground space-y-0.5">
-              <div>{t("sessions.connected", { time: formatRelativeTime(session.createdAt) })}</div>
+              <div>{t("sessions.connected", { time: formatRelativeTime(new Date(session.createdAt), tCommon) })}</div>
               <div>
                 {t("sessions.lastActive", {
                   time: session.lastActiveAt
-                    ? formatRelativeTime(session.lastActiveAt)
-                    : formatRelativeTime(session.createdAt),
+                    ? formatRelativeTime(new Date(session.lastActiveAt), tCommon)
+                    : formatRelativeTime(new Date(session.createdAt), tCommon),
                 })}
               </div>
               <div>

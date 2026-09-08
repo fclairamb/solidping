@@ -372,16 +372,16 @@ function RouteRow({
     try {
       await patchRoute.mutateAsync({ routeUid: route.uid, patch: { enabled } });
     } catch {
-      toast.error("Failed to update notification route");
+      toast.error(t("notifications.route.updateFailed"));
     }
   };
 
   const handleDelete = async () => {
     try {
       await deleteContact.mutateAsync(route.contact.uid);
-      toast.success("Notification contact removed");
+      toast.success(t("notifications.route.removed"));
     } catch {
-      toast.error("Failed to remove notification contact");
+      toast.error(t("notifications.route.removeFailed"));
     }
   };
 
@@ -389,11 +389,11 @@ function RouteRow({
     setTestPending(true);
     try {
       await testRoute.mutateAsync(route.uid);
-      toast.success("Test notification sent");
+      toast.success(t("notifications.route.testSent"));
       onTestSent();
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : "Failed to send test notification";
+        err instanceof Error ? err.message : t("notifications.route.testFailed");
       toast.error(msg);
     } finally {
       setTestPending(false);
@@ -431,7 +431,7 @@ function RouteRow({
         </div>
         <div className="text-sm text-muted-foreground truncate">
           {route.contact.type === "webpush"
-            ? (route.contact.label || "Browser")
+            ? (route.contact.label || t("notifications.route.browserLabel"))
             : isTelegram
               ? // A bare numeric chat id is unreadable; the label is the
                 // Telegram @username captured when the chat was connected.
@@ -507,8 +507,8 @@ function RouteRow({
             size="sm"
             onClick={handleTest}
             disabled={testPending || !route.enabled}
-            title="Send test notification"
-            aria-label="Send test notification"
+            title={t("notifications.route.sendTestNotification")}
+            aria-label={t("notifications.route.sendTestNotification")}
             data-testid={`test-route-${route.uid}`}
           >
             {testPending ? (
@@ -634,6 +634,7 @@ function SlackBanner({
   org: string;
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation("account");
   const createContact = useCreateNotificationContact(org);
 
   const handleAdd = async () => {
@@ -643,10 +644,10 @@ function SlackBanner({
         value: suggestion.slackUserId,
         label: `Slack DM (${suggestion.workspaceName})`,
       });
-      toast.success("Slack DM notifications added");
+      toast.success(t("notifications.slack.added"));
       onDismiss();
     } catch {
-      toast.error("Failed to add Slack DM contact");
+      toast.error(t("notifications.slack.addFailed"));
     }
   };
 
@@ -654,9 +655,9 @@ function SlackBanner({
     <Alert className="mb-4 flex items-center gap-3">
       <MessageSquare className="h-4 w-4 flex-none" />
       <AlertDescription className="flex-1">
-        You signed in with Slack ({suggestion.workspaceName}).{" "}
-        <strong>Add Slack DM notifications</strong> to receive incident alerts
-        directly in Slack.
+        {t("notifications.slack.bannerIntro", { workspace: suggestion.workspaceName })}{" "}
+        <strong>{t("notifications.slack.bannerCta")}</strong>{" "}
+        {t("notifications.slack.bannerSuffix")}
       </AlertDescription>
       <div className="flex items-center gap-2 flex-none">
         <Button
@@ -670,7 +671,7 @@ function SlackBanner({
           ) : (
             <MessageSquare className="h-4 w-4 mr-2" />
           )}
-          Add Slack DM
+          {t("notifications.slack.addButton")}
         </Button>
         <Button variant="ghost" size="sm" onClick={onDismiss}>
           <X className="h-4 w-4" />
@@ -711,7 +712,11 @@ function AddContactForm({
     setError(null);
 
     if (!value.trim()) {
-      setError(type === "email" ? "Email address is required" : "Phone number is required");
+      setError(
+        type === "email"
+          ? t("notifications.addContact.emailRequired")
+          : t("notifications.addContact.phoneRequired"),
+      );
       return;
     }
 
@@ -725,11 +730,11 @@ function AddContactForm({
     try {
       await createContact.mutateAsync({ type, value: value.trim() });
       setValue("");
-      toast.success("Notification contact added");
+      toast.success(t("notifications.addContact.added"));
       onSuccess();
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Failed to add contact"
+        err instanceof Error ? err.message : t("notifications.addContact.addFailed")
       );
     }
   };
@@ -741,13 +746,13 @@ function AddContactForm({
         value: subscriptionJson,
         label: deriveDeviceLabel(),
       });
-      toast.success("Browser push notifications enabled");
+      toast.success(t("notifications.addContact.browserPushEnabled"));
       onSuccess();
     } catch (err: unknown) {
       // 409 CONFLICT means the browser is already subscribed — silently ignore.
       const msg = err instanceof Error ? err.message : "";
       if (!msg.includes("409") && !msg.toLowerCase().includes("conflict")) {
-        toast.error("Failed to enable browser push notifications");
+        toast.error(t("notifications.addContact.browserPushFailed"));
       } else {
         onSuccess();
       }
@@ -852,14 +857,16 @@ function AddContactForm({
           <Input
             type={type === "email" ? "email" : "tel"}
             placeholder={
-              type === "email" ? "you@example.com" : "+1 555 123 4567"
+              type === "email"
+                ? t("notifications.addContact.emailPlaceholder")
+                : t("notifications.addContact.phonePlaceholderExample")
             }
             aria-label={
               type === "email"
-                ? "Email address"
+                ? t("notifications.addContact.emailAddressLabel")
                 : type === "whatsapp"
-                  ? "WhatsApp number"
-                  : "Phone number"
+                  ? t("notifications.addContact.whatsappNumberLabel")
+                  : t("notifications.addContact.phoneNumberLabel")
             }
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -874,7 +881,7 @@ function AddContactForm({
             {createContact.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              "Add"
+              t("notifications.addContact.submit")
             )}
           </Button>
         </div>
@@ -896,9 +903,9 @@ function AddContactForm({
       <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
         <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
         <div className="flex-1 min-w-[12rem]">
-          <p className="text-sm font-medium">Add browser</p>
+          <p className="text-sm font-medium">{t("notifications.addContact.addBrowserTitle")}</p>
           <p className="text-xs text-muted-foreground">
-            Receive notifications as browser push alerts on this device.
+            {t("notifications.addContact.addBrowserDescription")}
           </p>
         </div>
         <WebPushEnableButton
@@ -912,6 +919,7 @@ function AddContactForm({
 }
 
 function NotificationsPage() {
+  const { t } = useTranslation("account");
   const { org } = Route.useParams();
   const [dismissedSlack, setDismissedSlack] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -953,7 +961,7 @@ function NotificationsPage() {
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
           <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-          Loading notification settings…
+          {t("notifications.page.loading")}
         </CardContent>
       </Card>
     );
@@ -964,7 +972,7 @@ function NotificationsPage() {
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Failed to load notification settings. Please refresh the page.
+          {t("notifications.page.loadFailed")}
         </AlertDescription>
       </Alert>
     );
@@ -982,16 +990,15 @@ function NotificationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Notification methods</CardTitle>
+          <CardTitle>{t("notifications.page.methodsTitle")}</CardTitle>
           <CardDescription>
-            Configure how you receive incident alerts. All enabled methods fire
-            when an escalation policy targets you.
+            {t("notifications.page.methodsSubtitle")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {routes.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              No notification methods configured. Add one below.
+              {t("notifications.page.noMethods")}
             </p>
           ) : (
             <div data-testid="notification-routes-list">
@@ -1030,7 +1037,7 @@ function NotificationsPage() {
               onClick={() => setShowAddForm(true)}
               data-testid="add-contact-button"
             >
-              + Add method
+              {t("notifications.page.addMethodButton")}
             </Button>
           )}
         </CardContent>

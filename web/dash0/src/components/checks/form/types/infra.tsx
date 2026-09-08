@@ -65,10 +65,11 @@ function SnmpFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<SnmpState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -107,7 +108,7 @@ function SnmpFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="oid">OID</Label>
+        <Label htmlFor="oid">{t("snmp.oid")}</Label>
         <Input
           id="oid"
           type="text"
@@ -124,7 +125,7 @@ function SnmpFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="community">Community (optional, default: public)</Label>
+        <Label htmlFor="community">{t("snmp.communityOptional")}</Label>
         <Input
           id="community"
           type="text"
@@ -136,7 +137,7 @@ function SnmpFields({
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="expectedValue">Expected Value (optional)</Label>
+          <Label htmlFor="expectedValue">{t("snmp.expectedValueOptional")}</Label>
           <Input
             id="expectedValue"
             type="text"
@@ -149,7 +150,7 @@ function SnmpFields({
           />
         </div>
         <div className="space-y-2 w-40">
-          <Label htmlFor="snmpOperator">Operator</Label>
+          <Label htmlFor="snmpOperator">{t("snmp.operator")}</Label>
           <Select
             value={state.operator}
             onValueChange={(operator) => onChange({ ...state, operator })}
@@ -158,11 +159,11 @@ function SnmpFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="equals">Equals</SelectItem>
-              <SelectItem value="not_equals">Not Equals</SelectItem>
-              <SelectItem value="contains">Contains</SelectItem>
-              <SelectItem value="greater_than">Greater Than</SelectItem>
-              <SelectItem value="less_than">Less Than</SelectItem>
+              <SelectItem value="equals">{t("snmp.operatorEquals")}</SelectItem>
+              <SelectItem value="not_equals">{t("snmp.operatorNotEquals")}</SelectItem>
+              <SelectItem value="contains">{t("snmp.operatorContains")}</SelectItem>
+              <SelectItem value="greater_than">{t("snmp.operatorGreaterThan")}</SelectItem>
+              <SelectItem value="less_than">{t("snmp.operatorLessThan")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -219,11 +220,12 @@ function DockerFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<DockerState>) {
+  const { t } = useTranslation("checks");
   const [open, setOpen] = useState(false);
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="containerName">Container Name</Label>
+        <Label htmlFor="containerName">{t("docker.containerName")}</Label>
         <Input
           id="containerName"
           type="text"
@@ -245,7 +247,7 @@ function DockerFields({
       </div>
       <div className="space-y-2">
         <Label htmlFor="containerId">
-          Container ID (optional, alternative to name)
+          {t("docker.containerIdOptional")}
         </Label>
         <Input
           id="containerId"
@@ -257,7 +259,7 @@ function DockerFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="host">Docker Host (optional)</Label>
+        <Label htmlFor="host">{t("docker.dockerHostOptional")}</Label>
         <Input
           id="host"
           type="text"
@@ -267,8 +269,7 @@ function DockerFields({
           data-testid="check-host-input"
         />
         <p className="text-xs text-muted-foreground">
-          Default: unix:///var/run/docker.sock. Use tcp://host:port for remote
-          Docker daemons.
+          {t("docker.dockerHostHelp")}
         </p>
       </div>
       <div className="space-y-2">
@@ -277,19 +278,17 @@ function DockerFields({
           className="text-sm underline"
           onClick={() => setOpen((v) => !v)}
         >
-          {open ? "▼ " : "▶ "}Restart-loop detection (advanced)
+          {open ? "▼ " : "▶ "}
+          {t("docker.restartLoopAdvanced")}
         </button>
         {open && (
           <div className="space-y-2 pl-4 border-l">
             <p className="text-xs text-muted-foreground">
-              Flag a running container as crash-looping when it has restarted at
-              least N times and (re)started within the recency window. Leave Min
-              Restarts empty (or 0) to disable. A detected loop reports a
-              Warning (amber) — it counts as up and does not page.
+              {t("docker.restartLoopHelp")}
             </p>
             <div className="space-y-1">
               <Label htmlFor="restartLoopMinRestarts">
-                Min Restarts (0 = disabled)
+                {t("docker.minRestarts")}
               </Label>
               <Input
                 id="restartLoopMinRestarts"
@@ -308,7 +307,7 @@ function DockerFields({
             </div>
             <div className="space-y-1">
               <Label htmlFor="restartLoopWindowSeconds">
-                Window (seconds, default 120)
+                {t("docker.restartLoopWindow")}
               </Label>
               <Input
                 id="restartLoopWindowSeconds"
@@ -411,7 +410,7 @@ function FreeboxLineFields({
                 params={{ org }}
                 className="underline"
               >
-                Integrations
+                {t("freeboxLine.integrationsLink")}
               </Link>
             </AlertDescription>
           </Alert>
@@ -781,6 +780,7 @@ function PrometheusFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<PrometheusState>) {
+  const { t } = useTranslation("checks");
   const promql = state.mode === "promql";
   const advancedCustomized =
     state.match !== "single" ||
@@ -790,7 +790,7 @@ function PrometheusFields({
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="prometheusMode">Mode</Label>
+        <Label htmlFor="prometheusMode">{t("prometheus.mode")}</Label>
         <Select
           value={state.mode}
           onValueChange={(mode) => onChange({ ...state, mode })}
@@ -802,9 +802,9 @@ function PrometheusFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="scrape">Scrape a /metrics endpoint</SelectItem>
+            <SelectItem value="scrape">{t("prometheus.modeScrape")}</SelectItem>
             <SelectItem value="promql">
-              PromQL query against a Prometheus server
+              {t("prometheus.modePromql")}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -812,7 +812,7 @@ function PrometheusFields({
 
       <div className="space-y-2">
         <Label htmlFor="prometheusUrl">
-          {promql ? "Prometheus server URL" : "Metrics URL"}
+          {promql ? t("prometheus.serverUrl") : t("prometheus.metricsUrl")}
         </Label>
         <Input
           id="prometheusUrl"
@@ -836,7 +836,7 @@ function PrometheusFields({
 
       {promql ? (
         <div className="space-y-2">
-          <Label htmlFor="prometheusQuery">PromQL query</Label>
+          <Label htmlFor="prometheusQuery">{t("prometheus.promqlQuery")}</Label>
           <Textarea
             id="prometheusQuery"
             rows={3}
@@ -850,9 +850,7 @@ function PrometheusFields({
             data-testid="check-prometheus-query-input"
           />
           <p className="text-xs text-muted-foreground">
-            Instant query. Scalar and instant-vector results are supported; a
-            range (matrix) result is rejected. This is also where rates belong —
-            the check does no client-side rate computation.
+            {t("prometheus.promqlQueryHelp")}
           </p>
           {getFieldError(errors, "query") && (
             <p className="text-xs text-destructive">
@@ -863,7 +861,7 @@ function PrometheusFields({
       ) : (
         <>
           <div className="space-y-2">
-            <Label htmlFor="prometheusMetric">Metric</Label>
+            <Label htmlFor="prometheusMetric">{t("prometheus.metric")}</Label>
             <Input
               id="prometheusMetric"
               type="text"
@@ -877,10 +875,7 @@ function PrometheusFields({
               data-testid="check-prometheus-metric-input"
             />
             <p className="text-xs text-muted-foreground">
-              Histograms and summaries are addressed through their flattened
-              series: <code>_sum</code>, <code>_count</code>,{" "}
-              <code>_bucket</code> (with an <code>le</code> label) or a{" "}
-              <code>quantile</code> label.
+              {t("prometheus.metricHelp")}
             </p>
             {getFieldError(errors, "metric") && (
               <p className="text-xs text-destructive">
@@ -889,17 +884,16 @@ function PrometheusFields({
             )}
           </div>
           <div className="space-y-2">
-            <Label>Labels (optional)</Label>
+            <Label>{t("prometheus.labelsOptional")}</Label>
             <p className="text-xs text-muted-foreground">
-              The series must carry every pair listed here. Extra labels on the
-              series are fine.
+              {t("prometheus.labelsHelp")}
             </p>
             <KeyValueRows
               rows={state.labels}
               onRowsChange={(labels) => onChange({ ...state, labels })}
               keyPlaceholder="instance"
               valuePlaceholder="app-1"
-              addLabel="Add label"
+              addLabel={t("prometheus.addLabel")}
               testIdPrefix="check-prometheus-label"
             />
           </div>
@@ -907,7 +901,7 @@ function PrometheusFields({
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="prometheusOperator">Alert when the value is</Label>
+        <Label htmlFor="prometheusOperator">{t("prometheus.alertWhenValueIs")}</Label>
         <div className="flex flex-col sm:flex-row gap-2">
           <Select
             value={state.operator}
@@ -921,12 +915,12 @@ function PrometheusFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value=">">&gt; greater than</SelectItem>
-              <SelectItem value=">=">&ge; at least</SelectItem>
-              <SelectItem value="<">&lt; less than</SelectItem>
-              <SelectItem value="<=">&le; at most</SelectItem>
-              <SelectItem value="==">= equal to</SelectItem>
-              <SelectItem value="!=">&ne; not equal to</SelectItem>
+              <SelectItem value=">">&gt; {t("prometheus.operatorGreaterThan")}</SelectItem>
+              <SelectItem value=">=">&ge; {t("prometheus.operatorAtLeast")}</SelectItem>
+              <SelectItem value="<">&lt; {t("prometheus.operatorLessThan")}</SelectItem>
+              <SelectItem value="<=">&le; {t("prometheus.operatorAtMost")}</SelectItem>
+              <SelectItem value="==">= {t("prometheus.operatorEqualTo")}</SelectItem>
+              <SelectItem value="!=">&ne; {t("prometheus.operatorNotEqualTo")}</SelectItem>
             </SelectContent>
           </Select>
           <div className="flex-1 min-w-0 space-y-1">
@@ -934,7 +928,7 @@ function PrometheusFields({
               id="prometheusWarningValue"
               type="number"
               step="any"
-              placeholder="Warning threshold"
+              placeholder={t("prometheus.warningThreshold")}
               value={state.warningValue}
               onChange={(e) =>
                 onChange({ ...state, warningValue: e.target.value })
@@ -947,7 +941,7 @@ function PrometheusFields({
               id="prometheusCriticalValue"
               type="number"
               step="any"
-              placeholder="Critical threshold"
+              placeholder={t("prometheus.criticalThreshold")}
               value={state.criticalValue}
               onChange={(e) =>
                 onChange({ ...state, criticalValue: e.target.value })
@@ -960,10 +954,7 @@ function PrometheusFields({
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Critical goes Down and pages; Warning is amber, counts as up and never
-          pages. Set at least one — a warning-only check is valid. 0 is a real
-          threshold. <code>=</code> and <code>&ne;</code> take a critical
-          threshold only.
+          {t("prometheus.thresholdHelp")}
         </p>
         {getFieldError(errors, "criticalValue") && (
           <p className="text-xs text-destructive">
@@ -974,7 +965,7 @@ function PrometheusFields({
 
       <CollapsibleSection
         id="prometheus-advanced"
-        title="Advanced"
+        title={t("form.advanced")}
         summary={`match ${state.match}, on missing ${state.onMissing}${
           state.headers.length > 0 ? `, ${state.headers.length} header(s)` : ""
         }`}
@@ -984,7 +975,7 @@ function PrometheusFields({
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="prometheusMatch">Multiple matching series</Label>
+            <Label htmlFor="prometheusMatch">{t("prometheus.multipleMatchingSeries")}</Label>
             <Select
               value={state.match}
               onValueChange={(match) => onChange({ ...state, match })}
@@ -997,21 +988,20 @@ function PrometheusFields({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="single">
-                  Single — error if more than one matches
+                  {t("prometheus.matchSingle")}
                 </SelectItem>
-                <SelectItem value="min">Minimum</SelectItem>
-                <SelectItem value="max">Maximum</SelectItem>
-                <SelectItem value="sum">Sum</SelectItem>
-                <SelectItem value="avg">Average</SelectItem>
+                <SelectItem value="min">{t("prometheus.matchMin")}</SelectItem>
+                <SelectItem value="max">{t("prometheus.matchMax")}</SelectItem>
+                <SelectItem value="sum">{t("prometheus.matchSum")}</SelectItem>
+                <SelectItem value="avg">{t("prometheus.matchAvg")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              An ambiguous selector is reported rather than resolved by
-              guessing.
+              {t("prometheus.matchHelp")}
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="prometheusOnMissing">When nothing matches</Label>
+            <Label htmlFor="prometheusOnMissing">{t("prometheus.whenNothingMatches")}</Label>
             <Select
               value={state.onMissing}
               onValueChange={(onMissing) => onChange({ ...state, onMissing })}
@@ -1023,23 +1013,23 @@ function PrometheusFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="down">Down (default)</SelectItem>
-                <SelectItem value="warning">Warning</SelectItem>
-                <SelectItem value="up">Up</SelectItem>
+                <SelectItem value="down">{t("prometheus.onMissingDown")}</SelectItem>
+                <SelectItem value="warning">{t("status.warning")}</SelectItem>
+                <SelectItem value="up">{t("status.up")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Request headers</Label>
+            <Label>{t("prometheus.requestHeaders")}</Label>
             <p className="text-xs text-muted-foreground">
-              For endpoints behind bearer or basic auth.
+              {t("prometheus.requestHeadersHelp")}
             </p>
             <KeyValueRows
               rows={state.headers}
               onRowsChange={(headers) => onChange({ ...state, headers })}
               keyPlaceholder="Authorization"
               valuePlaceholder="Bearer …"
-              addLabel="Add header"
+              addLabel={t("prometheus.addHeader")}
               testIdPrefix="check-prometheus-header"
             />
           </div>

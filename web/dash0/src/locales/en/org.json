@@ -262,5 +262,115 @@
     "checkExpires": "This check is live now and will be deleted in about an hour. Sign up free to keep it.",
     "seededCheck": "This check is part of the demo catalogue and cannot be changed. Clone it to get a copy you can edit.",
     "writeRefused": "This is the shared live demo. Only checks you create here can be changed — sign up free to change anything else."
+  },
+  "privateLocations": {
+    "wizard": {
+      "steps": {
+        "pickLocation": "Pick location",
+        "mintToken": "Mint token",
+        "runAgent": "Run the agent",
+        "waitForConnection": "Wait for connection"
+      },
+      "step2": {
+        "expiryFormat": "in ~{{hours}}h ({{date}})",
+        "title": "2. Mint an enrollment token",
+        "description": "A single-use spe_ token that lets exactly one agent enroll into this location.",
+        "explain": "The token is shown exactly once — the server stores only its hash — and expires after 24 hours by default.",
+        "mint": "Mint enrollment token",
+        "onceTitle": "Copy it now — you won't see this again",
+        "onceDescription": "This token expires {{expiry}} and enrolls exactly one agent. If you lose it, mint a new one.",
+        "continue": "Continue"
+      },
+      "title": "Register an agent",
+      "subtitle": "A guided walkthrough for enrolling a deported agent into one of your private locations.",
+      "back": "Back",
+      "changeLocation": "Change",
+      "step1": {
+        "title": "1. Pick or create a location",
+        "description": "The agent enrolls into one org-private location. Pick an existing one or create a new one below.",
+        "agentCount": "{{count}} agents",
+        "empty": "No private locations yet — create one below to get started.",
+        "createTitle": "Or create a new location",
+        "create": "Create & continue"
+      },
+      "step3": {
+        "title": "3. Run the agent",
+        "description": "The agent is the standard SolidPing container in agent mode — no separate binary, no database.",
+        "gotchasTitle": "Two things to know",
+        "gotcha1": "The token is single-use: it enrolls exactly one agent, then it's consumed.",
+        "gotcha2": "The agent persists its identity to /data/agent-keys.json (SP_AGENT_KEYS_FILE) — that volume must survive restarts, or the agent will enroll again with a new identity.",
+        "k8sNote": "This first run persists the identity on a PVC, exactly like the docker run volume. For a no-persistent-volume setup, read the value out of the file the agent wrote (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) and store it as SP_AGENT_KEYS in a Secret. The agent never prints its private keys to the logs — see the docs link at the top of this card.",
+        "continue": "Continue — I started the agent"
+      },
+      "step4": {
+        "successTitle": "Agent connected!",
+        "successDescription": "{{name}} is now enrolled in {{region}}.",
+        "nextStep": "Target this location from a check",
+        "errorTitle": "The agent hasn't connected",
+        "expiredTitle": "Token expired",
+        "consumedTitle": "Token no longer available",
+        "expiredDescription": "This enrollment token expired before an agent used it.",
+        "consumedDescription": "This token was already used or was cancelled elsewhere.",
+        "retry": "Mint a new token",
+        "waitingTitle": "4. Waiting for the agent to connect",
+        "waitingDescription": "This updates automatically once the agent enrolls — no need to refresh."
+      }
+    },
+    "regions": {
+      "title": "Private locations",
+      "description": "Org-private regions served by deported agents you run inside your own network. Agents connect outbound only — no inbound ports.",
+      "registerAgent": "Register an agent",
+      "emptyPrefix": "No private locations yet. Follow the ",
+      "emptyLinkText": "guided setup",
+      "emptySuffix": ", or create one manually below.",
+      "name": "Name",
+      "region": "Region",
+      "agents": "Agents",
+      "ipv6": "IPv6",
+      "actions": "Actions",
+      "mint": "New enrollment token",
+      "delete": "Delete location",
+      "slug": "Slug",
+      "displayName": "Display name",
+      "create": "Add location",
+      "deleteTitle": "Delete private location?",
+      "deleteDescription": "Checks targeting this location will stop being scheduled there. Locations with enrolled agents cannot be deleted — revoke the agents first.",
+      "deleteConfirm": "Delete"
+    },
+    "cancel": "Cancel",
+    "token": {
+      "title": "Enrollment token",
+      "description": "Copy it now — this token is shown only once and expires in 24 hours. It enrolls exactly one agent.",
+      "run": "Run the agent with:"
+    },
+    "agents": {
+      "title": "Agents",
+      "description": "Enrolled agents and their status. Revoking an agent cuts its access immediately; rotate any credentials it could decrypt.",
+      "empty": "No agents enrolled yet. Mint an enrollment token above and start an agent with it.",
+      "name": "Name",
+      "region": "Region",
+      "fingerprint": "Fingerprint",
+      "version": "Version",
+      "lastSeen": "Last seen",
+      "status": "Status",
+      "actions": "Actions",
+      "never": "never",
+      "revoke": "Revoke agent",
+      "remove": "Remove agent",
+      "removeTitle": "Remove this agent?",
+      "revokeTitle": "Revoke this agent?",
+      "removeDescription": "This agent is already revoked. Removing it clears it from the list immediately, instead of waiting for the automatic two-day cleanup.",
+      "revokeDescription": "The agent loses access immediately and stops receiving checks. It already saw the credentials sealed to it — rotate them. This cannot be undone; enroll a new agent to replace it.",
+      "removeConfirm": "Remove",
+      "revokeConfirm": "Revoke"
+    },
+    "tokens": {
+      "title": "Pending enrollment tokens",
+      "description": "Unused tokens waiting for an agent. Each enrolls exactly one agent, then expires.",
+      "region": "Region",
+      "expires": "Expires",
+      "actions": "Actions",
+      "cancel": "Cancel token"
+    }
   }
 }

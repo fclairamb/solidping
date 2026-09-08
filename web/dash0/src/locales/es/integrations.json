@@ -162,7 +162,37 @@
     "slackNotConnectedTitle": "Espacio de trabajo de Slack no conectado",
     "testDelivered": "Entregado",
     "testHelp": "Envíe una alerta de muestra para confirmar que esta integración está configurada. La prueba usa la configuración guardada.",
-    "testTitle": "Enviar una notificación de prueba"
+    "testTitle": "Enviar una notificación de prueba",
+    "webpushNoSubscriptions": "Aún no hay dispositivos suscritos. Haz clic en el botón de abajo para añadir este navegador.",
+    "webpushDefaultDeviceLabel": "Navegador",
+    "webpushRemoveSubscription": "Eliminar suscripción",
+    "discordNoChannelsAvailable": "No hay canales de texto visibles para el bot. Dale acceso a un canal en Discord primero.",
+    "pickChannel": "Elegir un canal…",
+    "searchChannelsPlaceholder": "Buscar canales…",
+    "noChannelsFound": "No se encontraron canales",
+    "slackWorkspaceLabel": "Espacio de trabajo:",
+    "slackTabChannel": "Canal",
+    "slackTabDirectMessage": "Mensaje directo",
+    "slackInviteBotFirst": "Invita primero al bot a un canal con",
+    "slackChannelPrivate": "Privado",
+    "slackBotNotInChannel": "El bot no está en el canal — ejecuta primero /invite @solidping",
+    "pickPerson": "Elegir una persona…",
+    "searchPeoplePlaceholder": "Buscar personas…",
+    "noPeopleFound": "No se encontraron personas",
+    "signingSecret": "Secreto de firma",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "rotate": "Rotar",
+    "signingSecretMissing": "Sin secreto de firma: se generará automáticamente en la próxima entrega. Rota para generar uno ahora.",
+    "generate": "Generar",
+    "signingSecretHelp": "Los webhooks salientes se firman con este secreto según el esquema Standard Webhooks (HMAC-SHA256). Verifícalo en el extremo receptor.",
+    "rotationBanner": "Secreto anterior activo hasta",
+    "rotationBannerHint": "Elimínalo antes rotando de nuevo.",
+    "slackInstallFailed": "No se pudo iniciar la instalación de Slack",
+    "slackLoading": "Cargando…",
+    "slackError": "No se pudo conectar con el espacio de trabajo de Slack: reinstala el bot.",
+    "twilioRegion": "Región (opcional)",
+    "twilioRegionHint": "Déjalo vacío para US1 (predeterminado). Las credenciales están asociadas a una región: el SID y el token de una cuenta ie1 solo funcionan contra ie1 y no se verificarán aquí si provienen de otra región."
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -256,5 +286,78 @@
     "pairingTimeout": "El aviso LCD de la Freebox expiró antes de la aprobación. Inténtelo de nuevo.",
     "pressArrow": "Vaya a su Freebox y pulse → en la pantalla LCD en los próximos 30 segundos",
     "waitingApproval": "Esperando la aprobación en la pantalla LCD…"
-  }
+  },
+  "notificationDetail": {
+    "title": "Notificación",
+    "backToIncident": "Volver al incidente",
+    "backToIntegration": "Volver a la integración",
+    "backToIncidents": "Volver a los incidentes",
+    "delivery": {
+      "title": "Entrega",
+      "status": "Estado:",
+      "requestUrl": "URL de la solicitud",
+      "requestUrlLabel": "URL de la solicitud",
+      "requestPayload": "Cuerpo de la solicitud",
+      "smtpResponse": "Respuesta del servidor SMTP",
+      "responseBody": "Cuerpo de la respuesta",
+      "responseHeaders": "Cabeceras de la respuesta",
+      "emailNote": "«Enviado» significa que el servidor de correo aceptó el mensaje para su reenvío — no confirma que el mensaje haya llegado a la bandeja de entrada del destinatario."
+    },
+    "timeline": {
+      "title": "Cronología de entrega",
+      "created": "Creada",
+      "sent": "Enviada",
+      "failed": "Fallida",
+      "cancelled": "Cancelada"
+    },
+    "target": {
+      "title": "Destino"
+    },
+    "escalationContext": {
+      "title": "Contexto de escalado",
+      "source": "Origen:",
+      "step": "Paso:",
+      "cycle": "Ciclo de escalado:",
+      "skipReason": "Motivo de omisión:"
+    },
+    "identifiers": {
+      "title": "Identificadores",
+      "messageId": "ID del mensaje",
+      "messageIdLabel": "ID del mensaje",
+      "jobUid": "UID de la tarea",
+      "jobUidLabel": "UID de la tarea"
+    },
+    "error": {
+      "title": "Error",
+      "label": "error"
+    }
+  },
+  "recentNotifications": {
+    "title": "Notificaciones recientes",
+    "loadFailed": "No se pudieron cargar las notificaciones.",
+    "empty": "Aún no se han enviado notificaciones a través de esta integración.",
+    "columns": {
+      "status": "Estado",
+      "channel": "Canal",
+      "event": "Evento",
+      "target": "Destino",
+      "created": "Creada"
+    }
+  },
+  "suppressions": {
+    "title": "Destinatarios dados de baja",
+    "resubscribed": "{{email}} vuelto a suscribir",
+    "resubscribeFailed": "No se pudo volver a suscribir",
+    "loadFailed": "No se pudieron cargar los destinatarios dados de baja.",
+    "empty": "Nadie se ha dado de baja de los correos de alerta en esta organización.",
+    "columns": {
+      "email": "Correo electrónico",
+      "scope": "Alcance",
+      "unsubscribed": "Dado de baja"
+    },
+    "allChecks": "Todos los checks",
+    "resubscribeAria": "Volver a suscribir a {{email}}"
+  },
+  "deleteConfirmTitle": "¿Eliminar la integración?",
+  "deleteConfirmBody": "Esto eliminará permanentemente «{{name}}»."
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -37,6 +38,7 @@ function failuresOf(bucket: UptimeBucket): number | undefined {
 }
 
 function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
+  const { t } = useTranslation("common");
   const date = new Date(bucket.periodStart);
   const hourStr = date.toLocaleTimeString([], {
     hour: "2-digit",
@@ -49,7 +51,7 @@ function UptimeCell({ bucket }: { bucket: UptimeBucket }) {
     bucket.availabilityPct ?? null,
     failuresOf(bucket),
   );
-  const availLabel = formatAvailabilityPct(bucket.availabilityPct) ?? "No data";
+  const availLabel = formatAvailabilityPct(bucket.availabilityPct) ?? t("noData");
 
   return (
     <Tooltip>

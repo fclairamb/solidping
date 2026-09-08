@@ -84,15 +84,14 @@ const NEW_CHECK_SEARCH_DEFAULTS = {
   section: undefined,
 };
 
-const WIZARD_STEPS = [
-  { label: "Pick location" },
-  { label: "Mint token" },
-  { label: "Run the agent" },
-  { label: "Wait for connection" },
-];
-
 function RegisterAgentPage() {
   const { t } = useTranslation(["org"]);
+  const wizardSteps = [
+    { label: t("privateLocations.wizard.steps.pickLocation", "Pick location") },
+    { label: t("privateLocations.wizard.steps.mintToken", "Mint token") },
+    { label: t("privateLocations.wizard.steps.runAgent", "Run the agent") },
+    { label: t("privateLocations.wizard.steps.waitForConnection", "Wait for connection") },
+  ];
   const { org } = Route.useParams();
   const { regionSlug } = Route.useSearch();
   const navigate = useNavigate();
@@ -164,7 +163,7 @@ function RegisterAgentPage() {
         </div>
       </div>
 
-      <Stepper steps={WIZARD_STEPS} current={effectiveStep} />
+      <Stepper steps={wizardSteps} current={effectiveStep} />
 
       {effectiveStep === 1 && (
         <StepPickLocation
@@ -479,7 +478,7 @@ function StepMintToken({
                 {t(
                   "privateLocations.wizard.step2.onceDescription",
                   "This token expires {{expiry}} and enrolls exactly one agent. If you lose it, mint a new one.",
-                  { expiry: formatExpiry(minted.expiresAt) },
+                  { expiry: formatExpiry(minted.expiresAt, t) },
                 )}
               </AlertDescription>
             </Alert>
@@ -507,10 +506,17 @@ function StepMintToken({
   );
 }
 
-function formatExpiry(expiresAt: string): string {
+function formatExpiry(
+  expiresAt: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   const date = new Date(expiresAt);
   const hours = Math.max(1, Math.round((date.getTime() - Date.now()) / (60 * 60 * 1000)));
-  return `in ~${hours}h (${date.toLocaleString()})`;
+  return t("privateLocations.wizard.step2.expiryFormat", {
+    defaultValue: "in ~{{hours}}h ({{date}})",
+    hours,
+    date: date.toLocaleString(),
+  });
 }
 
 // Plain helper (not a component/hook) so the current-time read doesn't trip

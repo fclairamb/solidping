@@ -14,7 +14,8 @@
       "timezone": "Timezone",
       "rotation": "Rotation",
       "currentlyOnCall": "Currently on call"
-    }
+    },
+    "activeOnDuty": "Active on duty"
   },
   "detail": {
     "back": "Back to schedules",

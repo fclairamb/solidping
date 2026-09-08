@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { TFunction } from "i18next";
+
+import enCommon from "@/locales/en/common.json";
+import frCommon from "@/locales/fr/common.json";
 
 import {
   formatInlineAbsolute,
@@ -8,34 +12,69 @@ import {
   formatUtcIso,
 } from "@/lib/time-ago";
 
+/**
+ * A `t` backed by a real locale bundle, interpolating {{count}} the way
+ * i18next does. Using the actual bundles (rather than a stub returning the
+ * key) is what makes these assertions prove the KEYS EXIST — a typo in a key
+ * name would render the key itself and fail the comparison.
+ */
+function tFor(bundle: Record<string, unknown>): TFunction {
+  const resolve = (key: string, opts?: { count?: number }): string => {
+    let node: unknown = bundle;
+    for (const part of key.split(".")) {
+      if (typeof node !== "object" || node === null || !(part in node)) return key;
+      node = (node as Record<string, unknown>)[part];
+    }
+    if (typeof node !== "string") return key;
+    return opts?.count === undefined
+      ? node
+      : node.replace("{{count}}", String(opts.count));
+  };
+
+  return resolve as unknown as TFunction;
+}
+
+const t = tFor(enCommon);
+const tFr = tFor(frCommon);
+
 describe("formatRelativeTime", () => {
   const now = new Date("2026-08-14T12:00:00Z");
 
   it("renders 'just now' for the current instant", () => {
-    expect(formatRelativeTime(now, now)).toBe("just now");
+    expect(formatRelativeTime(now, t, now)).toBe("just now");
   });
 
   it("renders minutes", () => {
     expect(
-      formatRelativeTime(new Date("2026-08-14T11:46:00Z"), now),
+      formatRelativeTime(new Date("2026-08-14T11:46:00Z"), t, now),
     ).toBe("14m ago");
   });
 
   it("renders hours", () => {
     expect(
-      formatRelativeTime(new Date("2026-08-14T09:00:00Z"), now),
+      formatRelativeTime(new Date("2026-08-14T09:00:00Z"), t, now),
     ).toBe("3h ago");
   });
 
   it("renders days", () => {
     expect(
-      formatRelativeTime(new Date("2026-08-10T12:00:00Z"), now),
+      formatRelativeTime(new Date("2026-08-10T12:00:00Z"), t, now),
     ).toBe("4d ago");
+  });
+
+  it("translates — the reason this takes a t at all", () => {
+    expect(formatRelativeTime(now, tFr, now)).toBe("à l'instant");
+    expect(
+      formatRelativeTime(new Date("2026-08-14T09:00:00Z"), tFr, now),
+    ).toBe("il y a 3 h");
+    expect(
+      formatRelativeTime(new Date("2026-08-10T12:00:00Z"), tFr, now),
+    ).toBe("il y a 4 j");
   });
 
   it("falls back to a locale date past 30 days", () => {
     const old = new Date("2026-06-01T12:00:00Z");
-    expect(formatRelativeTime(old, now)).toBe(old.toLocaleDateString());
+    expect(formatRelativeTime(old, t, now)).toBe(old.toLocaleDateString());
   });
 });
 
@@ -129,8 +168,15 @@ describe("formatInlineAbsolute", () => {
 describe("formatTooltipText", () => {
   it("joins local and UTC representations", () => {
     const d = new Date("2026-08-14T09:31:07Z");
-    expect(formatTooltipText(d)).toBe(
+    expect(formatTooltipText(d, t)).toBe(
       `${formatLocalDateTime(d)} (local) · ${formatUtcIso(d)}`,
+    );
+  });
+
+  it("translates the (local) marker, leaving both timestamps machine-readable", () => {
+    const d = new Date("2026-08-14T09:31:07Z");
+    expect(formatTooltipText(d, tFr)).toBe(
+      `${formatLocalDateTime(d)} (locale) · ${formatUtcIso(d)}`,
     );
   });
 });

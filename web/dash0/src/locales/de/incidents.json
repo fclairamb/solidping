@@ -225,7 +225,30 @@
     "description": "Erzählende Updates, die für diesen Vorfall auf Ihrer Statusseite veröffentlicht wurden.",
     "selectStatusPage": "Statusseite auswählen",
     "saving": "Wird gespeichert…",
-    "saveChanges": "Änderungen speichern"
+    "saveChanges": "Änderungen speichern",
+    "empty": "Für diesen Vorfall gibt es noch keine Statusaktualisierungen.",
+    "dialog": {
+      "addTitle": "Statusaktualisierung hinzufügen",
+      "editTitle": "Statusaktualisierung bearbeiten",
+      "linkedDescription": "Diese Aktualisierung wird mit diesem Vorfall auf der Statusseite verknüpft.",
+      "statusPageLabel": "Statusseite",
+      "kindLabel": "Art",
+      "titleLabel": "Titel",
+      "bodyLabel": "Text",
+      "linkUrlLabel": "Link-URL (optional)",
+      "publishedAtLabel": "Veröffentlicht am",
+      "cancel": "Abbrechen",
+      "saved": "Statusaktualisierung gespeichert",
+      "added": "Statusaktualisierung hinzugefügt",
+      "saveFailed": "Statusaktualisierung konnte nicht gespeichert werden",
+      "deleted": "Statusaktualisierung gelöscht",
+      "deleteFailed": "Statusaktualisierung konnte nicht gelöscht werden",
+      "editAria": "Bearbeiten",
+      "deleteAria": "Löschen",
+      "deleteConfirmTitle": "Statusaktualisierung löschen?",
+      "deleteConfirmDescription": "Dadurch wird die Aktualisierung von der Statusseite entfernt.",
+      "deleteConfirmAction": "Löschen"
+    }
   },
   "notificationsCard": {
     "title": "Benachrichtigungen",

@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+
 // Pure formatting helpers for the <TimeAgo> component
 // (@/components/ui/time-ago). Kept here, framework-free, so the tiering and
 // ISO formatting can be unit-tested directly instead of only through a
@@ -15,8 +17,18 @@ function pad(n: number): string {
  * (incidents list, incident detail, jobs) now renders identically instead of
  * each page inventing its own wording (some previously used date-fns'
  * `formatDistanceToNow`, which is far more verbose: "about 2 hours ago").
+ *
+ * `t` comes from the `common` namespace. It is passed in rather than pulled
+ * from a module-level i18next singleton so this stays a pure function the
+ * unit tests can drive with a fake, and so components re-render when the
+ * language changes. The >30d branch deliberately hands off to
+ * `toLocaleDateString()`, which already follows the browser locale.
  */
-export function formatRelativeTime(date: Date, now: Date = new Date()): string {
+export function formatRelativeTime(
+  date: Date,
+  t: TFunction,
+  now: Date = new Date(),
+): string {
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
@@ -24,10 +36,10 @@ export function formatRelativeTime(date: Date, now: Date = new Date()): string {
   const diffDay = Math.floor(diffHour / 24);
 
   if (diffDay > 30) return date.toLocaleDateString();
-  if (diffDay > 0) return `${diffDay}d ago`;
-  if (diffHour > 0) return `${diffHour}h ago`;
-  if (diffMin > 0) return `${diffMin}m ago`;
-  return "just now";
+  if (diffDay > 0) return t("timeAgo.daysAgo", { count: diffDay });
+  if (diffHour > 0) return t("timeAgo.hoursAgo", { count: diffHour });
+  if (diffMin > 0) return t("timeAgo.minutesAgo", { count: diffMin });
+  return t("timeAgo.justNow");
 }
 
 /**
@@ -111,6 +123,6 @@ export function formatInlineAbsolute(date: Date, now: Date = new Date()): string
  * shown on hover/tap for both <TimeAgo> variants: local time first (what the
  * operator's wall clock reads), then unambiguous UTC.
  */
-export function formatTooltipText(date: Date): string {
-  return `${formatLocalDateTime(date)} (local) · ${formatUtcIso(date)}`;
+export function formatTooltipText(date: Date, t: TFunction): string {
+  return `${formatLocalDateTime(date)} (${t("timeAgo.localSuffix")}) · ${formatUtcIso(date)}`;
 }

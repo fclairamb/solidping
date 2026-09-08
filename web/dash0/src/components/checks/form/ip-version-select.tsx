@@ -4,6 +4,7 @@
 // well-known `ipVersion` config key rather than belonging to a per-type `Fields`
 // module, and which types may show it is server-declared capability metadata
 // (`CheckTypeInfo.supportsIpVersion`), never a hard-coded list here.
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -31,9 +32,10 @@ export function IPVersionSelect({
   onChange,
   tunneled = false,
 }: IPVersionSelectProps) {
+  const { t } = useTranslation("checks");
   return (
     <div className="space-y-2">
-      <Label htmlFor="check-ip-version">IP version (optional)</Label>
+      <Label htmlFor="check-ip-version">{t("ipVersion.label")}</Label>
       <Select
         value={value === "" ? IP_VERSION_AUTO : value}
         onValueChange={onChange}
@@ -43,12 +45,12 @@ export function IPVersionSelect({
           id="check-ip-version"
           data-testid="check-ip-version-select"
         >
-          <SelectValue placeholder="Auto" />
+          <SelectValue placeholder={t("ipVersion.auto")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={IP_VERSION_AUTO}>Auto (default)</SelectItem>
-          <SelectItem value="ipv4">IPv4 only</SelectItem>
-          <SelectItem value="ipv6">IPv6 only</SelectItem>
+          <SelectItem value={IP_VERSION_AUTO}>{t("ipVersion.autoDefault")}</SelectItem>
+          <SelectItem value="ipv4">{t("ipVersion.ipv4Only")}</SelectItem>
+          <SelectItem value="ipv6">{t("ipVersion.ipv6Only")}</SelectItem>
         </SelectContent>
       </Select>
       {tunneled ? (
@@ -56,17 +58,11 @@ export function IPVersionSelect({
           className="text-xs text-muted-foreground"
           data-testid="check-ip-version-tunnel-note"
         >
-          Not available on a tunneled check: the SSH bastion resolves the
-          hostname and dials it, so the address family is the tunnel&apos;s to
-          choose, not this check&apos;s.
+          {t("ipVersion.tunneledHelp")}
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Auto keeps today&apos;s behaviour — one address, whichever the target
-          resolves to first. Pin a family to actually verify it: an IPv4 check
-          never proves the target is reachable over IPv6, so a dual-stack host
-          with a broken AAAA path still reports up. To watch both, create two
-          checks.
+          {t("ipVersion.autoHelp")}
         </p>
       )}
     </div>

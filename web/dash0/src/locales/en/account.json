@@ -17,7 +17,8 @@
       "changed": "Password updated.",
       "mismatch": "The two new passwords do not match.",
       "tooShort": "Password must be at least {{min}} characters.",
-      "invalidCurrent": "That is not your current password."
+      "invalidCurrent": "That is not your current password.",
+      "failed": "Could not change your password."
     },
     "passkeys": {
       "title": "Passkeys",
@@ -29,7 +30,9 @@
       "lastUsed": "Last used",
       "renamePrompt": "New name for this passkey:",
       "lastAuthMethod": "Add another passkey or set a password before removing this one.",
-      "unsupported": "This browser does not support passkeys."
+      "unsupported": "This browser does not support passkeys.",
+      "removeFailed": "Could not remove passkey.",
+      "renameFailed": "Could not rename passkey."
     },
     "totp": {
       "title": "Two-Factor Authentication (TOTP)",
@@ -53,8 +56,10 @@
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
       "disableSubtitle": "Enter a current 6-digit code to confirm.",
-      "setupFailed": "Unable to set up two-factor authentication. Try again."
-    }
+      "setupFailed": "Unable to set up two-factor authentication. Try again.",
+      "disableFailed": "Could not disable two-factor authentication."
+    },
+    "loadFailed": "Could not load your security settings."
   },
   "profile": {
     "title": "Profile",
@@ -226,7 +231,69 @@
       "unavailable": "Sign in with Slack, and have an admin connect a Slack workspace, to receive alerts as direct messages.",
       "connectButton": "Connect Slack",
       "added": "Slack DM notifications added",
-      "addFailed": "Failed to add Slack DM contact"
+      "addFailed": "Failed to add Slack DM contact",
+      "bannerIntro": "You signed in with Slack ({{workspace}}).",
+      "bannerCta": "Add Slack DM notifications",
+      "bannerSuffix": "to receive incident alerts directly in Slack.",
+      "addButton": "Add Slack DM"
+    },
+    "route": {
+      "updateFailed": "Failed to update notification route",
+      "removed": "Notification contact removed",
+      "removeFailed": "Failed to remove notification contact",
+      "testSent": "Test notification sent",
+      "testFailed": "Failed to send test notification",
+      "browserLabel": "Browser",
+      "sendTestNotification": "Send test notification"
+    },
+    "addContact": {
+      "emailRequired": "Email address is required",
+      "phoneRequired": "Phone number is required",
+      "addFailed": "Failed to add contact",
+      "added": "Notification contact added",
+      "browserPushEnabled": "Browser push notifications enabled",
+      "browserPushFailed": "Failed to enable browser push notifications",
+      "emailPlaceholder": "you@example.com",
+      "phonePlaceholderExample": "+1 555 123 4567",
+      "emailAddressLabel": "Email address",
+      "whatsappNumberLabel": "WhatsApp number",
+      "phoneNumberLabel": "Phone number",
+      "submit": "Add",
+      "addBrowserTitle": "Add browser",
+      "addBrowserDescription": "Receive notifications as browser push alerts on this device."
+    },
+    "page": {
+      "loadFailed": "Failed to load notification settings. Please refresh the page.",
+      "methodsTitle": "Notification methods",
+      "methodsSubtitle": "Configure how you receive incident alerts. All enabled methods fire when an escalation policy targets you.",
+      "noMethods": "No notification methods configured. Add one below.",
+      "addMethodButton": "+ Add method",
+      "loading": "Loading notification settings…"
     }
+  },
+  "device": {
+    "title": "Connect a device",
+    "description": "Approve a sign-in request from the SolidPing command line.",
+    "codeCardTitle": "Enter your one-time code",
+    "codeLabel": "Code",
+    "codePlaceholder": "XXXX-XXXX",
+    "continue": "Continue",
+    "notFoundTitle": "We couldn't find that code",
+    "notFoundDescription": "It may have expired, already been used, or been mistyped. Run <code>sp auth login</code> again to get a fresh code.",
+    "alreadyHandledTitle": "This request was already handled",
+    "alreadyHandledDescription": "Nothing left to do here — start a new login from your terminal if you still need access.",
+    "authorizeTitle": "Authorize this device",
+    "authorizeDescription": "<strong>{{clientName}}</strong> is asking to sign in as you. Approving creates a personal access token for it, valid for 90 days, which you can revoke any time from Account → Tokens.",
+    "organization": "Organization",
+    "organizationHint": "The token will only be able to reach this organization.",
+    "expires": "Expires {{time}}",
+    "deny": "Deny",
+    "approve": "Approve",
+    "approvedTitle": "Device approved",
+    "approvedDescription": "You can close this page and go back to your terminal — the command line will pick the login up within a few seconds.",
+    "deniedTitle": "Device login denied",
+    "deniedDescription": "No token was created. The command line will report that the request was denied.",
+    "approvedToast": "Device approved — return to your terminal",
+    "decisionFailed": "Could not record your decision"
   }
 }

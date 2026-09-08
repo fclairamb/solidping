@@ -87,6 +87,15 @@
       "title": "Aucune notification pour le moment",
       "hint": "Vous n'avez encore été alerté pour aucun incident.",
       "cta": "Paramètres de notification"
+    },
+    "title": "Mes alertes",
+    "description": "Incidents pour lesquels vous avez été alerté(e), du plus récent au plus ancien.",
+    "cardTitle": "Notifications",
+    "cardDescription": "Chaque fois que vous avez été alerté(e) pour un incident.",
+    "columns": {
+      "time": "Heure",
+      "incident": "Incident",
+      "channel": "Canal"
     }
   },
   "notificationFailureReasons": {
@@ -115,5 +124,66 @@
   "serverVersion": {
     "reloadAria": "Recharger pour obtenir la dernière version",
     "stale": "Serveur mis à jour vers {{version}} — recharger pour obtenir la dernière version."
+  },
+  "errorBoundary": {
+    "description": "Une erreur inattendue s'est produite. C'est généralement temporaire — réessayer devrait suffire à rétablir la page.",
+    "technicalDetails": "Détails techniques",
+    "tryAgain": "Réessayer",
+    "reloadPage": "Recharger la page"
+  },
+  "copyToClipboard": "Copier dans le presse-papiers",
+  "copyLabel": "Copier {{label}}",
+  "value": "Valeur",
+  "dnsRecord": {
+    "recordName": "nom de l'enregistrement",
+    "recordValue": "valeur de l'enregistrement"
+  },
+  "toggleSidebar": "Afficher/masquer la barre latérale",
+  "timeAgo": {
+    "copyAria": "Copier l'horodatage {{utcIso}}",
+    "copiedAria": "Copié {{utcIso}}",
+    "copiedTooltip": "Copié — {{tooltipText}}",
+    "justNow": "à l'instant",
+    "minutesAgo": "il y a {{count}} min",
+    "hoursAgo": "il y a {{count}} h",
+    "daysAgo": "il y a {{count}} j",
+    "localSuffix": "locale"
+  },
+  "agentVersion": {
+    "unknown": "inconnu",
+    "drifted": "Décalée",
+    "serverRuns": "Ce serveur exécute la version v{{version}}."
+  },
+  "noData": "Aucune donnée",
+  "labelPicker": {
+    "trigger": "Étiquette",
+    "filterPlaceholder": "Filtrer par étiquette…",
+    "valuePlaceholder": "valeur…",
+    "keyPlaceholderDefault": "clé",
+    "valuePlaceholderDefault": "valeur",
+    "backToKeys": "Retour aux clés",
+    "removeLabel": "Supprimer {{key}}",
+    "alreadyFiltering": "Filtre déjà appliqué sur « {{key}} ».",
+    "useTyped": "Utiliser « {{value}} »",
+    "noLabels": "Aucune étiquette",
+    "noValues": "Aucune valeur",
+    "noMatches": "Aucune correspondance",
+    "keyError": "Utilisez 3 à 51 lettres minuscules, chiffres ou tirets, en commençant par une lettre.",
+    "valueTooLong": "La valeur ne doit pas dépasser {{max}} caractères.",
+    "duplicateKey": "Cette clé est déjà définie — modifiez l'étiquette existante.",
+    "add": "Ajouter"
+  },
+  "notFoundPage": {
+    "title": "Page introuvable",
+    "description": "La page que vous recherchez n'existe pas ou a peut-être été déplacée.",
+    "backHome": "Retour à l'accueil"
+  },
+  "notificationSources": {
+    "checkConnection": "Canal du contrôle",
+    "escalationStep": "Étape d'escalade",
+    "onCallSchedule": "Planning d'astreinte",
+    "allAdmins": "Tous les administrateurs",
+    "escalationConnection": "Canal d'escalade",
+    "cycle": "cycle {{cycle}}"
   }
 }

@@ -165,7 +165,13 @@ function statusCodeVariant(
 }
 
 /** Delivery section: HTTP status badge, duration, request URL, bodies. */
-function DeliverySection({ notif }: { notif: IncidentNotification }) {
+function DeliverySection({
+  notif,
+  t,
+}: {
+  notif: IncidentNotification;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
   const d = notif.deliveryDetails;
   if (!d) return null;
 
@@ -191,13 +197,13 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Delivery</CardTitle>
+        <CardTitle className="text-base">{t("notificationDetail.delivery.title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {d.httpStatusCode !== undefined && d.httpStatusCode > 0 && (
             <span className="flex items-center gap-2">
-              <span className="text-muted-foreground">Status:</span>
+              <span className="text-muted-foreground">{t("notificationDetail.delivery.status")}</span>
               <Badge variant={statusCodeVariant(d.httpStatusCode)}>
                 {d.httpStatusCode}
               </Badge>
@@ -213,18 +219,18 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 
         {d.requestUrl && (
           <div className="space-y-1">
-            <div className="text-muted-foreground text-xs">Request URL</div>
-            <CopyableInline value={d.requestUrl} label="request URL" />
+            <div className="text-muted-foreground text-xs">{t("notificationDetail.delivery.requestUrl")}</div>
+            <CopyableInline value={d.requestUrl} label={t("notificationDetail.delivery.requestUrlLabel")} />
           </div>
         )}
 
         {d.requestBody && (
-          <CollapsibleCode label="Request payload" value={d.requestBody} />
+          <CollapsibleCode label={t("notificationDetail.delivery.requestPayload")} value={d.requestBody} />
         )}
 
         {d.responseBody && (
           <CollapsibleCode
-            label={isEmail ? "SMTP server response" : "Response body"}
+            label={isEmail ? t("notificationDetail.delivery.smtpResponse") : t("notificationDetail.delivery.responseBody")}
             value={d.responseBody}
             defaultOpen={notif.status === "failed"}
           />
@@ -232,7 +238,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 
         {headerEntries.length > 0 && (
           <div className="space-y-1">
-            <div className="text-muted-foreground text-xs">Response headers</div>
+            <div className="text-muted-foreground text-xs">{t("notificationDetail.delivery.responseHeaders")}</div>
             <div className="space-y-1">
               {headerEntries.map(([name, val]) => (
                 <div key={name} className="flex flex-wrap gap-x-2 font-mono text-xs">
@@ -246,8 +252,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 
         {isEmail && (
           <p className="text-muted-foreground text-xs">
-            “Sent” means the mail server accepted the message for relay — it does
-            not confirm the message reached the recipient&apos;s inbox.
+            {t("notificationDetail.delivery.emailNote")}
           </p>
         )}
       </CardContent>
@@ -258,6 +263,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 function NotificationDetailPage() {
   const { t } = useTranslation("common");
   const { t: tEvents } = useTranslation("events");
+  const { t: tInt } = useTranslation("integrations");
   const navigate = useNavigate();
   const { org, notificationUid } = Route.useParams();
   const { from } = Route.useSearch();
@@ -289,10 +295,10 @@ function NotificationDetailPage() {
   };
 
   const backLabel = fromParsed?.type === "incident"
-    ? "Back to incident"
+    ? tInt("notificationDetail.backToIncident")
     : fromParsed?.type === "integration"
-      ? "Back to integration"
-      : "Back to incidents";
+      ? tInt("notificationDetail.backToIntegration")
+      : tInt("notificationDetail.backToIncidents");
 
   const errorBackTo = fromParsed?.type === "incident"
     ? `/orgs/${org}/incidents/${fromParsed.uid}` as const
@@ -316,7 +322,7 @@ function NotificationDetailPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Notification"
+        resource={tInt("notificationDetail.title")}
         backTo={errorBackTo}
         backLabel={backLabel}
         onRetry={() => void refetch()}
@@ -334,7 +340,7 @@ function NotificationDetailPage() {
         <Button variant="ghost" size="icon" onClick={goBack} aria-label={backLabel}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h1 className="text-2xl font-semibold">Notification</h1>
+        <h1 className="text-2xl font-semibold">{tInt("notificationDetail.title")}</h1>
         <Badge
           variant={notificationStatusVariant(data.status)}
           className="capitalize"
@@ -349,31 +355,31 @@ function NotificationDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Delivery timeline</CardTitle>
+          <CardTitle className="text-base">{tInt("notificationDetail.timeline.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <TimelineRow
             icon={<Clock className="h-4 w-4" />}
-            label="Created"
+            label={tInt("notificationDetail.timeline.created")}
             iso={data.createdAt}
             tone="text-muted-foreground"
           />
           <TimelineRow
             icon={<CheckCircle2 className="h-4 w-4" />}
-            label="Sent"
+            label={tInt("notificationDetail.timeline.sent")}
             iso={data.sentAt}
             tone="text-green-600 dark:text-green-500"
             delta={formatElapsed(data.createdAt, data.sentAt)}
           />
           <TimelineRow
             icon={<XCircle className="h-4 w-4" />}
-            label="Failed"
+            label={tInt("notificationDetail.timeline.failed")}
             iso={data.failedAt}
             tone="text-destructive"
           />
           <TimelineRow
             icon={<Ban className="h-4 w-4" />}
-            label="Cancelled"
+            label={tInt("notificationDetail.timeline.cancelled")}
             iso={data.cancelledAt}
             tone="text-muted-foreground"
           />
@@ -382,7 +388,7 @@ function NotificationDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Target</CardTitle>
+          <CardTitle className="text-base">{tInt("notificationDetail.target.title")}</CardTitle>
         </CardHeader>
         <CardContent className="text-sm">
           <TargetSection org={org} notif={data} />
@@ -391,52 +397,52 @@ function NotificationDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Escalation context</CardTitle>
+          <CardTitle className="text-base">{tInt("notificationDetail.escalationContext.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="flex flex-wrap gap-x-2">
-            <span className="text-muted-foreground">Source:</span>
-            <span>{sourceLabel(data.source, data.repeatIndex)}</span>
+            <span className="text-muted-foreground">{tInt("notificationDetail.escalationContext.source")}</span>
+            <span>{sourceLabel(t, data.source, data.repeatIndex)}</span>
           </div>
           {data.stepUid && (
             <div className="flex flex-wrap items-center gap-x-2">
-              <span className="text-muted-foreground">Step:</span>
+              <span className="text-muted-foreground">{tInt("notificationDetail.escalationContext.step")}</span>
               <code className="font-mono text-xs break-all">{data.stepUid}</code>
             </div>
           )}
           {data.repeatIndex !== undefined && (
             <div className="flex flex-wrap gap-x-2">
-              <span className="text-muted-foreground">Escalation cycle:</span>
+              <span className="text-muted-foreground">{tInt("notificationDetail.escalationContext.cycle")}</span>
               <span>{data.repeatIndex + 1}</span>
             </div>
           )}
           {data.skipReason && (
             <div className="flex flex-wrap gap-x-2">
-              <span className="text-muted-foreground">Skip reason:</span>
+              <span className="text-muted-foreground">{tInt("notificationDetail.escalationContext.skipReason")}</span>
               <span>{failureReasonLabel(t, data.skipReason)}</span>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <DeliverySection notif={data} />
+      <DeliverySection notif={data} t={tInt} />
 
       {hasIdentifiers && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Identifiers</CardTitle>
+            <CardTitle className="text-base">{tInt("notificationDetail.identifiers.title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {data.messageId && (
               <div className="space-y-1">
-                <div className="text-muted-foreground text-xs">Message ID</div>
-                <CopyableInline value={data.messageId} label="message ID" />
+                <div className="text-muted-foreground text-xs">{tInt("notificationDetail.identifiers.messageId")}</div>
+                <CopyableInline value={data.messageId} label={tInt("notificationDetail.identifiers.messageIdLabel")} />
               </div>
             )}
             {data.jobUid && (
               <div className="space-y-1">
-                <div className="text-muted-foreground text-xs">Job UID</div>
-                <CopyableInline value={data.jobUid} label="job UID" />
+                <div className="text-muted-foreground text-xs">{tInt("notificationDetail.identifiers.jobUid")}</div>
+                <CopyableInline value={data.jobUid} label={tInt("notificationDetail.identifiers.jobUidLabel")} />
               </div>
             )}
           </CardContent>
@@ -446,7 +452,7 @@ function NotificationDetailPage() {
       {data.error && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base text-destructive">Error</CardTitle>
+            <CardTitle className="text-base text-destructive">{tInt("notificationDetail.error.title")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-start gap-2">
@@ -455,7 +461,7 @@ function NotificationDetailPage() {
               </pre>
               <CopyableInline
                 value={data.error}
-                label="error"
+                label={tInt("notificationDetail.error.label")}
                 inline={false}
                 size="md"
               />

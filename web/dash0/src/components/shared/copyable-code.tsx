@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check, ChevronRight, Copy } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /** Shared "copied" reset delay for the copy-to-clipboard affordance below. */
 const COPIED_RESET_MS = 1500;
@@ -28,6 +29,7 @@ export function CopyableCode({
   code: string;
   "data-testid"?: string;
 }) {
+  const { t } = useTranslation("common");
   const [copied, setCopied] = useState(false);
 
   const onCopy = () =>
@@ -44,7 +46,7 @@ export function CopyableCode({
       <button
         type="button"
         onClick={onCopy}
-        aria-label={copied ? "Copied" : "Copy to clipboard"}
+        aria-label={copied ? t("copied") : t("copyToClipboard")}
         className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -74,6 +76,7 @@ export function CopyableInline({
   inline?: boolean;
   size?: "sm" | "md";
 }) {
+  const { t } = useTranslation("common");
   const [copied, setCopied] = useState(false);
 
   const onCopy = () =>
@@ -89,7 +92,9 @@ export function CopyableInline({
     <button
       type="button"
       onClick={onCopy}
-      aria-label={copied ? "Copied" : `Copy ${label ?? "value"}`}
+      aria-label={
+        copied ? t("copied") : t("copyLabel", { label: label ?? t("value") })
+      }
       className={`inline-flex ${buttonSizeClass} shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground`}
     >
       {copied ? (
@@ -128,6 +133,7 @@ export function CollapsibleCode({
   defaultOpen?: boolean;
   "data-testid"?: string;
 }) {
+  const { t } = useTranslation("common");
   const [copied, setCopied] = useState(false);
 
   const onCopy = () =>
@@ -153,7 +159,7 @@ export function CollapsibleCode({
             e.preventDefault();
             onCopy();
           }}
-          aria-label={copied ? "Copied" : `Copy ${label}`}
+          aria-label={copied ? t("copied") : t("copyLabel", { label })}
           className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
         >
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}

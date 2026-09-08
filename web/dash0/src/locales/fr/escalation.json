@@ -24,7 +24,8 @@
     "stepsLabel_one": "étape",
     "stepsLabel_other": "étapes",
     "deleteUsage": "Utilisé par {{checks}} checks et {{groups}} groupes — ils reviendront à l'escalade héritée.",
-    "silentBadge": "0 étape — silencieux"
+    "silentBadge": "0 étape — silencieux",
+    "silentBadgeTooltip": "Politique sans étape — ne page personne"
   },
   "new": {
     "title": "Nouvelle politique d'escalade"

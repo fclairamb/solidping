@@ -61,10 +61,11 @@ export const sslModule: CheckTypeModule<SslState> = {
 };
 
 function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -103,7 +104,7 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="serverName">Server Name (SNI, optional)</Label>
+        <Label htmlFor="serverName">{t("misc.serverNameSniOptional")}</Label>
         <Input
           id="serverName"
           type="text"
@@ -115,7 +116,7 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 w-40">
-          <Label htmlFor="criticalDays">Critical (days)</Label>
+          <Label htmlFor="criticalDays">{t("form.criticalDaysLabel")}</Label>
           <Input
             id="criticalDays"
             type="number"
@@ -125,11 +126,11 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
             data-testid="check-critical-days-input"
           />
           <p className="text-xs text-muted-foreground">
-            Down (pages) at or below this.
+            {t("form.criticalDaysHelp")}
           </p>
         </div>
         <div className="space-y-2 w-40">
-          <Label htmlFor="warningDays">Warning (days)</Label>
+          <Label htmlFor="warningDays">{t("form.warningDaysLabel")}</Label>
           <Input
             id="warningDays"
             type="number"
@@ -139,7 +140,7 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
             data-testid="check-warning-days-input"
           />
           <p className="text-xs text-muted-foreground">
-            Amber warning (no page) at or below this. Must be ≥ Critical.
+            {t("form.warningDaysHelp")}
           </p>
         </div>
       </div>
@@ -183,10 +184,11 @@ export const ntpModule: CheckTypeModule<NtpState> = {
 };
 
 function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -225,7 +227,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
         )}
       </div>
       <div className="space-y-2 w-40">
-        <Label htmlFor="ntpVersion">Version</Label>
+        <Label htmlFor="ntpVersion">{t("misc.version")}</Label>
         <Select
           value={state.version}
           onValueChange={(version) => onChange({ ...state, version })}
@@ -241,7 +243,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 w-40">
-          <Label htmlFor="ntpOffsetCritMs">Offset critical (ms)</Label>
+          <Label htmlFor="ntpOffsetCritMs">{t("misc.offsetCriticalMs")}</Label>
           <Input
             id="ntpOffsetCritMs"
             type="number"
@@ -252,11 +254,11 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
             data-testid="check-ntp-offset-crit-input"
           />
           <p className="text-xs text-muted-foreground">
-            Down (pages) when |offset| exceeds this. Worker-relative.
+            {t("misc.offsetCriticalHelp")}
           </p>
         </div>
         <div className="space-y-2 w-40">
-          <Label htmlFor="ntpOffsetWarnMs">Offset warning (ms)</Label>
+          <Label htmlFor="ntpOffsetWarnMs">{t("misc.offsetWarningMs")}</Label>
           <Input
             id="ntpOffsetWarnMs"
             type="number"
@@ -267,12 +269,12 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
             data-testid="check-ntp-offset-warn-input"
           />
           <p className="text-xs text-muted-foreground">
-            Amber (no page) when |offset| exceeds this. Must be ≤ Critical.
+            {t("misc.offsetWarningHelp")}
           </p>
         </div>
       </div>
       <div className="space-y-2 w-40">
-        <Label htmlFor="ntpMaxStratum">Max stratum (optional)</Label>
+        <Label htmlFor="ntpMaxStratum">{t("misc.maxStratumOptional")}</Label>
         <Input
           id="ntpMaxStratum"
           type="number"
@@ -284,7 +286,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
           data-testid="check-ntp-max-stratum-input"
         />
         <p className="text-xs text-muted-foreground">
-          Down when the server's stratum exceeds this (1–15).
+          {t("misc.maxStratumHelp")}
         </p>
       </div>
     </>
@@ -322,10 +324,11 @@ export const rdpModule: CheckTypeModule<RdpState> = {
 };
 
 function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -371,17 +374,16 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             data-testid="check-rdp-require-nla-checkbox"
           />
           <span className="text-sm">
-            Require NLA (Network Level Authentication)
+            {t("misc.requireNla")}
           </span>
         </label>
         <p className="text-xs text-muted-foreground">
-          Down when the server does not select CredSSP — catches NLA silently
-          disabled by policy.
+          {t("misc.requireNlaHelp")}
         </p>
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 w-40">
-          <Label htmlFor="rdpCriticalDays">Cert critical (days)</Label>
+          <Label htmlFor="rdpCriticalDays">{t("misc.certCriticalDays")}</Label>
           <Input
             id="rdpCriticalDays"
             type="number"
@@ -392,11 +394,11 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             data-testid="check-rdp-critical-days-input"
           />
           <p className="text-xs text-muted-foreground">
-            Down (pages) when the certificate expires in at most this many days.
+            {t("misc.rdpCertCriticalHelp")}
           </p>
         </div>
         <div className="space-y-2 w-40">
-          <Label htmlFor="rdpWarningDays">Cert warning (days)</Label>
+          <Label htmlFor="rdpWarningDays">{t("misc.certWarningDays")}</Label>
           <Input
             id="rdpWarningDays"
             type="number"
@@ -407,13 +409,12 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             data-testid="check-rdp-warning-days-input"
           />
           <p className="text-xs text-muted-foreground">
-            Amber warning (no page). Must be ≥ Critical.
+            {t("misc.rdpCertWarningHelp")}
           </p>
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Pre-auth handshake only — no credentials are sent. Workers need network
-        access to the RDP host (typically internal).
+        {t("misc.rdpPreAuthHelp")}
       </p>
     </>
   );
@@ -619,9 +620,10 @@ export const jsModule: CheckTypeModule<JsState> = {
 };
 
 function JsFields({ state, onChange, errors }: CheckTypeFieldsProps<JsState>) {
+  const { t } = useTranslation("checks");
   return (
     <div className="space-y-2">
-      <Label htmlFor="script">Script</Label>
+      <Label htmlFor="script">{t("misc.script")}</Label>
       <CodeMirror
         value={state.script}
         onChange={(value) => onChange({ ...state, script: value })}
@@ -642,9 +644,7 @@ function JsFields({ state, onChange, errors }: CheckTypeFieldsProps<JsState>) {
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        JavaScript script that returns an object with status (&quot;up&quot;,
-        &quot;down&quot;, or &quot;error&quot;), optional metrics, and optional
-        output.
+        {t("misc.scriptHelp")}
       </p>
     </div>
   );
@@ -678,18 +678,17 @@ export const sleepModule: CheckTypeModule<SleepState> = {
 };
 
 function SleepFields({ state, onChange, errors }: CheckTypeFieldsProps<SleepState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <Alert>
         <AlertDescription className="text-xs">
-          Synthetic checker — sleeps for the configured duration and performs no
-          network I/O. Useful for testing scheduler/load behavior, not a real
-          availability probe.
+          {t("misc.sleepSyntheticHelp")}
         </AlertDescription>
       </Alert>
       <div className="flex gap-4">
         <div className="space-y-2 w-40">
-          <Label htmlFor="sleepMs">Sleep duration (ms)</Label>
+          <Label htmlFor="sleepMs">{t("misc.sleepDurationMs")}</Label>
           <Input
             id="sleepMs"
             type="number"
@@ -707,7 +706,7 @@ function SleepFields({ state, onChange, errors }: CheckTypeFieldsProps<SleepStat
           )}
         </div>
         <div className="space-y-2 w-40">
-          <Label htmlFor="jitterMs">Jitter (ms, optional)</Label>
+          <Label htmlFor="jitterMs">{t("misc.jitterMsOptional")}</Label>
           <Input
             id="jitterMs"
             type="number"
@@ -726,11 +725,10 @@ function SleepFields({ state, onChange, errors }: CheckTypeFieldsProps<SleepStat
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        ± random variation applied to the sleep duration. Must be less than the
-        sleep duration itself.
+        {t("misc.jitterHelp")}
       </p>
       <div className="space-y-2 w-40">
-        <Label htmlFor="sleepStatus">Forced status (optional)</Label>
+        <Label htmlFor="sleepStatus">{t("misc.forcedStatusOptional")}</Label>
         <Select
           value={state.status}
           onValueChange={(status) => onChange({ ...state, status })}
@@ -739,10 +737,10 @@ function SleepFields({ state, onChange, errors }: CheckTypeFieldsProps<SleepStat
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="up">Up (default)</SelectItem>
-            <SelectItem value="down">Down</SelectItem>
-            <SelectItem value="timeout">Timeout</SelectItem>
-            <SelectItem value="error">Error</SelectItem>
+            <SelectItem value="up">{t("misc.statusUpDefault")}</SelectItem>
+            <SelectItem value="down">{t("status.down")}</SelectItem>
+            <SelectItem value="timeout">{t("misc.statusTimeout")}</SelectItem>
+            <SelectItem value="error">{t("misc.statusError")}</SelectItem>
           </SelectContent>
         </Select>
         {getFieldError(errors, "status") && (
@@ -762,13 +760,17 @@ export const heartbeatModule: CheckTypeModule<EmptyState> = {
   types: ["heartbeat"],
   fromConfig: () => ({}),
   toConfig: () => ({ config: {}, errors: [] }),
-  Fields: () => (
-    <p className="text-sm text-muted-foreground">
-      No additional configuration needed. A heartbeat URL will be generated after
-      creation.
-    </p>
-  ),
+  Fields: HeartbeatFields,
 };
+
+function HeartbeatFields() {
+  const { t } = useTranslation("checks");
+  return (
+    <p className="text-sm text-muted-foreground">
+      {t("misc.heartbeatHelp")}
+    </p>
+  );
+}
 
 // ── Email (passive) ──
 export const emailModule: CheckTypeModule<EmptyState> = {
@@ -779,23 +781,18 @@ export const emailModule: CheckTypeModule<EmptyState> = {
 };
 
 function EmailFields() {
+  const { t } = useTranslation("checks");
   const { data: emailDomain } = useEmailAddressDomain();
   if (!emailDomain) {
     return (
       <Alert variant="destructive">
-        <AlertDescription>
-          Email inbox not configured. Ask your administrator to set it up under
-          Server &rarr; Email Inbox.
-        </AlertDescription>
+        <AlertDescription>{t("mail.emailInboxNotConfigured")}</AlertDescription>
       </Alert>
     );
   }
   return (
     <p className="text-sm text-muted-foreground">
-      An email address will be generated for this check. Send any email to that
-      address to report a successful run. Use plus-addressing (
-      <code className="font-mono">token+down@…</code>) or{" "}
-      <code className="font-mono">[DOWN]</code> in the subject to report failure.
+      {t("misc.emailGeneratedHelp")}
     </p>
   );
 }

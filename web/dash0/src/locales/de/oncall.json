@@ -14,7 +14,8 @@
       "timezone": "Zeitzone",
       "rotation": "Rotation",
       "currentlyOnCall": "Aktuell in Bereitschaft"
-    }
+    },
+    "activeOnDuty": "Derzeit im Bereitschaftsdienst"
   },
   "detail": {
     "back": "Zurück zu den Plänen",

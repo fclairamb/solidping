@@ -18,6 +18,7 @@
 // internally designed icon set (24x24, ~2px stroke) can replace entries
 // here later with no call-site changes.
 import type { ComponentType, SVGProps } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Activity,
   AppWindow,
@@ -218,6 +219,18 @@ const CHECK_TYPE_BADGE_BASE = "text-[10px] font-mono font-medium uppercase px-1.
  * chip itself is noise, and the label is the signal. The tint is decoration
  * layered on the label; the label alone is never dropped.
  */
+// TRANSLATABLE_LABEL_KEYS maps the handful of ordinary-word labels in
+// CHECK_TYPE_IDENTITY (as opposed to protocol/product names, which are never
+// translated) to their locale key. Only rendering is translated here —
+// getCheckTypeIdentity keeps returning the literal English label, since other
+// call sites may compare against it.
+const TRANSLATABLE_LABEL_KEYS: Record<string, string> = {
+  Domain: "types.domain",
+  Email: "types.email",
+  Sleep: "types.sleep",
+  Unknown: "status.unknown",
+};
+
 export function CheckTypeBadge({
   type,
   className,
@@ -225,14 +238,17 @@ export function CheckTypeBadge({
   type?: string;
   className?: string;
 }) {
+  const { t } = useTranslation("checks");
   const identity = getCheckTypeIdentity(type);
+  const translationKey = TRANSLATABLE_LABEL_KEYS[identity.label];
+  const label = translationKey ? t(translationKey) : identity.label;
   return (
     <Badge
       variant="outline"
       className={cn(CHECK_TYPE_BADGE_BASE, identity.tone, className)}
       title={type}
     >
-      {identity.label}
+      {label}
     </Badge>
   );
 }

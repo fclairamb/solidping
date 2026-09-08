@@ -313,7 +313,7 @@ function IncidentStatusUpdateDialog({
             ? new Date(form.publishedAt).toISOString()
             : undefined,
         });
-        toast.success("Status update saved");
+        toast.success(t("statusUpdatesCard.dialog.saved"));
       } else {
         const req: CreateStatusUpdateRequest = {
           statusPageUid: form.statusPageUid,
@@ -327,11 +327,11 @@ function IncidentStatusUpdateDialog({
             : undefined,
         };
         await createMutation.mutateAsync(req);
-        toast.success("Status update added");
+        toast.success(t("statusUpdatesCard.dialog.added"));
       }
       onClose();
     } catch {
-      toast.error("Failed to save status update");
+      toast.error(t("statusUpdatesCard.dialog.saveFailed"));
     }
   };
 
@@ -342,16 +342,18 @@ function IncidentStatusUpdateDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {editTarget ? "Edit status update" : "Add status update"}
+            {editTarget
+              ? t("statusUpdatesCard.dialog.editTitle")
+              : t("statusUpdatesCard.dialog.addTitle")}
           </DialogTitle>
           <DialogDescription>
-            This update will be linked to this incident on the status page.
+            {t("statusUpdatesCard.dialog.linkedDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {!editTarget && (
             <div className="space-y-1">
-              <Label htmlFor="su-page">Status page</Label>
+              <Label htmlFor="su-page">{t("statusUpdatesCard.dialog.statusPageLabel")}</Label>
               <Select
                 value={form.statusPageUid}
                 onValueChange={(v) =>
@@ -372,7 +374,7 @@ function IncidentStatusUpdateDialog({
             </div>
           )}
           <div className="space-y-1">
-            <Label htmlFor="su-kind">Kind</Label>
+            <Label htmlFor="su-kind">{t("statusUpdatesCard.dialog.kindLabel")}</Label>
             <Select
               value={form.kind}
               onValueChange={(v) => setForm((f) => ({ ...f, kind: v }))}
@@ -390,7 +392,7 @@ function IncidentStatusUpdateDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label htmlFor="su-title">Title</Label>
+            <Label htmlFor="su-title">{t("statusUpdatesCard.dialog.titleLabel")}</Label>
             <Input
               id="su-title"
               value={form.title}
@@ -402,7 +404,7 @@ function IncidentStatusUpdateDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="su-body">Body</Label>
+            <Label htmlFor="su-body">{t("statusUpdatesCard.dialog.bodyLabel")}</Label>
             <Textarea
               id="su-body"
               value={form.bodyMarkdown}
@@ -414,7 +416,7 @@ function IncidentStatusUpdateDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="su-link">Link URL (optional)</Label>
+            <Label htmlFor="su-link">{t("statusUpdatesCard.dialog.linkUrlLabel")}</Label>
             <Input
               id="su-link"
               type="url"
@@ -425,7 +427,7 @@ function IncidentStatusUpdateDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="su-pub">Published at</Label>
+            <Label htmlFor="su-pub">{t("statusUpdatesCard.dialog.publishedAtLabel")}</Label>
             <Input
               id="su-pub"
               type="datetime-local"
@@ -437,7 +439,7 @@ function IncidentStatusUpdateDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("statusUpdatesCard.dialog.cancel")}
             </Button>
             <Button type="submit" disabled={isLoading}>
               {isLoading
@@ -474,9 +476,9 @@ function StatusUpdatesPanel({
     if (!deleteUid) return;
     try {
       await deleteMutation.mutateAsync(deleteUid);
-      toast.success("Status update deleted");
+      toast.success(t("statusUpdatesCard.dialog.deleted"));
     } catch {
-      toast.error("Failed to delete status update");
+      toast.error(t("statusUpdatesCard.dialog.deleteFailed"));
     } finally {
       setDeleteUid(null);
     }
@@ -514,7 +516,7 @@ function StatusUpdatesPanel({
           </div>
         ) : !updates || updates.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No status updates yet for this incident.
+            {t("statusUpdatesCard.empty")}
           </p>
         ) : (
           <div className="space-y-3">
@@ -547,7 +549,7 @@ function StatusUpdatesPanel({
                       setEditTarget(u);
                       setDialogOpen(true);
                     }}
-                    aria-label="Edit"
+                    aria-label={t("statusUpdatesCard.dialog.editAria")}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -556,7 +558,7 @@ function StatusUpdatesPanel({
                     size="icon"
                     className="h-7 w-7 text-destructive hover:text-destructive"
                     onClick={() => setDeleteUid(u.uid)}
-                    aria-label="Delete"
+                    aria-label={t("statusUpdatesCard.dialog.deleteAria")}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -586,18 +588,18 @@ function StatusUpdatesPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete status update?</AlertDialogTitle>
+            <AlertDialogTitle>{t("statusUpdatesCard.dialog.deleteConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the update from the status page.
+              {t("statusUpdatesCard.dialog.deleteConfirmDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("statusUpdatesCard.dialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("statusUpdatesCard.dialog.deleteConfirmAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1874,7 +1876,7 @@ function NotificationsCard({
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {sourceLabel(row.source, row.repeatIndex)}
+                    {sourceLabel(t, row.source, row.repeatIndex)}
                   </TableCell>
                   <TableCell className="text-sm">
                     {channelTypeLabel(t, row.channelType)}

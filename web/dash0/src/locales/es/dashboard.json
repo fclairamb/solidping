@@ -90,7 +90,10 @@
     "issuesSubIncidents_one": "{{count}} incidente activo",
     "issuesSubIncidents_other": "{{count}} incidentes activos",
     "warning": "Algunas comprobaciones degradadas",
-    "warningSub": "Tiempos de espera detectados en {{count}} comprobaciones"
+    "warningSub": "Tiempos de espera detectados en {{count}} comprobaciones",
+    "slaOperational": "SLA de 24 h operativo",
+    "activeOutage": "Interrupción activa",
+    "degradedPerformance": "Rendimiento degradado"
   },
   "kpi": {
     "monitored": "Comprobaciones monitoreadas",
@@ -105,7 +108,11 @@
       "degraded": "Degradado",
       "down": "Caído"
     },
-    "availabilityNoDataSub": "Sin datos aún"
+    "availabilityNoDataSub": "Sin datos aún",
+    "availability": "Disponibilidad 24 h",
+    "availabilitySub": "Estado de disponibilidad de la flota",
+    "activeCount": "{{count}} activos",
+    "totalEndpoints": "{{count}} endpoints en total"
   },
   "glance": {
     "title": "Comprobaciones de un vistazo",

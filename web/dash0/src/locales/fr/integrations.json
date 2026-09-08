@@ -162,7 +162,37 @@
     "sendTest": "Envoyer un test",
     "testDelivered": "Livré",
     "testHelp": "Envoyez une alerte type pour confirmer que cette intégration est bien configurée. Le test utilise les paramètres enregistrés.",
-    "testTitle": "Envoyer une notification de test"
+    "testTitle": "Envoyer une notification de test",
+    "webpushNoSubscriptions": "Aucun appareil abonné pour le moment. Cliquez sur le bouton ci-dessous pour ajouter ce navigateur.",
+    "webpushDefaultDeviceLabel": "Navigateur",
+    "webpushRemoveSubscription": "Supprimer l'abonnement",
+    "discordNoChannelsAvailable": "Aucun salon textuel visible par le bot. Donnez-lui accès à un salon dans Discord d'abord.",
+    "pickChannel": "Choisir un salon…",
+    "searchChannelsPlaceholder": "Rechercher des salons…",
+    "noChannelsFound": "Aucun salon trouvé",
+    "slackWorkspaceLabel": "Espace de travail :",
+    "slackTabChannel": "Salon",
+    "slackTabDirectMessage": "Message direct",
+    "slackInviteBotFirst": "Invitez d'abord le bot dans un salon avec",
+    "slackChannelPrivate": "Privé",
+    "slackBotNotInChannel": "Le bot n'est pas dans le salon — exécutez d'abord /invite @solidping",
+    "pickPerson": "Choisir une personne…",
+    "searchPeoplePlaceholder": "Rechercher des personnes…",
+    "noPeopleFound": "Aucune personne trouvée",
+    "signingSecret": "Secret de signature",
+    "copied": "Copié",
+    "copy": "Copier",
+    "rotate": "Renouveler",
+    "signingSecretMissing": "Aucun secret de signature — il sera généré automatiquement à la prochaine livraison. Renouvelez pour en générer un maintenant.",
+    "generate": "Générer",
+    "signingSecretHelp": "Les webhooks sortants sont signés avec ce secret selon le schéma Standard Webhooks (HMAC-SHA256). Vérifiez-le côté réception.",
+    "rotationBanner": "Secret précédent actif jusqu'au",
+    "rotationBannerHint": "Supprimez-le plus tôt en renouvelant à nouveau.",
+    "slackInstallFailed": "Échec du démarrage de l'installation Slack",
+    "slackLoading": "Chargement…",
+    "slackError": "Impossible de se connecter à l'espace de travail Slack — réinstallez le bot.",
+    "twilioRegion": "Région (optionnel)",
+    "twilioRegionHint": "Laissez vide pour US1 (par défaut). Les identifiants sont liés à une région — le SID et le jeton d'authentification d'un compte ie1 ne fonctionnent que sur ie1 et ne seront pas validés ici s'ils proviennent d'une autre région."
   },
   "freebox": {
     "name": "Freebox",
@@ -256,5 +286,78 @@
     "defaultName": "Alertes email",
     "created": "Alertes email créées",
     "createFailed": "Échec de la configuration des alertes email"
-  }
+  },
+  "notificationDetail": {
+    "title": "Notification",
+    "backToIncident": "Retour à l'incident",
+    "backToIntegration": "Retour à l'intégration",
+    "backToIncidents": "Retour aux incidents",
+    "delivery": {
+      "title": "Livraison",
+      "status": "Statut :",
+      "requestUrl": "URL de la requête",
+      "requestUrlLabel": "URL de la requête",
+      "requestPayload": "Charge utile de la requête",
+      "smtpResponse": "Réponse du serveur SMTP",
+      "responseBody": "Corps de la réponse",
+      "responseHeaders": "En-têtes de la réponse",
+      "emailNote": "« Envoyé » signifie que le serveur de messagerie a accepté le message pour relais — cela ne confirme pas que le message est arrivé dans la boîte de réception du destinataire."
+    },
+    "timeline": {
+      "title": "Chronologie de livraison",
+      "created": "Créée",
+      "sent": "Envoyée",
+      "failed": "Échouée",
+      "cancelled": "Annulée"
+    },
+    "target": {
+      "title": "Cible"
+    },
+    "escalationContext": {
+      "title": "Contexte d'escalade",
+      "source": "Source :",
+      "step": "Étape :",
+      "cycle": "Cycle d'escalade :",
+      "skipReason": "Raison de l'ignorance :"
+    },
+    "identifiers": {
+      "title": "Identifiants",
+      "messageId": "ID du message",
+      "messageIdLabel": "ID du message",
+      "jobUid": "UID de la tâche",
+      "jobUidLabel": "UID de la tâche"
+    },
+    "error": {
+      "title": "Erreur",
+      "label": "erreur"
+    }
+  },
+  "recentNotifications": {
+    "title": "Notifications récentes",
+    "loadFailed": "Échec du chargement des notifications.",
+    "empty": "Aucune notification envoyée via cette intégration pour le moment.",
+    "columns": {
+      "status": "Statut",
+      "channel": "Canal",
+      "event": "Événement",
+      "target": "Cible",
+      "created": "Créée"
+    }
+  },
+  "suppressions": {
+    "title": "Destinataires désabonnés",
+    "resubscribed": "{{email}} réabonné",
+    "resubscribeFailed": "Échec du réabonnement",
+    "loadFailed": "Échec du chargement des destinataires désabonnés.",
+    "empty": "Personne ne s'est désabonné des e-mails d'alerte dans cette organisation.",
+    "columns": {
+      "email": "E-mail",
+      "scope": "Portée",
+      "unsubscribed": "Désabonné"
+    },
+    "allChecks": "Tous les checks",
+    "resubscribeAria": "Réabonner {{email}}"
+  },
+  "deleteConfirmTitle": "Supprimer l'intégration ?",
+  "deleteConfirmBody": "Cela supprimera définitivement « {{name}} »."
 }

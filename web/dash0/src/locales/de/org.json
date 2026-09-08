@@ -262,5 +262,115 @@
     "checkExpires": "Dieser Check läuft jetzt und wird in etwa einer Stunde gelöscht. Registrieren Sie sich kostenlos, um ihn zu behalten.",
     "seededCheck": "Dieser Check gehört zum Demo-Katalog und kann nicht geändert werden. Klonen Sie ihn, um eine bearbeitbare Kopie zu erhalten.",
     "writeRefused": "Dies ist die geteilte öffentliche Live-Demo. Nur die hier von Ihnen erstellten Checks können geändert werden — registrieren Sie sich kostenlos, um alles andere zu ändern."
+  },
+  "privateLocations": {
+    "wizard": {
+      "steps": {
+        "pickLocation": "Standort wählen",
+        "mintToken": "Token erstellen",
+        "runAgent": "Agent starten",
+        "waitForConnection": "Auf Verbindung warten"
+      },
+      "step2": {
+        "expiryFormat": "in ~{{hours}}h ({{date}})",
+        "title": "2. Ein Registrierungstoken erstellen",
+        "description": "Ein einmalig verwendbares Token mit dem Präfix spe_, das genau einem Agenten die Registrierung in diesem Standort erlaubt.",
+        "explain": "Der Token wird genau einmal angezeigt — der Server speichert nur seinen Hash — und läuft standardmäßig nach 24 Stunden ab.",
+        "mint": "Registrierungstoken erstellen",
+        "onceTitle": "Kopieren Sie ihn jetzt — Sie werden ihn nicht wiedersehen",
+        "onceDescription": "Dieser Token läuft {{expiry}} ab und registriert genau einen Agenten. Wenn Sie ihn verlieren, erstellen Sie einen neuen.",
+        "continue": "Weiter"
+      },
+      "title": "Agent registrieren",
+      "subtitle": "Eine geführte Anleitung zur Registrierung eines privaten Agenten in einem Ihrer privaten Standorte.",
+      "back": "Zurück",
+      "changeLocation": "Ändern",
+      "step1": {
+        "title": "1. Standort auswählen oder erstellen",
+        "description": "Der Agent registriert sich in einem organisationsprivaten Standort. Wählen Sie einen vorhandenen aus oder erstellen Sie unten einen neuen.",
+        "agentCount": "{{count}} Agenten",
+        "empty": "Noch keine privaten Standorte — erstellen Sie unten einen, um loszulegen.",
+        "createTitle": "Oder einen neuen Standort erstellen",
+        "create": "Erstellen und fortfahren"
+      },
+      "step3": {
+        "title": "3. Agent ausführen",
+        "description": "Der Agent ist der Standard-SolidPing-Container im Agentenmodus — kein separates Binary, keine Datenbank.",
+        "gotchasTitle": "Zwei Dinge, die Sie wissen sollten",
+        "gotcha1": "Der Token ist einmalig verwendbar: Er registriert genau einen Agenten und wird dann verbraucht.",
+        "gotcha2": "Der Agent speichert seine Identität dauerhaft in /data/agent-keys.json (SP_AGENT_KEYS_FILE) — dieses Volume muss Neustarts überstehen, sonst registriert sich der Agent erneut mit einer neuen Identität.",
+        "k8sNote": "Dieser erste Lauf persistiert die Identität auf einer PVC, genau wie das docker-run-Volume. Für eine Einrichtung ohne persistentes Volume lesen Sie den Wert aus der vom Agenten geschriebenen Datei (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) und speichern Sie ihn als SP_AGENT_KEYS in einem Secret. Der Agent gibt seine privaten Schlüssel niemals in den Logs aus — siehe den Dokumentationslink oben auf dieser Karte.",
+        "continue": "Weiter — ich habe den Agenten gestartet"
+      },
+      "step4": {
+        "successTitle": "Agent verbunden!",
+        "successDescription": "{{name}} ist jetzt in {{region}} registriert.",
+        "nextStep": "Diesen Standort von einem Check aus ansteuern",
+        "errorTitle": "Der Agent hat sich nicht verbunden",
+        "expiredTitle": "Token abgelaufen",
+        "consumedTitle": "Token nicht mehr verfügbar",
+        "expiredDescription": "Dieses Registrierungstoken ist abgelaufen, bevor ein Agent es verwendet hat.",
+        "consumedDescription": "Dieser Token wurde bereits verwendet oder wurde anderswo abgebrochen.",
+        "retry": "Neues Token erstellen",
+        "waitingTitle": "4. Warten auf die Verbindung des Agenten",
+        "waitingDescription": "Dies wird automatisch aktualisiert, sobald sich der Agent registriert — kein Neuladen nötig."
+      }
+    },
+    "regions": {
+      "title": "Private Standorte",
+      "description": "Organisationsprivate Regionen, bedient von privaten Agenten, die Sie in Ihrem eigenen Netzwerk betreiben. Agenten verbinden sich nur ausgehend — keine eingehenden Ports.",
+      "registerAgent": "Agent registrieren",
+      "emptyPrefix": "Noch keine privaten Standorte. Folgen Sie der ",
+      "emptyLinkText": "geführten Einrichtung",
+      "emptySuffix": ", oder erstellen Sie unten manuell einen.",
+      "name": "Name",
+      "region": "Region",
+      "agents": "Agenten",
+      "ipv6": "IPv6",
+      "actions": "Aktionen",
+      "mint": "Neues Registrierungstoken",
+      "delete": "Standort löschen",
+      "slug": "Slug",
+      "displayName": "Anzeigename",
+      "create": "Standort hinzufügen",
+      "deleteTitle": "Privaten Standort löschen?",
+      "deleteDescription": "Checks, die auf diesen Standort abzielen, werden dort nicht mehr geplant. Standorte mit registrierten Agenten können nicht gelöscht werden — widerrufen Sie zuerst die Agenten.",
+      "deleteConfirm": "Löschen"
+    },
+    "cancel": "Abbrechen",
+    "token": {
+      "title": "Registrierungstoken",
+      "description": "Kopieren Sie ihn jetzt — dieser Token wird nur einmal angezeigt und läuft in 24 Stunden ab. Er registriert genau einen Agenten.",
+      "run": "Führen Sie den Agenten aus mit:"
+    },
+    "agents": {
+      "title": "Agenten",
+      "description": "Registrierte Agenten und ihr Status. Das Widerrufen eines Agenten entzieht ihm sofort den Zugriff; rotieren Sie alle Zugangsdaten, die er entschlüsseln konnte.",
+      "empty": "Noch keine Agenten registriert. Erstellen Sie oben ein Registrierungstoken und starten Sie damit einen Agenten.",
+      "name": "Name",
+      "region": "Region",
+      "fingerprint": "Fingerabdruck",
+      "version": "Version",
+      "lastSeen": "Zuletzt gesehen",
+      "status": "Status",
+      "actions": "Aktionen",
+      "never": "nie",
+      "revoke": "Agent widerrufen",
+      "remove": "Agent entfernen",
+      "removeTitle": "Diesen Agenten entfernen?",
+      "revokeTitle": "Diesen Agenten widerrufen?",
+      "removeDescription": "Dieser Agent ist bereits widerrufen. Ihn zu entfernen löscht ihn sofort aus der Liste, statt auf die automatische Bereinigung nach zwei Tagen zu warten.",
+      "revokeDescription": "Der Agent verliert sofort den Zugriff und erhält keine Checks mehr. Er hat die für ihn versiegelten Zugangsdaten bereits gesehen — rotieren Sie sie. Dies kann nicht rückgängig gemacht werden; registrieren Sie einen neuen Agenten als Ersatz.",
+      "removeConfirm": "Entfernen",
+      "revokeConfirm": "Widerrufen"
+    },
+    "tokens": {
+      "title": "Ausstehende Registrierungstoken",
+      "description": "Unbenutzte Token, die auf einen Agenten warten. Jeder registriert genau einen Agenten und läuft dann ab.",
+      "region": "Region",
+      "expires": "Läuft ab",
+      "actions": "Aktionen",
+      "cancel": "Token abbrechen"
+    }
   }
 }

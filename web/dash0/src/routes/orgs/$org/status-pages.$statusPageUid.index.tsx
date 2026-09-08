@@ -811,7 +811,7 @@ function ResourceRow({
         }),
       ]);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to reorder");
+      toast.error(err instanceof ApiError ? err.message : t("statusPages:resources.reorderFailed"));
     }
   };
 
@@ -849,7 +849,7 @@ function ResourceRow({
         <button
           type="button"
           className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-          aria-label="Drag to reorder"
+          aria-label={t("statusPages:resources.dragHandle")}
           {...attributes}
           {...listeners}
         >
@@ -864,7 +864,7 @@ function ResourceRow({
             className="h-4 w-4 p-0"
             disabled={index === 0 || updateResource.isPending}
             onClick={() => move(-1)}
-            aria-label="Move up"
+            aria-label={t("statusPages:resources.moveUp")}
           >
             <ChevronUp className="h-3 w-3" />
           </Button>
@@ -874,7 +874,7 @@ function ResourceRow({
             className="h-4 w-4 p-0"
             disabled={index === total - 1 || updateResource.isPending}
             onClick={() => move(1)}
-            aria-label="Move down"
+            aria-label={t("statusPages:resources.moveDown")}
           >
             <ChevronDown className="h-3 w-3" />
           </Button>

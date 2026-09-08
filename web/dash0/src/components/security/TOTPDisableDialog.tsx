@@ -39,7 +39,7 @@ export function TOTPDisableDialog({ open, onClose, onConfirm }: TOTPDisableDialo
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError(err instanceof Error ? err.message : "failed");
+        setError(err instanceof Error ? err.message : t("account:security.totp.disableFailed"));
       }
     } finally {
       setLoading(false);

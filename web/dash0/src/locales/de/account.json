@@ -73,7 +73,8 @@
       "changed": "Passwort aktualisiert.",
       "mismatch": "Die beiden neuen Passwörter stimmen nicht überein.",
       "tooShort": "Das Passwort muss mindestens {{min}} Zeichen lang sein.",
-      "invalidCurrent": "Das ist nicht Ihr aktuelles Passwort."
+      "invalidCurrent": "Das ist nicht Ihr aktuelles Passwort.",
+      "failed": "Ihr Passwort konnte nicht geändert werden."
     },
     "passkeys": {
       "title": "Passkeys",
@@ -85,7 +86,9 @@
       "lastUsed": "Last used",
       "renamePrompt": "New name for this passkey:",
       "lastAuthMethod": "Add another passkey or set a password before removing this one.",
-      "unsupported": "This browser does not support passkeys."
+      "unsupported": "This browser does not support passkeys.",
+      "removeFailed": "Passkey konnte nicht entfernt werden.",
+      "renameFailed": "Passkey konnte nicht umbenannt werden."
     },
     "totp": {
       "title": "Two-Factor Authentication (TOTP)",
@@ -109,8 +112,10 @@
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
       "disableSubtitle": "Enter a current 6-digit code to confirm.",
-      "setupFailed": "Unable to set up two-factor authentication. Try again."
-    }
+      "setupFailed": "Unable to set up two-factor authentication. Try again.",
+      "disableFailed": "Zwei-Faktor-Authentifizierung konnte nicht deaktiviert werden."
+    },
+    "loadFailed": "Ihre Sicherheitseinstellungen konnten nicht geladen werden."
   },
   "sessions": {
     "title": "Sitzungen",
@@ -226,7 +231,69 @@
       "unavailable": "Melden Sie sich mit Slack an und lassen Sie eine Administratorin einen Slack-Workspace verbinden, um Warnungen als Direktnachricht zu erhalten.",
       "connectButton": "Slack verbinden",
       "added": "Slack-Direktnachrichten hinzugefügt",
-      "addFailed": "Slack-Kontakt konnte nicht hinzugefügt werden"
+      "addFailed": "Slack-Kontakt konnte nicht hinzugefügt werden",
+      "bannerIntro": "Sie haben sich mit Slack angemeldet ({{workspace}}).",
+      "bannerCta": "Slack-Direktnachrichten-Benachrichtigungen hinzufügen",
+      "bannerSuffix": "um Vorfallswarnungen direkt in Slack zu erhalten.",
+      "addButton": "Slack-DM hinzufügen"
+    },
+    "route": {
+      "updateFailed": "Aktualisierung der Benachrichtigungsroute fehlgeschlagen",
+      "removed": "Benachrichtigungskontakt entfernt",
+      "removeFailed": "Entfernen des Benachrichtigungskontakts fehlgeschlagen",
+      "testSent": "Testbenachrichtigung gesendet",
+      "testFailed": "Senden der Testbenachrichtigung fehlgeschlagen",
+      "browserLabel": "Browser",
+      "sendTestNotification": "Testbenachrichtigung senden"
+    },
+    "addContact": {
+      "emailRequired": "E-Mail-Adresse ist erforderlich",
+      "phoneRequired": "Telefonnummer ist erforderlich",
+      "addFailed": "Hinzufügen des Kontakts fehlgeschlagen",
+      "added": "Benachrichtigungskontakt hinzugefügt",
+      "browserPushEnabled": "Browser-Push-Benachrichtigungen aktiviert",
+      "browserPushFailed": "Aktivierung der Browser-Push-Benachrichtigungen fehlgeschlagen",
+      "emailPlaceholder": "sie@beispiel.com",
+      "phonePlaceholderExample": "+1 555 123 4567",
+      "emailAddressLabel": "E-Mail-Adresse",
+      "whatsappNumberLabel": "WhatsApp-Nummer",
+      "phoneNumberLabel": "Telefonnummer",
+      "submit": "Hinzufügen",
+      "addBrowserTitle": "Browser hinzufügen",
+      "addBrowserDescription": "Erhalten Sie Benachrichtigungen als Browser-Push-Warnungen auf diesem Gerät."
+    },
+    "page": {
+      "loadFailed": "Laden der Benachrichtigungseinstellungen fehlgeschlagen. Bitte laden Sie die Seite neu.",
+      "methodsTitle": "Benachrichtigungsmethoden",
+      "methodsSubtitle": "Konfigurieren Sie, wie Sie Vorfallswarnungen erhalten. Alle aktivierten Methoden werden ausgelöst, wenn eine Eskalationsrichtlinie Sie anspricht.",
+      "noMethods": "Keine Benachrichtigungsmethode konfiguriert. Fügen Sie unten eine hinzu.",
+      "addMethodButton": "+ Methode hinzufügen",
+      "loading": "Benachrichtigungseinstellungen werden geladen…"
     }
+  },
+  "device": {
+    "title": "Gerät verbinden",
+    "description": "Genehmigen Sie eine Anmeldeanfrage von der SolidPing-Kommandozeile.",
+    "codeCardTitle": "Geben Sie Ihren Einmalcode ein",
+    "codeLabel": "Code",
+    "codePlaceholder": "XXXX-XXXX",
+    "continue": "Weiter",
+    "notFoundTitle": "Wir konnten diesen Code nicht finden",
+    "notFoundDescription": "Er ist möglicherweise abgelaufen, wurde bereits verwendet oder falsch eingegeben. Führen Sie <code>sp auth login</code> erneut aus, um einen neuen Code zu erhalten.",
+    "alreadyHandledTitle": "Diese Anfrage wurde bereits bearbeitet",
+    "alreadyHandledDescription": "Hier gibt es nichts mehr zu tun — starten Sie eine neue Anmeldung über Ihr Terminal, falls Sie weiterhin Zugriff benötigen.",
+    "authorizeTitle": "Dieses Gerät autorisieren",
+    "authorizeDescription": "<strong>{{clientName}}</strong> möchte sich als Sie anmelden. Durch die Genehmigung wird ein persönliches Zugriffstoken erstellt, das 90 Tage gültig ist und jederzeit unter Konto → Tokens widerrufen werden kann.",
+    "organization": "Organisation",
+    "organizationHint": "Das Token kann nur auf diese Organisation zugreifen.",
+    "expires": "Läuft ab {{time}}",
+    "deny": "Ablehnen",
+    "approve": "Genehmigen",
+    "approvedTitle": "Gerät genehmigt",
+    "approvedDescription": "Sie können diese Seite schließen und zu Ihrem Terminal zurückkehren — die Kommandozeile erkennt die Anmeldung innerhalb weniger Sekunden.",
+    "deniedTitle": "Geräteanmeldung abgelehnt",
+    "deniedDescription": "Es wurde kein Token erstellt. Die Kommandozeile meldet, dass die Anfrage abgelehnt wurde.",
+    "approvedToast": "Gerät genehmigt — kehren Sie zu Ihrem Terminal zurück",
+    "decisionFailed": "Ihre Entscheidung konnte nicht gespeichert werden"
   }
 }

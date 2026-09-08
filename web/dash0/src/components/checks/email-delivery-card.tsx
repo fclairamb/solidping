@@ -6,6 +6,7 @@
 // the overwhelming majority of email-check results (human/heartbeat-style
 // uses, or a header stripped by an intermediate MTA), so it is safe to mount
 // unconditionally next to DnsblCard on the result-detail page.
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { Mail } from "lucide-react";
 import {
@@ -36,6 +37,7 @@ function formatLatency(latencyMs: unknown): string | null {
 }
 
 export function EmailDeliveryCard({ org, output }: { org: string; output: Output | undefined }) {
+  const { t } = useTranslation("checks");
   if (!isEmailDeliveryOutput(output)) return null;
 
   const sourceCheckUid = output.sourceCheckUid;
@@ -45,21 +47,21 @@ export function EmailDeliveryCard({ org, output }: { org: string; output: Output
   return (
     <Card data-testid="email-delivery-card">
       <CardHeader>
-        <CardTitle className="text-base">Send-mode delivery</CardTitle>
+        <CardTitle className="text-base">{t("mail.sendModeDelivery")}</CardTitle>
         <CardDescription>
-          This email was attributed to a send-mode SMTP check&apos;s probe.
+          {t("mail.sendModeDeliveryDescription")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {latency && (
           <div>
-            <span className="text-muted-foreground">Delivery latency: </span>
+            <span className="text-muted-foreground">{t("mail.deliveryLatency")} </span>
             <code className="font-mono">{latency}</code>
           </div>
         )}
         {sentAt && (
           <div>
-            <span className="text-muted-foreground">Sent at: </span>
+            <span className="text-muted-foreground">{t("mail.sentAt")} </span>
             <code className="font-mono">{new Date(sentAt).toLocaleString()}</code>
           </div>
         )}
@@ -70,7 +72,7 @@ export function EmailDeliveryCard({ org, output }: { org: string; output: Output
           data-testid="email-delivery-source-link"
         >
           <Mail className="h-3.5 w-3.5" />
-          View sending SMTP check
+          {t("mail.viewSendingSmtpCheck")}
         </Link>
       </CardContent>
     </Card>

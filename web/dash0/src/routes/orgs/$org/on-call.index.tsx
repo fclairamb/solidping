@@ -238,7 +238,7 @@ function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
             <div className="flex flex-col">
               <span className="font-medium text-sm text-foreground">{schedule.currentlyOnCall.name}</span>
             </div>
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500" title="Active on duty" />
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" title={t("oncall:list.activeOnDuty")} />
           </div>
         ) : (
           <span className="text-muted-foreground text-xs">

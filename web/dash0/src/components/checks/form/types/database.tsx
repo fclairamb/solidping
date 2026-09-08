@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,11 +45,12 @@ export const sqlDatabaseModule: CheckTypeModule<SqlDbState> = {
 
 function SqlDbFields({ state, onChange }: CheckTypeFieldsProps<SqlDbState>) {
   const { type } = useCheckFormFields();
+  const { t } = useTranslation("checks");
   const isMysql = type === "mysql";
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -71,7 +73,7 @@ function SqlDbFields({ state, onChange }: CheckTypeFieldsProps<SqlDbState>) {
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username</Label>
+        <Label htmlFor="username">{t("form.username")}</Label>
         <Input
           id="username"
           type="text"
@@ -82,7 +84,7 @@ function SqlDbFields({ state, onChange }: CheckTypeFieldsProps<SqlDbState>) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -92,7 +94,7 @@ function SqlDbFields({ state, onChange }: CheckTypeFieldsProps<SqlDbState>) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="database">Database (optional)</Label>
+        <Label htmlFor="database">{t("form.databaseOptional")}</Label>
         <Input
           id="database"
           type="text"
@@ -103,7 +105,7 @@ function SqlDbFields({ state, onChange }: CheckTypeFieldsProps<SqlDbState>) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="query">Query (optional)</Label>
+        <Label htmlFor="query">{t("form.queryOptional")}</Label>
         <Input
           id="query"
           type="text"
@@ -145,10 +147,11 @@ export const redisModule: CheckTypeModule<RedisState> = {
 };
 
 function RedisFields({ state, onChange }: CheckTypeFieldsProps<RedisState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -171,7 +174,7 @@ function RedisFields({ state, onChange }: CheckTypeFieldsProps<RedisState>) {
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -181,7 +184,7 @@ function RedisFields({ state, onChange }: CheckTypeFieldsProps<RedisState>) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="database">Database (optional, 0-15)</Label>
+        <Label htmlFor="database">{t("form.redisDatabaseOptional")}</Label>
         <Input
           id="database"
           type="number"
@@ -228,10 +231,11 @@ export const mongodbModule: CheckTypeModule<MongoState> = {
 };
 
 function MongoFields({ state, onChange }: CheckTypeFieldsProps<MongoState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -254,7 +258,7 @@ function MongoFields({ state, onChange }: CheckTypeFieldsProps<MongoState>) {
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username (optional)</Label>
+        <Label htmlFor="username">{t("form.usernameOptional")}</Label>
         <Input
           id="username"
           type="text"
@@ -265,7 +269,7 @@ function MongoFields({ state, onChange }: CheckTypeFieldsProps<MongoState>) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -275,7 +279,7 @@ function MongoFields({ state, onChange }: CheckTypeFieldsProps<MongoState>) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="database">Database (optional)</Label>
+        <Label htmlFor="database">{t("form.databaseOptional")}</Label>
         <Input
           id="database"
           type="text"
@@ -329,10 +333,11 @@ export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
 };
 
 function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -355,7 +360,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username</Label>
+        <Label htmlFor="username">{t("form.username")}</Label>
         <Input
           id="username"
           type="text"
@@ -366,7 +371,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -376,7 +381,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="vhost">Virtual Host (optional)</Label>
+        <Label htmlFor="vhost">{t("form.virtualHostOptional")}</Label>
         <Input
           id="vhost"
           type="text"
@@ -387,7 +392,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="queue">Queue (optional)</Label>
+        <Label htmlFor="queue">{t("form.queueOptional")}</Label>
         <Input
           id="queue"
           type="text"
@@ -404,7 +409,7 @@ function RabbitmqFields({ state, onChange }: CheckTypeFieldsProps<RabbitmqState>
             onCheckedChange={(v) => onChange({ ...state, tls: v === true })}
             data-testid="check-tls-checkbox"
           />
-          <span className="text-sm">Use TLS</span>
+          <span className="text-sm">{t("form.useTls")}</span>
         </label>
       </div>
     </>

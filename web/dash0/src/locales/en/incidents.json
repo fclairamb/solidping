@@ -225,7 +225,30 @@
     "description": "Narrative updates published to your status page for this incident.",
     "selectStatusPage": "Select a status page",
     "saving": "Saving…",
-    "saveChanges": "Save changes"
+    "saveChanges": "Save changes",
+    "empty": "No status updates yet for this incident.",
+    "dialog": {
+      "addTitle": "Add status update",
+      "editTitle": "Edit status update",
+      "linkedDescription": "This update will be linked to this incident on the status page.",
+      "statusPageLabel": "Status page",
+      "kindLabel": "Kind",
+      "titleLabel": "Title",
+      "bodyLabel": "Body",
+      "linkUrlLabel": "Link URL (optional)",
+      "publishedAtLabel": "Published at",
+      "cancel": "Cancel",
+      "saved": "Status update saved",
+      "added": "Status update added",
+      "saveFailed": "Failed to save status update",
+      "deleted": "Status update deleted",
+      "deleteFailed": "Failed to delete status update",
+      "editAria": "Edit",
+      "deleteAria": "Delete",
+      "deleteConfirmTitle": "Delete status update?",
+      "deleteConfirmDescription": "This will remove the update from the status page.",
+      "deleteConfirmAction": "Delete"
+    }
   },
   "notificationsCard": {
     "title": "Notifications",

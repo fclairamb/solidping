@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import {
   AlertCircle,
   CheckCircle2,
@@ -78,6 +79,7 @@ function formatUserCode(raw: string): string {
 }
 
 function DeviceConsentPage() {
+  const { t } = useTranslation("account");
   const { org } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate();
@@ -127,12 +129,12 @@ function DeviceConsentPage() {
           setDecision(approve ? "approved" : "denied");
           toast.success(
             approve
-              ? "Device approved — return to your terminal"
-              : "Device login denied",
+              ? t("device.approvedToast")
+              : t("device.deniedTitle"),
           );
         },
         onError: () => {
-          toast.error("Could not record your decision");
+          toast.error(t("device.decisionFailed"));
         },
       },
     );
@@ -142,18 +144,18 @@ function DeviceConsentPage() {
     <div className="mx-auto flex w-full max-w-lg flex-col gap-4">
       <PageHeader
         icon={MonitorSmartphone}
-        title="Connect a device"
-        description="Approve a sign-in request from the SolidPing command line."
+        title={t("device.title")}
+        description={t("device.description")}
       />
 
       {decision === null && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Enter your one-time code</CardTitle>
+            <CardTitle className="text-base">{t("device.codeCardTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="device-user-code">Code</Label>
+              <Label htmlFor="device-user-code">{t("device.codeLabel")}</Label>
               <Input
                 id="device-user-code"
                 data-testid="device-user-code"
@@ -161,7 +163,7 @@ function DeviceConsentPage() {
                 autoComplete="off"
                 autoCapitalize="characters"
                 spellCheck={false}
-                placeholder="XXXX-XXXX"
+                placeholder={t("device.codePlaceholder")}
                 className="font-mono text-lg tracking-widest"
                 value={code}
                 onChange={(event) => setCode(formatUserCode(event.target.value))}
@@ -177,7 +179,7 @@ function DeviceConsentPage() {
               disabled={!isCompleteUserCode(code)}
               onClick={lookUp}
             >
-              Continue
+              {t("device.continue")}
             </Button>
           </CardContent>
         </Card>
@@ -195,11 +197,12 @@ function DeviceConsentPage() {
       {decision === null && submitted !== "" && consent.isError && (
         <Alert variant="destructive" data-testid="device-not-found">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>We couldn't find that code</AlertTitle>
+          <AlertTitle>{t("device.notFoundTitle")}</AlertTitle>
           <AlertDescription>
-            It may have expired, already been used, or been mistyped. Run{" "}
-            <code className="font-mono">sp auth login</code> again to get a fresh
-            code.
+            <Trans
+              i18nKey="account:device.notFoundDescription"
+              components={{ code: <code className="font-mono" /> }}
+            />
           </AlertDescription>
         </Alert>
       )}
@@ -207,10 +210,9 @@ function DeviceConsentPage() {
       {decision === null && consent.data && consent.data.status !== "pending" && (
         <Alert data-testid="device-already-decided">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>This request was already handled</AlertTitle>
+          <AlertTitle>{t("device.alreadyHandledTitle")}</AlertTitle>
           <AlertDescription>
-            Nothing left to do here — start a new login from your terminal if you
-            still need access.
+            {t("device.alreadyHandledDescription")}
           </AlertDescription>
         </Alert>
       )}
@@ -220,24 +222,27 @@ function DeviceConsentPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Terminal className="h-4 w-4" />
-              Authorize this device
+              {t("device.authorizeTitle")}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              <span
-                className="font-medium text-foreground"
-                data-testid="device-client-name"
-              >
-                {consent.data.clientName}
-              </span>{" "}
-              is asking to sign in as you. Approving creates a personal access
-              token for it, valid for 90 days, which you can revoke any time from
-              Account &rarr; Tokens.
+              <Trans
+                i18nKey="account:device.authorizeDescription"
+                values={{ clientName: consent.data.clientName }}
+                components={{
+                  strong: (
+                    <span
+                      className="font-medium text-foreground"
+                      data-testid="device-client-name"
+                    />
+                  ),
+                }}
+              />
             </p>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="device-org">Organization</Label>
+              <Label htmlFor="device-org">{t("device.organization")}</Label>
               {isSingleOrg ? (
                 <p
                   className="text-sm font-medium"
@@ -260,12 +265,14 @@ function DeviceConsentPage() {
                 </Select>
               )}
               <p className="text-xs text-muted-foreground">
-                The token will only be able to reach this organization.
+                {t("device.organizationHint")}
               </p>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Expires {new Date(consent.data.expiresAt).toLocaleTimeString()}
+              {t("device.expires", {
+                time: new Date(consent.data.expiresAt).toLocaleTimeString(),
+              })}
             </p>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -277,7 +284,7 @@ function DeviceConsentPage() {
                 disabled={respond.isPending}
                 onClick={() => decide(false)}
               >
-                Deny
+                {t("device.deny")}
               </Button>
               <Button
                 type="button"
@@ -286,7 +293,7 @@ function DeviceConsentPage() {
                 disabled={respond.isPending}
                 onClick={() => decide(true)}
               >
-                Approve
+                {t("device.approve")}
               </Button>
             </div>
           </CardContent>
@@ -296,10 +303,9 @@ function DeviceConsentPage() {
       {decision === "approved" && (
         <Alert data-testid="device-approved">
           <CheckCircle2 className="h-4 w-4" />
-          <AlertTitle>Device approved</AlertTitle>
+          <AlertTitle>{t("device.approvedTitle")}</AlertTitle>
           <AlertDescription>
-            You can close this page and go back to your terminal — the command
-            line will pick the login up within a few seconds.
+            {t("device.approvedDescription")}
           </AlertDescription>
         </Alert>
       )}
@@ -307,10 +313,9 @@ function DeviceConsentPage() {
       {decision === "denied" && (
         <Alert variant="destructive" data-testid="device-denied">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Device login denied</AlertTitle>
+          <AlertTitle>{t("device.deniedTitle")}</AlertTitle>
           <AlertDescription>
-            No token was created. The command line will report that the request
-            was denied.
+            {t("device.deniedDescription")}
           </AlertDescription>
         </Alert>
       )}
