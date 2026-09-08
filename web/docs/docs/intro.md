@@ -62,7 +62,7 @@ Before installing anything, you can look around a real SolidPing instance —
 weeks of history across a real multi-region fleet, a status page, SLOs and an
 escalation policy already firing:
 
-**[https://solidping.io/dash0/login?demo=true](https://solidping.io/dash0/login?demo=true)**
+**[https://solidping.io/demo](https://solidping.io/demo)**
 
 That link signs you in on load — no form, no sign-up. You can create a check
 and watch results arrive, and edit or delete the checks you created; everything
