@@ -29,6 +29,12 @@ const (
 	routeDocs    = "/docs"
 	routeMetrics = "/metrics"
 
+	// The /demo shortcut into the shared public live demo (spec
+	// 2026-09-08-02). Forbidden here for the same reason routeDash0 is: a
+	// customer's status-page domain must never redirect a visitor into the
+	// SolidPing dashboard.
+	routeDemo = "/demo"
+
 	// The embeddable live widget. It is served on a custom host for the same
 	// reason it exists at all: the snippet a customer pastes into their own
 	// site points at the hostname they know their status page by, which for
@@ -431,6 +437,7 @@ func (s *Server) status0StaticAssetExists(reqPath string) bool {
 func isCustomHostForbidden(reqPath string) bool {
 	return reqPath == routeDash0 || strings.HasPrefix(reqPath, routeDash0+"/") ||
 		reqPath == routeDocs || strings.HasPrefix(reqPath, routeDocs+"/") ||
+		reqPath == routeDemo || strings.HasPrefix(reqPath, routeDemo+"/") ||
 		reqPath == "/openapi" || reqPath == "/openapi.yaml" ||
 		reqPath == routeMetrics
 }
