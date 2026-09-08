@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.0](https://github.com/fclairamb/solidping/compare/v0.26.1...v0.27.0) (2026-09-08)
+
+
+### Features
+
+* **server:** /demo enters the live demo when demo mode is on ([#353](https://github.com/fclairamb/solidping/issues/353)) ([58551a6](https://github.com/fclairamb/solidping/commit/58551a6e1b20354a90e8e4a23e4e02748c2843bc))
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#349](https://github.com/fclairamb/solidping/issues/349)) ([9dfe4fd](https://github.com/fclairamb/solidping/commit/9dfe4fd8d5961b598d12f843c62c719c32ab8caa))
+* **deps:** update go dependencies (non-major) ([#352](https://github.com/fclairamb/solidping/issues/352)) ([b7575d0](https://github.com/fclairamb/solidping/commit/b7575d06a7b51a7643029e93432c6521922be038))
+* **deps:** update module golang.org/x/term to v0.46.0 ([#351](https://github.com/fclairamb/solidping/issues/351)) ([acbe8ed](https://github.com/fclairamb/solidping/commit/acbe8ed38e4e563d5803c6ccfeb3f86d45c505d9))
+
 ## [0.26.1](https://github.com/fclairamb/solidping/compare/v0.26.0...v0.26.1) (2026-09-08)
 
 
