@@ -134,10 +134,11 @@ export const grpcModule: CheckTypeModule<GrpcState> = {
 };
 
 function GrpcFields({ state, onChange }: CheckTypeFieldsProps<GrpcState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -158,7 +159,7 @@ function GrpcFields({ state, onChange }: CheckTypeFieldsProps<GrpcState>) {
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="serviceName">Service Name (optional)</Label>
+        <Label htmlFor="serviceName">{t("grpc.serviceNameOptional")}</Label>
         <Input
           id="serviceName"
           type="text"
@@ -167,7 +168,7 @@ function GrpcFields({ state, onChange }: CheckTypeFieldsProps<GrpcState>) {
           onChange={(e) => onChange({ ...state, serviceName: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          Leave empty to check overall server health
+          {t("grpc.serviceNameHelp")}
         </p>
       </div>
       <label className="flex items-center gap-2">
@@ -176,7 +177,7 @@ function GrpcFields({ state, onChange }: CheckTypeFieldsProps<GrpcState>) {
           data-testid="check-grpc-tls-checkbox"
           onCheckedChange={(v) => onChange({ ...state, tls: v === true })}
         />
-        <span className="text-sm">Use TLS</span>
+        <span className="text-sm">{t("form.useTls")}</span>
       </label>
     </>
   );
@@ -451,10 +452,11 @@ export const kafkaModule: CheckTypeModule<KafkaState> = {
 };
 
 function KafkaFields({ state, onChange }: CheckTypeFieldsProps<KafkaState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="brokers">Brokers</Label>
+        <Label htmlFor="brokers">{t("messaging.brokers")}</Label>
         <Input
           id="brokers"
           type="text"
@@ -464,11 +466,11 @@ function KafkaFields({ state, onChange }: CheckTypeFieldsProps<KafkaState>) {
           data-testid="check-brokers-input"
         />
         <p className="text-xs text-muted-foreground">
-          Comma-separated list of broker addresses (host:port)
+          {t("messaging.brokersHelp")}
         </p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="topic">Topic (optional)</Label>
+        <Label htmlFor="topic">{t("messaging.topicOptional")}</Label>
         <Input
           id="topic"
           type="text"
@@ -480,7 +482,7 @@ function KafkaFields({ state, onChange }: CheckTypeFieldsProps<KafkaState>) {
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="username">SASL Username (optional)</Label>
+          <Label htmlFor="username">{t("messaging.saslUsernameOptional")}</Label>
           <Input
             id="username"
             type="text"
@@ -491,7 +493,7 @@ function KafkaFields({ state, onChange }: CheckTypeFieldsProps<KafkaState>) {
           />
         </div>
         <div className="space-y-2 flex-1">
-          <Label htmlFor="password">SASL Password (optional)</Label>
+          <Label htmlFor="password">{t("messaging.saslPasswordOptional")}</Label>
           <Input
             id="password"
             type="password"
@@ -507,7 +509,7 @@ function KafkaFields({ state, onChange }: CheckTypeFieldsProps<KafkaState>) {
             checked={state.tls}
             onCheckedChange={(v) => onChange({ ...state, tls: v === true })}
           />
-          <span className="text-sm">Use TLS</span>
+          <span className="text-sm">{t("form.useTls")}</span>
         </label>
         <label className="flex items-center gap-2">
           <Checkbox
@@ -516,7 +518,7 @@ function KafkaFields({ state, onChange }: CheckTypeFieldsProps<KafkaState>) {
               onChange({ ...state, produceTest: v === true })
             }
           />
-          <span className="text-sm">Test message production (requires topic)</span>
+          <span className="text-sm">{t("messaging.testMessageProduction")}</span>
         </label>
       </div>
     </>
@@ -557,10 +559,11 @@ export const mqttModule: CheckTypeModule<MqttState> = {
 };
 
 function MqttFields({ state, onChange, errors }: CheckTypeFieldsProps<MqttState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -600,7 +603,7 @@ function MqttFields({ state, onChange, errors }: CheckTypeFieldsProps<MqttState>
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="username">Username (optional)</Label>
+          <Label htmlFor="username">{t("form.usernameOptional")}</Label>
           <Input
             id="username"
             type="text"
@@ -611,7 +614,7 @@ function MqttFields({ state, onChange, errors }: CheckTypeFieldsProps<MqttState>
           />
         </div>
         <div className="space-y-2 flex-1">
-          <Label htmlFor="password">Password (optional)</Label>
+          <Label htmlFor="password">{t("form.passwordOptional")}</Label>
           <Input
             id="password"
             type="password"
@@ -622,7 +625,7 @@ function MqttFields({ state, onChange, errors }: CheckTypeFieldsProps<MqttState>
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="topic">Topic (optional)</Label>
+        <Label htmlFor="topic">{t("messaging.topicOptional")}</Label>
         <Input
           id="topic"
           type="text"
@@ -645,7 +648,7 @@ function MqttFields({ state, onChange, errors }: CheckTypeFieldsProps<MqttState>
             onCheckedChange={(v) => onChange({ ...state, tls: v === true })}
             data-testid="check-tls-checkbox"
           />
-          <span className="text-sm">Use TLS (port defaults to 8883)</span>
+          <span className="text-sm">{t("messaging.useTlsPort8883")}</span>
         </label>
       </div>
     </>

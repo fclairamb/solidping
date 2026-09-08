@@ -6,6 +6,7 @@
 // type module. Which types may show it is server-declared capability metadata
 // (`CheckTypeInfo.supportsTunnel`), never a hard-coded list here — the backend
 // enables http + tcp today and more checkers later, with no frontend change.
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
@@ -79,13 +80,14 @@ export function TunnelSelect({
   value,
   onChange,
 }: TunnelSelectProps) {
+  const { t } = useTranslation("checks");
   return (
     <div className="space-y-2">
-      <Label htmlFor="check-tunnel">Run through SSH tunnel (optional)</Label>
+      <Label htmlFor="check-tunnel">{t("tunnel.label")}</Label>
       {sshChecks.length === 0 ? (
         <Alert>
           <AlertDescription>
-            No SSH checks yet.{" "}
+            {t("tunnel.noSshChecksYet")}{" "}
             <Link
               to="/orgs/$org/checks/new"
               params={{ org }}
@@ -121,9 +123,9 @@ export function TunnelSelect({
               className="underline"
               data-testid="tunnel-empty-create-link"
             >
-              Create an SSH check for your bastion
+              {t("tunnel.createSshCheck")}
             </Link>{" "}
-            — this opens a new form, so any unsaved changes here are lost.
+            {t("tunnel.createSshCheckWarning")}
           </AlertDescription>
         </Alert>
       ) : (
@@ -134,11 +136,11 @@ export function TunnelSelect({
           }
         >
           <SelectTrigger id="check-tunnel" data-testid="check-tunnel-select">
-            <SelectValue placeholder="None (direct connection)" />
+            <SelectValue placeholder={t("tunnel.noneDirectConnection")} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={TUNNEL_NONE_VALUE}>
-              None (direct connection)
+              {t("tunnel.noneDirectConnection")}
             </SelectItem>
             {sshChecks.map((check) => {
               const verified = hasFingerprint(check);
@@ -149,9 +151,9 @@ export function TunnelSelect({
               // A fingerprint gap and a region gap are both blocking; report the
               // fingerprint first (it is the harder prerequisite).
               const disabledReason = !verified
-                ? "needs a host key fingerprint"
+                ? t("tunnel.needsHostKeyFingerprint")
                 : uncoveredRegion
-                  ? `not in region ${uncoveredRegion}`
+                  ? t("tunnel.notInRegion", { region: uncoveredRegion })
                   : null;
               return (
                 <SelectItem
@@ -168,11 +170,7 @@ export function TunnelSelect({
         </Select>
       )}
       <p className="text-xs text-muted-foreground">
-        Dial this check&apos;s target through an SSH check&apos;s connection, to
-        reach services behind a bastion. The hostname is resolved by the bastion,
-        so private names work. Tunnel setup time is reported separately as
-        <code className="mx-1">tunnel_setup_ms</code>and excluded from the
-        check&apos;s response time.
+        {t("tunnel.help")}
       </p>
     </div>
   );

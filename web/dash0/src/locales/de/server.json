@@ -16,7 +16,8 @@
     "analytics": "Analyse",
     "discord": "Discord",
     "entitlements": "Kontingente",
-    "notifications": "Benachrichtigungen"
+    "notifications": "Benachrichtigungen",
+    "activation": "Aktivierung"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -452,5 +453,16 @@
     "testDelivered_one": "Test-Benachrichtigung über {{count}} Weg zugestellt.",
     "testDelivered_other": "Test-Benachrichtigung über {{count}} Wege zugestellt.",
     "testUndeliverable": "Es wurde nichts zugestellt. Prüfen Sie, ob Sie mindestens einen aktiven Benachrichtigungsweg haben."
+  },
+  "activation": {
+    "title": "Aktivierungs-Funnel",
+    "description": "Zeitstempel pro Organisation für jeden Aktivierungsschritt.",
+    "error": "Aktivierungs-Funnel konnte nicht geladen werden.",
+    "org": "Organisation",
+    "signup": "Registrierung",
+    "firstCheck": "Erste Prüfung",
+    "firstResult": "Erstes Ergebnis",
+    "firstNotifier": "Erste Benachrichtigung",
+    "firstIncident": "Erste Alarmierung"
   }
 }

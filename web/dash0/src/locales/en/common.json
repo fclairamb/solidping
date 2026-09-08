@@ -87,6 +87,15 @@
       "title": "No notifications yet",
       "hint": "You have not been paged for any incidents yet.",
       "cta": "Notification settings"
+    },
+    "title": "My pages",
+    "description": "Incidents you were paged for, in reverse chronological order.",
+    "cardTitle": "Notifications",
+    "cardDescription": "Every time you were paged for an incident.",
+    "columns": {
+      "time": "Time",
+      "incident": "Incident",
+      "channel": "Channel"
     }
   },
   "notificationFailureReasons": {
@@ -115,5 +124,66 @@
   "serverVersion": {
     "reloadAria": "Reload to get the latest version",
     "stale": "Server updated to {{version}} — reload to get the latest version."
+  },
+  "errorBoundary": {
+    "description": "An unexpected error occurred. This is usually transient — trying again should bring the page back.",
+    "technicalDetails": "Technical details",
+    "tryAgain": "Try again",
+    "reloadPage": "Reload page"
+  },
+  "copyToClipboard": "Copy to clipboard",
+  "copyLabel": "Copy {{label}}",
+  "value": "Value",
+  "dnsRecord": {
+    "recordName": "record name",
+    "recordValue": "record value"
+  },
+  "toggleSidebar": "Toggle Sidebar",
+  "timeAgo": {
+    "copyAria": "Copy timestamp {{utcIso}}",
+    "copiedAria": "Copied {{utcIso}}",
+    "copiedTooltip": "Copied — {{tooltipText}}",
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago",
+    "localSuffix": "local"
+  },
+  "agentVersion": {
+    "unknown": "unknown",
+    "drifted": "Drifted",
+    "serverRuns": "This server runs v{{version}}."
+  },
+  "noData": "No data",
+  "labelPicker": {
+    "trigger": "Label",
+    "filterPlaceholder": "Filter by label…",
+    "valuePlaceholder": "value…",
+    "keyPlaceholderDefault": "key",
+    "valuePlaceholderDefault": "value",
+    "backToKeys": "Back to keys",
+    "removeLabel": "Remove {{key}}",
+    "alreadyFiltering": "Already filtering by “{{key}}”.",
+    "useTyped": "Use “{{value}}”",
+    "noLabels": "No labels",
+    "noValues": "No values",
+    "noMatches": "No matches",
+    "keyError": "Use 3–51 lowercase letters, digits, or hyphens, starting with a letter.",
+    "valueTooLong": "Value must be at most {{max}} characters.",
+    "duplicateKey": "This key is already set — edit the existing label.",
+    "add": "Add"
+  },
+  "notFoundPage": {
+    "title": "Page not found",
+    "description": "The page you’re looking for doesn’t exist or may have moved.",
+    "backHome": "Back home"
+  },
+  "notificationSources": {
+    "checkConnection": "Check connection",
+    "escalationStep": "Escalation step",
+    "onCallSchedule": "On-call schedule",
+    "allAdmins": "All admins",
+    "escalationConnection": "Escalation connection",
+    "cycle": "cycle {{cycle}}"
   }
 }

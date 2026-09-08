@@ -53,7 +53,10 @@
       "description": "Quand un check tombe parce que sa cible n'a pas pu être JOINTE, capturer un traceroute façon MTR et l'attacher à l'incident.",
       "label": "Traceroute en cas de panne réseau",
       "help": "S'applique à tous les checks réglés sur « hériter ». Seuls les échecs d'accessibilité déclenchent une capture : timeouts de connexion, refus, perte ICMP, handshakes TLS bloqués. Un HTTP 5xx, un mot-clé absent ou un certificat qui expire, jamais — le serveur a répondu. Les traces s'exécutent après que le résultat en échec a déjà été rapporté et sont limitées par organisation : elles ne retardent jamais un incident et n'inondent pas une panne massive."
-    }
+    },
+    "defaultEscalation": "Politique d'escalade par défaut",
+    "defaultEscalationDescription": "Appliquée aux checks qui ne résolvent à aucune politique propre (check → groupe → défaut de l'organisation → aucune). Laissez non défini pour aucun repli à l'échelle de l'organisation.",
+    "defaultEscalationNone": "Aucune (pas de repli)"
   },
   "usage": {
     "title": "Utilisation",
@@ -257,6 +260,117 @@
     "readOnly": "Lecture seule dans la démo",
     "readOnlyHint": "Créez un compte gratuit pour modifier ceci.",
     "checkExpires": "Ce check est actif et sera supprimé dans une heure environ. Créez un compte gratuit pour le conserver.",
-    "seededCheck": "Ce check fait partie du catalogue de démonstration et ne peut pas être modifié. Clonez-le pour obtenir une copie modifiable."
+    "seededCheck": "Ce check fait partie du catalogue de démonstration et ne peut pas être modifié. Clonez-le pour obtenir une copie modifiable.",
+    "writeRefused": "Ceci est la démo publique partagée. Seuls les checks que vous créez ici peuvent être modifiés — inscrivez-vous gratuitement pour changer le reste."
+  },
+  "privateLocations": {
+    "wizard": {
+      "steps": {
+        "pickLocation": "Choisir un emplacement",
+        "mintToken": "Émettre un jeton",
+        "runAgent": "Démarrer l'agent",
+        "waitForConnection": "Attendre la connexion"
+      },
+      "step2": {
+        "expiryFormat": "dans ~{{hours}}h ({{date}})",
+        "title": "2. Émettre un jeton d'inscription",
+        "description": "Un jeton à usage unique préfixé spe_ qui permet à exactement un agent de s'inscrire dans cet emplacement.",
+        "explain": "Le jeton n'est affiché qu'une seule fois — le serveur ne stocke que son hash — et expire par défaut après 24 heures.",
+        "mint": "Émettre le jeton d'inscription",
+        "onceTitle": "Copiez-le maintenant — vous ne le reverrez plus",
+        "onceDescription": "Ce jeton expire {{expiry}} et permet d'inscrire exactement un agent. Si vous le perdez, émettez-en un nouveau.",
+        "continue": "Continuer"
+      },
+      "title": "Inscrire un agent",
+      "subtitle": "Un guide pas à pas pour inscrire un agent privé dans l'un de vos emplacements privés.",
+      "back": "Retour",
+      "changeLocation": "Changer",
+      "step1": {
+        "title": "1. Choisir ou créer un emplacement",
+        "description": "L'agent s'inscrit dans un emplacement privé de l'organisation. Choisissez-en un existant ou créez-en un nouveau ci-dessous.",
+        "agentCount": "{{count}} agents",
+        "empty": "Aucun emplacement privé pour le moment — créez-en un ci-dessous pour commencer.",
+        "createTitle": "Ou créer un nouvel emplacement",
+        "create": "Créer et continuer"
+      },
+      "step3": {
+        "title": "3. Exécuter l'agent",
+        "description": "L'agent est le conteneur SolidPing standard en mode agent — pas de binaire séparé, pas de base de données.",
+        "gotchasTitle": "Deux choses à savoir",
+        "gotcha1": "Le jeton est à usage unique : il permet d'inscrire exactement un agent, puis il est consommé.",
+        "gotcha2": "L'agent persiste son identité dans /data/agent-keys.json (SP_AGENT_KEYS_FILE) — ce volume doit survivre aux redémarrages, sinon l'agent s'inscrira à nouveau avec une nouvelle identité.",
+        "k8sNote": "Ce premier lancement persiste l'identité sur un PVC, exactement comme le volume docker run. Pour une configuration sans volume persistant, lisez la valeur dans le fichier écrit par l'agent (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) et stockez-la sous SP_AGENT_KEYS dans un Secret. L'agent n'affiche jamais ses clés privées dans les logs — voir le lien vers la documentation en haut de cette carte.",
+        "continue": "Continuer — j'ai démarré l'agent"
+      },
+      "step4": {
+        "successTitle": "Agent connecté !",
+        "successDescription": "{{name}} est maintenant inscrit dans {{region}}.",
+        "nextStep": "Cibler cet emplacement depuis un check",
+        "errorTitle": "L'agent ne s'est pas connecté",
+        "expiredTitle": "Jeton expiré",
+        "consumedTitle": "Jeton indisponible",
+        "expiredDescription": "Ce jeton d'inscription a expiré avant qu'un agent ne l'utilise.",
+        "consumedDescription": "Ce jeton a déjà été utilisé ou a été annulé ailleurs.",
+        "retry": "Émettre un nouveau jeton",
+        "waitingTitle": "4. En attente de la connexion de l'agent",
+        "waitingDescription": "Cette page se met à jour automatiquement dès que l'agent s'inscrit — inutile de rafraîchir."
+      }
+    },
+    "regions": {
+      "title": "Emplacements privés",
+      "description": "Régions privées de l'organisation, desservies par des agents privés que vous exécutez dans votre propre réseau. Les agents se connectent uniquement en sortie — aucun port entrant.",
+      "registerAgent": "Inscrire un agent",
+      "emptyPrefix": "Aucun emplacement privé pour le moment. Suivez la ",
+      "emptyLinkText": "configuration guidée",
+      "emptySuffix": ", ou créez-en un manuellement ci-dessous.",
+      "name": "Nom",
+      "region": "Région",
+      "agents": "Agents",
+      "ipv6": "IPv6",
+      "actions": "Actions",
+      "mint": "Nouveau jeton d'inscription",
+      "delete": "Supprimer l'emplacement",
+      "slug": "Slug",
+      "displayName": "Nom affiché",
+      "create": "Ajouter un emplacement",
+      "deleteTitle": "Supprimer l'emplacement privé ?",
+      "deleteDescription": "Les checks ciblant cet emplacement cesseront d'y être planifiés. Les emplacements comportant des agents inscrits ne peuvent pas être supprimés — révoquez d'abord les agents.",
+      "deleteConfirm": "Supprimer"
+    },
+    "cancel": "Annuler",
+    "token": {
+      "title": "Jeton d'inscription",
+      "description": "Copiez-le maintenant — ce jeton n'est affiché qu'une seule fois et expire dans 24 heures. Il permet d'inscrire exactement un agent.",
+      "run": "Exécutez l'agent avec :"
+    },
+    "agents": {
+      "title": "Agents",
+      "description": "Agents inscrits et leur statut. Révoquer un agent coupe immédiatement son accès ; faites tourner tous les identifiants qu'il pouvait déchiffrer.",
+      "empty": "Aucun agent inscrit pour le moment. Émettez un jeton d'inscription ci-dessus et démarrez un agent avec.",
+      "name": "Nom",
+      "region": "Région",
+      "fingerprint": "Empreinte",
+      "version": "Version",
+      "lastSeen": "Vu pour la dernière fois",
+      "status": "Statut",
+      "actions": "Actions",
+      "never": "jamais",
+      "revoke": "Révoquer l'agent",
+      "remove": "Retirer l'agent",
+      "removeTitle": "Retirer cet agent ?",
+      "revokeTitle": "Révoquer cet agent ?",
+      "removeDescription": "Cet agent est déjà révoqué. Le retirer l'efface immédiatement de la liste, au lieu d'attendre le nettoyage automatique après deux jours.",
+      "revokeDescription": "L'agent perd immédiatement l'accès et cesse de recevoir des checks. Il a déjà vu les identifiants scellés à son intention — faites-les tourner. Cette action est irréversible ; inscrivez un nouvel agent pour le remplacer.",
+      "removeConfirm": "Retirer",
+      "revokeConfirm": "Révoquer"
+    },
+    "tokens": {
+      "title": "Jetons d'inscription en attente",
+      "description": "Jetons non utilisés en attente d'un agent. Chacun permet d'inscrire exactement un agent, puis expire.",
+      "region": "Région",
+      "expires": "Expire",
+      "actions": "Actions",
+      "cancel": "Annuler le jeton"
+    }
   }
 }

@@ -36,5 +36,28 @@
     "updated": "Status update saved",
     "deleted": "Status update deleted",
     "deleteFailed": "Failed to delete status update"
+  },
+  "form": {
+    "details": "Details",
+    "createDescription": "Publish a new update on your status page.",
+    "editDescription": "Edit this status update.",
+    "statusPage": "Status page",
+    "selectStatusPage": "Select a status page",
+    "section": "Section (optional)",
+    "noSection": "No section",
+    "check": "Check (optional)",
+    "kind": "Kind",
+    "title": "Title",
+    "noCheck": "No check",
+    "titlePlaceholder": "Investigating elevated error rates",
+    "body": "Body",
+    "bodyPlaceholder": "We are investigating an issue with...",
+    "linkUrl": "Link URL (optional)",
+    "linkUrlPlaceholder": "https://status.example.com/incident/123",
+    "publishedAt": "Published at",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "create": "Create",
+    "saveChanges": "Save changes"
   }
 }

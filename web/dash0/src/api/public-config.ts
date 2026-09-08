@@ -99,6 +99,22 @@ export function useInstanceSMSConfig(): SMSPublicConfig {
  * Over the same cached query as the other public-config hooks — one document,
  * one fetch.
  */
+/**
+ * Whether the public-config document has not answered yet.
+ *
+ * Every other hook here deliberately collapses "loading" into "the feature is
+ * off", which is the right default for something that would otherwise flash
+ * into view. The org login page's demo auto-login is the one caller that must
+ * tell the two apart: it decides whether to stand the
+ * redirect-if-already-authenticated effect down, and treating "still loading"
+ * as "no demo" would redirect an authenticated visitor away before the
+ * instance has had a chance to say it has one. Over the same cached query —
+ * no extra request.
+ */
+export function usePublicConfigLoading(): boolean {
+  return usePublicConfig().isPending;
+}
+
 export function useDemoConfig(): DemoPublicConfig {
   const { data } = usePublicConfig();
 

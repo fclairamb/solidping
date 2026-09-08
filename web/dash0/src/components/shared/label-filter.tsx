@@ -1,10 +1,10 @@
 import { Command } from "cmdk";
 import { ChevronLeft, Tags, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useLabelSuggestions } from "@/api/hooks";
 import {
-  KEY_ERROR,
   KEY_REGEX,
   SUGGESTION_DEBOUNCE_MS,
   SUGGESTION_LIMIT,
@@ -27,6 +27,7 @@ export type LabelFilterProps = {
 // Selecting a value applies the filter immediately — there is no Add button.
 // The URL contract (?labels=key:value,…) is owned by the caller via onChange.
 export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
+  const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"key" | "value">("key");
   const [activeKey, setActiveKey] = useState("");
@@ -91,7 +92,7 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
               </span>
               <button
                 type="button"
-                aria-label={`Remove ${k}`}
+                aria-label={t("labelPicker.removeLabel", { key: k })}
                 onClick={() => remove(k)}
                 className="ml-1 rounded-sm p-0.5 hover:bg-foreground/10"
                 data-testid={`label-chip-remove-${k}`}
@@ -118,7 +119,7 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
             data-testid="label-filter-trigger"
           >
             <Tags className="h-4 w-4" />
-            Label
+            {t("labelPicker.trigger")}
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -170,6 +171,7 @@ function KeyStep({
   onChooseKey: (key: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const { t } = useTranslation("common");
   const debounced = useDebounced(keyDraft, SUGGESTION_DEBOUNCE_MS);
   const { data: suggestions = [] } = useLabelSuggestions(org, {
     q: debounced,
@@ -189,7 +191,7 @@ function KeyStep({
         ref={inputRef}
         value={keyDraft}
         onValueChange={onKeyDraftChange}
-        placeholder="Filter by label…"
+        placeholder={t("labelPicker.filterPlaceholder")}
         className="w-full border-0 border-b border-border bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground"
         data-testid="label-filter-key-input"
       />
@@ -199,7 +201,7 @@ function KeyStep({
             className="px-2 py-1.5 text-xs text-muted-foreground"
             data-testid="label-filter-already"
           >
-            Already filtering by “{trimmed}”.
+            {t("labelPicker.alreadyFiltering", { key: trimmed })}
           </p>
         )}
         {showUseTyped && !alreadyFiltering && (
@@ -210,12 +212,12 @@ function KeyStep({
             className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
             data-testid="label-filter-key-use-typed"
           >
-            Use “{trimmed}”
+            {t("labelPicker.useTyped", { value: trimmed })}
           </Command.Item>
         )}
         {suggestions.length === 0 && !showUseTyped && !showKeyError && (
           <Command.Empty className="px-2 py-3 text-center text-xs text-muted-foreground">
-            No labels
+            {t("labelPicker.noLabels")}
           </Command.Empty>
         )}
         {suggestions.map((s) => {
@@ -239,7 +241,7 @@ function KeyStep({
           className="border-t border-border px-3 py-2 text-xs text-destructive"
           data-testid="label-filter-key-error"
         >
-          {KEY_ERROR}
+          {t("labelPicker.keyError")}
         </p>
       )}
     </Command>
@@ -263,6 +265,7 @@ function ValueStep({
   onBack: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const { t } = useTranslation("common");
   const debounced = useDebounced(valueDraft, SUGGESTION_DEBOUNCE_MS);
   const { data: suggestions = [] } = useLabelSuggestions(org, {
     key: activeKey,
@@ -282,7 +285,7 @@ function ValueStep({
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back to keys"
+          aria-label={t("labelPicker.backToKeys")}
           className="inline-flex h-7 items-center gap-0.5 rounded-sm px-1 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
           data-testid="label-filter-back"
         >
@@ -294,7 +297,7 @@ function ValueStep({
           ref={inputRef}
           value={valueDraft}
           onValueChange={onValueDraftChange}
-          placeholder="value…"
+          placeholder={t("labelPicker.valuePlaceholder")}
           className="flex-1 border-0 bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
           data-testid="label-filter-value-input"
         />
@@ -308,12 +311,12 @@ function ValueStep({
             className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
             data-testid="label-filter-value-use-typed"
           >
-            Use “{trimmed}”
+            {t("labelPicker.useTyped", { value: trimmed })}
           </Command.Item>
         )}
         {suggestions.length === 0 && !showUseTyped && (
           <Command.Empty className="px-2 py-3 text-center text-xs text-muted-foreground">
-            No values
+            {t("labelPicker.noValues")}
           </Command.Empty>
         )}
         {suggestions.map((s) => (
@@ -330,7 +333,7 @@ function ValueStep({
       </Command.List>
       {tooLong && (
         <p className="border-t border-border px-3 py-2 text-xs text-destructive">
-          Value must be at most {VALUE_MAX} characters.
+          {t("labelPicker.valueTooLong", { max: VALUE_MAX })}
         </p>
       )}
     </Command>

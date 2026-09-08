@@ -36,5 +36,28 @@
     "updated": "Statusaktualisierung gespeichert",
     "deleted": "Statusaktualisierung gelöscht",
     "deleteFailed": "Statusaktualisierung konnte nicht gelöscht werden"
+  },
+  "form": {
+    "details": "Details",
+    "createDescription": "Ein neues Update auf Ihrer Statusseite veröffentlichen.",
+    "editDescription": "Dieses Status-Update bearbeiten.",
+    "statusPage": "Statusseite",
+    "selectStatusPage": "Statusseite auswählen",
+    "section": "Abschnitt (optional)",
+    "noSection": "Kein Abschnitt",
+    "check": "Check (optional)",
+    "kind": "Art",
+    "title": "Titel",
+    "noCheck": "Kein Check",
+    "titlePlaceholder": "Untersuchung erhöhter Fehlerraten",
+    "body": "Inhalt",
+    "bodyPlaceholder": "Wir untersuchen ein Problem mit...",
+    "linkUrl": "Link-URL (optional)",
+    "linkUrlPlaceholder": "https://status.beispiel.com/incident/123",
+    "publishedAt": "Veröffentlicht am",
+    "cancel": "Abbrechen",
+    "saving": "Wird gespeichert…",
+    "create": "Erstellen",
+    "saveChanges": "Änderungen speichern"
   }
 }

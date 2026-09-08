@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,10 +40,11 @@ function WebsocketFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<WebsocketState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="url">URL</Label>
+        <Label htmlFor="url">{t("form.url")}</Label>
         <Input
           id="url"
           type="url"
@@ -59,7 +61,7 @@ function WebsocketFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="wsSend">Send (optional)</Label>
+        <Label htmlFor="wsSend">{t("web.sendOptional")}</Label>
         <Input
           id="wsSend"
           type="text"
@@ -70,7 +72,7 @@ function WebsocketFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="wsExpect">Expected pattern (regex, optional)</Label>
+        <Label htmlFor="wsExpect">{t("web.expectedPatternOptional")}</Label>
         <Input
           id="wsExpect"
           type="text"
@@ -121,10 +123,11 @@ function BrowserFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<BrowserState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="url">URL</Label>
+        <Label htmlFor="url">{t("form.url")}</Label>
         <Input
           id="url"
           type="url"
@@ -141,7 +144,7 @@ function BrowserFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="waitSelector">Wait Selector (optional)</Label>
+        <Label htmlFor="waitSelector">{t("web.waitSelectorOptional")}</Label>
         <Input
           id="waitSelector"
           type="text"
@@ -150,13 +153,10 @@ function BrowserFields({
           onChange={(e) => onChange({ ...state, waitSelector: e.target.value })}
           data-testid="check-wait-selector-input"
         />
-        <p className="text-xs text-muted-foreground">
-          CSS selector to wait for before checking. Leave empty to wait for
-          body.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("web.waitSelectorHelp")}</p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="keyword">Keyword (optional)</Label>
+        <Label htmlFor="keyword">{t("web.keywordOptional")}</Label>
         <Input
           id="keyword"
           type="text"
@@ -165,9 +165,7 @@ function BrowserFields({
           onChange={(e) => onChange({ ...state, keyword: e.target.value })}
           data-testid="check-keyword-input"
         />
-        <p className="text-xs text-muted-foreground">
-          Text to search for in the rendered page content.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("web.keywordHelp")}</p>
       </div>
       <div className="space-y-2">
         <label className="flex items-center gap-2">
@@ -178,13 +176,9 @@ function BrowserFields({
             }
             data-testid="check-browser-screenshot-checkbox"
           />
-          <span className="text-sm">Capture a screenshot on failure</span>
+          <span className="text-sm">{t("web.captureScreenshotOnFailure")}</span>
         </label>
-        <p className="text-xs text-muted-foreground">
-          Keeps a PNG of the page on the incident this check opens or reopens.
-          Taken just after the failure is detected, from the probing region —
-          evidence, not the failing frame itself. Off by default.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("web.captureScreenshotHelp")}</p>
       </div>
     </>
   );

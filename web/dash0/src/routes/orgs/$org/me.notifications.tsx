@@ -53,13 +53,19 @@ function MyNotificationsPage() {
     <div className="space-y-6" data-testid="my-notifications-page">
       <PageHeader
         icon={BellRing}
-        title="My pages"
-        description="Incidents you were paged for, in reverse chronological order."
+        title={t("common:myNotifications.title")}
+        description={t("common:myNotifications.description")}
         actions={
-          <Button asChild variant="outline" aria-label="Notification settings">
+          <Button
+            asChild
+            variant="outline"
+            aria-label={t("common:myNotifications.empty.cta")}
+          >
             <Link to="/orgs/$org/account/notifications" params={{ org }}>
               <Settings />
-              <span className="hidden sm:inline">Notification settings</span>
+              <span className="hidden sm:inline">
+                {t("common:myNotifications.empty.cta")}
+              </span>
             </Link>
           </Button>
         }
@@ -68,9 +74,9 @@ function MyNotificationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Notifications</CardTitle>
+          <CardTitle>{t("common:myNotifications.cardTitle")}</CardTitle>
           <CardDescription>
-            Every time you were paged for an incident.
+            {t("common:myNotifications.cardDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -94,10 +100,10 @@ function MyNotificationsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Incident</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Channel</TableHead>
+                  <TableHead>{t("common:myNotifications.columns.time")}</TableHead>
+                  <TableHead>{t("common:myNotifications.columns.incident")}</TableHead>
+                  <TableHead>{t("common:status")}</TableHead>
+                  <TableHead>{t("common:myNotifications.columns.channel")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

@@ -53,7 +53,10 @@
       "description": "Cuando un check caiga porque no se pudo ALCANZAR su destino, captura un traceroute estilo MTR y adjúntalo a la incidencia.",
       "label": "Traceroute ante fallo de red",
       "help": "Se aplica a todos los checks configurados como «heredar». Solo los fallos de alcanzabilidad activan una captura: tiempos de conexión agotados, rechazos, pérdida ICMP, handshakes TLS colgados. Un HTTP 5xx, una palabra clave ausente o un certificado por caducar nunca lo hacen, porque el servidor respondió. Los trazados se ejecutan después de que el resultado fallido ya se haya reportado y están limitados por organización: nunca retrasan una incidencia ni inundan un apagón masivo."
-    }
+    },
+    "defaultEscalation": "Política de escalada predeterminada",
+    "defaultEscalationDescription": "Se aplica a los checks que no resuelven a ninguna política propia (check → grupo → predeterminado de la organización → ninguna). Déjelo sin definir para no tener respaldo a nivel de organización.",
+    "defaultEscalationNone": "Ninguna (sin respaldo)"
   },
   "usage": {
     "title": "Uso",
@@ -257,6 +260,117 @@
     "readOnly": "Solo lectura en la demo",
     "readOnlyHint": "Regístrate gratis para poder cambiar esto.",
     "checkExpires": "Este check está activo y se eliminará dentro de una hora aproximadamente. Regístrate gratis para conservarlo.",
-    "seededCheck": "Este check forma parte del catálogo de la demo y no se puede modificar. Clónalo para obtener una copia editable."
+    "seededCheck": "Este check forma parte del catálogo de la demo y no se puede modificar. Clónalo para obtener una copia editable.",
+    "writeRefused": "Esta es la demo pública compartida. Solo se pueden modificar los checks que crea aquí — regístrese gratis para cambiar cualquier otra cosa."
+  },
+  "privateLocations": {
+    "wizard": {
+      "steps": {
+        "pickLocation": "Elegir ubicación",
+        "mintToken": "Emitir token",
+        "runAgent": "Ejecutar el agente",
+        "waitForConnection": "Esperar la conexión"
+      },
+      "step2": {
+        "expiryFormat": "en ~{{hours}}h ({{date}})",
+        "title": "2. Emitir un token de inscripción",
+        "description": "Un token de un solo uso con prefijo spe_ que permite a exactamente un agente inscribirse en esta ubicación.",
+        "explain": "El token se muestra exactamente una vez — el servidor solo almacena su hash — y caduca por defecto a las 24 horas.",
+        "mint": "Emitir token de inscripción",
+        "onceTitle": "Cópielo ahora — no volverá a verlo",
+        "onceDescription": "Este token caduca {{expiry}} y permite inscribir exactamente un agente. Si lo pierde, emita uno nuevo.",
+        "continue": "Continuar"
+      },
+      "title": "Inscribir un agente",
+      "subtitle": "Una guía paso a paso para inscribir un agente privado en una de sus ubicaciones privadas.",
+      "back": "Atrás",
+      "changeLocation": "Cambiar",
+      "step1": {
+        "title": "1. Elegir o crear una ubicación",
+        "description": "El agente se inscribe en una ubicación privada de la organización. Elija una existente o cree una nueva a continuación.",
+        "agentCount": "{{count}} agentes",
+        "empty": "Aún no hay ubicaciones privadas — cree una a continuación para empezar.",
+        "createTitle": "O crear una nueva ubicación",
+        "create": "Crear y continuar"
+      },
+      "step3": {
+        "title": "3. Ejecutar el agente",
+        "description": "El agente es el contenedor estándar de SolidPing en modo agente — sin binario aparte, sin base de datos.",
+        "gotchasTitle": "Dos cosas que debe saber",
+        "gotcha1": "El token es de un solo uso: permite inscribir exactamente un agente y luego se consume.",
+        "gotcha2": "El agente persiste su identidad en /data/agent-keys.json (SP_AGENT_KEYS_FILE) — ese volumen debe sobrevivir a los reinicios, o el agente se inscribirá de nuevo con una nueva identidad.",
+        "k8sNote": "Esta primera ejecución persiste la identidad en un PVC, igual que el volumen de docker run. Para una configuración sin volumen persistente, lea el valor del archivo que escribió el agente (kubectl exec deploy/solidping-agent -- base64 -w0 /data/agent-keys.json) y guárdelo como SP_AGENT_KEYS en un Secret. El agente nunca imprime sus claves privadas en los logs — vea el enlace a la documentación en la parte superior de esta tarjeta.",
+        "continue": "Continuar — he iniciado el agente"
+      },
+      "step4": {
+        "successTitle": "¡Agente conectado!",
+        "successDescription": "{{name}} ahora está inscrito en {{region}}.",
+        "nextStep": "Dirigir un check a esta ubicación",
+        "errorTitle": "El agente no se ha conectado",
+        "expiredTitle": "Token caducado",
+        "consumedTitle": "Token ya no disponible",
+        "expiredDescription": "Este token de inscripción caducó antes de que un agente lo usara.",
+        "consumedDescription": "Este token ya se usó o se canceló en otro lugar.",
+        "retry": "Emitir un nuevo token",
+        "waitingTitle": "4. Esperando a que el agente se conecte",
+        "waitingDescription": "Esto se actualiza automáticamente en cuanto el agente se inscribe — no hace falta actualizar la página."
+      }
+    },
+    "regions": {
+      "title": "Ubicaciones privadas",
+      "description": "Regiones privadas de la organización, atendidas por agentes privados que usted ejecuta dentro de su propia red. Los agentes solo se conectan de forma saliente: no hay puertos entrantes.",
+      "registerAgent": "Inscribir un agente",
+      "emptyPrefix": "Aún no hay ubicaciones privadas. Siga la ",
+      "emptyLinkText": "configuración guiada",
+      "emptySuffix": ", o cree una manualmente a continuación.",
+      "name": "Nombre",
+      "region": "Región",
+      "agents": "Agentes",
+      "ipv6": "IPv6",
+      "actions": "Acciones",
+      "mint": "Nuevo token de inscripción",
+      "delete": "Eliminar ubicación",
+      "slug": "Slug",
+      "displayName": "Nombre visible",
+      "create": "Añadir ubicación",
+      "deleteTitle": "¿Eliminar la ubicación privada?",
+      "deleteDescription": "Los checks dirigidos a esta ubicación dejarán de programarse ahí. Las ubicaciones con agentes inscritos no se pueden eliminar — revoque primero los agentes.",
+      "deleteConfirm": "Eliminar"
+    },
+    "cancel": "Cancelar",
+    "token": {
+      "title": "Token de inscripción",
+      "description": "Cópielo ahora — este token se muestra solo una vez y caduca en 24 horas. Permite inscribir exactamente un agente.",
+      "run": "Ejecute el agente con:"
+    },
+    "agents": {
+      "title": "Agentes",
+      "description": "Agentes inscritos y su estado. Revocar un agente corta su acceso de inmediato; rote cualquier credencial que pudiera descifrar.",
+      "empty": "Aún no hay agentes inscritos. Emita un token de inscripción arriba y arranque un agente con él.",
+      "name": "Nombre",
+      "region": "Región",
+      "fingerprint": "Huella",
+      "version": "Versión",
+      "lastSeen": "Visto por última vez",
+      "status": "Estado",
+      "actions": "Acciones",
+      "never": "nunca",
+      "revoke": "Revocar agente",
+      "remove": "Eliminar agente",
+      "removeTitle": "¿Eliminar este agente?",
+      "revokeTitle": "¿Revocar este agente?",
+      "removeDescription": "Este agente ya está revocado. Eliminarlo lo borra de la lista de inmediato, en lugar de esperar a la limpieza automática tras dos días.",
+      "revokeDescription": "El agente pierde el acceso de inmediato y deja de recibir checks. Ya ha visto las credenciales selladas para él — rótelas. Esto no se puede deshacer; inscriba un nuevo agente para reemplazarlo.",
+      "removeConfirm": "Eliminar",
+      "revokeConfirm": "Revocar"
+    },
+    "tokens": {
+      "title": "Tokens de inscripción pendientes",
+      "description": "Tokens sin usar a la espera de un agente. Cada uno permite inscribir exactamente un agente y luego caduca.",
+      "region": "Región",
+      "expires": "Caduca",
+      "actions": "Acciones",
+      "cancel": "Cancelar token"
+    }
   }
 }

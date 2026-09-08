@@ -62,3 +62,122 @@ export function filterCheckTypesForDemo<T extends { type?: string; name?: string
 
   return types.filter((entry) => allowed.has(entry.type ?? entry.name ?? ""));
 }
+
+/**
+ * Coerces a `?demo=` query-string value to `true` or `undefined`.
+ *
+ * ONE definition, deliberately: the flag is now parsed on three routes
+ * (`/`, `/login`, `/orgs/$org/login`) and read from a raw location in the org
+ * layout's `beforeLoad`. Four inlined comparisons would have drifted the day
+ * one of them forgot the numeric form.
+ *
+ * The four accepted shapes are not paranoia. TanStack Router's default search
+ * parser already coerces `"true"` to a native boolean before `validateSearch`
+ * runs (so a bare `=== "true"` silently never matches — the bug class worked
+ * around in jobs.*.tsx's `allOrgs`), while `?demo=1` arrives as the number 1
+ * from the same parser and as the string "1" from `URLSearchParams`. Anything
+ * else — including `false`, `"0"` and garbage — is `undefined` rather than
+ * `false`, so the param disappears from the URL instead of being serialised
+ * back as `?demo=false`.
+ */
+export function parseDemoFlag(value: unknown): true | undefined {
+  return value === true || value === "true" || value === "1" || value === 1
+    ? true
+    : undefined;
+}
+
+/**
+ * Reads the demo flag off a router `location` in a `beforeLoad`, where the
+ * search has NOT been through this route's `validateSearch`.
+ *
+ * Checks the parsed search object first and falls back to the raw search
+ * string: a layout route that declares no `validateSearch` of its own gets
+ * whatever the default parser produced, and relying on that alone would make
+ * the redirect depend on router internals.
+ */
+export function demoFlagFromLocation(
+  search: unknown,
+  searchStr: string | undefined,
+): true | undefined {
+  const fromParsed =
+    search && typeof search === "object"
+      ? parseDemoFlag((search as Record<string, unknown>).demo)
+      : undefined;
+  if (fromParsed) return true;
+
+  if (!searchStr) return undefined;
+  const query = searchStr.startsWith("?") ? searchStr.slice(1) : searchStr;
+
+  return parseDemoFlag(new URLSearchParams(query).get("demo"));
+}
+
+/**
+ * True when `err` is the demo write guard refusing a request.
+ *
+ * Shared by every page that performs a SECONDARY write after a primary one the
+ * demo allowlist does permit (create a check, then bind channels; patch a
+ * check, then sync dependencies). The refusal is expected and already toasted
+ * by `apiFetch`; what must not happen is the primary write's success being
+ * thrown away with it. Typed as a predicate rather than an `err.code` compare
+ * at each call site so the create and edit pages cannot disagree about what
+ * "refused by the demo" means.
+ */
+export function isDemoReadOnlyError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === "DEMO_READ_ONLY"
+  );
+}
+
+/**
+ * Whether the escalation picker may offer its "No escalation (silent)"
+ * shortcut.
+ *
+ * The shortcut looks like a pure selection, but it is not: when the
+ * organization owns no zero-step policy yet, picking it `POST`s one to
+ * `/orgs/:org/escalation-policies` and then selects the result. That route is
+ * NOT on the demo allowlist, and the demo org is seeded with exactly one
+ * policy, which has a step — so for a demo visitor the option was always the
+ * thing spec 2026-09-07-02 §C.2 forbids: a control whose only outcome is a
+ * refusal toast. Worse, the picker swallows the failure, so the selection just
+ * snapped back with no explanation.
+ *
+ * Reusing an ALREADY-EXISTING silent policy is a plain `onChange` that only
+ * feeds the allowlisted `PATCH /checks/:uid` body, so the shortcut stays
+ * offered in that case — the rule is "no session is offered a control that can
+ * only fail", not "the demo loses the feature".
+ */
+export function canOfferSilentEscalationShortcut(
+  canCreatePolicy: boolean,
+  hasSilentPolicy: boolean,
+): boolean {
+  return canCreatePolicy || hasSilentPolicy;
+}
+
+/**
+ * Whether the org login page's demo auto-login owns the post-authentication
+ * redirect, i.e. whether the "redirect if already authenticated" effect must
+ * stand down.
+ *
+ * Three inputs, because two of them are not the same question. `demoFlag` says
+ * the visitor asked for the demo; `demoAvailable` says this instance actually
+ * has one. Standing down on the flag ALONE strands an authenticated visitor of
+ * a demo-less instance on a blank page: the auto-login effect declines to run,
+ * the redirect effect has been disabled, and the page renders `null` for an
+ * authenticated session. Standing down on `demoAvailable` alone is equally
+ * wrong in the other direction — it is false while the public-config document
+ * is still in flight, so the redirect would fire before the instance has had a
+ * chance to say it has a demo.
+ *
+ * Hence: stand down while the demo is real, or might still turn out to be.
+ */
+export function demoAutoLoginOwnsRedirect(
+  demoFlag: boolean | undefined,
+  demoAvailable: boolean,
+  demoConfigLoading: boolean,
+): boolean {
+  if (!demoFlag) return false;
+
+  return demoAvailable || demoConfigLoading;
+}

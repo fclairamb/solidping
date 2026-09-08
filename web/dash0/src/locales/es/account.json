@@ -73,7 +73,8 @@
       "changed": "Contraseña actualizada.",
       "mismatch": "Las dos contraseñas nuevas no coinciden.",
       "tooShort": "La contraseña debe tener al menos {{min}} caracteres.",
-      "invalidCurrent": "Esa no es tu contraseña actual."
+      "invalidCurrent": "Esa no es tu contraseña actual.",
+      "failed": "No se pudo cambiar tu contraseña."
     },
     "passkeys": {
       "title": "Passkeys",
@@ -85,7 +86,9 @@
       "lastUsed": "Last used",
       "renamePrompt": "New name for this passkey:",
       "lastAuthMethod": "Add another passkey or set a password before removing this one.",
-      "unsupported": "This browser does not support passkeys."
+      "unsupported": "This browser does not support passkeys.",
+      "removeFailed": "No se pudo eliminar la clave de acceso.",
+      "renameFailed": "No se pudo renombrar la clave de acceso."
     },
     "totp": {
       "title": "Two-Factor Authentication (TOTP)",
@@ -109,8 +112,10 @@
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
       "disableSubtitle": "Enter a current 6-digit code to confirm.",
-      "setupFailed": "Unable to set up two-factor authentication. Try again."
-    }
+      "setupFailed": "Unable to set up two-factor authentication. Try again.",
+      "disableFailed": "No se pudo desactivar la autenticación de dos factores."
+    },
+    "loadFailed": "No se pudo cargar tu configuración de seguridad."
   },
   "sessions": {
     "title": "Sesiones",
@@ -226,7 +231,69 @@
       "unavailable": "Inicia sesión con Slack y pide a un administrador que conecte un espacio de trabajo de Slack para recibir alertas por mensaje directo.",
       "connectButton": "Conectar Slack",
       "added": "Notificaciones por Slack añadidas",
-      "addFailed": "No se pudo añadir el contacto de Slack"
+      "addFailed": "No se pudo añadir el contacto de Slack",
+      "bannerIntro": "Iniciaste sesión con Slack ({{workspace}}).",
+      "bannerCta": "Añadir notificaciones por mensaje directo de Slack",
+      "bannerSuffix": "para recibir alertas de incidentes directamente en Slack.",
+      "addButton": "Añadir MD de Slack"
+    },
+    "route": {
+      "updateFailed": "Error al actualizar el método de notificación",
+      "removed": "Contacto de notificación eliminado",
+      "removeFailed": "Error al eliminar el contacto de notificación",
+      "testSent": "Notificación de prueba enviada",
+      "testFailed": "Error al enviar la notificación de prueba",
+      "browserLabel": "Navegador",
+      "sendTestNotification": "Enviar notificación de prueba"
+    },
+    "addContact": {
+      "emailRequired": "Se requiere la dirección de correo electrónico",
+      "phoneRequired": "Se requiere el número de teléfono",
+      "addFailed": "Error al añadir el contacto",
+      "added": "Contacto de notificación añadido",
+      "browserPushEnabled": "Notificaciones push del navegador activadas",
+      "browserPushFailed": "Error al activar las notificaciones push del navegador",
+      "emailPlaceholder": "usted@ejemplo.com",
+      "phonePlaceholderExample": "+1 555 123 4567",
+      "emailAddressLabel": "Dirección de correo electrónico",
+      "whatsappNumberLabel": "Número de WhatsApp",
+      "phoneNumberLabel": "Número de teléfono",
+      "submit": "Añadir",
+      "addBrowserTitle": "Añadir navegador",
+      "addBrowserDescription": "Recibe notificaciones como alertas push del navegador en este dispositivo."
+    },
+    "page": {
+      "loadFailed": "Error al cargar la configuración de notificaciones. Actualiza la página.",
+      "methodsTitle": "Métodos de notificación",
+      "methodsSubtitle": "Configura cómo recibes las alertas de incidentes. Todos los métodos activados se disparan cuando una política de escalado te selecciona.",
+      "noMethods": "No hay métodos de notificación configurados. Añade uno abajo.",
+      "addMethodButton": "+ Añadir método",
+      "loading": "Cargando la configuración de notificaciones…"
     }
+  },
+  "device": {
+    "title": "Conectar un dispositivo",
+    "description": "Aprueba una solicitud de inicio de sesión desde la línea de comandos de SolidPing.",
+    "codeCardTitle": "Introduce tu código de un solo uso",
+    "codeLabel": "Código",
+    "codePlaceholder": "XXXX-XXXX",
+    "continue": "Continuar",
+    "notFoundTitle": "No pudimos encontrar ese código",
+    "notFoundDescription": "Puede que haya caducado, ya se haya usado o se haya escrito mal. Ejecuta <code>sp auth login</code> de nuevo para obtener un código nuevo.",
+    "alreadyHandledTitle": "Esta solicitud ya se ha gestionado",
+    "alreadyHandledDescription": "Aquí no queda nada por hacer — inicia un nuevo inicio de sesión desde tu terminal si todavía necesitas acceso.",
+    "authorizeTitle": "Autorizar este dispositivo",
+    "authorizeDescription": "<strong>{{clientName}}</strong> solicita iniciar sesión como tú. Aprobarlo crea un token de acceso personal válido durante 90 días, que puedes revocar en cualquier momento desde Cuenta → Tokens.",
+    "organization": "Organización",
+    "organizationHint": "El token solo podrá acceder a esta organización.",
+    "expires": "Caduca {{time}}",
+    "deny": "Denegar",
+    "approve": "Aprobar",
+    "approvedTitle": "Dispositivo aprobado",
+    "approvedDescription": "Puedes cerrar esta página y volver a tu terminal — la línea de comandos detectará el inicio de sesión en unos segundos.",
+    "deniedTitle": "Inicio de sesión del dispositivo denegado",
+    "deniedDescription": "No se creó ningún token. La línea de comandos informará que la solicitud fue denegada.",
+    "approvedToast": "Dispositivo aprobado — vuelve a tu terminal",
+    "decisionFailed": "No se pudo registrar tu decisión"
   }
 }

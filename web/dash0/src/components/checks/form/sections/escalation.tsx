@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,6 +19,7 @@ import {
   type CheckGroup,
   type EscalationPolicy,
 } from "@/api/hooks";
+import { canOfferSilentEscalationShortcut } from "@/lib/demo";
 
 // Sentinels for the two non-UID options. "" (empty escalationPolicyUid) is the
 // inherit state; Radix Select needs a non-empty value string, so we map it to
@@ -54,13 +56,26 @@ interface EscalationSelectProps {
    * `checkGroups` are ignored in this variant.
    */
   variant?: "check" | "group";
+  /**
+   * Whether this session may CREATE an escalation policy (default true).
+   *
+   * Only the "No escalation (silent)" shortcut needs it, and only when the org
+   * owns no zero-step policy yet: that is the one branch of this picker that
+   * leaves the check's PATCH body and issues
+   * `POST /orgs/:org/escalation-policies` of its own. A demo session is refused
+   * there by the write guard, so the shortcut is withheld rather than offered
+   * and silently snapped back (spec 2026-09-07-02 §C.2).
+   */
+  canCreatePolicy?: boolean;
 }
 
 // EscalationSelect is the check form's escalation-policy picker (and, via
 // variant="group", the check-group edit form's). It offers the inherit
 // default (live-resolving down the chain so the choice is never blind), the
 // org's policies (silent ones badged), and a "No escalation (silent)"
-// shortcut that reuses or creates a zero-step policy.
+// shortcut that reuses or creates a zero-step policy — withheld entirely when
+// the session may not create one and there is none to reuse, because creating
+// is the only thing that option could then do.
 export function EscalationSelect({
   org,
   value,
@@ -68,7 +83,9 @@ export function EscalationSelect({
   checkGroupUid,
   checkGroups,
   variant = "check",
+  canCreatePolicy = true,
 }: EscalationSelectProps) {
+  const { t } = useTranslation("checks");
   const { data: policies } = useEscalationPolicies(org);
   // Org settings is admin-only; a non-admin editing a check simply won't see
   // the org-default half of the inherit label (the query errors and we treat
@@ -97,11 +114,20 @@ export function EscalationSelect({
     undefined;
   const inheritedPolicy = inheritedUid ? policyByUid.get(inheritedUid) : undefined;
   const inheritedName = inheritedPolicy
-    ? `${inheritedPolicy.name}${isSilent(inheritedPolicy) ? " (silent)" : ""}`
-    : "nothing";
+    ? `${inheritedPolicy.name}${isSilent(inheritedPolicy) ? ` ${t("escalation.silentSuffixParen")}` : ""}`
+    : t("escalation.nothing");
 
   const selected = value ? policyByUid.get(value) : undefined;
   const selectValue = value ? value : INHERIT;
+
+  // The zero-step policy the silent shortcut would reuse, if the org has one.
+  // When it does, the shortcut is a plain selection; when it does not, it is a
+  // POST — which is the only reason `canCreatePolicy` exists.
+  const silentPolicy = (policies ?? []).find(isSilent);
+  const offerSilentShortcut = canOfferSilentEscalationShortcut(
+    canCreatePolicy,
+    silentPolicy !== undefined,
+  );
 
   const handleChange = async (next: string) => {
     if (next === "") {
@@ -124,11 +150,15 @@ export function EscalationSelect({
     }
     if (next === SILENT_SHORTCUT) {
       // Reuse an existing zero-step policy if one exists; else create one.
-      const existing = (policies ?? []).find(isSilent);
+      const existing = silentPolicy;
       if (existing) {
         onChange(existing.uid);
         return;
       }
+      // Belt to the braces of not rendering the item at all: a session that
+      // may not create a policy never reaches the POST, whatever route a
+      // keyboard or a native-select echo took to get here.
+      if (!canCreatePolicy) return;
       try {
         const created = await createPolicy.mutateAsync({
           name: SILENT_POLICY_NAME,
@@ -156,14 +186,14 @@ export function EscalationSelect({
   // label ourselves so it always reflects current state.
   const currentLabel =
     selectValue === INHERIT
-      ? `Inherit — currently: ${inheritedName}`
+      ? t("escalation.inheritCurrently", { name: inheritedName })
       : selected
-        ? `${selected.name}${isSilent(selected) ? " — silent" : ""}`
+        ? `${selected.name}${isSilent(selected) ? ` ${t("escalation.silentSuffixDash")}` : ""}`
         : undefined;
 
   return (
     <div className="space-y-2">
-      <Label htmlFor="escalation-policy-select">Escalation policy</Label>
+      <Label htmlFor="escalation-policy-select">{t("escalation.policy")}</Label>
       <Select value={selectValue} onValueChange={handleChange}>
         <SelectTrigger
           id="escalation-policy-select"
@@ -173,26 +203,30 @@ export function EscalationSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={INHERIT} data-testid="escalation-option-inherit">
-            Inherit — currently: {inheritedName}
+            {t("escalation.inheritCurrently", { name: inheritedName })}
           </SelectItem>
           {(policies ?? []).length > 0 && (
             <SelectGroup>
-              <SelectLabel>Policies</SelectLabel>
+              <SelectLabel>{t("escalation.policies")}</SelectLabel>
               {(policies ?? []).map((p) => (
                 <SelectItem key={p.uid} value={p.uid}>
                   {p.name}
-                  {isSilent(p) ? " — silent" : ""}
+                  {isSilent(p) ? ` ${t("escalation.silentSuffixDash")}` : ""}
                 </SelectItem>
               ))}
             </SelectGroup>
           )}
-          <SelectSeparator />
-          <SelectItem
-            value={SILENT_SHORTCUT}
-            data-testid="escalation-option-silent"
-          >
-            No escalation (silent)
-          </SelectItem>
+          {offerSilentShortcut && (
+            <>
+              <SelectSeparator />
+              <SelectItem
+                value={SILENT_SHORTCUT}
+                data-testid="escalation-option-silent"
+              >
+                {t("escalation.noEscalationSilent")}
+              </SelectItem>
+            </>
+          )}
         </SelectContent>
       </Select>
       {showSilentNote ? (
@@ -200,17 +234,17 @@ export function EscalationSelect({
           className="text-xs text-muted-foreground"
           data-testid="escalation-silent-note"
         >
-          This policy has no steps — this check will never page anyone.
+          {t("escalation.silentNote")}
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Who gets paged, in order, when this check fails.{" "}
+          {t("escalation.help")}{" "}
           <Link
             to="/orgs/$org/escalation-policies"
             params={{ org }}
             className="text-primary underline-offset-4 hover:underline"
           >
-            Manage policies
+            {t("escalation.managePolicies")}
           </Link>
         </p>
       )}

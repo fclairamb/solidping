@@ -323,7 +323,7 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
             variant="outline"
             className="border-amber-500/20 bg-amber-500/10 text-xs font-medium text-amber-700 dark:text-amber-400"
             data-testid="policy-silent-badge"
-            title="Zero-step policy — pages nobody"
+            title={t("escalation:list.silentBadgeTooltip", "Zero-step policy — pages nobody")}
           >
             {t("escalation:list.silentBadge", "0 steps — silent")}
           </Badge>

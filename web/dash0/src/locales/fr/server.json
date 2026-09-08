@@ -16,7 +16,8 @@
     "analytics": "Analytique",
     "discord": "Discord",
     "entitlements": "Droits",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "activation": "Activation"
   },
   "aggregation": {
     "title": "Agrégation",
@@ -452,5 +453,16 @@
     "testDelivered_one": "Notification de test remise sur {{count}} canal.",
     "testDelivered_other": "Notification de test remise sur {{count}} canaux.",
     "testUndeliverable": "Rien n'a été remis. Vérifiez que vous avez au moins un canal de notification actif."
+  },
+  "activation": {
+    "title": "Entonnoir d'activation",
+    "description": "Horodatages par organisation pour chaque étape d'activation.",
+    "error": "Échec du chargement de l'entonnoir d'activation.",
+    "org": "Organisation",
+    "signup": "Inscription",
+    "firstCheck": "Premier contrôle",
+    "firstResult": "Premier résultat",
+    "firstNotifier": "Première notification",
+    "firstIncident": "Première alerte"
   }
 }

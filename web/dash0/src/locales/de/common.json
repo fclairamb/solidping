@@ -87,6 +87,15 @@
       "title": "Noch keine Benachrichtigungen",
       "hint": "Sie wurden noch für keinen Vorfall alarmiert.",
       "cta": "Benachrichtigungseinstellungen"
+    },
+    "title": "Meine Alarmierungen",
+    "description": "Vorfälle, für die Sie alarmiert wurden, in umgekehrter chronologischer Reihenfolge.",
+    "cardTitle": "Benachrichtigungen",
+    "cardDescription": "Jedes Mal, wenn Sie für einen Vorfall alarmiert wurden.",
+    "columns": {
+      "time": "Zeit",
+      "incident": "Vorfall",
+      "channel": "Kanal"
     }
   },
   "notificationFailureReasons": {
@@ -115,5 +124,66 @@
   "serverVersion": {
     "reloadAria": "Neu laden, um die neueste Version zu erhalten",
     "stale": "Server aktualisiert auf {{version}} — neu laden, um die neueste Version zu erhalten."
+  },
+  "errorBoundary": {
+    "description": "Ein unerwarteter Fehler ist aufgetreten. Das ist meist vorübergehend — ein erneuter Versuch sollte die Seite wiederherstellen.",
+    "technicalDetails": "Technische Details",
+    "tryAgain": "Erneut versuchen",
+    "reloadPage": "Seite neu laden"
+  },
+  "copyToClipboard": "In die Zwischenablage kopieren",
+  "copyLabel": "{{label}} kopieren",
+  "value": "Wert",
+  "dnsRecord": {
+    "recordName": "Name des Eintrags",
+    "recordValue": "Wert des Eintrags"
+  },
+  "toggleSidebar": "Seitenleiste ein-/ausblenden",
+  "timeAgo": {
+    "copyAria": "Zeitstempel {{utcIso}} kopieren",
+    "copiedAria": "{{utcIso}} kopiert",
+    "copiedTooltip": "Kopiert — {{tooltipText}}",
+    "justNow": "gerade eben",
+    "minutesAgo": "vor {{count}} Min.",
+    "hoursAgo": "vor {{count}} Std.",
+    "daysAgo": "vor {{count}} T.",
+    "localSuffix": "lokal"
+  },
+  "agentVersion": {
+    "unknown": "unbekannt",
+    "drifted": "Abweichend",
+    "serverRuns": "Dieser Server läuft mit v{{version}}."
+  },
+  "noData": "Keine Daten",
+  "labelPicker": {
+    "trigger": "Label",
+    "filterPlaceholder": "Nach Label filtern…",
+    "valuePlaceholder": "Wert…",
+    "keyPlaceholderDefault": "Schlüssel",
+    "valuePlaceholderDefault": "Wert",
+    "backToKeys": "Zurück zu den Schlüsseln",
+    "removeLabel": "{{key}} entfernen",
+    "alreadyFiltering": "Bereits gefiltert nach „{{key}}“.",
+    "useTyped": "„{{value}}“ verwenden",
+    "noLabels": "Keine Labels",
+    "noValues": "Keine Werte",
+    "noMatches": "Keine Treffer",
+    "keyError": "Verwenden Sie 3–51 Kleinbuchstaben, Ziffern oder Bindestriche, beginnend mit einem Buchstaben.",
+    "valueTooLong": "Der Wert darf höchstens {{max}} Zeichen lang sein.",
+    "duplicateKey": "Dieser Schlüssel ist bereits gesetzt — bearbeiten Sie das vorhandene Label.",
+    "add": "Hinzufügen"
+  },
+  "notFoundPage": {
+    "title": "Seite nicht gefunden",
+    "description": "Die gesuchte Seite existiert nicht oder wurde möglicherweise verschoben.",
+    "backHome": "Zurück zur Startseite"
+  },
+  "notificationSources": {
+    "checkConnection": "Kanal der Prüfung",
+    "escalationStep": "Eskalationsstufe",
+    "onCallSchedule": "Bereitschaftsplan",
+    "allAdmins": "Alle Administratoren",
+    "escalationConnection": "Eskalationskanal",
+    "cycle": "Zyklus {{cycle}}"
   }
 }

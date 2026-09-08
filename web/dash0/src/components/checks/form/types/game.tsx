@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -42,10 +43,11 @@ export const a2sModule: CheckTypeModule<A2sState> = {
 };
 
 function A2sFields({ state, onChange }: CheckTypeFieldsProps<A2sState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -67,7 +69,7 @@ function A2sFields({ state, onChange }: CheckTypeFieldsProps<A2sState>) {
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="minPlayers">Min Players (optional)</Label>
+          <Label htmlFor="minPlayers">{t("game.minPlayersOptional")}</Label>
           <Input
             id="minPlayers"
             type="number"
@@ -76,10 +78,10 @@ function A2sFields({ state, onChange }: CheckTypeFieldsProps<A2sState>) {
             value={state.minPlayers}
             onChange={(e) => onChange({ ...state, minPlayers: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">Alert if fewer players</p>
+          <p className="text-xs text-muted-foreground">{t("game.alertIfFewerPlayers")}</p>
         </div>
         <div className="space-y-2 flex-1">
-          <Label htmlFor="maxPlayers">Max Players (optional)</Label>
+          <Label htmlFor="maxPlayers">{t("game.maxPlayersOptional")}</Label>
           <Input
             id="maxPlayers"
             type="number"
@@ -88,7 +90,7 @@ function A2sFields({ state, onChange }: CheckTypeFieldsProps<A2sState>) {
             value={state.maxPlayers}
             onChange={(e) => onChange({ ...state, maxPlayers: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">Alert if more players</p>
+          <p className="text-xs text-muted-foreground">{t("game.alertIfMorePlayers")}</p>
         </div>
       </div>
     </>
@@ -129,10 +131,11 @@ function MinecraftFields({
   state,
   onChange,
 }: CheckTypeFieldsProps<MinecraftState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -153,7 +156,7 @@ function MinecraftFields({
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="edition">Edition</Label>
+        <Label htmlFor="edition">{t("game.edition")}</Label>
         <Select
           value={state.edition}
           onValueChange={(edition) => onChange({ ...state, edition })}
@@ -169,7 +172,7 @@ function MinecraftFields({
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="minPlayers">Min Players (optional)</Label>
+          <Label htmlFor="minPlayers">{t("game.minPlayersOptional")}</Label>
           <Input
             id="minPlayers"
             type="number"
@@ -178,10 +181,10 @@ function MinecraftFields({
             value={state.minPlayers}
             onChange={(e) => onChange({ ...state, minPlayers: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">Alert if fewer players</p>
+          <p className="text-xs text-muted-foreground">{t("game.alertIfFewerPlayers")}</p>
         </div>
         <div className="space-y-2 flex-1">
-          <Label htmlFor="maxPlayers">Max Players (optional)</Label>
+          <Label htmlFor="maxPlayers">{t("game.maxPlayersOptional")}</Label>
           <Input
             id="maxPlayers"
             type="number"
@@ -190,7 +193,7 @@ function MinecraftFields({
             value={state.maxPlayers}
             onChange={(e) => onChange({ ...state, maxPlayers: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">Alert if more players</p>
+          <p className="text-xs text-muted-foreground">{t("game.alertIfMorePlayers")}</p>
         </div>
       </div>
     </>

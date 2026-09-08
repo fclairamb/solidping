@@ -16,7 +16,8 @@
     "analytics": "Analítica",
     "discord": "Discord",
     "entitlements": "Límites",
-    "notifications": "Notificaciones"
+    "notifications": "Notificaciones",
+    "activation": "Activación"
   },
   "aggregation": {
     "title": "Agregación",
@@ -452,5 +453,16 @@
     "testDelivered_one": "Notificación de prueba entregada por {{count}} ruta.",
     "testDelivered_other": "Notificación de prueba entregada por {{count}} rutas.",
     "testUndeliverable": "No se entregó nada. Comprueba que tienes al menos una ruta de notificación activa."
+  },
+  "activation": {
+    "title": "Embudo de activación",
+    "description": "Marcas de tiempo por organización para cada hito de activación.",
+    "error": "No se pudo cargar el embudo de activación.",
+    "org": "Organización",
+    "signup": "Registro",
+    "firstCheck": "Primera comprobación",
+    "firstResult": "Primer resultado",
+    "firstNotifier": "Primera notificación",
+    "firstIncident": "Primer aviso"
   }
 }

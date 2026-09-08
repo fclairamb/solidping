@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -98,6 +99,7 @@ export function TimeAgo({
   className,
   "data-testid": testId,
 }: TimeAgoProps) {
+  const { t } = useTranslation("common");
   useTick();
   const d = useMemo(() => new Date(date), [date]);
   const [copied, setCopied] = useState(false);
@@ -105,9 +107,9 @@ export function TimeAgo({
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const relative = formatRelativeTime(d);
+  const relative = formatRelativeTime(d, t);
   const utcIso = formatUtcIso(d);
-  const tooltipText = formatTooltipText(d);
+  const tooltipText = formatTooltipText(d, t);
   const displayText =
     variant === "inline" ? `${formatInlineAbsolute(d)} · ${relative}` : relative;
 
@@ -144,7 +146,11 @@ export function TimeAgo({
           role="button"
           tabIndex={0}
           data-testid={testId ?? "time-ago"}
-          aria-label={copied ? `Copied ${utcIso}` : `Copy timestamp ${utcIso}`}
+          aria-label={
+            copied
+              ? t("timeAgo.copiedAria", { utcIso })
+              : t("timeAgo.copyAria", { utcIso })
+          }
           className={cn(
             "cursor-pointer underline decoration-dotted decoration-muted-foreground/60 underline-offset-2",
             className,
@@ -160,7 +166,7 @@ export function TimeAgo({
       <TooltipContent data-testid="time-ago-tooltip">
         {/* On tap (mobile), the "Copied" feedback carries the full absolute
             time — that tap is the only place a touch user ever sees it. */}
-        {copied ? `Copied — ${tooltipText}` : tooltipText}
+        {copied ? t("timeAgo.copiedTooltip", { tooltipText }) : tooltipText}
       </TooltipContent>
     </Tooltip>
   );

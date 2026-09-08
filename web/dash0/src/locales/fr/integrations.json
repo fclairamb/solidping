@@ -102,7 +102,7 @@
     "twilioToHint": "Les envois directs (diffusion par contrôle, test) envoient un SMS à ces numéros.",
     "slackOauthHint": "Les canaux Slack sont configurés via l'installation OAuth Slack. Le bot remplira les noms d'espace et de canal à la fin.",
     "slackNotConnectedTitle": "Espace de travail Slack non connecté",
-    "slackNotConnectedBody": "Ce canal n'est lié à aucun espace de travail Slack. Installez l'application Slack SolidPing pour en connecter un.",
+    "slackNotConnectedBody": "Ce canal n'a aucun espace de travail Slack lié. Installez l'application Slack SolidPing pour en connecter un.",
     "slackConnectButton": "Installer l'application Slack",
     "testNeedsSave": "Enregistrez d'abord vos modifications — le test utilise les paramètres enregistrés.",
     "msteamsBotCreateHint": "Créez d'abord l'intégration, puis installez le paquet d'application Teams et exécutez la commande de liaison affichée ici pour connecter votre tenant Microsoft 365.",
@@ -158,23 +158,57 @@
     "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
     "slackDmUnavailableTitle": "Les messages privés ne sont pas capturés",
     "slackDmUnavailableBody": "Cet espace de travail a été connecté avant que SolidPing ne demande le scope im:history. Slack n'accorde pas de nouveaux scopes à une installation existante : les messages privés envoyés au bot n'arrivent donc jamais dans la boîte de support. Réinstallez l'application pour activer la capture des messages privés — rien d'autre ne change dans cette intégration.",
-    "slackReinstallButton": "Réinstaller l'application Slack"
+    "slackReinstallButton": "Réinstaller l'application Slack",
+    "sendTest": "Envoyer un test",
+    "testDelivered": "Livré",
+    "testHelp": "Envoyez une alerte type pour confirmer que cette intégration est bien configurée. Le test utilise les paramètres enregistrés.",
+    "testTitle": "Envoyer une notification de test",
+    "webpushNoSubscriptions": "Aucun appareil abonné pour le moment. Cliquez sur le bouton ci-dessous pour ajouter ce navigateur.",
+    "webpushDefaultDeviceLabel": "Navigateur",
+    "webpushRemoveSubscription": "Supprimer l'abonnement",
+    "discordNoChannelsAvailable": "Aucun salon textuel visible par le bot. Donnez-lui accès à un salon dans Discord d'abord.",
+    "pickChannel": "Choisir un salon…",
+    "searchChannelsPlaceholder": "Rechercher des salons…",
+    "noChannelsFound": "Aucun salon trouvé",
+    "slackWorkspaceLabel": "Espace de travail :",
+    "slackTabChannel": "Salon",
+    "slackTabDirectMessage": "Message direct",
+    "slackInviteBotFirst": "Invitez d'abord le bot dans un salon avec",
+    "slackChannelPrivate": "Privé",
+    "slackBotNotInChannel": "Le bot n'est pas dans le salon — exécutez d'abord /invite @solidping",
+    "pickPerson": "Choisir une personne…",
+    "searchPeoplePlaceholder": "Rechercher des personnes…",
+    "noPeopleFound": "Aucune personne trouvée",
+    "signingSecret": "Secret de signature",
+    "copied": "Copié",
+    "copy": "Copier",
+    "rotate": "Renouveler",
+    "signingSecretMissing": "Aucun secret de signature — il sera généré automatiquement à la prochaine livraison. Renouvelez pour en générer un maintenant.",
+    "generate": "Générer",
+    "signingSecretHelp": "Les webhooks sortants sont signés avec ce secret selon le schéma Standard Webhooks (HMAC-SHA256). Vérifiez-le côté réception.",
+    "rotationBanner": "Secret précédent actif jusqu'au",
+    "rotationBannerHint": "Supprimez-le plus tôt en renouvelant à nouveau.",
+    "slackInstallFailed": "Échec du démarrage de l'installation Slack",
+    "slackLoading": "Chargement…",
+    "slackError": "Impossible de se connecter à l'espace de travail Slack — réinstallez le bot.",
+    "twilioRegion": "Région (optionnel)",
+    "twilioRegionHint": "Laissez vide pour US1 (par défaut). Les identifiants sont liés à une région — le SID et le jeton d'authentification d'un compte ie1 ne fonctionnent que sur ie1 et ne seront pas validés ici s'ils proviennent d'une autre région."
   },
   "freebox": {
     "name": "Freebox",
-    "description": "Supervisez la qualité de ligne et l'état réseau de votre Freebox",
+    "description": "Surveillez la qualité de ligne et l'état réseau de votre Freebox",
     "baseUrl": "URL de base de la Freebox",
-    "baseUrlHint": "Laissez tel quel si SolidPing tourne sur le même LAN que la Freebox. Pour un accès distant, utilisez le nom d'hôte public configuré dans l'admin Freebox sous Paramètres → API Freebox OS.",
+    "baseUrlHint": "Laissez tel quel si SolidPing s'exécute sur le même réseau local que la Freebox. Pour un accès distant, utilisez le nom d'hôte public configuré dans l'admin Freebox sous Paramètres → API Freebox OS.",
     "deviceName": "Libellé de l'appareil",
-    "deviceNameHint": "Affiché dans l'admin Freebox sous Applications autorisées. Choisissez un nom reconnaissable.",
-    "pairButton": "Coupler avec la Freebox",
-    "pairing": "Démarrage du couplage…",
+    "deviceNameHint": "Affiché dans l'admin Freebox sous Applications autorisées. Choisissez quelque chose que vous reconnaîtrez plus tard.",
+    "pairButton": "Appairer avec la Freebox",
+    "pairing": "Démarrage de l'appairage…",
     "waitingApproval": "En attente de l'approbation sur l'écran LCD…",
-    "pressArrow": "Allez sur votre Freebox et pressez → sur l'écran LCD dans les 30 secondes",
-    "pairingTimeout": "L'invite LCD de la Freebox a expiré. Recommencez.",
-    "pairingDenied": "Le couplage a été refusé sur la Freebox.",
+    "pressArrow": "Allez sur votre Freebox et appuyez sur → sur l'écran LCD dans les 30 secondes",
+    "pairingTimeout": "L'invite LCD de la Freebox a expiré avant approbation. Réessayez.",
+    "pairingDenied": "L'appairage a été refusé sur la Freebox.",
     "pairingFailed": "Impossible de joindre la Freebox. Vérifiez l'URL de base.",
-    "paired": "Couplée — connexion prête",
+    "paired": "Appairé — connexion prête",
     "cancel": "Annuler"
   },
   "kubernetes": {
@@ -213,7 +247,7 @@
     "pagerduty": "Alerter les astreintes via PagerDuty",
     "pushover": "Notifications push mobile via Pushover",
     "twilio": "Envoyer des SMS et passer des appels vocaux via Twilio",
-    "freebox": "Surveiller une Freebox de Free (qualité de ligne, débit sync, état réseau)",
+    "freebox": "Surveiller une Freebox Free (qualité de ligne, débit de synchronisation, état réseau)",
     "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
     "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)",
     "msteams-bot": "Bot Teams bidirectionnel : alertes, commandes @mention et suivi d'incident groupé"
@@ -252,5 +286,78 @@
     "defaultName": "Alertes email",
     "created": "Alertes email créées",
     "createFailed": "Échec de la configuration des alertes email"
-  }
+  },
+  "notificationDetail": {
+    "title": "Notification",
+    "backToIncident": "Retour à l'incident",
+    "backToIntegration": "Retour à l'intégration",
+    "backToIncidents": "Retour aux incidents",
+    "delivery": {
+      "title": "Livraison",
+      "status": "Statut :",
+      "requestUrl": "URL de la requête",
+      "requestUrlLabel": "URL de la requête",
+      "requestPayload": "Charge utile de la requête",
+      "smtpResponse": "Réponse du serveur SMTP",
+      "responseBody": "Corps de la réponse",
+      "responseHeaders": "En-têtes de la réponse",
+      "emailNote": "« Envoyé » signifie que le serveur de messagerie a accepté le message pour relais — cela ne confirme pas que le message est arrivé dans la boîte de réception du destinataire."
+    },
+    "timeline": {
+      "title": "Chronologie de livraison",
+      "created": "Créée",
+      "sent": "Envoyée",
+      "failed": "Échouée",
+      "cancelled": "Annulée"
+    },
+    "target": {
+      "title": "Cible"
+    },
+    "escalationContext": {
+      "title": "Contexte d'escalade",
+      "source": "Source :",
+      "step": "Étape :",
+      "cycle": "Cycle d'escalade :",
+      "skipReason": "Raison de l'ignorance :"
+    },
+    "identifiers": {
+      "title": "Identifiants",
+      "messageId": "ID du message",
+      "messageIdLabel": "ID du message",
+      "jobUid": "UID de la tâche",
+      "jobUidLabel": "UID de la tâche"
+    },
+    "error": {
+      "title": "Erreur",
+      "label": "erreur"
+    }
+  },
+  "recentNotifications": {
+    "title": "Notifications récentes",
+    "loadFailed": "Échec du chargement des notifications.",
+    "empty": "Aucune notification envoyée via cette intégration pour le moment.",
+    "columns": {
+      "status": "Statut",
+      "channel": "Canal",
+      "event": "Événement",
+      "target": "Cible",
+      "created": "Créée"
+    }
+  },
+  "suppressions": {
+    "title": "Destinataires désabonnés",
+    "resubscribed": "{{email}} réabonné",
+    "resubscribeFailed": "Échec du réabonnement",
+    "loadFailed": "Échec du chargement des destinataires désabonnés.",
+    "empty": "Personne ne s'est désabonné des e-mails d'alerte dans cette organisation.",
+    "columns": {
+      "email": "E-mail",
+      "scope": "Portée",
+      "unsubscribed": "Désabonné"
+    },
+    "allChecks": "Tous les checks",
+    "resubscribeAria": "Réabonner {{email}}"
+  },
+  "deleteConfirmTitle": "Supprimer l'intégration ?",
+  "deleteConfirmBody": "Cela supprimera définitivement « {{name}} »."
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -51,6 +52,7 @@ export function AgentVersionCell({
   className?: string;
   "data-testid"?: string;
 }) {
+  const { t } = useTranslation("common");
   const state = agentVersionState(agentVersion, serverVersion);
 
   if (state === "unknown") {
@@ -60,7 +62,7 @@ export function AgentVersionCell({
         data-testid={testId}
         data-agent-version="unknown"
       >
-        unknown
+        {t("agentVersion.unknown")}
       </span>
     );
   }
@@ -83,10 +85,12 @@ export function AgentVersionCell({
             data-agent-version="drifted"
           >
             <span className="text-sm">{agentVersion}</span>
-            <Badge variant="warning">Drifted</Badge>
+            <Badge variant="warning">{t("agentVersion.drifted")}</Badge>
           </span>
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs">This server runs v{serverVersion}.</TooltipContent>
+        <TooltipContent className="max-w-xs">
+          {t("agentVersion.serverRuns", { version: serverVersion })}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

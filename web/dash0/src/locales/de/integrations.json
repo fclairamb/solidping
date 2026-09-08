@@ -155,7 +155,44 @@
     "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
     "slackDmUnavailableTitle": "Direktnachrichten werden nicht erfasst",
     "slackDmUnavailableBody": "Dieser Workspace wurde verbunden, bevor SolidPing den Scope im:history angefordert hat. Slack gewährt einer bestehenden Installation keine neuen Scopes, daher erreichen Direktnachrichten an den Bot das Support-Postfach nie. Installieren Sie die App erneut, um die Erfassung zu aktivieren — an dieser Integration ändert sich sonst nichts.",
-    "slackReinstallButton": "Slack-App neu installieren"
+    "slackReinstallButton": "Slack-App neu installieren",
+    "sendTest": "Test senden",
+    "slackConnectButton": "Slack-App installieren",
+    "slackNotConnectedBody": "Dieser Kanal hat keinen verknüpften Slack-Workspace. Installieren Sie die SolidPing-Slack-App, um einen zu verbinden.",
+    "slackNotConnectedTitle": "Slack-Workspace nicht verbunden",
+    "testDelivered": "Zugestellt",
+    "testHelp": "Senden Sie eine Beispielwarnung, um zu bestätigen, dass diese Integration korrekt eingerichtet ist. Der Test verwendet die gespeicherten Einstellungen.",
+    "testTitle": "Eine Testbenachrichtigung senden",
+    "webpushNoSubscriptions": "Noch keine Geräte abonniert. Klicken Sie unten, um diesen Browser hinzuzufügen.",
+    "webpushDefaultDeviceLabel": "Browser",
+    "webpushRemoveSubscription": "Abonnement entfernen",
+    "discordNoChannelsAvailable": "Keine Textkanäle, die der Bot sehen kann. Geben Sie ihm zuerst Zugriff auf einen Kanal in Discord.",
+    "pickChannel": "Kanal auswählen…",
+    "searchChannelsPlaceholder": "Kanäle durchsuchen…",
+    "noChannelsFound": "Keine Kanäle gefunden",
+    "slackWorkspaceLabel": "Workspace:",
+    "slackTabChannel": "Kanal",
+    "slackTabDirectMessage": "Direktnachricht",
+    "slackInviteBotFirst": "Laden Sie den Bot zuerst mit",
+    "slackChannelPrivate": "Privat",
+    "slackBotNotInChannel": "Bot ist nicht im Kanal — führen Sie zuerst /invite @solidping aus",
+    "pickPerson": "Person auswählen…",
+    "searchPeoplePlaceholder": "Personen durchsuchen…",
+    "noPeopleFound": "Keine Personen gefunden",
+    "signingSecret": "Signaturschlüssel",
+    "copied": "Kopiert",
+    "copy": "Kopieren",
+    "rotate": "Erneuern",
+    "signingSecretMissing": "Kein Signaturschlüssel — er wird bei der nächsten Zustellung automatisch erzeugt. Erneuern Sie ihn, um jetzt einen zu erzeugen.",
+    "generate": "Erzeugen",
+    "signingSecretHelp": "Ausgehende Webhooks werden mit diesem Schlüssel nach dem Standard-Webhooks-Schema (HMAC-SHA256) signiert. Prüfen Sie ihn auf der Empfängerseite.",
+    "rotationBanner": "Vorheriger Schlüssel aktiv bis",
+    "rotationBannerHint": "Durch erneutes Erneuern früher entfernen.",
+    "slackInstallFailed": "Slack-Installation konnte nicht gestartet werden",
+    "slackLoading": "Wird geladen…",
+    "slackError": "Verbindung zum Slack-Workspace nicht möglich — installieren Sie den Bot neu.",
+    "twilioRegion": "Region (optional)",
+    "twilioRegionHint": "Für US1 (Standard) leer lassen. Zugangsdaten sind regionsgebunden — SID und Auth-Token eines ie1-Kontos funktionieren nur gegen ie1 und werden hier nicht verifiziert, wenn sie aus einer anderen Region stammen."
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -195,7 +232,8 @@
     "twilio": "SMS senden und Sprachanrufe über Twilio tätigen",
     "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
     "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)",
-    "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates"
+    "msteams-bot": "Bidirektionaler Teams-Bot: Alarme, @Mention-Befehle und gebündelte Vorfall-Updates",
+    "freebox": "Eine Free-Freebox überwachen (Leitungsqualität, Sync-Rate, Netzwerkstatus)"
   },
   "sms": {
     "title": "SMS & Anrufe",
@@ -231,5 +269,95 @@
     "defaultName": "E-Mail-Benachrichtigungen",
     "created": "E-Mail-Benachrichtigungen erstellt",
     "createFailed": "Einrichtung der E-Mail-Benachrichtigungen fehlgeschlagen"
-  }
+  },
+  "freebox": {
+    "baseUrl": "Freebox-Basis-URL",
+    "baseUrlHint": "Belassen Sie dies, wenn SolidPing im selben LAN wie die Freebox läuft. Für Fernzugriff verwenden Sie den öffentlichen Hostnamen, den Sie im Freebox-Admin unter Einstellungen → Freebox OS API konfiguriert haben.",
+    "cancel": "Abbrechen",
+    "description": "Überwachen Sie die Leitungsqualität und den Netzwerkstatus Ihrer Freebox",
+    "deviceName": "Gerätebezeichnung",
+    "deviceNameHint": "Wird im Freebox-Admin unter Autorisierte Apps angezeigt. Wählen Sie etwas, das Sie später wiedererkennen.",
+    "name": "Freebox",
+    "pairButton": "Mit der Freebox koppeln",
+    "paired": "Gekoppelt — Verbindung bereit",
+    "pairing": "Kopplung wird gestartet…",
+    "pairingDenied": "Die Kopplung wurde auf der Freebox abgelehnt.",
+    "pairingFailed": "Die Freebox konnte nicht erreicht werden. Überprüfen Sie die Basis-URL.",
+    "pairingTimeout": "Die LCD-Aufforderung der Freebox ist vor der Bestätigung abgelaufen. Versuchen Sie es erneut.",
+    "pressArrow": "Gehen Sie zu Ihrer Freebox und drücken Sie innerhalb von 30 Sekunden → auf dem LCD-Display",
+    "waitingApproval": "Warten auf LCD-Bestätigung…"
+  },
+  "notificationDetail": {
+    "title": "Benachrichtigung",
+    "backToIncident": "Zurück zum Vorfall",
+    "backToIntegration": "Zurück zur Integration",
+    "backToIncidents": "Zurück zu den Vorfällen",
+    "delivery": {
+      "title": "Zustellung",
+      "status": "Status:",
+      "requestUrl": "Anfrage-URL",
+      "requestUrlLabel": "Anfrage-URL",
+      "requestPayload": "Anfrage-Payload",
+      "smtpResponse": "SMTP-Serverantwort",
+      "responseBody": "Antwortinhalt",
+      "responseHeaders": "Antwort-Header",
+      "emailNote": "„Gesendet“ bedeutet, dass der Mailserver die Nachricht zur Weiterleitung angenommen hat — es bestätigt nicht, dass die Nachricht den Posteingang des Empfängers erreicht hat."
+    },
+    "timeline": {
+      "title": "Zustellungsverlauf",
+      "created": "Erstellt",
+      "sent": "Gesendet",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen"
+    },
+    "target": {
+      "title": "Ziel"
+    },
+    "escalationContext": {
+      "title": "Eskalationskontext",
+      "source": "Quelle:",
+      "step": "Schritt:",
+      "cycle": "Eskalationszyklus:",
+      "skipReason": "Grund für Überspringen:"
+    },
+    "identifiers": {
+      "title": "Kennungen",
+      "messageId": "Nachrichten-ID",
+      "messageIdLabel": "Nachrichten-ID",
+      "jobUid": "Job-UID",
+      "jobUidLabel": "Job-UID"
+    },
+    "error": {
+      "title": "Fehler",
+      "label": "Fehler"
+    }
+  },
+  "recentNotifications": {
+    "title": "Letzte Benachrichtigungen",
+    "loadFailed": "Benachrichtigungen konnten nicht geladen werden.",
+    "empty": "Über diese Integration wurden noch keine Benachrichtigungen gesendet.",
+    "columns": {
+      "status": "Status",
+      "channel": "Kanal",
+      "event": "Ereignis",
+      "target": "Ziel",
+      "created": "Erstellt"
+    }
+  },
+  "suppressions": {
+    "title": "Abgemeldete Empfänger",
+    "resubscribed": "{{email}} wieder angemeldet",
+    "resubscribeFailed": "Wiederanmeldung fehlgeschlagen",
+    "loadFailed": "Abgemeldete Empfänger konnten nicht geladen werden.",
+    "empty": "Niemand hat sich in dieser Organisation von Alarm-E-Mails abgemeldet.",
+    "columns": {
+      "email": "E-Mail",
+      "scope": "Geltungsbereich",
+      "unsubscribed": "Abgemeldet"
+    },
+    "allChecks": "Alle Checks",
+    "resubscribeAria": "{{email}} wieder anmelden"
+  },
+  "deleteConfirmTitle": "Integration löschen?",
+  "deleteConfirmBody": "Dadurch wird „{{name}}“ endgültig gelöscht."
 }

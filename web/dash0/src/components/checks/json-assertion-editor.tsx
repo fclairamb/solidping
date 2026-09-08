@@ -158,8 +158,8 @@ function NodeEditor({ node, onChange, onRemove, depth }: NodeEditorProps) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="and">AND</SelectItem>
-            <SelectItem value="or">OR</SelectItem>
+            <SelectItem value="and">{t("jsonAssertionAnd")}</SelectItem>
+            <SelectItem value="or">{t("jsonAssertionOr")}</SelectItem>
           </SelectContent>
         </Select>
         <Button

@@ -93,7 +93,7 @@ function PasswordCard({
       if (err instanceof ApiError && err.code === "INVALID_CURRENT_PASSWORD") {
         setCurrentError(t("account:security.password.invalidCurrent"));
       } else {
-        setFormError(err instanceof Error ? err.message : "failed");
+        setFormError(err instanceof Error ? err.message : t("account:security.password.failed"));
       }
     } finally {
       setSaving(false);
@@ -212,7 +212,7 @@ function SecurityPage() {
       const list = await listPasskeys();
       setPasskeys(list.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed");
+      setError(err instanceof Error ? err.message : t("account:security.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -264,7 +264,9 @@ function SecurityPage() {
       if (err instanceof ApiError && err.code === "PASSKEY_LAST_AUTH_METHOD") {
         toast.error(t("account:security.passkeys.lastAuthMethod"));
       } else {
-        toast.error(err instanceof Error ? err.message : "failed");
+        toast.error(
+          err instanceof Error ? err.message : t("account:security.passkeys.removeFailed"),
+        );
       }
     }
   };
@@ -276,7 +278,9 @@ function SecurityPage() {
       await renamePasskey(uid, next.trim());
       refreshAll();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "failed");
+      toast.error(
+        err instanceof Error ? err.message : t("account:security.passkeys.renameFailed"),
+      );
     }
   };
 

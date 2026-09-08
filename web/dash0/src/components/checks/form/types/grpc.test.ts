@@ -202,6 +202,10 @@ const REQUIRED_GRPC_KEYS = [
   "addSecretMetadata",
   "metadataKeyPlaceholder",
   "metadataValuePlaceholder",
+  // The service-name field's label and help text, moved out of hard-coded
+  // English in the i18n sweep. Both are rendered by GrpcFields.
+  "serviceNameOptional",
+  "serviceNameHelp",
 ];
 
 describe("grpc locale completeness", () => {

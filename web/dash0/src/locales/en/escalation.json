@@ -24,7 +24,8 @@
     "unused": "Unused",
     "emptyTitle": "No escalation policies yet",
     "stepsLabel_one": "step",
-    "stepsLabel_other": "steps"
+    "stepsLabel_other": "steps",
+    "silentBadgeTooltip": "Zero-step policy — pages nobody"
   },
   "new": {
     "title": "New escalation policy"

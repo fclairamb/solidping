@@ -1,10 +1,10 @@
 import { Command } from "cmdk";
 import { X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useLabelSuggestions } from "@/api/hooks";
 import {
-  KEY_ERROR,
   KEY_REGEX,
   SUGGESTION_DEBOUNCE_MS,
   SUGGESTION_LIMIT,
@@ -25,6 +25,7 @@ export type LabelInputProps = {
 };
 
 export function LabelInput({ org, value, onChange, disabled, placeholder }: LabelInputProps) {
+  const { t } = useTranslation("common");
   const [keyDraft, setKeyDraft] = useState("");
   const [valueDraft, setValueDraft] = useState("");
   const valueInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +66,7 @@ export function LabelInput({ org, value, onChange, disabled, placeholder }: Labe
               {!disabled && (
                 <button
                   type="button"
-                  aria-label={`Remove ${k}`}
+                  aria-label={t("labelPicker.removeLabel", { key: k })}
                   onClick={() => remove(k)}
                   className="ml-1 rounded-sm p-0.5 hover:bg-foreground/10"
                   data-testid={`label-chip-remove-${k}`}
@@ -90,7 +91,7 @@ export function LabelInput({ org, value, onChange, disabled, placeholder }: Labe
           }}
           query={debouncedKey}
           disabled={disabled}
-          placeholder={placeholder?.key ?? "key"}
+          placeholder={placeholder?.key ?? t("labelPicker.keyPlaceholderDefault")}
         />
         <span className="px-1 pt-2 text-muted-foreground">:</span>
         <SuggestionCombobox
@@ -106,26 +107,26 @@ export function LabelInput({ org, value, onChange, disabled, placeholder }: Labe
           onEnterCommit={commit}
           query={debouncedValue}
           disabled={disabled}
-          placeholder={placeholder?.value ?? "value"}
+          placeholder={placeholder?.value ?? t("labelPicker.valuePlaceholderDefault")}
         />
         <Button type="button" onClick={commit} disabled={!canAdd} size="sm">
-          Add
+          {t("labelPicker.add")}
         </Button>
       </div>
 
       {trimmedKey !== "" && !keyValid && (
         <p className="text-xs text-destructive" data-testid="label-key-error">
-          {KEY_ERROR}
+          {t("labelPicker.keyError")}
         </p>
       )}
       {keyValid && duplicate && (
         <p className="text-xs text-destructive" data-testid="label-key-duplicate">
-          This key is already set — edit the existing label.
+          {t("labelPicker.duplicateKey")}
         </p>
       )}
       {trimmedValue.length > VALUE_MAX && (
         <p className="text-xs text-destructive">
-          Value must be at most {VALUE_MAX} characters.
+          {t("labelPicker.valueTooLong", { max: VALUE_MAX })}
         </p>
       )}
     </div>
@@ -159,6 +160,7 @@ function SuggestionCombobox({
   placeholder,
   inputRef,
 }: ComboboxProps) {
+  const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
 
   const enabled =
@@ -217,12 +219,12 @@ function SuggestionCombobox({
                 className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
                 data-testid={`label-${mode}-use-typed`}
               >
-                Use &ldquo;{trimmed}&rdquo;
+                {t("labelPicker.useTyped", { value: trimmed })}
               </Command.Item>
             )}
             {suggestions.length === 0 && !showUseTyped && (
               <Command.Empty className="px-2 py-3 text-center text-xs text-muted-foreground">
-                No matches
+                {t("labelPicker.noMatches")}
               </Command.Empty>
             )}
             {suggestions.map((s) => (

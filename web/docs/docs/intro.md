@@ -56,6 +56,22 @@ System agents trade the direct database connection for a hardened, minimal proto
 
 It's the same binary: run it with `SP_NODE_ROLE=agent`, point `SP_AGENT_SERVER_URL` at your server, and pass the region's enrollment token. The same transport also powers customer-run [private locations](/features/private-locations), which monitor networks the platform can't reach at all.
 
+## Try the live demo
+
+Before installing anything, you can look around a real SolidPing instance —
+weeks of history across a real multi-region fleet, a status page, SLOs and an
+escalation policy already firing:
+
+**[https://solidping.io/dash0/login?demo=true](https://solidping.io/dash0/login?demo=true)**
+
+That link signs you in on load — no form, no sign-up. You can create a check
+and watch results arrive, and edit or delete the checks you created; everything
+else is read-only. Your checks are cleaned up after an hour.
+
+The demo is an optional feature of the server itself, **off by default**, so
+your own install shows nothing of the sort until you turn it on — see
+[Public Live Demo](/configuration#public-live-demo).
+
 ## Quick Start
 
 The fastest way to get started is with Docker:

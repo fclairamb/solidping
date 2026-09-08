@@ -1072,19 +1072,24 @@ function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPu
 
       {subs.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">
-          No devices subscribed yet. Click the button below to add this browser.
+          {t(
+            "form.webpushNoSubscriptions",
+            "No devices subscribed yet. Click the button below to add this browser.",
+          )}
         </p>
       ) : (
         <div className="space-y-2" data-testid="webpush-subscriptions-list">
           {subs.map((sub) => (
             <div key={sub.endpoint} className="flex items-center gap-2 rounded border px-3 py-2">
               <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
-              <span className="flex-1 text-sm truncate">{sub.label || "Browser"}</span>
+              <span className="flex-1 text-sm truncate">
+                {sub.label || t("form.webpushDefaultDeviceLabel", "Browser")}
+              </span>
               <button
                 type="button"
                 onClick={() => handleRemove(sub.endpoint)}
                 className="text-destructive hover:text-destructive/80"
-                aria-label="Remove subscription"
+                aria-label={t("form.webpushRemoveSubscription", "Remove subscription")}
                 data-testid="remove-webpush-subscription"
               >
                 <Trash2 className="h-4 w-4" />
@@ -1392,6 +1397,7 @@ function DiscordChannelCombobox({
   currentId,
   onSelect,
 }: DiscordChannelComboboxProps) {
+  const { t } = useTranslation("integrations");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -1410,8 +1416,10 @@ function DiscordChannelCombobox({
   if (channels.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No text channels the bot can see. Give it access to a channel in Discord
-        first.
+        {t(
+          "form.discordNoChannelsAvailable",
+          "No text channels the bot can see. Give it access to a channel in Discord first.",
+        )}
       </p>
     );
   }
@@ -1427,7 +1435,7 @@ function DiscordChannelCombobox({
           data-testid="discord-channel-combobox"
         >
           <span className={cn(!selected && "text-muted-foreground")}>
-            {selected ? `#${selected.name}` : "Pick a channel…"}
+            {selected ? `#${selected.name}` : t("form.pickChannel", "Pick a channel…")}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -1439,7 +1447,7 @@ function DiscordChannelCombobox({
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search channels…"
+            placeholder={t("form.searchChannelsPlaceholder", "Search channels…")}
             className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             data-testid="discord-channel-search"
           />
@@ -1447,7 +1455,7 @@ function DiscordChannelCombobox({
         <div className="max-h-56 overflow-y-auto p-1">
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-sm text-muted-foreground">
-              No channels found
+              {t("form.noChannelsFound", "No channels found")}
             </div>
           ) : (
             filtered.map((ch) => (
@@ -1674,7 +1682,7 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
     <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
       {teamName && (
         <p className="text-muted-foreground">
-          <strong>Workspace:</strong> {teamName}
+          <strong>{t("form.slackWorkspaceLabel", "Workspace:")}</strong> {teamName}
         </p>
       )}
 
@@ -1699,7 +1707,9 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
             )}
             data-testid={`slack-tab-${tab}`}
           >
-            {tab === "channel" ? "Channel" : "Direct message"}
+            {tab === "channel"
+              ? t("form.slackTabChannel", "Channel")
+              : t("form.slackTabDirectMessage", "Direct message")}
           </button>
         ))}
       </div>
@@ -2071,6 +2081,7 @@ interface SlackChannelComboboxProps {
 }
 
 function SlackChannelCombobox({ channels, currentId, onSelect }: SlackChannelComboboxProps) {
+  const { t } = useTranslation("integrations");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -2086,12 +2097,12 @@ function SlackChannelCombobox({ channels, currentId, onSelect }: SlackChannelCom
   );
 
   const selected = channels.find((ch) => ch.id === currentId);
-  const label = selected ? `#${selected.name}` : "Pick a channel…";
+  const label = selected ? `#${selected.name}` : t("form.pickChannel", "Pick a channel…");
 
   if (channels.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        Invite the bot to a channel first with{" "}
+        {t("form.slackInviteBotFirst", "Invite the bot to a channel first with")}{" "}
         <code className="font-mono">/invite @solidping</code>.
       </p>
     );
@@ -2118,14 +2129,14 @@ function SlackChannelCombobox({ channels, currentId, onSelect }: SlackChannelCom
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search channels…"
+            placeholder={t("form.searchChannelsPlaceholder", "Search channels…")}
             className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             data-testid="slack-channel-search"
           />
         </div>
         <div className="max-h-56 overflow-y-auto p-1">
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">No channels found</div>
+            <div className="px-3 py-2 text-sm text-muted-foreground">{t("form.noChannelsFound", "No channels found")}</div>
           ) : (
             filtered.map((ch) => (
               <button
@@ -2153,11 +2164,16 @@ function SlackChannelCombobox({ channels, currentId, onSelect }: SlackChannelCom
                 <div>
                   <div className="font-medium">#{ch.name}</div>
                   {ch.isPrivate && (
-                    <div className="text-xs text-muted-foreground">Private</div>
+                    <div className="text-xs text-muted-foreground">
+                      {t("form.slackChannelPrivate", "Private")}
+                    </div>
                   )}
                   {!ch.isMember && (
                     <div className="text-xs text-amber-600">
-                      Bot not in channel — run /invite @solidping first
+                      {t(
+                        "form.slackBotNotInChannel",
+                        "Bot not in channel — run /invite @solidping first",
+                      )}
                     </div>
                   )}
                 </div>
@@ -2179,6 +2195,7 @@ interface SlackUserComboboxProps {
 }
 
 function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProps) {
+  const { t } = useTranslation("integrations");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -2196,7 +2213,9 @@ function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProp
   );
 
   const selected = users.find((u) => u.id === currentId);
-  const label = selected ? `@${selected.realName || selected.name}` : "Pick a person…";
+  const label = selected
+    ? `@${selected.realName || selected.name}`
+    : t("form.pickPerson", "Pick a person…");
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -2219,14 +2238,14 @@ function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProp
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search people…"
+            placeholder={t("form.searchPeoplePlaceholder", "Search people…")}
             className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             data-testid="slack-user-search"
           />
         </div>
         <div className="max-h-56 overflow-y-auto p-1">
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">No people found</div>
+            <div className="px-3 py-2 text-sm text-muted-foreground">{t("form.noPeopleFound", "No people found")}</div>
           ) : (
             filtered.map((u) => (
               <button

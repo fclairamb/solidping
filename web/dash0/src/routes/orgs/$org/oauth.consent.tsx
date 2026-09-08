@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -55,6 +56,7 @@ export const Route = createFileRoute("/orgs/$org/oauth/consent")({
 const AUTHORIZE_ENDPOINT = "/api/v1/oauth/authorize";
 
 function ConsentPage() {
+  const { t } = useTranslation("auth");
   const search = Route.useSearch();
   const { org } = Route.useParams();
 
@@ -75,10 +77,9 @@ function ConsentPage() {
       <div className="mx-auto flex max-w-lg flex-col gap-4 p-4">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Invalid authorization request</AlertTitle>
+          <AlertTitle>{t("oauthConsent.invalidTitle")}</AlertTitle>
           <AlertDescription>
-            This consent request is missing required parameters. Start the
-            connection again from your MCP client.
+            {t("oauthConsent.invalidDescription")}
           </AlertDescription>
         </Alert>
       </div>
@@ -104,12 +105,14 @@ function ConsentPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-primary" />
-            <CardTitle>Authorize MCP access</CardTitle>
+            <CardTitle>{t("oauthConsent.title")}</CardTitle>
           </div>
           <CardDescription>
-            <span className="font-medium">{clientName}</span> is requesting access
-            to your SolidPing organization <span className="font-medium">{org}</span>{" "}
-            over the Model Context Protocol.
+            <Trans
+              i18nKey="auth:oauthConsent.description"
+              values={{ clientName, org }}
+              components={{ strong: <span className="font-medium" /> }}
+            />
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -120,12 +123,14 @@ function ConsentPage() {
               <Pencil className="h-4 w-4" />
             )}
             <AlertTitle>
-              {isReadOnly ? "Read-only access" : "Read-write access"}
+              {isReadOnly
+                ? t("oauthConsent.readOnlyTitle")
+                : t("oauthConsent.readWriteTitle")}
             </AlertTitle>
             <AlertDescription>
               {isReadOnly
-                ? "This connection can read your monitoring data but cannot create, update, or delete anything."
-                : "This connection can read your monitoring data and create, update, or delete resources via MCP tools."}
+                ? t("oauthConsent.readOnlyDescription")
+                : t("oauthConsent.readWriteDescription")}
             </AlertDescription>
           </Alert>
 
@@ -137,7 +142,7 @@ function ConsentPage() {
               ))}
               <input type="hidden" name="decision" value="deny" />
               <Button type="submit" variant="outline" className="w-full">
-                Deny
+                {t("oauthConsent.deny")}
               </Button>
             </form>
             {/* Approve: POST mints the auth code and redirects to the client. */}
@@ -147,7 +152,7 @@ function ConsentPage() {
               ))}
               <input type="hidden" name="decision" value="approve" />
               <Button type="submit" className="w-full">
-                Approve
+                {t("oauthConsent.approve")}
               </Button>
             </form>
           </div>

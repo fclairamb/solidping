@@ -36,5 +36,28 @@
     "updated": "Mise à jour enregistrée",
     "deleted": "Mise à jour supprimée",
     "deleteFailed": "Échec de la suppression de la mise à jour"
+  },
+  "form": {
+    "details": "Détails",
+    "createDescription": "Publier une nouvelle mise à jour sur votre page de statut.",
+    "editDescription": "Modifier cette mise à jour.",
+    "statusPage": "Page de statut",
+    "selectStatusPage": "Sélectionner une page de statut",
+    "section": "Section (optionnel)",
+    "noSection": "Aucune section",
+    "check": "Check (optionnel)",
+    "kind": "Type",
+    "title": "Titre",
+    "noCheck": "Aucun check",
+    "titlePlaceholder": "Enquête sur des taux d'erreur élevés",
+    "body": "Contenu",
+    "bodyPlaceholder": "Nous enquêtons sur un problème concernant...",
+    "linkUrl": "URL du lien (optionnel)",
+    "linkUrlPlaceholder": "https://status.exemple.com/incident/123",
+    "publishedAt": "Publié le",
+    "cancel": "Annuler",
+    "saving": "Enregistrement…",
+    "create": "Créer",
+    "saveChanges": "Enregistrer les modifications"
   }
 }

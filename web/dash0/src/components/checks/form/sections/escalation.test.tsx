@@ -14,6 +14,10 @@
 import type { PropsWithChildren } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+// The picker's labels went through i18n; without the real instance every
+// t() returns its own key and the assertions below compare against those.
+// Same import the other component tests use (e.g. demo-banner.test.tsx).
+import "@/i18n";
 import { EscalationSelect } from "./escalation";
 import type { CheckGroup, EscalationPolicy } from "@/api/hooks";
 

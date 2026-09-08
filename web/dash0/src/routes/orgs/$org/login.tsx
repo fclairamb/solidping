@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
-import { useDemoConfig } from "@/api/public-config";
+import { useDemoConfig, usePublicConfigLoading } from "@/api/public-config";
+import { demoAutoLoginOwnsRedirect, parseDemoFlag } from "@/lib/demo";
 import {
   getLastAuthMethod,
   setLastAuthMethod,
@@ -71,19 +72,14 @@ export const Route = createFileRoute("/orgs/$org/login")({
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
     // `?demo=1` signs the visitor straight into the shared live demo on load
     // (spec 2026-09-06-02), so the marketing site can deep-link into a working
-    // dashboard rather than into a login form. Same coercion caveat as
-    // session_expired above: TanStack already turned "true" into a boolean,
-    // so a bare string comparison would silently never match.
+    // dashboard rather than into a login form. The coercion lives in
+    // lib/demo.ts because `/`, `/login` and the `/orgs/$org` layout now parse
+    // the same flag on the way here (spec 2026-09-07-02) — see parseDemoFlag
+    // for why four shapes are accepted.
     // Optional in the emitted type, deliberately: every existing
     // `navigate({ to: "/orgs/$org/login", search: … })` in the app predates
     // this param and must keep compiling without naming it.
-    demo:
-      search.demo === true ||
-      search.demo === "true" ||
-      search.demo === "1" ||
-      search.demo === 1
-        ? true
-        : undefined,
+    demo: parseDemoFlag(search.demo),
   }),
   component: LoginPage,
 });
@@ -268,6 +264,8 @@ function LoginPage() {
     logout,
     switchOrg,
     isAuthenticated,
+    isLoading: authLoading,
+    user,
     verify2FA,
     applyLoginResponse,
   } = auth;
@@ -346,15 +344,47 @@ function LoginPage() {
     [navigate],
   );
 
+  // The shared public live demo (spec 2026-09-06-02). Nothing is rendered when
+  // the instance has no demo, so a self-hosted install shows exactly what it
+  // showed before. Declared up here, above the redirect effect, because that
+  // effect's dependency array reads `demoAvailable` during render.
+  const demoConfig = useDemoConfig();
+  const demoAvailable = Boolean(
+    demoConfig.enabled && demoConfig.orgSlug && demoConfig.email && demoConfig.password,
+  );
+  const demoConfigLoading = usePublicConfigLoading();
+
   // Redirect if already authenticated (but not when showing org picker). When
   // a valid `returnTo` deep link is present, honor it instead of the org root
   // — this also matches routeResult's default case, so the two paths racing on
   // the same isAuthenticated flip now agree on the destination.
+  //
+  // `?demo` is the third branch (spec 2026-09-07-02): the flag means "put me in
+  // the demo", not "put me wherever my token points". This effect used to win
+  // the race against the auto-login one below, so a visitor who already held a
+  // session — their own org, or even the demo itself — followed a demo link and
+  // landed on /orgs/<the URL's org> instead. Standing down here hands the
+  // decision to the demo effect, which either re-enters or short-circuits.
+  //
+  // It stands down only when that effect will actually act, though. On a
+  // self-hosted install with the demo OFF, the auto-login effect declines to
+  // run (it requires demoAvailable), and an authenticated visitor following a
+  // …/login?demo=true link would be left on the `return null` render guard
+  // below — a blank page, forever. demoAutoLoginOwnsRedirect keeps the two in
+  // agreement, including during the window where the public-config document
+  // has not answered yet and "no demo" is not yet knowable.
+  const demoOwnsRedirect = demoAutoLoginOwnsRedirect(
+    demoAutoLogin,
+    demoAvailable,
+    demoConfigLoading,
+  );
+
   useEffect(() => {
+    if (demoOwnsRedirect) return;
     if (isAuthenticated && !showOrgPicker) {
       goToDestination(resolveDestination(org, returnTo, BASE_PATH), true);
     }
-  }, [isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
+  }, [demoOwnsRedirect, isAuthenticated, showOrgPicker, org, returnTo, goToDestination]);
 
   // `loginOrg` is the org the credentials were actually for. It defaults to the
   // org whose login page we are on, which is right for every ordinary sign-in —
@@ -414,14 +444,6 @@ function LoginPage() {
     [tc],
   );
 
-  // The shared public live demo (spec 2026-09-06-02). Nothing is rendered when
-  // the instance has no demo, so a self-hosted install shows exactly what it
-  // showed before.
-  const demoConfig = useDemoConfig();
-  const demoAvailable = Boolean(
-    demoConfig.enabled && demoConfig.orgSlug && demoConfig.email && demoConfig.password,
-  );
-
   // Signing into the demo goes through the ORDINARY login — the same
   // login(org, email, password) the form calls, and the same routeResult
   // afterwards. There is deliberately no session-minting shortcut: the demo is
@@ -429,6 +451,21 @@ function LoginPage() {
   // authentication path to keep correct forever.
   const enterDemo = useCallback(async () => {
     if (!demoAvailable) return;
+
+    // Already the demo principal — re-entering must not mint a second session
+    // for nothing, and must land in the DEMO org rather than in the org whose
+    // login page this happens to be (which a demo user is not a member of).
+    // The short-circuit lives here rather than in the ?demo effect below so it
+    // covers the "Try the live demo" button too, and so the effect body stays
+    // free of the conditional setState react-hooks refuses there.
+    if (isAuthenticated && user?.isDemo && demoConfig.orgSlug) {
+      navigate({
+        to: "/orgs/$org",
+        params: { org: demoConfig.orgSlug },
+        replace: true,
+      });
+      return;
+    }
 
     setError(null);
     setIsLoading(true);
@@ -450,7 +487,16 @@ function LoginPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [demoAvailable, demoConfig, login, routeResult, reportError]);
+  }, [
+    demoAvailable,
+    demoConfig,
+    isAuthenticated,
+    user?.isDemo,
+    navigate,
+    login,
+    routeResult,
+    reportError,
+  ]);
 
   // `?demo=1` enters the demo on load. A REF, not state: the flag exists only
   // to make the effect fire once — the public-config query resolving is itself
@@ -461,11 +507,29 @@ function LoginPage() {
   const demoAutoLoginStarted = useRef(false);
 
   useEffect(() => {
-    if (!demoAutoLogin || !demoAvailable || demoAutoLoginStarted.current) return;
+    // `authLoading` joins the one-shot guard rather than sitting in a second
+    // early return: the stored session must finish validating before the
+    // decision is made (`user` is null while it is in flight, so a visitor who
+    // is ALREADY in the demo would be treated as a stranger and signed in
+    // again), and folding it in here keeps the effect body a single
+    // unconditional call, which is what react-hooks/set-state-in-effect wants.
+    if (
+      !demoAutoLogin ||
+      !demoAvailable ||
+      authLoading ||
+      demoAutoLoginStarted.current
+    ) {
+      return;
+    }
 
+    // enterDemo decides between "already the demo, just go there" and a real
+    // login. login() replaces the stored session and org outright
+    // (applyLoginResponse), so a visitor holding a session in their own org
+    // needs no sign-out step — and gets no confirmation dialog either: the
+    // whole point of the link is zero clicks.
     demoAutoLoginStarted.current = true;
     void enterDemo();
-  }, [demoAutoLogin, demoAvailable, enterDemo]);
+  }, [demoAutoLogin, demoAvailable, authLoading, enterDemo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

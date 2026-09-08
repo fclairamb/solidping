@@ -165,5 +165,7 @@
   "security": "Sicherheit",
   "slos": "SLOs",
   "reportSchedules": "Verfügbarkeitsberichte",
-  "audit": "Audit"
+  "audit": "Audit",
+  "promote": "Befördern",
+  "sessions": "Sitzungen"
 }

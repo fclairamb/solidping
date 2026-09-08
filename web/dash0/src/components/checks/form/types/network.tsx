@@ -43,10 +43,11 @@ function TcpFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<HostPortState>) {
+  const { t } = useTranslation("checks");
   const { type } = useCheckFormFields();
   return (
     <div className="space-y-2">
-      <Label>Host</Label>
+      <Label>{t("form.host")}</Label>
       <div className="flex gap-2">
         <Input
           id="host"
@@ -136,12 +137,13 @@ function SshFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<HostPortUserPassState>) {
+  const { t } = useTranslation("checks");
   const { configPrivateKeys } = useCheckFormFields();
   const hasStoredKey = configPrivateKeys?.includes("private_key") ?? false;
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -181,7 +183,7 @@ function SshFields({
       </div>
       <div className="space-y-2">
         <Label htmlFor="expected-fingerprint">
-          Host key fingerprint (optional)
+          {t("network.hostKeyFingerprintOptional")}
         </Label>
         <Input
           id="expected-fingerprint"
@@ -195,12 +197,11 @@ function SshFields({
           data-testid="check-expected-fingerprint-input"
         />
         <p className="text-xs text-muted-foreground">
-          Verifies the server&apos;s identity on every check, and is required
-          to use this check as a{" "}
+          {t("network.fingerprintHelpPrefix")}{" "}
           <span className="font-medium text-foreground">
-            Run through SSH tunnel
+            {t("network.tunnelBastionLabel")}
           </span>{" "}
-          bastion for other checks. Get it with{" "}
+          {t("network.fingerprintHelpSuffix")}{" "}
           <code className="text-[11px]">
             ssh-keyscan host | ssh-keygen -lf -
           </code>
@@ -208,7 +209,7 @@ function SshFields({
         </p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username (optional)</Label>
+        <Label htmlFor="username">{t("form.usernameOptional")}</Label>
         <Input
           id="username"
           type="text"
@@ -219,7 +220,7 @@ function SshFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -229,7 +230,7 @@ function SshFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="private-key">Private key (optional, PEM)</Label>
+        <Label htmlFor="private-key">{t("network.privateKeyOptionalPem")}</Label>
         <Textarea
           id="private-key"
           rows={6}
@@ -248,12 +249,12 @@ function SshFields({
           >
             <span className="font-mono tracking-widest">••••</span>{" "}
             <span className="italic">
-              (encrypted — enter a new key to replace)
+              {t("network.privateKeyEncrypted")}
             </span>
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          If both a password and a private key are set, the password is used.
+          {t("network.passwordOverridesPrivateKey")}
         </p>
       </div>
     </>
@@ -280,12 +281,13 @@ function SftpFields({
   state,
   onChange,
 }: CheckTypeFieldsProps<HostPortUserPassState>) {
+  const { t } = useTranslation("checks");
   const { configPrivateKeys } = useCheckFormFields();
   const hasStoredKey = configPrivateKeys?.includes("private_key") ?? false;
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -308,7 +310,7 @@ function SftpFields({
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username</Label>
+        <Label htmlFor="username">{t("form.username")}</Label>
         <Input
           id="username"
           type="text"
@@ -319,7 +321,7 @@ function SftpFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t("network.password")}</Label>
         <Input
           id="password"
           type="password"
@@ -329,7 +331,7 @@ function SftpFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="private-key">Private key (optional, PEM)</Label>
+        <Label htmlFor="private-key">{t("network.privateKeyOptionalPem")}</Label>
         <Textarea
           id="private-key"
           rows={6}
@@ -348,12 +350,12 @@ function SftpFields({
           >
             <span className="font-mono tracking-widest">••••</span>{" "}
             <span className="italic">
-              (encrypted — enter a new key to replace)
+              {t("network.privateKeyEncrypted")}
             </span>
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          If both a password and a private key are set, the password is used.
+          {t("network.passwordOverridesPrivateKey")}
         </p>
       </div>
     </>
@@ -379,10 +381,11 @@ function FtpFields({
   state,
   onChange,
 }: CheckTypeFieldsProps<HostPortUserPassState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -405,7 +408,7 @@ function FtpFields({
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username (optional, default: anonymous)</Label>
+        <Label htmlFor="username">{t("network.usernameOptionalAnonymous")}</Label>
         <Input
           id="username"
           type="text"
@@ -416,7 +419,7 @@ function FtpFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -459,7 +462,7 @@ function IcmpFields({ state, onChange, errors }: CheckTypeFieldsProps<IcmpState>
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label htmlFor="host">Host</Label>
+        <Label htmlFor="host">{t("form.host")}</Label>
         {freeboxChannels.length > 0 && (
           <Button
             type="button"

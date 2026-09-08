@@ -14,7 +14,8 @@
       "timezone": "Zona horaria",
       "rotation": "Rotación",
       "currentlyOnCall": "De guardia ahora"
-    }
+    },
+    "activeOnDuty": "Activo de guardia"
   },
   "detail": {
     "back": "Volver a los turnos",

@@ -90,7 +90,10 @@
     "issuesSubIncidents_one": "{{count}} aktiver Vorfall",
     "issuesSubIncidents_other": "{{count}} aktive Vorfälle",
     "warning": "Einige Prüfungen beeinträchtigt",
-    "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt"
+    "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt",
+    "slaOperational": "SLA 24 Std. betriebsbereit",
+    "activeOutage": "Aktiver Ausfall",
+    "degradedPerformance": "Beeinträchtigte Leistung"
   },
   "kpi": {
     "monitored": "Überwachte Prüfungen",
@@ -105,7 +108,11 @@
       "degraded": "Beeinträchtigt",
       "down": "Ausgefallen"
     },
-    "availabilityNoDataSub": "Noch keine Daten"
+    "availabilityNoDataSub": "Noch keine Daten",
+    "availability": "Verfügbarkeit 24 Std.",
+    "availabilitySub": "Verfügbarkeitszustand der Flotte",
+    "activeCount": "{{count}} aktiv",
+    "totalEndpoints": "{{count}} Endpunkte insgesamt"
   },
   "glance": {
     "title": "Prüfungen auf einen Blick",

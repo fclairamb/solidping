@@ -219,7 +219,7 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
   return (
     <>
       <div className="space-y-2">
-        <Label>Request</Label>
+        <Label>{t("http.request")}</Label>
         <div className="flex gap-2">
           <Select
             value={state.method}
@@ -258,7 +258,7 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="expectedStatusCodes">Expected Status</Label>
+        <Label htmlFor="expectedStatusCodes">{t("http.expectedStatus")}</Label>
         <TokenChipsInput
           id="expectedStatusCodes"
           value={state.expectedStatusCodes}
@@ -308,7 +308,7 @@ export function HttpAuthFields({
       <div className="space-y-2">
         <div className="flex gap-4">
           <div className="space-y-2 flex-1">
-            <Label htmlFor="username">Username (optional, Basic Auth)</Label>
+            <Label htmlFor="username">{t("http.usernameOptionalBasicAuth")}</Label>
             <Input
               id="username"
               type="text"
@@ -321,7 +321,7 @@ export function HttpAuthFields({
             />
           </div>
           <div className="space-y-2 flex-1">
-            <Label htmlFor="password">Password (optional)</Label>
+            <Label htmlFor="password">{t("form.passwordOptional")}</Label>
             <Input
               id="password"
               type="password"
@@ -337,7 +337,7 @@ export function HttpAuthFields({
           <p className="text-xs text-muted-foreground" data-testid="basic-auth-encrypted">
             <span className="font-mono tracking-widest">••••</span>{" "}
             <span className="italic">
-              (encrypted — enter new values to replace)
+              {t("http.encryptedEnterNewValues")}
             </span>
           </p>
         )}
@@ -354,7 +354,7 @@ export function HttpAuthFields({
             <p className="text-xs text-muted-foreground">
               <span className="font-mono tracking-widest">••••</span>{" "}
               <span className="italic">
-                (encrypted — enter new values to replace)
+                {t("http.encryptedEnterNewValues")}
               </span>
             </p>
           )}
@@ -442,15 +442,14 @@ export function HttpOptionsFields({
           onCheckedChange={(verifySsl) => onChange({ ...state, verifySsl })}
           data-testid="check-verify-ssl-switch"
         />
-        <Label htmlFor="http-verify-ssl">Verify TLS certificate</Label>
+        <Label htmlFor="http-verify-ssl">{t("form.verifyTlsCertificate")}</Label>
       </div>
       {!state.verifySsl && (
         <p
           className="text-xs text-yellow-700 dark:text-yellow-400"
           data-testid="check-verify-ssl-warning"
         >
-          Certificate errors will be ignored — the check will report up even
-          for an invalid, expired, or self-signed certificate.
+          {t("grpc.tlsSkipVerifyWarning")}
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -462,12 +461,11 @@ export function HttpOptionsFields({
           }
           data-testid="check-follow-redirects-switch"
         />
-        <Label htmlFor="http-follow-redirects">Follow redirects</Label>
+        <Label htmlFor="http-follow-redirects">{t("http.followRedirects")}</Label>
       </div>
       {!state.followRedirects && (
         <p className="text-xs text-muted-foreground">
-          The check will evaluate the first response (e.g. a 3XX) instead of
-          following it to its destination.
+          {t("http.followRedirectsOffHelp")}
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -480,7 +478,7 @@ export function HttpOptionsFields({
           data-testid="check-capture-failure-response-switch"
         />
         <Label htmlFor="http-capture-failure-response">
-          Capture the failing response
+          {t("http.captureFailingResponse")}
         </Label>
       </div>
       {state.captureFailureResponse && (
@@ -488,11 +486,7 @@ export function HttpOptionsFields({
           className="text-xs text-yellow-700 dark:text-yellow-400"
           data-testid="check-capture-failure-response-warning"
         >
-          When this check fails, the response it received (status line, headers
-          with sensitive values redacted, and up to 16 KB of the body) is kept
-          on the incident it opens. Response bodies can contain personal data —
-          the capture is visible to your team only and never appears on a status
-          page.
+          {t("http.captureFailingResponseHelp")}
         </p>
       )}
       <div className="space-y-2 border-t pt-3">

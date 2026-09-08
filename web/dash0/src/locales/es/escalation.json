@@ -22,7 +22,10 @@
     "unused": "Sin usar",
     "emptyTitle": "Aún no hay políticas de escalado",
     "stepsLabel_one": "paso",
-    "stepsLabel_other": "pasos"
+    "stepsLabel_other": "pasos",
+    "deleteUsage": "Usado por {{checks}} checks y {{groups}} grupos — volverán a la escalada heredada.",
+    "silentBadge": "0 pasos — silencioso",
+    "silentBadgeTooltip": "Política sin pasos — no avisa a nadie"
   },
   "new": {
     "title": "Nueva política de escalada"

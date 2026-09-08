@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,10 +64,11 @@ function ClickhouseFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<ClickhouseState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -97,7 +99,7 @@ function ClickhouseFields({
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username (optional)</Label>
+        <Label htmlFor="username">{t("form.usernameOptional")}</Label>
         <Input
           id="username"
           type="text"
@@ -108,7 +110,7 @@ function ClickhouseFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"
@@ -118,7 +120,7 @@ function ClickhouseFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="database">Database (optional)</Label>
+        <Label htmlFor="database">{t("form.databaseOptional")}</Label>
         <Input
           id="database"
           type="text"
@@ -129,7 +131,7 @@ function ClickhouseFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="query">Query (optional)</Label>
+        <Label htmlFor="query">{t("form.queryOptional")}</Label>
         <Input
           id="query"
           type="text"
@@ -152,7 +154,7 @@ function ClickhouseFields({
             }
             data-testid="check-clickhouse-secure-checkbox"
           />
-          <span className="text-sm">Use TLS (native secure port)</span>
+          <span className="text-sm">{t("clickhouse.useTlsNativeSecurePort")}</span>
         </label>
         <label className="flex items-center gap-2">
           <Checkbox
@@ -164,7 +166,7 @@ function ClickhouseFields({
           <span
             className={cn("text-sm", !state.secure && "text-muted-foreground")}
           >
-            Verify TLS certificate
+            {t("form.verifyTlsCertificate")}
           </span>
         </label>
       </div>

@@ -119,7 +119,8 @@
       "changed": "Mot de passe mis à jour.",
       "mismatch": "Les deux nouveaux mots de passe ne correspondent pas.",
       "tooShort": "Le mot de passe doit contenir au moins {{min}} caractères.",
-      "invalidCurrent": "Ce n'est pas votre mot de passe actuel."
+      "invalidCurrent": "Ce n'est pas votre mot de passe actuel.",
+      "failed": "Impossible de modifier votre mot de passe."
     },
     "passkeys": {
       "title": "Passkeys",
@@ -131,7 +132,9 @@
       "lastUsed": "Last used",
       "renamePrompt": "New name for this passkey:",
       "lastAuthMethod": "Add another passkey or set a password before removing this one.",
-      "unsupported": "This browser does not support passkeys."
+      "unsupported": "This browser does not support passkeys.",
+      "removeFailed": "Impossible de supprimer la clé d'accès.",
+      "renameFailed": "Impossible de renommer la clé d'accès."
     },
     "totp": {
       "title": "Two-Factor Authentication (TOTP)",
@@ -155,8 +158,10 @@
       "done": "Done",
       "disableTitle": "Disable two-factor authentication",
       "disableSubtitle": "Enter a current 6-digit code to confirm.",
-      "setupFailed": "Unable to set up two-factor authentication. Try again."
-    }
+      "setupFailed": "Unable to set up two-factor authentication. Try again.",
+      "disableFailed": "Impossible de désactiver l'authentification à deux facteurs."
+    },
+    "loadFailed": "Impossible de charger vos paramètres de sécurité."
   },
   "organizations": {
     "title": "Organisations",
@@ -226,7 +231,69 @@
       "unavailable": "Connectez-vous avec Slack, et demandez à un administrateur de relier un espace de travail Slack, pour recevoir les alertes en message direct.",
       "connectButton": "Connecter Slack",
       "added": "Notifications Slack ajoutées",
-      "addFailed": "Impossible d'ajouter le contact Slack"
+      "addFailed": "Impossible d'ajouter le contact Slack",
+      "bannerIntro": "Vous vous êtes connecté avec Slack ({{workspace}}).",
+      "bannerCta": "Ajouter les notifications par message direct Slack",
+      "bannerSuffix": "pour recevoir les alertes d'incident directement dans Slack.",
+      "addButton": "Ajouter un MD Slack"
+    },
+    "route": {
+      "updateFailed": "Échec de la mise à jour de la méthode de notification",
+      "removed": "Contact de notification supprimé",
+      "removeFailed": "Échec de la suppression du contact de notification",
+      "testSent": "Notification de test envoyée",
+      "testFailed": "Échec de l'envoi de la notification de test",
+      "browserLabel": "Navigateur",
+      "sendTestNotification": "Envoyer une notification de test"
+    },
+    "addContact": {
+      "emailRequired": "L'adresse e-mail est requise",
+      "phoneRequired": "Le numéro de téléphone est requis",
+      "addFailed": "Échec de l'ajout du contact",
+      "added": "Contact de notification ajouté",
+      "browserPushEnabled": "Notifications push du navigateur activées",
+      "browserPushFailed": "Échec de l'activation des notifications push du navigateur",
+      "emailPlaceholder": "vous@exemple.com",
+      "phonePlaceholderExample": "+1 555 123 4567",
+      "emailAddressLabel": "Adresse e-mail",
+      "whatsappNumberLabel": "Numéro WhatsApp",
+      "phoneNumberLabel": "Numéro de téléphone",
+      "submit": "Ajouter",
+      "addBrowserTitle": "Ajouter un navigateur",
+      "addBrowserDescription": "Recevez les notifications sous forme d'alertes push du navigateur sur cet appareil."
+    },
+    "page": {
+      "loadFailed": "Échec du chargement des paramètres de notification. Veuillez rafraîchir la page.",
+      "methodsTitle": "Méthodes de notification",
+      "methodsSubtitle": "Configurez comment vous recevez les alertes d'incident. Toutes les méthodes activées se déclenchent lorsqu'une politique d'escalade vous cible.",
+      "noMethods": "Aucune méthode de notification configurée. Ajoutez-en une ci-dessous.",
+      "addMethodButton": "+ Ajouter une méthode",
+      "loading": "Chargement des paramètres de notification…"
     }
+  },
+  "device": {
+    "title": "Connecter un appareil",
+    "description": "Approuvez une demande de connexion depuis la ligne de commande SolidPing.",
+    "codeCardTitle": "Saisissez votre code à usage unique",
+    "codeLabel": "Code",
+    "codePlaceholder": "XXXX-XXXX",
+    "continue": "Continuer",
+    "notFoundTitle": "Nous n'avons pas trouvé ce code",
+    "notFoundDescription": "Il a peut-être expiré, déjà été utilisé, ou mal saisi. Relancez <code>sp auth login</code> pour obtenir un nouveau code.",
+    "alreadyHandledTitle": "Cette demande a déjà été traitée",
+    "alreadyHandledDescription": "Il n'y a plus rien à faire ici — lancez une nouvelle connexion depuis votre terminal si vous avez encore besoin d'accès.",
+    "authorizeTitle": "Autoriser cet appareil",
+    "authorizeDescription": "<strong>{{clientName}}</strong> demande à se connecter en votre nom. Approuver crée un jeton d'accès personnel valable 90 jours, que vous pouvez révoquer à tout moment depuis Compte → Jetons.",
+    "organization": "Organisation",
+    "organizationHint": "Le jeton ne pourra accéder qu'à cette organisation.",
+    "expires": "Expire {{time}}",
+    "deny": "Refuser",
+    "approve": "Approuver",
+    "approvedTitle": "Appareil approuvé",
+    "approvedDescription": "Vous pouvez fermer cette page et retourner à votre terminal — la ligne de commande détectera la connexion dans quelques secondes.",
+    "deniedTitle": "Connexion de l'appareil refusée",
+    "deniedDescription": "Aucun jeton n'a été créé. La ligne de commande signalera que la demande a été refusée.",
+    "approvedToast": "Appareil approuvé — retournez à votre terminal",
+    "decisionFailed": "Impossible d'enregistrer votre décision"
   }
 }

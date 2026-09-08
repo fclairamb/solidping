@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,10 +109,11 @@ export const smtpModule: CheckTypeModule<SmtpState> = {
 };
 
 function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -140,7 +142,7 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
             onCheckedChange={(v) => onChange({ ...state, startTLS: v === true })}
             data-testid="check-starttls-checkbox"
           />
-          <span className="text-sm">Use STARTTLS</span>
+          <span className="text-sm">{t("mail.useStarttls")}</span>
         </label>
         <label className="flex items-center gap-2">
           <Checkbox
@@ -148,7 +150,7 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
             onCheckedChange={(v) => onChange({ ...state, tlsVerify: v === true })}
             data-testid="check-tls-verify-checkbox"
           />
-          <span className="text-sm">Verify TLS certificate</span>
+          <span className="text-sm">{t("form.verifyTlsCertificate")}</span>
         </label>
         <label className="flex items-center gap-2">
           <Checkbox
@@ -156,11 +158,11 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
             onCheckedChange={(v) => onChange({ ...state, checkAuth: v === true })}
             data-testid="check-auth-checkbox"
           />
-          <span className="text-sm">Check AUTH support</span>
+          <span className="text-sm">{t("mail.checkAuthSupport")}</span>
         </label>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="ehloDomain">EHLO Domain (optional)</Label>
+        <Label htmlFor="ehloDomain">{t("mail.ehloDomainOptional")}</Label>
         <Input
           id="ehloDomain"
           type="text"
@@ -171,7 +173,7 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="expectGreeting">Expected Greeting (optional)</Label>
+        <Label htmlFor="expectGreeting">{t("mail.expectedGreetingOptional")}</Label>
         <Input
           id="expectGreeting"
           type="text"
@@ -183,7 +185,7 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 flex-1">
-          <Label htmlFor="username">Username (optional, AUTH PLAIN)</Label>
+          <Label htmlFor="username">{t("mail.usernameOptionalAuthPlain")}</Label>
           <Input
             id="username"
             type="text"
@@ -194,7 +196,7 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
           />
         </div>
         <div className="space-y-2 flex-1">
-          <Label htmlFor="password">Password (optional)</Label>
+          <Label htmlFor="password">{t("form.passwordOptional")}</Label>
           <Input
             id="password"
             type="password"
@@ -218,6 +220,7 @@ function SmtpFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>
 // for me" affordance anywhere here — the picker only, plain text when the
 // org has none yet.
 function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<SmtpState>) {
+  const { t } = useTranslation("checks");
   const { org } = useCheckFormFields();
   const { data: emailChecks } = useChecks(org, { type: "email", limit: 100 });
   const { data: emailDomain } = useEmailAddressDomain();
@@ -238,19 +241,13 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
           onCheckedChange={(sendEmail) => onChange({ ...state, sendEmail })}
           data-testid="check-smtp-send-email-switch"
         />
-        <span className="text-sm font-medium">Send a probe email</span>
+        <span className="text-sm font-medium">{t("mail.sendProbeEmail")}</span>
       </label>
-      <p className="text-xs text-muted-foreground">
-        Submits a system-generated email through this server on every check, addressed to a
-        paired email check&apos;s address, to verify the full delivery path (not just the
-        handshake). The email check&apos;s period is the delivery deadline — size it to this
-        check&apos;s interval plus the worst acceptable delivery time (greylisting can add
-        minutes).
-      </p>
+      <p className="text-xs text-muted-foreground">{t("mail.sendProbeEmailHelp")}</p>
       {state.sendEmail && (
         <>
           <div className="space-y-2">
-            <Label htmlFor="smtp-mail-from">Mail From</Label>
+            <Label htmlFor="smtp-mail-from">{t("mail.mailFrom")}</Label>
             <Input
               id="smtp-mail-from"
               type="text"
@@ -265,25 +262,19 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="smtp-delivery-check">Delivery (email) check</Label>
+            <Label htmlFor="smtp-delivery-check">{t("mail.deliveryCheck")}</Label>
             {!emailDomain ? (
               <Alert variant="destructive">
-                <AlertDescription>
-                  Email inbox not configured. Ask your administrator to set it up under
-                  Server &rarr; Email Inbox.
-                </AlertDescription>
+                <AlertDescription>{t("mail.emailInboxNotConfigured")}</AlertDescription>
               </Alert>
             ) : candidates.length === 0 ? (
               <Alert>
-                <AlertDescription>
-                  No email checks in this organization yet. Create one first, then come back
-                  to pair it here.
-                </AlertDescription>
+                <AlertDescription>{t("mail.noEmailChecksYet")}</AlertDescription>
               </Alert>
             ) : (
               <Select value={state.deliveryCheckUid} onValueChange={selectDeliveryCheck}>
                 <SelectTrigger id="smtp-delivery-check" data-testid="check-smtp-delivery-select">
-                  <SelectValue placeholder="Select an email check" />
+                  <SelectValue placeholder={t("mail.selectEmailCheckPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {candidates.map((check) => (
@@ -296,7 +287,7 @@ function SmtpSendModeFields({ state, onChange, errors }: CheckTypeFieldsProps<Sm
             )}
             {state.deliveryTo && (
               <p className="text-xs text-muted-foreground">
-                Probe emails will be addressed to <code className="font-mono">{state.deliveryTo}</code>.
+                {t("mail.probeEmailAddressedTo", { address: state.deliveryTo })}
               </p>
             )}
             {getFieldError(errors, "delivery_to") && (
@@ -351,13 +342,14 @@ function MailboxFields({
   // auto-checks the TLS toggle; unchecking TLS restores the plaintext port as
   // the placeholder. Purely client-side guidance — the server derives
   // independently regardless of what the client sends.
+  const { t } = useTranslation("checks");
   const { type } = useCheckFormFields();
   const implicitTLSPort = type === "pop3" ? "995" : "993";
   const plaintextPort = type === "pop3" ? "110" : "143";
   return (
     <>
       <div className="space-y-2">
-        <Label>Host</Label>
+        <Label>{t("form.host")}</Label>
         <div className="flex gap-2">
           <Input
             id="host"
@@ -410,11 +402,11 @@ function MailboxFields({
             onCheckedChange={(v) => onChange({ ...state, tls: v === true })}
             data-testid="check-tls-checkbox"
           />
-          <span className="text-sm">Use implicit TLS</span>
+          <span className="text-sm">{t("mail.useImplicitTls")}</span>
         </label>
         {(state.tls || state.port === implicitTLSPort) && (
           <p className="text-xs text-muted-foreground">
-            Port {implicitTLSPort} uses implicit TLS.
+            {t("mail.implicitTlsPortHint", { port: implicitTLSPort })}
           </p>
         )}
         <label className="flex items-center gap-2">
@@ -423,11 +415,11 @@ function MailboxFields({
             onCheckedChange={(v) => onChange({ ...state, startTLS: v === true })}
             data-testid="check-starttls-checkbox"
           />
-          <span className="text-sm">Use STARTTLS</span>
+          <span className="text-sm">{t("mail.useStarttls")}</span>
         </label>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="username">Username (optional)</Label>
+        <Label htmlFor="username">{t("form.usernameOptional")}</Label>
         <Input
           id="username"
           type="text"
@@ -438,7 +430,7 @@ function MailboxFields({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password (optional)</Label>
+        <Label htmlFor="password">{t("form.passwordOptional")}</Label>
         <Input
           id="password"
           type="password"

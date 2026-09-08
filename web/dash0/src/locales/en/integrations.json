@@ -162,7 +162,37 @@
     "discordMemberMappingHelp": "Which SolidPing members we can @-mention in this server. Members who signed in with Discord are matched automatically; re-sync to pick up new ones.",
     "slackDmUnavailableTitle": "Direct messages are not being captured",
     "slackDmUnavailableBody": "This workspace was connected before SolidPing asked for the im:history scope. Slack does not grant new scopes to an existing install, so direct messages to the bot never reach the support inbox. Reinstall the app to enable DM capture — nothing else about this integration changes.",
-    "slackReinstallButton": "Reinstall Slack app"
+    "slackReinstallButton": "Reinstall Slack app",
+    "webpushNoSubscriptions": "No devices subscribed yet. Click the button below to add this browser.",
+    "webpushDefaultDeviceLabel": "Browser",
+    "webpushRemoveSubscription": "Remove subscription",
+    "discordNoChannelsAvailable": "No text channels the bot can see. Give it access to a channel in Discord first.",
+    "pickChannel": "Pick a channel…",
+    "searchChannelsPlaceholder": "Search channels…",
+    "noChannelsFound": "No channels found",
+    "slackWorkspaceLabel": "Workspace:",
+    "slackTabChannel": "Channel",
+    "slackTabDirectMessage": "Direct message",
+    "slackInviteBotFirst": "Invite the bot to a channel first with",
+    "slackChannelPrivate": "Private",
+    "slackBotNotInChannel": "Bot not in channel — run /invite @solidping first",
+    "pickPerson": "Pick a person…",
+    "searchPeoplePlaceholder": "Search people…",
+    "noPeopleFound": "No people found",
+    "signingSecret": "Signing secret",
+    "copied": "Copied",
+    "copy": "Copy",
+    "rotate": "Rotate",
+    "signingSecretMissing": "No signing secret — will be auto-generated on next delivery. Rotate to generate one now.",
+    "generate": "Generate",
+    "signingSecretHelp": "Outbound webhooks are signed with this secret using the Standard Webhooks scheme (HMAC-SHA256). Verify it on the receiving end.",
+    "rotationBanner": "Previous secret active until",
+    "rotationBannerHint": "Remove it early by rotating again.",
+    "slackInstallFailed": "Failed to start Slack install",
+    "slackLoading": "Loading…",
+    "slackError": "Could not connect to Slack workspace — re-install the bot.",
+    "twilioRegion": "Region (optional)",
+    "twilioRegionHint": "Leave empty for US1 (default). Credentials are region-scoped — an ie1 account's SID and auth token only work against ie1, and won't verify here if pasted from a different region's account."
   },
   "freebox": {
     "name": "Freebox",
@@ -256,5 +286,78 @@
     "defaultName": "Email alerts",
     "created": "Email alerts created",
     "createFailed": "Failed to set up email alerts"
-  }
+  },
+  "notificationDetail": {
+    "title": "Notification",
+    "backToIncident": "Back to incident",
+    "backToIntegration": "Back to integration",
+    "backToIncidents": "Back to incidents",
+    "delivery": {
+      "title": "Delivery",
+      "status": "Status:",
+      "requestUrl": "Request URL",
+      "requestUrlLabel": "request URL",
+      "requestPayload": "Request payload",
+      "smtpResponse": "SMTP server response",
+      "responseBody": "Response body",
+      "responseHeaders": "Response headers",
+      "emailNote": "“Sent” means the mail server accepted the message for relay — it does not confirm the message reached the recipient's inbox."
+    },
+    "timeline": {
+      "title": "Delivery timeline",
+      "created": "Created",
+      "sent": "Sent",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "target": {
+      "title": "Target"
+    },
+    "escalationContext": {
+      "title": "Escalation context",
+      "source": "Source:",
+      "step": "Step:",
+      "cycle": "Escalation cycle:",
+      "skipReason": "Skip reason:"
+    },
+    "identifiers": {
+      "title": "Identifiers",
+      "messageId": "Message ID",
+      "messageIdLabel": "message ID",
+      "jobUid": "Job UID",
+      "jobUidLabel": "job UID"
+    },
+    "error": {
+      "title": "Error",
+      "label": "error"
+    }
+  },
+  "recentNotifications": {
+    "title": "Recent notifications",
+    "loadFailed": "Failed to load notifications.",
+    "empty": "No notifications sent through this integration yet.",
+    "columns": {
+      "status": "Status",
+      "channel": "Channel",
+      "event": "Event",
+      "target": "Target",
+      "created": "Created"
+    }
+  },
+  "suppressions": {
+    "title": "Unsubscribed recipients",
+    "resubscribed": "{{email}} re-subscribed",
+    "resubscribeFailed": "Failed to re-subscribe",
+    "loadFailed": "Failed to load unsubscribed recipients.",
+    "empty": "No one has unsubscribed from alert emails in this organization.",
+    "columns": {
+      "email": "Email",
+      "scope": "Scope",
+      "unsubscribed": "Unsubscribed"
+    },
+    "allChecks": "All checks",
+    "resubscribeAria": "Re-subscribe {{email}}"
+  },
+  "deleteConfirmTitle": "Delete integration?",
+  "deleteConfirmBody": "This will permanently delete \"{{name}}\"."
 }

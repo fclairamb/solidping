@@ -22,7 +22,10 @@
     "unused": "Unbenutzt",
     "emptyTitle": "Noch keine Eskalationsrichtlinien",
     "stepsLabel_one": "Schritt",
-    "stepsLabel_other": "Schritte"
+    "stepsLabel_other": "Schritte",
+    "deleteUsage": "Verwendet von {{checks}} Checks und {{groups}} Gruppen — sie fallen auf die geerbte Eskalation zurück.",
+    "silentBadge": "0 Schritte — lautlos",
+    "silentBadgeTooltip": "Richtlinie ohne Schritte — alarmiert niemanden"
   },
   "new": {
     "title": "Neue Eskalationsrichtlinie"

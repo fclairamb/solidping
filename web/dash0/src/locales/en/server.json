@@ -16,7 +16,8 @@
     "analytics": "Analytics",
     "discord": "Discord",
     "entitlements": "Entitlements",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "activation": "Activation"
   },
   "aggregation": {
     "title": "Aggregation",
@@ -452,5 +453,16 @@
     "testDelivered_one": "Test notice delivered on {{count}} route.",
     "testDelivered_other": "Test notice delivered on {{count}} routes.",
     "testUndeliverable": "Nothing was delivered. Check that you have at least one enabled notification route."
+  },
+  "activation": {
+    "title": "Activation funnel",
+    "description": "Per-organization timestamps for each activation milestone.",
+    "error": "Failed to load activation funnel.",
+    "org": "Organization",
+    "signup": "Signup",
+    "firstCheck": "First check",
+    "firstResult": "First result",
+    "firstNotifier": "First notifier",
+    "firstIncident": "First page"
   }
 }

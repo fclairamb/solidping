@@ -87,6 +87,15 @@
       "title": "Aún no hay notificaciones",
       "hint": "Todavía no ha sido avisado de ningún incidente.",
       "cta": "Ajustes de notificaciones"
+    },
+    "title": "Mis avisos",
+    "description": "Incidentes por los que recibiste un aviso, en orden cronológico inverso.",
+    "cardTitle": "Notificaciones",
+    "cardDescription": "Cada vez que recibiste un aviso por un incidente.",
+    "columns": {
+      "time": "Hora",
+      "incident": "Incidente",
+      "channel": "Canal"
     }
   },
   "notificationFailureReasons": {
@@ -115,5 +124,66 @@
   "serverVersion": {
     "reloadAria": "Recargar para obtener la última versión",
     "stale": "Servidor actualizado a {{version}} — recarga para obtener la última versión."
+  },
+  "errorBoundary": {
+    "description": "Se produjo un error inesperado. Suele ser algo temporal — reintentarlo debería restablecer la página.",
+    "technicalDetails": "Detalles técnicos",
+    "tryAgain": "Reintentar",
+    "reloadPage": "Recargar página"
+  },
+  "copyToClipboard": "Copiar al portapapeles",
+  "copyLabel": "Copiar {{label}}",
+  "value": "Valor",
+  "dnsRecord": {
+    "recordName": "nombre del registro",
+    "recordValue": "valor del registro"
+  },
+  "toggleSidebar": "Mostrar/ocultar barra lateral",
+  "timeAgo": {
+    "copyAria": "Copiar marca de tiempo {{utcIso}}",
+    "copiedAria": "{{utcIso}} copiado",
+    "copiedTooltip": "Copiado — {{tooltipText}}",
+    "justNow": "ahora mismo",
+    "minutesAgo": "hace {{count}} min",
+    "hoursAgo": "hace {{count}} h",
+    "daysAgo": "hace {{count}} d",
+    "localSuffix": "local"
+  },
+  "agentVersion": {
+    "unknown": "desconocido",
+    "drifted": "Desactualizado",
+    "serverRuns": "Este servidor ejecuta la v{{version}}."
+  },
+  "noData": "Sin datos",
+  "labelPicker": {
+    "trigger": "Etiqueta",
+    "filterPlaceholder": "Filtrar por etiqueta…",
+    "valuePlaceholder": "valor…",
+    "keyPlaceholderDefault": "clave",
+    "valuePlaceholderDefault": "valor",
+    "backToKeys": "Volver a las claves",
+    "removeLabel": "Eliminar {{key}}",
+    "alreadyFiltering": "Ya se está filtrando por «{{key}}».",
+    "useTyped": "Usar «{{value}}»",
+    "noLabels": "Sin etiquetas",
+    "noValues": "Sin valores",
+    "noMatches": "Sin coincidencias",
+    "keyError": "Usa entre 3 y 51 letras minúsculas, dígitos o guiones, empezando por una letra.",
+    "valueTooLong": "El valor no puede superar los {{max}} caracteres.",
+    "duplicateKey": "Esta clave ya está definida — edita la etiqueta existente.",
+    "add": "Añadir"
+  },
+  "notFoundPage": {
+    "title": "Página no encontrada",
+    "description": "La página que buscas no existe o puede haberse movido.",
+    "backHome": "Volver al inicio"
+  },
+  "notificationSources": {
+    "checkConnection": "Canal de la comprobación",
+    "escalationStep": "Paso de escalado",
+    "onCallSchedule": "Horario de guardia",
+    "allAdmins": "Todos los administradores",
+    "escalationConnection": "Canal de escalado",
+    "cycle": "ciclo {{cycle}}"
   }
 }

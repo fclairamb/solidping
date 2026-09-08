@@ -8,8 +8,9 @@ import {
   useRegions,
   useDependencyGraph,
 } from "@/api/hooks";
-import { ApiError, apiFetch } from "@/api/client";
+import { apiFetch } from "@/api/client";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
+import { isDemoReadOnlyError } from "@/lib/demo";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
 
@@ -219,7 +220,7 @@ function CheckNewPage() {
             // DEMO_READ_ONLY is swallowed; every other failure still surfaces,
             // because for an ordinary user a dropped channel binding is a real
             // error worth seeing.
-            if (!(err instanceof ApiError && err.code === "DEMO_READ_ONLY")) {
+            if (!isDemoReadOnlyError(err)) {
               throw err;
             }
           }

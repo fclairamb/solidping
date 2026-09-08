@@ -165,5 +165,7 @@
   "security": "Seguridad",
   "slos": "SLO",
   "reportSchedules": "Informes de dispo.",
-  "audit": "Auditoría"
+  "audit": "Auditoría",
+  "promote": "Promover",
+  "sessions": "Sesiones"
 }
