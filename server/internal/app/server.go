@@ -2199,6 +2199,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/llms.txt", s.serveRootLLMsTxt)
 	mainGroup.GET("/llms-full.txt", s.serveRootLLMsFullTxt)
 
+	// One-word entry point into the shared public live demo (spec
+	// 2026-09-08-02): a redirect to the canonical /dash0/login?demo=true link,
+	// gated on demo mode at request time. See serveDemoShortcut.
+	mainGroup.GET("/demo", s.serveDemoShortcut)
+	mainGroup.GET("/demo/", s.serveDemoShortcut)
+
 	// Documentation site (Docusaurus), embedded and served at /docs on every
 	// host. docs.solidping.io redirects its root here (see handlerWithDocsHost).
 	mainGroup.GET("/docs", s.serveDocsRoute)
@@ -2708,6 +2714,34 @@ func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
 
 	return writeEmbeddedFile(writer, docsFiles, embedded, contentType, status)
+}
+
+// demoShortcutLocation is the canonical published link the /demo shortcut
+// redirects to (see web/docs/docs/intro.md and configuration/index.md). The
+// incoming request's query string is never forwarded: a stray ?returnTo= on a
+// demo link is ignored by the auto-login anyway (web/dash0/src/routes/login.tsx).
+const demoShortcutLocation = "/dash0/login?demo=true"
+
+// serveDemoShortcut implements the one-word /demo and /demo/ entry point into
+// the shared public live demo (spec 2026-09-08-02). The gate is a
+// request-time read of s.config.Demo.Enabled, not a registration-time one, so
+// toggling demo.enabled takes effect on the next request with no restart and
+// no special-casing in the router-building path:
+//
+//   - Demo enabled: 302 Found (never 301 — browsers cache permanent
+//     redirects, and the shortcut must stop working the moment an operator
+//     turns the demo off) to demoShortcutLocation.
+//   - Demo disabled: delegate to serveAppRoot, so a self-hosted instance
+//     without a demo sees no change at all — never a redirect into a login
+//     page that then shows an ordinary form.
+func (s *Server) serveDemoShortcut(writer http.ResponseWriter, req *http.Request) error {
+	if !s.config.Demo.Enabled {
+		return s.serveAppRoot(writer, req)
+	}
+
+	http.Redirect(writer, req, demoShortcutLocation, http.StatusFound)
+
+	return nil
 }
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.

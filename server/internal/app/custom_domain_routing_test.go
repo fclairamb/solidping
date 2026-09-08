@@ -84,7 +84,9 @@ func TestIsCustomHostForbidden(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	for _, p := range []string{"/dash0", "/dash0/x", "/docs", "/docs/x", "/openapi", "/openapi.yaml", "/metrics"} {
+	for _, p := range []string{
+		"/dash0", "/dash0/x", "/docs", "/docs/x", "/demo", "/demo/x", "/openapi", "/openapi.yaml", "/metrics",
+	} {
 		r.True(isCustomHostForbidden(p), "expected forbidden: %s", p)
 	}
 
