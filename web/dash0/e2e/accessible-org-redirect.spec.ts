@@ -46,7 +46,10 @@ async function seedOrdinaryMember(page: Page): Promise<string> {
     data: { email, password, name: "Accessible Org User" },
   });
   if (created.status() !== 201) {
-    test.skip(
+    // `base.skip`, not `test.skip`: this helper only ever runs inside a
+    // `base(...)` test, and a runtime skip must come from the same test object
+    // that declared the running test.
+    base.skip(
       true,
       `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${created.status()}`,
     );

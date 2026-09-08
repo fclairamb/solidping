@@ -146,4 +146,81 @@ test.describe("Login with 2FA", () => {
     await expect(error).not.toContainText(/temporary token/i);
     expect(page.url()).toContain("/login");
   });
+
+  /**
+   * Records every path this context visits, INCLUDING the same-document
+   * pushState/replaceState navigations TanStack Router performs.
+   *
+   * A final-URL assertion cannot see the bug below: the wrong redirect is
+   * corrected a few milliseconds later, so the URL the test reads at the end
+   * is the right one either way. Only the trail shows the visit.
+   */
+  async function recordVisitedPaths(page: import("@playwright/test").Page) {
+    await page.addInitScript(() => {
+      const store = window as unknown as { __visitedPaths?: string[] };
+      store.__visitedPaths = [window.location.pathname];
+
+      const record = () => store.__visitedPaths?.push(window.location.pathname);
+      const push = history.pushState.bind(history);
+      const replace = history.replaceState.bind(history);
+
+      history.pushState = (...args: Parameters<History["pushState"]>) => {
+        push(...args);
+        record();
+      };
+      history.replaceState = (...args: Parameters<History["replaceState"]>) => {
+        replace(...args);
+        record();
+      };
+    });
+  }
+
+  // Spec 2026-09-08-01 §B added a login-page effect that resolves the
+  // destination through `pickAccessibleOrg`, and sends a session with NO
+  // organization to /no-org. 2FA was the one login shape whose response
+  // carried no `organizations` (completeLoginAfter2FA built its LoginResponse
+  // without the field), so `applyLoginResponse` had to await /auth/me — and
+  // that await commits a render where the session is authenticated with an
+  // empty list. The effect fired against exactly that render, read "no
+  // organization at all", and flashed an ordinary TOTP user through the
+  // org-less screen before the ordinary post-login navigation corrected it.
+  //
+  // The tests above cannot catch it: they wait for a URL merely NOT containing
+  // "/login", which /no-org satisfies. This one fails pre-fix.
+  test("a TOTP login never passes through /no-org on its way to the org", async ({
+    page,
+  }) => {
+    const { email, orgSlug, secret } = await seedEnrolledUser(page);
+
+    await recordVisitedPaths(page);
+    await loginToChallenge(page, orgSlug, email);
+
+    const codeInput = page.getByTestId("2fa-login-code");
+    await expect(codeInput).toBeVisible();
+    await codeInput.fill(generateTotp(secret));
+    await page.getByTestId("2fa-login-verify").click();
+
+    // The destination is the org the user actually belongs to, and it renders
+    // a working dashboard rather than another interstitial.
+    await page.waitForURL(new RegExp(`/orgs/${orgSlug}(/|$)`), {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("sidebar-trigger")).toBeVisible({
+      timeout: 20000,
+    });
+
+    const visited = await page.evaluate(
+      () => (window as unknown as { __visitedPaths?: string[] }).__visitedPaths ?? [],
+    );
+    // Positive control for the recorder itself: if it caught nothing at all,
+    // the assertion below would be vacuous.
+    expect(
+      visited.some((path) => path.includes("/login")),
+      "the path recorder must have observed the login page it started on",
+    ).toBe(true);
+    expect(
+      visited.filter((path) => path.includes("/no-org")),
+      "a member with an organization must never be routed through /no-org",
+    ).toEqual([]);
+  });
 });

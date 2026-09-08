@@ -403,6 +403,16 @@ function LoginPage() {
 
   useEffect(() => {
     if (demoOwnsRedirect) return;
+    // `authLoading` is the session's "still resolving" signal, and this effect
+    // must not act on a half-built one. applyLoginResponse raises it across the
+    // /auth/me it falls back to when a login payload carries no organization
+    // list; without the gate, the render committed in that window has
+    // isAuthenticated=true with an EMPTY list, pickAccessibleOrg reads it as
+    // "no organization at all", and a perfectly ordinary member is flashed
+    // through /no-org before routeResult corrects the URL. The org layout's
+    // twin branch ($org.tsx) already gates on the same flag — same signal,
+    // same treatment, both call sites.
+    if (authLoading) return;
     if (isAuthenticated && !showOrgPicker) {
       const accessibleOrg = pickAccessibleOrg(org, {
         org: sessionOrg,
@@ -422,6 +432,7 @@ function LoginPage() {
     }
   }, [
     demoOwnsRedirect,
+    authLoading,
     isAuthenticated,
     showOrgPicker,
     org,

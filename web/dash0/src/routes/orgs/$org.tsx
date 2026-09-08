@@ -1073,6 +1073,12 @@ function OrgLayout() {
   const redirectingForOrgRef = useRef<string | null>(null);
   const needsAccessibleOrgRedirect =
     auth.isAuthenticated &&
+    // Never on a session that is still resolving: an authenticated render can
+    // still carry an EMPTY organizations list while applyLoginResponse's
+    // /auth/me fallback is in flight, and pickAccessibleOrg reads that as "no
+    // organization at all". AuthContext holds isLoading up across that fetch
+    // precisely so this gate covers it — the login page's twin branch gates on
+    // the same flag.
     !auth.isLoading &&
     !isLoginPage &&
     // The OAuth callback does its own hard redirect below; the session it is
