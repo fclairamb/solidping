@@ -153,14 +153,22 @@ test.describe("IP version selector", () => {
     await page
       .getByRole("option", { name: "Auto (default)", exact: true })
       .click();
+    // Wait for the PATCH itself, not for the page to look idle. This submit
+    // starts on /checks/<uid>/edit, which ALREADY matches the URL regex, so
+    // waitForURL resolves instantly and the read below would race the write
+    // and see the pre-clear "ipv6". `networkidle` used to stand in for this
+    // and only mostly worked — the test still lost the race outright on a
+    // slower machine (3 runs of 3), which is what a real wait removes.
+    const patched = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/v1/orgs/test/checks/${uid}`) &&
+        res.request().method() === "PATCH" &&
+        res.status() < 400,
+      { timeout: 15000 },
+    );
     await page.getByTestId("check-submit-button").click();
+    await patched;
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 15000 });
-    // The networkidle wait is load-bearing here, not decoration. This submit
-    // starts on /checks/<uid>/edit, which ALREADY matches the regex above, so
-    // waitForURL resolves instantly and getCheck below would race the PATCH
-    // and read back the pre-clear "ipv6". The create half above waits for the
-    // same reason; omitting it here made this test fail ~2 runs in 3.
-    await page.waitForLoadState("networkidle");
 
     const cleared = await getCheck(page, token, uid);
     expect(cleared.config.ipVersion).toBeUndefined();
