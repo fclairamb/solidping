@@ -183,6 +183,25 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Nothing used to type-check e2e/: tsconfig.app.json is `include: ["src"]`
+      # and tsconfig.node.json is `include: ["vite.config.ts"]`, so 159 spec and
+      # fixture files compiled nowhere. tsconfig.e2e.json covers them and is
+      # deliberately NOT referenced from the solution tsconfig.json, so a type
+      # error in a Playwright spec fails CI loudly without ever blocking the
+      # production bundle build below (spec 2026-09-09-03).
+      - name: Type-check e2e
+        run: bun run typecheck:e2e
+
+      # Scoped to ./e2e on purpose. `bun run lint` (a bare `eslint .`) is red on
+      # base with ~42 errors + ~447 warnings, effectively all under src/
+      # (react-hooks), so adding it here would land red on day one; paying that
+      # debt down is its own spec. Scoping to e2e keeps the e2e-only regression
+      # guards — the E2E_API_BASE/localhost:4000 rules and
+      # e2e-local/no-node-scope-in-browser-callback — actually enforced on PRs,
+      # which they were not before (spec 2026-09-09-03).
+      - name: Lint e2e
+        run: bun run lint:e2e
+
       - name: Run unit tests
         run: bun run test:unit
 
@@ -217,11 +236,17 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Same rationale as the dash0 job's Type-check e2e step: nothing else
+      # compiles e2e/ (spec 2026-09-09-03).
+      - name: Type-check e2e
+        run: bun run typecheck:e2e
+
       # Errors fail the job; warnings do not (eslint's default exit code).
       # The baseline here is 0 errors + 9 pre-existing
       # react-refresh/only-export-components warnings on the route files, so
-      # --max-warnings 0 would land red on day one. Same treatment as the
-      # `dash` job's lint step.
+      # --max-warnings 0 would land red on day one. Unlike dash0 — whose src/
+      # ESLint debt forces its lint step to be scoped to e2e/ — this is a bare
+      # `eslint .`, so it already covers e2e/ and needs no extra step.
       - name: Run lint
         run: bun run lint
 

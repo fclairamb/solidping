@@ -121,8 +121,10 @@ test.describe("Notification delivery detail", () => {
 
     // The URL must contain ?from=incident:... (the colon is %-encoded in the URL).
     expect(decodeURIComponent(detailUrl)).toMatch(/\?from=incident:/);
-    // And use the new flat path (no /incidents/ segment before /notifications/).
+    // And use the new flat path (no /incidents/ segment before /notifications/),
+    // carrying a real notification UUID.
     expect(detailUrl).toMatch(/\/orgs\/test\/notifications\//);
+    expect(detailUrl).toMatch(FLAT_NOTIF_RE);
 
     // Detail content: a status badge and the delivery timeline are present.
     await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();

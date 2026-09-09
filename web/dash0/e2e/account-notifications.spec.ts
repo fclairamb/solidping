@@ -91,11 +91,14 @@ test.describe("Account Notifications", () => {
       });
     });
 
-    // Capture the POST notification-contacts body.
-    let capturedBody: Record<string, unknown> | null = null;
+    // Capture the POST notification-contacts body. Held on an object rather
+    // than in a bare `let`: TypeScript narrows `let x: T | null = null` to
+    // `null` because its only assignment is inside the route callback, which
+    // makes the `if (capturedBody)` guard below unreachable to the checker.
+    const captured: { body: Record<string, unknown> | null } = { body: null };
     await page.route("**/notification-contacts", async (route) => {
       if (route.request().method() === "POST") {
-        capturedBody = await route.request().postDataJSON() as Record<string, unknown>;
+        captured.body = await route.request().postDataJSON() as Record<string, unknown>;
         await route.fulfill({
           status: 201,
           contentType: "application/json",
@@ -148,9 +151,9 @@ test.describe("Account Notifications", () => {
     await expect(page.getByText("Add browser")).toBeVisible();
 
     // If the body was captured, assert its shape.
-    if (capturedBody) {
-      expect(capturedBody).toHaveProperty("type", "webpush");
-      const value = capturedBody["value"] as string;
+    if (captured.body) {
+      expect(captured.body).toHaveProperty("type", "webpush");
+      const value = captured.body["value"] as string;
       expect(value).toBeTruthy();
       expect(() => JSON.parse(value)).not.toThrow();
     }

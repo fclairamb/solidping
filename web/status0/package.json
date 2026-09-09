@@ -9,6 +9,7 @@
     "build:no-check": "vite build && bun run build:widget",
     "build:widget": "bun build src/embed/widget.ts --outfile=dist/embed/v1/widget.js --format=iife --minify --target=browser",
     "lint": "eslint .",
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
