@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, STATUS_BASE } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 // Coverage for spec 2026-08-29-08: TV mode, the wallboard rendering of a
@@ -85,7 +85,7 @@ test.describe("Status page TV mode", () => {
         });
       });
 
-      await page.goto(`/status0/test/${slug}/tv`);
+      await page.goto(`${STATUS_BASE}/test/${slug}/tv`);
 
       const board = page.getByTestId("tv-board");
       await expect(board).toBeVisible({ timeout: 30000 });
@@ -124,7 +124,7 @@ test.describe("Status page TV mode", () => {
   test("the org-level URL renders the default page's board", async ({
     page,
   }) => {
-    await page.goto(`/status0/test/tv`);
+    await page.goto(`${STATUS_BASE}/test/tv`);
 
     const board = page.getByTestId("tv-board");
     await expect(board).toBeVisible({ timeout: 30000 });
@@ -159,7 +159,7 @@ test.describe("Status page TV mode", () => {
         `publish incident -> ${await created.text()}`,
       ).toBeLessThan(300);
 
-      await page.goto(`/status0/test/${slug}/tv`);
+      await page.goto(`${STATUS_BASE}/test/${slug}/tv`);
 
       const board = page.getByTestId("tv-board");
       await expect(board).toBeVisible({ timeout: 30000 });
@@ -217,14 +217,14 @@ test.describe("Status page TV mode", () => {
       try {
         // Negative control FIRST, on the same fresh context: without the
         // token the very same URL must not render a board.
-        await tv.goto(`${API_BASE}/status0/test/${slug}/tv`);
+        await tv.goto(`${API_BASE}${STATUS_BASE}/test/${slug}/tv`);
         await expect(tv.getByTestId("tv-locked")).toBeVisible({
           timeout: 30000,
         });
         await expect(tv.getByTestId("tv-board")).toHaveCount(0);
 
         await tv.goto(
-          `${API_BASE}/status0/test/${slug}/tv?kiosk=${encodeURIComponent(kiosk)}`,
+          `${API_BASE}${STATUS_BASE}/test/${slug}/tv?kiosk=${encodeURIComponent(kiosk)}`,
         );
 
         await expect(tv.getByTestId("tv-board")).toBeVisible({
@@ -280,7 +280,7 @@ test.describe("Status page TV mode", () => {
         },
       );
 
-      await page.goto(`/status0/test/${slug}/tv`);
+      await page.goto(`${STATUS_BASE}/test/${slug}/tv`);
 
       const board = page.getByTestId("tv-board");
       await expect(board).toBeVisible({ timeout: 30000 });
@@ -326,7 +326,7 @@ test.describe("Status page TV mode", () => {
       const card = page.getByTestId("status-page-tv-card");
       await expect(card).toBeVisible({ timeout: 30000 });
       await expect(page.getByTestId("tv-mode-url")).toContainText(
-        `/status0/test/${publicPage.slug}/tv`,
+        `${STATUS_BASE}/test/${publicPage.slug}/tv`,
       );
       // A public page needs no token, so it is offered no token control.
       await expect(page.getByTestId("tv-mode-public-note")).toBeVisible();

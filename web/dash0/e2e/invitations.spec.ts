@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
 
 test.describe("Invitations", () => {
   test("should create invitation with correct base URL", async ({
@@ -24,7 +24,7 @@ test.describe("Invitations", () => {
 
     // The invite URL should use the server's base URL (not hardcoded localhost)
     expect(body.inviteUrl).toBeTruthy();
-    expect(body.inviteUrl).toContain("/dash0/invite/");
+    expect(body.inviteUrl).toContain(`${DASH_BASE}/invite/`);
     expect(body.token).toBeTruthy();
 
     // Verify the URL starts with the server base URL
@@ -89,7 +89,7 @@ test.describe("Invitations", () => {
     expect(response.status()).toBe(201);
     const body = await response.json();
 
-    expect(body.inviteUrl).toContain("/dash0/invite/");
+    expect(body.inviteUrl).toContain(`${DASH_BASE}/invite/`);
   });
 
   test("reports emailSent: false in test mode (email disabled)", async ({
@@ -148,7 +148,7 @@ test.describe("Invitations", () => {
 
     // The invite link is still surfaced as the (only) way to share it.
     await expect(dialog.locator("input[readonly]")).toHaveValue(
-      /\/dash0\/invite\//
+      new RegExp(`${DASH_BASE}/invite/`)
     );
   });
 

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useCreateCheck } from "@/api/hooks";
 import { ApiError } from "@/api/client";
+import { DASH_BASE } from "@/lib/base-path";
 
 type QuickType = "http" | "icmp" | "ssl";
 
@@ -239,7 +240,7 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
         <p className="text-xs text-muted-foreground">
           {t("welcome.advancedHint", "Need more control?")} {" "}
           <a
-            href={`/dash0/orgs/${org}/checks/new`}
+            href={`${DASH_BASE}/orgs/${org}/checks/new`}
             className="underline"
           >
             {t("welcome.advancedLink", "Open the full check editor")}

@@ -123,7 +123,7 @@ const UUID_RE =
 /**
  * Rewrites a dashboard pathname into a route template. Org slugs and resource
  * identifiers are identifying/sensitive, so they never leave the browser:
- * `/dash0/orgs/acme-corp/checks/8f0e…` becomes `/dash0/orgs/:org/checks/:uid`.
+ * `/d/orgs/acme-corp/checks/8f0e…` becomes `/d/orgs/:org/checks/:uid`.
  */
 export function scrubPath(path: string): string {
   return path

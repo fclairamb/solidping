@@ -9,7 +9,7 @@
  * it appears on the public status page.
  */
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /** Obtain a JWT token for the test org. */
 async function getToken(): Promise<string> {
@@ -73,7 +73,7 @@ test.describe("Status updates public timeline", () => {
     expect(createRes.ok).toBe(true);
 
     // --- Navigate to the public status page ---
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     // --- Assert: "Recent updates" section is visible ---
@@ -100,7 +100,7 @@ test.describe("Status updates public timeline", () => {
     page,
   }) => {
     // Navigate to a public status page that has no updates
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     // The "Recent updates" section should NOT be visible if no updates exist.
@@ -152,7 +152,7 @@ test.describe("Status updates public timeline", () => {
     }
     expect(createRes.ok).toBe(true);
 
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     const readMoreLink = page.getByRole("link", { name: /Read more/ }).first();

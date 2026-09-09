@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE } from "./fixtures";
 
 /**
  * LOCAL-ONLY end-to-end coverage for the discovery scan-method form.
@@ -26,7 +26,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
   test.skip(SKIP_IN_CI, "local-only: excluded from CI");
 
   test.beforeEach(async ({ page }) => {
-    await page.goto("/dash0/orgs/test/login");
+    await page.goto(`${DASH_BASE}/orgs/test/login`);
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -36,7 +36,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
   test("selecting a scan method writes it to the URL (?method=)", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     // Defaults to LAN — CIDR fields shown, no method param needed.
     await expect(page.getByLabel(/cidr/i)).toBeVisible();
 
@@ -53,7 +53,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
     page,
   }) => {
     // The form honors the URL param with no clicks (bookmarkable / refresh-safe).
-    await page.goto("/dash0/orgs/test/discovery/new?method=container");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new?method=container`);
     await expect(page.getByLabel(/container host/i)).toBeVisible();
     await expect(
       page.getByRole("combobox", { name: /scan method/i }),
@@ -65,7 +65,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
   }) => {
     // 1. Create a kubernetes cluster connection so the method is offered at all
     //    (it is capability-gated on having ≥1 connection).
-    await page.goto("/dash0/orgs/test/integrations/new?type=kubernetes");
+    await page.goto(`${DASH_BASE}/orgs/test/integrations/new?type=kubernetes`);
     await expect(page.getByTestId("kubernetes-panel")).toBeVisible();
     const clusterName = `E2E Disco K8s ${Date.now()}`;
     await page.getByLabel("Name").fill(clusterName);
@@ -81,7 +81,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
 
     try {
       // 2. Deep-link straight to the Kubernetes scan method.
-      await page.goto("/dash0/orgs/test/discovery/new?method=kubernetes");
+      await page.goto(`${DASH_BASE}/orgs/test/discovery/new?method=kubernetes`);
 
       // Regression: the kubernetes sub-form must render so a cluster is
       // selectable (the screenshot bug showed no cluster field at all).

@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
 
 test.describe("Incident notifications", () => {
   test("Notifications card renders on incident detail page", async ({
@@ -40,7 +40,7 @@ test.describe("Incident notifications", () => {
     // Notifications card is sufficient — we don't require a row to be present.
     void incidentResp;
 
-    await page.goto(`/dash0/orgs/test/incidents`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents`);
     await page.waitForLoadState("networkidle");
 
     // Navigate to first incident, if any exist.
@@ -70,7 +70,7 @@ test.describe("Incident notifications", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${SEEDED_INCIDENT_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${SEEDED_INCIDENT_UID}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("notifications-card")).toBeVisible();
@@ -95,7 +95,7 @@ test.describe("Incident notifications", () => {
   test("My pages route loads", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
-    await page.goto("/dash0/orgs/test/me/notifications");
+    await page.goto(`${DASH_BASE}/orgs/test/me/notifications`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();

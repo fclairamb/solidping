@@ -9,8 +9,9 @@ import {
   returnToOrg,
   stripOAuthErrorParams,
 } from "./login-destination";
+import { DASH_BASE } from "@/lib/base-path";
 
-const BASE = "/dash0";
+const BASE = DASH_BASE;
 
 describe("isOAuthAuthorizeReturnTo", () => {
   it("accepts the bare authorize path and the path with a query string", () => {
@@ -48,9 +49,9 @@ describe("isOAuthAuthorizeReturnTo", () => {
 
 describe("isDeviceVerificationReturnTo", () => {
   it("accepts the bare device path and the path with a user_code", () => {
-    expect(isDeviceVerificationReturnTo("/dash0/device", BASE)).toBe(true);
+    expect(isDeviceVerificationReturnTo(`${BASE}/device`, BASE)).toBe(true);
     expect(
-      isDeviceVerificationReturnTo("/dash0/device?user_code=WDJP-4KXR", BASE),
+      isDeviceVerificationReturnTo(`${BASE}/device?user_code=WDJP-4KXR`, BASE),
     ).toBe(true);
   });
 
@@ -60,17 +61,17 @@ describe("isDeviceVerificationReturnTo", () => {
   });
 
   it("rejects absolute and protocol-relative forms (open-redirect guard)", () => {
-    expect(isDeviceVerificationReturnTo("https://evil.com/dash0/device", BASE)).toBe(
+    expect(isDeviceVerificationReturnTo(`https://evil.com${BASE}/device`, BASE)).toBe(
       false,
     );
-    expect(isDeviceVerificationReturnTo("//evil.com/dash0/device", BASE)).toBe(
+    expect(isDeviceVerificationReturnTo(`//evil.com${BASE}/device`, BASE)).toBe(
       false,
     );
   });
 
   it("rejects lookalike paths and subpaths", () => {
-    expect(isDeviceVerificationReturnTo("/dash0/deviceX", BASE)).toBe(false);
-    expect(isDeviceVerificationReturnTo("/dash0/device/extra", BASE)).toBe(false);
+    expect(isDeviceVerificationReturnTo(`${BASE}/deviceX`, BASE)).toBe(false);
+    expect(isDeviceVerificationReturnTo(`${BASE}/device/extra`, BASE)).toBe(false);
   });
 
   it("rejects empty / missing values", () => {
@@ -83,16 +84,16 @@ describe("isDeviceVerificationReturnTo", () => {
 describe("deviceVerificationReturnTo", () => {
   it("carries the one-time code, url-encoded", () => {
     expect(deviceVerificationReturnTo(BASE, "WDJP-4KXR")).toBe(
-      "/dash0/device?user_code=WDJP-4KXR",
+      `${BASE}/device?user_code=WDJP-4KXR`,
     );
     expect(deviceVerificationReturnTo(BASE, "A B")).toBe(
-      "/dash0/device?user_code=A%20B",
+      `${BASE}/device?user_code=A%20B`,
     );
   });
 
   it("omits the query string when there is no code", () => {
-    expect(deviceVerificationReturnTo(BASE, undefined)).toBe("/dash0/device");
-    expect(deviceVerificationReturnTo(BASE, "")).toBe("/dash0/device");
+    expect(deviceVerificationReturnTo(BASE, undefined)).toBe(`${BASE}/device`);
+    expect(deviceVerificationReturnTo(BASE, "")).toBe(`${BASE}/device`);
   });
 
   it("round-trips through the guard it is built for", () => {
@@ -104,8 +105,8 @@ describe("deviceVerificationReturnTo", () => {
 describe("resolveDestination", () => {
   it("honors a returnTo whose org matches the resolved org", () => {
     expect(
-      resolveDestination("test", "/dash0/orgs/test/checks?q=1", BASE),
-    ).toEqual({ href: "/dash0/orgs/test/checks?q=1" });
+      resolveDestination("test", `${BASE}/orgs/test/checks?q=1`, BASE),
+    ).toEqual({ href: `${BASE}/orgs/test/checks?q=1` });
   });
 
   it("honors an MCP OAuth authorize returnTo regardless of org (the consent bounce)", () => {
@@ -127,7 +128,7 @@ describe("resolveDestination", () => {
     // login, so the org-match rule must not apply — otherwise every user whose
     // org is not the slug the logged-out visitor was bounced through loses the
     // pre-filled one-time code (spec 2026-08-08-02).
-    const device = "/dash0/device?user_code=WDJP-4KXR";
+    const device = `${BASE}/device?user_code=WDJP-4KXR`;
     expect(resolveDestination("test", device, BASE)).toEqual({ href: device });
     expect(resolveDestination("some-other-org", device, BASE)).toEqual({
       href: device,
@@ -138,17 +139,17 @@ describe("resolveDestination", () => {
     expect(
       resolveDestination(
         "test",
-        "/dash0/orgs/test/incidents?state=open&sort=desc",
+        `${BASE}/orgs/test/incidents?state=open&sort=desc`,
         BASE,
       ),
     ).toEqual({
-      href: "/dash0/orgs/test/incidents?state=open&sort=desc",
+      href: `${BASE}/orgs/test/incidents?state=open&sort=desc`,
     });
   });
 
   it("falls back to the org root when the returnTo org differs", () => {
     expect(
-      resolveDestination("test", "/dash0/orgs/other/checks", BASE),
+      resolveDestination("test", `${BASE}/orgs/other/checks`, BASE),
     ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
   });
 
@@ -169,28 +170,28 @@ describe("resolveDestination", () => {
 
   it("rejects an absolute http(s) URL even if it targets the right org", () => {
     expect(
-      resolveDestination("test", "https://evil.com/dash0/orgs/test/checks", BASE),
+      resolveDestination("test", `https://evil.com${BASE}/orgs/test/checks`, BASE),
     ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
     expect(
-      resolveDestination("test", "http://evil.com/dash0/orgs/test", BASE),
+      resolveDestination("test", `http://evil.com${BASE}/orgs/test`, BASE),
     ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
   });
 
   it("rejects a protocol-relative //host URL", () => {
     expect(
-      resolveDestination("test", "//evil.com/dash0/orgs/test/checks", BASE),
+      resolveDestination("test", `//evil.com${BASE}/orgs/test/checks`, BASE),
     ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
   });
 
   it("rejects a backslash-obfuscated URL", () => {
     expect(
-      resolveDestination("test", "/\\evil.com/dash0/orgs/test", BASE),
+      resolveDestination("test", `/\\evil.com${BASE}/orgs/test`, BASE),
     ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
   });
 
   it("rejects a path outside the /orgs/ subtree", () => {
     expect(
-      resolveDestination("test", "/dash0/settings", BASE),
+      resolveDestination("test", `${BASE}/settings`, BASE),
     ).toEqual({ to: "/orgs/$org", params: { org: "test" } });
   });
 
@@ -207,30 +208,30 @@ describe("resolveDestination", () => {
 
 describe("isSafeReturnTo", () => {
   it("accepts an in-app org path under the base path", () => {
-    expect(isSafeReturnTo("/dash0/orgs/test/checks", BASE)).toBe(true);
+    expect(isSafeReturnTo(`${BASE}/orgs/test/checks`, BASE)).toBe(true);
   });
 
   it("rejects absolute, protocol-relative and scheme'd values", () => {
-    expect(isSafeReturnTo("https://evil.com/dash0/orgs/x", BASE)).toBe(false);
-    expect(isSafeReturnTo("//evil.com/dash0/orgs/x", BASE)).toBe(false);
+    expect(isSafeReturnTo(`https://evil.com${BASE}/orgs/x`, BASE)).toBe(false);
+    expect(isSafeReturnTo(`//evil.com${BASE}/orgs/x`, BASE)).toBe(false);
     expect(isSafeReturnTo("javascript:alert(1)", BASE)).toBe(false);
     expect(isSafeReturnTo("/\\evil.com", BASE)).toBe(false);
   });
 
   it("rejects an in-app path outside /orgs/", () => {
-    expect(isSafeReturnTo("/dash0/no-org", BASE)).toBe(false);
+    expect(isSafeReturnTo(`${BASE}/no-org`, BASE)).toBe(false);
   });
 });
 
 describe("returnToOrg", () => {
   it("reads the slug after /orgs/, stripping base path and query", () => {
-    expect(returnToOrg("/dash0/orgs/test/checks?q=1", BASE)).toBe("test");
-    expect(returnToOrg("/dash0/orgs/acme", BASE)).toBe("acme");
+    expect(returnToOrg(`${BASE}/orgs/test/checks?q=1`, BASE)).toBe("test");
+    expect(returnToOrg(`${BASE}/orgs/acme`, BASE)).toBe("acme");
     expect(returnToOrg("/orgs/test/checks", "")).toBe("test");
   });
 
   it("returns null when there is no org segment", () => {
-    expect(returnToOrg("/dash0/settings", BASE)).toBeNull();
+    expect(returnToOrg(`${BASE}/settings`, BASE)).toBeNull();
   });
 });
 
@@ -238,54 +239,54 @@ describe("stripOAuthErrorParams", () => {
   it("removes the params a failed OAuth callback appended", () => {
     expect(
       stripOAuthErrorParams(
-        "/dash0/orgs/default?error=OAUTH_FAILED&error_description=OAuth+failed",
+        `${BASE}/orgs/default?error=OAUTH_FAILED&error_description=OAuth+failed`,
       ),
-    ).toBe("/dash0/orgs/default");
+    ).toBe(`${BASE}/orgs/default`);
   });
 
   it("drops the '?' when nothing is left, and leaves a param-less path alone", () => {
-    expect(stripOAuthErrorParams("/dash0/orgs/default?error=X")).toBe(
-      "/dash0/orgs/default",
+    expect(stripOAuthErrorParams(`${BASE}/orgs/default?error=X`)).toBe(
+      `${BASE}/orgs/default`,
     );
-    expect(stripOAuthErrorParams("/dash0/orgs/default")).toBe(
-      "/dash0/orgs/default",
+    expect(stripOAuthErrorParams(`${BASE}/orgs/default`)).toBe(
+      `${BASE}/orgs/default`,
     );
   });
 
   it("keeps every other query param and the hash", () => {
     expect(
       stripOAuthErrorParams(
-        "/dash0/orgs/acme/checks?error=OAUTH_FAILED&tab=down&error_description=nope&q=api#top",
+        `${BASE}/orgs/acme/checks?error=OAUTH_FAILED&tab=down&error_description=nope&q=api#top`,
       ),
-    ).toBe("/dash0/orgs/acme/checks?tab=down&q=api#top");
+    ).toBe(`${BASE}/orgs/acme/checks?tab=down&q=api#top`);
   });
 
   it("is idempotent, so retries cannot compound", () => {
     const once = stripOAuthErrorParams(
-      "/dash0/orgs/default?error=OAUTH_FAILED&error_description=sql%3A+no+rows+in+result+set",
+      `${BASE}/orgs/default?error=OAUTH_FAILED&error_description=sql%3A+no+rows+in+result+set`,
     );
-    expect(once).toBe("/dash0/orgs/default");
+    expect(once).toBe(`${BASE}/orgs/default`);
     expect(stripOAuthErrorParams(once)).toBe(once);
   });
 
   it("does not turn a relative path into an absolute URL", () => {
     // Regression guard: implementing this with `new URL(path)` would need an
     // origin, and would hand redirect_uri an absolute URL.
-    expect(stripOAuthErrorParams("/dash0/orgs/default?error=X&a=1")).toBe(
-      "/dash0/orgs/default?a=1",
+    expect(stripOAuthErrorParams(`${BASE}/orgs/default?error=X&a=1`)).toBe(
+      `${BASE}/orgs/default?a=1`,
     );
     expect(
-      stripOAuthErrorParams("/dash0/orgs/default?error=X").startsWith("/"),
+      stripOAuthErrorParams(`${BASE}/orgs/default?error=X`).startsWith("/"),
     ).toBe(true);
   });
 
   it("leaves a nested error inside an unrelated param's value untouched", () => {
     expect(
       stripOAuthErrorParams(
-        "/dash0/orgs/default?returnTo=%2Fdash0%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED&error=OAUTH_FAILED",
+        `${BASE}/orgs/default?returnTo=${encodeURIComponent(BASE)}%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED&error=OAUTH_FAILED`,
       ),
     ).toBe(
-      "/dash0/orgs/default?returnTo=%2Fdash0%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED",
+      `${BASE}/orgs/default?returnTo=${encodeURIComponent(BASE)}%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED`,
     );
   });
 });

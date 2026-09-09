@@ -43,7 +43,7 @@ import {
  *     documented failure class, not as proof a live bug was fixed.
  */
 
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /** TanStack Router's default error boundary copy. */
 const ERROR_BOUNDARY_TEXT = "Something went wrong!";
@@ -62,7 +62,7 @@ async function resolveStatusPageUrl(request: APIRequestContext): Promise<string>
   const orgs = process.env.E2E_ORG ? [process.env.E2E_ORG] : ["default", "test"];
   for (const org of orgs) {
     const response = await request.get(`${BASE}/api/v1/status-pages/${org}`);
-    if (response.ok()) return `${BASE}/status0/${org}`;
+    if (response.ok()) return `${BASE}${STATUS_BASE}/${org}`;
   }
   throw new Error(
     `No public status page found on ${BASE} for orgs ${orgs.join(", ")}`,
@@ -195,7 +195,7 @@ async function seedRichStatusPage(
     publishedAt: new Date(now - 5 * 60_000).toISOString(),
   });
 
-  return { url: `${BASE}/status0/${org}/${slug}`, org };
+  return { url: `${BASE}${STATUS_BASE}/${org}/${slug}`, org };
 }
 
 /**

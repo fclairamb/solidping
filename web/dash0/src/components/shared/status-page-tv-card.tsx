@@ -31,6 +31,7 @@ import {
   CopyableCode,
   CopyableInline,
 } from "@/components/shared/copyable-code";
+import { STATUS_BASE } from "@/lib/base-path";
 
 /**
  * TV mode card for a status page (spec 2026-08-29-08).
@@ -61,7 +62,7 @@ export function StatusPageTvCard({
   const revoke = useRevokeKioskToken(org, page.uid);
 
   const isPublic = page.visibility === "public";
-  const tvPath = `/status0/${org}/${page.slug}/tv`;
+  const tvPath = `${STATUS_BASE}/${org}/${page.slug}/tv`;
   const tvUrl = `${window.location.origin}${tvPath}`;
 
   // The URL an operator should actually paste. While a token is on screen it

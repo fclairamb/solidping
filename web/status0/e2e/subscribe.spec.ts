@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 test.describe("Status page subscribe widget", () => {
   test("subscribe widget submits and shows check-your-inbox state", async ({
     page,
   }) => {
-    await page.goto(`${BASE}/status0/default/status-0`);
+    await page.goto(`${BASE}${STATUS_BASE}/default/status-0`);
     await page.waitForLoadState("networkidle");
 
     // Widget heading is visible.

@@ -64,7 +64,7 @@ test.describe("MCP page (AI assistants / MCP connector setup)", () => {
   }) => {
     const page = authenticatedPage;
     // A human pasting the MCP endpoint into the address bar: the backend
-    // answers 302 → /dash0/mcp?from=get, the org-less /mcp route resolves
+    // answers 302 → /d/mcp?from=get, the org-less /mcp route resolves
     // the org from the session and forwards to the Account MCP page,
     // preserving the query string.
     await page.goto(`${API_BASE}/api/v1/mcp`);

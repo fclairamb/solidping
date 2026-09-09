@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, STATUS_BASE } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 // Coverage for spec 2026-08-01-03: a status page resource can target a check
@@ -117,7 +117,7 @@ test.describe("Status page group resources", () => {
     expect(resources[0].check?.type ?? "").toBe("");
 
     // The rendered public page shows one component under the group's name.
-    await page.goto(`/status0/test/${pageSlug}`);
+    await page.goto(`${STATUS_BASE}/test/${pageSlug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText(groupName).first()).toBeVisible();
     for (const name of memberNames) {

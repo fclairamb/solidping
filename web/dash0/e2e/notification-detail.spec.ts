@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
 
 // The new flat notification URL: /orgs/:org/notifications/:uuid (with optional ?from=...)
 const FLAT_NOTIF_RE =
@@ -14,7 +14,7 @@ test.describe("Notification delivery detail", () => {
 
     // The new flat route: /orgs/:org/notifications/:uid
     await page.goto(
-      `/dash0/orgs/test/notifications/does-not-exist`,
+      `${DASH_BASE}/orgs/test/notifications/does-not-exist`,
     );
     await page.waitForLoadState("networkidle");
 
@@ -69,7 +69,7 @@ test.describe("Notification delivery detail", () => {
     const page = authenticatedPage;
 
     // Find an incident that has at least one notification row.
-    await page.goto(`/dash0/orgs/test/incidents`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents`);
     await page.waitForLoadState("networkidle");
 
     const incidentRows = page.getByTestId("incident-row");
@@ -93,7 +93,12 @@ test.describe("Notification delivery detail", () => {
 
     let foundRow = false;
     for (const href of hrefs) {
-      await page.goto(`/dash0${href.replace(/^\/dash0/, "")}`);
+      // hrefs are already app-absolute; strip a duplicate base prefix rather
+      // than concatenating two of them.
+      const path = href.startsWith(DASH_BASE)
+        ? href.slice(DASH_BASE.length)
+        : href;
+      await page.goto(`${DASH_BASE}${path}`);
       await page.waitForLoadState("networkidle");
 
       const notifRow = page.getByTestId("notification-row").first();
@@ -145,7 +150,7 @@ test.describe("Notification delivery detail", () => {
     const page = authenticatedPage;
 
     await page.goto(
-      `/dash0/orgs/test/notifications/${SEEDED_NOTIF_UID}?from=incident:${SEEDED_INCIDENT_UID}`,
+      `${DASH_BASE}/orgs/test/notifications/${SEEDED_NOTIF_UID}?from=incident:${SEEDED_INCIDENT_UID}`,
     );
     await page.waitForLoadState("networkidle");
 
@@ -212,7 +217,7 @@ test.describe("Notification delivery detail", () => {
     );
 
     await page.goto(
-      `/dash0/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
+      `${DASH_BASE}/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
     );
     // The redirect fires: URL should now be the flat route.
     await page.waitForURL(/[?&]from=incident/, { timeout: 10000 });
@@ -269,7 +274,7 @@ test.describe("Notification delivery detail", () => {
 
     // Use the new flat route with ?from= for context.
     await page.goto(
-      `/dash0/orgs/test/notifications/${notifUid}?from=incident:11111111-1111-1111-1111-111111111111`,
+      `${DASH_BASE}/orgs/test/notifications/${notifUid}?from=incident:11111111-1111-1111-1111-111111111111`,
     );
     await page.waitForLoadState("networkidle");
 
@@ -327,7 +332,7 @@ test.describe("Notification delivery detail", () => {
 
     // Use flat route with ?from=integration: to test the integration breadcrumb.
     await page.goto(
-      `/dash0/orgs/test/notifications/${notifUid}?from=integration:some-integration-uid`,
+      `${DASH_BASE}/orgs/test/notifications/${notifUid}?from=integration:some-integration-uid`,
     );
     await page.waitForLoadState("networkidle");
 

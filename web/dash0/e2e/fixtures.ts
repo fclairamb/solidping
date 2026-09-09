@@ -16,6 +16,23 @@ export const API_BASE = process.env.E2E_BASE_URL
   : "http://localhost:4000";
 
 /**
+ * DASH_BASE is the URL prefix the dashboard is mounted at, matching
+ * playwright.config.ts's `baseURL` and `config.DashboardBasePath`
+ * (server/internal/config/config.go).
+ *
+ * Spec files use it instead of writing the prefix out in every `page.goto`:
+ * the prefix moved once already (`/dash0` → `/d`, spec 2026-09-09-01), and 49
+ * hard-coded gotos is exactly the kind of thing that makes a move painful.
+ */
+export const DASH_BASE = "/d";
+
+/**
+ * STATUS_BASE is the PUBLIC STATUS PAGE app's prefix (`web/status0`), for the
+ * dash0 tests that assert a link out to it. Mirrors `config.StatusBasePath`.
+ */
+export const STATUS_BASE = "/s";
+
+/**
  * Test fixture that provides authenticated page context.
  * Uses the test credentials (test@test.com/test) for login.
  *

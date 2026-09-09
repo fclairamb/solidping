@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Public status page response-time chart — per-region series (spec
@@ -78,7 +78,7 @@ test.describe("Public status page — response-time chart", () => {
     }));
     await mockStatusPage(page, [{ points }]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Response Time", { exact: true })).toBeVisible({
@@ -100,7 +100,7 @@ test.describe("Public status page — response-time chart", () => {
     // No `region` key at all — mirrors a pre-region-tracking payload.
     await mockStatusPage(page, [{ points }]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Response Time", { exact: true })).toBeVisible({
@@ -127,7 +127,7 @@ test.describe("Public status page — response-time chart", () => {
       { region: "us1", points: us1Points },
     ]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const legend = page.getByTestId("response-time-chart-legend");
@@ -168,7 +168,7 @@ test.describe("Public status page — response-time chart", () => {
       { region: "us1", points: us1Points },
     ]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const strip = page.getByTestId("response-time-chart-availability-strip");
@@ -197,7 +197,7 @@ test.describe("Public status page — response-time chart", () => {
     ];
     await mockStatusPage(page, [{ region: "eu2", points }]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const strip = page.getByTestId("response-time-chart-availability-strip");
@@ -241,7 +241,7 @@ test.describe("Public status page — response-time chart", () => {
     }));
     await mockStatusPage(page, series);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await expect(
@@ -292,7 +292,7 @@ test.describe("Public status page — response-time chart", () => {
       { region: "us1", points: us1Points },
     ]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const legend = page.getByTestId("response-time-chart-legend");

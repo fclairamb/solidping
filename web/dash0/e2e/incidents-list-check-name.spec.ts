@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 /**
  * Spec 2026-08-28-11: the Incidents list "Check" column must render the
@@ -57,7 +57,7 @@ test.describe("Incidents list: Check column", () => {
       route.fulfill(json({ data: [] })),
     );
 
-    await page.goto("/dash0/orgs/test/incidents");
+    await page.goto(`${DASH_BASE}/orgs/test/incidents`);
     await page.waitForLoadState("networkidle");
 
     const row = page.getByTestId("incident-row").filter({ hasText: CHECK_NAME }).first();

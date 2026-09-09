@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Request } from "@playwright/test";
+import { DASH_BASE } from "./fixtures";
 
 /**
  * Proves the privacy guarantee of spec 2026-08-02-08: with no PostHog
@@ -81,7 +82,7 @@ test.describe("product analytics is inert when not configured", () => {
   });
 
   test("index.html contains no analytics script tag", async ({ request }) => {
-    const response = await request.get("/dash0/");
+    const response = await request.get(`${DASH_BASE}/`);
     const html = await response.text();
     expect(html.toLowerCase()).not.toContain("posthog");
   });

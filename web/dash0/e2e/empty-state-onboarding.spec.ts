@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, DASH_BASE } from "./fixtures";
 
 // Covers the empty-state onboarding hero (EmptyStateOnboarding, rendered on
 // /orgs/$org when the org has zero checks) and specifically the 2026-07-11
@@ -64,12 +64,12 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     const href = await mcpLink.getAttribute("href");
     expect(href).toBeTruthy();
     expect(new URL(href!, page.url()).pathname).toBe(
-      "/dash0/orgs/test/account/mcp",
+      `${DASH_BASE}/orgs/test/account/mcp`,
     );
 
     // Tertiary path: the full check editor hint is still there.
     await expect(
-      page.locator('a[href="/dash0/orgs/test/checks/new"]'),
+      page.locator('a[href=`${DASH_BASE}/orgs/test/checks/new`]'),
     ).toBeVisible();
   });
 

@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 // Deterministically seeded in test mode (server/test/testdata): an active
 // incident with a first-failure snapshot, shared with the notifications and
@@ -15,7 +15,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
     const page = authenticatedPage;
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
-    await page.goto("/dash0/orgs/test/incidents");
+    await page.goto(`${DASH_BASE}/orgs/test/incidents`);
     await page.waitForLoadState("networkidle");
 
     const timestamp = page.getByTestId("incident-started-at").first();
@@ -61,7 +61,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
       const page = authenticatedPage;
       await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
 
-      await page.goto(`/dash0/orgs/test/incidents/${INCIDENT_UID}`);
+      await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
       await page.waitForLoadState("networkidle");
       await expect(page.getByText("Incident Details")).toBeVisible();
 
@@ -102,7 +102,7 @@ test.describe("TimeAgo: hover tooltip + click-to-copy", () => {
     const page = authenticatedPage;
     await page.setViewportSize({ width: 375, height: 812 });
 
-    await page.goto(`/dash0/orgs/test/incidents/${INCIDENT_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 

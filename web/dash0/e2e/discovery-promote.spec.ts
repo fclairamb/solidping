@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { DASH_BASE } from "./fixtures";
 
 // Deterministic seed from server/test/testdata/testdata.go (SP_RUNMODE=test):
 // a successful network-discovery scan (jobs row …0007) carrying one unpromoted
@@ -7,7 +8,7 @@ const SCAN_UID = "00000000-0000-0000-0000-000000000007";
 
 test.describe("Discovery host promotion", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/dash0/orgs/test/login");
+    await page.goto(`${DASH_BASE}/orgs/test/login`);
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -16,7 +17,7 @@ test.describe("Discovery host promotion", () => {
 
   test("promotes a seeded suggested check end-to-end", async ({ page }) => {
     // Open the seeded scan detail.
-    await page.goto(`/dash0/orgs/test/discovery/${SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SCAN_UID}`);
 
     // The seeded host renders as a group card listing its suggested checks.
     const group = page

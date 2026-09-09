@@ -1,12 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Favicon regression guard (spec: favicons under public/assets/).
  *
  * The failure mode this protects against: an icon href in index.html that is
  * document-relative (href="favicon.svg") resolves against the current SPA
- * route on deep links (/dash0/orgs/x/checks/favicon.svg). The server answers
+ * route on deep links (/d/orgs/x/checks/favicon.svg). The server answers
  * unknown paths with the index.html SPA fallback — HTTP 200, text/html — so
  * the browser silently renders a broken favicon instead of 404ing.
  *
@@ -67,24 +67,24 @@ async function assertLinksServeRealAssets(page: Page, appBase: string) {
 }
 
 test.describe("favicons resolve on deep SPA routes", () => {
-  test("dash0: icons load from /dash0/assets/ on a nested route", async ({ page }) => {
+  test(`dash0: icons load from ${DASH_BASE}/assets/ on a nested route`, async ({ page }) => {
     // The login page is a deep route (3 path segments) that needs no auth.
     await page.goto("orgs/test/login");
-    await assertLinksServeRealAssets(page, "/dash0");
+    await assertLinksServeRealAssets(page, `${DASH_BASE}`);
   });
 
-  test("status0: icons load from /status0/assets/ on a nested route", async ({ page }) => {
+  test(`status0: icons load from ${STATUS_BASE}/assets/ on a nested route`, async ({ page }) => {
     // Any nested path serves the SPA index (page existence is irrelevant to
     // the <head> links, which are static).
-    await page.goto(`${API_BASE}/status0/test/some-page`);
-    await assertLinksServeRealAssets(page, "/status0");
+    await page.goto(`${API_BASE}${STATUS_BASE}/test/some-page`);
+    await assertLinksServeRealAssets(page, `${STATUS_BASE}`);
   });
 
   test("dash0 service worker pushes the assets/ notification icon", async ({ page }) => {
     // sw.js is static (not Vite-processed), so its icon path is hardcoded and
     // easy to break when assets move.
-    const response = await page.request.get(`${API_BASE}/dash0/sw.js`);
+    const response = await page.request.get(`${API_BASE}${DASH_BASE}/sw.js`);
     expect(response.status()).toBe(200);
-    expect((await response.body()).toString()).toContain("/dash0/assets/favicon-192.png");
+    expect((await response.body()).toString()).toContain(`${DASH_BASE}/assets/favicon-192.png`);
   });
 });

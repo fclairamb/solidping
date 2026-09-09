@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * TV mode's middle panel (spec 2026-08-29-08).
@@ -107,7 +107,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       RESOLVED_LONG_AGO,
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
     await expect(page.getByTestId("tv-board")).toHaveAttribute(
       "data-tv-state",
       "down",
@@ -135,7 +135,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       RESOLVED_LONG_AGO,
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
     await expect(page.getByTestId("tv-board")).toHaveAttribute(
       "data-tv-state",
       "operational",
@@ -165,7 +165,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       RESOLVED_LONG_AGO,
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
     await expect(page.getByTestId("tv-active-incident")).toHaveCount(1);
     await expect(page.getByTestId("tv-failing-resources")).toHaveCount(0);
   });
@@ -185,7 +185,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       RESOLVED_LONG_AGO,
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
     await expect(page.getByTestId("tv-board")).toHaveAttribute(
       "data-tv-state",
       "maintenance",
@@ -208,7 +208,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       ]),
     });
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     const row = page.getByTestId("tv-failing-resource");
     await expect(row).toContainText("Checkout API");
@@ -225,7 +225,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       sections: section([resource("r1", "Aggregated group", "down")]),
     });
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     const row = page.getByTestId("tv-failing-resource");
     await expect(row).toContainText("Aggregated group");
@@ -246,7 +246,7 @@ test.describe("TV mode — explaining a non-green board", () => {
       RESOLVED_LONG_AGO,
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
     await expect(
       page.getByTestId("tv-failing-resource-name"),
     ).toHaveText(["Dead service", "Slow service"]);
@@ -279,7 +279,7 @@ test.describe("TV mode — the recently-resolved strip", () => {
       },
     ]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     const card = page.getByTestId("tv-resolved-incident");
     await expect(card).toHaveCount(1);
@@ -300,7 +300,7 @@ test.describe("TV mode — the recently-resolved strip", () => {
       },
     ]);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     const card = page.getByTestId("tv-resolved-incident");
     await expect(card).toContainText("2d 2h ago");
@@ -334,7 +334,7 @@ test.describe("TV mode — attributing the amber", () => {
       sections: section([resource("r1", "Checkout API", "up")]),
     });
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     await expect(page.getByTestId("tv-headline")).toContainText("Degraded");
     await expect(page.getByTestId("tv-headline-cause")).toContainText(
@@ -363,7 +363,7 @@ test.describe("TV mode — attributing the amber", () => {
       sections: section([resource("r1", "Checkout API", "degraded")]),
     });
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     const cause = page.getByTestId("tv-headline-cause");
     await expect(cause).toContainText("1 open incident");
@@ -387,7 +387,7 @@ test.describe("TV mode — attributing the amber", () => {
       sections: section([resource("r1", "Checkout API", "down")]),
     });
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}/tv`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}/tv`);
 
     await expect(page.getByTestId("tv-headline")).toBeVisible();
     await expect(page.getByTestId("tv-headline-cause")).toHaveCount(0);

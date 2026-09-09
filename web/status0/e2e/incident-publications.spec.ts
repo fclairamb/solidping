@@ -16,7 +16,7 @@
  *     severity colours the top banner.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 async function getToken(): Promise<string> {
   const res = await fetch(`${BASE}/api/v1/auth/login`, {
@@ -106,7 +106,7 @@ test.describe("Incident publications on the public status page", () => {
 
     const publication = await createPublication(token, statusPage.uid, title);
 
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     const section = page.getByTestId("active-incidents");
@@ -158,7 +158,7 @@ test.describe("Incident publications on the public status page", () => {
 
     const publication = await createPublication(token, statusPage.uid, title);
 
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
     await expect(page.locator(`#incident-${publication.uid}`)).toBeVisible({
       timeout: 10_000,
@@ -286,7 +286,7 @@ test.describe("Incident publications on the public status page", () => {
     );
     expect(publicIncident.uid).toBe(publication.uid);
 
-    await page.goto(`${BASE}/status0/test/${statusPage.slug}`);
+    await page.goto(`${BASE}${STATUS_BASE}/test/${statusPage.slug}`);
     await page.waitForLoadState("networkidle");
 
     // POSITIVE: the affected component wears the badge…

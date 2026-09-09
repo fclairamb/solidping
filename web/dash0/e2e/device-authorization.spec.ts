@@ -1,9 +1,9 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, DASH_BASE } from "./fixtures";
 
 // Coverage for spec 2026-08-08-02: the OAuth 2.0 Device Authorization Grant
 // (RFC 8628) behind `sp auth login`. The CLI half is exercised in Go; here we
 // drive the browser half — a device request opened over the public API, then
-// approved (or denied) on /dash0/device — and prove that approving really
+// approved (or denied) on /d/device — and prove that approving really
 // mints a PAT that shows up on the tokens page.
 //
 // The device endpoints speak the RFC's snake_case field names on purpose, so
@@ -77,7 +77,7 @@ test.describe("Device authorization consent", () => {
     const authz = await startDeviceAuthorization(page, clientName);
     expect(authz.device_code).not.toBe("");
     expect(authz.user_code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    expect(authz.verification_uri).toContain("/dash0/device");
+    expect(authz.verification_uri).toContain(`${DASH_BASE}/device`);
 
     // Before approval the client is told to keep waiting.
     const pending = await pollDeviceToken(page, authz.device_code);

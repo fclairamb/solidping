@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -102,7 +102,7 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     // Navigate to badges page
-    await page.goto(`/dash0/orgs/test/badges`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges`);
     await page.waitForLoadState("networkidle");
 
     // Select the check via the live-search picker: open, type, pick.
@@ -152,7 +152,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Avail ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -184,7 +184,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Fallback ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -207,7 +207,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Rows ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     const img = page.getByTestId("badge-preview-img");
     await expect(img).toBeVisible({ timeout: 10000 });
@@ -242,7 +242,7 @@ test.describe("Badges", () => {
     const checkName = `Badge No Bar ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -267,7 +267,7 @@ test.describe("Badges", () => {
     const checkName = `Badge DL SVG ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -287,7 +287,7 @@ test.describe("Badges", () => {
     const checkName = `Badge DL PNG ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -307,7 +307,7 @@ test.describe("Badges", () => {
     const checkName = `Badge No Card ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -325,7 +325,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Period Vis ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -358,7 +358,7 @@ test.describe("Badges", () => {
 
     // Navigate directly with all params in URL
     await page.goto(
-      `/dash0/orgs/test/badges?check=${slug}&components=availability&period=7d&style=flat-square&label=My+Badge`
+      `${DASH_BASE}/orgs/test/badges?check=${slug}&components=availability&period=7d&style=flat-square&label=My+Badge`
     );
     await page.waitForLoadState("networkidle");
 
@@ -402,7 +402,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Label ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -431,7 +431,7 @@ test.describe("Badges", () => {
 
     // Navigate with non-default components
     await page.goto(
-      `/dash0/orgs/test/badges?check=${check.slug}&components=availability&period=7d&style=flat-square`
+      `${DASH_BASE}/orgs/test/badges?check=${check.slug}&components=availability&period=7d&style=flat-square`
     );
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
@@ -466,7 +466,7 @@ test.describe("Badges", () => {
 
     // Enable uptime-bar so the width input is visible
     await page.goto(
-      `/dash0/orgs/test/badges?check=${check.slug}&components=status,uptime-bar`
+      `${DASH_BASE}/orgs/test/badges?check=${check.slug}&components=status,uptime-bar`
     );
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
@@ -504,7 +504,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Back Link ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
     await page.waitForLoadState("networkidle");
 
     // Link is visible, shows the check name, and uses the back arrow.
@@ -514,9 +514,9 @@ test.describe("Badges", () => {
 
     // Clicking navigates to the canonical check detail route keyed on uid.
     await backLink.click();
-    await page.waitForURL(`**/dash0/orgs/test/checks/${check.uid}`);
+    await page.waitForURL(`**${DASH_BASE}/orgs/test/checks/${check.uid}`);
     expect(new URL(page.url()).pathname).toBe(
-      `/dash0/orgs/test/checks/${check.uid}`
+      `${DASH_BASE}/orgs/test/checks/${check.uid}`
     );
   });
 
@@ -525,7 +525,7 @@ test.describe("Badges", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/badges`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges`);
     await page.waitForLoadState("networkidle");
 
     // No check selected → the back link must not exist.
@@ -539,7 +539,7 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(
-      `/dash0/orgs/test/badges?check=${check.slug}&components=status,uptime-bar,response-time-graph`
+      `${DASH_BASE}/orgs/test/badges?check=${check.slug}&components=status,uptime-bar,response-time-graph`
     );
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
@@ -569,7 +569,7 @@ test.describe("Badges", () => {
     await createExtraChecks(page, token, `OOP Slug ${Date.now()}`, 25);
 
     // Deep-link by slug to the out-of-page check.
-    await page.goto(`/dash0/orgs/test/badges?check=${target.slug}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${target.slug}`);
     await page.waitForLoadState("networkidle");
 
     // The preview + embed URL render — the "select a check" prompt is NOT shown.
@@ -605,7 +605,7 @@ test.describe("Badges", () => {
     await createExtraChecks(page, token, `OOP Uid ${Date.now()}`, 25);
 
     // Deep-link by uid resolves identically to the slug case.
-    await page.goto(`/dash0/orgs/test/badges?check=${target.uid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${target.uid}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
@@ -636,7 +636,7 @@ test.describe("Badges", () => {
     const target = await createCheck(page, token, targetName);
     await createExtraChecks(page, token, `LiveSearch ${marker}`, 25);
 
-    await page.goto(`/dash0/orgs/test/badges`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges`);
     await page.waitForLoadState("networkidle");
 
     // Open the picker: the initial result page shows the newer fillers only.
@@ -678,7 +678,7 @@ test.describe("Badges", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/badges?check=does-not-exist-${Date.now()}`);
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=does-not-exist-${Date.now()}`);
     await page.waitForLoadState("networkidle");
 
     // The not-found alert is shown; no preview and no redirect away from /badges.
@@ -689,6 +689,6 @@ test.describe("Badges", () => {
     await expect(
       page.getByText("Select a check to preview and generate badges")
     ).not.toBeVisible();
-    expect(new URL(page.url()).pathname).toBe("/dash0/orgs/test/badges");
+    expect(new URL(page.url()).pathname).toBe(`${DASH_BASE}/orgs/test/badges`);
   });
 });

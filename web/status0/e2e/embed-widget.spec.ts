@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Embeddable status widget, `/embed/v1/widget.js` (spec 2026-08-08-08).
@@ -152,7 +152,7 @@ test.describe("Embeddable status widget", () => {
     await expect(page.locator(LABEL)).toHaveText("Status unknown");
 
     const href = await pill.getAttribute("href");
-    expect(href).toContain(`/status0/${org}/${slug}`);
+    expect(href).toContain(`${STATUS_BASE}/${org}/${slug}`);
     expect(href).toMatch(/^https?:\/\//);
     expect(await pill.getAttribute("rel")).toContain("noopener");
 
@@ -385,7 +385,7 @@ test.describe("Embeddable status widget", () => {
   test("renders a hostile label as text, never as markup", async ({ page }) => {
     await stubSummary(page, {
       status: "operational",
-      page: { name: "ok", slug: "ok", url: `${BASE}/status0/x/y` },
+      page: { name: "ok", slug: "ok", url: `${BASE}${STATUS_BASE}/x/y` },
     });
 
     const hostile = `<img src=x onerror="window.__pwned=1">`;

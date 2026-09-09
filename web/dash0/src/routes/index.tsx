@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { parseDemoFlag } from "@/lib/demo";
 
 export const Route = createFileRoute("/")({
-  // `/dash0/?demo=true` is a deep link into the shared live demo, not a request
+  // `/d/?demo=true` is a deep link into the shared live demo, not a request
   // for whatever org this browser last visited (spec 2026-09-07-02).
   // Optional in the emitted type, deliberately: `<Link to="/">` appears in
   // several places (the root error boundary among them) and must keep

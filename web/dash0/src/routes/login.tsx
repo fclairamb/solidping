@@ -8,7 +8,7 @@ export const Route = createFileRoute("/login")({
   // (server/internal/oauth/authorize.go redirectToLogin) — dropping it here
   // dead-ends the whole MCP connect flow on the dashboard.
   //
-  // `demo` rides along for the same reason: `/dash0/login?demo=true` is the
+  // `demo` rides along for the same reason: `/d/login?demo=true` is the
   // deep link that reads naturally and is the one we publish, and forwarding
   // only returnTo dropped the flag here so the visitor landed on an ordinary
   // login form (spec 2026-09-07-02).

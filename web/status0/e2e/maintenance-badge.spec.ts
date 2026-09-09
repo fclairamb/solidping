@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Verifies the "Scheduled Maintenance" badge on the public status page.
@@ -16,7 +16,7 @@ test.describe("Public status page — scheduled maintenance badge", () => {
   test("maintenance resource shows the Scheduled Maintenance badge", async ({
     page,
   }) => {
-    await page.goto(`${BASE}/status0/default`);
+    await page.goto(`${BASE}${STATUS_BASE}/default`);
     await page.waitForLoadState("networkidle");
 
     const badge = page.getByTestId("resource-maintenance-badge");

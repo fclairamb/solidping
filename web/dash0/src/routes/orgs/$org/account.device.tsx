@@ -38,7 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * Consent page for the OAuth 2.0 Device Authorization Grant (RFC 8628,
  * spec 2026-08-08-02) — the browser half of `sp auth login`.
  *
- * The CLI prints a short code and the org-less `/dash0/device` URL. That route
+ * The CLI prints a short code and the org-less `/d/device` URL. That route
  * sends a logged-out visitor to /login with ITSELF as `returnTo` (org-less, so
  * the code survives the round trip for any org slug — see
  * `isDeviceVerificationReturnTo`), and forwards an authenticated one here, into

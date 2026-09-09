@@ -7,15 +7,17 @@ import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Base URL can be configured via VITE_BASE_URL env var
-// Default is "/dash0/" for both dev and production
+// Base URL can be configured via VITE_BASE_URL env var.
+// Default is "/d/" for both dev and production — it must stay in sync with
+// config.DashboardBasePath (server/internal/config/config.go), which is what
+// the backend mounts this app at and builds every emailed/chat link from.
 const getBaseUrl = () => {
   const envBase = process.env.VITE_BASE_URL;
   if (envBase) {
     // Ensure it ends with "/" for Vite
     return envBase.endsWith("/") ? envBase : envBase + "/";
   }
-  return "/dash0/";
+  return "/d/";
 };
 
 export default defineConfig(() => {

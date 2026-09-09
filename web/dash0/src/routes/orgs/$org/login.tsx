@@ -51,6 +51,7 @@ import {
 } from "@/lib/login-destination";
 import { refreshAccessToken } from "@/lib/token-refresh";
 import { CHANGELOG_URL, marketingSiteUrl } from "@/lib/marketing-url";
+import { DASH_BASE } from "@/lib/base-path";
 
 // App base path (build-time constant). `returnTo` values captured on the way
 // into /login already include it, so the destination resolver matches against
@@ -427,7 +428,7 @@ function LoginPage() {
       }
       // resolveDestination needs no change: it already drops a `returnTo`
       // whose org segment differs from the resolved org, so a stale
-      // returnTo=/dash0/orgs/<url org>/… cannot drag the visitor back.
+      // returnTo=/d/orgs/<url org>/… cannot drag the visitor back.
       goToDestination(resolveDestination(accessibleOrg, returnTo, BASE_PATH), true);
     }
   }, [
@@ -751,7 +752,7 @@ function LoginPage() {
     // URL-encoding deeper (spec 2026-08-25-01).
     const currentPath = isOAuthAuthorizeReturnTo(returnTo)
       ? `${BASE_PATH}/orgs/${org}/login?returnTo=${encodeURIComponent(returnTo)}`
-      : stripOAuthErrorParams(returnTo || `/dash0/orgs/${org}`);
+      : stripOAuthErrorParams(returnTo || `${DASH_BASE}/orgs/${org}`);
     const loginUrl = `/api/v1/auth/${providerType}/login?org=${encodeURIComponent(org)}&redirect_uri=${encodeURIComponent(currentPath)}`;
     window.location.href = loginUrl;
   };

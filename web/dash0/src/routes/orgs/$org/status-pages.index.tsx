@@ -52,6 +52,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiError } from "@/api/client";
 import { useDebounce } from "@/lib/use-debounce";
+import { STATUS_BASE } from "@/lib/base-path";
 
 interface StatusPagesIndexSearch {
   q?: string;
@@ -122,7 +123,7 @@ function StatusPageRow({
             title={t("viewPublic")}
           >
             <a
-              href={`/status0/${org}/${page.slug}`}
+              href={`${STATUS_BASE}/${org}/${page.slug}`}
               target="_blank"
               rel="noopener noreferrer"
               data-testid={`status-page-row-view-${page.slug}`}

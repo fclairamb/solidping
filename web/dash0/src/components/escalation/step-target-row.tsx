@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DASH_BASE } from "@/lib/base-path";
 
 interface Props {
   org: string;
@@ -99,7 +100,7 @@ function ScheduleSelect({
       <span className="text-xs text-muted-foreground">
         {t("escalation:editor.noSchedules")}{" "}
         <a
-          href={`/dash0/orgs/${org}/on-call/new`}
+          href={`${DASH_BASE}/orgs/${org}/on-call/new`}
           className="underline text-primary hover:text-primary/80"
         >
           {t("escalation:editor.createSchedule")}
@@ -213,7 +214,7 @@ function ConnectionSelect({
       <span className="text-xs text-muted-foreground">
         {t("escalation:editor.noConnections")}{" "}
         <a
-          href={`/dash0/orgs/${org}/integrations/new`}
+          href={`${DASH_BASE}/orgs/${org}/integrations/new`}
           className="underline text-primary hover:text-primary/80"
         >
           {t("escalation:editor.createConnection")}

@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 test.describe("Public status page", () => {
   test("default org URL renders status page (not blank)", async ({ page }) => {
-    await page.goto(`${BASE}/status0/default`);
+    await page.goto(`${BASE}${STATUS_BASE}/default`);
     await page.waitForLoadState("networkidle");
 
     // React app must have mounted — root must not be empty
@@ -27,7 +27,7 @@ test.describe("Public status page", () => {
   test("slug URL renders the named status page (not blank)", async ({
     page,
   }) => {
-    await page.goto(`${BASE}/status0/default/status-0`);
+    await page.goto(`${BASE}${STATUS_BASE}/default/status-0`);
     await page.waitForLoadState("networkidle");
 
     // React app must have mounted — root must not be empty
@@ -49,7 +49,7 @@ test.describe("Public status page", () => {
   });
 
   test("root URL renders the index page", async ({ page }) => {
-    await page.goto(`${BASE}/status0/`);
+    await page.goto(`${BASE}${STATUS_BASE}/`);
     await page.waitForLoadState("networkidle");
 
     const rootKids = await page.evaluate(
