@@ -459,7 +459,7 @@ jobs:
       #   - response-time-chart (spec 2026-08-14-04) and dark-mode (spec
       #     2026-08-14-05): both stub `**/api/v1/status-pages/:org/:slug` with
       #     page.route and navigate to a synthetic org, so they need the server
-      #     only to serve the /status0 SPA shell — no seeded data at all.
+      #     only to serve the /s status SPA shell — no seeded data at all.
       # The remaining status0 specs still assume the `default` org that
       # `make dev` seeds, so they would fail here and stay out.
       #
@@ -531,7 +531,7 @@ jobs:
         run: bunx playwright test session-continuity.spec.ts --reporter=list
         env:
           CI: "true"
-          E2E_BASE_URL: "http://localhost:4001/dash0/"
+          E2E_BASE_URL: "http://localhost:4001/d/"
           E2E_ACCESS_TOKEN_EXPIRY_SECONDS: "10"
 
       - name: Surface server log on failure

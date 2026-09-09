@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, STATUS_BASE, escapeRegExp } from "./fixtures";
 
 test.describe("Status Updates", () => {
   test("should display the list page and create, edit, then delete an update", async ({
@@ -85,7 +85,11 @@ test.describe("Status Updates", () => {
     await expect(viewLink).toHaveAttribute("target", "_blank");
     await expect(viewLink).toHaveAttribute("rel", /noopener/);
     const href = await viewLink.getAttribute("href");
-    expect(href).toMatch(/^\/status0\/[^/]+\/[^/]+#update-[0-9a-f-]+$/);
+    expect(href).toMatch(
+      new RegExp(
+        `^${escapeRegExp(STATUS_BASE)}/[^/]+/[^/]+#update-[0-9a-f-]+$`,
+      ),
+    );
 
     // Title is now the primary edit affordance: clicking it opens the edit page.
     await newRow.getByTestId("status-update-row-title").click();

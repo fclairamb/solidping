@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
  * - Builds the complete server (frontend + backend with embedded resources)
  * - Starts PostgreSQL via docker-compose
  * - Runs the server with SOLIDPING_RUN_MODE=test for predictable test data
- * - Tests against http://localhost:4000/dash0/ (production build)
+ * - Tests against http://localhost:4000/d/ (production build)
  * - Uses admin@solidping.io/solidpass credentials (default test mode)
  *
  * See https://playwright.dev/docs/test-configuration.

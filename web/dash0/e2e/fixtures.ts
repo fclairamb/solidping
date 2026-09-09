@@ -33,6 +33,16 @@ export const DASH_BASE = "/d";
 export const STATUS_BASE = "/s";
 
 /**
+ * escapeRegExp makes a string safe to interpolate into a `new RegExp(...)`
+ * pattern. Use it whenever an assertion is built from `DASH_BASE` /
+ * `STATUS_BASE`: hard-coding the prefix into a regex literal is exactly what
+ * left `/dash0` assertions behind when the prefix moved (spec 2026-09-09-01).
+ */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Test fixture that provides authenticated page context.
  * Uses the test credentials (test@test.com/test) for login.
  *

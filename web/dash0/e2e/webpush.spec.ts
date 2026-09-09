@@ -13,9 +13,14 @@ test.describe("Web Push Foundation", () => {
     await page.goto(`${API_BASE}${DASH_BASE}/orgs/test`);
     await page.waitForLoadState("networkidle");
 
-    // Assert the service worker registered for the /dash0/sw.js scope.
-    const registration = await page.evaluate(() =>
-      navigator.serviceWorker.getRegistration(`${DASH_BASE}/sw.js`),
+    // Assert the service worker registered for the dashboard's own sw.js
+    // scope (DASH_BASE, i.e. /d today — never a hard-coded /dash0).
+    // DASH_BASE lives in this Node process; the callback is serialized and run
+    // in the page, so it has to be handed in as an argument rather than closed
+    // over (closing over it throws a ReferenceError in the browser).
+    const registration = await page.evaluate(
+      (base) => navigator.serviceWorker.getRegistration(`${base}/sw.js`),
+      DASH_BASE,
     );
     expect(registration).toBeTruthy();
   });
