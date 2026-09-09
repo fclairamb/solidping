@@ -2729,7 +2729,7 @@ func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
 // redirects to (see web/docs/docs/intro.md and configuration/index.md). The
 // incoming request's query string is never forwarded: a stray ?returnTo= on a
 // demo link is ignored by the auto-login anyway (web/dash0/src/routes/login.tsx).
-var demoShortcutLocation = config.DashboardBasePath + "/login?demo=true"
+const demoShortcutLocation = config.DashboardBasePath + "/login?demo=true"
 
 // serveDemoShortcut implements the one-word /demo and /demo/ entry point into
 // the shared public live demo (spec 2026-09-08-02). The gate is a
@@ -2774,7 +2774,7 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req *http.Request) err
 	// Check if any redirect rule matches
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
-		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+		if redirectRuleMatches(req.URL.Path, rule.PathPrefix) {
 			return s.serveAppRedirect(writer, req, *rule, nil)
 		}
 	}
@@ -2811,6 +2811,27 @@ p{margin:.5rem 0;opacity:.85}
 <p>There is nothing at this address.</p>
 </main></body></html>
 `
+
+// redirectRuleMatches reports whether a request path is covered by a
+// SP_REDIRECTS rule's path prefix.
+//
+// The prefix is matched as WHOLE PATH SEGMENTS — exact, or followed by a slash
+// — never as a raw string prefix. That distinction became load-bearing when the
+// dashboard moved to the single-letter base "/d" (spec 2026-09-09-01): a bare
+// strings.HasPrefix would route /docs, /demo and /dashboard-anything into the
+// dashboard's dev server, and /s would swallow every path starting with an s.
+//
+// "/" is the documented catch-all rule (config.ParseRedirectRule accepts
+// "/:host:port") and keeps matching everything.
+func redirectRuleMatches(reqPath, prefix string) bool {
+	if prefix == "" || prefix == "/" {
+		return true
+	}
+
+	trimmed := strings.TrimSuffix(prefix, "/")
+
+	return reqPath == trimmed || strings.HasPrefix(reqPath, trimmed+"/")
+}
 
 // serveAppRedirect proxies requests to the configured dev server.
 // If a fallback function is provided and the proxy fails (e.g., dev server is down),
@@ -2934,25 +2955,26 @@ func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) err
 	return nil
 }
 
-// legacySPAPrefixes maps each retired SPA prefix onto the prefix that replaced
-// it. Permanent, with no sunset (spec 2026-09-09-01): the cost is two route
-// registrations, and every link that ever escaped into the world — an email
-// sent last month, a bookmark, a Slack message, a search-engine index entry —
-// still points at the old one.
-var legacySPAPrefixes = map[string]string{
-	config.LegacyDashboardBasePath: config.DashboardBasePath,
-	config.LegacyStatusBasePath:    config.StatusBasePath,
-}
-
-// legacySPALocation maps a request path under a retired prefix onto the same
-// path under the current one, returning false when the path is not under a
-// retired prefix at all.
+// legacySPALocation maps a request path under a retired SPA prefix onto the
+// same path under the prefix that replaced it, returning false when the path is
+// not under a retired prefix at all.
 //
-// Only the leading prefix segment is rewritten, so every remaining segment —
-// including one that happens to spell "dash0" further down — is carried over
-// untouched.
+// The retired prefixes are permanent, with no sunset (spec 2026-09-09-01): the
+// cost is two route registrations, and every link that ever escaped into the
+// world — an email sent last month, a bookmark, a Slack message, a
+// search-engine index entry — still points at the old one.
+//
+// Only the LEADING prefix segment is rewritten, so a remaining segment that
+// happens to spell "dash0" further down is carried over untouched.
 func legacySPALocation(reqPath string) (string, bool) {
-	for legacy, current := range legacySPAPrefixes {
+	mappings := [...][2]string{
+		{config.LegacyDashboardBasePath, config.DashboardBasePath},
+		{config.LegacyStatusBasePath, config.StatusBasePath},
+	}
+
+	for i := range mappings {
+		legacy, current := mappings[i][0], mappings[i][1]
+
 		if reqPath == legacy {
 			return current, true
 		}
@@ -3004,7 +3026,7 @@ func (s *Server) serveDash0Root(writer http.ResponseWriter, req *http.Request) e
 	// Check if any redirect rule matches for development proxying
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
-		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+		if redirectRuleMatches(req.URL.Path, rule.PathPrefix) {
 			return s.serveAppRedirect(writer, req, *rule, s.serveDash0Static)
 		}
 	}
@@ -3058,7 +3080,7 @@ func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request)
 
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
-		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+		if redirectRuleMatches(req.URL.Path, rule.PathPrefix) {
 			return s.serveAppRedirect(writer, req, *rule, s.serveStatus0Static)
 		}
 	}

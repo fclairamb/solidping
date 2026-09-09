@@ -36,7 +36,7 @@ const pendingMembershipParam = "membershipPending"
 // noOrgPath is the dashboard surface a user lands on when they are
 // authenticated but hold no membership — it already renders the
 // "request access / pending request" flow.
-var noOrgPath = config.DashboardBasePath + "/no-org"
+const noOrgPath = config.DashboardBasePath + "/no-org"
 
 // membershipRequestsPath is the dashboard path where org admins review
 // pending membership requests — the target of the "New membership request"

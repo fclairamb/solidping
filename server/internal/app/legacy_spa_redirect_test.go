@@ -118,7 +118,7 @@ func TestServeAppRootRedirectsRootToDashboard(t *testing.T) {
 	r.Equal("/d/", resp.Header.Get("Location"))
 }
 
-// TestServeAppRootUnmatchedPathIs404 pins the behaviour change from retiring
+// TestServeAppRootUnmatchedPathIs404 pins the behavior change from retiring
 // the legacy web/dash app (spec 2026-09-09-01 §1): an unmatched path used to
 // render the OLD dashboard shell with a 200. It is now a plain HTML 404 — no
 // SPA shell, and in particular no 200 that would let a typo'd URL look like a
@@ -143,4 +143,34 @@ func TestServeAppRootUnmatchedPathIs404(t *testing.T) {
 	r.Contains(w.Body.String(), "<!doctype html")
 	// Not the SPA shell: nothing that would boot an application.
 	r.NotContains(w.Body.String(), `id="root"`)
+}
+
+// TestRedirectRuleMatchesWholeSegments guards the dev-proxy rule matcher
+// (SP_REDIRECTS) against the same single-letter-prefix trap as the custom-host
+// deny-list. `make dev` now ships "/d:localhost:5174/d,/s:localhost:5175/s";
+// with a raw strings.HasPrefix that would proxy /docs, /demo and /dashboard
+// into the dashboard's Vite server, and /s would swallow every path that
+// happens to start with an s.
+func TestRedirectRuleMatchesWholeSegments(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.True(redirectRuleMatches("/d", "/d"))
+	r.True(redirectRuleMatches("/d/", "/d"))
+	r.True(redirectRuleMatches("/d/orgs/acme", "/d"))
+	r.True(redirectRuleMatches("/s/acme/main", "/s"))
+
+	r.False(redirectRuleMatches("/docs", "/d"))
+	r.False(redirectRuleMatches("/docs/intro", "/d"))
+	r.False(redirectRuleMatches("/demo", "/d"))
+	r.False(redirectRuleMatches("/dashboard", "/d"))
+	r.False(redirectRuleMatches("/status", "/s"))
+	r.False(redirectRuleMatches("/some/path", "/s"))
+
+	// The documented catch-all rule still matches everything.
+	r.True(redirectRuleMatches("/anything/at/all", "/"))
+
+	// A trailing slash in the configured prefix is not a second segment.
+	r.True(redirectRuleMatches("/dash0/orgs", "/dash0/"))
+	r.False(redirectRuleMatches("/dash0x", "/dash0/"))
 }

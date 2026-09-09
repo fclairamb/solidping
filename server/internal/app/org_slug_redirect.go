@@ -25,13 +25,6 @@ const (
 	status0MaxSegments = 4
 )
 
-// dashboardBaseSegment and statusBaseSegment are the SPA base paths with their
-// leading slash removed, i.e. segments[1] of a matching path.
-var (
-	dashboardBaseSegment = strings.TrimPrefix(config.DashboardBasePath, "/")
-	statusBaseSegment    = strings.TrimPrefix(config.StatusBasePath, "/")
-)
-
 // redirectRenamedOrgSPA redirects a single-page-app URL that still carries a
 // renamed organization's previous slug.
 //
@@ -85,10 +78,10 @@ func spaOrgSegmentIndex(path string) (int, bool) {
 
 	switch {
 	case len(segments) > dash0OrgSegmentIndex &&
-		segments[1] == dashboardBaseSegment && segments[dash0OrgsMarkerIndex] == "orgs":
+		"/"+segments[1] == config.DashboardBasePath && segments[dash0OrgsMarkerIndex] == "orgs":
 		return dash0OrgSegmentIndex, orgslug.IsValid(segments[dash0OrgSegmentIndex])
 	case len(segments) > status0OrgSegmentIndex && len(segments) <= status0MaxSegments &&
-		segments[1] == statusBaseSegment:
+		"/"+segments[1] == config.StatusBasePath:
 		return status0OrgSegmentIndex, orgslug.IsValid(segments[status0OrgSegmentIndex])
 	default:
 		return 0, false
