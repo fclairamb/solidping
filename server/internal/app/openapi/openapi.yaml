@@ -11091,6 +11091,28 @@ components:
         createdAt:
           type: string
           format: date-time
+        lastSessionActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the member was last in the dashboard: the later of their most
+            recent refresh-token (session) activity — soft-deleted sessions
+            included, since logging out or being revoked doesn't erase that the
+            session was live — and their last login. Bumped at most hourly
+            while a session is active. `null` if the member has never signed
+            in.
+        lastTokenActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When one of the member's credentials (a personal access token, or
+            an OAuth refresh grant used by an MCP/CLI client) was last used,
+            independent of dashboard presence — evidence an automation, not
+            necessarily the person, is still active. Soft-deleted rows count;
+            a personal access token that was minted but never used does not.
+            `null` if the member owns no such credential activity.
 
     AddMemberRequest:
       type: object

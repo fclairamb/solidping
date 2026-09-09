@@ -4977,7 +4977,13 @@ type Member struct {
 	CreatedAt *time.Time           `json:"createdAt,omitempty"`
 	Email     *openapi_types.Email `json:"email,omitempty"`
 	JoinedAt  *time.Time           `json:"joinedAt,omitempty"`
-	Name      *string              `json:"name,omitempty"`
+
+	// LastSessionActivityAt When the member was last in the dashboard: the later of their most recent refresh-token (session) activity — soft-deleted sessions included, since logging out or being revoked doesn't erase that the session was live — and their last login. Bumped at most hourly while a session is active. `null` if the member has never signed in.
+	LastSessionActivityAt *time.Time `json:"lastSessionActivityAt,omitempty"`
+
+	// LastTokenActivityAt When one of the member's credentials (a personal access token, or an OAuth refresh grant used by an MCP/CLI client) was last used, independent of dashboard presence — evidence an automation, not necessarily the person, is still active. Soft-deleted rows count; a personal access token that was minted but never used does not. `null` if the member owns no such credential activity.
+	LastTokenActivityAt *time.Time `json:"lastTokenActivityAt,omitempty"`
+	Name                *string    `json:"name,omitempty"`
 
 	// Role Member role, ordered `owner` > `admin` > `user` > `viewer` and hierarchical. `viewer` is read-only: it reads everything and changes nothing, except its own notification settings and its own API tokens.
 	Role    *MemberRole         `json:"role,omitempty"`
