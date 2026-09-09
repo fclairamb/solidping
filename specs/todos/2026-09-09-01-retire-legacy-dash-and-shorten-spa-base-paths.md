@@ -291,3 +291,110 @@ and `/d` stay 404 on a custom host, never a redirect into the dashboard).
 **Resolved — already settled in the question itself: permanent, no sunset.**
 Do not add a deprecation date, a feature flag, or a config toggle for the
 legacy-prefix redirects.
+
+## Implementation Plan
+
+Executed in six commits-worth of steps, in the order of §1–§6.
+
+### Step 1 — delete the legacy `web/dash` app
+
+- `git rm -r web/dash`.
+- `.gitignore`: drop the `server/internal/app/res/` line.
+- `server/internal/app/server.go`: delete `//go:embed all:res` + `resFiles`, delete
+  `serveAppStatic`; `serveAppRoot`'s final fallback becomes a plain `404 Not Found`
+  (`text/html`), and the `Server.Redirects` proxy loop passes `nil` as its fallback.
+- `Makefile`: drop `DASH_DIR`/`DASH_DIST`/`BACK_RES`, `build-dash`, `copy-dash`,
+  `dev-dash`, `lint-dash`, `test-dash`, the `clean`/`clean-all` lines that reference
+  them, the `fmt` dash step, the `deps` dash step, and the `.PHONY` entries.
+  `kill` keeps `:4000/:5174/:5175`.
+- `Dockerfile`: delete stage 1a (`dash-builder`) and the
+  `COPY --from=dash-builder … ./internal/app/res` line.
+- `.github/workflows/ci.yml`: delete the `dash` job, remove it from `build.needs`
+  and `ci.needs`, drop the `dash-dist` download and the `internal/app/res`
+  placeholder.
+- `docker-compose.yml`: delete the `dashboard` service, the
+  `dashboard_node_modules` volume and the `SP_REDIRECTS=/dashboard:…` env line.
+- `CLAUDE.md:7`: drop the "do not use `web/dash`" clause.
+
+### Step 2 — one constant per prefix
+
+- `server/internal/config/config.go`: add `DashboardBasePath = "/d"` and
+  `StatusBasePath = "/s"` next to `PostHogProxyPath` (config depends only on
+  `internal/domainverify`, so no package can cycle through it).
+- Sweep every non-test Go file that spells a prefix, building URLs from the
+  constants (`config.DashboardBasePath + "/orgs/" + slug + …`). Packages that
+  already import config use it directly; the rest gain the import.
+- `server/internal/app/openapi/openapi.yaml`: rewrite the `/status0/{org}/{slug}`
+  descriptions, then `go generate ./pkg/client/...`.
+- Frontend defaults: `web/dash0/vite.config.ts` → `"/d/"`,
+  `web/status0/vite.config.ts` → `"/s/"`, `web/dash0/public/manifest.webmanifest`
+  `start_url` → `"./"` (base-agnostic), `web/dash0/index.html` comment.
+- `web/dash0/src` sweep: introduce `web/dash0/src/lib/base-path.ts` exporting
+  `BASE_PATH` (`import.meta.env.VITE_BASE_URL`), and make the ~25 files use it;
+  unit tests assert the *shape* against the constant, not a literal.
+- Makefile `dev`/`dev-test`/`dev-saas`:
+  `SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s"`.
+
+### Step 3 — legacy prefixes become permanent redirects
+
+- `server.go`: mount `/d`, `/d/*path`, `/s`, `/s/*path` on the real handlers, and
+  register `/dash0`, `/dash0/*path`, `/status0`, `/status0/*path` on a new
+  `serveLegacySPARedirect(from, to)` that answers `301` with the path suffix and
+  the raw query preserved verbatim.
+- `serveAppRoot`: `/` → `302 /d/`; `demoShortcutLocation` → `/d/login?demo=true`.
+- `serveDash0Static`/`serveStatus0Static` trim the new prefixes.
+- `org_slug_redirect.go`: constants unchanged (index 3 / index 2), segment
+  literals become `"d"` / `"s"`; comment says why the indexes still hold.
+- Frozen surfaces untouched: `/embed/v1/widget.js`, `/docs`, `/openapi`,
+  `/openapi.yaml`, `/llms.txt`, `/llms-full.txt`, `/metrics`, `/health`,
+  `/ingest`, `/api/**`, `/unsubscribe`.
+
+### Step 4 — custom-domain routing
+
+- `custom_domain_routing.go`: `routeStatus0`/`routeDash0` become `routeStatus`
+  (`/s`) / `routeDash` (`/d`), with `legacyRouteStatus0` (`/status0`) and
+  `legacyRouteDash0` (`/dash0`) kept for the redirect + deny-list.
+- `serveCustomHost`: the `/s` branch is the old `/status0` branch byte-for-byte;
+  a new branch 301s `/status0`(`/*`) → `/s`(`/*`) on the same host, query intact.
+- `isCustomHostForbidden` gains `/d` and keeps `/dash0`, using the exact-or-slash
+  idiom so `/docs` and `/demo` are unaffected.
+- `status0StaticAssetExists` trims `/s`.
+
+### Step 5 — service-worker scope move
+
+- New `web/dash0/src/lib/service-worker.ts`:
+  `registerServiceWorker()` enumerates `getRegistrations()`, and for every
+  registration whose scope pathname is a legacy one (`/dash0/`) it records the
+  live push endpoint (if any) into `localStorage` before `unregister()`, then
+  registers `${BASE_URL}sw.js` with `{ scope: BASE_URL }`.
+- `takeOrphanedPushEndpoints()` / `peekOrphanedPushEndpoints()` expose the
+  stash.
+- `web/dash0/src/main.tsx` calls it instead of the hard-coded
+  `register("/dash0/sw.js")`.
+- `web/dash0/public/sw.js` derives its default click URL and icon path from
+  `self.registration.scope` (Vite does not rewrite `public/`).
+- Re-subscribe: `account.notifications.tsx` mounts a
+  `useWebPushResubscribe(org, routes)` hook — when the stash holds an endpoint
+  that matches an existing `webpush` contact and the new registration has no
+  subscription, it re-subscribes, creates the replacement contact and deletes the
+  stale one (the server keys subscriptions by endpoint —
+  `notifications/webpush.go` `pruneSubscriptions`).
+
+### Step 6 — tests, docs, wiki, changelog
+
+- Go: sweep the 222 test refs; new cases in `server_test.go` (legacy `301`
+  preserves path + query; `/` → `302 /d/`; `/demo` → `/d/login?demo=true`;
+  `/dash0/sw.js` is a redirect, not the live worker; unmatched path is a bare
+  404 with no SPA shell) and `custom_domain_routing_test.go` (custom-host
+  `/status0/*` → `301 /s/*` same host; `/d` and `/dash0` stay 404; `/docs` and
+  `/demo` unaffected by the deny-list addition).
+- dash0 e2e: export `DASH_BASE` from `e2e/fixtures.ts`, sweep the 34 spec files,
+  `playwright.config.ts` `baseURL` → `http://localhost:4000/d/`; new
+  `service-worker-scope.spec.ts` for §5.4.
+- status0 e2e: export `STATUS_BASE` from `e2e/fixtures.ts` and sweep.
+- dash0 unit tests: `bun run test:unit`.
+- Docs (`web/docs/docs`): rewrite paths + a one-line note that `/dash0` and
+  `/status0` keep redirecting. `CHANGELOG.md` history untouched.
+- Wiki: sweep, and rewrite `wiki/conventions/frontend-urls.md`.
+- `CHANGELOG.md`: a `feat` entry for the new paths + redirects and a `chore` for
+  the legacy removal.
