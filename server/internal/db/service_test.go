@@ -138,6 +138,10 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("UserContactsByTypeValueOrdering", func(t *testing.T) {
 		testUserContactsByTypeValueOrdering(ctx, t, svc)
 	})
+
+	t.Run("IncidentPublicationsActiveOnly", func(t *testing.T) {
+		testIncidentPublicationsActiveOnly(ctx, t, svc)
+	})
 }
 
 // testUserContactsByTypeValueOrdering is the cross-engine parity guard for the
