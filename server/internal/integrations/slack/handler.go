@@ -232,7 +232,8 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 		return nil
 	}
 
-	completeURL := h.cfg.Server.BaseURL + "/dash0/auth/slack/complete?code=" + url.QueryEscape(exchangeCode)
+	completeURL := h.cfg.Server.BaseURL + config.DashboardBasePath +
+		"/auth/slack/complete?code=" + url.QueryEscape(exchangeCode)
 	http.Redirect(writer, req, completeURL, http.StatusFound)
 
 	return nil

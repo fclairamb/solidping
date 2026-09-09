@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 const (
@@ -172,7 +173,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Slug:   "demo-status-page",
 				Period: time.Minute,
 				Config: (&HTTPConfig{
-					URL:                 base + "/status0/",
+					URL:                 base + config.StatusBasePath + "/",
 					Method:              methodGET,
 					ExpectedStatusCodes: []string{statusCodePattern2XX},
 				}).GetConfig(),

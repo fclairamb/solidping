@@ -705,7 +705,7 @@ func escalationWebPushMessage(incident *models.Incident, checkName, orgSlug stri
 
 	url := ""
 	if orgSlug != "" && incident.UID != "" {
-		url = "/dash0/orgs/" + orgSlug + "/incidents/" + incident.UID
+		url = config.DashboardBasePath + "/orgs/" + orgSlug + "/incidents/" + incident.UID
 	}
 
 	return webpush.Message{
@@ -1473,7 +1473,8 @@ func escalationCheckURL(baseURL, orgSlug string, check *models.Check) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", strings.TrimRight(baseURL, "/"), orgSlug, check.UID)
+	return fmt.Sprintf("%s%s/orgs/%s/checks/%s",
+		strings.TrimRight(baseURL, "/"), config.DashboardBasePath, orgSlug, check.UID)
 }
 
 // escalationIncidentURL builds the dashboard URL for an incident's detail
@@ -1483,7 +1484,8 @@ func escalationIncidentURL(baseURL, orgSlug string, incident *models.Incident) s
 		return ""
 	}
 
-	return fmt.Sprintf("%s/dash0/orgs/%s/incidents/%s", strings.TrimRight(baseURL, "/"), orgSlug, incident.UID)
+	return fmt.Sprintf("%s%s/orgs/%s/incidents/%s",
+		strings.TrimRight(baseURL, "/"), config.DashboardBasePath, orgSlug, incident.UID)
 }
 
 // escalationDashboardRootURL returns the dash0 root URL for the email footer
@@ -1494,7 +1496,7 @@ func escalationDashboardRootURL(baseURL string) string {
 		return ""
 	}
 
-	return baseURL + "/dash0"
+	return baseURL + config.DashboardBasePath
 }
 
 // escalationDocsURL returns the documentation root URL for the email footer

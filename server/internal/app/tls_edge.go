@@ -18,7 +18,7 @@ import (
 // The TLS listener is handed the SAME top-level handler as the plain listener,
 // so a request arriving on a custom host over HTTPS goes through
 // handlerWithCustomDomains exactly as it would over HTTP: status page plus the
-// allowlisted public API, 404 for /dash0, /docs and everything else.
+// allowlisted public API, 404 for /d, /docs and everything else.
 func (s *Server) startTLSEdge(ctx context.Context, handler http.Handler) error {
 	if !s.config.ACME.Enabled {
 		return nil

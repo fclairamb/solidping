@@ -10,6 +10,7 @@ import (
 	"strings"
 	texttemplate "text/template"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/vanng822/go-premailer/premailer"
 )
 
@@ -25,7 +26,7 @@ var (
 // productLogoPath is the SolidPing logo served on every host, embedded from
 // res/logo.png via `make sync-brand-assets`. PNG rather than SVG on purpose:
 // SVG support in mail clients is patchy to non-existent.
-const productLogoPath = "/dash0/logo.png"
+var productLogoPath = config.DashboardBasePath + "/logo.png"
 
 // TemplateFormatter implements the Formatter interface using Go templates.
 type TemplateFormatter struct {

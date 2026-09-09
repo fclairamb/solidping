@@ -621,7 +621,7 @@ type StatusPageSummaryPageInfo struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 	// URL is the canonical public URL: the verified custom domain when
-	// active, otherwise the absolute path-based /status0/{org}/{slug} URL
+	// active, otherwise the absolute path-based /s/{org}/{slug} URL
 	// derived from the request — same derivation the OG-meta injection uses
 	// (see internal/app/status0_meta.go).
 	URL string `json:"url"`
@@ -666,7 +666,7 @@ func (h *Handler) ViewStatusPageSummary(writer http.ResponseWriter, req *http.Re
 
 // publicPageURL derives the canonical public URL for a status page: the
 // verified custom domain when active, otherwise the absolute
-// /status0/{org}/{slug} URL built from the incoming request's scheme/host —
+// /s/{org}/{slug} URL built from the incoming request's scheme/host —
 // the same derivation status0's OG-meta injection uses
 // (internal/app/status0_meta.go:requestOrigin/requestScheme). Duplicated here
 // rather than imported because that helper lives in the app package, which
@@ -676,7 +676,7 @@ func publicPageURL(req *http.Request, orgSlug string, summary *StatusPageSummary
 		return "https://" + summary.CustomDomain + "/"
 	}
 
-	return requestOrigin(req) + "/status0/" + orgSlug + "/" + summary.PageSlug
+	return requestOrigin(req) + config.StatusBasePath + "/" + orgSlug + "/" + summary.PageSlug
 }
 
 // GetBadge handles GET /api/v1/status-pages/:org/:slug/badge — a public SVG
@@ -1134,7 +1134,7 @@ func (h *Handler) unlock(writer http.ResponseWriter, req *http.Request, slug str
 
 // UnlockDefault handles POST /api/v1/status-pages/:org/unlock — the same
 // unlock for an organization's DEFAULT page, which status0 reaches through
-// /status0/<org> with no slug in the URL.
+// /s/<org> with no slug in the URL.
 func (h *Handler) UnlockDefault(writer http.ResponseWriter, req *http.Request) error {
 	return h.unlock(writer, req, "")
 }

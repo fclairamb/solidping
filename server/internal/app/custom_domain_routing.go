@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
 )
@@ -24,13 +25,22 @@ const customDomainCacheTTL = 60 * time.Second
 
 // Path prefixes used by the custom-host allowlist routing.
 const (
-	routeStatus0 = "/status0"
-	routeDash0   = "/dash0"
+	routeStatus = config.StatusBasePath
+	routeDash   = config.DashboardBasePath
+
+	// The prefixes the two SPAs used to be mounted at (spec 2026-09-09-01).
+	// routeLegacyStatus0 gets a permanent redirect onto routeStatus on the
+	// SAME host; routeLegacyDash0 stays in the deny-list forever, because a
+	// customer's status domain must never redirect a visitor into the
+	// SolidPing dashboard — not even via the legacy hop.
+	routeLegacyStatus0 = config.LegacyStatusBasePath
+	routeLegacyDash0   = config.LegacyDashboardBasePath
+
 	routeDocs    = "/docs"
 	routeMetrics = "/metrics"
 
 	// The /demo shortcut into the shared public live demo (spec
-	// 2026-09-08-02). Forbidden here for the same reason routeDash0 is: a
+	// 2026-09-08-02). Forbidden here for the same reason routeDash is: a
 	// customer's status-page domain must never redirect a visitor into the
 	// SolidPing dashboard.
 	routeDemo = "/demo"
@@ -338,11 +348,19 @@ func (s *Server) serveCustomHost(writer http.ResponseWriter, req *http.Request, 
 	reqPath := req.URL.Path
 
 	switch {
-	case reqPath == routeStatus0 || strings.HasPrefix(reqPath, routeStatus0+"/"):
-		// The SPA is built with the /status0 base, so its asset URLs keep working
+	case reqPath == routeLegacyStatus0 || strings.HasPrefix(reqPath, routeLegacyStatus0+"/"):
+		// The retired prefix, on the customer's own host: a permanent redirect
+		// to the same path under /s, on the SAME host, query preserved. There
+		// is deliberately exactly ONE code path serving the status SPA here —
+		// aliasing both prefixes would mean two URLs serving identical content
+		// on a customer's domain, and the asset-exists / sp-page bootstrap
+		// logic below maintained on two prefixes forever.
+		serveLegacyStatusRedirect(writer, req)
+	case reqPath == routeStatus || strings.HasPrefix(reqPath, routeStatus+"/"):
+		// The SPA is built with the /s base, so its asset URLs keep working
 		// on the custom host. Real files are served as normal static assets.
 		//
-		// Anything under /status0 that is NOT a file is an SPA route, and must go
+		// Anything under /s that is NOT a file is an SPA route, and must go
 		// through the index handler below so it gets the sp-page bootstrap tag.
 		// Serving it statically returns the bare shell, and the SPA — finding no
 		// tag to tell it which page it is on — falls back to its generic
@@ -409,7 +427,19 @@ func isCustomHostAPIAllowed(reqPath string) bool {
 	}
 }
 
-// status0StaticAssetExists reports whether a /status0 path maps to a real file
+// serveLegacyStatusRedirect answers a /status0 request on a resolved custom
+// host with a 301 onto the same path under /s, on the same host. Relative
+// Location, so the browser stays on the customer's domain.
+func serveLegacyStatusRedirect(writer http.ResponseWriter, req *http.Request) {
+	location := routeStatus + strings.TrimPrefix(req.URL.EscapedPath(), routeLegacyStatus0)
+	if req.URL.RawQuery != "" {
+		location += "?" + req.URL.RawQuery
+	}
+
+	http.Redirect(writer, req, location, http.StatusMovedPermanently)
+}
+
+// status0StaticAssetExists reports whether a /s path maps to a real file
 // in the embedded SPA bundle. It is how an asset request is told apart from an
 // SPA route, without guessing from file extensions.
 //
@@ -417,7 +447,7 @@ func isCustomHostAPIAllowed(reqPath string) bool {
 // point, not an asset fetch, so it needs the sp-page tag injected like any
 // other route.
 func (s *Server) status0StaticAssetExists(reqPath string) bool {
-	rel := strings.TrimPrefix(reqPath, routeStatus0)
+	rel := strings.TrimPrefix(reqPath, routeStatus)
 	rel = strings.TrimPrefix(rel, "/")
 
 	if rel == "" || rel == "index.html" {
@@ -434,12 +464,25 @@ func (s *Server) status0StaticAssetExists(reqPath string) bool {
 
 // isCustomHostForbidden reports whether a path must always 404 on a custom host
 // (the operator dashboard, docs, and the OpenAPI/metrics surfaces).
+//
+// Every prefix is matched exact-or-followed-by-slash, never by a bare
+// strings.HasPrefix: "/d" as a raw prefix would also swallow "/docs" and
+// "/demo", which is the one way this goes wrong. The retired "/dash0" stays in
+// the list alongside "/d" — a customer's status domain must never redirect a
+// visitor into the SolidPing dashboard, not even via the legacy hop.
 func isCustomHostForbidden(reqPath string) bool {
-	return reqPath == routeDash0 || strings.HasPrefix(reqPath, routeDash0+"/") ||
-		reqPath == routeDocs || strings.HasPrefix(reqPath, routeDocs+"/") ||
-		reqPath == routeDemo || strings.HasPrefix(reqPath, routeDemo+"/") ||
+	return matchesRoute(reqPath, routeDash) ||
+		matchesRoute(reqPath, routeLegacyDash0) ||
+		matchesRoute(reqPath, routeDocs) ||
+		matchesRoute(reqPath, routeDemo) ||
 		reqPath == "/openapi" || reqPath == "/openapi.yaml" ||
 		reqPath == routeMetrics
+}
+
+// matchesRoute reports whether reqPath IS route or lives under it, without ever
+// matching a longer sibling segment ("/docs" is not under "/d").
+func matchesRoute(reqPath, route string) bool {
+	return reqPath == route || strings.HasPrefix(reqPath, route+"/")
 }
 
 // serveStatus0IndexForCustomHost serves the status0 SPA index with per-page

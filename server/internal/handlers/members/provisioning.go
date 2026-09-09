@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -219,7 +220,7 @@ func (s *Service) SendPagingNudge(ctx context.Context, orgSlug, memberUID string
 		return ErrUserNotFound
 	}
 
-	link := s.appBaseURL + "/dash0/orgs/" + org.Slug + "/account/notifications"
+	link := s.appBaseURL + config.DashboardBasePath + "/orgs/" + org.Slug + "/account/notifications"
 
 	viewModel := map[string]any{"NotificationsURL": link}
 	email.ApplyOrgBranding(viewModel, org.Name, org.Slug, org.LogoURL)

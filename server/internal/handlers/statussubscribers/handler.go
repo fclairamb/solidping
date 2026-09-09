@@ -169,7 +169,7 @@ func (h *Handler) statusPageURL(orgSlug, pageSlug string) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/status0/%s/%s", h.baseURL(), orgSlug, pageSlug)
+	return fmt.Sprintf("%s%s/%s/%s", h.baseURL(), config.StatusBasePath, orgSlug, pageSlug)
 }
 
 // CreateEndpointSubscriber handles

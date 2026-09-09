@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -44,7 +45,7 @@ const (
 	// deviceDefaultClientName labels a request that sent no client name.
 	deviceDefaultClientName = "Unknown application"
 	// deviceVerificationPath is the dashboard route serving the consent page.
-	deviceVerificationPath = "/dash0/device"
+	deviceVerificationPath = config.DashboardBasePath + "/device"
 	// devicePollGrace absorbs network/scheduler jitter so a client polling at
 	// exactly `interval` is never punished with slow_down.
 	devicePollGrace = 500 * time.Millisecond

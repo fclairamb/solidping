@@ -2400,8 +2400,8 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	}
 
 	// Send confirmation email asynchronously via the email job
-	confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s",
-		s.fullCfg.Server.BaseURL, token)
+	confirmURL := fmt.Sprintf("%s%s/confirm-registration/%s",
+		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
 	s.enqueueEmail(ctx, "", req.Email, "registration.html",
 		map[string]any{"ConfirmURL": confirmURL},
 	)
@@ -2701,8 +2701,8 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	// Send reset email asynchronously via the email job
-	resetURL := fmt.Sprintf("%s/dash0/reset-password/%s",
-		s.fullCfg.Server.BaseURL, token)
+	resetURL := fmt.Sprintf("%s%s/reset-password/%s",
+		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
 	s.enqueueEmail(ctx, "", req.Email, "password-reset.html",
 		map[string]any{"ResetURL": resetURL},
 	)
@@ -3245,7 +3245,10 @@ type InviteRequest struct {
 	Email     string `json:"email"`
 	Role      string `json:"role"`
 	ExpiresIn string `json:"expiresIn"` // "1h", "6h", "12h", "24h", "48h", "1w" (default: "24h")
-	App       string `json:"app"`       // "dash0" or "dash" (default: "dash0")
+	// App selects the target application. Both accepted values now resolve to
+	// the one remaining dashboard (config.DashboardBasePath); it is kept only
+	// so existing API clients keep working.
+	App string `json:"app"` // "dash0" or "dash" (default: "dash0")
 }
 
 // getAllowedInviteExpirations returns the accepted expiresIn values mapped to durations.
@@ -3399,8 +3402,12 @@ func (s *Service) CreateInvitation(
 		return nil, fmt.Errorf("failed to retrieve invitation: %w", err)
 	}
 
+	// The invite link always targets the dashboard base path. `app` is kept in
+	// the request shape for backwards compatibility, but the legacy "dash"
+	// application it used to be able to select no longer exists (spec
+	// 2026-09-09-01), so both accepted values resolve here.
 	baseURL := s.fullCfg.Server.BaseURL
-	inviteURL := fmt.Sprintf("%s/%s/invite/%s", baseURL, req.App, token)
+	inviteURL := fmt.Sprintf("%s%s/invite/%s", baseURL, config.DashboardBasePath, token)
 
 	expiresAt := time.Now().Add(ttl)
 

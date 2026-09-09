@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 // scenario is one named, parameterised workload. Everything a scenario needs is
@@ -210,7 +212,7 @@ func dash0Reload(ctx context.Context, c *client) error {
 		default:
 		}
 
-		_ = c.get(ctx, "/dash0/")
+		_ = c.get(ctx, config.DashboardBasePath+"/")
 	}
 
 	return nil

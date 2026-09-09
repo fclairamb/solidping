@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -155,7 +156,7 @@ func buildWebPushURL(payload *Payload) string {
 		return ""
 	}
 
-	base := "/dash0/orgs/" + payload.OrgSlug
+	base := config.DashboardBasePath + "/orgs/" + payload.OrgSlug
 
 	if payload.Incident != nil && payload.Incident.UID != "" {
 		return base + "/incidents/" + payload.Incident.UID

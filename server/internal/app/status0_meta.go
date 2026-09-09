@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 )
 
@@ -19,7 +20,7 @@ const (
 	ogTitleSuffix = " — Status"
 	// ogDefaultImagePath is the request-relative path of the branded fallback
 	// preview image shipped in the status0 assets (1200×630 PNG).
-	ogDefaultImagePath = "/status0/og-default.png"
+	ogDefaultImagePath = config.StatusBasePath + "/og-default.png"
 	// ogTwitterCard is "summary_large_image" because a 1200×630 image ships.
 	ogTwitterCard = "summary_large_image"
 
@@ -47,7 +48,7 @@ type ogMetadata struct {
 }
 
 // statusPagePathParts extracts (org, slug) from a status0 request path whose
-// "/status0" prefix has already been stripped. It matches only the two
+// status base prefix has already been stripped. It matches only the two
 // status-page route shapes:
 //
 //	/:org        -> (org, "",   true)  // organization default page
@@ -169,7 +170,7 @@ func injectStatus0Meta(htmlDoc string, meta *ogMetadata) string {
 
 // status0MetaForPath resolves the Open Graph metadata for a status0 request
 // whose index.html fallback is about to be served. reqPath is the request path
-// with its "/status0" prefix already stripped.
+// with its status base prefix already stripped.
 //
 // It returns ok=false — and the caller then serves the unmodified generic head
 // — for the root, non-status-page paths, and any org/page that does not resolve

@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 // IncidentRef renders the short per-org reference as humans see it everywhere:
@@ -104,7 +106,7 @@ func IncidentURL(baseURL, orgSlug, incidentUID string) string {
 		return ""
 	}
 
-	return trimmed + "/dash0/orgs/" + orgSlug + "/incidents/" + incidentUID
+	return trimmed + config.DashboardBasePath + "/orgs/" + orgSlug + "/incidents/" + incidentUID
 }
 
 // FormatOpenFor renders how long an incident has been open, in the compact form

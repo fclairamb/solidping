@@ -409,6 +409,28 @@ const DefaultPostHogUIHost = "https://eu.posthog.com"
 // hosts do not silently drop events.
 const PostHogProxyPath = "/ingest"
 
+// DashboardBasePath and StatusBasePath are the URL prefixes the two embedded
+// SPAs are mounted at (see internal/app/server.go). Every URL the server hands
+// to a human — emails, chat notifications, OAuth handoffs, MCP resources, the
+// /demo shortcut — is built from these, never from a literal, so the prefixes
+// can move without a repo-wide grep.
+//
+// They must stay in sync with the SPAs' Vite `base`
+// (web/dash0/vite.config.ts, web/status0/vite.config.ts). Both are exactly one
+// path segment, which is what lets the SPA org-slug redirect locate the org
+// positionally (internal/app/org_slug_redirect.go).
+const (
+	DashboardBasePath = "/d"
+	StatusBasePath    = "/s"
+
+	// LegacyDashboardBasePath and LegacyStatusBasePath are the prefixes the
+	// SPAs used to be mounted at. They are kept forever as permanent (301)
+	// redirects onto the current prefixes: emails sent last month, bookmarks,
+	// chat messages and search-engine indexes all still point at them.
+	LegacyDashboardBasePath = "/dash0"
+	LegacyStatusBasePath    = "/status0"
+)
+
 // Active reports whether PostHog is on. This is THE enablement rule, applied
 // identically by the backend analytics client, the public config endpoint and
 // the dashboard: `enabled == true && project_api_key != ""`. Anything else is

@@ -2273,7 +2273,7 @@ paths:
       description: >-
         Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the
         organization's default page — the form a client reaching a default page
-        through /status0/{org} can use, having no slug to send.
+        through /s/{org} can use, having no slug to send.
       operationId: unlockDefaultStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -12113,7 +12113,7 @@ components:
               format: uri
               description: >-
                 The canonical public URL: the verified custom domain when
-                active, otherwise the absolute /status0/{org}/{slug} URL
+                active, otherwise the absolute /s/{org}/{slug} URL
                 derived from the request host.
         generatedAt:
           type: string
@@ -15048,7 +15048,10 @@ components:
         app:
           type: string
           enum: [dash0, dash]
-          description: Target dashboard for the invite link (default dash0)
+          description: >-
+            Legacy selector, kept for backwards compatibility. Both values now
+            produce the same link into the one remaining dashboard (/d);
+            the retired `dash` application no longer exists.
 
     InviteResponse:
       type: object

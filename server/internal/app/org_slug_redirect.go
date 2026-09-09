@@ -6,18 +6,30 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
-// dash0OrgsPrefixSegments is the "/dash0/orgs/<slug>/..." shape: ["", "dash0",
-// "orgs", "<slug>", ...].
+// The positional indexes below hold because both SPA base paths are exactly ONE
+// path segment (config.DashboardBasePath = "/d", config.StatusBasePath = "/s").
+// "/d/orgs/<slug>/..." splits to ["", "d", "orgs", "<slug>", ...] and
+// "/s/<org>/<page>" to ["", "s", "<org>", "<page>"] — the same shapes the
+// retired "/dash0" and "/status0" prefixes produced. Changing either base to a
+// multi-segment path would silently shift these.
 const (
 	dash0OrgSegmentIndex   = 3
 	dash0OrgsMarkerIndex   = 2
 	status0OrgSegmentIndex = 2
-	// status0MaxSegments bounds "/status0/<org>/<page>" (4 segments incl. the
+	// status0MaxSegments bounds "/s/<org>/<page>" (4 segments incl. the
 	// leading empty one). Anything deeper is an asset path, not a page URL.
 	status0MaxSegments = 4
+)
+
+// dashboardBaseSegment and statusBaseSegment are the SPA base paths with their
+// leading slash removed, i.e. segments[1] of a matching path.
+var (
+	dashboardBaseSegment = strings.TrimPrefix(config.DashboardBasePath, "/")
+	statusBaseSegment    = strings.TrimPrefix(config.StatusBasePath, "/")
 )
 
 // redirectRenamedOrgSPA redirects a single-page-app URL that still carries a
@@ -25,7 +37,7 @@ const (
 //
 // The API and public JSON/SVG surfaces are handled structurally by
 // middleware.OrgSlugRedirect, but the SPA routes are registered as wildcards
-// ("/dash0/*path", "/status0/*path") with no {org} path parameter to key off,
+// ("/d/*path", "/s/*path") with no {org} path parameter to key off,
 // so the org segment is located positionally here instead. Without this a
 // customer's bookmarked dashboard URL or pasted status-page link would load the
 // app shell and then fail against an org that no longer answers on that slug.
@@ -73,10 +85,10 @@ func spaOrgSegmentIndex(path string) (int, bool) {
 
 	switch {
 	case len(segments) > dash0OrgSegmentIndex &&
-		segments[1] == "dash0" && segments[dash0OrgsMarkerIndex] == "orgs":
+		segments[1] == dashboardBaseSegment && segments[dash0OrgsMarkerIndex] == "orgs":
 		return dash0OrgSegmentIndex, orgslug.IsValid(segments[dash0OrgSegmentIndex])
 	case len(segments) > status0OrgSegmentIndex && len(segments) <= status0MaxSegments &&
-		segments[1] == "status0":
+		segments[1] == statusBaseSegment:
 		return status0OrgSegmentIndex, orgslug.IsValid(segments[status0OrgSegmentIndex])
 	default:
 		return 0, false

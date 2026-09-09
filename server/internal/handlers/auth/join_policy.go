@@ -36,7 +36,7 @@ const pendingMembershipParam = "membershipPending"
 // noOrgPath is the dashboard surface a user lands on when they are
 // authenticated but hold no membership — it already renders the
 // "request access / pending request" flow.
-const noOrgPath = "/dash0/no-org"
+var noOrgPath = config.DashboardBasePath + "/no-org"
 
 // membershipRequestsPath is the dashboard path where org admins review
 // pending membership requests — the target of the "New membership request"
@@ -45,7 +45,7 @@ const noOrgPath = "/dash0/no-org"
 // "/orgs/$org/organization/requests" (and organization.tsx wires it into the
 // sidebar); it does NOT live under "members".
 func membershipRequestsPath(orgSlug string) string {
-	return fmt.Sprintf("/dash0/orgs/%s/organization/requests", orgSlug)
+	return fmt.Sprintf("%s/orgs/%s/organization/requests", config.DashboardBasePath, orgSlug)
 }
 
 // Admission rules, as recorded in the member.joined audit payload's `source`.

@@ -2198,7 +2198,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/llms-full.txt", s.serveRootLLMsFullTxt)
 
 	// One-word entry point into the shared public live demo (spec
-	// 2026-09-08-02): a redirect to the canonical /dash0/login?demo=true link,
+	// 2026-09-08-02): a redirect to the canonical /d/login?demo=true link,
 	// gated on demo mode at request time. See serveDemoShortcut.
 	mainGroup.GET("/demo", s.serveDemoShortcut)
 	mainGroup.GET("/demo/", s.serveDemoShortcut)
@@ -2208,18 +2208,29 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/docs", s.serveDocsRoute)
 	mainGroup.GET("/docs/*path", s.serveDocsRoute)
 
-	// Dash0 status page (served at /dash0/)
-	mainGroup.GET("/dash0", s.serveDash0Root)
-	mainGroup.GET("/dash0/*path", s.serveDash0Root)
+	// Operator dashboard (dash0, served at /d/)
+	mainGroup.GET(config.DashboardBasePath, s.serveDash0Root)
+	mainGroup.GET(config.DashboardBasePath+"/*path", s.serveDash0Root)
+
+	// The prefix the dashboard used to be mounted at. Permanent redirect, no
+	// sunset: emails sent last month, bookmarks, chat messages, the marketing
+	// site and search-engine indexes all still point at /dash0.
+	mainGroup.GET(config.LegacyDashboardBasePath, s.serveLegacySPARedirect)
+	mainGroup.GET(config.LegacyDashboardBasePath+"/*path", s.serveLegacySPARedirect)
 
 	// Embeddable status widget (spec 2026-08-08-08). Frozen public contract:
 	// customers paste this URL into their own sites, so it must keep working
 	// forever — new behavior goes to /embed/v2/widget.js, never here.
 	mainGroup.GET("/embed/v1/widget.js", s.serveEmbedWidgetV1)
 
-	// Status0 public status page (served at /status0/)
-	mainGroup.GET("/status0", s.serveStatus0Root)
-	mainGroup.GET("/status0/*path", s.serveStatus0Root)
+	// Public status page (status0, served at /s/)
+	mainGroup.GET(config.StatusBasePath, s.serveStatus0Root)
+	mainGroup.GET(config.StatusBasePath+"/*path", s.serveStatus0Root)
+
+	// The prefix the status page used to be mounted at — same permanent
+	// redirect as /dash0 above.
+	mainGroup.GET(config.LegacyStatusBasePath, s.serveLegacySPARedirect)
+	mainGroup.GET(config.LegacyStatusBasePath+"/*path", s.serveLegacySPARedirect)
 
 	// PostHog ingestion reverse proxy (config.PostHogProxyPath). The dashboard
 	// posts analytics to this first-party path instead of *.posthog.com, so ad
@@ -2718,7 +2729,7 @@ func writeDocsFile(writer http.ResponseWriter, name string, status int) error {
 // redirects to (see web/docs/docs/intro.md and configuration/index.md). The
 // incoming request's query string is never forwarded: a stray ?returnTo= on a
 // demo link is ignored by the auto-login anyway (web/dash0/src/routes/login.tsx).
-const demoShortcutLocation = "/dash0/login?demo=true"
+var demoShortcutLocation = config.DashboardBasePath + "/login?demo=true"
 
 // serveDemoShortcut implements the one-word /demo and /demo/ entry point into
 // the shared public live demo (spec 2026-09-08-02). The gate is a
@@ -2753,9 +2764,9 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req *http.Request) err
 		return handlerBase.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "API route not found")
 	}
 
-	// Redirect root to dash0 dashboard
+	// Redirect root to the operator dashboard
 	if req.URL.Path == "/" {
-		http.Redirect(writer, req, "/dash0/", http.StatusFound)
+		http.Redirect(writer, req, config.DashboardBasePath+"/", http.StatusFound)
 
 		return nil
 	}
@@ -2923,9 +2934,69 @@ func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) err
 	return nil
 }
 
+// legacySPAPrefixes maps each retired SPA prefix onto the prefix that replaced
+// it. Permanent, with no sunset (spec 2026-09-09-01): the cost is two route
+// registrations, and every link that ever escaped into the world — an email
+// sent last month, a bookmark, a Slack message, a search-engine index entry —
+// still points at the old one.
+var legacySPAPrefixes = map[string]string{
+	config.LegacyDashboardBasePath: config.DashboardBasePath,
+	config.LegacyStatusBasePath:    config.StatusBasePath,
+}
+
+// legacySPALocation maps a request path under a retired prefix onto the same
+// path under the current one, returning false when the path is not under a
+// retired prefix at all.
+//
+// Only the leading prefix segment is rewritten, so every remaining segment —
+// including one that happens to spell "dash0" further down — is carried over
+// untouched.
+func legacySPALocation(reqPath string) (string, bool) {
+	for legacy, current := range legacySPAPrefixes {
+		if reqPath == legacy {
+			return current, true
+		}
+
+		if strings.HasPrefix(reqPath, legacy+"/") {
+			return current + strings.TrimPrefix(reqPath, legacy), true
+		}
+	}
+
+	return "", false
+}
+
+// serveLegacySPARedirect answers a request on a retired SPA prefix with a
+// permanent redirect onto the current one, preserving the rest of the path and
+// the query string verbatim (?demo=true, ?returnTo=… must survive the hop).
+//
+// It runs BEFORE redirectRenamedOrgSPA, so a bookmark that carries both a
+// retired prefix and a renamed org slug costs two hops — one per concern — and
+// the slug hop lands on the new prefix.
+func (s *Server) serveLegacySPARedirect(writer http.ResponseWriter, req *http.Request) error {
+	location, ok := legacySPALocation(req.URL.EscapedPath())
+	if !ok {
+		// Unreachable through the registered routes; treated as "nothing here"
+		// rather than redirecting to a guessed location.
+		http.NotFound(writer, req)
+
+		return nil
+	}
+
+	// location is derived from EscapedPath(), so it is already in wire form:
+	// it is concatenated rather than routed through url.URL.Path, which would
+	// escape the percent signs a second time.
+	if req.URL.RawQuery != "" {
+		location += "?" + req.URL.RawQuery
+	}
+
+	http.Redirect(writer, req, location, http.StatusMovedPermanently)
+
+	return nil
+}
+
 // serveDash0Root serves the dash0 status dashboard.
 func (s *Server) serveDash0Root(writer http.ResponseWriter, req *http.Request) error {
-	// A bookmarked /dash0/orgs/<old slug>/... URL still works after a rename.
+	// A bookmarked /d/orgs/<old slug>/... URL still works after a rename.
 	if s.redirectRenamedOrgSPA(writer, req) {
 		return nil
 	}
@@ -2944,8 +3015,8 @@ func (s *Server) serveDash0Root(writer http.ResponseWriter, req *http.Request) e
 
 // serveDash0Static serves static files from the embedded dash0res filesystem.
 func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request) error {
-	// Strip /dash0 prefix and build file path
-	reqPath := strings.TrimPrefix(req.URL.Path, "/dash0")
+	// Strip the dashboard base prefix and build file path
+	reqPath := strings.TrimPrefix(req.URL.Path, config.DashboardBasePath)
 	if reqPath == "" {
 		reqPath = "/"
 	}
@@ -2960,7 +3031,7 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 	// the whole hashed bundle, and a heap copy per request is anonymous memory
 	// the GC has to chase. See writeEmbeddedFile.
 	if !embeddedFileExists(dash0Files, filePath) {
-		// Not a file (missing, or a directory such as the bare "/dash0/"):
+		// Not a file (missing, or a directory such as the bare "/d/"):
 		// serve index.html so the SPA can route it client-side.
 		maxAgeSeconds = 60 // Shorter cache for index.html
 		filePath = path.Join("dash0res", "index.html")
@@ -2980,7 +3051,7 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 // serveStatus0Root serves the status0 public status page app.
 func (s *Server) serveStatus0Root(writer http.ResponseWriter, req *http.Request) error {
-	// A pasted /status0/<old slug>/<page> link still works after a rename.
+	// A pasted /s/<old slug>/<page> link still works after a rename.
 	if s.redirectRenamedOrgSPA(writer, req) {
 		return nil
 	}
@@ -3007,7 +3078,7 @@ func (s *Server) status0FSOrDefault() fs.FS {
 
 // serveStatus0Static serves static files from the embedded status0res filesystem.
 func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Request) error {
-	reqPath := strings.TrimPrefix(req.URL.Path, "/status0")
+	reqPath := strings.TrimPrefix(req.URL.Path, config.StatusBasePath)
 	if reqPath == "" {
 		reqPath = "/"
 	}
@@ -3019,7 +3090,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	servingIndexFallback := false
 
 	if !embeddedFileExists(fsys, filePath) {
-		// Not a file (missing, or a directory such as the bare "/status0/"):
+		// Not a file (missing, or a directory such as the bare "/s/"):
 		// the SPA shell handles it.
 		maxAgeSeconds = 60
 		servingIndexFallback = true
