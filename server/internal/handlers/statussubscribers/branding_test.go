@@ -92,7 +92,7 @@ func TestSubscriberMailWearsStatusPageBrandingNotTheOrgs(t *testing.T) {
 	r.NotContains(html, "org-logo-uid")
 	r.NotContains(html, "Acme — sent by SolidPing")
 	// And the SolidPing logo is not shown either — the page's own mark wins.
-	r.NotContains(html, "/dash0/logo.png")
+	r.NotContains(html, "/d/logo.png")
 }
 
 // TestSubscriberMailHonorsHideBranding: with the page's white-label opt-in set,
@@ -119,7 +119,7 @@ func TestSubscriberMailHonorsHideBranding(t *testing.T) {
 	html := msgs[0].HTML
 	r.NotContains(html, "<img")
 	r.NotContains(html, "page-logo-uid")
-	r.NotContains(html, "/dash0/logo.png")
+	r.NotContains(html, "/d/logo.png")
 	r.NotContains(html, "sent by SolidPing")
 	// The page still identifies itself in the header.
 	r.Contains(html, "Acme Status")
@@ -143,5 +143,5 @@ func TestSubscriberMailFallsBackToTheSolidPingLogo(t *testing.T) {
 
 	msgs := sender.sent()
 	r.Len(msgs, 1)
-	r.Contains(msgs[0].HTML, brandingBaseURL+"/dash0/logo.png")
+	r.Contains(msgs[0].HTML, brandingBaseURL+"/d/logo.png")
 }

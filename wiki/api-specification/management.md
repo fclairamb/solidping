@@ -66,7 +66,7 @@ carries `template` (the file name, which is the `:template` path segment
 below), `subject` (rendered through the real formatter), `hasText` (whether the
 template ships a plaintext part), `previewUrl`, and `error` when that template
 failed to render with its fixture. Backs the dashboard's email catalog at
-`/dash0/orgs/:org/test/emails`. Registered only when `SP_RUNMODE=test`.
+`/d/orgs/:org/test/emails`. Registered only when `SP_RUNMODE=test`.
 Auth: public (test mode only)
 
 ### GET /api/mgmt/email-preview/:template

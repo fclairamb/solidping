@@ -103,7 +103,7 @@ Two rules the block inherits from the file:
 
 ### Previewing it
 
-`/dash0/orgs/:org/test/emails` (test mode only) has a Light/Dark toggle beside
+`/d/orgs/:org/test/emails` (test mode only) has a Light/Dark toggle beside
 the HTML/Text one. An `<iframe>` cannot be told to report
 `prefers-color-scheme: dark` to the document it hosts, so the *endpoint* does
 it: `GET /api/mgmt/email-preview/:template?colorScheme=dark` rewrites the

@@ -87,7 +87,7 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req *http.Reque
 
 // Exchange trades a single-use install-callback code for the freshly
 // minted session tokens. The dashboard calls this server-to-server
-// immediately after landing on /dash0/auth/slack/complete.
+// immediately after landing on /d/auth/slack/complete.
 //
 // POST /api/v1/auth/slack/exchange  body: {"code": "..."}.
 func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req *http.Request) error {

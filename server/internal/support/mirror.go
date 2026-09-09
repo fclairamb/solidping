@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
@@ -159,7 +160,7 @@ func (s *Service) buildMirror(
 
 // ThreadURL is the deep link an operator follows to answer.
 func (s *Service) ThreadURL(threadUID string) string {
-	return s.baseURL + "/dash0/support/" + threadUID
+	return s.baseURL + config.DashboardBasePath + "/support/" + threadUID
 }
 
 func (s *Service) bumpPendingMirrors(ctx context.Context, thread *models.SupportThread, now time.Time) {

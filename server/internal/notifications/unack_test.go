@@ -237,9 +237,9 @@ func TestSlackSender_buildUnackThreadReply_IncidentIsThePrimaryLink(t *testing.T
 	msg := (&SlackSender{}).buildUnackThreadReply(payload)
 	r.NotNil(msg)
 
-	incidentLink := "<" + payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug +
+	incidentLink := "<" + payload.AppBaseURL + "/d/orgs/" + payload.OrgSlug +
 		"/incidents/" + payload.Incident.UID + "|#42>"
-	checkLink := "<" + payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug +
+	checkLink := "<" + payload.AppBaseURL + "/d/orgs/" + payload.OrgSlug +
 		"/checks/" + payload.Check.UID + "|" + *payload.Check.Name + ">"
 	r.Contains(msg.Text, incidentLink, "the #42 reference must link to the incident (primary link)")
 	r.Contains(msg.Text, checkLink, "the check name must still link to the check page (secondary link)")
@@ -260,8 +260,8 @@ func TestSlackSender_buildUnackThreadReply_LinksCheckNameToIncidentWhenNoNumber(
 	msg := (&SlackSender{}).buildUnackThreadReply(payload)
 	r.NotNil(msg)
 
-	incidentURL := payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug + "/incidents/" + payload.Incident.UID
-	checkLink := "<" + payload.AppBaseURL + "/dash0/orgs/" + payload.OrgSlug +
+	incidentURL := payload.AppBaseURL + "/d/orgs/" + payload.OrgSlug + "/incidents/" + payload.Incident.UID
+	checkLink := "<" + payload.AppBaseURL + "/d/orgs/" + payload.OrgSlug +
 		"/checks/" + payload.Check.UID + "|" + *payload.Check.Name + ">"
 	incidentNameLink := "<" + incidentURL + "|" + *payload.Check.Name + ">"
 

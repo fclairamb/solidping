@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Public status page availability bar — segment geometry.
@@ -183,7 +183,7 @@ for (const viewport of [
     });
     await mockStatusPage(page);
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const boxes = await segmentBoxes(page);
@@ -213,7 +213,7 @@ test("availability bar stays inside its container and never overflows the page",
   await page.setViewportSize({ width: 375, height: 812 });
   await mockStatusPage(page);
 
-  await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+  await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
   await page.waitForLoadState("networkidle");
 
   const boxes = await segmentBoxes(page);
@@ -279,7 +279,7 @@ test("availability bar tooltip tracks the hovered segment as the pointer travels
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockStatusPageDistinctPct(page);
 
-  await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+  await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
   await page.waitForLoadState("networkidle");
 
   const segments = page.getByTestId("availability-bar-segment");
@@ -378,7 +378,7 @@ test("availability bar tooltip tracks the hovered segment in the hourly (24h) vi
     }),
   );
 
-  await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+  await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
   await page.waitForLoadState("networkidle");
 
   const segments = page.getByTestId("availability-bar-segment");

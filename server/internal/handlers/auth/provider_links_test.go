@@ -34,7 +34,7 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 		t.Parallel()
 
 		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
-			return handler.handleOAuthError(w, req, "/dash0/orgs/default", internal)
+			return handler.handleOAuthError(w, req, "/d/orgs/default", internal)
 		})
 
 		require.Equal(t, OAuthCodeFailed, params.Get("error"))
@@ -49,7 +49,7 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 		t.Parallel()
 
 		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
-			return handler.handleOAuthError(w, req, "/dash0/orgs/default", ErrEmailNotVerified)
+			return handler.handleOAuthError(w, req, "/d/orgs/default", ErrEmailNotVerified)
 		})
 
 		require.Equal(t, OAuthCodeEmailNotVerified, params.Get("error"))
@@ -63,7 +63,7 @@ func TestOAuthErrorRedirectHidesInternals(t *testing.T) {
 		slackHandler := NewSlackOAuthHandler(nil, cfg)
 
 		params := redirectParams(t, func(w http.ResponseWriter, req *http.Request) error {
-			return slackHandler.handleOAuthError(w, req, "/dash0/orgs/default", internal)
+			return slackHandler.handleOAuthError(w, req, "/d/orgs/default", internal)
 		})
 
 		require.Equal(t, OAuthCodeFailed, params.Get("error"))

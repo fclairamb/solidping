@@ -1,0 +1,32 @@
+{
+  // Type-checks the Playwright suites, which no other project covers:
+  // tsconfig.app.json is `include: ["src"]` and tsconfig.node.json is
+  // `include: ["vite.config.ts"]`. Deliberately NOT referenced from
+  // tsconfig.json — `bun run build` (`tsc -b && vite build`) must not couple
+  // the production bundle to test-only type health. CI runs it as its own
+  // step (`bun run typecheck:e2e`); see spec 2026-09-09-03.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "ES2022",
+    // DOM is required: page.evaluate callbacks legitimately reference
+    // `window`, `document`, `navigator`, … even though they run in the browser.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    // Specs read process.env and use Buffer/path.
+    "types": ["node"],
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["e2e", "playwright.config.ts", "playwright.dev.config.ts"]
+}

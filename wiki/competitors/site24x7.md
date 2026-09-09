@@ -235,7 +235,7 @@ Almost everything is metered: extra users, extra monitors, longer data retention
 3. **Open architecture**: PostgreSQL-native, MCP integration, scriptable
 4. **Privacy-first**: Sensitive systems never reach a third-party SaaS
 5. **Distributed worker model**: Run probes inside private networks without "private location" upcharges
-6. **Modern UI**: dash0/status0 frontends are built for current expectations
+6. **Modern UI**: dash0/s frontends are built for current expectations
 7. **Lean configuration**: No 8-pack pricing matrix to navigate
 8. **JS/Browser checks**: Custom scriptable check logic
 9. **API-first / single binary**: Trivial to deploy and integrate

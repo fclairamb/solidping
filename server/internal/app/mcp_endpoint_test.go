@@ -203,7 +203,7 @@ func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
 			"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 		})
 		r.Equal(http.StatusFound, res.status)
-		r.Equal("/dash0/mcp?from=get", res.header.Get("Location"))
+		r.Equal("/d/mcp?from=get", res.header.Get("Location"))
 	})
 
 	t.Run("SSE-probing GET gets the spec 405 with Allow", func(t *testing.T) {
@@ -238,16 +238,18 @@ func TestMCPEndpointGetAndAPIFallthrough(t *testing.T) {
 		r.Equal(string(base.ErrorCodeNotFound), errResp.Code)
 	})
 
-	t.Run("non-API unmatched path still serves the SPA", func(t *testing.T) {
+	t.Run("non-API unmatched path answers an HTML 404, not JSON", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
 		res := env.get(t, "/some/marketing/page", map[string]string{"Accept": "text/html"})
-		// The SPA catch-all answers 200 HTML (embedded app shell); the exact
-		// body depends on the embedded build, only the contrast with the API
-		// namespace matters here.
-		r.Equal(http.StatusOK, res.status)
+		// There is no longer a catch-all SPA shell (the legacy web/dash app was
+		// retired, spec 2026-09-09-01), so an unmatched non-API path is a plain
+		// HTML 404. The contrast with the API namespace — which answers the JSON
+		// error shape — is what this asserts.
+		r.Equal(http.StatusNotFound, res.status)
 		r.NotContains(res.header.Get("Content-Type"), "application/json")
+		r.Contains(strings.ToLower(string(res.body)), "<!doctype html")
 	})
 
 	t.Run("unauthenticated POST keeps the OAuth discovery challenge", func(t *testing.T) {
@@ -492,7 +494,7 @@ func TestAuthorizeUnauthenticatedLoginRedirect(t *testing.T) {
 
 	loc, err := url.Parse(res.header.Get("Location"))
 	r.NoError(err)
-	r.Equal("/dash0/login", loc.Path)
+	r.Equal("/d/login", loc.Path)
 
 	returnTo := loc.Query().Get("returnTo")
 	r.NotEmpty(returnTo)

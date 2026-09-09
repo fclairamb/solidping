@@ -20,6 +20,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { StatusPageBadgeCard } from "@/components/shared/status-page-badge-card";
 import { StatusPageWidgetCard } from "@/components/shared/status-page-widget-card";
 import { useDebounce } from "@/lib/use-debounce";
+import { STATUS_BASE } from "@/lib/base-path";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-pages/$statusPageUid/appearance",
@@ -141,7 +142,7 @@ function StatusPageAppearancePage() {
   const value = css ?? page?.customCss ?? "";
   const debounced = useDebounce(value, 300);
   const previewUrl = useMemo(
-    () => (page ? `/status0/${org}/${page.slug}?preview=1` : ""),
+    () => (page ? `${STATUS_BASE}/${org}/${page.slug}?preview=1` : ""),
     [org, page],
   );
 
@@ -225,7 +226,7 @@ function StatusPageAppearancePage() {
             </Button>
           </Link>
           <a
-            href={`/status0/${org}/${page.slug}`}
+            href={`${STATUS_BASE}/${org}/${page.slug}`}
             target="_blank"
             rel="noopener noreferrer"
           >

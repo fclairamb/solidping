@@ -104,7 +104,7 @@ func TestCreateInvitation(t *testing.T) {
 			App:       "dash0",
 		})
 		r.NoError(err)
-		r.Contains(resp.InviteURL, "http://127.0.0.1:4000/dash0/invite/")
+		r.Contains(resp.InviteURL, "http://127.0.0.1:4000/d/invite/")
 		r.NotContains(resp.InviteURL, "localhost")
 	})
 
@@ -130,10 +130,14 @@ func TestCreateInvitation(t *testing.T) {
 			App:       "dash0",
 		})
 		r.NoError(err)
-		r.Contains(resp.InviteURL, "https://solidping.example.com/dash0/invite/")
+		r.Contains(resp.InviteURL, "https://solidping.example.com/d/invite/")
 	})
 
-	t.Run("uses dash app in URL", func(t *testing.T) {
+	// The legacy "dash" application was retired (spec 2026-09-09-01), so the
+	// `app` field is now a compatibility no-op: an API client still sending
+	// "dash" must get a WORKING link into the one remaining dashboard, never a
+	// link to an application that no longer exists.
+	t.Run("legacy dash app still yields a dashboard URL", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
@@ -155,7 +159,8 @@ func TestCreateInvitation(t *testing.T) {
 			App:       "dash",
 		})
 		r.NoError(err)
-		r.Contains(resp.InviteURL, "http://127.0.0.1:4000/dash/invite/")
+		r.Contains(resp.InviteURL, "http://127.0.0.1:4000/d/invite/")
+		r.NotContains(resp.InviteURL, "/dash/invite/")
 	})
 
 	t.Run("rejects invalid app", func(t *testing.T) {

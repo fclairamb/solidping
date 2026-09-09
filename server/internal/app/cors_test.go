@@ -38,7 +38,7 @@ func TestIsPublicCORSPath(t *testing.T) {
 	r.False(isPublicCORSPath("/api/v1/orgs/acme/checks"), "authenticated org route")
 	r.False(isPublicCORSPath("/api/v1/orgs/acme/status-pages"), "authenticated status-page management route")
 	r.False(isPublicCORSPath("/api/v1/auth/login"), "auth route")
-	r.False(isPublicCORSPath("/dash0/"), "dashboard SPA")
+	r.False(isPublicCORSPath("/d/"), "dashboard SPA")
 }
 
 // TestCORSMiddleware_AllowlistedOriginGetsEchoedCredentialedResponse proves an

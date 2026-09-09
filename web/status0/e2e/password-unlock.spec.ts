@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Password-protected status pages (spec 2026-08-21-07) — the status0 half.
@@ -67,7 +67,7 @@ test.describe("Public status page — password unlock", () => {
     page,
   }) => {
     await mockLockedPage(page, { unlocked: false });
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("status-page-password-input")).toBeVisible();
@@ -95,7 +95,7 @@ test.describe("Public status page — password unlock", () => {
       }),
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await page.getByTestId("status-page-password-input").fill("nope");
@@ -119,7 +119,7 @@ test.describe("Public status page — password unlock", () => {
       },
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await page.getByTestId("status-page-password-input").fill("correct-horse");
@@ -144,7 +144,7 @@ test.describe("Public status page — password unlock", () => {
       }),
     );
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     await page.getByTestId("status-page-password-input").fill("guess");
@@ -187,7 +187,7 @@ test.describe("Public status page — branding", () => {
     await mockBranded(page, {
       logoUrl: "/pub/status-page-assets/abc123",
     });
-    await page.goto(`${BASE}/status0/${BRAND_ORG}/${BRAND_SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${BRAND_ORG}/${BRAND_SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const logo = page.getByTestId("status-page-logo");
@@ -204,13 +204,13 @@ test.describe("Public status page — branding", () => {
     // Positive control first: without the flag the badge is there, so the
     // absence asserted below is the flag's doing and not a broken selector.
     await mockBranded(page, {});
-    await page.goto(`${BASE}/status0/${BRAND_ORG}/${BRAND_SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${BRAND_ORG}/${BRAND_SLUG}`);
     await page.waitForLoadState("networkidle");
     await expect(page.locator(".sp-powered-by")).toHaveCount(1);
 
     await page.unrouteAll({ behavior: "ignoreErrors" });
     await mockBranded(page, { hideBranding: true });
-    await page.goto(`${BASE}/status0/${BRAND_ORG}/${BRAND_SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${BRAND_ORG}/${BRAND_SLUG}`);
     await page.waitForLoadState("networkidle");
     await expect(page.locator(".sp-powered-by")).toHaveCount(0);
   });

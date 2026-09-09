@@ -105,6 +105,7 @@ import {
 } from "@/components/shared/section-membership";
 import { SelectorClaimedElsewhereAlert } from "@/components/shared/selector-claimed-elsewhere-alert";
 import { ApiError } from "@/api/client";
+import { STATUS_BASE } from "@/lib/base-path";
 
 export const Route = createFileRoute("/orgs/$org/status-pages/$statusPageUid/")(
   {
@@ -1352,7 +1353,7 @@ function StatusPageDetailPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <a
-                href={`/status0/${org}/${page.slug}`}
+                href={`${STATUS_BASE}/${org}/${page.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >

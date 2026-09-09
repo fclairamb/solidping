@@ -2734,11 +2734,11 @@ type AddMemberContactRequestType string
 type AddMemberRequest struct {
 	Email openapi_types.Email `json:"email"`
 
-	// Role Member role. `owner` may only be granted by a caller who is already an owner of the organization; anybody else gets 403 FORBIDDEN.
+	// Role Member role, ordered `owner` > `admin` > `user` > `viewer` and hierarchical. `owner` may only be granted by a caller who is already an owner of the organization; anybody else gets 403 FORBIDDEN. `viewer` is read-only and enforced as such: every state-changing request is refused with 403 FORBIDDEN — a viewer reads everything and changes nothing, except their own notification settings and their own API tokens. Incident acknowledgement and resolution are writes.
 	Role AddMemberRequestRole `json:"role"`
 }
 
-// AddMemberRequestRole Member role. `owner` may only be granted by a caller who is already an owner of the organization; anybody else gets 403 FORBIDDEN.
+// AddMemberRequestRole Member role, ordered `owner` > `admin` > `user` > `viewer` and hierarchical. `owner` may only be granted by a caller who is already an owner of the organization; anybody else gets 403 FORBIDDEN. `viewer` is read-only and enforced as such: every state-changing request is refused with 403 FORBIDDEN — a viewer reads everything and changes nothing, except their own notification settings and their own API tokens. Incident acknowledgement and resolution are writes.
 type AddMemberRequestRole string
 
 // AddNotificationContactRequest defines model for AddNotificationContactRequest.
@@ -2946,11 +2946,11 @@ type AppendPublicationUpdateRequestKind string
 
 // ApproveMembershipRequestRequest defines model for ApproveMembershipRequestRequest.
 type ApproveMembershipRequestRequest struct {
-	// Role Role to grant the new member (default user)
+	// Role Role to grant the new member (default `user`). `viewer` is read-only and enforced as such: every state-changing request is refused with 403 FORBIDDEN — a viewer reads everything and changes nothing, except their own notification settings and their own API tokens.
 	Role *ApproveMembershipRequestRequestRole `json:"role,omitempty"`
 }
 
-// ApproveMembershipRequestRequestRole Role to grant the new member (default user)
+// ApproveMembershipRequestRequestRole Role to grant the new member (default `user`). `viewer` is read-only and enforced as such: every state-changing request is refused with 403 FORBIDDEN — a viewer reads everything and changes nothing, except their own notification settings and their own API tokens.
 type ApproveMembershipRequestRequestRole string
 
 // AuthProvider defines model for AuthProvider.
@@ -3653,24 +3653,24 @@ type CreateIncidentPublicationRequestState string
 
 // CreateInvitationRequest defines model for CreateInvitationRequest.
 type CreateInvitationRequest struct {
-	// App Target dashboard for the invite link (default dash0)
+	// App Legacy selector, kept for backwards compatibility. Both values now produce the same link into the one remaining dashboard (/d); the retired `dash` application no longer exists.
 	App   *CreateInvitationRequestApp `json:"app,omitempty"`
 	Email openapi_types.Email         `json:"email"`
 
 	// ExpiresIn Invitation lifetime (default 24h)
 	ExpiresIn *CreateInvitationRequestExpiresIn `json:"expiresIn,omitempty"`
 
-	// Role Member role granted on acceptance (default user)
+	// Role Member role granted on acceptance (default `user`). `viewer` is read-only and enforced as such: every state-changing request is refused with 403 FORBIDDEN — a viewer reads everything and changes nothing, except their own notification settings and their own API tokens.
 	Role *CreateInvitationRequestRole `json:"role,omitempty"`
 }
 
-// CreateInvitationRequestApp Target dashboard for the invite link (default dash0)
+// CreateInvitationRequestApp Legacy selector, kept for backwards compatibility. Both values now produce the same link into the one remaining dashboard (/d); the retired `dash` application no longer exists.
 type CreateInvitationRequestApp string
 
 // CreateInvitationRequestExpiresIn Invitation lifetime (default 24h)
 type CreateInvitationRequestExpiresIn string
 
-// CreateInvitationRequestRole Member role granted on acceptance (default user)
+// CreateInvitationRequestRole Member role granted on acceptance (default `user`). `viewer` is read-only and enforced as such: every state-changing request is refused with 403 FORBIDDEN — a viewer reads everything and changes nothing, except their own notification settings and their own API tokens.
 type CreateInvitationRequestRole string
 
 // CreateJobRequest defines model for CreateJobRequest.
@@ -4977,13 +4977,21 @@ type Member struct {
 	CreatedAt *time.Time           `json:"createdAt,omitempty"`
 	Email     *openapi_types.Email `json:"email,omitempty"`
 	JoinedAt  *time.Time           `json:"joinedAt,omitempty"`
-	Name      *string              `json:"name,omitempty"`
-	Role      *MemberRole          `json:"role,omitempty"`
-	Uid       *openapi_types.UUID  `json:"uid,omitempty"`
-	UserUid   *openapi_types.UUID  `json:"userUid,omitempty"`
+
+	// LastSessionActivityAt When the member was last in the dashboard: the later of their most recent refresh-token (session) activity — soft-deleted sessions included, since logging out or being revoked doesn't erase that the session was live — and their last login. Bumped at most hourly while a session is active. `null` if the member has never signed in.
+	LastSessionActivityAt *time.Time `json:"lastSessionActivityAt,omitempty"`
+
+	// LastTokenActivityAt When one of the member's credentials (a personal access token, or an OAuth refresh grant used by an MCP/CLI client) was last used, independent of dashboard presence — evidence an automation, not necessarily the person, is still active. Soft-deleted rows count; a personal access token that was minted but never used does not. `null` if the member owns no such credential activity.
+	LastTokenActivityAt *time.Time `json:"lastTokenActivityAt,omitempty"`
+	Name                *string    `json:"name,omitempty"`
+
+	// Role Member role, ordered `owner` > `admin` > `user` > `viewer` and hierarchical. `viewer` is read-only: it reads everything and changes nothing, except its own notification settings and its own API tokens.
+	Role    *MemberRole         `json:"role,omitempty"`
+	Uid     *openapi_types.UUID `json:"uid,omitempty"`
+	UserUid *openapi_types.UUID `json:"userUid,omitempty"`
 }
 
-// MemberRole defines model for Member.Role.
+// MemberRole Member role, ordered `owner` > `admin` > `user` > `viewer` and hierarchical. `viewer` is read-only: it reads everything and changes nothing, except its own notification settings and its own API tokens.
 type MemberRole string
 
 // MemberChannelCoverage defines model for MemberChannelCoverage.
@@ -6471,7 +6479,7 @@ type StatusPageSummary struct {
 		Name string `json:"name"`
 		Slug string `json:"slug"`
 
-		// Url The canonical public URL: the verified custom domain when active, otherwise the absolute /status0/{org}/{slug} URL derived from the request host.
+		// Url The canonical public URL: the verified custom domain when active, otherwise the absolute /s/{org}/{slug} URL derived from the request host.
 		Url string `json:"url"`
 	} `json:"page"`
 	Status StatusPageSummaryStatus `json:"status"`
@@ -6776,11 +6784,11 @@ type UpdateMaintenanceWindowRequest struct {
 
 // UpdateMemberRequest defines model for UpdateMemberRequest.
 type UpdateMemberRequest struct {
-	// Role New member role. Granting `owner`, or changing the role of a member who currently IS an owner, requires the caller to be an owner (403 FORBIDDEN otherwise). The organization's last owner can never be demoted (409 CONFLICT) — transfer ownership by promoting a second owner first, then demoting yourself.
+	// Role New member role. Demoting a member to `viewer` takes effect on their very next request — the role is read from the membership row, not from the token they are holding, so existing sessions and personal access tokens stop writing immediately. Granting `owner`, or changing the role of a member who currently IS an owner, requires the caller to be an owner (403 FORBIDDEN otherwise). The organization's last owner can never be demoted (409 CONFLICT) — transfer ownership by promoting a second owner first, then demoting yourself.
 	Role *UpdateMemberRequestRole `json:"role,omitempty"`
 }
 
-// UpdateMemberRequestRole New member role. Granting `owner`, or changing the role of a member who currently IS an owner, requires the caller to be an owner (403 FORBIDDEN otherwise). The organization's last owner can never be demoted (409 CONFLICT) — transfer ownership by promoting a second owner first, then demoting yourself.
+// UpdateMemberRequestRole New member role. Demoting a member to `viewer` takes effect on their very next request — the role is read from the membership row, not from the token they are holding, so existing sessions and personal access tokens stop writing immediately. Granting `owner`, or changing the role of a member who currently IS an owner, requires the caller to be an owner (403 FORBIDDEN otherwise). The organization's last owner can never be demoted (409 CONFLICT) — transfer ownership by promoting a second owner first, then demoting yourself.
 type UpdateMemberRequestRole string
 
 // UpdateNotificationRouteRequest Toggle the enabled flag and/or reorder the full route list.
@@ -10426,7 +10434,7 @@ type ClientInterface interface {
 
 	// UnlockDefaultStatusPageWithBody Unlock an organization's password-protected default status page
 	//
-	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -10435,7 +10443,7 @@ type ClientInterface interface {
 
 	// UnlockDefaultStatusPage Unlock an organization's password-protected default status page
 	//
-	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -16217,7 +16225,7 @@ func (c *Client) ViewDefaultStatusPage(ctx context.Context, org OrgPath, params 
 
 // UnlockDefaultStatusPageWithBody Unlock an organization's password-protected default status page
 //
-// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 //
 // Takes any type of body and a specified content type.
 //
@@ -16236,7 +16244,7 @@ func (c *Client) UnlockDefaultStatusPageWithBody(ctx context.Context, org OrgPat
 
 // UnlockDefaultStatusPage Unlock an organization's password-protected default status page
 //
-// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -33331,7 +33339,7 @@ type ClientWithResponsesInterface interface {
 
 	// UnlockDefaultStatusPageWithBodyWithResponse Unlock an organization's password-protected default status page
 	//
-	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -33340,7 +33348,7 @@ type ClientWithResponsesInterface interface {
 
 	// UnlockDefaultStatusPageWithResponse Unlock an organization's password-protected default status page
 	//
-	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+	// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -53384,7 +53392,7 @@ func (c *ClientWithResponses) ViewDefaultStatusPageWithResponse(ctx context.Cont
 
 // UnlockDefaultStatusPageWithBodyWithResponse Unlock an organization's password-protected default status page
 //
-// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -53399,7 +53407,7 @@ func (c *ClientWithResponses) UnlockDefaultStatusPageWithBodyWithResponse(ctx co
 
 // UnlockDefaultStatusPageWithResponse Unlock an organization's password-protected default status page
 //
-// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /status0/{org} can use, having no slug to send.
+// Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the organization's default page — the form a client reaching a default page through /s/{org} can use, having no slug to send.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

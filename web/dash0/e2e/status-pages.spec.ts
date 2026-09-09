@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE, escapeRegExp } from "./fixtures";
 
 test.describe("Status page detail header", () => {
   test("back arrow sits in the right action cluster, left of View, and navigates to the list", async ({
@@ -68,7 +68,9 @@ test.describe("Status page detail header", () => {
     // Clicking back navigates to the status pages list.
     await backLink.click();
     await page.waitForURL(/\/status-pages$/, { timeout: 10000 });
-    await expect(page).toHaveURL(/\/dash0\/orgs\/[^/]+\/status-pages$/);
+    await expect(page).toHaveURL(
+      new RegExp(`${escapeRegExp(DASH_BASE)}/orgs/[^/]+/status-pages$`),
+    );
   });
 });
 

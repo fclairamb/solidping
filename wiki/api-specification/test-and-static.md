@@ -39,14 +39,24 @@ suites can seed accounts. Auth: public (test mode only)
 
 ## Static & catch-all routes
 
-### GET /dash0
-### GET /dash0/*path
+### GET /d
+### GET /d/*path
 The embedded dashboard SPA. Auth: public (the SPA authenticates itself against
 the API).
 
-### GET /status0
-### GET /status0/*path
+### GET /s
+### GET /s/*path
 The embedded public status-page SPA. Auth: public.
+
+### GET /dash0, /dash0/*path
+### GET /status0, /status0/*path
+The prefixes the two SPAs were mounted at before spec 2026-09-09-01. Each
+answers `301 Moved Permanently` onto the matching `/d` / `/s` path, with the
+remaining path and the query string preserved verbatim. **Permanent, no
+sunset** — emails sent long ago, bookmarks, chat messages and search-engine
+indexes all still point here. `redirectRenamedOrgSPA` runs *after* this hop, so
+a URL carrying both a retired prefix and a renamed org slug costs two hops, one
+per concern. Auth: public.
 
 ### GET /docs
 ### GET /docs/*path
@@ -73,8 +83,11 @@ Prometheus metrics. Gated by `SP_PROMETHEUS_ENABLED` (default true); returns
 404 when disabled. Auth: public
 
 ### GET /*path
-SPA catch-all — anything not matched by an API or static route falls through to
-the dashboard's index so client-side routing works on deep links. Auth: public
+Catch-all. `/` redirects (`302`) to `/d/`; the configured `SP_REDIRECTS` dev
+proxy rules are applied; anything else answers a plain **HTML 404**. There is
+no longer an SPA shell behind this route — the legacy `web/dash` app that used
+to render for every unmatched URL was retired in spec 2026-09-09-01. Auth:
+public
 
 ### OPTIONS /api/v1/*path
 CORS preflight no-op. Auth: public

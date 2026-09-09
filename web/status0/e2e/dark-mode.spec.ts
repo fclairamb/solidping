@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Covers spec 2026-08-14-05: the public status page previously had no dark
@@ -59,7 +59,7 @@ test.describe("Public status page — dark mode", () => {
     page,
   }) => {
     await mockStatusPage(page);
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const toggle = page.getByTestId("theme-toggle");
@@ -100,7 +100,7 @@ test.describe("Public status page — dark mode", () => {
     page,
   }) => {
     await mockStatusPage(page);
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`, {
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`, {
       waitUntil: "domcontentloaded",
     });
 
@@ -118,7 +118,7 @@ test.describe("Public status page — dark mode (colorScheme: dark)", () => {
     page,
   }) => {
     await mockStatusPage(page);
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`, {
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`, {
       waitUntil: "domcontentloaded",
     });
 
@@ -144,7 +144,7 @@ test.describe("Public status page — dark mode (colorScheme: dark)", () => {
       return route.continue();
     });
 
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`, {
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`, {
       waitUntil: "domcontentloaded",
     });
 
@@ -168,7 +168,7 @@ test.describe("Public status page — dark mode (colorScheme: dark)", () => {
     await page.addInitScript(() => {
       localStorage.setItem("theme", "light");
     });
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`, {
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`, {
       waitUntil: "domcontentloaded",
     });
 

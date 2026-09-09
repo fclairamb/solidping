@@ -15,7 +15,7 @@ type DeviceRedirectSearch = {
 /**
  * Org-less landing route for the device-authorization consent flow
  * (spec 2026-08-08-02). This is the short, typeable `verification_uri` the CLI
- * prints (`{base}/dash0/device`), so it cannot carry an org segment: it
+ * prints (`{base}/d/device`), so it cannot carry an org segment: it
  * resolves the org from the auth context and forwards to the real consent page
  * under `/orgs/$org/...`.
  *

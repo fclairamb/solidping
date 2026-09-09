@@ -70,7 +70,7 @@ func TestPagingNudgeCarriesTheOrgLogo(t *testing.T) {
 	r.Contains(html, brandingMembersBaseURL+"/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="Acme Corp"`)
 	r.Contains(html, "Acme Corp — sent by SolidPing")
-	r.NotContains(html, "/dash0/logo.png")
+	r.NotContains(html, "/d/logo.png")
 }
 
 // TestPagingNudgeFallsBackToTheProductLogo is the positive control for the
@@ -90,7 +90,7 @@ func TestPagingNudgeFallsBackToTheProductLogo(t *testing.T) {
 	r.Equal(1, fx.mailer.sent)
 
 	html := fx.mailer.last.HTML
-	r.Contains(html, brandingMembersBaseURL+"/dash0/logo.png")
+	r.Contains(html, brandingMembersBaseURL+"/d/logo.png")
 	r.Contains(html, `alt="SolidPing"`)
 	r.Contains(html, "Acme Corp — sent by SolidPing")
 }

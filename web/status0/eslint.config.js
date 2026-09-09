@@ -3,6 +3,7 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
+import noNodeScopeInBrowserCallback from "./eslint-rules/no-node-scope-in-browser-callback.js";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -54,6 +55,29 @@ export default tseslint.config(
             "Do not hardcode localhost:4000 in e2e specs. Import API_BASE from ./fixtures instead (derived from E2E_BASE_URL).",
         },
       ],
+    },
+  },
+  {
+    // Playwright serializes the callback passed to evaluate / evaluateHandle /
+    // $eval / $$eval / waitForFunction / addInitScript and runs it in the page.
+    // Closing over a Node-side binding (a module import, a test local) is legal
+    // TypeScript that throws a ReferenceError in the browser — that is exactly
+    // how the DASH_BASE bug fixed in 1dca14ba8 shipped green. This rule does the
+    // scope analysis that an esquery `no-restricted-syntax` selector cannot;
+    // see the rule's own header (spec 2026-09-09-03).
+    //
+    // Unlike the block above, fixtures.ts is NOT exempt: it drives the page too.
+    files: ["e2e/**/*.ts"],
+    plugins: {
+      // Local, in-config plugin — no new npm package.
+      "e2e-local": {
+        rules: {
+          "no-node-scope-in-browser-callback": noNodeScopeInBrowserCallback,
+        },
+      },
+    },
+    rules: {
+      "e2e-local/no-node-scope-in-browser-callback": "error",
     },
   }
 );

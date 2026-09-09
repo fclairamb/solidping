@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 // Coverage for spec 2026-08-21-01: the incident screenshot card, the first
 // consumer of the generic attachments rail.
@@ -21,7 +21,7 @@ test.describe("Incident screenshot attachment", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${SHOT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${SHOT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("incident-screenshot-card");
@@ -64,11 +64,11 @@ test.describe("Incident screenshot attachment", () => {
 
     // Positive control first: on the seeded incident the card IS rendered, so
     // "absent" below is evidence of the guard rather than of a wrong test id.
-    await page.goto(`/dash0/orgs/test/incidents/${SHOT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${SHOT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("incident-screenshot-card")).toBeVisible();
 
-    await page.goto(`/dash0/orgs/test/incidents/${NO_SHOT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${NO_SHOT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     // The page really did render — its sibling cards are there; only the
@@ -81,7 +81,7 @@ test.describe("Incident screenshot attachment", () => {
     const page = authenticatedPage;
 
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`/dash0/orgs/test/incidents/${SHOT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${SHOT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-screenshot-card")).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("Incident screenshot attachment", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/checks/${SHOT_CHECK}/edit`);
+    await page.goto(`${DASH_BASE}/orgs/test/checks/${SHOT_CHECK}/edit`);
     await page.waitForLoadState("networkidle");
 
     const checkbox = page.getByTestId("check-browser-screenshot-checkbox");

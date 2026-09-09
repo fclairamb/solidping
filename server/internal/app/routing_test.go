@@ -12,7 +12,7 @@ import (
 
 // TestRouteMatchingPrecedence locks in the routing behavior the route table in
 // server.go depends on after the bunrouter -> chi migration: static-vs-param
-// precedence, the /docs vs /docs/* and dash0/status0 static split, org-scoped
+// precedence, the /docs vs /docs/* and /d vs /s static split, org-scoped
 // API routes winning over the SPA catch-all, the OPTIONS /api/v1/* CORS
 // catch-all, and 404/405 shapes. It registers marker handlers at the same
 // patterns server.go uses so a regression in matching (not handler content)
@@ -41,12 +41,13 @@ func TestRouteMatchingPrecedence(t *testing.T) {
 	// static /orgs/:org/checks/export must win over the /:checkUid param sibling.
 	api.GET("/orgs/:org/checks/export", marker("checks-export"))
 
+	main.GET("/demo", marker("demo"))
 	main.GET("/docs", marker("docs-root"))
 	main.GET("/docs/*path", marker("docs-wild"))
-	main.GET("/dash0", marker("dash0-root"))
-	main.GET("/dash0/*path", marker("dash0-wild"))
-	main.GET("/status0", marker("status0-root"))
-	main.GET("/status0/*path", marker("status0-wild"))
+	main.GET("/d", marker("dash0-root"))
+	main.GET("/d/*path", marker("dash0-wild"))
+	main.GET("/s", marker("status0-root"))
+	main.GET("/s/*path", marker("status0-wild"))
 	main.GET("/*path", marker("app-catchall"))
 
 	// want is the matched marker tag; wantStatus defaults to 200 when want set.
@@ -60,10 +61,18 @@ func TestRouteMatchingPrecedence(t *testing.T) {
 		{name: "docs root exact", method: http.MethodGet, path: "/docs", want: "docs-root"},
 		{name: "docs subpath", method: http.MethodGet, path: "/docs/guide/intro", want: "docs-wild"},
 		{name: "docs trailing slash", method: http.MethodGet, path: "/docs/", want: "docs-wild"},
-		{name: "dash0 root", method: http.MethodGet, path: "/dash0", want: "dash0-root"},
-		{name: "dash0 spa path", method: http.MethodGet, path: "/dash0/orgs/acme", want: "dash0-wild"},
-		{name: "status0 root", method: http.MethodGet, path: "/status0", want: "status0-root"},
-		{name: "status0 page", method: http.MethodGet, path: "/status0/acme", want: "status0-wild"},
+		{name: "dash0 root", method: http.MethodGet, path: "/d", want: "dash0-root"},
+		{name: "dash0 spa path", method: http.MethodGet, path: "/d/orgs/acme", want: "dash0-wild"},
+		{name: "status0 root", method: http.MethodGet, path: "/s", want: "status0-root"},
+		{name: "status0 page", method: http.MethodGet, path: "/s/acme", want: "status0-wild"},
+		// Route-segment collision guard (spec 2026-09-09-01): /d and /s are
+		// registered as whole segments, so they cannot swallow the longer
+		// top-level routes that happen to start with the same letter. If these
+		// ever start resolving to the SPA the shortening broke /docs and /demo.
+		{name: "docs is not swallowed by /d", method: http.MethodGet, path: "/docs", want: "docs-root"},
+		{name: "docs subpath is not swallowed by /d", method: http.MethodGet, path: "/docs/intro", want: "docs-wild"},
+		{name: "demo is not swallowed by /d", method: http.MethodGet, path: "/demo", want: "demo"},
+		{name: "dash0-ish path is not the dashboard", method: http.MethodGet, path: "/dashboard", want: "app-catchall"},
 		{name: "api list beats catchall", method: http.MethodGet, path: "/api/v1/orgs/acme/checks", want: "checks-list"},
 		{name: "api param route", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/x1", want: "check-get"},
 		{name: "static beats param", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/export", want: "checks-export"},

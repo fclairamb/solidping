@@ -1190,6 +1190,32 @@ func (s *Service) DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int
 	return int(affected), nil
 }
 
+// TokenActivityByUsers implements db.Service. See db.FoldTokenActivity for
+// the folding rules shared with the SQLite backend.
+func (s *Service) TokenActivityByUsers(
+	ctx context.Context, userUIDs []string,
+) (map[string]db.UserTokenActivity, error) {
+	if len(userUIDs) == 0 {
+		return nil, nil //nolint:nilnil // empty input intentionally skips the query entirely
+	}
+
+	var tokens []*models.UserToken
+
+	err := s.db.NewSelect().
+		Model(&tokens).
+		Column("user_uid", "type", "last_active_at", "created_at").
+		Where("user_uid IN (?)", bun.List(userUIDs)).
+		Where("type IN (?)", bun.List([]models.TokenType{
+			models.TokenTypeRefresh, models.TokenTypePAT, models.TokenTypeOAuthRefresh,
+		})).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get token activity by users: %w", err)
+	}
+
+	return db.FoldTokenActivity(tokens), nil
+}
+
 // UserPasskey operations
 
 // CreateUserPasskey inserts a new passkey row.

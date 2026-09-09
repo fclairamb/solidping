@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
 
 test.describe("Invitations", () => {
   test("should create invitation with correct base URL", async ({
@@ -24,14 +24,21 @@ test.describe("Invitations", () => {
 
     // The invite URL should use the server's base URL (not hardcoded localhost)
     expect(body.inviteUrl).toBeTruthy();
-    expect(body.inviteUrl).toContain("/dash0/invite/");
+    expect(body.inviteUrl).toContain(`${DASH_BASE}/invite/`);
     expect(body.token).toBeTruthy();
 
     // Verify the URL starts with the server base URL
     expect(body.inviteUrl).toMatch(/^https?:\/\//);
   });
 
-  test("should use dash app in invite URL", async ({ authenticatedPage }) => {
+  // The legacy `dash` app was deleted by spec 2026-09-09-01. `app` stays in
+  // the request shape for backwards compatibility, so "dash" is still
+  // ACCEPTED (201) — but it is no longer HONOURED: both accepted values now
+  // resolve to config.DashboardBasePath
+  // (server/internal/handlers/auth/service.go, CreateInvitation).
+  test('legacy app "dash" is still accepted but resolves to the dashboard base path', async ({
+    authenticatedPage,
+  }) => {
     const page = authenticatedPage;
 
     const response = await page.request.post(
@@ -49,7 +56,9 @@ test.describe("Invitations", () => {
     expect(response.status()).toBe(201);
     const body = await response.json();
 
-    expect(body.inviteUrl).toContain("/dash/invite/");
+    expect(body.inviteUrl).toContain(`${DASH_BASE}/invite/`);
+    // ...and specifically NOT the dead legacy prefix it used to produce.
+    expect(body.inviteUrl).not.toContain("/dash/invite/");
   });
 
   test("should reject invalid app", async ({ authenticatedPage }) => {
@@ -89,7 +98,7 @@ test.describe("Invitations", () => {
     expect(response.status()).toBe(201);
     const body = await response.json();
 
-    expect(body.inviteUrl).toContain("/dash0/invite/");
+    expect(body.inviteUrl).toContain(`${DASH_BASE}/invite/`);
   });
 
   test("reports emailSent: false in test mode (email disabled)", async ({
@@ -148,7 +157,7 @@ test.describe("Invitations", () => {
 
     // The invite link is still surfaced as the (only) way to share it.
     await expect(dialog.locator("input[readonly]")).toHaveValue(
-      /\/dash0\/invite\//
+      new RegExp(`${DASH_BASE}/invite/`)
     );
   });
 

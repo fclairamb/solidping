@@ -186,7 +186,7 @@ func TestPendingMembershipRedirectWithoutOrg(t *testing.T) {
 		t.Context(), http.MethodGet, "/api/v1/auth/google/callback", nil)
 
 	require.NoError(t, finishProviderCallback(
-		recorder, req, "/dash0/orgs/default?access_token=at", "", "at", 3600, true))
+		recorder, req, "/d/orgs/default?access_token=at", "", "at", 3600, true))
 
 	location := recorder.Header().Get("Location")
 	require.Contains(t, location, noOrgPath)

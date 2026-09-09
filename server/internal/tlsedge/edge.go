@@ -410,7 +410,7 @@ func (e *Edge) TLSConfig(ctx context.Context) *tls.Config {
 	// certificate for up to 90 days. Worse, with no custom-domain mapping left,
 	// the request fell through to the instance's own-host routing and served
 	// the dashboard SPA on a hostname this installation no longer claims. The
-	// custom-host path allowlist that 404s /dash0 only applies while the
+	// custom-host path allowlist that 404s /d only applies while the
 	// mapping exists.
 	//
 	// Refusing here closes the connection instead, which is the behavior

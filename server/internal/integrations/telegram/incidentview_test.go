@@ -276,7 +276,7 @@ func TestIncidentURL(t *testing.T) {
 
 	r := require.New(t)
 
-	r.Equal("https://app.example.com/dash0/orgs/acme/incidents/abc",
+	r.Equal("https://app.example.com/d/orgs/acme/incidents/abc",
 		telegram.IncidentURL("https://app.example.com/", "acme", "abc"))
 	// No base URL / no org slug simply omits the link rather than emitting a
 	// broken one.

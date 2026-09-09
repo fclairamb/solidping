@@ -860,7 +860,6 @@ test.describe("Email integration recipients", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    const token = await getAuthToken(page);
 
     await page.goto("orgs/test/integrations/new?type=email");
     await page.waitForLoadState("networkidle");

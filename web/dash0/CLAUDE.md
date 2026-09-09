@@ -64,6 +64,10 @@ bun run build:no-check
 
 # Run linter
 bun run lint
+
+# Type-check + lint the Playwright e2e suites (what CI runs)
+bun run typecheck:e2e
+bun run lint:e2e
 ```
 
 ### Development with Backend
@@ -75,19 +79,19 @@ For hot reload development, use the redirect proxy:
 cd web/dash0 && bun run dev
 
 # Terminal 2: Start backend with redirect
-SP_REDIRECTS="/dash0:localhost:5174/dash0" make dev-backend
+SP_REDIRECTS="/d:localhost:5174/d" make dev-backend
 
 # Or use air for Go hot reload
 cd /path/to/solidping && air
 ```
 
-Access at `http://localhost:4000/dash0/`
+Access at `http://localhost:4000/d/`
 
 ## Configuration
 
 ### Base URL
 
-The app is served at `/dash0/` by default. Override with `VITE_BASE_URL`:
+The app is served at `/d/` by default. Override with `VITE_BASE_URL`:
 
 ```bash
 VITE_BASE_URL=/status/ bun run build
@@ -128,7 +132,7 @@ renders the operator UI — when working on subscriber-facing UX, switch repos.
 ## Design Reference
 
 Before building or modifying any UI, consult the live design reference at
-`http://localhost:4000/dash0/orgs/default/design-reference` (source:
+`http://localhost:4000/d/orgs/default/design-reference` (source:
 `src/routes/orgs/$org/design-reference.tsx`). It renders every shipped
 primitive (buttons, alerts, dialogs, tables, forms…) live in both light and
 dark mode, alongside the exact import line. Reuse those components and
@@ -232,7 +236,7 @@ The frontend is embedded in the Go backend:
 1. **Build**: `make build-dash0` creates `dist/`
 2. **Copy**: `make copy-dash0` copies to `server/internal/app/dash0res/`
 3. **Embed**: Backend uses `go:embed dash0res/*`
-4. **Serve**: Backend serves at `/dash0/` with SPA fallback
+4. **Serve**: Backend serves at `/d/` with SPA fallback
 
 ## Scripts Reference
 
@@ -241,5 +245,55 @@ The frontend is embedded in the Go backend:
 | `dev` | Start dev server on port 5174 |
 | `build` | Build for production (with type check) |
 | `build:no-check` | Build without type checking |
-| `lint` | Run ESLint |
+| `lint` | Run ESLint over the whole app (red on base — see "e2e type-checking and lint" below) |
+| `lint:e2e` | Run ESLint over `e2e/` only — this is what CI enforces |
+| `typecheck:e2e` | `tsc -p tsconfig.e2e.json` — type-check the Playwright suites |
 | `preview` | Preview production build |
+
+## e2e type-checking and lint (spec 2026-09-09-03)
+
+`tsconfig.app.json` is `include: ["src"]` and `tsconfig.node.json` is
+`include: ["vite.config.ts"]`, so until this spec **nothing type-checked
+`e2e/`** — 159 spec and fixture files compiled nowhere, locally or in CI.
+
+- **`tsconfig.e2e.json`** covers `e2e/`, `playwright.config.ts` and
+  `playwright.dev.config.ts`, with `tsconfig.node.json`'s strictness plus
+  `lib: ["ES2023", "DOM", "DOM.Iterable"]` (browser callbacks legitimately
+  reference `window`/`document`/`navigator`) and `types: ["node"]`.
+  It is **deliberately not referenced** from `tsconfig.json`: a type error in a
+  Playwright spec must fail CI loudly but must never block the production bundle
+  build. CI runs it as its own step (`bun run typecheck:e2e`) in both the `dash0`
+  and `status0` jobs.
+- **`bun run lint:e2e`** (`eslint e2e`) is the dash0 job's lint step. It is
+  scoped on purpose: the unscoped `bun run lint` is red on base with ~39 errors
+  and ~440 warnings, effectively all `react-hooks` findings under `src/`. Paying
+  that debt down is its own spec — do not relax the config to make `lint` green,
+  and do not widen the CI step until the debt is gone.
+
+### The `page.evaluate` guard
+
+Playwright **serializes** the callback passed to `evaluate`, `evaluateHandle`,
+`$eval`, `$$eval`, `waitForFunction` and `addInitScript` and runs it **in the
+browser**. Anything it closes over lives in the Node process and is not there at
+runtime — the page throws `ReferenceError`. `tsc` cannot see this (closing over
+an in-scope import is legal TypeScript) and neither can an esquery
+`no-restricted-syntax` selector (it cannot do scope analysis).
+
+A mechanical base-path sweep shipped exactly that bug green:
+
+```ts
+// WRONG — DASH_BASE is a Node-side import; the page has never heard of it.
+await page.evaluate(() => navigator.serviceWorker.getRegistration(`${DASH_BASE}/sw.js`));
+
+// RIGHT — hand the value in as the evaluate argument.
+await page.evaluate((base) => navigator.serviceWorker.getRegistration(`${base}/sw.js`), DASH_BASE);
+```
+
+`eslint-rules/no-node-scope-in-browser-callback.js` (a local flat-config plugin,
+no npm package, duplicated verbatim in `web/status0` — keep the copies in sync)
+walks each callback's scope and reports any reference resolving to a binding
+outside it. The callback's own parameters and locals, browser globals and
+type-only references are all allowed. `e2e/eslint-guard-fixtures.ts` is the
+positive control: correctly-written calls that must stay green, so the rule can
+never degrade into "reject everything". It is not a `*.spec.ts`, so Playwright
+never collects it.

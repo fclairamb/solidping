@@ -17,6 +17,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { redirectToExpiredLogin } from "./client";
+import { DASH_BASE } from "@/lib/base-path";
 
 function setLocation(pathname: string): void {
   Object.defineProperty(window, "location", {
@@ -44,9 +45,9 @@ describe("redirectToExpiredLogin", () => {
   });
 
   it.each([
-    ["/dash0/orgs/test/login", "org-level login"],
-    ["/dash0/orgs/test/register", "org-level register"],
-    ["/dash0/login", "root login"],
+    [`${DASH_BASE}/orgs/test/login`, "org-level login"],
+    [`${DASH_BASE}/orgs/test/register`, "org-level register"],
+    [`${DASH_BASE}/login`, "root login"],
   ])("no-ops on %s (%s)", (pathname) => {
     setLocation(pathname);
     const before = window.location.href;
@@ -57,7 +58,7 @@ describe("redirectToExpiredLogin", () => {
   });
 
   it("still redirects to the org login page from an ordinary authenticated route", () => {
-    setLocation("/dash0/orgs/test/checks");
+    setLocation(`${DASH_BASE}/orgs/test/checks`);
 
     redirectToExpiredLogin();
 

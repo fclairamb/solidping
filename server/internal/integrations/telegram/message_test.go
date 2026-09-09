@@ -43,7 +43,7 @@ func TestBuildAlertHTML_EscapesEveryInterpolatedValue(t *testing.T) {
 		CheckName:   "A & B <script>",
 		Detail:      "HTTP 503 — Service <Unavailable> & angry",
 		OrgSlug:     "acme&co",
-		IncidentURL: "https://solidping.io/dash0/orgs/acme/incidents/abc?a=1&b=2",
+		IncidentURL: "https://solidping.io/d/orgs/acme/incidents/abc?a=1&b=2",
 	})
 
 	// Every hostile fragment is escaped...

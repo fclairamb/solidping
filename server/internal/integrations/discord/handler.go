@@ -130,7 +130,7 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 		return nil
 	}
 
-	target := h.cfg.Server.BaseURL + "/dash0/orgs/" + url.PathEscape(result.OrgSlug) +
+	target := h.cfg.Server.BaseURL + config.DashboardBasePath + "/orgs/" + url.PathEscape(result.OrgSlug) +
 		"/integrations/" + url.PathEscape(result.ConnectionUID)
 	http.Redirect(writer, req, target, http.StatusFound)
 

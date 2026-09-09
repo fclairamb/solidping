@@ -16,8 +16,8 @@ any status page URL:
 
 ```
 https://status.acme.com/tv                       # a custom domain
-https://solidping.example.com/status0/acme/tv    # the org's default page
-https://solidping.example.com/status0/acme/main/tv
+https://solidping.example.com/s/acme/tv    # the org's default page
+https://solidping.example.com/s/acme/main/tv
 ```
 
 There is nothing to configure. TV mode is a display mode of a page you already

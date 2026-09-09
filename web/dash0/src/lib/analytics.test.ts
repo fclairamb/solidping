@@ -10,6 +10,7 @@ import {
   scrubUrl,
   __resetAnalyticsForTests,
 } from "./analytics";
+import { DASH_BASE } from "@/lib/base-path";
 
 beforeEach(() => {
   __resetAnalyticsForTests();
@@ -179,40 +180,40 @@ describe("distinctId", () => {
 
 describe("scrubPath", () => {
   it("removes org slugs and resource identifiers", () => {
-    expect(scrubPath("/dash0/orgs/acme-corp/checks")).toBe("/dash0/orgs/:org/checks");
+    expect(scrubPath(`${DASH_BASE}/orgs/acme-corp/checks`)).toBe(`${DASH_BASE}/orgs/:org/checks`);
     expect(
-      scrubPath("/dash0/orgs/acme-corp/checks/8f0e1d2c-3b4a-5968-8776-a5b4c3d2e1f0"),
-    ).toBe("/dash0/orgs/:org/checks/:uid");
-    expect(scrubPath("/dash0/orgs/acme/status-pages/my-public-page")).toBe(
-      "/dash0/orgs/:org/status-pages/:id",
+      scrubPath(`${DASH_BASE}/orgs/acme-corp/checks/8f0e1d2c-3b4a-5968-8776-a5b4c3d2e1f0`),
+    ).toBe(`${DASH_BASE}/orgs/:org/checks/:uid`);
+    expect(scrubPath(`${DASH_BASE}/orgs/acme/status-pages/my-public-page`)).toBe(
+      `${DASH_BASE}/orgs/:org/status-pages/:id`,
     );
-    expect(scrubPath("/dash0/orgs/acme/incidents/42")).toBe("/dash0/orgs/:org/incidents/:id");
+    expect(scrubPath(`${DASH_BASE}/orgs/acme/incidents/42`)).toBe(`${DASH_BASE}/orgs/:org/incidents/:id`);
   });
 
   it("leaves static paths alone", () => {
-    expect(scrubPath("/dash0/login")).toBe("/dash0/login");
+    expect(scrubPath(`${DASH_BASE}/login`)).toBe(`${DASH_BASE}/login`);
   });
 });
 
 describe("scrubUrl", () => {
   it("drops query strings and fragments and scrubs the path", () => {
     expect(
-      scrubUrl("https://ping.example.com/dash0/orgs/acme/checks?q=secret-host#frag"),
-    ).toBe("https://ping.example.com/dash0/orgs/:org/checks");
+      scrubUrl(`https://ping.example.com${DASH_BASE}/orgs/acme/checks?q=secret-host#frag`),
+    ).toBe(`https://ping.example.com${DASH_BASE}/orgs/:org/checks`);
   });
 });
 
 describe("sanitizeProperties", () => {
   it("scrubs every URL-ish autocapture property", () => {
     const out = sanitizeProperties({
-      $current_url: "https://ping.example.com/dash0/orgs/acme/checks/8f0e1d2c-3b4a-5968-8776-a5b4c3d2e1f0?q=x",
-      $pathname: "/dash0/orgs/acme/checks/8f0e1d2c-3b4a-5968-8776-a5b4c3d2e1f0",
+      $current_url: `https://ping.example.com${DASH_BASE}/orgs/acme/checks/8f0e1d2c-3b4a-5968-8776-a5b4c3d2e1f0?q=x`,
+      $pathname: `${DASH_BASE}/orgs/acme/checks/8f0e1d2c-3b4a-5968-8776-a5b4c3d2e1f0`,
       $referrer: "$direct",
       other: "kept",
     });
 
-    expect(out.$current_url).toBe("https://ping.example.com/dash0/orgs/:org/checks/:uid");
-    expect(out.$pathname).toBe("/dash0/orgs/:org/checks/:uid");
+    expect(out.$current_url).toBe(`https://ping.example.com${DASH_BASE}/orgs/:org/checks/:uid`);
+    expect(out.$pathname).toBe(`${DASH_BASE}/orgs/:org/checks/:uid`);
     expect(out.$referrer).toBe("$direct");
     expect(out.other).toBe("kept");
     expect(JSON.stringify(out)).not.toContain("acme");

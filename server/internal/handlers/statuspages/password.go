@@ -157,7 +157,7 @@ func (s *Service) Unlock(
 	}
 
 	// An empty slug addresses the org's DEFAULT page, exactly like the view
-	// endpoint — status0 reaches a default page through /status0/<org> and has
+	// endpoint — status0 reaches a default page through /s/<org> and has
 	// no slug to send.
 	var page *models.StatusPage
 

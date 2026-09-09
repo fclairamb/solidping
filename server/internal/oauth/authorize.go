@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
@@ -235,7 +236,7 @@ func (h *Handler) handleAuthError(writer http.ResponseWriter, req *http.Request,
 // that guard, silently dead-ending the MCP connect flow on the login page.
 func (h *Handler) redirectToLogin(writer http.ResponseWriter, req *http.Request) {
 	returnTo := req.URL.RequestURI()
-	loginURL := "/dash0/login?returnTo=" + url.QueryEscape(returnTo)
+	loginURL := config.DashboardBasePath + "/login?returnTo=" + url.QueryEscape(returnTo)
 	http.Redirect(writer, req, loginURL, http.StatusFound)
 }
 
@@ -252,7 +253,7 @@ func (h *Handler) redirectToConsent(writer http.ResponseWriter, orgSlug string, 
 	query.Set("code_challenge", authReq.CodeChallenge)
 	query.Set("code_challenge_method", authReq.CodeChallengeMethod)
 
-	consentURL := "/dash0/orgs/" + url.PathEscape(orgSlug) + "/oauth/consent?" + query.Encode()
+	consentURL := config.DashboardBasePath + "/orgs/" + url.PathEscape(orgSlug) + "/oauth/consent?" + query.Encode()
 	writer.Header().Set("Location", consentURL)
 	writer.WriteHeader(http.StatusFound)
 }

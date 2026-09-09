@@ -72,7 +72,7 @@ import {
 import { DnsRecordRow } from "@/components/shared/dns-record-row";
 import { DocsLink } from "@/components/shared/docs-link";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
-import { TimeAgo } from "@/components/ui/time-ago";
+import { TimeAgo, TimeAgoOrDash } from "@/components/ui/time-ago";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -197,6 +197,7 @@ import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
+import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { useDebounce } from "@/lib/use-debounce";
 import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
 import { cn, slugify } from "@/lib/utils";
@@ -217,6 +218,10 @@ const RELATIVE_TIME_DEMO_SINCE = new Date(
   Date.now() - 5 * 60_000,
 ).toISOString();
 const TIME_AGO_DEMO_DATE = new Date(Date.now() - 46 * 60_000).toISOString();
+const LAST_SEEN_SESSION_DEMO_DATE = new Date(
+  Date.now() - 21 * 24 * 60 * 60_000,
+).toISOString();
+const LAST_SEEN_TOKEN_DEMO_DATE = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -233,6 +238,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "event-tone", label: "Event tone badge" },
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
+  { id: "oauth-provider-buttons", label: "OAuth provider buttons" },
   { id: "data-display", label: "Data display" },
   { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
@@ -289,6 +295,7 @@ function DesignReferencePage() {
       <EventToneSection />
       <LiveDotSection />
       <FormsSection />
+      <OAuthProviderButtonsSection />
       <DataDisplaySection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
@@ -2144,6 +2151,79 @@ function ButtonsBadgesSection() {
           importLine={`import { TimeAgo } from "@/components/ui/time-ago";\n\n// Incident detail (timeline, comments, header): absolute LOCAL time shown\n// inline instead of hidden behind hover (UTC is one hover away).\n<TimeAgo date={u.publishedAt} variant="inline" />`}
         />
 
+        <h3 className="text-sm font-medium">
+          Relative time + channel icon (breakdown tooltip)
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          The Members table's{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Last seen
+          </code>{" "}
+          column (spec 2026-09-09-05). Two independent, nullable timestamps —
+          dashboard presence and credential (PAT/OAuth) activity — collapse
+          into one headline value via{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            lastSeenFor()
+          </code>{" "}
+          (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            @/lib/last-seen
+          </code>
+          , ties go to the session), rendered with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            TimeAgoOrDash
+          </code>{" "}
+          so a member who never signed in reads as "Never" rather than a bare
+          dash. A small icon next to it (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            Monitor
+          </code>{" "}
+          for a dashboard session,{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            KeyRound
+          </code>{" "}
+          for a token) names which channel won, and its Tooltip lists{" "}
+          <em>both</em> channels' own relative times — the point of keeping
+          the two API fields apart is exactly that a departed employee whose
+          automation is still running should look like "no dashboard since
+          March, token used last night," not "active." No icon renders when
+          both timestamps are null.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex items-center gap-1.5 text-sm">
+              <TimeAgoOrDash
+                date={LAST_SEEN_TOKEN_DEMO_DATE}
+                emptyLabel="Never"
+                data-testid="design-ref-last-seen"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    role="img"
+                    aria-label="Dashboard · 3 weeks ago, API token · 2 hours ago"
+                    className="inline-flex shrink-0 text-muted-foreground"
+                    data-testid="design-ref-last-seen-via"
+                    data-via="token"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div>
+                    Dashboard ·{" "}
+                    <TimeAgo date={LAST_SEEN_SESSION_DEMO_DATE} />
+                  </div>
+                  <div>
+                    API token · <TimeAgo date={LAST_SEEN_TOKEN_DEMO_DATE} />
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          }
+          importLine={`import { TimeAgoOrDash } from "@/components/ui/time-ago";\nimport { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";\nimport { Monitor, KeyRound } from "lucide-react";\nimport { lastSeenFor } from "@/lib/last-seen";\nimport { formatRelativeTime } from "@/lib/time-ago";\n\nconst { lastSeenAt, lastSeenVia } = lastSeenFor(member);\n\n<div className="flex items-center gap-1.5">\n  <TimeAgoOrDash date={lastSeenAt} emptyLabel={t("members.lastSeen.never")} />\n  {lastSeenVia && (\n    <Tooltip>\n      <TooltipTrigger asChild>\n        <span className="inline-flex text-muted-foreground" data-via={lastSeenVia}>\n          {lastSeenVia === "session" ? (\n            <Monitor className="h-3.5 w-3.5" />\n          ) : (\n            <KeyRound className="h-3.5 w-3.5" />\n          )}\n        </span>\n      </TooltipTrigger>\n      <TooltipContent>\n        <div>{t("members.lastSeen.breakdownLine", { channel: t("members.lastSeen.viaSession"), time: sessionRelative })}</div>\n        <div>{t("members.lastSeen.breakdownLine", { channel: t("members.lastSeen.viaToken"), time: tokenRelative })}</div>\n      </TooltipContent>\n    </Tooltip>\n  )}\n</div>`}
+        />
+
         <h3 className="text-sm font-medium">Session card</h3>
         <p className="text-sm text-muted-foreground">
           The account Sessions page (
@@ -2962,6 +3042,49 @@ function TruncatedCellTable() {
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+// Every provider type the icon map knows about, so the catalog shows all
+// eight brand marks at once. A real instance renders whatever
+// /api/v1/auth/providers reports, usually one or two of these.
+const designReferenceAuthProviders = [
+  { type: "google", name: "Google" },
+  { type: "github", name: "GitHub" },
+  { type: "microsoft", name: "Microsoft" },
+  { type: "gitlab", name: "GitLab" },
+  { type: "slack", name: "Slack" },
+  { type: "discord", name: "Discord" },
+  { type: "oidc", name: "SSO" },
+  { type: "saml", name: "SAML" },
+];
+
+function OAuthProviderButtonsSection() {
+  return (
+    <Section
+      id="oauth-provider-buttons"
+      title="OAuth provider buttons"
+      description="The two-column grid of third-party sign-in buttons plus its 'or' divider, shared by /login and /register. Feed it the provider list from useProviders(); it renders nothing when there is none, so no emptiness check at the call site. Clicking records oauth:<type> as the last-used method and performs a full-page navigation to the provider — every callback runs findOrCreateUser, so the same button both signs in and signs up. testIdPrefix namespaces the data-testids per page. The promoted 'last used' slot on /login is deliberately NOT part of this component: /register must not have one."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        {/* Capture-phase stopPropagation so the catalog stays a catalog: a
+            stray click here would otherwise really redirect the browser out
+            of the app and into a provider's consent screen. */}
+        <div
+          className="min-w-0 max-w-sm"
+          onClickCapture={(event) => event.stopPropagation()}
+        >
+          <OAuthProviderButtons
+            org="default"
+            providers={designReferenceAuthProviders}
+            testIdPrefix="login"
+          />
+        </div>
+        <CodeSnippet
+          code={`import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";\n\nconst { data: providersData } = useProviders();\n\n<OAuthProviderButtons\n  org={org}\n  providers={providersData?.providers}\n  disabled={register.isPending}\n  testIdPrefix="register"\n/>`}
+        />
+      </div>
+    </Section>
   );
 }
 

@@ -14,6 +14,7 @@ import {
   resolveHandoffDestination,
 } from "@/lib/oauth-handoff";
 import { captureLandingAttribution } from "@/lib/attribution";
+import { registerServiceWorker } from "@/lib/service-worker";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource-variable/jetbrains-mono/index.css";
 import "./i18n";
@@ -157,9 +158,7 @@ root.render(
   </StrictMode>,
 );
 
-// Register the service worker for Web Push notifications.
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/dash0/sw.js").catch((err) => {
-    console.warn("[solidping] SW registration failed", err);
-  });
-}
+// Register the service worker for Web Push notifications. The worker's script
+// URL and scope are derived from the app base, and any registration left over
+// from a retired base path is torn down first — see lib/service-worker.ts.
+void registerServiceWorker();

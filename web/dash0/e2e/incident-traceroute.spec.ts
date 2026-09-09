@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 // Coverage for spec 2026-08-21-10: the incident path-trace card.
 //
@@ -22,7 +22,7 @@ test.describe("Incident traceroute attachment", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${TRACE_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRACE_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("incident-traceroute-card");
@@ -77,7 +77,7 @@ test.describe("Incident traceroute attachment", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${NO_TRACE_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${NO_TRACE_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     // Positive control: this incident's page really did render — it has the
@@ -93,7 +93,7 @@ test.describe("Incident traceroute attachment", () => {
     const page = authenticatedPage;
 
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`/dash0/orgs/test/incidents/${TRACE_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRACE_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("incident-traceroute-table")).toBeVisible();
@@ -119,7 +119,7 @@ test.describe("Incident traceroute attachment", () => {
     const page = authenticatedPage;
 
     await page.goto(
-      `/dash0/orgs/test/checks/${TRACE_CHECK}/results/${TRACE_RESULT}`,
+      `${DASH_BASE}/orgs/test/checks/${TRACE_CHECK}/results/${TRACE_RESULT}`,
     );
     await page.waitForLoadState("networkidle");
 

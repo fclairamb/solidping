@@ -85,13 +85,128 @@ func TestIsCustomHostForbidden(t *testing.T) {
 	r := require.New(t)
 
 	for _, p := range []string{
-		"/dash0", "/dash0/x", "/docs", "/docs/x", "/demo", "/demo/x", "/openapi", "/openapi.yaml", "/metrics",
+		"/d", "/d/x", "/docs", "/docs/x", "/demo", "/demo/x", "/openapi", "/openapi.yaml", "/metrics",
+		// The RETIRED dashboard prefix stays forbidden alongside the current
+		// one (spec 2026-09-09-01 §4): a customer's status domain must never
+		// redirect a visitor into the SolidPing dashboard, not even via the
+		// legacy hop.
+		"/dash0", "/dash0/orgs/acme",
 	} {
 		r.True(isCustomHostForbidden(p), "expected forbidden: %s", p)
 	}
 
-	for _, p := range []string{"/", "/status0", "/status0/assets/a.js", "/api/v1/status-pages/acme"} {
+	for _, p := range []string{"/", "/s", "/s/assets/a.js", "/api/v1/status-pages/acme"} {
 		r.False(isCustomHostForbidden(p), "expected not forbidden: %s", p)
+	}
+}
+
+// TestIsCustomHostForbiddenMatchesWholeSegments is the regression guard for the
+// one way adding "/d" to the deny-list goes wrong: a bare
+// strings.HasPrefix(reqPath, "/d") would ALSO deny "/docs" and "/demo" — which
+// are separately forbidden, so the mistake hides — and, worse, any future
+// top-level route starting with the same letter. The matcher is
+// exact-or-followed-by-slash; these paths prove it.
+func TestIsCustomHostForbiddenMatchesWholeSegments(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// Longer siblings of the forbidden prefixes that are NOT under them.
+	for _, p := range []string{
+		"/dashboard-thing", "/dx", "/dev", "/deploy",
+		"/status", "/sitemap.xml", "/s-something",
+		"/dash0x", "/dash0-report",
+	} {
+		r.False(isCustomHostForbidden(p), "expected not forbidden: %s", p)
+	}
+
+	// And the exact-or-slash rule itself.
+	r.True(matchesRoute("/d", "/d"))
+	r.True(matchesRoute("/d/orgs", "/d"))
+	r.False(matchesRoute("/docs", "/d"))
+	r.False(matchesRoute("/demo", "/d"))
+	r.False(matchesRoute("/dd", "/d"))
+}
+
+// TestCustomHostLegacyStatusPrefixRedirects covers the resolved open question:
+// on a custom host, /status0 and /status0/* answer a 301 onto /s and /s/* on
+// the SAME host (relative Location, so the browser stays on the customer's
+// domain), path and query preserved verbatim. There is exactly one code path
+// serving the status SPA there — the prefixes are not aliased.
+func TestCustomHostLegacyStatusPrefixRedirects(t *testing.T) {
+	t.Parallel()
+
+	server := newCustomHostTestServer(t)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("next"))
+	})
+	handler := server.handlerWithCustomDomains(next)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "root", path: "/status0", want: "/s"},
+		{name: "root slash", path: "/status0/", want: "/s/"},
+		{name: "page", path: "/status0/acme/main", want: "/s/acme/main"},
+		{name: "asset", path: "/status0/assets/app-abc123.js", want: "/s/assets/app-abc123.js"},
+		{name: "query preserved", path: "/status0/acme/main?preview=1", want: "/s/acme/main?preview=1"},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			req := httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, testCase.path, http.NoBody)
+			req.Host = "status.acme.com"
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			resp := w.Result()
+			defer func() { _ = resp.Body.Close() }()
+
+			r.Equal(http.StatusMovedPermanently, resp.StatusCode)
+			r.Equal(testCase.want, resp.Header.Get("Location"))
+			// Relative Location: the customer's hostname is never replaced by
+			// the installation's own.
+			r.NotContains(resp.Header.Get("Location"), "solidping.io")
+		})
+	}
+}
+
+// TestCustomHostLegacyDashPrefixIs404 is the other half of §4: the retired
+// dashboard prefix must 404 on a custom host, never redirect. A 301 here would
+// walk a customer's visitor one hop closer to the operator dashboard.
+func TestCustomHostLegacyDashPrefixIs404(t *testing.T) {
+	t.Parallel()
+
+	server := newCustomHostTestServer(t)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := server.handlerWithCustomDomains(next)
+
+	for _, path := range []string{"/dash0", "/dash0/", "/dash0/orgs/acme/checks", "/d", "/d/orgs/acme"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody)
+			req.Host = "status.acme.com"
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			resp := w.Result()
+			defer func() { _ = resp.Body.Close() }()
+
+			r.Equal(http.StatusNotFound, resp.StatusCode)
+			r.Empty(resp.Header.Get("Location"), "must not redirect into the dashboard")
+		})
 	}
 }
 
@@ -211,7 +326,7 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 		},
 		{
 			name: "demoted custom host does not serve the dashboard either",
-			host: "demoted.acme.com", path: "/dash0/",
+			host: "demoted.acme.com", path: "/d/",
 			wantStatus: http.StatusServiceUnavailable, wantNotBody: "next",
 		},
 		{
@@ -241,28 +356,28 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 		{
 			// Regression: this used to serve the bare shell (no sp-page), so the
 			// SPA rendered its generic "visit a specific status page" landing.
-			name: "custom host /status0/ serves the index WITH sp-page",
-			host: "status.acme.com", path: "/status0/",
+			name: "custom host /s/ serves the index WITH sp-page",
+			host: "status.acme.com", path: "/s/",
 			wantStatus: http.StatusOK, wantBody: `name="sp-page" content="acme/main"`,
 		},
 		{
-			name: "custom host /status0 (no slash) serves the index with sp-page",
-			host: "status.acme.com", path: "/status0",
+			name: "custom host /s (no slash) serves the index with sp-page",
+			host: "status.acme.com", path: "/s",
 			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
 		},
 		{
-			name: "custom host /status0/index.html is an entry point, not an asset",
-			host: "status.acme.com", path: "/status0/index.html",
+			name: "custom host /s/index.html is an entry point, not an asset",
+			host: "status.acme.com", path: "/s/index.html",
 			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
 		},
 		{
-			name: "custom host deep SPA route under /status0 still gets sp-page",
-			host: "status.acme.com", path: "/status0/acme/main",
+			name: "custom host deep SPA route under /s still gets sp-page",
+			host: "status.acme.com", path: "/s/acme/main",
 			wantStatus: http.StatusOK, wantBody: `content="acme/main"`,
 		},
 		{
 			name: "custom host real asset is served raw, without sp-page",
-			host: "status.acme.com", path: "/status0/assets/app-abc123.js",
+			host: "status.acme.com", path: "/s/assets/app-abc123.js",
 			wantStatus: http.StatusOK, wantBody: "console.log(1)", wantNotBody: "sp-page",
 		},
 		{
@@ -272,7 +387,7 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 		},
 		{
 			name: "custom host dash0 is 404",
-			host: "status.acme.com", path: "/dash0",
+			host: "status.acme.com", path: "/d",
 			wantStatus: http.StatusNotFound,
 		},
 		{
@@ -441,7 +556,7 @@ func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
 		return rec
 	}
 
-	shell := serve("/status0/acme/main")
+	shell := serve("/s/acme/main")
 	r.Equal("public, max-age=60", shell.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", shell.Header().Get("Vary"))
 
@@ -456,7 +571,7 @@ func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
 	r.Equal(customRec.Header().Get("Vary"), shell.Header().Get("Vary"))
 	r.Equal(customRec.Header().Get("Cache-Control"), shell.Header().Get("Cache-Control"))
 
-	asset := serve("/status0/assets/app-abc123.js")
+	asset := serve("/s/assets/app-abc123.js")
 	r.Equal("public, max-age=31536000", asset.Header().Get("Cache-Control"))
 	r.Empty(asset.Header().Get("Vary"), "an immutable asset varies on nothing")
 }

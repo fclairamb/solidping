@@ -178,7 +178,7 @@ func TestHandler_AcknowledgeIncidentByLink_SuccessPageRedirectsToIncident(t *tes
 	r.Equal(http.StatusOK, rec.Code)
 
 	body := rec.Body.String()
-	wantURL := "/dash0/orgs/" + f.org.Slug + "/incidents/" + f.incident.UID
+	wantURL := "/d/orgs/" + f.org.Slug + "/incidents/" + f.incident.UID
 	r.Contains(body, `href="`+wantURL+`"`, "the 'go now' link must point at this exact org/incident")
 	r.Contains(body, `content="3;url=`+wantURL+`"`, "the no-JS meta-refresh fallback must be present")
 	r.Contains(body, `var url="`+wantURL+`"`, "the countdown script must redirect to this exact org/incident")
@@ -204,7 +204,7 @@ func TestHandler_AcknowledgeIncidentByLink_ExpiredTokenNoRedirect(t *testing.T) 
 	body := rec.Body.String()
 	r.NotContains(body, "<script>")
 	r.NotContains(body, "meta http-equiv=\"refresh\"")
-	r.NotContains(body, "/dash0/orgs/", "expired page must not leak a redirect URL")
+	r.NotContains(body, "/d/orgs/", "expired page must not leak a redirect URL")
 
 	got, err := f.dbSvc.GetIncident(t.Context(), f.org.UID, f.incident.UID)
 	r.NoError(err)

@@ -10,13 +10,15 @@
  *   - a hand-written publication renders as a severity-coloured card carrying
  *     its narrative, and nothing internal leaks into it;
  *   - resolving one removes it from the active section but keeps it in the
- *     history panel;
+ *     history panel — asserted against the SERVER payload and then against the
+ *     DOM with the HTTP cache defeated, because the public endpoint is served
+ *     `Cache-Control: public, max-age=60` and a plain reload replays it;
  *   - an AUTO-published incident badges the affected component and leaves an
  *     unaffected sibling alone (positive and negative in one test), and its
  *     severity colours the top banner.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 async function getToken(): Promise<string> {
   const res = await fetch(`${BASE}/api/v1/auth/login`, {
@@ -73,6 +75,28 @@ async function getDefaultStatusPage(
   );
 }
 
+interface PublicStatusPage {
+  activeIncidents?: { uid: string; state: string }[];
+}
+
+/**
+ * The PUBLIC status-page payload, as an anonymous visitor gets it.
+ *
+ * Issued from Node with `cache: "no-store"`, so no HTTP cache sits between the
+ * assertion and the server. That matters: the endpoint is deliberately served
+ * `Cache-Control: public, max-age=60` (spec 2026-08-22-06), so anything that
+ * goes through the browser is entitled to answer from cache instead of asking
+ * the server.
+ */
+async function getPublicStatusPage(): Promise<PublicStatusPage> {
+  const res = await fetch(`${BASE}/api/v1/status-pages/test`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`public status page failed: ${res.status}`);
+
+  return (await res.json()) as PublicStatusPage;
+}
+
 interface Publication {
   uid: string;
   title: string;
@@ -106,47 +130,64 @@ test.describe("Incident publications on the public status page", () => {
 
     const publication = await createPublication(token, statusPage.uid, title);
 
-    await page.goto(`${BASE}/status0/test`);
-    await page.waitForLoadState("networkidle");
+    try {
+      await page.goto(`${BASE}${STATUS_BASE}/test`);
+      await page.waitForLoadState("networkidle");
 
-    const section = page.getByTestId("active-incidents");
-    await expect(section).toBeVisible({ timeout: 10_000 });
+      const section = page.getByTestId("active-incidents");
+      await expect(section).toBeVisible({ timeout: 10_000 });
 
-    const card = page.locator(
-      `[data-testid="active-incident"]#incident-${publication.uid}`,
-    );
-    await expect(card).toBeVisible();
-    await expect(card.getByTestId("active-incident-title")).toHaveText(title);
-    await expect(card.getByTestId("active-incident-severity")).toHaveText(
-      "Major",
-    );
-    await expect(card.getByTestId("active-incident-state")).toHaveText(
-      "Investigating",
-    );
-    await expect(card).toHaveAttribute("data-incident-severity", "major");
+      const card = page.locator(
+        `[data-testid="active-incident"]#incident-${publication.uid}`,
+      );
+      await expect(card).toBeVisible();
+      await expect(card.getByTestId("active-incident-title")).toHaveText(title);
+      await expect(card.getByTestId("active-incident-severity")).toHaveText(
+        "Major",
+      );
+      await expect(card.getByTestId("active-incident-state")).toHaveText(
+        "Investigating",
+      );
+      await expect(card).toHaveAttribute("data-incident-severity", "major");
 
-    // The narrative entry posted alongside the publication is rendered — and
-    // it goes through the SHARED status-update card, so the kind badge that
-    // component owns is present too.
-    await expect(
-      card.getByText("We are investigating elevated error rates."),
-    ).toBeVisible();
-    await expect(card.getByTestId("status-update-kind").first()).toBeVisible();
+      // The narrative entry posted alongside the publication is rendered — and
+      // it goes through the SHARED status-update card, so the kind badge that
+      // component owns is present too.
+      await expect(
+        card.getByText("We are investigating elevated error rates."),
+      ).toBeVisible();
+      await expect(card.getByTestId("status-update-kind").first()).toBeVisible();
 
-    // The nested update must NOT double-box: it renders through the "plain"
-    // variant (spec 2026-08-20-13), so it carries none of its own
-    // rounded/border/bg chrome — that chrome belongs to the incident card
-    // it already sits inside.
-    const nestedUpdate = card.locator('[id^="update-"]').first();
-    await expect(nestedUpdate).toBeVisible();
-    await expect(nestedUpdate).not.toHaveClass(/rounded-lg/);
-    await expect(nestedUpdate).not.toHaveClass(/\bborder\b/);
-    await expect(nestedUpdate).not.toHaveClass(/\bbg-card\b/);
+      // The nested update must NOT double-box: it renders through the "plain"
+      // variant (spec 2026-08-20-13), so it carries none of its own
+      // rounded/border/bg chrome — that chrome belongs to the incident card
+      // it already sits inside.
+      const nestedUpdate = card.locator('[id^="update-"]').first();
+      await expect(nestedUpdate).toBeVisible();
+      await expect(nestedUpdate).not.toHaveClass(/rounded-lg/);
+      await expect(nestedUpdate).not.toHaveClass(/\bborder\b/);
+      await expect(nestedUpdate).not.toHaveClass(/\bbg-card\b/);
 
-    // Negative: nothing internal leaks into the public card. A check slug or a
-    // probe error string appearing here would be the security failure this
-    // feature is built to avoid.
-    await expect(card).not.toContainText("is down");
+      // Negative: nothing internal leaks into the public card. A check slug or
+      // a probe error string appearing here would be the security failure this
+      // feature is built to avoid.
+      await expect(card).not.toContainText("is down");
+    } finally {
+      // Resolve it on the way out. This publication lands on the SHARED default
+      // page of the `test` org, and CI runs with `retries: 2`, so leaving it
+      // open piles up to three permanently-active incidents per CI run — the
+      // accumulation that eventually breaks a future unscoped assertion (and
+      // colours the banner for every other spec that visits `/s/test`).
+      // Resolving rather than deleting because publications created page-side
+      // have no DELETE route; `resolved` is what takes it out of the active
+      // feed. Best-effort: a failure here must not mask the real verdict.
+      await api(
+        token,
+        "PATCH",
+        `/api/v1/orgs/test/status-pages/${statusPage.uid}/incidents/${publication.uid}`,
+        { state: "resolved" },
+      ).catch(() => {});
+    }
   });
 
   test("resolving a publication removes it from the active section", async ({
@@ -158,7 +199,7 @@ test.describe("Incident publications on the public status page", () => {
 
     const publication = await createPublication(token, statusPage.uid, title);
 
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
     await expect(page.locator(`#incident-${publication.uid}`)).toBeVisible({
       timeout: 10_000,
@@ -171,10 +212,38 @@ test.describe("Incident publications on the public status page", () => {
       { state: "resolved" },
     );
 
+    // Server truth first. The active feed is `ListPublicIncidents(…,
+    // activeOnly=true)`, which excludes `public_state = 'resolved'`; if that
+    // exclusion ever breaks, this is the assertion that says so, with no
+    // browser in the way to blur the verdict.
+    const payload = await getPublicStatusPage();
+    expect((payload.activeIncidents ?? []).map((i) => i.uid)).not.toContain(
+      publication.uid,
+    );
+
+    // Then the DOM — but only against a genuinely fresh fetch. A plain
+    // `page.reload()` is a NORMAL reload, so Chromium is entitled to replay
+    // the still-fresh `Cache-Control: public, max-age=60` payload (spec
+    // 2026-08-22-06) without ever asking the server, and it does: the reload
+    // produced no server-side access-log line at all. Routing the endpoint
+    // disables the HTTP cache for this context, so what renders below is
+    // server truth rather than a 60-second-old snapshot.
+    await page.route("**/api/v1/status-pages/**", (route) => route.continue());
     await page.reload();
     await page.waitForLoadState("networkidle");
 
     await expect(page.locator(`#incident-${publication.uid}`)).toHaveCount(0);
+
+    // Scoped as well as global, because an active card and a history card for
+    // the same publication both render `id="incident-<uid>"`. The global count
+    // above is the real guard; this one pins WHERE the card must not be, so a
+    // future history-panel change cannot quietly satisfy the first assertion
+    // while the active section regresses.
+    await expect(
+      page.locator(
+        `[data-testid="active-incidents"] #incident-${publication.uid}`,
+      ),
+    ).toHaveCount(0);
 
     // …but it IS reachable from the history panel, which is collapsed by
     // default and fetches only when opened.
@@ -286,7 +355,7 @@ test.describe("Incident publications on the public status page", () => {
     );
     expect(publicIncident.uid).toBe(publication.uid);
 
-    await page.goto(`${BASE}/status0/test/${statusPage.slug}`);
+    await page.goto(`${BASE}${STATUS_BASE}/test/${statusPage.slug}`);
     await page.waitForLoadState("networkidle");
 
     // POSITIVE: the affected component wears the badge…

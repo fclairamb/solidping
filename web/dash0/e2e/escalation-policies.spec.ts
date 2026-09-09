@@ -122,14 +122,26 @@ test.describe("Escalation policy editor", () => {
       token,
       `E2E Sched ${stamp}`,
     );
-    // Test org user: test@test.com — get their userUid via the members API.
+    // Resolve the AUTHENTICATED member (test@test.com) via the members API —
+    // explicitly by email, never `data[0]`. The shared `test` org accumulates
+    // members (invitations.spec.ts accepts a real invite and creates a user),
+    // so `data[0]` is only test@test.com on a virgin database; on any re-run
+    // against a persisted E2E database it is an `invite-e2e-…` user. That
+    // matters because the rename below goes through /auth/me, which renames
+    // the authenticated user and nobody else — picking the wrong row made the
+    // test assert a name and an email belonging to two different people.
+    const authEmail = "test@test.com";
     const membersResp = await page.request.get(
       `${API_BASE}/api/v1/orgs/test/members`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const members = await membersResp.json();
-    const userUid = (members.data ?? [])[0]?.userUid as string;
-    const userEmail = (members.data ?? [])[0]?.email as string;
+    const authMember = ((members.data ?? []) as { userUid: string; email: string }[]).find(
+      (m) => m.email === authEmail,
+    );
+    expect(authMember, `${authEmail} must be a member of the test org`).toBeTruthy();
+    const userUid = authMember!.userUid;
+    const userEmail = authMember!.email;
     expect(userUid).toBeTruthy();
     expect(userEmail).toBeTruthy();
 
@@ -191,7 +203,10 @@ test.describe("Escalation policy editor", () => {
       // Regression: the option must show both the member's name and their
       // email, so same-named members remain distinguishable (name-only
       // used to be indistinguishable across members with the same name).
-      const userOption = page.getByRole("option").first();
+      // Address the option by the just-set (per-run unique) display name, not
+      // by position: the org has other members, so `.first()` is whoever the
+      // API happens to sort first.
+      const userOption = page.getByRole("option", { name: userName });
       await expect(userOption).toContainText(userName);
       await expect(userOption).toContainText(userEmail);
       await userOption.click();

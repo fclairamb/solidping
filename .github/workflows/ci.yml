@@ -109,7 +109,6 @@ jobs:
 
       - name: Create embed placeholders for lint/test
         run: |
-          mkdir -p internal/app/res && echo "placeholder" > internal/app/res/index.html
           mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
           # web/status0's `build:widget` script emits the embeddable status
@@ -164,39 +163,6 @@ jobs:
       - name: Run tests
         run: go test -count=1 ./... -short
 
-  dash:
-    name: Dash Build
-    runs-on: ubuntu-24.04
-    needs: [changes]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
-    defaults:
-      run:
-        working-directory: web/dash
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: oven-sh/setup-bun@v2
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Run lint
-        run: bunx eslint .
-
-      - name: Build
-        run: bun run build
-
-      - name: Upload dash dist
-        uses: actions/upload-artifact@v7
-        with:
-          name: dash-dist
-          path: web/dash/dist
-          retention-days: 1
-
   dash0:
     name: Dash0 Build
     runs-on: ubuntu-24.04
@@ -216,6 +182,25 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      # Nothing used to type-check e2e/: tsconfig.app.json is `include: ["src"]`
+      # and tsconfig.node.json is `include: ["vite.config.ts"]`, so 159 spec and
+      # fixture files compiled nowhere. tsconfig.e2e.json covers them and is
+      # deliberately NOT referenced from the solution tsconfig.json, so a type
+      # error in a Playwright spec fails CI loudly without ever blocking the
+      # production bundle build below (spec 2026-09-09-03).
+      - name: Type-check e2e
+        run: bun run typecheck:e2e
+
+      # Scoped to ./e2e on purpose. `bun run lint` (a bare `eslint .`) is red on
+      # base with ~39 errors + ~440 warnings, effectively all under src/
+      # (react-hooks), so adding it here would land red on day one; paying that
+      # debt down is its own spec. Scoping to e2e keeps the e2e-only regression
+      # guards — the E2E_API_BASE/localhost:4000 rules and
+      # e2e-local/no-node-scope-in-browser-callback — actually enforced on PRs,
+      # which they were not before (spec 2026-09-09-03).
+      - name: Lint e2e
+        run: bun run lint:e2e
 
       - name: Run unit tests
         run: bun run test:unit
@@ -251,11 +236,17 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Same rationale as the dash0 job's Type-check e2e step: nothing else
+      # compiles e2e/ (spec 2026-09-09-03).
+      - name: Type-check e2e
+        run: bun run typecheck:e2e
+
       # Errors fail the job; warnings do not (eslint's default exit code).
-      # The baseline here is 0 errors + 9 pre-existing
+      # The baseline here is 0 errors plus a dozen pre-existing
       # react-refresh/only-export-components warnings on the route files, so
-      # --max-warnings 0 would land red on day one. Same treatment as the
-      # `dash` job's lint step.
+      # --max-warnings 0 would land red on day one. Unlike dash0 — whose src/
+      # ESLint debt forces its lint step to be scoped to e2e/ — this is a bare
+      # `eslint .`, so it already covers e2e/ and needs no extra step.
       - name: Run lint
         run: bun run lint
 
@@ -319,7 +310,7 @@ jobs:
   build:
     name: Build Binary
     runs-on: ubuntu-24.04
-    needs: [changes, dash, dash0, status0, docs]
+    needs: [changes, dash0, status0, docs]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
@@ -328,12 +319,6 @@ jobs:
         with:
           go-version: "1.27"
           cache-dependency-path: server/go.sum
-
-      - name: Download dash dist
-        uses: actions/download-artifact@v8
-        with:
-          name: dash-dist
-          path: server/internal/app/res
 
       - name: Download dash0 dist
         uses: actions/download-artifact@v8
@@ -491,17 +476,22 @@ jobs:
         env:
           CI: "true"
 
-      # status0's public status page has its own Playwright suite. Only the
-      # server-data-independent specs run here:
-      #   - translate-resilience: regression guard for the recurring "Failed to
-      #     execute 'removeChild' on 'Node'" crash (spec 2026-08-01-05); it
-      #     resolves its own org, so it works against this SP_RUNMODE=test server.
-      #   - response-time-chart (spec 2026-08-14-04) and dark-mode (spec
-      #     2026-08-14-05): both stub `**/api/v1/status-pages/:org/:slug` with
-      #     page.route and navigate to a synthetic org, so they need the server
-      #     only to serve the /status0 SPA shell — no seeded data at all.
-      # The remaining status0 specs still assume the `default` org that
-      # `make dev` seeds, so they would fail here and stay out.
+      # status0's public status page has its own Playwright suite, and the WHOLE
+      # of it runs here — no hand-maintained file list, so a new spec is covered
+      # the day it lands.
+      #
+      # It used to be three files (translate-resilience, response-time-chart,
+      # dark-mode), because everything else hardcoded the `default` org and its
+      # `status-0` page, which only `make dev` seeds — this job runs
+      # SP_RUNMODE=test, which seeds `test` instead. Those specs now resolve the
+      # org through `resolveDefaultStatusPage()` in e2e/fixtures.ts (honouring
+      # the E2E_ORG below), so they pass on either server.
+      #
+      # That selection was not free: incident-publications.spec.ts had never
+      # run in CI, and it had been failing deterministically for weeks
+      # (spec 2026-09-09-04). Enumerating files here is how that stayed
+      # invisible, so please do not go back to it — if a spec cannot run in CI,
+      # fix the spec or skip it in its own file, where the reason is visible.
       #
       # Same browser-install guard as the dash0 step above: no --with-deps, plus
       # a per-attempt `timeout` so a hung download can't eat the job budget.
@@ -521,11 +511,7 @@ jobs:
             echo "Playwright browser download failed after 3 attempts"
             exit 1
           fi
-          bunx playwright test \
-            translate-resilience.spec.ts \
-            response-time-chart.spec.ts \
-            dark-mode.spec.ts \
-            --reporter=list
+          bunx playwright test --reporter=list
         env:
           CI: "true"
           E2E_BASE_URL: "http://localhost:4000"
@@ -571,7 +557,7 @@ jobs:
         run: bunx playwright test session-continuity.spec.ts --reporter=list
         env:
           CI: "true"
-          E2E_BASE_URL: "http://localhost:4001/dash0/"
+          E2E_BASE_URL: "http://localhost:4001/d/"
           E2E_ACCESS_TOKEN_EXPIRY_SECONDS: "10"
 
       - name: Surface server log on failure
@@ -612,7 +598,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-24.04
-    needs: [changes, backend-lint, dash, dash0, status0, docs, build, e2e-tests]
+    needs: [changes, backend-lint, dash0, status0, docs, build, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

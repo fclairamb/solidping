@@ -166,6 +166,39 @@ interface Section {
  * and the next, heading line excluded) into kept `### Section` blocks.
  * Sections that end up with no kept lines are dropped entirely.
  */
+/**
+ * Rejoin a hard-wrapped bullet into the single logical line the rest of this
+ * module expects.
+ *
+ * The root CHANGELOG.md is hard-wrapped for readability (entries routinely ran
+ * past 2000 characters on one line, which made both the file and its diffs
+ * unreadable). Wrapping is purely presentational — but every other function
+ * here is line-based, and two of them anchor on the *end* of a line:
+ * `TRAILING_REF_CLUSTER_RE` strips release-please's `([abc1234](url),
+ * [#283](url))` clutter, and `PR_REF_RE` collects the PR numbers worth keeping.
+ * Left unfolded, a wrapped bullet would hide its trailing refs on a
+ * continuation line, and the commit-hash noise this module exists to remove
+ * would render on the docs page instead.
+ *
+ * A continuation is an indented, non-empty line directly after a bullet.
+ * Nothing else in the file is ever indented, so the rule is unambiguous, and a
+ * file with no wrapped bullets passes through this untouched.
+ */
+function unfoldWrappedBullets(bodyLines: string[]): string[] {
+  const out: string[] = [];
+
+  for (const line of bodyLines) {
+    const previous = out[out.length - 1];
+    if (/^\s+\S/.test(line) && previous !== undefined && previous.startsWith("* ")) {
+      out[out.length - 1] = `${previous} ${line.trim()}`;
+      continue;
+    }
+    out.push(line);
+  }
+
+  return out;
+}
+
 function transformBody(bodyLines: string[]): Section[] {
   const sections: Section[] = [];
   let current: Section | null = null;
@@ -245,7 +278,10 @@ function transformChunk(chunkLines: string[]): string {
  * emitted verbatim.
  */
 export function transformChangelog(raw: string): string {
-  const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  // Rejoin hard-wrapped bullets first, so every path below — including the
+  // verbatim fallbacks for an unrecognized heading or bullet — sees the single
+  // logical line the line-based matchers here assume.
+  const lines = unfoldWrappedBullets(raw.replace(/\r\n/g, "\n").split("\n"));
 
   const firstHeadingIdx = lines.findIndex((line) => /^## /.test(line));
   if (firstHeadingIdx === -1) {

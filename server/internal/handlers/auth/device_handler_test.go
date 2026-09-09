@@ -76,7 +76,7 @@ func TestDeviceAuthorizationEndpointWireFormat(t *testing.T) {
 		r.Contains(body, field, "RFC 8628 field %q must be spelled exactly as the RFC does", field)
 	}
 
-	r.Equal("https://ping.example.com/dash0/device", body["verification_uri"])
+	r.Equal("https://ping.example.com/d/device", body["verification_uri"])
 }
 
 // TestDeviceTokenEndpointErrorCodes walks the RFC 8628 §3.5 error vocabulary

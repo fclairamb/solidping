@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, disableHttpCache, type Page } from "./fixtures";
+import { test, expect, API_BASE, disableHttpCache, type Page, STATUS_BASE } from "./fixtures";
 
 // The appearance editor's contract in one place (spec 2026-07-27-02):
 //
@@ -105,9 +105,9 @@ test.describe("Status page appearance editor", () => {
     // public, max-age=60 directive would otherwise pin it to the pre-save
     // body for the whole test. See disableHttpCache.
     await disableHttpCache(publicPage);
-    // Absolute: baseURL is the /dash0/ app, and a relative path would
+    // Absolute: baseURL is the /d/ app, and a relative path would
     // resolve under it and silently load dash0 instead of status0.
-    await publicPage.goto(`${API_BASE}/status0/test/${slug}`);
+    await publicPage.goto(`${API_BASE}${STATUS_BASE}/test/${slug}`);
     await publicPage.waitForLoadState("networkidle");
     await expect(publicPage.locator("style", { hasText: "--brand" })).toHaveCount(
       0,
@@ -256,7 +256,7 @@ test.describe("Status page appearance editor", () => {
     // public, max-age=60 directive would otherwise pin it to the pre-save
     // body for the whole test. See disableHttpCache.
     await disableHttpCache(publicPage);
-    await publicPage.goto(`${API_BASE}/status0/test/${slug}`);
+    await publicPage.goto(`${API_BASE}${STATUS_BASE}/test/${slug}`);
     await publicPage.waitForLoadState("networkidle");
 
     // Baseline — without custom CSS both are on screen, so the assertions
@@ -354,7 +354,7 @@ test.describe("Status page appearance editor", () => {
     const previewLink = page.getByTestId("status-page-badge-preview-link");
     await expect(previewLink).toHaveAttribute(
       "href",
-      `/status0/test/${slug}`,
+      `${STATUS_BASE}/test/${slug}`,
     );
     await expect(previewLink).toHaveAttribute("target", "_blank");
     await expect(previewLink).toHaveAttribute("rel", "noopener noreferrer");
@@ -374,7 +374,7 @@ test.describe("Status page appearance editor", () => {
     // whether we are up" must not paste as a bare, unlinked image. Both
     // snippets wrap the badge in a link to the public status page, using the
     // same absolute origin as the badge URL itself.
-    const pageUrl = new URL(`/status0/test/${slug}`, page.url()).toString();
+    const pageUrl = new URL(`${STATUS_BASE}/test/${slug}`, page.url()).toString();
     const pageName = `e2e-appearance-${suffix}`;
     expect(markdownText).toBe(
       `[![${pageName} status](${urlText})](${pageUrl})`,

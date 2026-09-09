@@ -463,6 +463,7 @@
     "firstCheck": "Primera comprobación",
     "firstResult": "Primer resultado",
     "firstNotifier": "Primera notificación",
-    "firstIncident": "Primer aviso"
+    "firstIncident": "Primer aviso",
+    "openAudit": "Abrir registro de auditoría"
   }
 }

@@ -1,4 +1,16 @@
 // SolidPing service worker — push-only (no caching).
+//
+// This file lives in public/, so Vite copies it VERBATIM: none of the `base`
+// rewriting that applies to src/ happens here. Everything path-related is
+// therefore derived from `self.registration.scope` (the scope the app
+// registered this worker with, e.g. "https://host/d/"), never written out as a
+// literal — which is what made the worker survive the /dash0 -> /d move.
+
+// appPath returns an absolute in-app path under this worker's scope.
+// `scope` always ends in a slash, so a relative name resolves under it.
+function appPath(relative) {
+    return new URL(relative, self.registration.scope).pathname;
+}
 
 // Activate an updated worker immediately instead of waiting for every existing
 // tab to close. Safe here because this worker is push-only — it controls no
@@ -14,11 +26,11 @@ self.addEventListener('push', (event) => {
     // non-empty tag") when renotify is true and tag is empty. `??` only falls
     // back on null/undefined, so an empty string would slip through. Safari
     // doesn't enforce the rule, which is why this only broke on Chrome.
-    const url = data.url || '/dash0/';
+    const url = data.url || appPath('');
     event.waitUntil(
         self.registration.showNotification(data.title || 'SolidPing alert', {
             body:  data.body  || '',
-            icon:  '/dash0/assets/favicon-192.png',
+            icon:  appPath('assets/favicon-192.png'),
             data:  { url },
             tag:   url,
             renotify: true,

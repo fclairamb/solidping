@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 )
@@ -415,7 +416,8 @@ func (s *Service) notifyRequesterOfDecision(
 		return
 	}
 
-	dashboardURL := fmt.Sprintf("%s/dash0/orgs/%s", s.fullCfg.Server.BaseURL, org.Slug)
+	dashboardURL := fmt.Sprintf("%s%s/orgs/%s",
+		s.fullCfg.Server.BaseURL, config.DashboardBasePath, org.Slug)
 
 	viewModel := map[string]any{
 		"Decision":     decision,

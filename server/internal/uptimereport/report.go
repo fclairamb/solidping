@@ -718,7 +718,8 @@ func checkReportURL(baseURL, orgSlug string, check *models.Check) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", strings.TrimRight(baseURL, "/"), orgSlug, check.UID)
+	return fmt.Sprintf("%s%s/orgs/%s/checks/%s",
+		strings.TrimRight(baseURL, "/"), config.DashboardBasePath, orgSlug, check.UID)
 }
 
 // sloReportURL builds the dash0 detail-page URL for an objective row. Returns
@@ -728,7 +729,8 @@ func sloReportURL(baseURL, orgSlug string, objective *models.SLO) string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/dash0/orgs/%s/slos/%s", strings.TrimRight(baseURL, "/"), orgSlug, objective.UID)
+	return fmt.Sprintf("%s%s/orgs/%s/slos/%s",
+		strings.TrimRight(baseURL, "/"), config.DashboardBasePath, orgSlug, objective.UID)
 }
 
 // availabilityTextColor interpolates a dark, text-safe hex color across the

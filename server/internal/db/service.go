@@ -70,6 +70,22 @@ type PublicStatusUpdate struct {
 	PublishedAt    time.Time
 }
 
+// UserTokenActivity is one user's most recent token/session activity, as
+// returned by TokenActivityByUsers. Both fields are nil when nothing exists
+// for that user. Kept deliberately separate — SessionAt is dashboard
+// presence, TokenAt is a credential (PAT or OAuth grant) being used without
+// the person being in the dashboard — so a caller can tell "still around" from
+// "an automation is still running under this account".
+type UserTokenActivity struct {
+	// SessionAt is MAX(last_active_at) over the user's type=refresh rows,
+	// soft-deleted rows included.
+	SessionAt *time.Time
+	// TokenAt is the newer of MAX(last_active_at) over type=pat rows (NULL
+	// last_active_at excluded — a minted-but-unused PAT is not an access) and
+	// MAX(created_at) over type=oauth_refresh rows, both soft-deleted included.
+	TokenAt *time.Time
+}
+
 // ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
 type ListIncidentNotificationsFilter struct {
 	IncidentUID   string    // required for the per-incident endpoint; optional for user-scoped queries
@@ -178,6 +194,12 @@ type Service interface {
 	// and returns the number of rows killed. Used when an organization is
 	// deleted so no surviving session keeps org-scoped access.
 	DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int, error)
+	// TokenActivityByUsers returns, for each of the given user UIDs that has
+	// any token row (refresh, pat, or oauth_refresh — soft-deleted included),
+	// the most recent session and token activity. One query for the whole
+	// batch; a user absent from the map has no token rows at all. Returns
+	// nil, nil for an empty input without touching the database.
+	TokenActivityByUsers(ctx context.Context, userUIDs []string) (map[string]UserTokenActivity, error)
 
 	// OAuth (MCP authorization server) operations. Only the client registry
 	// has dedicated storage: authorization codes are issued/redeemed through

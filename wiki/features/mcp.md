@@ -21,7 +21,7 @@ The other methods are handled per the transport spec
 - **GET** (unauthenticated): a client probing with
   `Accept: text/event-stream` gets `405` + `Allow` (we don't serve
   server-initiated SSE streams); anything else — a human in a browser —
-  gets a `302` to the dashboard's MCP setup page (`/dash0/mcp?from=get`),
+  gets a `302` to the dashboard's MCP setup page (`/d/mcp?from=get`),
   which shows a "you opened the API endpoint in a browser" hint.
 - **DELETE** (behind `RequireMCPAuth`): explicit session termination —
   deletes the session named by `Mcp-Session-Id` (404 if unknown or

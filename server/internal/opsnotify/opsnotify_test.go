@@ -193,7 +193,7 @@ func testNotice() *opsnotify.Notice {
 		Event:   opsnotify.EventSupportMessage,
 		Subject: "[SolidPing support] New message on sms from +33600000000",
 		Body:    "Channel: sms\nFrom:    +33600000000\n\nis the api down for you too?",
-		URL:     "https://solidping.example/dash0/support/thread-1",
+		URL:     "https://solidping.example/d/support/thread-1",
 	}
 }
 

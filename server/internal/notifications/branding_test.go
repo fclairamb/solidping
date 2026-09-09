@@ -67,7 +67,7 @@ func TestIncidentEmailCarriesOrgBranding(t *testing.T) {
 	r.Contains(html, `alt="Acme Corp"`)
 	r.Contains(html, "Acme Corp — sent by SolidPing")
 	// The org logo is the primary mark, so the product logo is not also shown.
-	r.NotContains(html, "/dash0/logo.png")
+	r.NotContains(html, "/d/logo.png")
 }
 
 // TestIncidentEmailFallsBackToTheProductLogo is the negative control: an org
@@ -99,7 +99,7 @@ func TestIncidentEmailFallsBackToTheProductLogo(t *testing.T) {
 	r.Len(sender.sent, 1)
 
 	html := sender.sent[0].HTML
-	r.Contains(html, brandingIncidentBaseURL+"/dash0/logo.png")
+	r.Contains(html, brandingIncidentBaseURL+"/d/logo.png")
 	r.Contains(html, `alt="SolidPing"`)
 	r.Contains(html, "Acme Corp — sent by SolidPing")
 }

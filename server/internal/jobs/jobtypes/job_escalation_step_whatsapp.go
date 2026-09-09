@@ -119,8 +119,8 @@ func (r *EscalationStepJobRun) pageWhatsApp(
 
 // whatsAppCheckButtonParam builds the URL-button variable of the alert
 // template: the path Meta appends to the static prefix fixed when the template
-// was approved, documented as `{baseURL}/dash0/`. The result therefore resolves
-// to the check page, `/dash0/orgs/{org}/checks/{checkUid}`.
+// was approved, documented as `{baseURL}/d/`. The result therefore resolves
+// to the check page, `/d/orgs/{org}/checks/{checkUid}`.
 //
 // The base URL deliberately lives in the approved template rather than in
 // config: a WhatsApp URL button takes a fixed prefix plus one variable, so a

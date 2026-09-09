@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { DASH_BASE } from "./fixtures";
 
 // Admin Jobs observability page (spec 2026-06-15-05).
 // The test user (test@test.com) is an org admin AND super-admin in test mode,
@@ -6,7 +7,7 @@ import { test, expect } from "@playwright/test";
 // are all exercisable here.
 test.describe("Admin Jobs page", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/dash0/orgs/test/login");
+    await page.goto(`${DASH_BASE}/orgs/test/login`);
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -14,7 +15,7 @@ test.describe("Admin Jobs page", () => {
   });
 
   test("Jobs sidebar link is visible for admin", async ({ page }) => {
-    await page.goto("/dash0/orgs/test");
+    await page.goto(`${DASH_BASE}/orgs/test`);
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
     await expect(
@@ -23,7 +24,7 @@ test.describe("Admin Jobs page", () => {
   });
 
   test("renders the overview strip and both tabs", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
 
     // Activity overview strip with stat tiles.
@@ -35,7 +36,7 @@ test.describe("Admin Jobs page", () => {
   });
 
   test("can switch between tabs", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await expect(page.getByRole("tab", { name: /background jobs/i })).toBeVisible();
 
     // Switch to the check-schedule tab.
@@ -48,7 +49,7 @@ test.describe("Admin Jobs page", () => {
   test("tab selection drives the URL, survives reload, and back/forward works", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     // Default tab is background jobs; URL carries no schedule marker yet.
     await expect(
       page.getByRole("tab", { name: /background jobs/i }),
@@ -71,14 +72,14 @@ test.describe("Admin Jobs page", () => {
     ).toHaveAttribute("aria-selected", "true");
 
     // Deep-linking straight to a tab works too.
-    await page.goto("/dash0/orgs/test/jobs?tab=schedule");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs?tab=schedule`);
     await expect(
       page.getByRole("tab", { name: /check schedule/i }),
     ).toHaveAttribute("aria-selected", "true");
   });
 
   test("background-jobs tab exposes status and type filters", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     // The status & type filters are Radix Select comboboxes.
     await expect(
       page.getByRole("combobox", { name: /status/i }),
@@ -91,7 +92,7 @@ test.describe("Admin Jobs page", () => {
   test("super-admin sees the scope toggle; toggling shows the Org column", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
 
     // The "This org / All orgs (system)" toggle is super-admin only.
     const allOrgsBtn = page.getByTestId("scope-all-orgs");
@@ -110,7 +111,7 @@ test.describe("Admin Jobs page", () => {
     // instead verify the page is reachable for the admin (positive control).
     // The guard itself is unit-tested via the layout; here we assert the admin
     // is NOT redirected away from /jobs.
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await page.waitForURL(/\/jobs\/?$/);
     await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
   });
@@ -118,7 +119,7 @@ test.describe("Admin Jobs page", () => {
   test("check-schedule rows link to a check-job detail with no secret values", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await page.getByRole("tab", { name: /check schedule/i }).click();
 
     const firstRowLink = page
@@ -144,7 +145,7 @@ test.describe("Admin Jobs page", () => {
   });
 
   test("list page shows a Jobs breadcrumb in the header bar", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
     // The shared breadcrumb bar (rendered by the org layout) carries the Jobs
     // crumb. On the list page it is an active (non-link) crumb, so scoping to
@@ -155,7 +156,7 @@ test.describe("Admin Jobs page", () => {
   test("check-job detail extends the breadcrumb and the Jobs crumb links back", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await page.getByRole("tab", { name: /check schedule/i }).click();
 
     const firstRowLink = page.getByRole("table").getByRole("link").first();
@@ -185,7 +186,7 @@ test.describe("Admin Jobs page", () => {
     const errors: Error[] = [];
     page.on("pageerror", (e) => errors.push(e));
 
-    await page.goto("/dash0/orgs/test/jobs");
+    await page.goto(`${DASH_BASE}/orgs/test/jobs`);
     await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
     await page.getByRole("tab", { name: /check schedule/i }).click();
 

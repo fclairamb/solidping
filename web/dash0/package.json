@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "build:no-check": "vite build",
     "lint": "eslint .",
+    "lint:e2e": "eslint e2e",
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json",
     "test:unit": "vitest run",
     "preview": "vite preview",
     "test:e2e": "playwright test",

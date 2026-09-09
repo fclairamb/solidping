@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 // Coverage for spec 2026-08-20-01: the "What the probe saw" card on the
 // incident detail page, which renders the opt-in capture of the response a
@@ -21,7 +21,7 @@ test.describe("Incident probe-response capture", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${TEXT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("probe-response-card");
@@ -77,7 +77,7 @@ test.describe("Incident probe-response capture", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${TRUNCATED_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TRUNCATED_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("probe-response-card");
@@ -106,7 +106,7 @@ test.describe("Incident probe-response capture", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${BINARY_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${BINARY_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("probe-response-card");
@@ -140,11 +140,11 @@ test.describe("Incident probe-response capture", () => {
     // Positive control first: on an incident that HAS a capture the card is
     // rendered, so "absent" below is evidence of the guard and not of a
     // broken page or a wrong test id.
-    await page.goto(`/dash0/orgs/test/incidents/${TEXT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("probe-response-card")).toBeVisible();
 
-    await page.goto(`/dash0/orgs/test/incidents/${NO_CAPTURE_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${NO_CAPTURE_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     // The page really did render (its sibling failure card is there) — it is
@@ -157,7 +157,7 @@ test.describe("Incident probe-response capture", () => {
     const page = authenticatedPage;
 
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`/dash0/orgs/test/incidents/${TEXT_INCIDENT}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${TEXT_INCIDENT}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("probe-response-card")).toBeVisible();

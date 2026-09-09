@@ -31,7 +31,7 @@ func TestEscalationSlackDMMessage(t *testing.T) {
 			orgSlug:   "acme",
 			baseURL:   "https://solidping.example.com",
 			want: "[escalation] Incident #42 for API prod requires your attention. " +
-				"<https://solidping.example.com/dash0/orgs/acme/incidents/inc-1|Open the dashboard> " +
+				"<https://solidping.example.com/d/orgs/acme/incidents/inc-1|Open the dashboard> " +
 				"to acknowledge or resolve.",
 		},
 		{
@@ -41,7 +41,7 @@ func TestEscalationSlackDMMessage(t *testing.T) {
 			orgSlug:   "acme",
 			baseURL:   "https://solidping.example.com",
 			want: "[escalation] Incident for API prod requires your attention. " +
-				"<https://solidping.example.com/dash0/orgs/acme/incidents/inc-2|Open the dashboard> " +
+				"<https://solidping.example.com/d/orgs/acme/incidents/inc-2|Open the dashboard> " +
 				"to acknowledge or resolve.",
 		},
 		{

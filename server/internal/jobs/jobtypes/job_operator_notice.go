@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 )
@@ -191,7 +192,7 @@ func enrichWithOrganization(
 
 	if notice.URL == "" && jctx.AppConfig != nil {
 		notice.URL = strings.TrimRight(jctx.AppConfig.Server.BaseURL, "/") +
-			"/dash0/orgs/" + slugs[0] + "/organization/members"
+			config.DashboardBasePath + "/orgs/" + slugs[0] + "/organization/members"
 	}
 
 	return notice
