@@ -463,6 +463,7 @@
     "firstCheck": "Premier contrôle",
     "firstResult": "Premier résultat",
     "firstNotifier": "Première notification",
-    "firstIncident": "Première alerte"
+    "firstIncident": "Première alerte",
+    "openAudit": "Ouvrir le journal d'audit"
   }
 }
