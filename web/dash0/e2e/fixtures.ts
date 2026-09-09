@@ -43,6 +43,40 @@ export function escapeRegExp(value: string): string {
 }
 
 /**
+ * localStorage key `lib/last-auth-method.ts` writes the remembered sign-in
+ * method to. Seeded via `page.addInitScript` by the tests that assert the
+ * /login promotion — and by the /register tests that assert it does NOT
+ * happen there.
+ */
+export const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
+
+/**
+ * Reads `/api/v1/auth/providers` so config-dependent tests can decide whether
+ * this backend actually has an OAuth provider / passkeys configured, and skip
+ * gracefully (covered by manual browser verification) when it doesn't.
+ *
+ * Shared by `login.spec.ts` and `register-oauth-buttons.spec.ts`, which assert
+ * two halves of the same feature (spec 2026-09-09-02).
+ */
+export async function fetchAuthCapabilities(
+  baseURL: string | undefined,
+): Promise<{
+  providers: { type: string; name: string }[];
+  passkeysEnabled: boolean;
+}> {
+  const root = baseURL ? new URL(baseURL).origin : API_BASE;
+  const res = await fetch(`${root}/api/v1/auth/providers`);
+  const body = (await res.json()) as {
+    data?: { type: string; name: string }[];
+    passkeysEnabled?: boolean;
+  };
+  return {
+    providers: body.data ?? [],
+    passkeysEnabled: body.passkeysEnabled ?? false,
+  };
+}
+
+/**
  * Test fixture that provides authenticated page context.
  * Uses the test credentials (test@test.com/test) for login.
  *

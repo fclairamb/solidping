@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildOAuthLoginUrl,
   deviceVerificationReturnTo,
   isDeviceVerificationReturnTo,
   isOAuthAuthorizeReturnTo,
@@ -288,5 +289,60 @@ describe("stripOAuthErrorParams", () => {
     ).toBe(
       `${BASE}/orgs/default?returnTo=${encodeURIComponent(BASE)}%2Forgs%2Fdefault%3Ferror%3DOAUTH_FAILED`,
     );
+  });
+});
+
+describe("buildOAuthLoginUrl", () => {
+  const decodeRedirectURI = (url: string) =>
+    new URLSearchParams(url.slice(url.indexOf("?") + 1)).get("redirect_uri");
+
+  it("sends a plain sign-in back to the org root", () => {
+    const url = buildOAuthLoginUrl({ org: "acme", providerType: "github" });
+
+    expect(url.startsWith("/api/v1/auth/github/login?")).toBe(true);
+    const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    expect(params.get("org")).toBe("acme");
+    expect(params.get("redirect_uri")).toBe(`${BASE}/orgs/acme`);
+  });
+
+  it("escapes an org slug that would otherwise break out of the query string", () => {
+    const url = buildOAuthLoginUrl({ org: "a&b=c", providerType: "google" });
+
+    const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+    expect(params.get("org")).toBe("a&b=c");
+  });
+
+  it("strips a stale ?error= out of the returnTo before it becomes redirect_uri", () => {
+    // The retry case: a failed attempt left error/error_description on the
+    // URL and the 401 bounce captured them into returnTo. Without the strip
+    // each retry nests the last failure one URL-encoding deeper
+    // (spec 2026-08-25-01).
+    const url = buildOAuthLoginUrl({
+      org: "acme",
+      providerType: "google",
+      returnTo: `${BASE}/orgs/acme/checks?error=OAUTH_FAILED&status=down`,
+    });
+
+    expect(decodeRedirectURI(url)).toBe(`${BASE}/orgs/acme/checks?status=down`);
+  });
+
+  it("wraps an MCP authorize returnTo in a login bounce instead of redirecting to it", () => {
+    // The provider callback appends the session tokens to redirect_uri, and
+    // only the SPA handoff knows how to persist them — pointing the callback
+    // straight at /api/v1/oauth/authorize would drop them.
+    const returnTo = "/api/v1/oauth/authorize?client_id=abc&state=xyz";
+    const url = buildOAuthLoginUrl({
+      org: "acme",
+      providerType: "github",
+      returnTo,
+    });
+
+    const redirectURI = decodeRedirectURI(url);
+    expect(redirectURI).toBe(
+      `${BASE}/orgs/acme/login?returnTo=${encodeURIComponent(returnTo)}`,
+    );
+    // Prove the negative: the authorize endpoint is never the redirect target
+    // itself, only a returnTo carried through the login page.
+    expect(redirectURI?.startsWith("/api/v1/oauth/authorize")).toBe(false);
   });
 });
