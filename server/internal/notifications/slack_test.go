@@ -773,6 +773,12 @@ func (m *mockDBService) DeleteUserTokensByOrg(_ context.Context, _ string) (int,
 	panic("not implemented")
 }
 
+func (m *mockDBService) TokenActivityByUsers(
+	_ context.Context, _ []string,
+) (map[string]db.UserTokenActivity, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateOAuthClient(_ context.Context, _ *models.OAuthClient) error {
 	panic("not implemented")
 }
