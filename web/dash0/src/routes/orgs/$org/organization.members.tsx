@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import { Loader2, Trash2, BellPlus } from "lucide-react";
+import { Loader2, Trash2, BellPlus, Monitor, KeyRound } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -59,6 +59,9 @@ import {
   buildCoverageMap,
 } from "@/components/notifications/member-coverage";
 import { useMemberCoverage } from "@/api/hooks";
+import { TimeAgoOrDash } from "@/components/ui/time-ago";
+import { formatRelativeTime } from "@/lib/time-ago";
+import { lastSeenFor } from "@/lib/last-seen";
 
 export const Route = createFileRoute("/orgs/$org/organization/members")({
   // Emails sent before the requests URL was fixed (spec
@@ -89,6 +92,72 @@ function initialsFor(member: MemberResponse): string {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return source.slice(0, 2).toUpperCase();
+}
+
+/**
+ * Renders the "Last seen" headline (relative time, or "Never") plus a small
+ * channel icon whose tooltip breaks the value down into both underlying
+ * signals. Used both for the desktop table column and the mobile secondary
+ * line under the member's name — see design-reference.tsx's TimeAgo section
+ * for this pattern cataloged in isolation.
+ *
+ * `testId`/`viaTestId` are omitted (no `data-testid` rendered) for the
+ * mobile line so it doesn't collide with the desktop cell's testid — both
+ * exist in the DOM at once, only CSS toggles which one is visible.
+ */
+function LastSeenIndicator({
+  member,
+  testId,
+  viaTestId,
+}: {
+  member: MemberResponse;
+  testId?: string;
+  viaTestId?: string;
+}) {
+  const { t } = useTranslation("org");
+  const { t: tc } = useTranslation("common");
+  const { lastSeenAt, lastSeenVia } = lastSeenFor(member);
+
+  const relativeOrNever = (iso?: string) =>
+    iso ? formatRelativeTime(new Date(iso), tc) : t("members.lastSeen.never");
+
+  const sessionLine = t("members.lastSeen.breakdownLine", {
+    channel: t("members.lastSeen.viaSession"),
+    time: relativeOrNever(member.lastSessionActivityAt),
+  });
+  const tokenLine = t("members.lastSeen.breakdownLine", {
+    channel: t("members.lastSeen.viaToken"),
+    time: relativeOrNever(member.lastTokenActivityAt),
+  });
+
+  return (
+    <div className="flex items-center gap-1.5" data-testid={testId}>
+      <TimeAgoOrDash date={lastSeenAt} emptyLabel={t("members.lastSeen.never")} />
+      {lastSeenVia && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              role="img"
+              aria-label={`${sessionLine}, ${tokenLine}`}
+              className="inline-flex shrink-0 text-muted-foreground"
+              data-testid={viaTestId}
+              data-via={lastSeenVia}
+            >
+              {lastSeenVia === "session" ? (
+                <Monitor className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div>{sessionLine}</div>
+            <div>{tokenLine}</div>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
 }
 
 function MembersPage() {
@@ -237,6 +306,9 @@ function MembersPage() {
                   <TableHead className="hidden lg:table-cell">
                     {t("members.column.joinedAt")}
                   </TableHead>
+                  <TableHead className="hidden lg:table-cell">
+                    {t("members.column.lastSeen")}
+                  </TableHead>
                   <TableHead className="w-[120px]" />
                 </TableRow>
               </TableHeader>
@@ -259,9 +331,14 @@ function MembersPage() {
                               initialsFor(member)
                             )}
                           </span>
-                          <span className="min-w-0 truncate font-medium">
-                            {member.name || member.email}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="block truncate font-medium">
+                              {member.name || member.email}
+                            </span>
+                            <div className="mt-0.5 text-xs text-muted-foreground lg:hidden">
+                              <LastSeenIndicator member={member} />
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
@@ -331,6 +408,13 @@ function MembersPage() {
                       )}
                       <TableCell className="hidden text-muted-foreground lg:table-cell">
                         {new Date(joined).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
+                        <LastSeenIndicator
+                          member={member}
+                          testId={`member-last-seen-${member.email}`}
+                          viaTestId={`member-last-seen-via-${member.email}`}
+                        />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
