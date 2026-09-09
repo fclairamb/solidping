@@ -5,7 +5,7 @@
 
 ### Features
 
-* **server:** /demo enters the live demo when demo mode is on ([#353](https://github.com/fclairamb/solidping/issues/353)) ([58551a6](https://github.com/fclairamb/solidping/commit/58551a6e1b20354a90e8e4a23e4e02748c2843bc))
+* **demo:** the live demo now has an address you can say out loud: **`https://solidping.io/demo`**. The canonical link was `https://solidping.io/dash0/login?demo=true` — fine to click, poor to print, to type, or to read down a phone, and one wrong character (`/dash0/login/?demo`, say) quietly dropped the visitor on an ordinary login form with no sign that anything had been missed. `/demo` itself used to be nothing at all: it matched no route and fell through to the dashboard's catch-all, which answered 200 with an application shell that had no idea what had been asked for. It now redirects to that same canonical address, so every existing rule about the flag — which organization you land in, what happens when you already hold a session — applies unchanged. The shortcut exists only while the demo is switched on (`SP_DEMO_ENABLED`): a self-hosted install without one behaves exactly as it did before, rather than redirecting into a login page that then shows an ordinary form. The redirect is deliberately temporary rather than permanent, so switching the demo off takes effect on the very next request instead of lingering in visitors' browser caches. On a customer's own status-page domain `/demo` is refused, for the same reason `/dash0` already is — a status page must never bounce its readers into the SolidPing dashboard ([#353](https://github.com/fclairamb/solidping/issues/353)) ([58551a6](https://github.com/fclairamb/solidping/commit/58551a6e1b20354a90e8e4a23e4e02748c2843bc))
 
 
 ### Bug Fixes
