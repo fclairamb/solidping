@@ -189,3 +189,27 @@ cd web/status0 && CI=true E2E_BASE_URL="http://localhost:<port>" E2E_ORG=test \
 6. **Gate** — `make build-backend lint-back test`, `make build-status0`,
    `cd web/status0 && bun run lint && bun run typecheck:e2e`, and the full
    status0 suite against the side-car.
+
+## Diagnosis
+
+**Verdict: the test's premise is wrong — the product is correct.** The leading
+hypothesis is confirmed by direct observation, not by reading code. Against a
+fresh `SP_RUNMODE=test` Postgres side-car on `:4033`: an unauthenticated
+`curl` of `GET /api/v1/status-pages/test` issued immediately after the
+`PATCH … {"state":"resolved"}` returns `activeIncidents: []` (it returned the
+publication before the PATCH), and the response carries
+`Cache-Control: public, max-age=60`. An instrumented Playwright run of the same
+scenario shows the post-`page.reload()` status-page request completing with
+Chromium's cache-hit marker — `responseBodySize: -396` against `1335` for the
+uncached first load — and **no matching line in the server access log** between
+the initial load and the later cache-defeated fetch, i.e. the reload's request
+never reached the server. A `fetch("/api/v1/status-pages/test", {cache:
+"no-store"})` executed inside that very page right after the reload returns
+`activeIncidents: []`, while the DOM still shows `#incident-<uid>` (count 1,
+and 1 within `[data-testid="active-incidents"]`). So the resolve lands,
+`activeOnly` is threaded through the wired-up adapter, nothing re-opens the
+publication, and the visible card is not a history-panel leak — it is the
+browser legitimately replaying the still-fresh pre-resolution JSON, exactly as
+`Cache-Control: public, max-age=60` (spec 2026-08-22-06) permits. A normal
+`page.reload()` cannot observe a server-truth transition through a
+deliberately cacheable endpoint; the test must defeat the cache.
