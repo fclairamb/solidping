@@ -180,22 +180,30 @@ sweep; extend it rather than starting a new file.
 13. **`TestSend` unaffected**: `reportschedules` service test — an org with
     zero checks still produces one email job when a test send is requested.
 
-### Open questions / decisions for the implementer
+### Resolved open questions
 
-- **Should the empty-scope skip also disable the schedule** after N consecutive
-  empty periods? Default: **no**. A schedule is a standing intent; an org that
-  adds its first check in March should get its March report without having to
-  re-enable anything. Suppressing the send is enough.
-- **Should a suppressed period be visible in the UI** (e.g. `last_run_at`
-  showing a run that mailed nothing)? Today both columns move on a suppressed
-  period, which reads as "it ran". That is accurate — the sweep did run — and
-  no surface currently claims an email was sent. Left as is; if a "last sent"
-  distinct from "last run" is ever wanted, it needs its own column rather than
-  a reinterpretation of these two.
-- The B guard makes the seeded schedule's first period a no-op for every new
-  org, which means **a new account's first report arrives at the end of its
-  first full period**. That is the intended behaviour, not a regression to
-  flag.
+Every question this spec raised is decided below. Nothing here is left to the
+implementer's judgement — implement exactly these decisions.
+
+**Q. Should the empty-scope skip also disable the schedule after N consecutive
+empty periods?**
+**Decision: no.** Do not add any auto-disable. A schedule is a standing intent:
+an org that adds its first check in March must get its March report without
+re-enabling anything. Suppressing the individual send is the whole fix.
+
+**Q. Should a suppressed period be visible in the UI (e.g. `last_run_at`
+showing a run that mailed nothing)?**
+**Decision: leave it as is.** Both `last_period_start` and `last_run_at` keep
+moving on a suppressed period. That is accurate — the sweep did run — and no
+surface currently claims an email was sent. Do not add a column, a flag, or a
+UI change in this spec. If a "last sent" distinct from "last run" is ever
+wanted, it needs its own column rather than a reinterpretation of these two.
+
+**Q. Guard B makes the seeded schedule's first period a no-op for every new
+org — is that acceptable?**
+**Decision: yes, that is the intended behaviour.** A new account's first report
+arrives at the end of its first full period. Do not add a compensating
+"welcome report" and do not treat this as a regression.
 
 ## Implementation Plan
 
