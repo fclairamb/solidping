@@ -221,11 +221,30 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           // events; the backend sends an explicit host when one is configured.
           api_host: settings.host || "/ingest",
           // Conservative autocapture: never ship typed values or element
-          // attributes, and never record sessions.
+          // attributes.
           autocapture: true,
           mask_all_element_attributes: true,
           mask_all_text: true,
-          disable_session_recording: true,
+          // Session replay, fully masked. It exists for ONE question the event
+          // stream cannot answer — where a first-run user stalls before their
+          // first check — and the 2026-09-09 signup is why: reconstructing six
+          // clicks took an evening of decoding `elements_chain`, and the three
+          // minutes he sat still stayed dark.
+          //
+          // Masking is not optional decoration here. Every replay is recorded
+          // with all text and all inputs masked, so a session shows layout,
+          // cursor, scroll and which control was clicked — never a check name,
+          // a monitored URL, an incident, or anything typed. That keeps replay
+          // inside the same promise the rest of this config makes: SolidPing
+          // learns how its UI is used, never what a customer monitors.
+          disable_session_recording: false,
+          session_recording: {
+            maskAllInputs: true,
+            // Mask every text node, matching mask_all_text above. Without this
+            // a replay would render check names and target URLs verbatim — the
+            // exact data sanitizeProperties strips from event properties.
+            maskTextSelector: "*",
+          },
           // Only create person profiles for users we explicitly identify.
           person_profiles: "identified_only",
           // Scrub org slugs / resource UIDs out of every captured URL.
