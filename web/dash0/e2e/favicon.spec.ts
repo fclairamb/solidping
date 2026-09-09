@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE, DASH_BASE, STATUS_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE, STATUS_BASE, escapeRegExp } from "./fixtures";
 
 /**
  * Favicon regression guard (spec: favicons under public/assets/).
@@ -80,11 +80,49 @@ test.describe("favicons resolve on deep SPA routes", () => {
     await assertLinksServeRealAssets(page, `${STATUS_BASE}`);
   });
 
-  test("dash0 service worker pushes the assets/ notification icon", async ({ page }) => {
-    // sw.js is static (not Vite-processed), so its icon path is hardcoded and
-    // easy to break when assets move.
+  test("dash0 service worker's notification icon resolves to a served asset", async ({
+    page,
+  }) => {
+    // sw.js lives in public/, so Vite copies it verbatim and it can carry no
+    // build-time `base`. Since spec 2026-09-09-01 (/dash0 -> /d) every path in
+    // it is derived at RUNTIME from `self.registration.scope` through the
+    // `appPath()` helper — which is precisely what let the worker survive the
+    // move. There is therefore no absolute icon literal left to grep for, and
+    // asserting one again would re-introduce the thing that broke.
+    //
+    // What is still worth protecting is the property the literal used to
+    // stand for: the icon the worker computes is a real, served asset. So
+    // extract the argument the worker hands to appPath(), check it is
+    // scope-relative (the base-agnostic bit), resolve it exactly as appPath
+    // would against the worker's real scope, and fetch it.
     const response = await page.request.get(`${API_BASE}${DASH_BASE}/sw.js`);
     expect(response.status()).toBe(200);
-    expect((await response.body()).toString()).toContain(`${DASH_BASE}/assets/favicon-192.png`);
+    const source = (await response.body()).toString();
+
+    const iconMatch = source.match(/icon:\s*appPath\((['"`])([^'"`]+)\1\)/);
+    expect(
+      iconMatch,
+      "sw.js must still compute its notification icon via appPath(<relative path>)",
+    ).not.toBeNull();
+
+    const iconRelative = iconMatch![2];
+    expect(
+      iconRelative.startsWith("/"),
+      `sw.js icon "${iconRelative}" must be scope-relative, not an absolute literal`,
+    ).toBe(false);
+
+    // appPath() === new URL(relative, self.registration.scope); the worker's
+    // real scope is the app base, which always ends in a slash.
+    const iconURL = new URL(iconRelative, `${API_BASE}${DASH_BASE}/`);
+    expect(iconURL.pathname, "the computed icon must live under the app base").toMatch(
+      new RegExp(`^${escapeRegExp(DASH_BASE)}/`),
+    );
+
+    const iconResponse = await page.request.get(iconURL.toString());
+    expect(iconResponse.status(), `${iconURL.href} must be served`).toBe(200);
+    expect(
+      iconResponse.headers()["content-type"] ?? "",
+      `${iconURL.href} must be an image, not the SPA index fallback`,
+    ).toContain("image/");
   });
 });

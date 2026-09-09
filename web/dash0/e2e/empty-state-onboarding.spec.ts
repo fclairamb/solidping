@@ -69,7 +69,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
 
     // Tertiary path: the full check editor hint is still there.
     await expect(
-      page.locator('a[href=`${DASH_BASE}/orgs/test/checks/new`]'),
+      page.locator(`a[href="${DASH_BASE}/orgs/test/checks/new"]`),
     ).toBeVisible();
   });
 

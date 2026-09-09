@@ -31,7 +31,14 @@ test.describe("Invitations", () => {
     expect(body.inviteUrl).toMatch(/^https?:\/\//);
   });
 
-  test("should use dash app in invite URL", async ({ authenticatedPage }) => {
+  // The legacy `dash` app was deleted by spec 2026-09-09-01. `app` stays in
+  // the request shape for backwards compatibility, so "dash" is still
+  // ACCEPTED (201) — but it is no longer HONOURED: both accepted values now
+  // resolve to config.DashboardBasePath
+  // (server/internal/handlers/auth/service.go, CreateInvitation).
+  test('legacy app "dash" is still accepted but resolves to the dashboard base path', async ({
+    authenticatedPage,
+  }) => {
     const page = authenticatedPage;
 
     const response = await page.request.post(
@@ -49,7 +56,9 @@ test.describe("Invitations", () => {
     expect(response.status()).toBe(201);
     const body = await response.json();
 
-    expect(body.inviteUrl).toContain("/dash/invite/");
+    expect(body.inviteUrl).toContain(`${DASH_BASE}/invite/`);
+    // ...and specifically NOT the dead legacy prefix it used to produce.
+    expect(body.inviteUrl).not.toContain("/dash/invite/");
   });
 
   test("should reject invalid app", async ({ authenticatedPage }) => {

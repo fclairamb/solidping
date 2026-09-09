@@ -3295,7 +3295,10 @@ func humanizeInviteExpiresIn(expiresIn string) string {
 	return expiresIn
 }
 
-// ErrInvalidApp is returned when an invalid app value is provided.
+// ErrInvalidApp is returned when an invalid app value is provided. Since spec
+// 2026-09-09-01 the two accepted values are equivalent — both resolve to
+// config.DashboardBasePath — so this only guards the accepted-value set, it no
+// longer selects a target application.
 var ErrInvalidApp = errors.New("invalid app: must be one of dash0, dash")
 
 // InviteResponse contains the response after creating an invitation.
