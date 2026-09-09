@@ -130,47 +130,64 @@ test.describe("Incident publications on the public status page", () => {
 
     const publication = await createPublication(token, statusPage.uid, title);
 
-    await page.goto(`${BASE}${STATUS_BASE}/test`);
-    await page.waitForLoadState("networkidle");
+    try {
+      await page.goto(`${BASE}${STATUS_BASE}/test`);
+      await page.waitForLoadState("networkidle");
 
-    const section = page.getByTestId("active-incidents");
-    await expect(section).toBeVisible({ timeout: 10_000 });
+      const section = page.getByTestId("active-incidents");
+      await expect(section).toBeVisible({ timeout: 10_000 });
 
-    const card = page.locator(
-      `[data-testid="active-incident"]#incident-${publication.uid}`,
-    );
-    await expect(card).toBeVisible();
-    await expect(card.getByTestId("active-incident-title")).toHaveText(title);
-    await expect(card.getByTestId("active-incident-severity")).toHaveText(
-      "Major",
-    );
-    await expect(card.getByTestId("active-incident-state")).toHaveText(
-      "Investigating",
-    );
-    await expect(card).toHaveAttribute("data-incident-severity", "major");
+      const card = page.locator(
+        `[data-testid="active-incident"]#incident-${publication.uid}`,
+      );
+      await expect(card).toBeVisible();
+      await expect(card.getByTestId("active-incident-title")).toHaveText(title);
+      await expect(card.getByTestId("active-incident-severity")).toHaveText(
+        "Major",
+      );
+      await expect(card.getByTestId("active-incident-state")).toHaveText(
+        "Investigating",
+      );
+      await expect(card).toHaveAttribute("data-incident-severity", "major");
 
-    // The narrative entry posted alongside the publication is rendered — and
-    // it goes through the SHARED status-update card, so the kind badge that
-    // component owns is present too.
-    await expect(
-      card.getByText("We are investigating elevated error rates."),
-    ).toBeVisible();
-    await expect(card.getByTestId("status-update-kind").first()).toBeVisible();
+      // The narrative entry posted alongside the publication is rendered — and
+      // it goes through the SHARED status-update card, so the kind badge that
+      // component owns is present too.
+      await expect(
+        card.getByText("We are investigating elevated error rates."),
+      ).toBeVisible();
+      await expect(card.getByTestId("status-update-kind").first()).toBeVisible();
 
-    // The nested update must NOT double-box: it renders through the "plain"
-    // variant (spec 2026-08-20-13), so it carries none of its own
-    // rounded/border/bg chrome — that chrome belongs to the incident card
-    // it already sits inside.
-    const nestedUpdate = card.locator('[id^="update-"]').first();
-    await expect(nestedUpdate).toBeVisible();
-    await expect(nestedUpdate).not.toHaveClass(/rounded-lg/);
-    await expect(nestedUpdate).not.toHaveClass(/\bborder\b/);
-    await expect(nestedUpdate).not.toHaveClass(/\bbg-card\b/);
+      // The nested update must NOT double-box: it renders through the "plain"
+      // variant (spec 2026-08-20-13), so it carries none of its own
+      // rounded/border/bg chrome — that chrome belongs to the incident card
+      // it already sits inside.
+      const nestedUpdate = card.locator('[id^="update-"]').first();
+      await expect(nestedUpdate).toBeVisible();
+      await expect(nestedUpdate).not.toHaveClass(/rounded-lg/);
+      await expect(nestedUpdate).not.toHaveClass(/\bborder\b/);
+      await expect(nestedUpdate).not.toHaveClass(/\bbg-card\b/);
 
-    // Negative: nothing internal leaks into the public card. A check slug or a
-    // probe error string appearing here would be the security failure this
-    // feature is built to avoid.
-    await expect(card).not.toContainText("is down");
+      // Negative: nothing internal leaks into the public card. A check slug or
+      // a probe error string appearing here would be the security failure this
+      // feature is built to avoid.
+      await expect(card).not.toContainText("is down");
+    } finally {
+      // Resolve it on the way out. This publication lands on the SHARED default
+      // page of the `test` org, and CI runs with `retries: 2`, so leaving it
+      // open piles up to three permanently-active incidents per CI run — the
+      // accumulation that eventually breaks a future unscoped assertion (and
+      // colours the banner for every other spec that visits `/s/test`).
+      // Resolving rather than deleting because publications created page-side
+      // have no DELETE route; `resolved` is what takes it out of the active
+      // feed. Best-effort: a failure here must not mask the real verdict.
+      await api(
+        token,
+        "PATCH",
+        `/api/v1/orgs/test/status-pages/${statusPage.uid}/incidents/${publication.uid}`,
+        { state: "resolved" },
+      ).catch(() => {});
+    }
   });
 
   test("resolving a publication removes it from the active section", async ({

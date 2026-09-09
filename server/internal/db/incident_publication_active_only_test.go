@@ -66,9 +66,11 @@ func testIncidentPublicationsActiveOnly(ctx context.Context, t *testing.T, svc d
 		uids[state] = pub.UID
 	}
 
-	// A soft-deleted resolved row: it must not come back on either branch, so a
-	// future "just drop the ActiveOnly clause" cannot be rationalized as
-	// harmless because deleted_at already hides most of it.
+	// A soft-deleted row in an ACTIVE state (investigating): the stronger case,
+	// because the ActiveOnly clause would happily let it through on its state
+	// alone — only deleted_at keeps it out. It must not come back on either
+	// branch, so a future "just drop the ActiveOnly clause" cannot be
+	// rationalized as harmless because deleted_at already hides most of it.
 	deleted := models.NewIncidentPublication(org.UID, page.UID, "pub deleted", now.Add(10*time.Second))
 	deleted.PublicState = models.PublicationStateInvestigating
 	r.NoError(svc.CreateIncidentPublication(ctx, deleted))

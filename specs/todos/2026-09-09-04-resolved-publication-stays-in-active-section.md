@@ -213,3 +213,26 @@ browser legitimately replaying the still-fresh pre-resolution JSON, exactly as
 `Cache-Control: public, max-age=60` (spec 2026-08-22-06) permits. A normal
 `page.reload()` cannot observe a server-truth transition through a
 deliberately cacheable endpoint; the test must defeat the cache.
+
+## Audit follow-up — no spec is left effectively excluded
+
+Putting all 13 files in CI is only half the job: a file that runs and always
+skips buys nothing. `maintenance-badge.spec.ts` was exactly that. It skipped
+whenever the "Scheduled Maintenance" badge count was 0, and the `SP_RUNMODE=test`
+seed (`server/test/testdata/testdata.go`) creates the status page and nothing
+else — no sections, no resources, no maintenance windows — so the count was
+structurally always 0 and the file would have skipped on 100% of CI runs. It now
+seeds its own fixture the way `translate-resilience.spec.ts` does (two checks, a
+dedicated public page + section + two resources, an active window over one of
+them), asserts the badge on the parked resource and its absence on the sibling,
+and cleans up after itself. Proven both ways against a stock test-mode server:
+it RUNS and passes, and with `inMaintenance` forced to `false` in
+`status-page-view.tsx` it fails on the missing badge.
+
+`incident-publications.spec.ts`'s first test now resolves the publication it
+creates on the shared default page. With `retries: 2` in CI, leaving it open
+piled up to three permanently-active publications per run on an org every other
+spec visits.
+
+Full status0 suite on a fresh test-mode Postgres server: **76 passed, 0 failed,
+0 skipped**.
