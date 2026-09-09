@@ -206,18 +206,18 @@ untouchable.
 
 #### Deep-linking into the demo
 
-Append `?demo=true` (or `?demo=1`) to any of these and the visitor is signed
-into the demo on load, with no login form and no clicks:
-
 | Link | |
 |---|---|
-| `https://solidping.io/dash0/login?demo=true` | **the canonical one** — use this in marketing copy, docs and emails |
+| `https://solidping.io/demo` | **the canonical one** — use this in marketing copy, docs and emails. A one-word shortcut that only exists while `demo.enabled` is on |
+| `https://solidping.io/dash0/login?demo=true` | the address the shortcut redirects to |
 | `https://solidping.io/dash0/?demo=true` | the dashboard root |
 | `https://solidping.io/dash0/orgs/<any-org>/login?demo=true` | any organization's login page |
 | `https://solidping.io/dash0/orgs/<any-org>?demo=true` | any organization's dashboard |
 
-The organization named in the path is irrelevant: the flag always signs into
-the configured demo organization. It also **outranks a session the visitor
+Append `?demo=true` (or `?demo=1`) to any of the last four and the visitor is
+signed into the demo on load, with no login form and no clicks. The
+organization named in the path is irrelevant: the flag always signs into the
+configured demo organization. It also **outranks a session the visitor
 already holds** — following the link from your own organization puts you in the
 demo, and following it while already in the demo simply takes you there without
 signing in again. Replace `solidping.io` with your own host on a self-hosted

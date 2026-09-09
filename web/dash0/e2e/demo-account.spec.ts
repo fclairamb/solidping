@@ -117,8 +117,13 @@ test.describe("Public live demo", () => {
     ["the root login page", "login?demo=true"],
     ["the dashboard root", "?demo=true"],
     ["an org page with no /login", "orgs/test?demo=true"],
+    // Spec 2026-09-08-02: the one-word server-side shortcut. An absolute path
+    // — the suite's baseURL is /dash0/, so Playwright resolves this against
+    // the origin, exercising the real GET /demo redirect rather than the
+    // dash0 route above.
+    ["the /demo shortcut", "/demo"],
   ] as const) {
-    test(`?demo=true entered from ${label} lands in the demo`, async ({
+    test(`${label} lands in the demo`, async ({
       page,
       request,
     }) => {
