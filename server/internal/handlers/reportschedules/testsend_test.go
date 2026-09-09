@@ -133,7 +133,7 @@ func TestTestSend_NonSuppressedRecipient(t *testing.T) {
 // the report looks like, so it must keep sending even for a zero-check org,
 // unlike the scheduled sweep which now suppresses that same empty scope
 // (job_uptime_report.go's guard A). setupTestSendEnv's org has no checks by
-// definition, so this pins that behaviour is unaffected by the sweep-side fix.
+// definition, so this pins that behavior is unaffected by the sweep-side fix.
 func TestTestSend_ZeroCheckOrgStillSends(t *testing.T) {
 	t.Parallel()
 

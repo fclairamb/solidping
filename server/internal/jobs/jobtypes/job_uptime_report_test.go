@@ -119,14 +119,12 @@ func newReportEnvAt(
 }
 
 // newCheck creates one enabled, ungrouped HTTP check for org.
-func newCheck(t *testing.T, dbSvc *sqlite.Service, org *models.Organization, slug string) *models.Check {
+func newCheck(t *testing.T, dbSvc *sqlite.Service, org *models.Organization) {
 	t.Helper()
 
 	ctx := t.Context()
-	check := models.NewCheck(org.UID, slug, "http")
+	check := models.NewCheck(org.UID, "web", "http")
 	require.NoError(t, dbSvc.CreateCheck(ctx, check))
-
-	return check
 }
 
 // TestUptimeReportPeriodCloseDetectionInTimezone pins that a schedule reports on
@@ -180,7 +178,7 @@ func TestUptimeReportRunsOncePerPeriod(t *testing.T) {
 
 	// A check, so the scope is non-empty and guard A does not suppress this
 	// send — this test is about run-once idempotency, not about empty scope.
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com", "bob@acme.com"}
@@ -212,7 +210,7 @@ func TestUptimeReportRespectsSuppressionList(t *testing.T) {
 
 	// A check, so guard A does not suppress this send — this test is about
 	// the suppression list, not about empty scope.
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com", "bob@acme.com"}
@@ -268,7 +266,7 @@ func TestUptimeReportSkipsDisabledSchedule(t *testing.T) {
 
 	// A check, so guard A does not suppress the enabled schedule's send —
 	// this test is about the Enabled flag, not about empty scope.
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	enabled := models.NewReportSchedule(org.UID, "On", models.ReportFrequencyMonthly)
 	enabled.Recipients = []string{"alice@acme.com"}
@@ -324,7 +322,7 @@ func TestUptimeReportCarriesUnsubscribeHeaders(t *testing.T) {
 
 	// A check, so guard A does not suppress this send — this test is about
 	// the unsubscribe headers, not about empty scope.
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com"}
@@ -420,7 +418,7 @@ func TestUptimeReportSkipsEmptyScopeScoped(t *testing.T) {
 
 	// The org has a check, but it is ungrouped, so a schedule scoped to any
 	// check group resolves to zero checks.
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Group digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com"}
@@ -445,7 +443,7 @@ func TestUptimeReportSendsNonEmptyScope(t *testing.T) {
 
 	dbSvc, org, jctx, jobs := newReportEnv(t, now)
 
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com", "bob@acme.com"}
@@ -476,7 +474,7 @@ func TestUptimeReportSkipsPeriodBeforeOrgExisted(t *testing.T) {
 
 	dbSvc, org, jctx, jobs := newReportEnvAt(t, now, orgCreatedAt)
 
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com"}
@@ -510,7 +508,7 @@ func TestUptimeReportSendsWindowStraddlingOrgCreation(t *testing.T) {
 
 	dbSvc, org, jctx, jobs := newReportEnvAt(t, now, orgCreatedAt)
 
-	newCheck(t, dbSvc, org, "web")
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com"}
