@@ -197,6 +197,7 @@ import { CodeTextarea } from "@/components/ui/code-textarea";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
+import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { useDebounce } from "@/lib/use-debounce";
 import { facetedFilterTriggerLabel } from "@/lib/faceted-filter";
 import { cn, slugify } from "@/lib/utils";
@@ -233,6 +234,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "event-tone", label: "Event tone badge" },
   { id: "live-dot", label: "Live & pulse dots" },
   { id: "forms", label: "Forms" },
+  { id: "oauth-provider-buttons", label: "OAuth provider buttons" },
   { id: "data-display", label: "Data display" },
   { id: "responsive-table", label: "Responsive table" },
   { id: "list-surface", label: "List surface" },
@@ -289,6 +291,7 @@ function DesignReferencePage() {
       <EventToneSection />
       <LiveDotSection />
       <FormsSection />
+      <OAuthProviderButtonsSection />
       <DataDisplaySection />
       <ResponsiveTableSection />
       <ListSurfaceSection />
@@ -2962,6 +2965,49 @@ function TruncatedCellTable() {
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+// Every provider type the icon map knows about, so the catalog shows all
+// eight brand marks at once. A real instance renders whatever
+// /api/v1/auth/providers reports, usually one or two of these.
+const designReferenceAuthProviders = [
+  { type: "google", name: "Google" },
+  { type: "github", name: "GitHub" },
+  { type: "microsoft", name: "Microsoft" },
+  { type: "gitlab", name: "GitLab" },
+  { type: "slack", name: "Slack" },
+  { type: "discord", name: "Discord" },
+  { type: "oidc", name: "SSO" },
+  { type: "saml", name: "SAML" },
+];
+
+function OAuthProviderButtonsSection() {
+  return (
+    <Section
+      id="oauth-provider-buttons"
+      title="OAuth provider buttons"
+      description="The two-column grid of third-party sign-in buttons plus its 'or' divider, shared by /login and /register. Feed it the provider list from useProviders(); it renders nothing when there is none, so no emptiness check at the call site. Clicking records oauth:<type> as the last-used method and performs a full-page navigation to the provider — every callback runs findOrCreateUser, so the same button both signs in and signs up. testIdPrefix namespaces the data-testids per page. The promoted 'last used' slot on /login is deliberately NOT part of this component: /register must not have one."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        {/* Capture-phase stopPropagation so the catalog stays a catalog: a
+            stray click here would otherwise really redirect the browser out
+            of the app and into a provider's consent screen. */}
+        <div
+          className="min-w-0 max-w-sm"
+          onClickCapture={(event) => event.stopPropagation()}
+        >
+          <OAuthProviderButtons
+            org="default"
+            providers={designReferenceAuthProviders}
+            testIdPrefix="login"
+          />
+        </div>
+        <CodeSnippet
+          code={`import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";\n\nconst { data: providersData } = useProviders();\n\n<OAuthProviderButtons\n  org={org}\n  providers={providersData?.providers}\n  disabled={register.isPending}\n  testIdPrefix="register"\n/>`}
+        />
+      </div>
+    </Section>
   );
 }
 
