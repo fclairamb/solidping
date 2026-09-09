@@ -155,9 +155,18 @@ func TestCapture_NoticeFoldWindowCollapsesABurst(t *testing.T) {
 // TestCapture_MirrorStillCountedAlongsideTheNotice is the POSITIVE CONTROL for
 // "the email mirror is untouched": the notice is additive, so the mirror must
 // still send and must still be counted in solidping_support_mirror_total.
+//
+// Deliberately NOT t.Parallel(), unlike the rest of this file. It reads
+// prommetrics.SupportMirror — a process-global counter — into `before`, and
+// then asserts it advanced by exactly one. Every other Capture() in this
+// package (60+ call sites across five test files) increments that same
+// counter, and unlike the notice dispatcher there is no per-test marker to
+// filter on: the label is just "sent". Run in parallel, a sibling's capture
+// lands between the read and the assert and the delta comes out >1 — CI saw
+// 4 vs 8. Without t.Parallel() the test runs in the sequential phase, where
+// every parallel sibling is still paused, so the read/act/assert is atomic
+// with respect to them. Do not add t.Parallel() back.
 func TestCapture_MirrorStillCountedAlongsideTheNotice(t *testing.T) {
-	t.Parallel()
-
 	r := require.New(t)
 	notices := collectNotices(t, "+33690000004")
 	h := newHarness(t, "support@acme.com")
