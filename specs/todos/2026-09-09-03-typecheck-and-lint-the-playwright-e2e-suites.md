@@ -245,3 +245,52 @@ steps rather than one omnibus command.
   enforced by nothing on PRs, exactly as §"Two aggravating facts" claims.
 - **`bunx eslint e2e` in `web/dash0` is exactly 2 errors**, as measured in the
   spec. `web/status0` is 0.
+
+## Implementation Plan
+
+1. **`tsconfig.e2e.json` in both apps** (`web/dash0`, `web/status0`)
+   - `include`: `["e2e", "playwright.config.ts"]`, plus `playwright.dev.config.ts` for dash0.
+   - `lib: ["ES2023", "DOM", "DOM.Iterable"]`, `types: ["node"]`, own `tsBuildInfoFile`.
+   - Mirror `tsconfig.node.json` strictness (`strict`, `noUnusedLocals`,
+     `noUnusedParameters`, `noFallthroughCasesInSwitch`, `noEmit`,
+     `moduleResolution: "bundler"`, `isolatedModules`, `moduleDetection: "force"`,
+     `skipLibCheck`).
+   - No `@/*` path alias (verified unused).
+   - **Not referenced** from the solution `tsconfig.json` — per the resolved open
+     question, `bun run build` must not build the e2e project.
+
+2. **Scripts + CI**
+   - `"typecheck:e2e": "tsc -p tsconfig.e2e.json"` in both `package.json`s.
+   - `"lint:e2e": "eslint e2e"` in `web/dash0/package.json`.
+   - `.github/workflows/ci.yml`: `dash0` job gets a *Type-check e2e* step and a
+     *Lint e2e* step (with a comment explaining the `e2e` scoping and the `src/`
+     ESLint debt); `status0` job gets a *Type-check e2e* step. Fix the stale
+     comment referring to the retired `dash` job.
+
+3. **Acceptance gate — the local ESLint rule**
+   - Reintroduce the `1dca14ba8` bug shape in `e2e/webpush.spec.ts`, run
+     `typecheck:e2e`, record output (expected: passes — a closure over a module
+     import is legal TS).
+   - Add a flat-config inline plugin rule `e2e-local/no-node-scope-in-browser-callback`
+     to both `eslint.config.js` files, scoped to `e2e/**/*.ts`. It uses real scope
+     analysis: for each callback passed to `evaluate` / `evaluateHandle` / `$eval` /
+     `$$eval` / `waitForFunction` / `addInitScript` on a `page` / `locator` /
+     `context`-shaped receiver, walk `sourceCode.getScope(fn)` and report every
+     `through` reference that resolves to a binding outside the callback and is not
+     a browser global.
+   - Re-run `lint:e2e`, record the error, then revert the bug and confirm green.
+   - Positive control: `webpush.spec.ts`'s correct argument-passing `evaluate` call
+     must stay green.
+
+4. **Fix the 46 pre-existing dash0 type errors + 2 lint errors**
+   - `check-result-detail-navigation.spec.ts`, `check-chart-point-preview.spec.ts`:
+     helper takes a `Page` instead of the whole fixtures object; re-run both specs.
+   - `notification-detail.spec.ts` (`FLAT_NOTIF_RE` — check for a dropped assertion
+     first), `integrations.spec.ts`, `account-notifications.spec.ts`: unused locals.
+
+5. **Docs** — note the e2e tsconfig project and the new rule in `web/dash0/CLAUDE.md`.
+   `web/status0` has no `CLAUDE.md`; nothing to update there.
+
+6. **QA** — dash0: `typecheck:e2e`, `lint:e2e`, `test:unit` (1509/1509), `make build-dash0`.
+   status0: `typecheck:e2e`, `lint`, `make build-status0`. Plus a real Playwright run of
+   the five touched spec files against a dedicated side-car server.
