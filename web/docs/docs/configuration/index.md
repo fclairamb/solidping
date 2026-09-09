@@ -26,6 +26,30 @@ SolidPing is configured primarily through environment variables. All environment
 | `SP_SERVER_LISTEN` | `:4000` | Server address and port |
 | `SP_BASE_URL` | `http://localhost:4000` | Public URL where SolidPing is accessible |
 
+### URL layout
+
+Everything SolidPing serves lives under a handful of fixed top-level paths:
+
+| Path | What it serves |
+|---|---|
+| `/d` | the operator dashboard |
+| `/s` | public status pages |
+| `/docs` | this documentation site |
+| `/openapi`, `/openapi.yaml` | the interactive API explorer and its schema |
+| `/api` | the REST API |
+| `/metrics`, `/health` | Prometheus scrape endpoint and health probe |
+
+`/` redirects to `/d/`.
+
+:::note Older links keep working
+The dashboard and the status pages used to be served at `/dash0` and
+`/status0`. Both prefixes answer a permanent redirect (`301`) onto `/d` and
+`/s`, preserving the rest of the path and the query string, and they will keep
+doing so — there is no sunset date. Bookmarks, links in old notification
+emails, and anything you pasted into a chat before the change all still land in
+the right place.
+:::
+
 ### Server Configuration
 
 | Variable | Default | Description |
@@ -209,10 +233,10 @@ untouchable.
 | Link | |
 |---|---|
 | `https://solidping.io/demo` | **the canonical one** — use this in marketing copy, docs and emails. A one-word shortcut that only exists while `demo.enabled` is on |
-| `https://solidping.io/dash0/login?demo=true` | the address the shortcut redirects to |
-| `https://solidping.io/dash0/?demo=true` | the dashboard root |
-| `https://solidping.io/dash0/orgs/<any-org>/login?demo=true` | any organization's login page |
-| `https://solidping.io/dash0/orgs/<any-org>?demo=true` | any organization's dashboard |
+| `https://solidping.io/d/login?demo=true` | the address the shortcut redirects to |
+| `https://solidping.io/d/?demo=true` | the dashboard root |
+| `https://solidping.io/d/orgs/<any-org>/login?demo=true` | any organization's login page |
+| `https://solidping.io/d/orgs/<any-org>?demo=true` | any organization's dashboard |
 
 Append `?demo=true` (or `?demo=1`) to any of the last four and the visitor is
 signed into the demo on load, with no login form and no clicks. The

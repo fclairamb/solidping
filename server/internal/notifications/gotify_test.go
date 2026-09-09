@@ -236,7 +236,7 @@ func TestGotifySender_ExtrasClickURL(t *testing.T) {
 
 	click, ok := notif["click"].(map[string]any)
 	r.True(ok)
-	r.Equal("https://solidping.acme.com/dash0/orgs/acme/incidents/018e4a2b-incident", click["url"])
+	r.Equal("https://solidping.acme.com/d/orgs/acme/incidents/018e4a2b-incident", click["url"])
 }
 
 // TestGotifySender_NonSuccessStatusErrors asserts a non-2xx response from the

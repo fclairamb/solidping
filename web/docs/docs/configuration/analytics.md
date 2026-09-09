@@ -72,7 +72,7 @@ origin, `/ingest`, instead of directly to `*.posthog.com`. The Go binary
 reverse-proxies that path to PostHog. Many ad blockers drop third-party requests
 to known analytics hosts, so first-party capture stops those blockers from
 silently discarding events and keeps the web analytics numbers complete. This
-needs no extra infrastructure: the same host that serves `/dash0` serves
+needs no extra infrastructure: the same host that serves `/d` serves
 `/ingest`.
 
 The proxy forwards the visitor IP to PostHog, so geolocation stays accurate. It
@@ -134,8 +134,8 @@ conservatively:
 - session recording is disabled;
 - person profiles are only created for identified users;
 - every captured URL and pathname is rewritten to a route template before it
-  leaves the page — `/dash0/orgs/acme/checks/8f0e…` is sent as
-  `/dash0/orgs/:org/checks/:uid`, and query strings and fragments are dropped —
+  leaves the page — `/d/orgs/acme/checks/8f0e…` is sent as
+  `/d/orgs/:org/checks/:uid`, and query strings and fragments are dropped —
   because SolidPing URLs embed organization slugs and resource UIDs.
 
 ## What is never sent

@@ -1608,7 +1608,7 @@ func TestBaseURLHost(t *testing.T) {
 	}{
 		{name: "plain host", baseURL: "https://app.example.com", want: "app.example.com"},
 		{name: "port stripped", baseURL: "http://localhost:4000", want: "localhost"},
-		{name: "path ignored", baseURL: "https://app.example.com/dash0/", want: "app.example.com"},
+		{name: "path ignored", baseURL: "https://app.example.com/d/", want: "app.example.com"},
 		{name: "lowercased", baseURL: "https://APP.Example.COM", want: "app.example.com"},
 		{name: "surrounding space", baseURL: "  https://app.example.com  ", want: "app.example.com"},
 		{name: "empty", baseURL: "", want: ""},
@@ -1642,7 +1642,7 @@ func TestBaseURLOrigin(t *testing.T) {
 	}{
 		{name: "plain host", baseURL: "https://app.example.com", want: "https://app.example.com"},
 		{name: "port kept", baseURL: "http://localhost:4000", want: "http://localhost:4000"},
-		{name: "path dropped", baseURL: "https://app.example.com/dash0/", want: "https://app.example.com"},
+		{name: "path dropped", baseURL: "https://app.example.com/d/", want: "https://app.example.com"},
 		{name: "lowercased", baseURL: "https://APP.Example.COM", want: "https://app.example.com"},
 		{name: "surrounding space", baseURL: "  https://app.example.com  ", want: "https://app.example.com"},
 		{name: "empty", baseURL: "", want: ""},

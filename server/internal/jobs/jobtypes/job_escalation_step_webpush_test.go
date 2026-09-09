@@ -262,7 +262,7 @@ func TestEscalationWebPushMessage(t *testing.T) {
 			orgSlug:   "acme",
 			wantTitle: "[ESCALATED] API prod",
 			wantBody:  "Incident #42 for API prod requires your attention.",
-			wantURL:   "/dash0/orgs/acme/incidents/inc-1",
+			wantURL:   "/d/orgs/acme/incidents/inc-1",
 		},
 		{
 			name:      "unnumbered incident omits the reference, not the name",
@@ -271,7 +271,7 @@ func TestEscalationWebPushMessage(t *testing.T) {
 			orgSlug:   "acme",
 			wantTitle: "[ESCALATED] API prod",
 			wantBody:  "Incident for API prod requires your attention.",
-			wantURL:   "/dash0/orgs/acme/incidents/inc-2",
+			wantURL:   "/d/orgs/acme/incidents/inc-2",
 		},
 		{
 			name:      "missing org slug yields empty url for the SW fallback",

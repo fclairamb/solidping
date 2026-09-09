@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+
+### Features
+
+* **dash0:** the dashboard now lives at **`/d`** and public status pages at **`/s`**. The old addresses carried a `0` that only ever meant "the rewrite, not the original" — noise in every URL anyone saw, typed, read down a phone or pasted into a chat, and eight characters of it in a status-page link a customer's readers are meant to bookmark. `solidping.io/dash0/orgs/acme/checks` is now `solidping.io/d/orgs/acme/checks`, and `status.acme.com/status0/acme/main` is `status.acme.com/s/acme/main`. **Nothing you have already sent stops working**: `/dash0` and `/status0` answer a permanent redirect onto the new addresses, keeping the rest of the path and the query string exactly as they were, and they will keep doing so — there is no sunset date. That covers notification emails sent months ago, bookmarks, links in Slack and Teams, the marketing site, and search-engine results. On a customer's own status-page domain the same redirect applies to `/status0`, while both `/dash0` and `/d` are refused there, because a status page must never walk its readers into the SolidPing dashboard. Browser notifications need one extra step and take it themselves: a push subscription is tied to the address the service worker was registered under, so the dashboard retires the old registration on first load and re-subscribes, replacing the stored subscription rather than leaving a dead one behind
+
+
+### Miscellaneous Chores
+
+* the legacy dashboard application has been removed. A second, long-dead copy of the dashboard was still compiled into every build and still served as the fallback for **any** address that matched nothing else — so a typo'd URL, or a link to a page that no longer exists, quietly rendered the *old* dashboard's shell and answered `200` to search engines rather than saying "not found". Unmatched addresses now answer a plain 404. Builds are one stage shorter as a result
+
 ## [0.27.0](https://github.com/fclairamb/solidping/compare/v0.26.1...v0.27.0) (2026-09-08)
 
 

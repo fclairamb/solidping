@@ -73,7 +73,7 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 		Truncated:               true,
 		TruncatedShown:          maxCheckRows,
 		TruncatedTotal:          maxCheckRows + 87,
-		DashboardURL:            "https://solidping.example/dash0",
+		DashboardURL:            "https://solidping.example/d",
 		UnsubscribeURL:          "https://solidping.example/unsubscribe?token=abcdef0123456789",
 		Checks:                  make([]CheckRow, 0, maxCheckRows),
 	}
@@ -92,7 +92,7 @@ func worstCaseMonthlyReport(t *testing.T) *Data {
 			HasData:           true,
 			AvailabilityPct:   "97.512",
 			AvailabilityColor: "#c2410c",
-			URL:               fmt.Sprintf("https://solidping.example/dash0/orgs/acme/checks/chk-%02d", i),
+			URL:               fmt.Sprintf("https://solidping.example/d/orgs/acme/checks/chk-%02d", i),
 			Days:              cells,
 		})
 	}

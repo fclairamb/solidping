@@ -38,7 +38,7 @@ whether the original report had a root cause:
 2. **`e2e/invitations.spec.ts` never opened an invite link.** It asserted the
    shape of the returned `inviteUrl` and stopped there — the one test that
    would have answered "does this actually work" in seconds didn't exist.
-   The suite now covers create → open `/dash0/invite/:token` logged out →
+   The suite now covers create → open `/d/invite/:token` logged out →
    see the join card (org name, role, masked email) → accept as a new user →
    land in the org, plus the negative case (a bogus token shows the invalid
    card).

@@ -34,12 +34,12 @@ func TestNormalizeSignupAttribution(t *testing.T) {
 			name: "a full google click is kept, kind lower-cased, time in UTC",
 			in: &models.SignupAttribution{
 				Source: " google ", Medium: "cpc", Campaign: "fr-alternatives", Term: "alternative uptimerobot",
-				Content: "creative-1", ClickIDKind: "GCLID", ClickID: "Cj0KCQjw", LandingPath: "/dash0/login",
+				Content: "creative-1", ClickIDKind: "GCLID", ClickID: "Cj0KCQjw", LandingPath: "/d/login",
 				CapturedAt: &captured,
 			},
 			want: &models.SignupAttribution{
 				Source: "google", Medium: "cpc", Campaign: "fr-alternatives", Term: "alternative uptimerobot",
-				Content: "creative-1", ClickIDKind: "gclid", ClickID: "Cj0KCQjw", LandingPath: "/dash0/login",
+				Content: "creative-1", ClickIDKind: "gclid", ClickID: "Cj0KCQjw", LandingPath: "/d/login",
 				CapturedAt: ptr(captured.UTC()),
 			},
 		},

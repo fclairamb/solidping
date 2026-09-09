@@ -91,7 +91,7 @@ func TestCapture_RaisesOneOperatorNotice(t *testing.T) {
 	r.Contains(raised[0].Subject, models.SupportChannelWhatsApp)
 	r.Contains(raised[0].Subject, "+33690000001")
 	r.Contains(raised[0].Body, "is the api down for you too?")
-	r.Equal("https://solidping.example/dash0/support/"+thread.UID, raised[0].URL)
+	r.Equal("https://solidping.example/d/support/"+thread.UID, raised[0].URL)
 }
 
 // TestCapture_RaisesTheNoticeWithoutASupportMailbox is the whole point of

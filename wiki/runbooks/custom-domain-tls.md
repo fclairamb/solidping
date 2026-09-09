@@ -208,7 +208,7 @@ namespaces storage per CA, so production assets are never at risk).
 - [ ] Cert material present in `tls_storage`; survives a restart with **no**
       re-issuance line in the log.
 - [ ] `http://status.acme.com/` 308-redirects to https.
-- [ ] `/dash0`, `/docs` and org API paths all return 404 on the custom host.
+- [ ] `/d`, `/docs` and org API paths all return 404 on the custom host.
 - [ ] Behind a passthrough: the real client IP reaches the process, not the
       proxy's address (this is what `SP_ACME_PROXY_PROTOCOL` buys you).
 - [ ] An unrelated hostname pointed at the edge is refused before any CA
@@ -242,7 +242,7 @@ openssl s_client -connect status.acme.com:443 \
 curl -sI http://status.acme.com/ | head -3
 
 # 5. Custom-host allowlist (both must be 404).
-curl -so /dev/null -w '%{http_code}\n' https://status.acme.com/dash0
+curl -so /dev/null -w '%{http_code}\n' https://status.acme.com/d
 curl -so /dev/null -w '%{http_code}\n' https://status.acme.com/api/v1/orgs/acme/checks
 
 # 6. Stored TLS assets (keys only — NEVER dump values, they are private keys).
@@ -264,8 +264,8 @@ stop responding:
   with a valid publicly-trusted certificate until it expires (up to 90 days).
 - With no custom-domain mapping, the request falls through to the instance's
   own-host routing instead of being rejected, so the host now `302`s to
-  `/dash0/` and serves the dashboard SPA — on a hostname the installation no
-  longer claims. The custom-host path allowlist (which correctly 404s `/dash0`)
+  `/d/` and serves the dashboard SPA — on a hostname the installation no
+  longer claims. The custom-host path allowlist (which correctly 404s `/d`)
   only applies while the mapping exists.
 
 Not an authentication hole — the dashboard still requires a login — but it was

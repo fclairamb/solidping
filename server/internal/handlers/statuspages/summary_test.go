@@ -146,7 +146,7 @@ func TestViewStatusPageSummary_NotFound(t *testing.T) {
 }
 
 // TestViewStatusPageSummary_PageURL pins that page.url is the path-based
-// /status0/{org}/{slug} URL derived from the request host when there is no
+// /s/{org}/{slug} URL derived from the request host when there is no
 // verified custom domain, and the custom-domain URL when one is verified.
 func TestViewStatusPageSummary_PageURL(t *testing.T) {
 	t.Parallel()
@@ -163,7 +163,7 @@ func TestViewStatusPageSummary_PageURL(t *testing.T) {
 
 	var resp StatusPageSummaryResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
-	r.Equal("http://app.example.com/status0/"+org.Slug+"/"+page.Slug, resp.Page.URL)
+	r.Equal("http://app.example.com/s/"+org.Slug+"/"+page.Slug, resp.Page.URL)
 
 	// Verify a custom domain directly via the DB (VerifyCustomDomain requires
 	// live DNS resolution, out of scope for this unit test).

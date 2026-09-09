@@ -25,7 +25,7 @@ func TestOIDCCallback_SetsAccessTokenCookie(t *testing.T) {
 	org := setupOIDCTestOrg(ctx, t, svc)
 	handler := NewOIDCOAuthHandler(svc, svc.cfg)
 
-	state, err := svc.GenerateOAuthState(ctx, "/dash0/orgs/"+org.Slug, org.Slug)
+	state, err := svc.GenerateOAuthState(ctx, "/d/orgs/"+org.Slug, org.Slug)
 	r.NoError(err)
 
 	idp.nextIDToken = idp.issueIDToken(t, nil)

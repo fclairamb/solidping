@@ -26,13 +26,13 @@ func incidentViewModel() map[string]any {
 	return map[string]any{
 		"CheckName":      "Production API",
 		"CheckType":      "http",
-		"CheckURL":       "https://example.com/dash0/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
+		"CheckURL":       "https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
 		"StartedAt":      "2026-07-05 10:00:00",
 		"IncidentUID":    "inc-123",
 		"IncidentNumber": int64(42),
-		"IncidentURL":    "https://example.com/dash0/orgs/acme/incidents/inc-123",
+		"IncidentURL":    "https://example.com/d/orgs/acme/incidents/inc-123",
 		"AckURL":         "https://example.com/api/v1/orgs/acme/incidents/inc-123/ack?token=abc",
-		"DashboardURL":   "https://example.com/dash0",
+		"DashboardURL":   "https://example.com/d",
 		"DocsURL":        "https://example.com/docs",
 		"FailureCount":   3,
 		"RelapseCount":   2,
@@ -58,8 +58,8 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	r.Contains(html, "Production API")
 	r.Contains(html, "is down")
 	r.Contains(html, "http")
-	r.Contains(html, "https://example.com/dash0/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345")
-	r.Contains(html, "https://example.com/dash0/orgs/acme/incidents/inc-123")
+	r.Contains(html, "https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345")
+	r.Contains(html, "https://example.com/d/orgs/acme/incidents/inc-123")
 	r.Contains(html, "View incident")
 	r.Contains(html, "Acknowledge incident")
 	r.Contains(html, "SolidPing")
@@ -70,14 +70,14 @@ func TestFormatter_FormatIncidentCreated(t *testing.T) {
 	// render it bare — a bare hostname-shaped name gets auto-linkified by
 	// mail clients straight to the down target instead of the check page.
 	r.Regexp(
-		`<td[^>]*class="value"[^>]*><a href="https://example\.com/dash0/orgs/acme/checks/`+
+		`<td[^>]*class="value"[^>]*><a href="https://example\.com/d/orgs/acme/checks/`+
 			`9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345"[^>]*>Production API</a></td>`,
 		html,
 		"the Check row must wrap the check name in an <a href> to CheckURL",
 	)
 
 	r.Contains(text, "Production API is down")
-	r.Contains(text, "https://example.com/dash0/orgs/acme/incidents/inc-123")
+	r.Contains(text, "https://example.com/d/orgs/acme/incidents/inc-123")
 	r.Contains(text, "Acknowledge this incident")
 	r.Contains(text, "Incident: #42")
 }
@@ -219,12 +219,12 @@ func TestFormatter_FormatEscalation(t *testing.T) {
 
 	data := map[string]any{
 		"CheckName":      "Production API",
-		"CheckURL":       "https://example.com/dash0/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
+		"CheckURL":       "https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
 		"IncidentNumber": int64(42),
-		"IncidentURL":    "https://example.com/dash0/orgs/acme/incidents/inc-123",
+		"IncidentURL":    "https://example.com/d/orgs/acme/incidents/inc-123",
 		"StartedAt":      "2026-07-05 10:00:00",
 		"FailureCount":   3,
-		"DashboardURL":   "https://example.com/dash0",
+		"DashboardURL":   "https://example.com/d",
 		"DocsURL":        "https://example.com/docs",
 	}
 
@@ -241,12 +241,12 @@ func TestFormatter_FormatEscalation(t *testing.T) {
 	// The details-table "Check" row must link the check name rather than
 	// render it bare (same requirement as incident-created.html).
 	r.Regexp(
-		`<td[^>]*class="value"[^>]*><a href="https://example\.com/dash0/orgs/acme/checks/`+
+		`<td[^>]*class="value"[^>]*><a href="https://example\.com/d/orgs/acme/checks/`+
 			`9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345"[^>]*>Production API</a></td>`,
 		html,
 		"the Check row must wrap the check name in an <a href> to CheckURL",
 	)
-	r.Contains(text, "Check URL: https://example.com/dash0/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
+	r.Contains(text, "Check URL: https://example.com/d/orgs/acme/checks/9f8e7d6c-5b4a-4c2d-9e0f-abcdef012345",
 		"the text part must carry the check URL explicitly since it cannot use an anchor")
 }
 

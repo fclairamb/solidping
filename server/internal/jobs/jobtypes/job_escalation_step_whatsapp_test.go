@@ -462,8 +462,8 @@ func TestDispatch_WhatsAppAlertCarriesCheckLinkButton(t *testing.T) {
 	param, ok := params[0].(map[string]any)
 	r.True(ok)
 	r.Equal("text", param["type"])
-	// Appended by Meta to the template's static `{baseURL}/dash0/` prefix, so
-	// this resolves to /dash0/orgs/test-org/checks/check-1.
+	// Appended by Meta to the template's static `{baseURL}/d/` prefix, so
+	// this resolves to /d/orgs/test-org/checks/check-1.
 	r.Equal("orgs/"+env.org.Slug+"/checks/"+env.incident.CheckUID, param["text"])
 }
 

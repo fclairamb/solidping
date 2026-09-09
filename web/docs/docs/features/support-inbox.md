@@ -20,7 +20,7 @@ Failures are logged at `WARN` and counted, never swallowed silently.
 
 ## Where it lives
 
-`/dash0/support` — an **unlinked** route. There is no navigation entry anywhere;
+`/d/support` — an **unlinked** route. There is no navigation entry anywhere;
 you reach it by typing the URL. That keeps an operator-only tool out of every
 customer's sidebar without a separate admin app.
 

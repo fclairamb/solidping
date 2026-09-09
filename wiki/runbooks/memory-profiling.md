@@ -491,7 +491,7 @@ touches **zero files under `web/`**, so no frontend source changed across the
 range either.
 
 > Do **not** reproduce this with `make bench-checks`: that target depends on
-> `build`, which rebuilds dash0/status0/docs from source. You would get a
+> `build`, which rebuilds dash0/s/docs from source. You would get a
 > different binary from the one measured here, and on a range that *did* touch
 > the frontend you would be comparing two variables at once.
 

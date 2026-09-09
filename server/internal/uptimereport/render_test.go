@@ -61,7 +61,7 @@ func sampleData() *uptimereport.Data {
 			{
 				Name: "Production API", HasData: true, AvailabilityPct: "99.980",
 				AvailabilityColor: "#15803d",
-				URL:               "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api",
+				URL:               "https://solidping.example/d/orgs/acme/checks/chk-prod-api",
 				Days: []uptimereport.DayCell{
 					{Color: "#15803d", Span: 20, Wide: true},
 					{Color: "#b45309", Span: 1},
@@ -70,7 +70,7 @@ func sampleData() *uptimereport.Data {
 			},
 			{
 				Name: "Marketing site", HasData: false,
-				URL:  "https://solidping.example/dash0/orgs/acme/checks/chk-marketing",
+				URL:  "https://solidping.example/d/orgs/acme/checks/chk-marketing",
 				Days: []uptimereport.DayCell{{Color: "#d1d5db", Span: 31, Wide: true}},
 			},
 		},
@@ -81,9 +81,9 @@ func sampleData() *uptimereport.Data {
 			TargetPct:       "99.900",
 			StateLabel:      "Healthy",
 			BudgetRemaining: "21m 30s",
-			URL:             "https://solidping.example/dash0/orgs/acme/slos/slo-api-availability",
+			URL:             "https://solidping.example/d/orgs/acme/slos/slo-api-availability",
 		}},
-		DashboardURL:   "https://solidping.example/dash0",
+		DashboardURL:   "https://solidping.example/d",
 		UnsubscribeURL: "https://solidping.example/unsubscribe?token=abc",
 	}
 }
@@ -150,8 +150,8 @@ func TestUptimeReportRendersRealContent(t *testing.T) {
 		// Bulk-mail footer.
 		r.Contains(body, "https://solidping.example/unsubscribe?token=abc")
 		// Check and objective names link to their dash0 pages.
-		r.Contains(body, "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api")
-		r.Contains(body, "https://solidping.example/dash0/orgs/acme/slos/slo-api-availability")
+		r.Contains(body, "https://solidping.example/d/orgs/acme/checks/chk-prod-api")
+		r.Contains(body, "https://solidping.example/d/orgs/acme/slos/slo-api-availability")
 	}
 }
 
@@ -173,13 +173,13 @@ func TestUptimeReportChecksAndObjectivesLinkToTheirDash0Pages(t *testing.T) {
 	// The formatter's CSS inliner rewrites `.content a` into an inline
 	// style="..." attribute on every <a>, so the tag itself isn't a fixed
 	// string — match loosely around the href and the link text instead.
-	r.True(linksTo(html, "https://solidping.example/dash0/orgs/acme/checks/chk-prod-api", "Production API"))
-	r.True(linksTo(html, "https://solidping.example/dash0/orgs/acme/slos/slo-api-availability", "API availability"))
+	r.True(linksTo(html, "https://solidping.example/d/orgs/acme/checks/chk-prod-api", "Production API"))
+	r.True(linksTo(html, "https://solidping.example/d/orgs/acme/slos/slo-api-availability", "API availability"))
 
 	// The text part keeps the existing line intact and appends the URL.
-	r.Contains(text, "  - Production API: 99.980%\n    https://solidping.example/dash0/orgs/acme/checks/chk-prod-api")
+	r.Contains(text, "  - Production API: 99.980%\n    https://solidping.example/d/orgs/acme/checks/chk-prod-api")
 	r.Contains(text, "API availability")
-	r.Contains(text, "    https://solidping.example/dash0/orgs/acme/slos/slo-api-availability")
+	r.Contains(text, "    https://solidping.example/d/orgs/acme/slos/slo-api-availability")
 }
 
 // TestUptimeReportRendersPlainNamesWithoutBaseURL is the negative control: no

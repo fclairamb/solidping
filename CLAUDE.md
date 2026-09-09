@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Dashboard**: React + TanStack Router (see `web/dash0/CLAUDE.md` for details)
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
-- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary and served at the **`/docs`** path on every host (like `/dash0`, `/status0`) — so `solidping.io/docs` works with no extra infra. `docs.solidping.io` redirects its root into `/docs` (config `server.docs_host` / `SP_DOCS_HOST`). The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`; the interactive OpenAPI (Swagger) explorer is at `/openapi`. `/docs/changelog` is generated at build from the root `CHANGELOG.md` (see `wiki/conventions/changelog.md` for entry-writing conventions). `docusaurus-plugin-llms` generates `llms.txt` / `llms-full.txt` from the docs content; they're served both at `/docs/llms.txt` / `/docs/llms-full.txt` and, for crawler convenience, at the conventional root path `/llms.txt` / `/llms-full.txt` (same embedded file, no duplication). The marketing site (`www.solidping.io`) is the separate `solidping-website` repo; internal engineering notes live in `wiki/`. **Competitor comparisons never go in the published docs site** — all competitor/comparison content belongs in `wiki/competitors/` (one `{name}.md` per competitor, indexed in `wiki/README.md`). The only competitor-facing pages `web/docs/` carries are the `migrate-from-*.md` import guides.
+- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary and served at the **`/docs`** path on every host (like `/d`, `/s`) — so `solidping.io/docs` works with no extra infra. `docs.solidping.io` redirects its root into `/docs` (config `server.docs_host` / `SP_DOCS_HOST`). The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`; the interactive OpenAPI (Swagger) explorer is at `/openapi`. `/docs/changelog` is generated at build from the root `CHANGELOG.md` (see `wiki/conventions/changelog.md` for entry-writing conventions). `docusaurus-plugin-llms` generates `llms.txt` / `llms-full.txt` from the docs content; they're served both at `/docs/llms.txt` / `/docs/llms-full.txt` and, for crawler convenience, at the conventional root path `/llms.txt` / `/llms-full.txt` (same embedded file, no duplication). The marketing site (`www.solidping.io`) is the separate `solidping-website` repo; internal engineering notes live in `wiki/`. **Competitor comparisons never go in the published docs site** — all competitor/comparison content belongs in `wiki/competitors/` (one `{name}.md` per competitor, indexed in `wiki/README.md`). The only competitor-facing pages `web/docs/` carries are the `migrate-from-*.md` import guides.
 
 ## Development workflow
 If the server is running on port 4000, apply code changes directly — `make dev` / `make dev-test` hot-reloads both backend and frontend.
@@ -46,7 +46,7 @@ database the seeded `admin@solidping.io` carries `users.must_change_password`,
 so the first successful login yields a session that can reach only
 `POST /auth/change-password`, `GET /auth/me` and `POST /auth/logout` —
 everything else answers `403 PASSWORD_CHANGE_REQUIRED` and dash0 lands on
-`/dash0/change-password`. This is unconditional: `make dev` against a fresh
+`/d/change-password`. This is unconditional: `make dev` against a fresh
 database prompts for a new password too. Pick one, and every example below
 works with it in place of `solidpass`.
 
@@ -109,7 +109,7 @@ See `server/internal/app/saas.go`.
 ## Frontend UI conventions
 
 > **Before writing or modifying any UI**, check the live design reference at
-> `http://localhost:4000/dash0/orgs/default/design-reference` — source:
+> `http://localhost:4000/d/orgs/default/design-reference` — source:
 > [`web/dash0/src/routes/orgs/$org/design-reference.tsx`](web/dash0/src/routes/orgs/$org/design-reference.tsx).
 >
 > It renders every shipped primitive (buttons, alerts, dialogs, tables, forms, name+slug pairs…) with the exact import line alongside it. **Reuse those components and patterns** — don't reach for a raw Radix primitive or a custom implementation if the design reference already ships what you need.

@@ -47,7 +47,7 @@ value.
 ## Setting it up
 
 Super admins configure it at **Server → Notifications**
-(`/dash0/orgs/<org>/server/notifications`):
+(`/d/orgs/<org>/server/notifications`):
 
 1. Turn on the **Enable operator notifications** switch.
 2. Tick the events each super admin should hear about.

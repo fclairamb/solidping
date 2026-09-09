@@ -435,7 +435,7 @@ incident must not fill anyone's inbox.
 
 Every status page can carry its own stylesheet, so the page matches your brand
 instead of SolidPing's. It is a **free** feature — no plan gating — and works
-on the default `/status0/{org}/{slug}` URL and on a
+on the default `/s/{org}/{slug}` URL and on a
 [custom domain](./custom-domains.md) alike.
 
 ### Editing it

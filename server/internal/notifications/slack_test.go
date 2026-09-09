@@ -2139,12 +2139,12 @@ func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T)
 		"status line must render exactly once")
 
 	// The incident is the PRIMARY link: the #42 reference itself is clickable.
-	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/incident-1|#42>"
+	incidentLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/incidents/incident-1|#42>"
 	r.Contains(msg.Text, incidentLink, "resolved reply must link the incident reference")
 
 	// Self-contained: monitor named and linked as a SECONDARY link.
 	r.Contains(msg.Text, checkName, "resolved reply must name the monitor")
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
+	checkLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "resolved reply must link the monitor to its dashboard page")
 
 	// The at-a-glance success cue is kept (aligned with the dash0 registry's
@@ -2213,8 +2213,8 @@ func TestSlackSender_buildAckThreadReply_LinksCheckNameToIncidentWhenNoNumber(t 
 
 	r.NotContains(msg.Text, "#", "no incident number means no #N reference to render")
 
-	incidentURL := baseURL + "/dash0/orgs/" + orgSlug + "/incidents/incident-1"
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
+	incidentURL := baseURL + "/d/orgs/" + orgSlug + "/incidents/incident-1"
+	checkLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
 	incidentNameLink := "<" + incidentURL + "|" + checkName + ">"
 
 	r.NotContains(msg.Text, checkLink, "the check name must not link to the check page in this fallback")
@@ -2290,11 +2290,11 @@ func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T)
 		"status line must render exactly once")
 
 	// The incident is the PRIMARY link: the #42 reference itself is clickable.
-	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/incident-1|#42>"
+	incidentLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/incidents/incident-1|#42>"
 	r.Contains(msg.Text, incidentLink, "reopened reply must link the incident reference")
 
 	r.Contains(msg.Text, checkName, "reopened reply must name the monitor")
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
+	checkLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/checks/" + checkID + "|" + checkName + ">"
 	r.Contains(msg.Text, checkLink, "reopened reply must link the monitor to its dashboard page as a SECONDARY link")
 
 	// Aligned with the dash0 registry's 🔁 for incident.reopened.
@@ -2681,8 +2681,8 @@ func TestSlackSender_DashboardLinks(t *testing.T) {
 	)
 
 	checkName := "API Health"
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID
-	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/" + incUID
+	checkLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/checks/" + checkID
+	incidentLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/incidents/" + incUID
 
 	newPayload := func(eventType string) *Payload {
 		return &Payload{
@@ -2790,7 +2790,7 @@ func TestSlackSender_DashboardLinks_EmptyBaseURLFallback(t *testing.T) {
 	text := collectBlockText(msg)
 	// No mrkdwn link syntax should appear when the base URL is empty.
 	r.NotContains(text, "<https://", "no dashboard links expected with empty base URL")
-	r.NotContains(text, "/dash0/orgs/", "no dashboard URLs expected with empty base URL")
+	r.NotContains(text, "/d/orgs/", "no dashboard URLs expected with empty base URL")
 	// Plain-text monitor name and tags must still be present.
 	r.Contains(text, "*Monitor:*\n"+checkName, "monitor name must remain as plain text")
 	r.Contains(text, ":warning: Incident", "incident tag must remain as plain text")
@@ -2978,8 +2978,8 @@ func TestSlackSender_buildCommentThreadReply_IncidentIsThePrimaryLink(t *testing
 	msg := (&SlackSender{}).buildMessage(payload)
 	r.NotNil(msg)
 
-	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/inc-1|#42>"
-	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkID + "|" + name + ">"
+	incidentLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/incidents/inc-1|#42>"
+	checkLink := "<" + baseURL + "/d/orgs/" + orgSlug + "/checks/" + checkID + "|" + name + ">"
 	r.Contains(msg.Text, incidentLink, "the #42 reference must link to the incident (primary link)")
 	r.Contains(msg.Text, checkLink, "the check name must still link to the check page (secondary link)")
 }

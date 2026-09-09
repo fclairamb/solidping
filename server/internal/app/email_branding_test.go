@@ -53,7 +53,7 @@ func TestEmailFormatterUsesThePostOverlayBaseURL(t *testing.T) {
 
 	_, before, _, err := server.services.EmailFormatter.Format("welcome.html", map[string]any{})
 	r.NoError(err)
-	r.Contains(before, preOverlayBaseURL+"/dash0/logo.png",
+	r.Contains(before, preOverlayBaseURL+"/d/logo.png",
 		"the formatter must render the configured base URL before the overlay")
 
 	// The overlay, exactly as boot performs it — and strictly AFTER NewServer
@@ -64,7 +64,7 @@ func TestEmailFormatterUsesThePostOverlayBaseURL(t *testing.T) {
 
 	_, after, _, err := server.services.EmailFormatter.Format("welcome.html", map[string]any{})
 	r.NoError(err)
-	r.Contains(after, postOverlayBaseURL+"/dash0/logo.png",
+	r.Contains(after, postOverlayBaseURL+"/d/logo.png",
 		"emails must use the post-overlay base URL; a captured (non-late-bound) base URL fails here")
 	r.NotContains(after, preOverlayBaseURL,
 		"no trace of the pre-overlay base URL may survive in a rendered email")

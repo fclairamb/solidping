@@ -104,7 +104,7 @@ func TestCreateInvitation(t *testing.T) {
 			App:       "dash0",
 		})
 		r.NoError(err)
-		r.Contains(resp.InviteURL, "http://127.0.0.1:4000/dash0/invite/")
+		r.Contains(resp.InviteURL, "http://127.0.0.1:4000/d/invite/")
 		r.NotContains(resp.InviteURL, "localhost")
 	})
 
@@ -130,7 +130,7 @@ func TestCreateInvitation(t *testing.T) {
 			App:       "dash0",
 		})
 		r.NoError(err)
-		r.Contains(resp.InviteURL, "https://solidping.example.com/dash0/invite/")
+		r.Contains(resp.InviteURL, "https://solidping.example.com/d/invite/")
 	})
 
 	t.Run("uses dash app in URL", func(t *testing.T) {

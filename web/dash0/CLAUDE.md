@@ -75,19 +75,19 @@ For hot reload development, use the redirect proxy:
 cd web/dash0 && bun run dev
 
 # Terminal 2: Start backend with redirect
-SP_REDIRECTS="/dash0:localhost:5174/dash0" make dev-backend
+SP_REDIRECTS="/d:localhost:5174/d" make dev-backend
 
 # Or use air for Go hot reload
 cd /path/to/solidping && air
 ```
 
-Access at `http://localhost:4000/dash0/`
+Access at `http://localhost:4000/d/`
 
 ## Configuration
 
 ### Base URL
 
-The app is served at `/dash0/` by default. Override with `VITE_BASE_URL`:
+The app is served at `/d/` by default. Override with `VITE_BASE_URL`:
 
 ```bash
 VITE_BASE_URL=/status/ bun run build
@@ -128,7 +128,7 @@ renders the operator UI — when working on subscriber-facing UX, switch repos.
 ## Design Reference
 
 Before building or modifying any UI, consult the live design reference at
-`http://localhost:4000/dash0/orgs/default/design-reference` (source:
+`http://localhost:4000/d/orgs/default/design-reference` (source:
 `src/routes/orgs/$org/design-reference.tsx`). It renders every shipped
 primitive (buttons, alerts, dialogs, tables, forms…) live in both light and
 dark mode, alongside the exact import line. Reuse those components and
@@ -232,7 +232,7 @@ The frontend is embedded in the Go backend:
 1. **Build**: `make build-dash0` creates `dist/`
 2. **Copy**: `make copy-dash0` copies to `server/internal/app/dash0res/`
 3. **Embed**: Backend uses `go:embed dash0res/*`
-4. **Serve**: Backend serves at `/dash0/` with SPA fallback
+4. **Serve**: Backend serves at `/d/` with SPA fallback
 
 ## Scripts Reference
 

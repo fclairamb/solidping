@@ -121,7 +121,7 @@ func supportNotice() jobtypes.OperatorNoticeJobConfig {
 		Event:   opsnotify.EventSupportMessage,
 		Subject: "[SolidPing support] New support thread on sms from +33600000000",
 		Body:    "Channel: sms\nFrom:    +33600000000\n\nis the api down?",
-		URL:     "https://solidping.example/dash0/support/thread-1",
+		URL:     "https://solidping.example/d/support/thread-1",
 	}
 }
 

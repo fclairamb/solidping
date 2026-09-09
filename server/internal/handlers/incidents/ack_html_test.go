@@ -17,7 +17,7 @@ func TestBuildIncidentURL_HappyPath(t *testing.T) {
 	r := require.New(t)
 
 	got := buildIncidentURL("my-org", "11111111-1111-1111-1111-111111111111")
-	r.Equal("/dash0/orgs/my-org/incidents/11111111-1111-1111-1111-111111111111", got)
+	r.Equal("/d/orgs/my-org/incidents/11111111-1111-1111-1111-111111111111", got)
 }
 
 // TestBuildIncidentURL_PathEscapesHostileSegments proves buildIncidentURL
@@ -36,7 +36,7 @@ func TestBuildIncidentURL_PathEscapesHostileSegments(t *testing.T) {
 	r.NotContains(got, `<`)
 	r.NotContains(got, `>`)
 	r.NotContains(got, "evil\"><script>/org", "the raw slug must not appear unescaped")
-	// Fixed separators contribute 5 literal slashes ("/dash0/orgs/" has 3,
+	// Fixed separators contribute 5 literal slashes ("/d/orgs/" has 3,
 	// "/incidents/" has 2). Any slash embedded in a segment must have been
 	// %2F-encoded rather than adding extra path segments.
 	r.Equal(5, strings.Count(got, "/"), "embedded slashes must not create extra path segments")
@@ -70,7 +70,7 @@ func TestSuccessRedirectFragment_EscapesPerContext(t *testing.T) {
 
 	r := require.New(t)
 
-	hostile := `/dash0/orgs/x"><script>alert(1)</script>/incidents/y&z`
+	hostile := `/d/orgs/x"><script>alert(1)</script>/incidents/y&z`
 	headExtra, body := successRedirectFragment(hostile)
 
 	// Neither fragment should contain the raw payload unescaped.
@@ -92,7 +92,7 @@ func TestSuccessRedirectFragment_EscapesPerContext(t *testing.T) {
 
 // TestPageContent_SuccessCarriesRedirect asserts the success page embeds the
 // countdown script, the meta-refresh fallback, and both point at the
-// expected /dash0/... URL built from orgSlug/incidentUID.
+// expected /d/... URL built from orgSlug/incidentUID.
 func TestPageContent_SuccessCarriesRedirect(t *testing.T) {
 	t.Parallel()
 
@@ -103,11 +103,11 @@ func TestPageContent_SuccessCarriesRedirect(t *testing.T) {
 	r.Equal("Incident acknowledged", title)
 	r.Equal("Incident acknowledged", h1)
 	r.Contains(icon, "icon-success")
-	r.Contains(headExtra, `<meta http-equiv="refresh" content="3;url=/dash0/orgs/acme/incidents/abc-123">`)
-	r.Contains(body, `href="/dash0/orgs/acme/incidents/abc-123"`)
+	r.Contains(headExtra, `<meta http-equiv="refresh" content="3;url=/d/orgs/acme/incidents/abc-123">`)
+	r.Contains(body, `href="/d/orgs/acme/incidents/abc-123"`)
 	r.Contains(body, "ack-countdown", "must render the animated countdown element")
 	r.Contains(body, "window.location.replace(url)")
-	r.Contains(body, `var url="/dash0/orgs/acme/incidents/abc-123"`)
+	r.Contains(body, `var url="/d/orgs/acme/incidents/abc-123"`)
 }
 
 // TestPageContent_NonSuccessKindsHaveNoRedirect asserts the redirect
@@ -173,7 +173,7 @@ func TestWriteAckHTML_RendersCardWithDarkMode(t *testing.T) {
 	r.Contains(body, `class="card"`)
 	r.Contains(body, "prefers-color-scheme:dark")
 	r.Contains(body, "icon-success")
-	r.Contains(body, "/dash0/orgs/acme/incidents/abc-123")
+	r.Contains(body, "/d/orgs/acme/incidents/abc-123")
 }
 
 // TestWriteAckHTML_ErrorKindsOmitRedirect confirms the redirect is absent at

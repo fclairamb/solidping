@@ -148,7 +148,7 @@ entitlements, and the Slack/MS Teams integration routes) — plus the public
 status-page endpoints (`/api/v1/status-pages/:org/...` — view, summary, badge,
 feed, which is also what the `/embed/v1` widget polls), per-check SVG badges,
 heartbeat ingest, the magic-link incident ack, status-page subscribe, and the
-`/dash0/orgs/:org/...` and `/status0/:org/...` app URLs.
+`/d/orgs/:org/...` and `/s/:org/...` app URLs.
 
 The single exception is the realtime WebSocket (`/api/v1/orgs/:org/events/ws`):
 an HTTP redirect has no meaning in a WS handshake, so a client on a previous
