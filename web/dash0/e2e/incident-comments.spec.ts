@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 test.describe("Incident comments", () => {
   // Deterministically seeded in test mode (server/test/testdata): an active
@@ -10,7 +10,7 @@ test.describe("Incident comments", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
@@ -46,7 +46,7 @@ test.describe("Incident comments", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
@@ -98,7 +98,7 @@ test.describe("Incident comments", () => {
     const page = authenticatedPage;
     await page.setViewportSize({ width: 375, height: 812 });
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 

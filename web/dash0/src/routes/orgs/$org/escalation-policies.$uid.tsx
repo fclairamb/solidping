@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { DASH_BASE } from "@/lib/base-path";
 
 export const Route = createFileRoute("/orgs/$org/escalation-policies/$uid")({
   component: EscalationPolicyDetailPage,
@@ -101,7 +102,7 @@ function EscalationPolicyDetailPage() {
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-3">
         <Button asChild variant="ghost" size="icon" aria-label={t("common:back")}>
-          <a href={`/dash0/orgs/${org}/escalation-policies`}>
+          <a href={`${DASH_BASE}/orgs/${org}/escalation-policies`}>
             <ArrowLeft className="h-4 w-4" />
           </a>
         </Button>

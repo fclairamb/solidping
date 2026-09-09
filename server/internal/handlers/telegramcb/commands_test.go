@@ -231,7 +231,7 @@ func TestIncidents_CarriesTheViewButtonWhenBaseURLConfigured(t *testing.T) {
 	r.Len(keyboards[1].InlineKeyboard[0], 2)
 	r.Equal(telegram.AckCallbackData(incident.UID), keyboards[1].InlineKeyboard[0][0].CallbackData)
 	r.Equal(
-		"https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
+		"https://app.example.com/d/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
 		keyboards[1].InlineKeyboard[0][1].URL,
 	)
 }
@@ -312,7 +312,7 @@ func TestIncidentDetail_AckedCarriesViewButtonOnly(t *testing.T) {
 	r.NotNil(last)
 	r.Len(last.InlineKeyboard[0], 1, "no Acknowledge button once already acked")
 	r.Equal(
-		"https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
+		"https://app.example.com/d/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
 		last.InlineKeyboard[0][0].URL,
 	)
 }
@@ -472,7 +472,7 @@ func TestCallbackAck_EditKeepsViewButtonWhenBaseURLConfigured(t *testing.T) {
 	r.Len(edits[0].keyboard.InlineKeyboard, 1, "the empty marker has ZERO rows; a View-only keyboard has one")
 	r.Len(edits[0].keyboard.InlineKeyboard[0], 1)
 	r.Equal(
-		"https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
+		"https://app.example.com/d/orgs/"+env.org.Slug+"/incidents/"+incident.UID,
 		edits[0].keyboard.InlineKeyboard[0][0].URL,
 	)
 	r.Empty(edits[0].keyboard.InlineKeyboard[0][0].CallbackData)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -284,7 +285,7 @@ func checkDashURL(baseURL, orgSlug string, check *models.Check) string {
 	if baseURL == "" || orgSlug == "" || check == nil || check.UID == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", baseURL, orgSlug, check.UID)
+	return fmt.Sprintf("%s%s/orgs/%s/checks/%s", baseURL, config.DashboardBasePath, orgSlug, check.UID)
 }
 
 // incidentDashURL builds the SolidPing dashboard URL for an incident's detail
@@ -294,7 +295,7 @@ func incidentDashURL(baseURL, orgSlug string, incident *models.Incident) string 
 	if baseURL == "" || orgSlug == "" || incident == nil || incident.UID == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s/dash0/orgs/%s/incidents/%s", baseURL, orgSlug, incident.UID)
+	return fmt.Sprintf("%s%s/orgs/%s/incidents/%s", baseURL, config.DashboardBasePath, orgSlug, incident.UID)
 }
 
 // slackLink wraps text in a Slack mrkdwn hyperlink when a URL is available,

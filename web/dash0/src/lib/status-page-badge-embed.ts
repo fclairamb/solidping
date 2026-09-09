@@ -13,6 +13,8 @@
  * instead of a DOM-rendering one. See `status-page-badge-embed.test.ts`.
  */
 
+import { STATUS_BASE } from "@/lib/base-path";
+
 /**
  * Escapes text for use inside a double-quoted HTML attribute value.
  * `pageName` is operator-controlled free text that lands verbatim in
@@ -62,7 +64,7 @@ export function buildStatusPageBadgeEmbedSnippets({
   /** The already-built absolute badge image URL (includes any label/style query params). */
   badgeUrl: string;
 }): StatusPageBadgeEmbedSnippets {
-  const pagePath = `/status0/${org}/${pageSlug}`;
+  const pagePath = `${STATUS_BASE}/${org}/${pageSlug}`;
   const pageUrl = `${origin}${pagePath}`;
   const markdownCode = `[![${escapeMarkdownAltText(pageName)} status](${badgeUrl})](${pageUrl})`;
   const htmlCode = `<a href="${pageUrl}" target="_blank" rel="noopener noreferrer"><img src="${badgeUrl}" alt="${escapeHtmlAttribute(pageName)} status" /></a>`;

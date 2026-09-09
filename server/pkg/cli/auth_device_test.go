@@ -43,8 +43,8 @@ func TestStartDeviceAuthorization(t *testing.T) {
 
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"device_code":"dc-1","user_code":"WDJP-4KXR",` +
-			`"verification_uri":"https://x.test/dash0/device",` +
-			`"verification_uri_complete":"https://x.test/dash0/device?user_code=WDJP-4KXR",` +
+			`"verification_uri":"https://x.test/d/device",` +
+			`"verification_uri_complete":"https://x.test/d/device?user_code=WDJP-4KXR",` +
 			`"expires_in":900,"interval":5}`))
 	}))
 	defer srv.Close()
@@ -53,7 +53,7 @@ func TestStartDeviceAuthorization(t *testing.T) {
 	r.NoError(err)
 	r.Equal("dc-1", authz.DeviceCode)
 	r.Equal("WDJP-4KXR", authz.UserCode)
-	r.Equal("https://x.test/dash0/device", authz.VerificationURI)
+	r.Equal("https://x.test/d/device", authz.VerificationURI)
 	r.Equal(900, authz.ExpiresIn)
 	r.Equal(5, authz.Interval)
 	r.Equal("sp CLI on testhost", gotBody.Load())

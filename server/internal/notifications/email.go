@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
@@ -657,7 +658,7 @@ func dashboardRootURL(baseURL string) string {
 		return ""
 	}
 
-	return baseURL + "/dash0"
+	return baseURL + config.DashboardBasePath
 }
 
 // docsURL returns the documentation root URL for the email footer link. Same

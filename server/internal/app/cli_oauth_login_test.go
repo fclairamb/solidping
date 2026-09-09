@@ -149,7 +149,7 @@ func TestCLIOAuthClientSeededAtStartup(t *testing.T) {
 	res := env.get(t, "/api/v1/oauth/authorize?"+authQuery.Encode(), nil)
 	r.Equal(http.StatusFound, res.status)
 	// Unknown client would render an error, not a login bounce.
-	r.Equal("/dash0/login", func() string {
+	r.Equal("/d/login", func() string {
 		loc, err := url.Parse(res.header.Get("Location"))
 		r.NoError(err)
 		return loc.Path

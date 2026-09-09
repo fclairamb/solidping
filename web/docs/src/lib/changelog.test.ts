@@ -233,4 +233,70 @@ Something is being worked on, format not yet decided <weird> & {odd}.
     const input = "# Changelog\n\nNothing here yet.\n";
     expect(transformChangelog(input)).toBe(input.trim());
   });
+
+  test("a hard-wrapped bullet is rejoined, so its trailing refs are still stripped", () => {
+    // The root CHANGELOG.md is hard-wrapped for readability. Every matcher here
+    // is line-based and the ref cluster is anchored to the END of a line, so a
+    // wrapped bullet must be rejoined before parsing — otherwise the commit
+    // hash this module exists to strip would land on a continuation line and
+    // render on the page. Asserting the hash is ABSENT is the real check; the
+    // rejoined prose alone would pass even with the unfolding removed.
+    const input = `# Changelog
+
+## [1.0.0](https://github.com/fclairamb/solidping/compare/v0.9.0...v1.0.0) (2026-08-01)
+
+
+### Features
+
+* **dash0:** the dashboard now lives at \`/d\` and the old address keeps
+  redirecting, so nothing already sent stops working
+  ([#283](https://github.com/fclairamb/solidping/issues/283))
+  ([4cbcc29](https://github.com/fclairamb/solidping/commit/4cbcc2911112222333344445555666677778888))
+`;
+
+    const output = transformChangelog(input);
+
+    expect(output).toContain(
+      "* **Dashboard:** the dashboard now lives at `/d` and the old address keeps redirecting, so nothing already sent stops working ([#283](https://github.com/fclairamb/solidping/issues/283))",
+    );
+    expect(output).not.toContain("4cbcc29");
+  });
+
+  test("a hard-wrapped bullet under an unparseable heading is rejoined too", () => {
+    // The `## Unreleased` block takes the verbatim passthrough path, which is
+    // why the unfolding happens before chunking rather than inside the body
+    // transform.
+    const input = `# Changelog
+
+## Unreleased
+
+
+### Features
+
+* **dash0:** a wrapped entry that has not been released yet and therefore
+  never reaches the version-heading branch at all
+`;
+
+    const output = transformChangelog(input);
+
+    expect(output).toContain(
+      "* **dash0:** a wrapped entry that has not been released yet and therefore never reaches the version-heading branch at all",
+    );
+  });
+
+  test("an unwrapped changelog is untouched by the unfolding", () => {
+    const input = `# Changelog
+
+## [1.0.0](https://github.com/fclairamb/solidping/compare/v0.9.0...v1.0.0) (2026-08-01)
+
+
+### Features
+
+* **api:** a single-line entry ([#1](https://github.com/fclairamb/solidping/issues/1))
+`;
+
+    expect(transformChangelog(input)).toContain(
+      "* **API:** a single-line entry ([#1](https://github.com/fclairamb/solidping/issues/1))",
+    );
+  });
 });

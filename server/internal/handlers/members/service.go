@@ -74,6 +74,16 @@ type MemberResponse struct {
 	Role      string     `json:"role"`
 	JoinedAt  *time.Time `json:"joinedAt,omitempty"`
 	CreatedAt time.Time  `json:"createdAt"`
+	// LastSessionActivityAt is when the member was last in the dashboard: the
+	// later of their most recent refresh-token activity (soft-deleted
+	// sessions included — a logout does not erase presence) and their last
+	// login. Nil if neither ever happened.
+	LastSessionActivityAt *time.Time `json:"lastSessionActivityAt,omitempty"`
+	// LastTokenActivityAt is when one of the member's credentials (a personal
+	// access token, or an OAuth refresh grant used by an MCP/CLI client) was
+	// last used, independent of dashboard presence. A minted-but-unused PAT
+	// does not count. Nil if the member owns no such credential activity.
+	LastTokenActivityAt *time.Time `json:"lastTokenActivityAt,omitempty"`
 }
 
 // ListMembersResponse represents the response for listing members.
@@ -138,29 +148,60 @@ func (s *Service) ListMembers(ctx context.Context, orgSlug string) (*ListMembers
 		return nil, err
 	}
 
+	userUIDs := make([]string, 0, len(members))
+	for _, member := range members {
+		userUIDs = append(userUIDs, member.UserUID)
+	}
+
+	activityByUser, err := s.db.TokenActivityByUsers(ctx, userUIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	response := &ListMembersResponse{
 		Data: make([]*MemberResponse, 0, len(members)),
 	}
 
 	for _, member := range members {
-		user, userErr := s.db.GetUser(ctx, member.UserUID)
-		if userErr != nil {
+		// member.User is preloaded by ListMembersByOrg (the `Relation("User")`
+		// eager load) — reading it here instead of a per-member GetUser call
+		// is what fixes the N+1 this endpoint used to make.
+		user := member.User
+		if user == nil {
 			continue // Skip members with missing users
 		}
 
+		activity := activityByUser[member.UserUID]
+
 		response.Data = append(response.Data, &MemberResponse{
-			UID:       member.UID,
-			UserUID:   member.UserUID,
-			Email:     user.Email,
-			Name:      user.Name,
-			AvatarURL: user.AvatarURL,
-			Role:      string(member.Role),
-			JoinedAt:  member.JoinedAt,
-			CreatedAt: member.CreatedAt,
+			UID:                   member.UID,
+			UserUID:               member.UserUID,
+			Email:                 user.Email,
+			Name:                  user.Name,
+			AvatarURL:             user.AvatarURL,
+			Role:                  string(member.Role),
+			JoinedAt:              member.JoinedAt,
+			CreatedAt:             member.CreatedAt,
+			LastSessionActivityAt: maxTimePtr(activity.SessionAt, user.LastActiveAt),
+			LastTokenActivityAt:   activity.TokenAt,
 		})
 	}
 
 	return response, nil
+}
+
+// maxTimePtr returns the later of two optional timestamps, or nil if both are nil.
+func maxTimePtr(first, second *time.Time) *time.Time {
+	switch {
+	case first == nil:
+		return second
+	case second == nil:
+		return first
+	case second.After(*first):
+		return second
+	default:
+		return first
+	}
 }
 
 // GetMember returns a specific member by UID.
@@ -193,15 +234,24 @@ func (s *Service) GetMember(ctx context.Context, orgSlug, memberUID string) (*Me
 		return nil, ErrUserNotFound
 	}
 
+	activityByUser, err := s.db.TokenActivityByUsers(ctx, []string{member.UserUID})
+	if err != nil {
+		return nil, err
+	}
+
+	activity := activityByUser[member.UserUID]
+
 	return &MemberResponse{
-		UID:       member.UID,
-		UserUID:   member.UserUID,
-		Email:     user.Email,
-		Name:      user.Name,
-		AvatarURL: user.AvatarURL,
-		Role:      string(member.Role),
-		JoinedAt:  member.JoinedAt,
-		CreatedAt: member.CreatedAt,
+		UID:                   member.UID,
+		UserUID:               member.UserUID,
+		Email:                 user.Email,
+		Name:                  user.Name,
+		AvatarURL:             user.AvatarURL,
+		Role:                  string(member.Role),
+		JoinedAt:              member.JoinedAt,
+		CreatedAt:             member.CreatedAt,
+		LastSessionActivityAt: maxTimePtr(activity.SessionAt, user.LastActiveAt),
+		LastTokenActivityAt:   activity.TokenAt,
 	}, nil
 }
 

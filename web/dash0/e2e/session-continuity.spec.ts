@@ -45,7 +45,7 @@ async function waitForLiveSocketHello(page: Page): Promise<WebSocket> {
 // E2E_BASE_URL/E2E_ACCESS_TOKEN_EXPIRY_SECONDS set. To reproduce locally:
 //   SP_RUNMODE=test PORT=4001 SP_AUTH_ACCESS_TOKEN_EXPIRY=10s \
 //     SP_DB_RESET=true ./solidping serve &
-//   E2E_BASE_URL=http://localhost:4001/dash0/ \
+//   E2E_BASE_URL=http://localhost:4001/d/ \
 //     E2E_ACCESS_TOKEN_EXPIRY_SECONDS=10 CI=true \
 //     bunx playwright test session-continuity.spec.ts
 // (CI=true skips global-setup's build-and-start-its-own-server step — see

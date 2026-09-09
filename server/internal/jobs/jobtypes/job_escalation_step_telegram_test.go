@@ -224,7 +224,7 @@ func TestDispatch_TelegramFilterSendsAndSkipsEmail(t *testing.T) {
 	r.True(ok)
 	view, ok := buttons[len(buttons)-1].(map[string]any)
 	r.True(ok)
-	r.Equal("https://app.example.com/dash0/orgs/"+env.org.Slug+"/incidents/incident-1", view["url"])
+	r.Equal("https://app.example.com/d/orgs/"+env.org.Slug+"/incidents/incident-1", view["url"])
 
 	// The first alert of an incident is standalone.
 	_, hasReply := body["reply_to_message_id"]
@@ -822,7 +822,7 @@ func TestTelegramIncidentURL(t *testing.T) {
 
 	r := require.New(t)
 
-	r.Equal("https://app.example.com/dash0/orgs/acme/incidents/abc",
+	r.Equal("https://app.example.com/d/orgs/acme/incidents/abc",
 		telegram.IncidentURL("https://app.example.com/", "acme", "abc"))
 	// No base URL / no org slug simply omits the link rather than emitting a
 	// broken one.
@@ -926,7 +926,7 @@ func TestDispatch_TelegramAlertCarriesAckAndViewButtons(t *testing.T) {
 
 	view, ok := buttons[1].(map[string]any)
 	r.True(ok)
-	r.Equal("https://app.example.com/dash0/orgs/test-org/incidents/incident-1", view["url"])
+	r.Equal("https://app.example.com/d/orgs/test-org/incidents/incident-1", view["url"])
 	r.NotContains(view, "callback_data", "a URL button carries no callback_data")
 }
 
@@ -967,7 +967,7 @@ func TestDispatch_TelegramAckedIncidentCarriesViewButtonOnly(t *testing.T) {
 
 	button, ok := buttons[0].(map[string]any)
 	r.True(ok)
-	r.Equal("https://app.example.com/dash0/orgs/test-org/incidents/incident-1", button["url"])
+	r.Equal("https://app.example.com/d/orgs/test-org/incidents/incident-1", button["url"])
 }
 
 // TestDispatch_TelegramResolutionKeepsViewButton: Telegram treats an ABSENT
@@ -1015,7 +1015,7 @@ func TestDispatch_TelegramResolutionKeepsViewButton(t *testing.T) {
 
 	button, ok := buttons[0].(map[string]any)
 	r.True(ok)
-	r.Equal("https://app.example.com/dash0/orgs/test-org/incidents/incident-1", button["url"])
+	r.Equal("https://app.example.com/d/orgs/test-org/incidents/incident-1", button["url"])
 	r.NotContains(button, "callback_data")
 
 	// The resolution message itself also carries the View button — a URL

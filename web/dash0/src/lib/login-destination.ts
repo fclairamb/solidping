@@ -1,3 +1,6 @@
+import { DASH_BASE } from "./base-path";
+import { setLastAuthMethod } from "./last-auth-method";
+
 /**
  * Resolves where a just-authenticated user should land.
  *
@@ -189,4 +192,71 @@ export function returnToOrg(returnTo: string, basepath: string): string | null {
     : pathOnly;
   const match = rest.match(/^\/orgs\/([^/]+)/);
   return match ? match[1] : null;
+}
+
+/**
+ * Builds the full-page URL that starts a third-party sign-in for `providerType`.
+ *
+ * This is the single place that knows the provider redirect shape. It is
+ * called by BOTH auth surfaces — the login page's promoted "last used" slot
+ * and the shared `OAuthProviderButtons` grid rendered on /login and /register
+ * (spec 2026-09-09-02) — because a second hand-rolled copy would drift from
+ * the two non-obvious branches below.
+ *
+ * Deliberately pure: it computes a URL and nothing else. Recording the intent
+ * (`setLastAuthMethod`) and performing the navigation stay with the callers,
+ * which is what makes the three branches unit-testable without a DOM.
+ *
+ * Three cases, in order:
+ *
+ * 1. `returnTo` is the embedded MCP OAuth authorize endpoint. The provider
+ *    callback appends the session tokens to `redirect_uri` as query params,
+ *    and only the SPA's pre-React handoff (main.tsx) knows how to persist
+ *    them — sending the callback straight to /api/v1/oauth/authorize would
+ *    drop them on a non-SPA URL. So we land back on the login page with
+ *    `returnTo` preserved and let the already-authenticated effect resume the
+ *    consent flow.
+ * 2. Any other `returnTo`: passed through {@link stripOAuthErrorParams}. A
+ *    previous failed attempt leaves `error`/`error_description` on the URL and
+ *    the 401 bounce captures them into `returnTo`; without the strip, each
+ *    retry nests the last failure one URL-encoding deeper (spec 2026-08-25-01).
+ * 3. No `returnTo` (the register page never has one): the org root.
+ */
+export function buildOAuthLoginUrl({
+  org,
+  providerType,
+  returnTo,
+}: {
+  org: string;
+  providerType: string;
+  returnTo?: string | null;
+}): string {
+  const redirectURI = isOAuthAuthorizeReturnTo(returnTo)
+    ? `${DASH_BASE}/orgs/${org}/login?returnTo=${encodeURIComponent(returnTo)}`
+    : stripOAuthErrorParams(returnTo || `${DASH_BASE}/orgs/${org}`);
+
+  return `/api/v1/auth/${providerType}/login?org=${encodeURIComponent(org)}&redirect_uri=${encodeURIComponent(redirectURI)}`;
+}
+
+/**
+ * Records the intent and sends the browser off to `providerType`'s sign-in.
+ *
+ * The two halves belong together: OAuth navigates away from the app, so
+ * there is no "on success" moment left in which to remember what the visitor
+ * chose — the write has to happen immediately before the redirect, on every
+ * surface that offers a provider button (the /login promoted slot, and the
+ * shared grid on /login and /register).
+ *
+ * It lives at module scope rather than inside those components on purpose:
+ * assigning `window.location.href` from a component body trips
+ * react-hooks/immutability, and this genuinely is not React state — it is a
+ * full-page navigation out of the SPA.
+ */
+export function startOAuthLogin(params: {
+  org: string;
+  providerType: string;
+  returnTo?: string | null;
+}): void {
+  setLastAuthMethod(`oauth:${params.providerType}`);
+  window.location.href = buildOAuthLoginUrl(params);
 }

@@ -6,7 +6,7 @@ title: Custom Domains
 # Custom Domains for Status Pages
 
 Serve a status page on a domain you own — `status.yourcompany.com` — instead of
-the installation's own `.../status0/...` URL. This is the surface your customers
+the installation's own `.../s/...` URL. This is the surface your customers
 see, so a branded hostname matters.
 
 **One CNAME record, then automatic HTTPS.** That is the whole setup.

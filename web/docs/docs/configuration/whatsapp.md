@@ -86,7 +86,7 @@ language you configure as `template_language` (default `en`).
   |---|---|
   | Type | Visit website → **Dynamic** |
   | Button text | `Open check` |
-  | URL | `https://solidping.example.com/dash0/` + `{{1}}` |
+  | URL | `https://solidping.example.com/d/` + `{{1}}` |
   | URL sample | `orgs/acme/checks/1f0b…` |
 
   Replace `solidping.example.com` with **your** installation's base URL — the
@@ -104,8 +104,8 @@ language you configure as `template_language` (default `en`).
       {
         "type": "URL",
         "text": "Open check",
-        "url": "https://solidping.example.com/dash0/{{1}}",
-        "example": ["https://solidping.example.com/dash0/orgs/acme/checks/1f0b"]
+        "url": "https://solidping.example.com/d/{{1}}",
+        "example": ["https://solidping.example.com/d/orgs/acme/checks/1f0b"]
       }
     ]
   }

@@ -14,6 +14,7 @@ import {
   resolveHandoffDestination,
   stripHandoffParams,
 } from "./oauth-handoff";
+import { DASH_BASE } from "@/lib/base-path";
 
 describe("parseOAuthHandoff", () => {
   it("returns null when there is no access_token param (the common case)", () => {
@@ -114,7 +115,7 @@ describe("stripHandoffParams", () => {
 });
 
 describe("resolveHandoffDestination", () => {
-  const BASE = "/dash0";
+  const BASE = DASH_BASE;
   const TOKENS = "?access_token=at&refresh_token=rt&expires_in=3600&org=acme";
 
   it("preserves a deep returnTo path whose org matches the handoff org", () => {
@@ -124,17 +125,17 @@ describe("resolveHandoffDestination", () => {
     expect(
       resolveHandoffDestination(
         "acme",
-        "/dash0/orgs/acme/checks/foo",
+        `${BASE}/orgs/acme/checks/foo`,
         TOKENS,
         BASE,
       ),
-    ).toBe("/dash0/orgs/acme/checks/foo");
+    ).toBe(`${BASE}/orgs/acme/checks/foo`);
   });
 
   it("keeps the org root when the deep path already is the org root", () => {
     expect(
-      resolveHandoffDestination("acme", "/dash0/orgs/acme", TOKENS, BASE),
-    ).toBe("/dash0/orgs/acme");
+      resolveHandoffDestination("acme", `${BASE}/orgs/acme`, TOKENS, BASE),
+    ).toBe(`${BASE}/orgs/acme`);
   });
 
   it("preserves non-token query params on a kept path (MCP OAuth returnTo)", () => {
@@ -146,32 +147,32 @@ describe("resolveHandoffDestination", () => {
     expect(
       resolveHandoffDestination(
         "acme",
-        "/dash0/orgs/acme/login",
+        `${BASE}/orgs/acme/login`,
         `?access_token=at&org=acme&returnTo=${returnTo}`,
         BASE,
       ),
-    ).toBe(`/dash0/orgs/acme/login?returnTo=${returnTo}`);
+    ).toBe(`${BASE}/orgs/acme/login?returnTo=${returnTo}`);
   });
 
   it("falls back to the org root for a cross-org returnTo path", () => {
     expect(
       resolveHandoffDestination(
         "acme",
-        "/dash0/orgs/other/checks",
+        `${BASE}/orgs/other/checks`,
         TOKENS,
         BASE,
       ),
-    ).toBe("/dash0/orgs/acme");
+    ).toBe(`${BASE}/orgs/acme`);
   });
 
   it("falls back to the org root for a non-org path (Discord's redirect_uri=/)", () => {
     // Discord defaults redirect_uri to "/" but buildSuccessRedirect still sets
     // org, so we land the user on the org root — never on "/".
     expect(resolveHandoffDestination("acme", "/", TOKENS, BASE)).toBe(
-      "/dash0/orgs/acme",
+      `${BASE}/orgs/acme`,
     );
-    expect(resolveHandoffDestination("acme", "/dash0", TOKENS, BASE)).toBe(
-      "/dash0/orgs/acme",
+    expect(resolveHandoffDestination("acme", `${BASE}`, TOKENS, BASE)).toBe(
+      `${BASE}/orgs/acme`,
     );
   });
 
@@ -179,11 +180,11 @@ describe("resolveHandoffDestination", () => {
     expect(
       resolveHandoffDestination(
         "acme",
-        "//evil.com/dash0/orgs/acme",
+        `//evil.com${BASE}/orgs/acme`,
         TOKENS,
         BASE,
       ),
-    ).toBe("/dash0/orgs/acme");
+    ).toBe(`${BASE}/orgs/acme`);
   });
 
   it("keeps the current pathname when no org was handed off", () => {
@@ -192,11 +193,11 @@ describe("resolveHandoffDestination", () => {
     expect(
       resolveHandoffDestination(
         undefined,
-        "/dash0/orgs/acme/checks",
+        `${BASE}/orgs/acme/checks`,
         TOKENS,
         BASE,
       ),
-    ).toBe("/dash0/orgs/acme/checks");
+    ).toBe(`${BASE}/orgs/acme/checks`);
   });
 
   it("works with an empty base path", () => {

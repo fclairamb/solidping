@@ -30,7 +30,7 @@ func TestServeDemoShortcutEnabled(t *testing.T) {
 		defer func() { _ = resp.Body.Close() }()
 
 		r.Equal(http.StatusFound, resp.StatusCode, "path %s", path)
-		r.Equal("/dash0/login?demo=true", resp.Header.Get("Location"), "path %s", path)
+		r.Equal("/d/login?demo=true", resp.Header.Get("Location"), "path %s", path)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestServeDemoShortcutDisabled(t *testing.T) {
 
 // TestServeDemoShortcutCustomHost404s covers isCustomHostForbidden: /demo on a
 // resolved custom status-page domain must 404, never redirect a visitor into
-// the SolidPing dashboard, exactly like /dash0 is already forbidden there.
+// the SolidPing dashboard, exactly like /d is already forbidden there.
 func TestServeDemoShortcutCustomHost404s(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

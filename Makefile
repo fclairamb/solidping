@@ -1,6 +1,6 @@
-.PHONY: docker-build build build-backend build-dash build-dash0 build-status0 build-docs copy-dash copy-dash0 copy-status0 copy-docs \
-	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-scenario test-dash test-dash0 test-docs lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
+.PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
+	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
+	test test-scenario test-dash0 test-docs lint lint-back lint-dash0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -44,8 +44,6 @@ LDFLAGS := -ldflags "\
 	-X 'github.com/fclairamb/solidping/server/internal/version.GitTime=$(GIT_TIME)'"
 
 # Directories
-DASH_DIR := web/dash
-DASH_DIST := $(DASH_DIR)/dist
 DASH0_DIR := web/dash0
 DASH0_DIST := $(DASH0_DIR)/dist
 STATUS0_DIR := web/status0
@@ -53,7 +51,6 @@ STATUS0_DIST := $(STATUS0_DIR)/dist
 DOCS_DIR := web/docs
 DOCS_DIST := $(DOCS_DIR)/build
 BACK_DIR := server
-BACK_RES := $(BACK_DIR)/internal/app/res/
 BACK_DASH0_RES := $(BACK_DIR)/internal/app/dash0res/
 BACK_STATUS0_RES := $(BACK_DIR)/internal/app/status0res/
 BACK_DOCS_RES := $(BACK_DIR)/internal/app/docsres/
@@ -74,7 +71,7 @@ kill:
 	lsof -ti :5174 | xargs kill
 	lsof -ti :5175 | xargs kill
 
-build: sync-brand-assets build-dash copy-dash build-dash0 copy-dash0 build-status0 copy-status0 build-docs copy-docs build-backend ## Build complete application
+build: sync-brand-assets build-dash0 copy-dash0 build-status0 copy-status0 build-docs copy-docs build-backend ## Build complete application
 
 sync-brand-assets: ## Copy res/logo.svg + favicon set into web/{dash0,status0}/public/ (favicons under public/assets/)
 	@mkdir -p web/dash0/public/assets web/status0/public/assets
@@ -104,18 +101,6 @@ docker-build: ## Build Docker image
 		-t $(APP_NAME):$(VERSION) \
 		-t $(APP_NAME):latest .
 	@echo "Docker image built: $(APP_NAME):$(VERSION) and $(APP_NAME):latest"
-
-build-dash: ## Build dash with bun
-	@echo "Building dash..."
-	@cd $(DASH_DIR) && bun install && bun run build
-	@echo "Dash build complete"
-
-copy-dash: ## Copy dash dist to backend res directory
-	echo "Copying dash dist to backend resources..."
-	rm -rf $(BACK_RES)
-	mkdir -p $(BACK_RES)
-	cp -r $(DASH_DIST)/* $(BACK_RES)/
-	echo "Dash resources copied to $(BACK_RES)"
 
 build-dash0: ## Build dash0 status page with bun
 	@echo "Building dash0..."
@@ -305,13 +290,13 @@ DEVLOOP_PROCS := -proc "dash0:$(CURDIR)/$(DASH0_DIR):bun run dev" -proc "status0
 
 dev: kill ## Run backend, dash0 and status0 in development mode
 	@echo "Running application in development mode..."
-	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" SP_PROFILER_ENABLED=true \
+	@cd $(BACK_DIR) && SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" SP_PROFILER_ENABLED=true \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
-	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
+	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
@@ -327,15 +312,13 @@ dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../so
 		SP_ENTITLEMENTS_SERVICE_SIGNING_KEYS='$(SAAS_SIGNING_KEYS_IN)' \
 		SP_ENTITLEMENTS_OUTBOUND_SIGNING_KEYS='$(SAAS_SIGNING_KEYS_OUT)' \
 		SP_ENTITLEMENTS_ALLOW_LEGACY_SERVICE_TOKEN=$(SAAS_ALLOW_LEGACY_TOKEN) \
-		SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
+		SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
-clean: ## Remove built binaries and dash artifacts
+clean: ## Remove built binaries and SPA artifacts
 	@echo "Cleaning build artifacts..."
 	@rm -f $(APP_NAME)
 	@rm -rf bin/
-	@rm -rf $(DASH_DIST)
-	@rm -rf $(BACK_RES)
 	@rm -rf $(DASH0_DIST)
 	@rm -rf $(BACK_DASH0_RES)
 	@rm -rf $(STATUS0_DIST)
@@ -345,7 +328,6 @@ clean: ## Remove built binaries and dash artifacts
 
 clean-all: clean ## Remove all generated files including node_modules
 	@echo "Cleaning all generated files..."
-	@rm -rf $(DASH_DIR)/node_modules $(DASH_DIR)/.bun
 	@rm -rf $(DASH0_DIR)/node_modules $(DASH0_DIR)/.bun
 	@rm -rf $(STATUS0_DIR)/node_modules $(STATUS0_DIR)/.bun
 	@echo "Deep clean complete"
@@ -359,11 +341,6 @@ test-scenario: ## Run full-pipeline scenario tests (requires Docker / embedded P
 	@echo "Running scenario integration tests..."
 	@cd $(BACK_DIR) && go test -v -timeout 120s ./test/integration/scenario/...
 	@echo "Scenario tests complete"
-
-test-dash: ## Run dash tests
-	@echo "Running dash tests..."
-	@cd $(DASH_DIR) && bun test
-	@echo "Dash tests complete"
 
 test-dash0: ## Run dash0 unit tests (mirrors the CI step)
 	@echo "Running dash0 unit tests..."
@@ -387,23 +364,19 @@ lint-back: ## Run backend linter
 	@cd $(BACK_DIR) && golangci-lint run ./...
 	@echo "Backend linting complete"
 
-lint-dash: ## Run dash linter
-	@echo "Running dash linter..."
-	@cd $(DASH_DIR) && bun run lint
-	@echo "Dash linting complete"
+lint-dash0: ## Run dash0 linter
+	@echo "Running dash0 linter..."
+	@cd $(DASH0_DIR) && bun run lint
+	@echo "Dash0 linting complete"
 
-lint: lint-back lint-dash ## Run all linters
+lint: lint-back lint-dash0 ## Run all linters
 
 fmt: ## Format code
 	@echo "Formatting backend code..."
 	@cd $(BACK_DIR) && go fmt ./...
-	@echo "Formatting dash code..."
-	@cd $(DASH_DIR) && bun run lint --fix || true
+	@echo "Formatting dash0 code..."
+	@cd $(DASH0_DIR) && bun run lint --fix || true
 	@echo "Code formatting complete"
-
-dev-dash: ## Start dash development server
-	@echo "Starting dash dev server..."
-	@cd $(DASH_DIR) && bun run dev
 
 dev-dash0: ## Start dash0 development server
 	@echo "Starting dash0 dev server..."
@@ -424,8 +397,6 @@ dev-backend: ## Start backend development server (hot reload via cmd/devloop, ro
 deps: ## Install all dependencies
 	@echo "Installing backend dependencies..."
 	@cd $(BACK_DIR) && go mod download
-	@echo "Installing dash dependencies..."
-	@cd $(DASH_DIR) && bun install
 	@echo "Installing dash0 dependencies..."
 	@cd $(DASH0_DIR) && bun install
 	@echo "Installing status0 dependencies..."

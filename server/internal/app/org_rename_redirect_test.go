@@ -128,8 +128,8 @@ func publicSurfaces(env *renameEnv, slug string) map[string]string {
 		"status page feed":    "/api/v1/status-pages/" + slug + "/" + env.pageSlug + "/feed.xml",
 		"check badge":         "/api/v1/orgs/" + slug + "/checks/" + env.checkSlug + "/badges/status",
 		"org api":             "/api/v1/orgs/" + slug + "/checks",
-		"status0 page":        "/status0/" + slug + "/" + env.pageSlug,
-		"dash0 page":          "/dash0/orgs/" + slug + "/checks",
+		"status0 page":        "/s/" + slug + "/" + env.pageSlug,
+		"dash0 page":          "/d/orgs/" + slug + "/checks",
 	}
 }
 

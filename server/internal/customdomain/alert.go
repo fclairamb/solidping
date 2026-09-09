@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -133,7 +134,8 @@ func mailDemoted(
 
 	settingsURL := ""
 	if deps.BaseURL != "" {
-		settingsURL = fmt.Sprintf("%s/dash0/orgs/%s/status-pages/%s", deps.BaseURL, org.Slug, page.UID)
+		settingsURL = fmt.Sprintf("%s%s/orgs/%s/status-pages/%s",
+			deps.BaseURL, config.DashboardBasePath, org.Slug, page.UID)
 	}
 
 	data := map[string]any{

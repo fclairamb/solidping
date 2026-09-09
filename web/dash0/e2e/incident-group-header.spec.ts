@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 /**
  * Read-time aggregation of per-check incidents (spec 2026-08-24-14).
@@ -92,7 +92,7 @@ test.describe("Incidents list: check-group header", () => {
       route.fulfill(json({ data: GROUPS })),
     );
 
-    await page.goto("/dash0/orgs/test/incidents");
+    await page.goto(`${DASH_BASE}/orgs/test/incidents`);
     await page.waitForLoadState("networkidle");
 
     // Exactly one header, for the one group that has members in hand.

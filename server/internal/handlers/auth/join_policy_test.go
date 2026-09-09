@@ -730,11 +730,11 @@ func TestFinishProviderCallbackPendingRedirect(t *testing.T) {
 			t.Context(), http.MethodGet, "/api/v1/auth/microsoft/callback", nil)
 
 		require.NoError(t, finishProviderCallback(
-			recorder, req, "/dash0/orgs/acme?access_token=at", "acme", "at", 3600, true))
+			recorder, req, "/d/orgs/acme?access_token=at", "acme", "at", 3600, true))
 
 		location := recorder.Header().Get("Location")
 		require.Contains(t, location, noOrgPath)
-		require.NotContains(t, location, "/dash0/orgs/acme")
+		require.NotContains(t, location, "/d/orgs/acme")
 		require.Contains(t, location, pendingMembershipParam+"=acme")
 	})
 
@@ -746,8 +746,8 @@ func TestFinishProviderCallbackPendingRedirect(t *testing.T) {
 			t.Context(), http.MethodGet, "/api/v1/auth/microsoft/callback", nil)
 
 		require.NoError(t, finishProviderCallback(
-			recorder, req, "/dash0/orgs/acme?access_token=at", "acme", "at", 3600, false))
+			recorder, req, "/d/orgs/acme?access_token=at", "acme", "at", 3600, false))
 
-		require.Equal(t, "/dash0/orgs/acme?access_token=at", recorder.Header().Get("Location"))
+		require.Equal(t, "/d/orgs/acme?access_token=at", recorder.Header().Get("Location"))
 	})
 }

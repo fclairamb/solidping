@@ -682,7 +682,7 @@ func TestMirror_MarkersThrottleAndFailureIsolation(t *testing.T) {
 	r.Equal([]string{"support@acme.com"}, mail.Recipients.To)
 	// It says plainly that it is a notification, and leads with the thread link.
 	r.Contains(mail.Text, "not a conversation")
-	r.Contains(mail.Text, "https://solidping.example/dash0/support/"+thread.UID)
+	r.Contains(mail.Text, "https://solidping.example/d/support/"+thread.UID)
 	r.Contains(mail.Text, "hello there")
 
 	// A burst folds into the first mail rather than producing one per message.

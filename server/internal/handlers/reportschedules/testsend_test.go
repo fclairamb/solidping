@@ -126,3 +126,25 @@ func TestTestSend_NonSuppressedRecipient(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{recipient}, env.mailer.sentTo())
 }
+
+// TestTestSend_ZeroCheckOrgStillSends is spec case 13. TestSend is the manual
+// "send me one now" path (service.go TestSend -> the same Builder.Build the
+// sweep uses): a user pressing the button has explicitly asked to see what
+// the report looks like, so it must keep sending even for a zero-check org,
+// unlike the scheduled sweep which now suppresses that same empty scope
+// (job_uptime_report.go's guard A). setupTestSendEnv's org has no checks by
+// definition, so this pins that behavior is unaffected by the sweep-side fix.
+func TestTestSend_ZeroCheckOrgStillSends(t *testing.T) {
+	t.Parallel()
+
+	env := setupTestSendEnv(t)
+	schedule := env.createSchedule(t)
+
+	const recipient = "operator@example.com"
+
+	err := env.svc.TestSend(context.Background(), env.org.Slug, schedule.UID, recipient, time.Now())
+
+	require.NoError(t, err)
+	require.Equal(t, []string{recipient}, env.mailer.sentTo(),
+		"a manual test send must still mail an empty report, unlike the scheduled sweep")
+}

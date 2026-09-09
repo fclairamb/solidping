@@ -191,7 +191,8 @@
       "email": "E-Mail",
       "role": "Rolle",
       "joinedAt": "Beigetreten",
-      "coverage": "Alarmierung"
+      "coverage": "Alarmierung",
+      "lastSeen": "Zuletzt gesehen"
     },
     "role": {
       "owner": "Eigentümer",
@@ -243,6 +244,12 @@
       "nudgeAction": "Erinnerungs-E-Mail senden",
       "nudgeSent": "Erinnerungs-E-Mail gesendet",
       "nudgeFailed": "Erinnerungs-E-Mail konnte nicht gesendet werden"
+    },
+    "lastSeen": {
+      "never": "Nie",
+      "viaSession": "Dashboard",
+      "viaToken": "API-Token",
+      "breakdownLine": "{{channel}} · {{time}}"
     }
   },
   "checkRateLimit": {

@@ -53,11 +53,11 @@ for confidential clients).
 
 ### GET /api/v1/oauth/authorize
 Authorization endpoint. Requires a logged-in dashboard session (the `access_token` cookie); if
-absent, redirects to `/dash0/login?returnTo=…` and back. Validates `client_id`, `redirect_uri`
+absent, redirects to `/d/login?returnTo=…` and back. Validates `client_id`, `redirect_uri`
 (exact match against the registered set, loopback ignores the port), `response_type=code`, PKCE
 `code_challenge` + `code_challenge_method=S256` (both required; `plain` and missing are rejected),
 `scope ⊆ {mcp, mcp:read}`, and `resource` (must equal the MCP resource). On success redirects to the
-dashboard consent screen (`/dash0/orgs/:org/oauth/consent`).
+dashboard consent screen (`/d/orgs/:org/oauth/consent`).
 
 ### POST /api/v1/oauth/authorize
 Consent decision. Re-validates the request, requires a session, and reads `decision` (`approve` /

@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, DASH_BASE } from "./fixtures";
 import { expandSection } from "./section-helpers";
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -415,7 +415,7 @@ test.describe("Check Groups", () => {
 
     // Navigate to the check detail page
     await page.goto(
-      `/dash0/orgs/test/checks/${check.uid}`,
+      `${DASH_BASE}/orgs/test/checks/${check.uid}`,
       { waitUntil: "networkidle" }
     );
     await expect(
@@ -473,7 +473,7 @@ test.describe("Check Groups", () => {
 
     // Navigate to the check edit page
     await page.goto(
-      `/dash0/orgs/test/checks/${check.uid}/edit`,
+      `${DASH_BASE}/orgs/test/checks/${check.uid}/edit`,
       { waitUntil: "networkidle" }
     );
 
@@ -614,7 +614,7 @@ test.describe("Check Groups", () => {
     expect(createResp.status()).toBe(201);
     const group = await createResp.json();
 
-    await page.goto(`/dash0/orgs/test/check-groups/${group.uid}/edit`, {
+    await page.goto(`${DASH_BASE}/orgs/test/check-groups/${group.uid}/edit`, {
       waitUntil: "networkidle",
     });
 
@@ -654,7 +654,7 @@ test.describe("Check Groups", () => {
     const groupA = await createGroupViaApi(page, token, `E2E DupSlugA ${ts}`);
     const groupB = await createGroupViaApi(page, token, `E2E DupSlugB ${ts}`);
 
-    await page.goto(`/dash0/orgs/test/check-groups/${groupB.uid}/edit`, {
+    await page.goto(`${DASH_BASE}/orgs/test/check-groups/${groupB.uid}/edit`, {
       waitUntil: "networkidle",
     });
 
@@ -694,7 +694,7 @@ test.describe("Check Groups", () => {
     const originalName = `E2E NameOnly ${ts}`;
     const group = await createGroupViaApi(page, token, originalName);
 
-    await page.goto(`/dash0/orgs/test/check-groups/${group.uid}/edit`, {
+    await page.goto(`${DASH_BASE}/orgs/test/check-groups/${group.uid}/edit`, {
       waitUntil: "networkidle",
     });
 

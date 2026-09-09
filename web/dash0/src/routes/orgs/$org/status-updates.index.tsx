@@ -52,6 +52,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { useDebounce } from "@/lib/use-debounce";
 import { cn } from "@/lib/utils";
 import { STATUS_UPDATE_KINDS, statusUpdateKindTone } from "@/lib/status-update-kind";
+import { STATUS_BASE } from "@/lib/base-path";
 
 interface StatusUpdatesIndexSearch {
   q?: string;
@@ -123,7 +124,7 @@ function StatusUpdateRow({
               title={t("statusUpdates:viewPublic")}
             >
               <a
-                href={`/status0/${org}/${publicSlug}#update-${update.uid}`}
+                href={`${STATUS_BASE}/${org}/${publicSlug}#update-${update.uid}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="status-update-row-view"
@@ -201,7 +202,7 @@ function StatusUpdatesIndexPage() {
   const { data: pages } = useStatusPages(org);
 
   // Resolve a status-page slug from its uid once, so each row can build the
-  // public deep-link (/status0/{org}/{slug}#update-{uid}) without an extra fetch.
+  // public deep-link (/s/{org}/{slug}#update-{uid}) without an extra fetch.
   const pageSlugByUid = useMemo(
     () => new Map((pages ?? []).map((p) => [p.uid, p.slug] as const)),
     [pages],

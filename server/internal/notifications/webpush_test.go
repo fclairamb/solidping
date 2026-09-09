@@ -188,17 +188,17 @@ func TestBuildWebPushURL(t *testing.T) {
 		{
 			name:    "incident present",
 			payload: &Payload{OrgSlug: "acme", Incident: &models.Incident{UID: "inc-1"}},
-			want:    "/dash0/orgs/acme/incidents/inc-1",
+			want:    "/d/orgs/acme/incidents/inc-1",
 		},
 		{
 			name:    "no incident falls back to org dashboard",
 			payload: &Payload{OrgSlug: "acme"},
-			want:    "/dash0/orgs/acme",
+			want:    "/d/orgs/acme",
 		},
 		{
 			name:    "incident without uid falls back to org dashboard",
 			payload: &Payload{OrgSlug: "acme", Incident: &models.Incident{}},
-			want:    "/dash0/orgs/acme",
+			want:    "/d/orgs/acme",
 		},
 		{
 			name:    "missing org slug yields empty url",

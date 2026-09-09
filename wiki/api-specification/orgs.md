@@ -148,7 +148,7 @@ entitlements, and the Slack/MS Teams integration routes) — plus the public
 status-page endpoints (`/api/v1/status-pages/:org/...` — view, summary, badge,
 feed, which is also what the `/embed/v1` widget polls), per-check SVG badges,
 heartbeat ingest, the magic-link incident ack, status-page subscribe, and the
-`/dash0/orgs/:org/...` and `/status0/:org/...` app URLs.
+`/d/orgs/:org/...` and `/s/:org/...` app URLs.
 
 The single exception is the realtime WebSocket (`/api/v1/orgs/:org/events/ws`):
 an HTTP redirect has no meaning in a WS handshake, so a client on a previous
@@ -237,12 +237,32 @@ Revoke a pending invitation. Auth: required (admin)
 ### GET /api/v1/orgs/:org/members
 List organization members. Auth: required
 
+Each member carries two independent, nullable "last seen" timestamps —
+deliberately kept apart rather than merged into one, so a departed employee
+whose automation still runs doesn't read as "active":
+
+- `lastSessionActivityAt` — when the member was last in the dashboard: the
+  later of `MAX(last_active_at)` over their `user_tokens` rows of type
+  `refresh` (soft-deleted rows included — a logout or admin revocation
+  doesn't erase that the session was live) and `users.last_active_at` (last
+  login). Bumped at most hourly while a session is active.
+- `lastTokenActivityAt` — when one of the member's credentials was last used
+  independent of dashboard presence: the later of `MAX(last_active_at)` over
+  `pat` rows (a minted-but-never-used PAT, `last_active_at = NULL`, does not
+  count) and `MAX(created_at)` over `oauth_refresh` rows (rotation
+  soft-deletes the old grant and mints a new one, so the newest row's
+  creation is the last refresh).
+
+Both are `null` when nothing exists — e.g. a member added by an admin who has
+never signed in and owns no token.
+
 ### POST /api/v1/orgs/:org/members
 Add a member to the organization. Auth: required (admin; **owner** to add
 another owner)
 
 ### GET /api/v1/orgs/:org/members/:uid
-Get a member's details. Auth: required
+Get a member's details (including `lastSessionActivityAt` /
+`lastTokenActivityAt`, as above). Auth: required
 
 ### PATCH /api/v1/orgs/:org/members/:uid
 Update a member's role. Auth: required (admin; **owner** to grant `owner` or to

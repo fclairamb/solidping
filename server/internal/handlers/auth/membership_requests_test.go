@@ -343,6 +343,6 @@ func TestNotifyAdminsOfMembershipRequest_RequestsURLIsExact(t *testing.T) {
 
 	templateData, ok := enqueued[0].Config["templateData"].(map[string]any)
 	r.True(ok, "templateData must decode as a map, got %T", enqueued[0].Config["templateData"])
-	r.Equal("http://127.0.0.1:4000/dash0/orgs/mr-url-org/organization/requests",
+	r.Equal("http://127.0.0.1:4000/d/orgs/mr-url-org/organization/requests",
 		templateData["RequestsURL"])
 }

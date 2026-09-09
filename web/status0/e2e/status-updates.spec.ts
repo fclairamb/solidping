@@ -9,7 +9,7 @@
  * it appears on the public status page.
  */
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /** Obtain a JWT token for the test org. */
 async function getToken(): Promise<string> {
@@ -72,8 +72,10 @@ test.describe("Status updates public timeline", () => {
     }
     expect(createRes.ok).toBe(true);
 
+    const created = (await createRes.json()) as { uid: string };
+
     // --- Navigate to the public status page ---
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     // --- Assert: "Recent updates" section is visible ---
@@ -83,15 +85,21 @@ test.describe("Status updates public timeline", () => {
     await expect(recentUpdatesHeading).toBeVisible({ timeout: 10_000 });
 
     // --- Assert: the maintenance update card is shown ---
-    const maintenanceBadge = page.getByLabel("Update kind: Maintenance");
-    await expect(maintenanceBadge).toBeVisible();
+    //
+    // Scoped to the card this test just created. Unscoped, every assertion
+    // below is a strict-mode violation the moment a second maintenance update
+    // exists on the page — which happens on the FIRST CI retry (the run that
+    // failed already posted one) and on any second local run against the same
+    // database. The failure then reads as "maintenance badge missing" and
+    // sends you looking at the wrong thing entirely.
+    const card = page.locator(`#update-${created.uid}`);
+    await expect(card).toBeVisible();
+    await expect(card.getByLabel("Update kind: Maintenance")).toBeVisible();
 
-    await expect(
-      page.getByText("Scheduled maintenance window"),
-    ).toBeVisible();
+    await expect(card.getByText("Scheduled maintenance window")).toBeVisible();
 
     // --- Assert: <time> element has a datetime attribute ---
-    const timeEl = page.locator("time").first();
+    const timeEl = card.locator("time").first();
     const datetime = await timeEl.getAttribute("datetime");
     expect(datetime).toBeTruthy();
   });
@@ -100,7 +108,7 @@ test.describe("Status updates public timeline", () => {
     page,
   }) => {
     // Navigate to a public status page that has no updates
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     // The "Recent updates" section should NOT be visible if no updates exist.
@@ -152,7 +160,7 @@ test.describe("Status updates public timeline", () => {
     }
     expect(createRes.ok).toBe(true);
 
-    await page.goto(`${BASE}/status0/test`);
+    await page.goto(`${BASE}${STATUS_BASE}/test`);
     await page.waitForLoadState("networkidle");
 
     const readMoreLink = page.getByRole("link", { name: /Read more/ }).first();

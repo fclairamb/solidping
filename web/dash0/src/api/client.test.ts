@@ -5,6 +5,7 @@ import i18n from "@/i18n";
 import frOrg from "@/locales/fr/org.json";
 import enOrg from "@/locales/en/org.json";
 import { toast } from "sonner";
+import { DASH_BASE } from "@/lib/base-path";
 
 vi.mock("sonner", () => ({
   toast: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() },
@@ -133,7 +134,7 @@ describe("handleResponse — forced password rotation", () => {
     });
 
   it("redirects to the rotation screen on PASSWORD_CHANGE_REQUIRED", async () => {
-    const location = stubWindow("/dash0/orgs/acme/checks");
+    const location = stubWindow(`${DASH_BASE}/orgs/acme/checks`);
 
     await expect(handleResponse(forbidden("PASSWORD_CHANGE_REQUIRED"), opts)).rejects.toBeInstanceOf(
       ApiError
@@ -152,7 +153,7 @@ describe("handleResponse — forced password rotation", () => {
   });
 
   it("leaves an ordinary FORBIDDEN alone (positive control)", async () => {
-    const location = stubWindow("/dash0/orgs/acme/checks");
+    const location = stubWindow(`${DASH_BASE}/orgs/acme/checks`);
 
     await expect(handleResponse(forbidden("FORBIDDEN"), opts)).rejects.toThrow("Denied");
     expect(location.href).toBe("");
@@ -189,7 +190,7 @@ describe("handleResponse — DEMO_READ_ONLY", () => {
     });
 
   it("throws an ApiError carrying the code, and navigates nowhere", async () => {
-    const location = stubWindow("/dash0/orgs/demo/status-pages");
+    const location = stubWindow(`${DASH_BASE}/orgs/demo/status-pages`);
 
     await expect(handleResponse(forbidden("DEMO_READ_ONLY"), opts)).rejects.toMatchObject({
       code: "DEMO_READ_ONLY",
@@ -201,7 +202,7 @@ describe("handleResponse — DEMO_READ_ONLY", () => {
   });
 
   it("does not send a demo refusal to the password-rotation screen", async () => {
-    const location = stubWindow("/dash0/orgs/demo/checks");
+    const location = stubWindow(`${DASH_BASE}/orgs/demo/checks`);
 
     await expect(handleResponse(forbidden("DEMO_READ_ONLY"), opts)).rejects.toBeInstanceOf(
       ApiError
@@ -216,7 +217,7 @@ describe("handleResponse — DEMO_READ_ONLY", () => {
   // show an English sentence. Asserting against the `fr` bundle rather than
   // hardcoding the string keeps this test honest if the copy changes.
   it("localizes ApiError.message by code, ignoring the server's English title", async () => {
-    stubWindow("/dash0/orgs/demo/checks");
+    stubWindow(`${DASH_BASE}/orgs/demo/checks`);
     await i18n.changeLanguage("fr");
 
     try {
@@ -238,7 +239,7 @@ describe("handleResponse — DEMO_READ_ONLY", () => {
   // toast — never `toast.error`, since the refusal is not the visitor's
   // mistake.
   it("announces exactly one toast, never toast.error", async () => {
-    stubWindow("/dash0/orgs/demo/checks");
+    stubWindow(`${DASH_BASE}/orgs/demo/checks`);
     vi.mocked(toast.info).mockClear();
     vi.mocked(toast.error).mockClear();
 

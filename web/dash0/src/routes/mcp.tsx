@@ -7,7 +7,7 @@ type McpRedirectSearch = {
 };
 
 // Org-less landing route for the MCP setup page. The backend redirects a
-// browser hitting GET /api/v1/mcp to /dash0/mcp?from=get without knowing the
+// browser hitting GET /api/v1/mcp to /d/mcp?from=get without knowing the
 // org (the request is unauthenticated), so this route — like the root
 // redirect in index.tsx — resolves the org from the auth context and
 // forwards to the Account MCP page, preserving the query string. Logged-out

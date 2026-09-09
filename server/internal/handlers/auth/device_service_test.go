@@ -96,7 +96,7 @@ func TestDeviceAuthorizationStart(t *testing.T) {
 			r.NoError(err)
 			r.Len(resp.DeviceCode, deviceCodeBytes*2, "device code is 32 random bytes, hex encoded")
 			r.Len(resp.UserCode, deviceUserCodeLength+1, "user code is displayed as XXXX-XXXX")
-			r.Equal("https://ping.example.com/dash0/device", resp.VerificationURI)
+			r.Equal("https://ping.example.com/d/device", resp.VerificationURI)
 			r.Equal(resp.VerificationURI+"?user_code="+resp.UserCode, resp.VerificationURIComplete)
 			r.Equal(DevicePollIntervalSeconds, resp.Interval)
 			r.Positive(resp.ExpiresIn)

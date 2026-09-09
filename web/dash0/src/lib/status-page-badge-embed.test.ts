@@ -5,6 +5,7 @@ import {
   escapeHtmlAttribute,
   escapeMarkdownAltText,
 } from "./status-page-badge-embed";
+import { STATUS_BASE } from "@/lib/base-path";
 
 /**
  * Spec 2026-08-31-03: the badge embed snippets used to paste a bare image
@@ -23,8 +24,8 @@ describe("buildStatusPageBadgeEmbedSnippets", () => {
 
   it("derives an absolute page URL sharing the badge URL's origin", () => {
     const { pagePath, pageUrl } = buildStatusPageBadgeEmbedSnippets(base);
-    expect(pagePath).toBe("/status0/acme/public");
-    expect(pageUrl).toBe("https://status.acme.com/status0/acme/public");
+    expect(pagePath).toBe(`${STATUS_BASE}/acme/public`);
+    expect(pageUrl).toBe(`https://status.acme.com${STATUS_BASE}/acme/public`);
   });
 
   it("wraps the Markdown snippet's badge image in a link to the page", () => {
@@ -57,7 +58,7 @@ describe("buildStatusPageBadgeEmbedSnippets", () => {
       pageName: "All ] status",
     });
     expect(markdownCode).toBe(
-      `[![All \\] status status](${base.badgeUrl})](https://status.acme.com/status0/acme/public)`,
+      `[![All \\] status status](${base.badgeUrl})](https://status.acme.com${STATUS_BASE}/acme/public)`,
     );
   });
 
@@ -67,7 +68,7 @@ describe("buildStatusPageBadgeEmbedSnippets", () => {
       pageName: "[Acme]",
     });
     expect(markdownCode).toBe(
-      `[![\\[Acme\\] status](${base.badgeUrl})](https://status.acme.com/status0/acme/public)`,
+      `[![\\[Acme\\] status](${base.badgeUrl})](https://status.acme.com${STATUS_BASE}/acme/public)`,
     );
   });
 

@@ -1581,7 +1581,7 @@ func (s *Service) testWebPushDelivery(
 	msg := webpush.Message{
 		Title: "[TEST] SolidPing",
 		Body:  "Test push notification from SolidPing. If you see this, push delivery is working.",
-		URL:   "/dash0/orgs/" + orgSlug,
+		URL:   config.DashboardBasePath + "/orgs/" + orgSlug,
 	}
 
 	start := time.Now()

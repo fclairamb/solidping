@@ -43,7 +43,7 @@ func TestBranding_ProductLogoIsAbsoluteWithTextFallback(t *testing.T) {
 	r := require.New(t)
 	html := renderBranded(t, brandingTestBaseURL, brandingViewModel())
 
-	r.Contains(html, `src="https://solidping.example/dash0/logo.png"`)
+	r.Contains(html, `src="https://solidping.example/d/logo.png"`)
 	r.Contains(html, `alt="SolidPing"`)
 	// The wordmark survives next to the mark, so the header reads correctly
 	// with images off.
@@ -87,7 +87,7 @@ func TestBranding_OrgLogoReplacesTheProductLogo(t *testing.T) {
 	r.Contains(html, `alt="Acme Corp"`)
 	r.Contains(html, "sent by SolidPing")
 	// The product logo is not shown alongside it — one primary mark only.
-	r.NotContains(html, "/dash0/logo.png")
+	r.NotContains(html, "/d/logo.png")
 	// The footer attribution (the existing wording) still names the org.
 	r.Contains(html, "Acme Corp — sent by SolidPing")
 }
@@ -135,7 +135,7 @@ func TestBranding_HideBrandingRendersNoLogo(t *testing.T) {
 
 	r.NotContains(hidden, "<img")
 	r.NotContains(hidden, "/pub/assets/page-logo")
-	r.NotContains(hidden, "/dash0/logo.png")
+	r.NotContains(hidden, "/d/logo.png")
 	r.NotContains(hidden, "sent by SolidPing")
 	// The page's own name still identifies the sender.
 	r.Contains(hidden, "Acme Status")
@@ -163,7 +163,7 @@ func TestBranding_NonHTTPLogoIsDropped(t *testing.T) {
 
 			r.NotContains(html, hostile)
 			// It falls back to the product logo rather than rendering nothing.
-			r.Contains(html, "/dash0/logo.png")
+			r.Contains(html, "/d/logo.png")
 		})
 	}
 }
@@ -211,7 +211,7 @@ func TestBranding_StructViewModelWithoutBrandingFields(t *testing.T) {
 	})
 
 	r.Contains(html, "Body text")
-	r.Contains(html, "/dash0/logo.png")
+	r.Contains(html, "/d/logo.png")
 }
 
 type brandedStructViewModel struct {
@@ -354,14 +354,14 @@ func TestBranding_BaseURLIsResolvedLate(t *testing.T) {
 
 	_, before, _, err := formatter.Format("welcome.html", map[string]any{})
 	r.NoError(err)
-	r.Contains(before, "http://localhost:4000/dash0/logo.png")
+	r.Contains(before, "http://localhost:4000/d/logo.png")
 
 	// The overlay lands after construction.
 	current = "https://monitoring.acme.com/"
 
 	_, after, _, err := formatter.Format("welcome.html", map[string]any{})
 	r.NoError(err)
-	r.Contains(after, "https://monitoring.acme.com/dash0/logo.png")
+	r.Contains(after, "https://monitoring.acme.com/d/logo.png")
 	r.NotContains(after, "localhost:4000")
 }
 
@@ -464,7 +464,7 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	r.Contains(html, brandingTestBaseURL+"/pub/assets/org-logo-uid")
 	r.Contains(html, `alt="Acme Corp"`)
 	r.Contains(html, "Acme Corp — sent by SolidPing")
-	r.NotContains(html, "/dash0/logo.png")
+	r.NotContains(html, "/d/logo.png")
 
 	logoless := map[string]any{"Subject": "s", "Heading": "h", "Body": "b"}
 	ApplyOrgBranding(logoless, "Acme Corp", "acme", nil)
@@ -472,7 +472,7 @@ func TestApplyOrgBrandingRendersThroughTheWrapper(t *testing.T) {
 	_, plain, _, err := formatter.Format("test-email.html", logoless)
 	r.NoError(err)
 	r.NotContains(plain, "/pub/assets/org-logo-uid")
-	r.Contains(plain, brandingTestBaseURL+"/dash0/logo.png")
+	r.Contains(plain, brandingTestBaseURL+"/d/logo.png")
 	// The org is still named in the footer even without a logo.
 	r.Contains(plain, "Acme Corp — sent by SolidPing")
 }

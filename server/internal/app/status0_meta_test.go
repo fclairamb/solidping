@@ -73,7 +73,7 @@ func TestRequestScheme(t *testing.T) {
 			r := require.New(t)
 
 			req, err := http.NewRequestWithContext(
-				context.Background(), http.MethodGet, "http://example.com/status0/acme", nil)
+				context.Background(), http.MethodGet, "http://example.com/s/acme", nil)
 			r.NoError(err)
 
 			if testCase.forwardedProt != "" {
@@ -94,7 +94,7 @@ func TestRequestOrigin(t *testing.T) {
 	r := require.New(t)
 
 	req, err := http.NewRequestWithContext(
-		context.Background(), http.MethodGet, "http://status.example.com/status0/acme", nil)
+		context.Background(), http.MethodGet, "http://status.example.com/s/acme", nil)
 	r.NoError(err)
 	req.Header.Set("X-Forwarded-Proto", "https")
 
@@ -108,8 +108,8 @@ func TestBuildStatus0MetaTags(t *testing.T) {
 	block := buildStatus0MetaTags(&ogMetadata{
 		Title:       "Acme API — Status",
 		Description: "Our public API status",
-		URL:         "https://status.example.com/status0/acme/api",
-		Image:       "https://status.example.com/status0/og-default.png",
+		URL:         "https://status.example.com/s/acme/api",
+		Image:       "https://status.example.com/s/og-default.png",
 	})
 
 	r.Contains(block, "<title>Acme API — Status</title>")
@@ -117,10 +117,10 @@ func TestBuildStatus0MetaTags(t *testing.T) {
 	r.Contains(block, `<meta property="og:description" content="Our public API status" />`)
 	r.Contains(block, `<meta property="og:type" content="website" />`)
 	r.Contains(block, `<meta property="og:site_name" content="SolidPing" />`)
-	r.Contains(block, `<meta property="og:url" content="https://status.example.com/status0/acme/api" />`)
-	r.Contains(block, `<meta property="og:image" content="https://status.example.com/status0/og-default.png" />`)
+	r.Contains(block, `<meta property="og:url" content="https://status.example.com/s/acme/api" />`)
+	r.Contains(block, `<meta property="og:image" content="https://status.example.com/s/og-default.png" />`)
 	r.Contains(block, `<meta name="twitter:card" content="summary_large_image" />`)
-	r.Contains(block, `<meta name="twitter:image" content="https://status.example.com/status0/og-default.png" />`)
+	r.Contains(block, `<meta name="twitter:image" content="https://status.example.com/s/og-default.png" />`)
 	r.Contains(block, `<meta name="description" content="Our public API status" />`)
 }
 
@@ -139,7 +139,7 @@ func TestBuildStatus0MetaTagsSpPage(t *testing.T) {
 	// Without Page (path-based serving) the tag must not appear.
 	withoutPage := buildStatus0MetaTags(&ogMetadata{
 		Title: "Acme — Status",
-		URL:   "https://solidping.io/status0/acme/main",
+		URL:   "https://solidping.io/s/acme/main",
 	})
 	r.NotContains(withoutPage, "sp-page")
 }
@@ -151,8 +151,8 @@ func TestBuildStatus0MetaTagsEscaping(t *testing.T) {
 	block := buildStatus0MetaTags(&ogMetadata{
 		Title:       `A & B <script> "x"` + ogTitleSuffix,
 		Description: `desc & "quoted" <b>`,
-		URL:         "https://status.example.com/status0/a%26b",
-		Image:       "https://status.example.com/status0/og-default.png",
+		URL:         "https://status.example.com/s/a%26b",
+		Image:       "https://status.example.com/s/og-default.png",
 	})
 
 	// No raw special characters leak into the markup.
@@ -180,8 +180,8 @@ func TestInjectStatus0Meta(t *testing.T) {
 	out := injectStatus0Meta(doc, &ogMetadata{
 		Title:       "Acme API — Status",
 		Description: "Our public API status",
-		URL:         "https://status.example.com/status0/acme/api",
-		Image:       "https://status.example.com/status0/og-default.png",
+		URL:         "https://status.example.com/s/acme/api",
+		Image:       "https://status.example.com/s/og-default.png",
 	})
 
 	// The static default title is gone, the per-page one is present.
@@ -319,7 +319,7 @@ func TestStatus0MetaForPath_NoExistenceLeak(t *testing.T) {
 			ctx, srv := setupStatus0MetaServer(t)
 
 			httpReq, err := http.NewRequestWithContext(
-				ctx, http.MethodGet, "http://status.example.com/status0"+testCase.reqPath, nil)
+				ctx, http.MethodGet, "http://status.example.com/s"+testCase.reqPath, nil)
 			r.NoError(err)
 			req := httpReq
 
@@ -358,7 +358,7 @@ func TestStatus0MetaForPath_NilServiceIsGeneric(t *testing.T) {
 	r := require.New(t)
 
 	httpReq, err := http.NewRequestWithContext(
-		context.Background(), http.MethodGet, "http://status.example.com/status0/acme/public", nil)
+		context.Background(), http.MethodGet, "http://status.example.com/s/acme/public", nil)
 	r.NoError(err)
 
 	_, ok := (&Server{}).status0MetaForPath(httpReq, "/acme/public")

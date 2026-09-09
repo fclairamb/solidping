@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE as BASE } from "./fixtures";
+import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
 
 /**
  * Verifies the hero "overall-status-badge" renders the exact label for each
@@ -55,7 +55,7 @@ test.describe("Public status page — overall status badge", () => {
       page,
     }) => {
       await mockOverallStatus(page, overallStatus);
-      await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+      await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
       await page.waitForLoadState("networkidle");
 
       const badge = page.getByTestId("overall-status-badge");
@@ -74,7 +74,7 @@ test.describe("Public status page — overall status badge", () => {
         body: JSON.stringify(basePayload()),
       }),
     );
-    await page.goto(`${BASE}/status0/${ORG}/${SLUG}`);
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
     await page.waitForLoadState("networkidle");
 
     const badge = page.getByTestId("overall-status-badge");

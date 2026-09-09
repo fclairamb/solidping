@@ -140,9 +140,36 @@ func (r *UptimeReportJobRun) runSchedule(
 		return 0, fmt.Errorf("get organization: %w", err)
 	}
 
+	// Guard B: a period that closed entirely before the org existed cannot
+	// describe anything real. This sits after MarkReportScheduleRun (above),
+	// not before — the period is already claimed, so it is consumed for good
+	// rather than re-evaluated by every hourly sweep for the schedule's
+	// lifetime. Do not hoist this above the claim.
+	if !window.End.After(org.CreatedAt) {
+		jctx.Logger.DebugContext(ctx, "Skipping uptime report for a period predating the org",
+			"schedule_uid", schedule.UID, "period_start", window.Start)
+
+		return 0, nil
+	}
+
 	data, err := builder.Build(ctx, org, schedule, window, now)
 	if err != nil {
 		return 0, fmt.Errorf("build report: %w", err)
+	}
+
+	// Guard A: an empty scope (no checks org-wide, or a scoped schedule whose
+	// group/check UIDs resolve to nothing) has nothing worth mailing. Also
+	// sits after the claim above, for the same reason as guard B — otherwise
+	// an org that deletes its last check would get re-evaluated hourly
+	// forever instead of the period being consumed once. TestSend
+	// (reportschedules service) calls builder.Build directly and is
+	// deliberately untouched by this guard: a manual test-send should still
+	// show the user what an empty report looks like.
+	if data.CheckCount == 0 {
+		jctx.Logger.DebugContext(ctx, "Skipping uptime report with empty scope",
+			"schedule_uid", schedule.UID, "period_start", window.Start)
+
+		return 0, nil
 	}
 
 	sent := 0

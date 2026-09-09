@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 // The dashboard used to show a bare "Acked" badge and an "Acknowledged"
 // timeline entry with nothing but a timestamp — so the one question an
@@ -30,7 +30,7 @@ test.describe("Incident acknowledgment attribution", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
@@ -63,7 +63,7 @@ test.describe("Incident acknowledgment attribution", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 
@@ -93,7 +93,7 @@ test.describe("Incident acknowledgment attribution", () => {
     const page = authenticatedPage;
     await page.setViewportSize({ width: 375, height: 812 });
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Incident Details")).toBeVisible();
 

@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 /**
  * Helper to wait for the incidents table to be in a settled state.
@@ -186,7 +186,7 @@ test.describe("Incidents", () => {
     // incident with one failed-webhook notification.
     const incidentUid = "00000000-0000-0000-0000-000000000013";
 
-    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${incidentUid}`);
     await page.waitForLoadState("networkidle");
 
     // We're on the incident detail page and the Notifications card is present.

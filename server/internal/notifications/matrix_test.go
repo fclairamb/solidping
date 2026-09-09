@@ -385,7 +385,7 @@ func TestMatrixSender_Send_IncidentLinkInHTML(t *testing.T) {
 
 	var event matrixMessageEvent
 	r.NoError(json.Unmarshal(gotBody, &event))
-	r.Contains(event.FormattedBody, `<a href="https://solidping.example.com/dash0/orgs/acme/incidents/018e4a2b-incident">`)
+	r.Contains(event.FormattedBody, `<a href="https://solidping.example.com/d/orgs/acme/incidents/018e4a2b-incident">`)
 }
 
 // TestMatrixSender_Send_MissingSettings covers the three required-field

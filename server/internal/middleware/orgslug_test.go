@@ -64,8 +64,8 @@ func TestCanonicalOrgURL(t *testing.T) {
 		},
 		{
 			name:    "wildcard before org is refused",
-			pattern: "/status0/*",
-			rawURL:  "/status0/old/public",
+			pattern: "/s/*",
+			rawURL:  "/s/old/public",
 			newSlug: "new",
 			wantOK:  false,
 		},

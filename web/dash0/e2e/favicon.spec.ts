@@ -1,12 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE, STATUS_BASE, escapeRegExp } from "./fixtures";
 
 /**
  * Favicon regression guard (spec: favicons under public/assets/).
  *
  * The failure mode this protects against: an icon href in index.html that is
  * document-relative (href="favicon.svg") resolves against the current SPA
- * route on deep links (/dash0/orgs/x/checks/favicon.svg). The server answers
+ * route on deep links (/d/orgs/x/checks/favicon.svg). The server answers
  * unknown paths with the index.html SPA fallback — HTTP 200, text/html — so
  * the browser silently renders a broken favicon instead of 404ing.
  *
@@ -67,24 +67,62 @@ async function assertLinksServeRealAssets(page: Page, appBase: string) {
 }
 
 test.describe("favicons resolve on deep SPA routes", () => {
-  test("dash0: icons load from /dash0/assets/ on a nested route", async ({ page }) => {
+  test(`dash0: icons load from ${DASH_BASE}/assets/ on a nested route`, async ({ page }) => {
     // The login page is a deep route (3 path segments) that needs no auth.
     await page.goto("orgs/test/login");
-    await assertLinksServeRealAssets(page, "/dash0");
+    await assertLinksServeRealAssets(page, `${DASH_BASE}`);
   });
 
-  test("status0: icons load from /status0/assets/ on a nested route", async ({ page }) => {
+  test(`status0: icons load from ${STATUS_BASE}/assets/ on a nested route`, async ({ page }) => {
     // Any nested path serves the SPA index (page existence is irrelevant to
     // the <head> links, which are static).
-    await page.goto(`${API_BASE}/status0/test/some-page`);
-    await assertLinksServeRealAssets(page, "/status0");
+    await page.goto(`${API_BASE}${STATUS_BASE}/test/some-page`);
+    await assertLinksServeRealAssets(page, `${STATUS_BASE}`);
   });
 
-  test("dash0 service worker pushes the assets/ notification icon", async ({ page }) => {
-    // sw.js is static (not Vite-processed), so its icon path is hardcoded and
-    // easy to break when assets move.
-    const response = await page.request.get(`${API_BASE}/dash0/sw.js`);
+  test("dash0 service worker's notification icon resolves to a served asset", async ({
+    page,
+  }) => {
+    // sw.js lives in public/, so Vite copies it verbatim and it can carry no
+    // build-time `base`. Since spec 2026-09-09-01 (/dash0 -> /d) every path in
+    // it is derived at RUNTIME from `self.registration.scope` through the
+    // `appPath()` helper — which is precisely what let the worker survive the
+    // move. There is therefore no absolute icon literal left to grep for, and
+    // asserting one again would re-introduce the thing that broke.
+    //
+    // What is still worth protecting is the property the literal used to
+    // stand for: the icon the worker computes is a real, served asset. So
+    // extract the argument the worker hands to appPath(), check it is
+    // scope-relative (the base-agnostic bit), resolve it exactly as appPath
+    // would against the worker's real scope, and fetch it.
+    const response = await page.request.get(`${API_BASE}${DASH_BASE}/sw.js`);
     expect(response.status()).toBe(200);
-    expect((await response.body()).toString()).toContain("/dash0/assets/favicon-192.png");
+    const source = (await response.body()).toString();
+
+    const iconMatch = source.match(/icon:\s*appPath\((['"`])([^'"`]+)\1\)/);
+    expect(
+      iconMatch,
+      "sw.js must still compute its notification icon via appPath(<relative path>)",
+    ).not.toBeNull();
+
+    const iconRelative = iconMatch![2];
+    expect(
+      iconRelative.startsWith("/"),
+      `sw.js icon "${iconRelative}" must be scope-relative, not an absolute literal`,
+    ).toBe(false);
+
+    // appPath() === new URL(relative, self.registration.scope); the worker's
+    // real scope is the app base, which always ends in a slash.
+    const iconURL = new URL(iconRelative, `${API_BASE}${DASH_BASE}/`);
+    expect(iconURL.pathname, "the computed icon must live under the app base").toMatch(
+      new RegExp(`^${escapeRegExp(DASH_BASE)}/`),
+    );
+
+    const iconResponse = await page.request.get(iconURL.toString());
+    expect(iconResponse.status(), `${iconURL.href} must be served`).toBe(200);
+    expect(
+      iconResponse.headers()["content-type"] ?? "",
+      `${iconURL.href} must be an image, not the SPA index fallback`,
+    ).toContain("image/");
   });
 });

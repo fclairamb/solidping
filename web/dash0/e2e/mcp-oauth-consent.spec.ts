@@ -7,7 +7,7 @@ import { test, API_BASE, freshLogin } from "./fixtures";
  * MCP OAuth 2.1 consent flow (spec 2026-06-20-03) — the browser legs an MCP
  * client (e.g. claude.ai) drives when the user clicks "Connect":
  *
- *   GET /api/v1/oauth/authorize  →  (no session cookie) → /dash0/login
+ *   GET /api/v1/oauth/authorize  →  (no session cookie) → /d/login
  *   → login page resumes returnTo → authorize → consent screen → Approve
  *   → code lands on the client's redirect_uri → PKCE token exchange
  *   → Bearer POST /api/v1/mcp.
@@ -165,7 +165,7 @@ test.describe("MCP OAuth consent flow", () => {
     // THE regression case: localStorage holds a live session (as after an SSO
     // login or once the short-lived cookie lapsed on an idle tab) but the
     // `access_token` cookie /authorize authenticates with is gone. The flow
-    // must bounce through /dash0/login, which refreshes the cookie and
+    // must bounce through /d/login, which refreshes the cookie and
     // resumes the authorize returnTo — instead of dead-ending on the
     // dashboard.
     //

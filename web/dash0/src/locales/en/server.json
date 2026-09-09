@@ -463,6 +463,7 @@
     "firstCheck": "First check",
     "firstResult": "First result",
     "firstNotifier": "First notifier",
-    "firstIncident": "First page"
+    "firstIncident": "First page",
+    "openAudit": "Open audit log"
   }
 }

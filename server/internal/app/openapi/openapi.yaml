@@ -2273,7 +2273,7 @@ paths:
       description: >-
         Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the
         organization's default page — the form a client reaching a default page
-        through /status0/{org} can use, having no slug to send.
+        through /s/{org} can use, having no slug to send.
       operationId: unlockDefaultStatusPage
       parameters:
         - $ref: "#/components/parameters/OrgPath"
@@ -11091,6 +11091,28 @@ components:
         createdAt:
           type: string
           format: date-time
+        lastSessionActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the member was last in the dashboard: the later of their most
+            recent refresh-token (session) activity — soft-deleted sessions
+            included, since logging out or being revoked doesn't erase that the
+            session was live — and their last login. Bumped at most hourly
+            while a session is active. `null` if the member has never signed
+            in.
+        lastTokenActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When one of the member's credentials (a personal access token, or
+            an OAuth refresh grant used by an MCP/CLI client) was last used,
+            independent of dashboard presence — evidence an automation, not
+            necessarily the person, is still active. Soft-deleted rows count;
+            a personal access token that was minted but never used does not.
+            `null` if the member owns no such credential activity.
 
     AddMemberRequest:
       type: object
@@ -12113,7 +12135,7 @@ components:
               format: uri
               description: >-
                 The canonical public URL: the verified custom domain when
-                active, otherwise the absolute /status0/{org}/{slug} URL
+                active, otherwise the absolute /s/{org}/{slug} URL
                 derived from the request host.
         generatedAt:
           type: string
@@ -15048,7 +15070,10 @@ components:
         app:
           type: string
           enum: [dash0, dash]
-          description: Target dashboard for the invite link (default dash0)
+          description: >-
+            Legacy selector, kept for backwards compatibility. Both values now
+            produce the same link into the one remaining dashboard (/d);
+            the retired `dash` application no longer exists.
 
     InviteResponse:
       type: object

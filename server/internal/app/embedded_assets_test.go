@@ -316,7 +316,7 @@ func BenchmarkServeEmbeddedReadFile(b *testing.B) {
 // TestEmbeddedFileExistsRejectsDirectories is the regression guard for a real
 // bug this change introduced and a smoke test caught: fs.Stat succeeds on a
 // directory, so treating "path exists" as "file to serve" made the bare
-// /dash0/ and /status0/ requests 404 instead of falling back to the SPA shell.
+// /d/ and /s/ requests 404 instead of falling back to the SPA shell.
 // Request paths land on directories routinely — "/" maps to "dash0res",
 // "/docs/features" to "docsres/features" — so this is the common case, not an
 // edge one.
@@ -347,10 +347,10 @@ func TestSPARootsServeTheShell(t *testing.T) {
 		files   embed.FS
 		handler func(http.ResponseWriter, *http.Request) error
 	}{
-		{"dash0 root", "/dash0/", "dash0res/index.html", dash0Files, srv.serveDash0Static},
-		{"dash0 client route", "/dash0/orgs/acme/checks", "dash0res/index.html", dash0Files, srv.serveDash0Static},
-		{"status0 root", "/status0/", "status0res/index.html", status0Files, srv.serveStatus0Static},
-		{"status0 client route", "/status0/acme/status", "status0res/index.html", status0Files, srv.serveStatus0Static},
+		{"dash0 root", "/d/", "dash0res/index.html", dash0Files, srv.serveDash0Static},
+		{"dash0 client route", "/d/orgs/acme/checks", "dash0res/index.html", dash0Files, srv.serveDash0Static},
+		{"status0 root", "/s/", "status0res/index.html", status0Files, srv.serveStatus0Static},
+		{"status0 client route", "/s/acme/status", "status0res/index.html", status0Files, srv.serveStatus0Static},
 	}
 
 	for _, testCase := range tests {

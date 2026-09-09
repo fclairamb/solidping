@@ -3,6 +3,45 @@
 ## General Principle
 Frontend URLs mirror the API endpoint structure for consistency and predictability.
 
+## Base paths
+
+Each SPA is mounted under exactly one top-level path segment:
+
+| App | Source | Base path |
+|---|---|---|
+| dash0 — operator dashboard | `web/dash0` | `/d` |
+| status0 — public status page | `web/status0` | `/s` |
+
+Every route table below is written **relative to that base**: the dashboard's
+`/orgs/$org/checks` is `/d/orgs/acme/checks` in a browser, and status0's
+`/$org/$slug` is `/s/acme/main`.
+
+### Never write a base path out by hand
+
+The prefixes have moved once (`/dash0` → `/d`, `/status0` → `/s`,
+spec 2026-09-09-01) and there is exactly one source of truth on each side:
+
+| Where | Use |
+|---|---|
+| Go | `config.DashboardBasePath` / `config.StatusBasePath` (`server/internal/config/config.go`) |
+| dash0 source | `DASH_BASE` / `STATUS_BASE` from `@/lib/base-path` |
+| dash0 e2e | `DASH_BASE` / `STATUS_BASE` from `e2e/fixtures.ts` |
+| status0 e2e | `STATUS_BASE` from `e2e/fixtures.ts` |
+| Vite | the `base` in each app's `vite.config.ts` (the default must match the Go constant) |
+
+A hard-coded prefix in an `href`, a `returnTo`, an email template or a
+`page.goto` is the failure mode this convention exists to prevent: it keeps
+working right up until the prefix moves, then breaks silently.
+
+### Legacy prefixes
+
+`/dash0` and `/status0` answer `301` onto `/d` and `/s`, path and query
+preserved verbatim. **Permanent, no sunset** — links in already-sent emails,
+bookmarks and search indexes all still resolve. On a customer's custom status
+domain the same `301` applies to `/status0/*`, while `/dash0` and `/d` both
+`404` there: a status domain must never walk a visitor into the operator
+dashboard.
+
 ## URL Structure
 
 ### Pattern
@@ -16,7 +55,7 @@ Frontend URLs mirror the API endpoint structure for consistency and predictabili
 - **Routing**: TanStack Router with file-based routing (convention over configuration)
 - **Route files**: `web/dash0/src/routes/` and `web/status0/src/routes/`
 
-## Dashboard Routes (dash0)
+## Dashboard Routes (dash0, under `/d`)
 
 ### Public Routes (no auth)
 | Path | Description |
@@ -91,7 +130,7 @@ Frontend URLs mirror the API endpoint structure for consistency and predictabili
 | `/orgs/$org/test/reset` | Reset test data |
 | `/orgs/$org/test/templates` | Test templates |
 
-## Status Page Routes (status0)
+## Status Page Routes (status0, under `/s`)
 
 | Path | Description |
 |------|-------------|

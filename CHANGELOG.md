@@ -1,645 +1,2251 @@
 # Changelog
 
+## Unreleased
+
+
+### Features
+
+* **dash0:** the dashboard now lives at **`/d`** and public status pages at **`/s`**. The old
+  addresses carried a `0` that only ever meant "the rewrite, not the original" — noise in every
+  URL anyone saw, typed, read down a phone or pasted into a chat, and eight characters of it in
+  a status-page link a customer's readers are meant to bookmark.
+  `solidping.io/dash0/orgs/acme/checks` is now `solidping.io/d/orgs/acme/checks`, and
+  `status.acme.com/status0/acme/main` is `status.acme.com/s/acme/main`. **Nothing you have
+  already sent stops working**: `/dash0` and `/status0` answer a permanent redirect onto the new
+  addresses, keeping the rest of the path and the query string exactly as they were, and they
+  will keep doing so — there is no sunset date. That covers notification emails sent months ago,
+  bookmarks, links in Slack and Teams, the marketing site, and search-engine results. On a
+  customer's own status-page domain the same redirect applies to `/status0`, while both `/dash0`
+  and `/d` are refused there, because a status page must never walk its readers into the
+  SolidPing dashboard. Browser notifications need one extra step and take it themselves: a push
+  subscription is tied to the address the service worker was registered under, so the dashboard
+  retires the old registration on first load and re-subscribes, replacing the stored
+  subscription rather than leaving a dead one behind
+
+
+### Miscellaneous Chores
+
+* the legacy dashboard application has been removed. A second, long-dead copy of the dashboard
+  was still compiled into every build and still served as the fallback for **any** address that
+  matched nothing else — so a typo'd URL, or a link to a page that no longer exists, quietly
+  rendered the *old* dashboard's shell and answered `200` to search engines rather than saying
+  "not found". Unmatched addresses now answer a plain 404. Builds are one stage shorter as a
+  result
+
 ## [0.27.0](https://github.com/fclairamb/solidping/compare/v0.26.1...v0.27.0) (2026-09-08)
 
 
 ### Features
 
-* **demo:** the live demo now has an address you can say out loud: **`https://solidping.io/demo`**. The canonical link was `https://solidping.io/dash0/login?demo=true` — fine to click, poor to print, to type, or to read down a phone, and one wrong character (`/dash0/login/?demo`, say) quietly dropped the visitor on an ordinary login form with no sign that anything had been missed. `/demo` itself used to be nothing at all: it matched no route and fell through to the dashboard's catch-all, which answered 200 with an application shell that had no idea what had been asked for. It now redirects to that same canonical address, so every existing rule about the flag — which organization you land in, what happens when you already hold a session — applies unchanged. The shortcut exists only while the demo is switched on (`SP_DEMO_ENABLED`): a self-hosted install without one behaves exactly as it did before, rather than redirecting into a login page that then shows an ordinary form. The redirect is deliberately temporary rather than permanent, so switching the demo off takes effect on the very next request instead of lingering in visitors' browser caches. On a customer's own status-page domain `/demo` is refused, for the same reason `/dash0` already is — a status page must never bounce its readers into the SolidPing dashboard ([#353](https://github.com/fclairamb/solidping/issues/353)) ([58551a6](https://github.com/fclairamb/solidping/commit/58551a6e1b20354a90e8e4a23e4e02748c2843bc))
+* **demo:** the live demo now has an address you can say out loud:
+  **`https://solidping.io/demo`**. The canonical link was
+  `https://solidping.io/dash0/login?demo=true` — fine to click, poor to print, to type, or to
+  read down a phone, and one wrong character (`/dash0/login/?demo`, say) quietly dropped the
+  visitor on an ordinary login form with no sign that anything had been missed. `/demo` itself
+  used to be nothing at all: it matched no route and fell through to the dashboard's catch-all,
+  which answered 200 with an application shell that had no idea what had been asked for. It now
+  redirects to that same canonical address, so every existing rule about the flag — which
+  organization you land in, what happens when you already hold a session — applies unchanged.
+  The shortcut exists only while the demo is switched on (`SP_DEMO_ENABLED`): a self-hosted
+  install without one behaves exactly as it did before, rather than redirecting into a login
+  page that then shows an ordinary form. The redirect is deliberately temporary rather than
+  permanent, so switching the demo off takes effect on the very next request instead of
+  lingering in visitors' browser caches. On a customer's own status-page domain `/demo` is
+  refused, for the same reason `/dash0` already is — a status page must never bounce its readers
+  into the SolidPing dashboard ([#353](https://github.com/fclairamb/solidping/issues/353))
+  ([58551a6](https://github.com/fclairamb/solidping/commit/58551a6e1b20354a90e8e4a23e4e02748c2843bc))
 
 
 ### Bug Fixes
 
-* **deps:** update go dependencies (non-major) ([#349](https://github.com/fclairamb/solidping/issues/349)) ([9dfe4fd](https://github.com/fclairamb/solidping/commit/9dfe4fd8d5961b598d12f843c62c719c32ab8caa))
-* **deps:** update go dependencies (non-major) ([#352](https://github.com/fclairamb/solidping/issues/352)) ([b7575d0](https://github.com/fclairamb/solidping/commit/b7575d06a7b51a7643029e93432c6521922be038))
-* **deps:** update module golang.org/x/term to v0.46.0 ([#351](https://github.com/fclairamb/solidping/issues/351)) ([acbe8ed](https://github.com/fclairamb/solidping/commit/acbe8ed38e4e563d5803c6ccfeb3f86d45c505d9))
+* **deps:** update go dependencies (non-major)
+  ([#349](https://github.com/fclairamb/solidping/issues/349))
+  ([9dfe4fd](https://github.com/fclairamb/solidping/commit/9dfe4fd8d5961b598d12f843c62c719c32ab8caa))
+* **deps:** update go dependencies (non-major)
+  ([#352](https://github.com/fclairamb/solidping/issues/352))
+  ([b7575d0](https://github.com/fclairamb/solidping/commit/b7575d06a7b51a7643029e93432c6521922be038))
+* **deps:** update module golang.org/x/term to v0.46.0
+  ([#351](https://github.com/fclairamb/solidping/issues/351))
+  ([acbe8ed](https://github.com/fclairamb/solidping/commit/acbe8ed38e4e563d5803c6ccfeb3f86d45c505d9))
 
 ## [0.26.1](https://github.com/fclairamb/solidping/compare/v0.26.0...v0.26.1) (2026-09-08)
 
 
 ### Bug Fixes
 
-* **dash0:** landing on an organization you cannot use now takes you to one you can, instead of a dead end. Following a link, a bookmark or an old email to an organization you are not a member of used to answer 403 on every request and show "Permission Denied" — whose only button linked back to the same organization you could not reach. You are now sent to your own organization (the one this browser used last, else your first membership) with a short note saying so, and to the "no organization" screen only if you genuinely have none. Administrators with cross-organization access are unaffected.
-* **demo:** entering the live demo from another organization's login page no longer strands you in *that* organization. The "Try the live demo" button raced its own sign-in — whichever navigation committed last won, and the losing one left you on an organization the demo account is not a member of, staring at Permission Denied. A returning visitor who still held a demo session hit the same wall just by opening an ordinary login link, with no race involved.
-* **auth:** signing in with a two-factor code now returns the same information as every other way of signing in. It was the one login path that omitted the caller's organization list, which briefly read as "this account belongs to no organization" and could flash the no-organization screen on the way to the dashboard. ([#346](https://github.com/fclairamb/solidping/issues/346)) ([0defd69](https://github.com/fclairamb/solidping/commit/0defd69b28c3065d13a26d0de11dda299aa28e6b))
+* **dash0:** landing on an organization you cannot use now takes you to one you can, instead of
+  a dead end. Following a link, a bookmark or an old email to an organization you are not a
+  member of used to answer 403 on every request and show "Permission Denied" — whose only button
+  linked back to the same organization you could not reach. You are now sent to your own
+  organization (the one this browser used last, else your first membership) with a short note
+  saying so, and to the "no organization" screen only if you genuinely have none. Administrators
+  with cross-organization access are unaffected.
+* **demo:** entering the live demo from another organization's login page no longer strands you
+  in *that* organization. The "Try the live demo" button raced its own sign-in — whichever
+  navigation committed last won, and the losing one left you on an organization the demo account
+  is not a member of, staring at Permission Denied. A returning visitor who still held a demo
+  session hit the same wall just by opening an ordinary login link, with no race involved.
+* **auth:** signing in with a two-factor code now returns the same information as every other
+  way of signing in. It was the one login path that omitted the caller's organization list,
+  which briefly read as "this account belongs to no organization" and could flash the
+  no-organization screen on the way to the dashboard.
+  ([#346](https://github.com/fclairamb/solidping/issues/346))
+  ([0defd69](https://github.com/fclairamb/solidping/commit/0defd69b28c3065d13a26d0de11dda299aa28e6b))
 
 ## [0.26.0](https://github.com/fclairamb/solidping/compare/v0.25.1...v0.26.0) (2026-09-08)
 
 
 ### Features
 
-* **auth:** keep the campaign that produced a signup ([#342](https://github.com/fclairamb/solidping/issues/342)) ([1e46764](https://github.com/fclairamb/solidping/commit/1e4676497a6458b1932f2d779372f121c8cc4fac))
+* **auth:** keep the campaign that produced a signup
+  ([#342](https://github.com/fclairamb/solidping/issues/342))
+  ([1e46764](https://github.com/fclairamb/solidping/commit/1e4676497a6458b1932f2d779372f121c8cc4fac))
 
 
 ### Bug Fixes
 
-* **demo:** the live demo's deep link now works from every address anyone would naturally write, and wins against a session you already have. `?demo=true` was only honoured on an organization-scoped login page (`/dash0/orgs/default/login?demo=true`) — the link that reads naturally, **`https://solidping.io/dash0/login?demo=true`**, dropped the flag and landed on an ordinary login form, as did `/dash0/?demo=true` and `/dash0/orgs/<anything>?demo=true`. All four now enter the demo on load, `1` and `true` alike, whatever organization the path happens to name. And the flag now outranks an existing session: following a demo link while signed into your own organization used to leave you in *your* dashboard, and following it while already in the demo dropped you on an organization the demo account is not a member of — a permission-denied page. Now the first re-enters the demo (your previous session is replaced, which is what the link asks for) and the second simply takes you there without signing in a second time. The canonical link is published in the documentation ([Try the live demo](https://solidping.io/docs/#try-the-live-demo))
-* **checks:** saving a check no longer rewrites its notification channels when you did not change them. Every save issued a "replace the bindings" call carrying exactly what was already stored — invisible for most people, but in the live demo that route is deliberately closed, so the no-op write was refused and took the whole edit down with it: renaming a check you had just created showed a red "this is the shared read-only live demo" toast and left you stuck on the form, *even though the rename had gone through*. The write now happens only when the selection actually differs, and a demo visitor is no longer offered the notification and dependency pickers they would only be refused. Editing a check you created in the demo now behaves like editing any other check
-* **demo:** the shared live demo's write refusal is now a single, localized message instead of three different costumes of the same English sentence. It used to surface as an untranslated blue toast on some pages, a second red banner underneath it on the check form, and a separate red toast on the status-page section dialog — and its wording ("editing your own checks is allowed") contradicted what a visitor saw when the server actually refused for *ownership* of a seeded check. There is now exactly one toast, translated into the dashboard's language, and the wording covers both cases. The check edit page also no longer lets a visitor fill out a form for a check they cannot save — it shows the same explanation and a Clone button, the way the check's detail page already did
-* **dash0:** the dashboard is now translated throughout. Around 500 strings across 55 components and pages still rendered English inside an otherwise French, German or Spanish dashboard: most of the check form (its title and type picker, and the database, mail, game, web, ClickHouse, infrastructure, messaging and network panels, which had no translations at all), the incident page's status-update, notification and "Published on" cards, the whole status-page incident editor, the standalone status-update form, the account device and OAuth consent pages, the status-page and integration forms, the notification detail page, the sidebar and the dashboard tiles. Relative timestamps ("just now", "3d ago") were English everywhere, as were the values in an incident's notification history and the state badge on a published incident, which printed its raw value ("investigating", "monitoring") whatever language you were in. A further 129 strings looked translated but were not: they carried an inline English fallback and no entry in any locale file, so every language got the English — the private locations feature was entirely in that state. Labels that appear both in a picker and on a badge now come from one shared helper, so the two can no longer disagree, and a value from a newer server renders readably instead of leaking a translation key. A new test fails the build if a string is left untranslated that way again ([#344](https://github.com/fclairamb/solidping/issues/344)) ([a4ed4ff](https://github.com/fclairamb/solidping/commit/a4ed4fffa5302f110a8d5bc3057de7bbbd7f6fa3))
+* **demo:** the live demo's deep link now works from every address anyone would naturally write,
+  and wins against a session you already have. `?demo=true` was only honoured on an
+  organization-scoped login page (`/dash0/orgs/default/login?demo=true`) — the link that reads
+  naturally, **`https://solidping.io/dash0/login?demo=true`**, dropped the flag and landed on an
+  ordinary login form, as did `/dash0/?demo=true` and `/dash0/orgs/<anything>?demo=true`. All
+  four now enter the demo on load, `1` and `true` alike, whatever organization the path happens
+  to name. And the flag now outranks an existing session: following a demo link while signed
+  into your own organization used to leave you in *your* dashboard, and following it while
+  already in the demo dropped you on an organization the demo account is not a member of — a
+  permission-denied page. Now the first re-enters the demo (your previous session is replaced,
+  which is what the link asks for) and the second simply takes you there without signing in a
+  second time. The canonical link is published in the documentation
+  ([Try the live demo](https://solidping.io/docs/#try-the-live-demo))
+* **checks:** saving a check no longer rewrites its notification channels when you did not
+  change them. Every save issued a "replace the bindings" call carrying exactly what was already
+  stored — invisible for most people, but in the live demo that route is deliberately closed, so
+  the no-op write was refused and took the whole edit down with it: renaming a check you had
+  just created showed a red "this is the shared read-only live demo" toast and left you stuck on
+  the form, *even though the rename had gone through*. The write now happens only when the
+  selection actually differs, and a demo visitor is no longer offered the notification and
+  dependency pickers they would only be refused. Editing a check you created in the demo now
+  behaves like editing any other check
+* **demo:** the shared live demo's write refusal is now a single, localized message instead of
+  three different costumes of the same English sentence. It used to surface as an untranslated
+  blue toast on some pages, a second red banner underneath it on the check form, and a separate
+  red toast on the status-page section dialog — and its wording ("editing your own checks is
+  allowed") contradicted what a visitor saw when the server actually refused for *ownership* of
+  a seeded check. There is now exactly one toast, translated into the dashboard's language, and
+  the wording covers both cases. The check edit page also no longer lets a visitor fill out a
+  form for a check they cannot save — it shows the same explanation and a Clone button, the way
+  the check's detail page already did
+* **dash0:** the dashboard is now translated throughout. Around 500 strings across 55 components
+  and pages still rendered English inside an otherwise French, German or Spanish dashboard: most
+  of the check form (its title and type picker, and the database, mail, game, web, ClickHouse,
+  infrastructure, messaging and network panels, which had no translations at all), the incident
+  page's status-update, notification and "Published on" cards, the whole status-page incident
+  editor, the standalone status-update form, the account device and OAuth consent pages, the
+  status-page and integration forms, the notification detail page, the sidebar and the dashboard
+  tiles. Relative timestamps ("just now", "3d ago") were English everywhere, as were the values
+  in an incident's notification history and the state badge on a published incident, which
+  printed its raw value ("investigating", "monitoring") whatever language you were in. A further
+  129 strings looked translated but were not: they carried an inline English fallback and no
+  entry in any locale file, so every language got the English — the private locations feature
+  was entirely in that state. Labels that appear both in a picker and on a badge now come from
+  one shared helper, so the two can no longer disagree, and a value from a newer server renders
+  readably instead of leaking a translation key. A new test fails the build if a string is left
+  untranslated that way again ([#344](https://github.com/fclairamb/solidping/issues/344))
+  ([a4ed4ff](https://github.com/fclairamb/solidping/commit/a4ed4fffa5302f110a8d5bc3057de7bbbd7f6fa3))
 
 ## [0.25.1](https://github.com/fclairamb/solidping/compare/v0.25.0...v0.25.1) (2026-09-07)
 
 
 ### Bug Fixes
 
-* **deps:** update github.com/dop251/goja digest to 70ad66e ([#338](https://github.com/fclairamb/solidping/issues/338)) ([7bae0fe](https://github.com/fclairamb/solidping/commit/7bae0fed144ed1a0e9479a6a85278ebf84a69321))
-* **onboarding:** the organization offered to a brand-new account on the "you have no organization yet" screen now takes its **address** from the person's first name instead of from the sentence in the name field. "Florent's organization" was becoming `florents-organizatio` — the display sentence run through the 20-character address cap — and in French, German or Spanish the boilerplate led and the *name* was what got cut, so `L'organisation de Florent` and `L'organisation de Florence` both landed on `lorganisation-de-flo`, the second with a collision suffix on top. A first name in a non-Latin script disappeared from the address altogether. The proposal is now simply `florent`: it is what the "Will be reachable as …" line shows before you click, and what the Advanced field starts from if you want to change it. The organization's display name is untouched — it is only the address that was wrong. For API clients, `POST /api/v1/orgs` gains an optional `slugBase`: unlike `slug`, which is still taken literally and still answers 409 when it is already claimed, `slugBase` is a hint the server normalizes and numbers on collision, so accepting the proposed organization can never produce an error the newcomer cannot act on ([#341](https://github.com/fclairamb/solidping/issues/341)) ([83e6e27](https://github.com/fclairamb/solidping/commit/83e6e27954695e09cafa69d345b74663c3d791cc))
+* **deps:** update github.com/dop251/goja digest to 70ad66e
+  ([#338](https://github.com/fclairamb/solidping/issues/338))
+  ([7bae0fe](https://github.com/fclairamb/solidping/commit/7bae0fed144ed1a0e9479a6a85278ebf84a69321))
+* **onboarding:** the organization offered to a brand-new account on the "you have no
+  organization yet" screen now takes its **address** from the person's first name instead of
+  from the sentence in the name field. "Florent's organization" was becoming
+  `florents-organizatio` — the display sentence run through the 20-character address cap — and
+  in French, German or Spanish the boilerplate led and the *name* was what got cut, so
+  `L'organisation de Florent` and `L'organisation de Florence` both landed on
+  `lorganisation-de-flo`, the second with a collision suffix on top. A first name in a non-Latin
+  script disappeared from the address altogether. The proposal is now simply `florent`: it is
+  what the "Will be reachable as …" line shows before you click, and what the Advanced field
+  starts from if you want to change it. The organization's display name is untouched — it is
+  only the address that was wrong. For API clients, `POST /api/v1/orgs` gains an optional
+  `slugBase`: unlike `slug`, which is still taken literally and still answers 409 when it is
+  already claimed, `slugBase` is a hint the server normalizes and numbers on collision, so
+  accepting the proposed organization can never produce an error the newcomer cannot act on
+  ([#341](https://github.com/fclairamb/solidping/issues/341))
+  ([83e6e27](https://github.com/fclairamb/solidping/commit/83e6e27954695e09cafa69d345b74663c3d791cc))
 
 ## [0.25.0](https://github.com/fclairamb/solidping/compare/v0.24.0...v0.25.0) (2026-09-06)
 
 
 ### Security
 
-* **auth:** the **viewer** role is now genuinely read-only. It was offered in the members list, in invitations and in membership-request approvals as the read-only tier, and an admin who granted it reasonably believed the member could look but not touch — but nothing in the request path told `viewer` apart from `user`. Every state-changing endpoint registered under `/api/v1/orgs/:org/…` was open to a viewer exactly as it was to a full member: creating and deleting checks, acknowledging, snoozing and **resolving** incidents, commenting on them, editing notification integrations and channels, publishing to the public status page, sending test reports, deleting file attachments, cancelling background jobs, and minting Slack/Discord/Teams install links. Nothing ever answered 403, so there was nothing to trip over. A single floor now sits under every one of those routes and refuses anything below the `user` role with `403 FORBIDDEN`; the dashboard already renders that as "Permission Denied". Two things a viewer legitimately owns are deliberately still writable: their **own** notification contacts, routes and verification (choosing where *they* get paged changes nothing for anybody else) and their **own** API token — which inherits their role, so it can automate reading and nothing more. Incident actions are deliberately *not* exempt: acknowledging or resolving changes what the whole team is paged about. A team that wants someone to ack incidents gives them `user`. The rule is read from the member's current role rather than from the token they are holding, so demoting somebody takes effect on their very next request instead of at their next sign-in, and a personal access token minted while they were a `user` stops writing at the same moment. The **MCP server** gets the same floor: its tool calls never pass through the REST middleware, so a full-scope MCP token belonging to a viewer could otherwise still have created a check. **If you have been relying on viewers being able to write, that stops working with this release — move those members to `user`.**
+* **auth:** the **viewer** role is now genuinely read-only. It was offered in the members list,
+  in invitations and in membership-request approvals as the read-only tier, and an admin who
+  granted it reasonably believed the member could look but not touch — but nothing in the
+  request path told `viewer` apart from `user`. Every state-changing endpoint registered under
+  `/api/v1/orgs/:org/…` was open to a viewer exactly as it was to a full member: creating and
+  deleting checks, acknowledging, snoozing and **resolving** incidents, commenting on them,
+  editing notification integrations and channels, publishing to the public status page, sending
+  test reports, deleting file attachments, cancelling background jobs, and minting
+  Slack/Discord/Teams install links. Nothing ever answered 403, so there was nothing to trip
+  over. A single floor now sits under every one of those routes and refuses anything below the
+  `user` role with `403 FORBIDDEN`; the dashboard already renders that as "Permission Denied".
+  Two things a viewer legitimately owns are deliberately still writable: their **own**
+  notification contacts, routes and verification (choosing where *they* get paged changes
+  nothing for anybody else) and their **own** API token — which inherits their role, so it can
+  automate reading and nothing more. Incident actions are deliberately *not* exempt:
+  acknowledging or resolving changes what the whole team is paged about. A team that wants
+  someone to ack incidents gives them `user`. The rule is read from the member's current role
+  rather than from the token they are holding, so demoting somebody takes effect on their very
+  next request instead of at their next sign-in, and a personal access token minted while they
+  were a `user` stops writing at the same moment. The **MCP server** gets the same floor: its
+  tool calls never pass through the REST middleware, so a full-scope MCP token belonging to a
+  viewer could otherwise still have created a check. **If you have been relying on viewers being
+  able to write, that stops working with this release — move those members to `user`.**
 
 
 ### Features
 
-* **demo:** SolidPing now has a **public live demo** you can hand a prospect: a real organization on the production service, signed into with one click from the login page, with weeks of history across the real multi-region fleet, a status page, SLOs and an escalation policy already firing. Visitors can do the one thing that matters — create a check and watch results arrive — and edit or delete the checks they created, and nothing else; everything they did not create is untouchable, and every other write is refused. Their checks are cleaned up after an hour, and notifications from the demo go to an internal sink rather than to anybody. The catalogue only ever probes SolidPing's own endpoints, never a third party's. It is **off by default** (`SP_DEMO_ENABLED`), so a self-hosted install is unaffected until it is switched on ([#336](https://github.com/fclairamb/solidping/issues/336)) ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
-* **dash0:** the login page's footer says what it is and leads somewhere. It rendered a bare version number as plain text, so a visitor who wanted to know what SolidPing is, or what changed in the release they are looking at, had to leave and search. It now reads **SolidPing v0.25.0**, with the name linking to the product site and the version to this changelog ([#336](https://github.com/fclairamb/solidping/issues/336)) ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
+* **demo:** SolidPing now has a **public live demo** you can hand a prospect: a real
+  organization on the production service, signed into with one click from the login page, with
+  weeks of history across the real multi-region fleet, a status page, SLOs and an escalation
+  policy already firing. Visitors can do the one thing that matters — create a check and watch
+  results arrive — and edit or delete the checks they created, and nothing else; everything they
+  did not create is untouchable, and every other write is refused. Their checks are cleaned up
+  after an hour, and notifications from the demo go to an internal sink rather than to anybody.
+  The catalogue only ever probes SolidPing's own endpoints, never a third party's. It is **off
+  by default** (`SP_DEMO_ENABLED`), so a self-hosted install is unaffected until it is switched
+  on ([#336](https://github.com/fclairamb/solidping/issues/336))
+  ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
+* **dash0:** the login page's footer says what it is and leads somewhere. It rendered a bare
+  version number as plain text, so a visitor who wanted to know what SolidPing is, or what
+  changed in the release they are looking at, had to leave and search. It now reads **SolidPing
+  v0.25.0**, with the name linking to the product site and the version to this changelog
+  ([#336](https://github.com/fclairamb/solidping/issues/336))
+  ([1057376](https://github.com/fclairamb/solidping/commit/1057376564f8eb577d93345819454f4d9a28a928))
 
 ## [0.24.0](https://github.com/fclairamb/solidping/compare/v0.23.1...v0.24.0) (2026-09-06)
 
 
 ### Features
 
-* **onboarding:** an account that has just been created, and that no existing organization admitted automatically, is now offered an organization of its own rather than being pointed at the platform's `default` one. The create form arrives pre-filled with a proposal — "Alice's organization" when the account has a name, a friendly two-word name when it does not — and the URL slug has become optional: leave it alone and the server derives one from the name. Joining an existing organization is still offered, below, as the secondary choice it usually is for someone arriving on their own. Nothing about either is locked: the name is a starting point, and the slug can still be set by hand ([#333](https://github.com/fclairamb/solidping/issues/333)) ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
-* **onboarding:** on a SaaS deployment, signing in with Google (or any other provider) as a brand-new account no longer files a join request against the operator's own organization. The newcomer used to be told their sign-in had succeeded but that `default` had not admitted them yet — an organization they never chose and whose admins had never invited them — while the operator collected join requests from every stranger evaluating the product. Self-hosted installs are deliberately unchanged, because there `default` is usually the one real organization and a colleague's sign-in *should* ask its admins for access ([#333](https://github.com/fclairamb/solidping/issues/333)) ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
-* **docs:** the product tour's video has been re-recorded against the current dashboard, having been cut a month earlier and drifted well behind the UI it claimed to show. It is also simply a better demo: a visible cursor that travels to what it is about to click, text typed a character at a time instead of whole fields appearing at once, and the camera pushing in on whatever is being filled in. It now ships as H.264 alongside AV1, so it plays for visitors whose browsers cannot decode AV1 rather than showing the fallback text ([#333](https://github.com/fclairamb/solidping/issues/333)) ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
+* **onboarding:** an account that has just been created, and that no existing organization
+  admitted automatically, is now offered an organization of its own rather than being pointed at
+  the platform's `default` one. The create form arrives pre-filled with a proposal — "Alice's
+  organization" when the account has a name, a friendly two-word name when it does not — and the
+  URL slug has become optional: leave it alone and the server derives one from the name. Joining
+  an existing organization is still offered, below, as the secondary choice it usually is for
+  someone arriving on their own. Nothing about either is locked: the name is a starting point,
+  and the slug can still be set by hand
+  ([#333](https://github.com/fclairamb/solidping/issues/333))
+  ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
+* **onboarding:** on a SaaS deployment, signing in with Google (or any other provider) as a
+  brand-new account no longer files a join request against the operator's own organization. The
+  newcomer used to be told their sign-in had succeeded but that `default` had not admitted them
+  yet — an organization they never chose and whose admins had never invited them — while the
+  operator collected join requests from every stranger evaluating the product. Self-hosted
+  installs are deliberately unchanged, because there `default` is usually the one real
+  organization and a colleague's sign-in *should* ask its admins for access
+  ([#333](https://github.com/fclairamb/solidping/issues/333))
+  ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
+* **docs:** the product tour's video has been re-recorded against the current dashboard, having
+  been cut a month earlier and drifted well behind the UI it claimed to show. It is also simply
+  a better demo: a visible cursor that travels to what it is about to click, text typed a
+  character at a time instead of whole fields appearing at once, and the camera pushing in on
+  whatever is being filled in. It now ships as H.264 alongside AV1, so it plays for visitors
+  whose browsers cannot decode AV1 rather than showing the fallback text
+  ([#333](https://github.com/fclairamb/solidping/issues/333))
+  ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
 
 
 ### Bug Fixes
 
-* **notifications:** the "New membership request" email sent to an organization's admins now links to the page that actually lists pending requests. Its button pointed at the members list carrying a `?tab=requests` parameter that nothing has ever read, so an admin who clicked through landed on the member list and had to go find the requests themselves. Links already sitting in inboxes keep working — the old address redirects to the right page. The same email also no longer leaves a blank where the organization's name belongs when that organization has none set, which had been producing sentences reading "has asked to join  on SolidPing" and "you're an admin of ." ([#333](https://github.com/fclairamb/solidping/issues/333)) ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
-* **status-pages:** the embeddable status widget now loads when it is served from a custom status-page domain. `GET /embed/v1/widget.js` returned the status page's HTML shell instead of the script on any custom domain, so the `<script>` tag a customer had pasted into their own site received HTML, failed to parse, and the widget silently never appeared — with nothing logged anywhere to say so. That was the one host where it mattered most, since the snippet points at whatever hostname the status page is publicly known by ([#330](https://github.com/fclairamb/solidping/issues/330)) ([2b33972](https://github.com/fclairamb/solidping/commit/2b33972912729d2a51345905747f50dec77f337b))
-* **worker:** a worker whose name begins with a digit is now accepted, which fixes `docker run ghcr.io/fclairamb/solidping` refusing to start roughly three times in four. Docker names a container by the 12-character hex of its id, ten of the sixteen possible first characters are digits, and the worker-name pattern insisted on a leading letter — so the same command worked for one person and failed for the next, presenting as a flaky image rather than as a rule about names. Nothing ever required the leading letter ([#334](https://github.com/fclairamb/solidping/issues/334)) ([a092444](https://github.com/fclairamb/solidping/commit/a092444a12297249e5ccc2a9994db206b524b941))
-* **deps:** update go dependencies (non-major) ([#326](https://github.com/fclairamb/solidping/issues/326)) ([0022efb](https://github.com/fclairamb/solidping/commit/0022efb7d3506f84a510b0bfa06a53497ab0bb0f))
+* **notifications:** the "New membership request" email sent to an organization's admins now
+  links to the page that actually lists pending requests. Its button pointed at the members list
+  carrying a `?tab=requests` parameter that nothing has ever read, so an admin who clicked
+  through landed on the member list and had to go find the requests themselves. Links already
+  sitting in inboxes keep working — the old address redirects to the right page. The same email
+  also no longer leaves a blank where the organization's name belongs when that organization has
+  none set, which had been producing sentences reading "has asked to join  on SolidPing" and
+  "you're an admin of ." ([#333](https://github.com/fclairamb/solidping/issues/333))
+  ([97f772c](https://github.com/fclairamb/solidping/commit/97f772c114dc3f66a4d0749128da9c13e5978c65))
+* **status-pages:** the embeddable status widget now loads when it is served from a custom
+  status-page domain. `GET /embed/v1/widget.js` returned the status page's HTML shell instead of
+  the script on any custom domain, so the `<script>` tag a customer had pasted into their own
+  site received HTML, failed to parse, and the widget silently never appeared — with nothing
+  logged anywhere to say so. That was the one host where it mattered most, since the snippet
+  points at whatever hostname the status page is publicly known by
+  ([#330](https://github.com/fclairamb/solidping/issues/330))
+  ([2b33972](https://github.com/fclairamb/solidping/commit/2b33972912729d2a51345905747f50dec77f337b))
+* **worker:** a worker whose name begins with a digit is now accepted, which fixes
+  `docker run ghcr.io/fclairamb/solidping` refusing to start roughly three times in four. Docker
+  names a container by the 12-character hex of its id, ten of the sixteen possible first
+  characters are digits, and the worker-name pattern insisted on a leading letter — so the same
+  command worked for one person and failed for the next, presenting as a flaky image rather than
+  as a rule about names. Nothing ever required the leading letter
+  ([#334](https://github.com/fclairamb/solidping/issues/334))
+  ([a092444](https://github.com/fclairamb/solidping/commit/a092444a12297249e5ccc2a9994db206b524b941))
+* **deps:** update go dependencies (non-major)
+  ([#326](https://github.com/fclairamb/solidping/issues/326))
+  ([0022efb](https://github.com/fclairamb/solidping/commit/0022efb7d3506f84a510b0bfa06a53497ab0bb0f))
 
 ## [0.23.1](https://github.com/fclairamb/solidping/compare/v0.23.0...v0.23.1) (2026-09-05)
 
 
 ### Bug Fixes
 
-* **slack:** connecting a Slack workspace from **Integrations → New** works again. The install looked like it was going to succeed — Slack showed its usual permission screen, you pressed Allow — and then the browser landed on a generic "install failed" page that said nothing about what had gone wrong. SolidPing was telling Slack which address to send the finished install back to, but then leaving that same address out when it traded the resulting code for an access token, and Slack refuses the exchange outright when the two do not match. Signing in *with* Slack was never affected, which is why a completely broken install path went unnoticed for so long: the working sign-in sat next to it and hid it. Both steps now read the address from one shared place, so they cannot drift apart again ([#327](https://github.com/fclairamb/solidping/issues/327)) ([7eed9a2](https://github.com/fclairamb/solidping/commit/7eed9a2825f403431a54ab753d095b5f7ee15f87))
+* **slack:** connecting a Slack workspace from **Integrations → New** works again. The install
+  looked like it was going to succeed — Slack showed its usual permission screen, you pressed
+  Allow — and then the browser landed on a generic "install failed" page that said nothing about
+  what had gone wrong. SolidPing was telling Slack which address to send the finished install
+  back to, but then leaving that same address out when it traded the resulting code for an
+  access token, and Slack refuses the exchange outright when the two do not match. Signing in
+  *with* Slack was never affected, which is why a completely broken install path went unnoticed
+  for so long: the working sign-in sat next to it and hid it. Both steps now read the address
+  from one shared place, so they cannot drift apart again
+  ([#327](https://github.com/fclairamb/solidping/issues/327))
+  ([7eed9a2](https://github.com/fclairamb/solidping/commit/7eed9a2825f403431a54ab753d095b5f7ee15f87))
 
 ## [0.23.0](https://github.com/fclairamb/solidping/compare/v0.22.1...v0.23.0) (2026-09-04)
 
 
 ### Features
 
-* **notifications:** SolidPing can now tell you when something needs a person, without you watching for it. A support request being filed, or a new organization signing up, is delivered to super-admins over the media you already have configured — email, Slack, Telegram and the rest — and a new **Server → Notifications** page controls which events go out and to whom. Recipients are resolved at delivery time rather than when the event fires, so an account that has lost super-admin stops receiving them immediately, and a medium you have not configured is recorded as skipped rather than reported as a failed delivery. Signup notices name the organization the new user landed in ([#318](https://github.com/fclairamb/solidping/issues/318)) ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
-* **checks:** a check's dependencies are now edited on the check edit form, alongside everything else about it, instead of being changed in place on the detail page. The detail page keeps a read-only summary of what a check depends on, so viewing an incident no longer puts editable controls in front of you. Editing also stopped quietly discarding two fields it had been dropping: the dependency kind and its description now survive being loaded into the form and saved back ([#318](https://github.com/fclairamb/solidping/issues/318)) ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
-* **onboarding:** the “Getting started” checklist has been redesigned. It highlights the next step you have not done yet rather than leaving you to find it, shows completed work without striking it through, and no longer turns its progress bar red on the last step — a full bar now reads as finished rather than as an error. All of its motion respects a reduced-motion preference ([#318](https://github.com/fclairamb/solidping/issues/318)) ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
+* **notifications:** SolidPing can now tell you when something needs a person, without you
+  watching for it. A support request being filed, or a new organization signing up, is delivered
+  to super-admins over the media you already have configured — email, Slack, Telegram and the
+  rest — and a new **Server → Notifications** page controls which events go out and to whom.
+  Recipients are resolved at delivery time rather than when the event fires, so an account that
+  has lost super-admin stops receiving them immediately, and a medium you have not configured is
+  recorded as skipped rather than reported as a failed delivery. Signup notices name the
+  organization the new user landed in
+  ([#318](https://github.com/fclairamb/solidping/issues/318))
+  ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
+* **checks:** a check's dependencies are now edited on the check edit form, alongside everything
+  else about it, instead of being changed in place on the detail page. The detail page keeps a
+  read-only summary of what a check depends on, so viewing an incident no longer puts editable
+  controls in front of you. Editing also stopped quietly discarding two fields it had been
+  dropping: the dependency kind and its description now survive being loaded into the form and
+  saved back ([#318](https://github.com/fclairamb/solidping/issues/318))
+  ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
+* **onboarding:** the “Getting started” checklist has been redesigned. It highlights the next
+  step you have not done yet rather than leaving you to find it, shows completed work without
+  striking it through, and no longer turns its progress bar red on the last step — a full bar
+  now reads as finished rather than as an error. All of its motion respects a reduced-motion
+  preference ([#318](https://github.com/fclairamb/solidping/issues/318))
+  ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
 
 
 ### Bug Fixes
 
-* **checks:** stored credentials can be decrypted again after a restart. Each organization's encryption key is kept wrapped in a small envelope, but the code reading it back expected the bare value, so a freshly started process could not open the key and every credential encrypted with it — check and integration secrets — failed to decrypt until something warmed the cache. This had been the case since May and was invisible to a long-running server, which is why it survived so long. The key is now read back in whichever shape it was stored, is round-tripped once to prove it actually opens before it is cached, and a key that fails to load is reloaded rather than regenerated — regenerating would have produced a working server that could no longer read a single existing secret ([#318](https://github.com/fclairamb/solidping/issues/318)) ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
-* **database:** an embedded-PostgreSQL deployment (`SP_DATABASE_TYPE=postgres-embedded`) no longer fails under concurrency with `sorry, too many clients already`. The embedded server is started with ten connections, three of which PostgreSQL reserves for superusers, while the pool opened against it was unbounded — so past seven simultaneous queries the extras were refused outright instead of waiting their turn. The pool is now bounded below that ceiling, which turns refusals into a short queue. This mode is intended for tests and light local use and its limits are fixed, as the database configuration page now states ([#318](https://github.com/fclairamb/solidping/issues/318)) ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
-* **deps:** update github.com/dop251/goja digest to f87b40a ([#312](https://github.com/fclairamb/solidping/issues/312)) ([43bac80](https://github.com/fclairamb/solidping/commit/43bac80990682605704367b6b0708f35d3c532ee))
-* **deps:** update module github.com/go-jose/go-jose/v4 to v4.1.5 ([#313](https://github.com/fclairamb/solidping/issues/313)) ([48344aa](https://github.com/fclairamb/solidping/commit/48344aaec0d67b9efaeb36092497ecfde1863fcb))
-* **deps:** update module golang.org/x/crypto to v0.56.0 ([#310](https://github.com/fclairamb/solidping/issues/310)) ([e9de249](https://github.com/fclairamb/solidping/commit/e9de249b45496d1426ccbdd13e682ace04f0aa4e))
+* **checks:** stored credentials can be decrypted again after a restart. Each organization's
+  encryption key is kept wrapped in a small envelope, but the code reading it back expected the
+  bare value, so a freshly started process could not open the key and every credential encrypted
+  with it — check and integration secrets — failed to decrypt until something warmed the cache.
+  This had been the case since May and was invisible to a long-running server, which is why it
+  survived so long. The key is now read back in whichever shape it was stored, is round-tripped
+  once to prove it actually opens before it is cached, and a key that fails to load is reloaded
+  rather than regenerated — regenerating would have produced a working server that could no
+  longer read a single existing secret
+  ([#318](https://github.com/fclairamb/solidping/issues/318))
+  ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
+* **database:** an embedded-PostgreSQL deployment (`SP_DATABASE_TYPE=postgres-embedded`) no
+  longer fails under concurrency with `sorry, too many clients already`. The embedded server is
+  started with ten connections, three of which PostgreSQL reserves for superusers, while the
+  pool opened against it was unbounded — so past seven simultaneous queries the extras were
+  refused outright instead of waiting their turn. The pool is now bounded below that ceiling,
+  which turns refusals into a short queue. This mode is intended for tests and light local use
+  and its limits are fixed, as the database configuration page now states
+  ([#318](https://github.com/fclairamb/solidping/issues/318))
+  ([7990c78](https://github.com/fclairamb/solidping/commit/7990c78f810ba750d4e097d6a4470bba6c4c6f0d))
+* **deps:** update github.com/dop251/goja digest to f87b40a
+  ([#312](https://github.com/fclairamb/solidping/issues/312))
+  ([43bac80](https://github.com/fclairamb/solidping/commit/43bac80990682605704367b6b0708f35d3c532ee))
+* **deps:** update module github.com/go-jose/go-jose/v4 to v4.1.5
+  ([#313](https://github.com/fclairamb/solidping/issues/313))
+  ([48344aa](https://github.com/fclairamb/solidping/commit/48344aaec0d67b9efaeb36092497ecfde1863fcb))
+* **deps:** update module golang.org/x/crypto to v0.56.0
+  ([#310](https://github.com/fclairamb/solidping/issues/310))
+  ([e9de249](https://github.com/fclairamb/solidping/commit/e9de249b45496d1426ccbdd13e682ace04f0aa4e))
 
 ## [0.22.1](https://github.com/fclairamb/solidping/compare/v0.22.0...v0.22.1) (2026-09-03)
 
 
 ### Bug Fixes
 
-* **heartbeat:** a heartbeat that stops beating is now detected on schedule instead of after a random delay. Every period the scheduler writes its own result row, and it was then reading back the newest row of any kind to decide the check's state - which, from the second period after a beat, was its own previous row rather than the beat. Detection therefore became a coin flip on scheduling jitter: a dead heartbeat stayed up for an unpredictable number of extra periods, with no upper bound. When it finally flipped, the row that opened the incident reported an overdue time of a few milliseconds and a last-signal timestamp pointing at another scheduler row, and those wrong values were what the incident snapshot and every notification carried. The "run started but never completed" timeout could not fire at all, because each evaluation re-anchored the run on itself. The evaluation now reads the newest inbound signal specifically, so overdue detection fires when it should, the diagnostics name the real beat, and stale runs time out after two periods as designed. The same fix covers email checks, which share the code path ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
-* **heartbeat:** a scheduler row no longer looks like a beat that was never recorded. Both kinds of row read "Heartbeat received" with status up, so opening the row written seconds after a ping showed no caller details and a bare JSON dump - and the reasonable conclusion was that the ping had not been recorded at all. Scheduler rows now say what they are: the on-time message reads "Heartbeat on time" while a real beat keeps "Heartbeat received", the results table tags them with a muted "Evaluation" badge, and opening one explains which worker wrote it, when the last real signal arrived, how long before this evaluation that was, and links straight to that beat. A row whose most recent signal was a *failed* beat now says the last heartbeat reported failure, rather than the flatly untrue "no heartbeat received". What is stored for an actual beat is unchanged, byte for byte ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
-* **status pages:** a published incident can no longer outlive the outage it describes. Publishing an already-resolved incident created a fresh entry in the investigating state, as though the outage were live, and publishing also marked the entry as human-authored - which meant the default "resolve automatically if untouched" policy behaved exactly like "never". One such entry sat open on a public page for ten days: the wallboard showed "Some Systems Degraded" while every check was up and the ordinary status page said "All Systems Operational", with nothing in the dashboard connecting the two. Publishing a resolved incident now produces a resolved entry carrying the incident's own resolution time and a retroactive timeline, linking an incident to a page no longer counts as taking over the narrative, and auto-resolve now covers any entry linked to the resolving incident whether a person or a machine published it. Free-form entries with no linked incident are still never touched automatically. Relapse handling was widened to match, so an entry that closes automatically also reopens automatically rather than leaving a live outage unannounced ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
-* **status pages:** where this state can still arise, it is now visible. The dashboard warns on both the checks list and the status-page view when an incident is open on a public page while every check behind it is up, linking straight to the entry, and the wallboard says when its amber comes from a published incident rather than from a failing check - without claiming all services are passing on a page where they demonstrably are not ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
-* **heartbeat:** the embedded TCP/UDP panel on a heartbeat check is collapsed by default. It was fully expanded on every heartbeat check, doubling the height of the endpoint card and pushing the response-time chart down the page for the majority of users who only ever use the HTTPS URL. It now collapses behind a summary that still names what is enabled, with each `netcat` one-liner as its own disclosure. The token-rotation warning deliberately stays outside the collapsed section, because it is a security notice. The Arduino/ESP sketch that was rendered inline has been replaced by a link to the documentation page that already published it alongside the counter recipe and the security discussion, so the two copies can no longer drift apart ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
-* **reports:** the "create a weekly uptime report for me" shortcut produces a report with checks in it. It previously created a schedule with an empty scope - which the server correctly treats as covering the whole organization, but which presents as two empty pickers and nothing the reader can point at. It now attaches the ten most recently created checks, falling back to the organization-wide scope only when there are no checks to attach ([#309](https://github.com/fclairamb/solidping/issues/309)) ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
-* **deps:** update dependency @simplewebauthn/browser to v14 ([#308](https://github.com/fclairamb/solidping/issues/308)) ([3b11351](https://github.com/fclairamb/solidping/commit/3b113519042cfdb789073560ef211a1ed218fb07))
-* **deps:** update dependency docusaurus-plugin-llms to ^0.6.0 ([#303](https://github.com/fclairamb/solidping/issues/303)) ([8be59d5](https://github.com/fclairamb/solidping/commit/8be59d56154be2f295ef186b5f5753d79ed7bd06))
-* **deps:** update go dependencies (non-major) ([#306](https://github.com/fclairamb/solidping/issues/306)) ([91084ca](https://github.com/fclairamb/solidping/commit/91084cacd94cec7e18f5a70aa551ba53cb1fd9ac))
+* **heartbeat:** a heartbeat that stops beating is now detected on schedule instead of after a
+  random delay. Every period the scheduler writes its own result row, and it was then reading
+  back the newest row of any kind to decide the check's state - which, from the second period
+  after a beat, was its own previous row rather than the beat. Detection therefore became a coin
+  flip on scheduling jitter: a dead heartbeat stayed up for an unpredictable number of extra
+  periods, with no upper bound. When it finally flipped, the row that opened the incident
+  reported an overdue time of a few milliseconds and a last-signal timestamp pointing at another
+  scheduler row, and those wrong values were what the incident snapshot and every notification
+  carried. The "run started but never completed" timeout could not fire at all, because each
+  evaluation re-anchored the run on itself. The evaluation now reads the newest inbound signal
+  specifically, so overdue detection fires when it should, the diagnostics name the real beat,
+  and stale runs time out after two periods as designed. The same fix covers email checks, which
+  share the code path ([#309](https://github.com/fclairamb/solidping/issues/309))
+  ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **heartbeat:** a scheduler row no longer looks like a beat that was never recorded. Both kinds
+  of row read "Heartbeat received" with status up, so opening the row written seconds after a
+  ping showed no caller details and a bare JSON dump - and the reasonable conclusion was that
+  the ping had not been recorded at all. Scheduler rows now say what they are: the on-time
+  message reads "Heartbeat on time" while a real beat keeps "Heartbeat received", the results
+  table tags them with a muted "Evaluation" badge, and opening one explains which worker wrote
+  it, when the last real signal arrived, how long before this evaluation that was, and links
+  straight to that beat. A row whose most recent signal was a *failed* beat now says the last
+  heartbeat reported failure, rather than the flatly untrue "no heartbeat received". What is
+  stored for an actual beat is unchanged, byte for byte
+  ([#309](https://github.com/fclairamb/solidping/issues/309))
+  ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **status pages:** a published incident can no longer outlive the outage it describes.
+  Publishing an already-resolved incident created a fresh entry in the investigating state, as
+  though the outage were live, and publishing also marked the entry as human-authored - which
+  meant the default "resolve automatically if untouched" policy behaved exactly like "never".
+  One such entry sat open on a public page for ten days: the wallboard showed "Some Systems
+  Degraded" while every check was up and the ordinary status page said "All Systems
+  Operational", with nothing in the dashboard connecting the two. Publishing a resolved incident
+  now produces a resolved entry carrying the incident's own resolution time and a retroactive
+  timeline, linking an incident to a page no longer counts as taking over the narrative, and
+  auto-resolve now covers any entry linked to the resolving incident whether a person or a
+  machine published it. Free-form entries with no linked incident are still never touched
+  automatically. Relapse handling was widened to match, so an entry that closes automatically
+  also reopens automatically rather than leaving a live outage unannounced
+  ([#309](https://github.com/fclairamb/solidping/issues/309))
+  ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **status pages:** where this state can still arise, it is now visible. The dashboard warns on
+  both the checks list and the status-page view when an incident is open on a public page while
+  every check behind it is up, linking straight to the entry, and the wallboard says when its
+  amber comes from a published incident rather than from a failing check - without claiming all
+  services are passing on a page where they demonstrably are not
+  ([#309](https://github.com/fclairamb/solidping/issues/309))
+  ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **heartbeat:** the embedded TCP/UDP panel on a heartbeat check is collapsed by default. It was
+  fully expanded on every heartbeat check, doubling the height of the endpoint card and pushing
+  the response-time chart down the page for the majority of users who only ever use the HTTPS
+  URL. It now collapses behind a summary that still names what is enabled, with each `netcat`
+  one-liner as its own disclosure. The token-rotation warning deliberately stays outside the
+  collapsed section, because it is a security notice. The Arduino/ESP sketch that was rendered
+  inline has been replaced by a link to the documentation page that already published it
+  alongside the counter recipe and the security discussion, so the two copies can no longer
+  drift apart ([#309](https://github.com/fclairamb/solidping/issues/309))
+  ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **reports:** the "create a weekly uptime report for me" shortcut produces a report with checks
+  in it. It previously created a schedule with an empty scope - which the server correctly
+  treats as covering the whole organization, but which presents as two empty pickers and nothing
+  the reader can point at. It now attaches the ten most recently created checks, falling back to
+  the organization-wide scope only when there are no checks to attach
+  ([#309](https://github.com/fclairamb/solidping/issues/309))
+  ([b6a80e2](https://github.com/fclairamb/solidping/commit/b6a80e29baca025130911deab4a113434806f7d9))
+* **deps:** update dependency @simplewebauthn/browser to v14
+  ([#308](https://github.com/fclairamb/solidping/issues/308))
+  ([3b11351](https://github.com/fclairamb/solidping/commit/3b113519042cfdb789073560ef211a1ed218fb07))
+* **deps:** update dependency docusaurus-plugin-llms to ^0.6.0
+  ([#303](https://github.com/fclairamb/solidping/issues/303))
+  ([8be59d5](https://github.com/fclairamb/solidping/commit/8be59d56154be2f295ef186b5f5753d79ed7bd06))
+* **deps:** update go dependencies (non-major)
+  ([#306](https://github.com/fclairamb/solidping/issues/306))
+  ([91084ca](https://github.com/fclairamb/solidping/commit/91084cacd94cec7e18f5a70aa551ba53cb1fd9ac))
 
 ## [0.22.0](https://github.com/fclairamb/solidping/compare/v0.21.2...v0.22.0) (2026-09-02)
 
 
 ### Features
 
-* **heartbeat:** embedded devices can send beats without a TLS stack. Heartbeat checks accepted beats over HTTPS only, which ruled out the hardware the primitive suits best - microcontrollers, cellular modems driven by AT commands, battery sensors, legacy PLCs - because TLS costs tens of KB of RAM, a certificate store and a correct clock, and HTTP framing is pure overhead for a message meaning "I'm alive". Two optional listeners, off by default and sharing port 4001 on both TCP and UDP, now accept a one-line beat that is still debuggable with `netcat`: `SP1` carries the token in plaintext, and `SP2` is signed with HMAC-SHA256 keyed by the token, so no secret travels on the wire and a beat stays around 80 bytes. Replay protection is a strictly-increasing per-check counter enforced by the database itself, so an old datagram is refused and even the newest one cannot be replayed. The per-check `require_hmac` option rejects `SP1` outright, and the dashboard pairs that toggle with a prompt to rotate the token, because a check that ever accepted `SP1` has already exposed the key that signs `SP2`. Failed beats get no reply at all, so the listeners cannot be used to probe which organizations, checks or tokens exist, and a reply is never larger than the datagram that prompted it. Enabling the ports is a deployment decision; the new "Embedded / push monitoring" documentation page covers both message forms, the device-side counter recipe and the security trade-offs of each ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **heartbeat:** a beat can carry readings, not just aliveness. Both message forms accept an optional annotation - a status word plus `key=value` pairs - and numeric values are stored as check metrics, so battery voltage, signal strength or temperature arrive in a single UDP datagram and become charts on the check page. A malformed annotation never invalidates the beat: parsing is best-effort and falls back to storing the raw text, because a firmware typo in a key name must not make a healthy device look dead. The HTTPS ingest accepts the same annotation, so the field means one thing across all three transports ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **grpc:** gRPC checks report where the time actually went. `connection_time_ms` was measuring almost nothing - the client connects lazily, so that number covered little more than object construction while the real DNS, TCP and TLS cost hid inside the RPC timing. The connection is now established up front and instrumented, so a check reports genuine DNS, connect, TLS-handshake and RPC durations, and a failure is attributed to the phase that failed instead of collapsing into one opaque RPC error. Checking a service the server never registered - the most common misconfiguration - now says so in plain words rather than surfacing a raw `NotFound`. A `NOT_SERVING` response still keeps its measured latency, so a service can be watched slowing down before it drains ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **grpc:** gRPC checks can authenticate. Checks now send request metadata, including secret metadata that is encrypted at rest and never echoed back, so a health endpoint behind an authenticating proxy can be monitored at all. The dashboard form was previously a stub exposing only host, port, service name and TLS; it now also offers TLS verification skipping, the timeout, and editors for both plain and secret metadata ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **reports:** uptime report emails compare periods, rank by severity, and summarise response times. The scheduled report showed a single period in isolation. It now carries period-over-period trends, a response-time summary with minimum, maximum and slow-sample counts, the average incident duration, and a check table ordered worst-first with a per-day availability strip - so a failing check can no longer sit unnoticed at the bottom of an alphabetical list, and the table's 50-row cap now keeps the worst rows and says how many were left out. The degenerate cases got as much care as the happy path, because that is where a recurring digest starts misleading people: zero is never coloured as an improvement, a period with no baseline omits the comparison instead of printing a meaningless "+/-0.00%", a monitor that was down for the whole period gets a plain factual sentence rather than a grid of zeros and a falsely cheerful response-time trend measured on error responses, and days before a check existed are grey rather than red ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **dashboard:** the "Getting started" checklist rows have their own background and a distinct completed state, instead of the card's tint showing through every row and leaving finished steps looking much like outstanding ones ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **heartbeat:** embedded devices can send beats without a TLS stack. Heartbeat checks accepted
+  beats over HTTPS only, which ruled out the hardware the primitive suits best -
+  microcontrollers, cellular modems driven by AT commands, battery sensors, legacy PLCs -
+  because TLS costs tens of KB of RAM, a certificate store and a correct clock, and HTTP framing
+  is pure overhead for a message meaning "I'm alive". Two optional listeners, off by default and
+  sharing port 4001 on both TCP and UDP, now accept a one-line beat that is still debuggable
+  with `netcat`: `SP1` carries the token in plaintext, and `SP2` is signed with HMAC-SHA256
+  keyed by the token, so no secret travels on the wire and a beat stays around 80 bytes. Replay
+  protection is a strictly-increasing per-check counter enforced by the database itself, so an
+  old datagram is refused and even the newest one cannot be replayed. The per-check
+  `require_hmac` option rejects `SP1` outright, and the dashboard pairs that toggle with a
+  prompt to rotate the token, because a check that ever accepted `SP1` has already exposed the
+  key that signs `SP2`. Failed beats get no reply at all, so the listeners cannot be used to
+  probe which organizations, checks or tokens exist, and a reply is never larger than the
+  datagram that prompted it. Enabling the ports is a deployment decision; the new "Embedded /
+  push monitoring" documentation page covers both message forms, the device-side counter recipe
+  and the security trade-offs of each
+  ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **heartbeat:** a beat can carry readings, not just aliveness. Both message forms accept an
+  optional annotation - a status word plus `key=value` pairs - and numeric values are stored as
+  check metrics, so battery voltage, signal strength or temperature arrive in a single UDP
+  datagram and become charts on the check page. A malformed annotation never invalidates the
+  beat: parsing is best-effort and falls back to storing the raw text, because a firmware typo
+  in a key name must not make a healthy device look dead. The HTTPS ingest accepts the same
+  annotation, so the field means one thing across all three transports
+  ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **grpc:** gRPC checks report where the time actually went. `connection_time_ms` was measuring
+  almost nothing - the client connects lazily, so that number covered little more than object
+  construction while the real DNS, TCP and TLS cost hid inside the RPC timing. The connection is
+  now established up front and instrumented, so a check reports genuine DNS, connect,
+  TLS-handshake and RPC durations, and a failure is attributed to the phase that failed instead
+  of collapsing into one opaque RPC error. Checking a service the server never registered - the
+  most common misconfiguration - now says so in plain words rather than surfacing a raw
+  `NotFound`. A `NOT_SERVING` response still keeps its measured latency, so a service can be
+  watched slowing down before it drains
+  ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **grpc:** gRPC checks can authenticate. Checks now send request metadata, including secret
+  metadata that is encrypted at rest and never echoed back, so a health endpoint behind an
+  authenticating proxy can be monitored at all. The dashboard form was previously a stub
+  exposing only host, port, service name and TLS; it now also offers TLS verification skipping,
+  the timeout, and editors for both plain and secret metadata
+  ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **reports:** uptime report emails compare periods, rank by severity, and summarise response
+  times. The scheduled report showed a single period in isolation. It now carries
+  period-over-period trends, a response-time summary with minimum, maximum and slow-sample
+  counts, the average incident duration, and a check table ordered worst-first with a per-day
+  availability strip - so a failing check can no longer sit unnoticed at the bottom of an
+  alphabetical list, and the table's 50-row cap now keeps the worst rows and says how many were
+  left out. The degenerate cases got as much care as the happy path, because that is where a
+  recurring digest starts misleading people: zero is never coloured as an improvement, a period
+  with no baseline omits the comparison instead of printing a meaningless "+/-0.00%", a monitor
+  that was down for the whole period gets a plain factual sentence rather than a grid of zeros
+  and a falsely cheerful response-time trend measured on error responses, and days before a
+  check existed are grey rather than red
+  ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **dashboard:** the "Getting started" checklist rows have their own background and a distinct
+  completed state, instead of the card's tint showing through every row and leaving finished
+  steps looking much like outstanding ones
+  ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
 
 
 ### Bug Fixes
 
-* **checks:** editing a heartbeat check no longer destroys its ping token. Configuration updates replace the stored object wholesale on the public API, and the regenerated token was being discarded because validation ran against a copy - so a `PATCH` that set any single heartbeat option silently invalidated the URL the device was posting to, and the check went quiet for reasons nothing explained. The token is now preserved across a partial update, while an explicitly supplied one still wins ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **reports:** an uptime report with no incidents in either period prints "0" rather than "<no value>". The previous period's incident count was omitted from the rendered data whenever it was zero, which is the commonest healthy report there is, and the template had nothing to substitute ([#301](https://github.com/fclairamb/solidping/issues/301)) ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
-* **deps:** update github.com/dop251/goja digest to 43234fa ([#300](https://github.com/fclairamb/solidping/issues/300)) ([9c9b3e2](https://github.com/fclairamb/solidping/commit/9c9b3e28124afcc3a0425dd596598015a5f8ba05))
-* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.110.0 ([#298](https://github.com/fclairamb/solidping/issues/298)) ([2482111](https://github.com/fclairamb/solidping/commit/24821117589350c2ee3af7fe85709346775b76e0))
+* **checks:** editing a heartbeat check no longer destroys its ping token. Configuration updates
+  replace the stored object wholesale on the public API, and the regenerated token was being
+  discarded because validation ran against a copy - so a `PATCH` that set any single heartbeat
+  option silently invalidated the URL the device was posting to, and the check went quiet for
+  reasons nothing explained. The token is now preserved across a partial update, while an
+  explicitly supplied one still wins ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **reports:** an uptime report with no incidents in either period prints "0" rather than "<no
+  value>". The previous period's incident count was omitted from the rendered data whenever it
+  was zero, which is the commonest healthy report there is, and the template had nothing to
+  substitute ([#301](https://github.com/fclairamb/solidping/issues/301))
+  ([ecde564](https://github.com/fclairamb/solidping/commit/ecde56400e4f7c85e62025ac0df1e701a1854bcd))
+* **deps:** update github.com/dop251/goja digest to 43234fa
+  ([#300](https://github.com/fclairamb/solidping/issues/300))
+  ([9c9b3e2](https://github.com/fclairamb/solidping/commit/9c9b3e28124afcc3a0425dd596598015a5f8ba05))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.110.0
+  ([#298](https://github.com/fclairamb/solidping/issues/298))
+  ([2482111](https://github.com/fclairamb/solidping/commit/24821117589350c2ee3af7fe85709346775b76e0))
 
 ## [0.21.2](https://github.com/fclairamb/solidping/compare/v0.21.1...v0.21.2) (2026-09-01)
 
 
 ### Bug Fixes
 
-* **storage:** uploaded files survive a container restart. `SP_FILESTORAGE_LOCAL_ROOT` was never actually read — the configuration loader mapped the name to a key that did not match the one the setting is declared under, so an operator who pointed it at a mounted volume kept writing to the default path inside the image and lost every organization logo, status-page asset and incident screenshot on the next deploy. Nothing failed at upload time, which is why it went unnoticed until a later read returned `file not found in storage`. The variable is now honoured, and the Docker, Docker Compose and Kubernetes installation guides mount a volume for it — none of them did, while all of them mounted one for the database. File storage also has a documentation page of its own for the first time, covering both backends, how credentials are resolved, and worked examples for MinIO, OVHcloud and AWS ([#296](https://github.com/fclairamb/solidping/issues/296)) ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
-* **incidents:** a cascading outage pages once for the cause instead of once per dependent. Rollup could only suppress the pages it had not yet sent, and a parent check is inherently later to notice an outage than the services depending on it — by up to one probe interval plus its connection timeout, even when parent and children are configured identically. The children therefore finished their confirmation window first and paged before there was a parent incident to attribute them to; a real broker outage produced five reports instead of one this way. A check whose confirmation has elapsed now waits while a hard parent is itself still validating, so the parent opens first and the existing rollup suppresses the children before anything is sent. The hold costs nothing when the parent is healthy — a check failing on its own still confirms at exactly its configured period — and each parent can only hold a child for one bounded window, so a parent stuck validating cannot delay a page indefinitely. The dependencies view now also warns, without blocking anything, when a check's confirmation is too short for its parent to have plausibly noticed the same outage ([#296](https://github.com/fclairamb/solidping/issues/296)) ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
-* **incidents:** resolving a rollup parent no longer erases the record of the cascade. Detaching a child that had already recovered cleared both its suppression flag and the attribution naming the incident that caused it, so once the parent resolved, ten of eleven dependent incidents from a real outage read as though rollup had never run, and the investigation had to be rebuilt from the events feed. The attribution is now kept as the historical record and only the suppression is cleared, and the detach finally emits the `incident.rollup_detached` timeline event the documentation had described for some time but which had never existed. A detached child that fails again before its own incident closes still pages, exactly as before ([#296](https://github.com/fclairamb/solidping/issues/296)) ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
-* **incidents:** the confirmation hold measures the same window no matter which path reported the result. The per-check timeout it depends on was converted from configuration separately at each call site, and the heartbeat, inbound-mail and MCP ingest paths never did the conversion, so they silently used the built-in 15 second default. At shipped settings the two values agree and nothing is visible; an operator who raised or lowered the ceiling got a hold whose length depended on which path happened to see the failure. There is now a single conversion every consumer goes through ([#296](https://github.com/fclairamb/solidping/issues/296)) ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
-* **dashboard:** the “create your first check” screen goes away as soon as a check exists. Whether the dashboard shows onboarding or its normal view is decided by a statistics endpoint, and three caches stacked up in front of it: a one-minute server-side snapshot with no invalidation, no client-side refresh when a check is created or deleted, and a poll stretched to five minutes whenever the live connection is up. Together they could leave the onboarding screen sitting over an organization that already had checks for several minutes, and reloading the page did not help, because the server-side snapshot outlived the reload. Creating or deleting a check now clears that snapshot immediately and refreshes the dashboard, including when the check is created over the API or through MCP rather than in the browser ([#296](https://github.com/fclairamb/solidping/issues/296)) ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
-* **deps:** update go dependencies (non-major) ([#293](https://github.com/fclairamb/solidping/issues/293)) ([5e962ac](https://github.com/fclairamb/solidping/commit/5e962ac103e067b0bd2c3e633896dc5d5249a17a)), ([#297](https://github.com/fclairamb/solidping/issues/297)) ([2c2fbdb](https://github.com/fclairamb/solidping/commit/2c2fbdbba0b840031c132d4fcf9bcc1bf45c7e11))
-* **deps:** update module github.com/prometheus/client_model to v0.6.3 ([#295](https://github.com/fclairamb/solidping/issues/295)) ([d2d936b](https://github.com/fclairamb/solidping/commit/d2d936bb80810e90365d841bbedea97e91a031c3))
+* **storage:** uploaded files survive a container restart. `SP_FILESTORAGE_LOCAL_ROOT` was never
+  actually read — the configuration loader mapped the name to a key that did not match the one
+  the setting is declared under, so an operator who pointed it at a mounted volume kept writing
+  to the default path inside the image and lost every organization logo, status-page asset and
+  incident screenshot on the next deploy. Nothing failed at upload time, which is why it went
+  unnoticed until a later read returned `file not found in storage`. The variable is now
+  honoured, and the Docker, Docker Compose and Kubernetes installation guides mount a volume for
+  it — none of them did, while all of them mounted one for the database. File storage also has a
+  documentation page of its own for the first time, covering both backends, how credentials are
+  resolved, and worked examples for MinIO, OVHcloud and AWS
+  ([#296](https://github.com/fclairamb/solidping/issues/296))
+  ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
+* **incidents:** a cascading outage pages once for the cause instead of once per dependent.
+  Rollup could only suppress the pages it had not yet sent, and a parent check is inherently
+  later to notice an outage than the services depending on it — by up to one probe interval plus
+  its connection timeout, even when parent and children are configured identically. The children
+  therefore finished their confirmation window first and paged before there was a parent
+  incident to attribute them to; a real broker outage produced five reports instead of one this
+  way. A check whose confirmation has elapsed now waits while a hard parent is itself still
+  validating, so the parent opens first and the existing rollup suppresses the children before
+  anything is sent. The hold costs nothing when the parent is healthy — a check failing on its
+  own still confirms at exactly its configured period — and each parent can only hold a child
+  for one bounded window, so a parent stuck validating cannot delay a page indefinitely. The
+  dependencies view now also warns, without blocking anything, when a check's confirmation is
+  too short for its parent to have plausibly noticed the same outage
+  ([#296](https://github.com/fclairamb/solidping/issues/296))
+  ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
+* **incidents:** resolving a rollup parent no longer erases the record of the cascade. Detaching
+  a child that had already recovered cleared both its suppression flag and the attribution
+  naming the incident that caused it, so once the parent resolved, ten of eleven dependent
+  incidents from a real outage read as though rollup had never run, and the investigation had to
+  be rebuilt from the events feed. The attribution is now kept as the historical record and only
+  the suppression is cleared, and the detach finally emits the `incident.rollup_detached`
+  timeline event the documentation had described for some time but which had never existed. A
+  detached child that fails again before its own incident closes still pages, exactly as before
+  ([#296](https://github.com/fclairamb/solidping/issues/296))
+  ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
+* **incidents:** the confirmation hold measures the same window no matter which path reported
+  the result. The per-check timeout it depends on was converted from configuration separately at
+  each call site, and the heartbeat, inbound-mail and MCP ingest paths never did the conversion,
+  so they silently used the built-in 15 second default. At shipped settings the two values agree
+  and nothing is visible; an operator who raised or lowered the ceiling got a hold whose length
+  depended on which path happened to see the failure. There is now a single conversion every
+  consumer goes through ([#296](https://github.com/fclairamb/solidping/issues/296))
+  ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
+* **dashboard:** the “create your first check” screen goes away as soon as a check exists.
+  Whether the dashboard shows onboarding or its normal view is decided by a statistics endpoint,
+  and three caches stacked up in front of it: a one-minute server-side snapshot with no
+  invalidation, no client-side refresh when a check is created or deleted, and a poll stretched
+  to five minutes whenever the live connection is up. Together they could leave the onboarding
+  screen sitting over an organization that already had checks for several minutes, and reloading
+  the page did not help, because the server-side snapshot outlived the reload. Creating or
+  deleting a check now clears that snapshot immediately and refreshes the dashboard, including
+  when the check is created over the API or through MCP rather than in the browser
+  ([#296](https://github.com/fclairamb/solidping/issues/296))
+  ([0318192](https://github.com/fclairamb/solidping/commit/03181925d84b9b4d698b6a66929cae76682046c6))
+* **deps:** update go dependencies (non-major)
+  ([#293](https://github.com/fclairamb/solidping/issues/293))
+  ([5e962ac](https://github.com/fclairamb/solidping/commit/5e962ac103e067b0bd2c3e633896dc5d5249a17a)),
+  ([#297](https://github.com/fclairamb/solidping/issues/297))
+  ([2c2fbdb](https://github.com/fclairamb/solidping/commit/2c2fbdbba0b840031c132d4fcf9bcc1bf45c7e11))
+* **deps:** update module github.com/prometheus/client_model to v0.6.3
+  ([#295](https://github.com/fclairamb/solidping/issues/295))
+  ([d2d936b](https://github.com/fclairamb/solidping/commit/d2d936bb80810e90365d841bbedea97e91a031c3))
 
 ## [0.21.1](https://github.com/fclairamb/solidping/compare/v0.21.0...v0.21.1) (2026-08-31)
 
 
 ### Bug Fixes
 
-* **docs:** the documentation sidebar names the API reference "API Reference" again, instead of listing it as the raw folder name `api`. The sidebar is generated from the folder layout, so a section's display name has to come from a `_category_.json` file inside it — that file was already accounted for in the repository's ignore rules, with a comment saying the label is kept, but it had never actually been committed, so the site fell back to the directory name ([#291](https://github.com/fclairamb/solidping/issues/291)) ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
-* **docs:** `/docs/changelog` lists the real release history again instead of reading "No changelog available yet.". The page is generated at build time from this file, but the container build never copied `CHANGELOG.md` into the stage that builds the documentation, so the generator hit its fallback and every published image shipped an empty changelog page. Local documentation builds were unaffected — the file is simply there on a developer's machine — which is why it went unnoticed ([#291](https://github.com/fclairamb/solidping/issues/291)) ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
+* **docs:** the documentation sidebar names the API reference "API Reference" again, instead of
+  listing it as the raw folder name `api`. The sidebar is generated from the folder layout, so a
+  section's display name has to come from a `_category_.json` file inside it — that file was
+  already accounted for in the repository's ignore rules, with a comment saying the label is
+  kept, but it had never actually been committed, so the site fell back to the directory name
+  ([#291](https://github.com/fclairamb/solidping/issues/291))
+  ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
+* **docs:** `/docs/changelog` lists the real release history again instead of reading "No
+  changelog available yet.". The page is generated at build time from this file, but the
+  container build never copied `CHANGELOG.md` into the stage that builds the documentation, so
+  the generator hit its fallback and every published image shipped an empty changelog page.
+  Local documentation builds were unaffected — the file is simply there on a developer's machine
+  — which is why it went unnoticed ([#291](https://github.com/fclairamb/solidping/issues/291))
+  ([830d108](https://github.com/fclairamb/solidping/commit/830d108a2fd345cbb36a8706fd93296665204d60))
 
 ## [0.21.0](https://github.com/fclairamb/solidping/compare/v0.20.0...v0.21.0) (2026-08-31)
 
 
 ### Features
 
-* **status pages:** TV mode — a wallboard rendering of any status page, at `/{org}/{page}/tv`, `/{org}/tv` for the default page, and `/tv` on a custom domain. One non-scrolling viewport built to be read from across a room rather than at arm's length: the ambient state is carried by an icon and the state spelled out in words as well as colour, active incidents are cycled rather than shrunk to fit, and the board shows how long it has been since the last incident. If it stops hearing from the API it drops to grey instead of leaving a frozen green screen up during an outage. Pages can now also publish a page-level uptime figure, and a revocable kiosk token lets a wall panel render a non-public page unattended for months without a login ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **status pages:** a section can now carry a membership rule instead of being hand-curated — every check, or every check matching a set of labels. A reconciler materializes the matching components and keeps them in step as checks come and go, so a page no longer drifts out of date every time someone adds a check. Sections dedupe page-wide, and a section whose matches were all claimed by an earlier one now says so, with the remedy, instead of rendering empty and looking like a broken label filter ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **status pages:** the badge and widget previews on the appearance page open the status page when clicked, and the copyable badge snippets are now links themselves — a badge pasted into a README or a footer points back at the status page instead of being an inert image ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **status pages:** affected services on the wallboard name the failing checks and how long each has been failing, and the recently-resolved strip says when an incident happened rather than only how long it lasted. Previously a board could go fully red while its only text read "N days since the last incident", because the colour comes from live check data but the explanation waited on incident publication ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **onboarding:** one-click defaults. A magic wand on the integrations, report-schedule, status-page and status-pages-list screens creates the sensible default outright — the status-pages wand builds a page named after the organization with every check attached — and only appears while the matching Getting Started step is still outstanding. The checklist card is tinted, its rows are clickable, and its status-page step now lands on the list where the wand is, rather than on a blank form ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **slack:** the `/solidping` slash command works. It was registered in the app manifests and documented publicly but had no handler, so every documented subcommand — `/solidping help` included — answered `Unknown command`. `check`, `comment`, `list`, `create`, `config`, `incidents` and `help` all now route through the same parser as an @-mention and answer privately in-channel, and `check` acknowledges immediately and reports back over Slack's response URL rather than risking the three-second timeout ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **email:** notification emails ship a designed dark palette, and the dashboard's email preview gained a light/dark toggle so you can see both before sending ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **whatsapp:** support messages are marked read when an operator reads or replies to them, so the person who wrote in sees their message was picked up ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **dashboard:** organizations can be switched from the command palette, and its ambiguous "Settings" entry is now "Organization Settings". Creating a check from the quick-start lands on that check's own page rather than a generic dashboard ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **docs:** the changelog is published at `/docs/changelog`, generated from this file at build time with reference clutter stripped and dependency bumps filtered out ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **status pages:** TV mode — a wallboard rendering of any status page, at `/{org}/{page}/tv`,
+  `/{org}/tv` for the default page, and `/tv` on a custom domain. One non-scrolling viewport
+  built to be read from across a room rather than at arm's length: the ambient state is carried
+  by an icon and the state spelled out in words as well as colour, active incidents are cycled
+  rather than shrunk to fit, and the board shows how long it has been since the last incident.
+  If it stops hearing from the API it drops to grey instead of leaving a frozen green screen up
+  during an outage. Pages can now also publish a page-level uptime figure, and a revocable kiosk
+  token lets a wall panel render a non-public page unattended for months without a login
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **status pages:** a section can now carry a membership rule instead of being hand-curated —
+  every check, or every check matching a set of labels. A reconciler materializes the matching
+  components and keeps them in step as checks come and go, so a page no longer drifts out of
+  date every time someone adds a check. Sections dedupe page-wide, and a section whose matches
+  were all claimed by an earlier one now says so, with the remedy, instead of rendering empty
+  and looking like a broken label filter
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **status pages:** the badge and widget previews on the appearance page open the status page
+  when clicked, and the copyable badge snippets are now links themselves — a badge pasted into a
+  README or a footer points back at the status page instead of being an inert image
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **status pages:** affected services on the wallboard name the failing checks and how long each
+  has been failing, and the recently-resolved strip says when an incident happened rather than
+  only how long it lasted. Previously a board could go fully red while its only text read "N
+  days since the last incident", because the colour comes from live check data but the
+  explanation waited on incident publication
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **onboarding:** one-click defaults. A magic wand on the integrations, report-schedule,
+  status-page and status-pages-list screens creates the sensible default outright — the
+  status-pages wand builds a page named after the organization with every check attached — and
+  only appears while the matching Getting Started step is still outstanding. The checklist card
+  is tinted, its rows are clickable, and its status-page step now lands on the list where the
+  wand is, rather than on a blank form
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **slack:** the `/solidping` slash command works. It was registered in the app manifests and
+  documented publicly but had no handler, so every documented subcommand — `/solidping help`
+  included — answered `Unknown command`. `check`, `comment`, `list`, `create`, `config`,
+  `incidents` and `help` all now route through the same parser as an @-mention and answer
+  privately in-channel, and `check` acknowledges immediately and reports back over Slack's
+  response URL rather than risking the three-second timeout
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **email:** notification emails ship a designed dark palette, and the dashboard's email preview
+  gained a light/dark toggle so you can see both before sending
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **whatsapp:** support messages are marked read when an operator reads or replies to them, so
+  the person who wrote in sees their message was picked up
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **dashboard:** organizations can be switched from the command palette, and its ambiguous
+  "Settings" entry is now "Organization Settings". Creating a check from the quick-start lands
+  on that check's own page rather than a generic dashboard
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **docs:** the changelog is published at `/docs/changelog`, generated from this file at build
+  time with reference clutter stripped and dependency bumps filtered out
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
 
 
 ### Bug Fixes
 
-* **api:** cross-origin requests are governed by a real allowlist. Every response paired `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true` — a combination the Fetch standard forbids, so the credentials flag never took effect and any cross-origin caller sending cookies or an `Authorization` header was refused by the browser. Allowed origins are now configurable (`SP_CORS_ALLOWED_ORIGINS`, defaulting to the instance's own public URL) and echoed back individually with `Vary: Origin`; genuinely public, credential-free surfaces — public status pages, the embeddable widget and the analytics ingest path — keep a wildcard without credentials, since the sites embedding them can never be listed in advance. Nothing was broken by this in practice, because the dashboard is same-origin, but it blocked any second origin from using the API ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **api:** the analytics ingest proxy no longer emits duplicate CORS headers, and answers preflight. It forwarded the upstream's `Access-Control-*` headers on top of its own, so browsers saw each header twice and rejected the response outright — invisible to `curl` and every other non-browser probe — and it had no `OPTIONS` route at all, so any preflighted request failed before it was sent ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **checks:** a check whose type is changed now reaches the workers. The comparison deciding whether a check's configuration had changed was blind to the type field, so a type-only edit was saved but never propagated, and the worker went on running the old configuration indefinitely ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **checks:** `PATCH /checks` validates the merged configuration. Partial updates skipped the type-specific validation the create path runs, so an update could store a configuration that could never have been created ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **api:** an explicit `0`, `false` or empty string on create now reaches the database. The ORM's default-value annotations caused zero values to be omitted from the insert entirely, so a field explicitly set to its zero value silently took the schema default instead — repository-wide, on every affected column ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **entitlements:** a plan change takes effect immediately. The cached per-organization rate-limit bucket kept its old capacity after entitlements changed, so an upgrade did not raise the limit until the bucket expired on its own ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **auth:** confirming a registration no longer logs you straight back out. For a new email matching no existing organization the confirmation carried no session, so the dashboard stored the string `"undefined"` as a token, failed its next call and bounced to the login screen reporting an expired session — while the account had in fact been created, so trying again reported the address as taken. The dashboard also no longer 401-bounces off its own `/register` page ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **dashboard:** an invitation link that fails for a transient reason no longer claims to be expired. Any error at all — a rate limit, a server error, a dropped connection — rendered the same "this invitation link is invalid or has expired" card, which is a dead end for someone holding a perfectly good invitation. Only a genuinely unknown token shows it now; everything else offers a retry ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **notifications:** acknowledgement, comment, resolution and reopen replies in Slack link to the incident first rather than to the check, since the incident is where the context lives ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **dashboard:** comments on an incident render their formatting instead of appearing as plain text, the organization section opens on Members to match its own tab order, and the check detail page's documentation icon sits at the top right like every other page ([#288](https://github.com/fclairamb/solidping/issues/288)) ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
-* **deps:** update module filippo.io/age to v1.3.2 ([#286](https://github.com/fclairamb/solidping/issues/286)) ([316a448](https://github.com/fclairamb/solidping/commit/316a44876c6032d15ec6ebd87bb502c70ade0a7e))
+* **api:** cross-origin requests are governed by a real allowlist. Every response paired
+  `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true` — a combination
+  the Fetch standard forbids, so the credentials flag never took effect and any cross-origin
+  caller sending cookies or an `Authorization` header was refused by the browser. Allowed
+  origins are now configurable (`SP_CORS_ALLOWED_ORIGINS`, defaulting to the instance's own
+  public URL) and echoed back individually with `Vary: Origin`; genuinely public,
+  credential-free surfaces — public status pages, the embeddable widget and the analytics ingest
+  path — keep a wildcard without credentials, since the sites embedding them can never be listed
+  in advance. Nothing was broken by this in practice, because the dashboard is same-origin, but
+  it blocked any second origin from using the API
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **api:** the analytics ingest proxy no longer emits duplicate CORS headers, and answers
+  preflight. It forwarded the upstream's `Access-Control-*` headers on top of its own, so
+  browsers saw each header twice and rejected the response outright — invisible to `curl` and
+  every other non-browser probe — and it had no `OPTIONS` route at all, so any preflighted
+  request failed before it was sent ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **checks:** a check whose type is changed now reaches the workers. The comparison deciding
+  whether a check's configuration had changed was blind to the type field, so a type-only edit
+  was saved but never propagated, and the worker went on running the old configuration
+  indefinitely ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **checks:** `PATCH /checks` validates the merged configuration. Partial updates skipped the
+  type-specific validation the create path runs, so an update could store a configuration that
+  could never have been created ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **api:** an explicit `0`, `false` or empty string on create now reaches the database. The
+  ORM's default-value annotations caused zero values to be omitted from the insert entirely, so
+  a field explicitly set to its zero value silently took the schema default instead —
+  repository-wide, on every affected column
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **entitlements:** a plan change takes effect immediately. The cached per-organization
+  rate-limit bucket kept its old capacity after entitlements changed, so an upgrade did not
+  raise the limit until the bucket expired on its own
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **auth:** confirming a registration no longer logs you straight back out. For a new email
+  matching no existing organization the confirmation carried no session, so the dashboard stored
+  the string `"undefined"` as a token, failed its next call and bounced to the login screen
+  reporting an expired session — while the account had in fact been created, so trying again
+  reported the address as taken. The dashboard also no longer 401-bounces off its own
+  `/register` page ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **dashboard:** an invitation link that fails for a transient reason no longer claims to be
+  expired. Any error at all — a rate limit, a server error, a dropped connection — rendered the
+  same "this invitation link is invalid or has expired" card, which is a dead end for someone
+  holding a perfectly good invitation. Only a genuinely unknown token shows it now; everything
+  else offers a retry ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **notifications:** acknowledgement, comment, resolution and reopen replies in Slack link to
+  the incident first rather than to the check, since the incident is where the context lives
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **dashboard:** comments on an incident render their formatting instead of appearing as plain
+  text, the organization section opens on Members to match its own tab order, and the check
+  detail page's documentation icon sits at the top right like every other page
+  ([#288](https://github.com/fclairamb/solidping/issues/288))
+  ([b0e3192](https://github.com/fclairamb/solidping/commit/b0e31922e80f5c90cb95598037d9a576860f1b17))
+* **deps:** update module filippo.io/age to v1.3.2
+  ([#286](https://github.com/fclairamb/solidping/issues/286))
+  ([316a448](https://github.com/fclairamb/solidping/commit/316a44876c6032d15ec6ebd87bb502c70ade0a7e))
 
 ## [0.20.0](https://github.com/fclairamb/solidping/compare/v0.19.1...v0.20.0) (2026-08-29)
 
 
 ### Features
 
-* **onboarding:** a getting-started checklist on the org dashboard, appearing once the first check exists. Every step is derived from real resources rather than a stored per-step flag, so it cannot drift out of sync with what the org has actually configured, and it self-dismisses with an "all set" state instead of squatting on a fully configured dashboard. It replaces the one-shot first-result banner, whose dismissal lived in `localStorage` and so was lost on another device: dismissal now persists server-side per user per org, and can be re-enabled from the account page ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **alerting:** a newly created org is no longer silent by default. It is seeded with an enabled default email integration addressed to its owner — which the existing default-integration auto-attach then wires onto every check the org creates — and an org-wide weekly uptime report. Seeding is best-effort and never fails signup; existing orgs are untouched, and the bootstrap and test orgs are deliberately excluded ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **status pages:** publishing a check now takes one step instead of three. The check detail page offers "Publish on a status page", which opens the create form prefilled with that check; creation accepts an initial set of checks and always lays down a default "Services" section, so a new page is no longer born empty. Page, section and resources are written in a single transaction, so a rejected request leaves nothing behind ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **checks:** JSONPath assertions are editable in the dashboard. The editor existed but had never been wired into the HTTP form, so assertions could only be managed through the API — and, worse, saving the check from the form silently discarded them. Failed assertions now also surface on the check detail page ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **incidents:** unacknowledgement is announced to the same reach as the original alert, and escalation resumes from the rung it was paused at rather than restarting or silently stopping ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **sftp:** keyboard-interactive authentication, so servers that decline plain password auth can still be checked ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **reports:** uptime report emails link straight to the check and SLO they describe ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **api:** per-user UI state endpoints (`/api/v1/me/ui-state/:key`), scoped to the authenticated user with an allowlisted key shape and a size cap, so a per-user preference no longer has to live in browser storage ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **onboarding:** a getting-started checklist on the org dashboard, appearing once the first
+  check exists. Every step is derived from real resources rather than a stored per-step flag, so
+  it cannot drift out of sync with what the org has actually configured, and it self-dismisses
+  with an "all set" state instead of squatting on a fully configured dashboard. It replaces the
+  one-shot first-result banner, whose dismissal lived in `localStorage` and so was lost on
+  another device: dismissal now persists server-side per user per org, and can be re-enabled
+  from the account page ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **alerting:** a newly created org is no longer silent by default. It is seeded with an enabled
+  default email integration addressed to its owner — which the existing default-integration
+  auto-attach then wires onto every check the org creates — and an org-wide weekly uptime
+  report. Seeding is best-effort and never fails signup; existing orgs are untouched, and the
+  bootstrap and test orgs are deliberately excluded
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **status pages:** publishing a check now takes one step instead of three. The check detail
+  page offers "Publish on a status page", which opens the create form prefilled with that check;
+  creation accepts an initial set of checks and always lays down a default "Services" section,
+  so a new page is no longer born empty. Page, section and resources are written in a single
+  transaction, so a rejected request leaves nothing behind
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **checks:** JSONPath assertions are editable in the dashboard. The editor existed but had
+  never been wired into the HTTP form, so assertions could only be managed through the API —
+  and, worse, saving the check from the form silently discarded them. Failed assertions now also
+  surface on the check detail page ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **incidents:** unacknowledgement is announced to the same reach as the original alert, and
+  escalation resumes from the rung it was paused at rather than restarting or silently stopping
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **sftp:** keyboard-interactive authentication, so servers that decline plain password auth can
+  still be checked ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **reports:** uptime report emails link straight to the check and SLO they describe
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **api:** per-user UI state endpoints (`/api/v1/me/ui-state/:key`), scoped to the authenticated
+  user with an allowlisted key shape and a size cap, so a per-user preference no longer has to
+  live in browser storage ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
 
 
 ### Bug Fixes
 
-* **auth:** registering or accepting an invite with a too-short password answers `400 VALIDATION_ERROR` instead of `500 INTERNAL_ERROR`. A user typo was being reported as a server fault, paging Sentry each time. A sweep of the sibling error helpers found three further unmapped sentinels falling through to the same generic 500 ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **checks:** `/checks/validate` no longer answers `valid: true` for a payload that `POST /checks` then rejects. The two endpoints decoded into unrelated structs, so validate never even saw fields the create path refuses — including `internal`, the one field guarding the quota exemption. Request-level validation is now a single shared routine both paths run, with create's status codes, field names and messages unchanged ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** uploading an organization logo no longer blocks the settings form. The upload returns a relative storage path, which landed in a `type="url"` input and tripped native validation — so after uploading a logo the owner could not save a name or slug change at all. Uploaded file and external URL are now distinct, explicitly labelled sources ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** an in-flight organization name or slug edit is no longer reverted by the profile refresh that follows a save, which had been silently discarding whatever the user typed in the interval ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** the command palette finds an entity created moments ago. Its entity search shared a cache key with other screens under the app's default staleness window, so a status page, SLO or escalation policy created in the last minute could stay invisible to search even though it already existed ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** the maintenance-window edit form waits for its check associations before mounting. A window's fields and its checks load as two independent queries, and the form seeded its selection once at mount — so if the checks were still in flight the form opened empty and saving dropped the window's attached checks ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** the checks, incidents, members, SLOs and integrations tables are usable on a phone, dropping columns by breakpoint and scrolling inside their own container instead of giving the page a horizontal scrollbar ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** the incidents list shows the check's name rather than its slug, and the dashboard's issues banner links through to what it is reporting ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **dash0:** the response-time chart marks a failing sample distinctly instead of rendering it as an ordinary point, and the check multi-picker shows names instead of raw UUID chips ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **agents:** a re-enrolling system agent supersedes the row it replaces, so a redeployed worker no longer leaves a stale duplicate behind ([#282](https://github.com/fclairamb/solidping/issues/282)) ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
-* **deps:** update go dependencies (non-major) ([#279](https://github.com/fclairamb/solidping/issues/279)) ([4cbcc29](https://github.com/fclairamb/solidping/commit/4cbcc29206ee201276f15f01b695b43c19bbf381), [#283](https://github.com/fclairamb/solidping/issues/283)) ([9709152](https://github.com/fclairamb/solidping/commit/970915284d9af2b905439e45f8ec5aa8818b03d1))
+* **auth:** registering or accepting an invite with a too-short password answers
+  `400 VALIDATION_ERROR` instead of `500 INTERNAL_ERROR`. A user typo was being reported as a
+  server fault, paging Sentry each time. A sweep of the sibling error helpers found three
+  further unmapped sentinels falling through to the same generic 500
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **checks:** `/checks/validate` no longer answers `valid: true` for a payload that
+  `POST /checks` then rejects. The two endpoints decoded into unrelated structs, so validate
+  never even saw fields the create path refuses — including `internal`, the one field guarding
+  the quota exemption. Request-level validation is now a single shared routine both paths run,
+  with create's status codes, field names and messages unchanged
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** uploading an organization logo no longer blocks the settings form. The upload
+  returns a relative storage path, which landed in a `type="url"` input and tripped native
+  validation — so after uploading a logo the owner could not save a name or slug change at all.
+  Uploaded file and external URL are now distinct, explicitly labelled sources
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** an in-flight organization name or slug edit is no longer reverted by the profile
+  refresh that follows a save, which had been silently discarding whatever the user typed in the
+  interval ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** the command palette finds an entity created moments ago. Its entity search shared a
+  cache key with other screens under the app's default staleness window, so a status page, SLO
+  or escalation policy created in the last minute could stay invisible to search even though it
+  already existed ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** the maintenance-window edit form waits for its check associations before mounting.
+  A window's fields and its checks load as two independent queries, and the form seeded its
+  selection once at mount — so if the checks were still in flight the form opened empty and
+  saving dropped the window's attached checks
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** the checks, incidents, members, SLOs and integrations tables are usable on a phone,
+  dropping columns by breakpoint and scrolling inside their own container instead of giving the
+  page a horizontal scrollbar ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** the incidents list shows the check's name rather than its slug, and the dashboard's
+  issues banner links through to what it is reporting
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **dash0:** the response-time chart marks a failing sample distinctly instead of rendering it
+  as an ordinary point, and the check multi-picker shows names instead of raw UUID chips
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **agents:** a re-enrolling system agent supersedes the row it replaces, so a redeployed worker
+  no longer leaves a stale duplicate behind
+  ([#282](https://github.com/fclairamb/solidping/issues/282))
+  ([289478e](https://github.com/fclairamb/solidping/commit/289478e7ee97a156a7747591bb6b94cdbac9a4c6))
+* **deps:** update go dependencies (non-major)
+  ([#279](https://github.com/fclairamb/solidping/issues/279))
+  ([4cbcc29](https://github.com/fclairamb/solidping/commit/4cbcc29206ee201276f15f01b695b43c19bbf381),
+  [#283](https://github.com/fclairamb/solidping/issues/283))
+  ([9709152](https://github.com/fclairamb/solidping/commit/970915284d9af2b905439e45f8ec5aa8818b03d1))
 
 ## [0.19.1](https://github.com/fclairamb/solidping/compare/v0.19.0...v0.19.1) (2026-08-28)
 
 
 ### Bug Fixes
 
-* **config:** bind SP_ENCRYPTION_MASTER_KEY so credentials stop being stored in plaintext ([#276](https://github.com/fclairamb/solidping/issues/276)) ([15615ad](https://github.com/fclairamb/solidping/commit/15615ad9e2744988a112e51c8a8f0ffabb72f557))
-* **deps:** update github.com/dop251/goja digest to 8f1c069 ([#275](https://github.com/fclairamb/solidping/issues/275)) ([550ed79](https://github.com/fclairamb/solidping/commit/550ed79fcf39f5f577d5c41dbddf73191b1c2b4b))
-* **email:** link the check page in incident emails instead of the down host ([#274](https://github.com/fclairamb/solidping/issues/274)) ([0daaf40](https://github.com/fclairamb/solidping/commit/0daaf40dd851b9534d98e6fe0cb37f050ed884b2))
-* name the license file LICENSE so pkg.go.dev detects it ([#272](https://github.com/fclairamb/solidping/issues/272)) ([f11d7b6](https://github.com/fclairamb/solidping/commit/f11d7b6d252ca049dded188bbffb1bce1a165c01))
+* **config:** bind SP_ENCRYPTION_MASTER_KEY so credentials stop being stored in plaintext
+  ([#276](https://github.com/fclairamb/solidping/issues/276))
+  ([15615ad](https://github.com/fclairamb/solidping/commit/15615ad9e2744988a112e51c8a8f0ffabb72f557))
+* **deps:** update github.com/dop251/goja digest to 8f1c069
+  ([#275](https://github.com/fclairamb/solidping/issues/275))
+  ([550ed79](https://github.com/fclairamb/solidping/commit/550ed79fcf39f5f577d5c41dbddf73191b1c2b4b))
+* **email:** link the check page in incident emails instead of the down host
+  ([#274](https://github.com/fclairamb/solidping/issues/274))
+  ([0daaf40](https://github.com/fclairamb/solidping/commit/0daaf40dd851b9534d98e6fe0cb37f050ed884b2))
+* name the license file LICENSE so pkg.go.dev detects it
+  ([#272](https://github.com/fclairamb/solidping/issues/272))
+  ([f11d7b6](https://github.com/fclairamb/solidping/commit/f11d7b6d252ca049dded188bbffb1bce1a165c01))
 
 ## [0.19.0](https://github.com/fclairamb/solidping/compare/v0.18.3...v0.19.0) (2026-08-27)
 
 
 ### Features
 
-* **scheduling:** a check scheduling page that brings an org back under its per-minute rate cap. It shows where execution demand actually comes from, lets each check be stretched or disabled inline with the header total recalculating before anything is saved, and offers an auto-rebalance that proposes longer periods until the org fits its plan. Passive check types are excluded from the table and the omission is explained rather than left as a silent gap. The table is fully usable on a phone, scrolling inside its own container instead of the page. Reached from the checks list and from the over-limit banner ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **rate limits:** an over-limit org is now told that its check executions are being skipped, rather than left to discover unexplained gaps in its own data. A daily rate-limited-skip counter records the loss, `effective_scheduled_at` is preserved across a rate-limited deferral so a skipped run is distinguishable from a late one, and internal checks are exempt from both per-org rate gates. `checksPerMinute` demand, limit and daily skips are exposed on the entitlements payload and surfaced on the Usage page ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **availability:** a real 24h availability figure, computed server-side, replacing a fabricated 100%. A bucketed check-availability endpoint sits behind the shared engine with region-scoped reads and one shared bucket classifier, so the dashboard, the uptime bar and the status page cannot drift apart on what "available" means. dash0 renders the true KPI and an availability strip aligned to the response-time chart; status0 colors its chart strip by availability rather than by incidents alone ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **entitlements:** a superadmin org-limits editor, with explicit unlimited toggles rather than an empty field standing in for "no cap", plus the endpoints behind it. An admin override now outranks the next billing push, so a deliberate manual change is not silently reverted by the billing service on its next write ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **integrations:** Gotify and Zulip notification senders, wired into the integration registry with their dash0 forms, icons and locale entries ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **validation:** check validation now reports *every* finding rather than stopping at the first, each carrying a severity, a machine-readable code and the offending slug, alongside an org-rate projection and rate-cap warnings. The document-level `internal` flag is flagged in validate and its contract documented ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **support:** the reply pre-flight is per-thread and refuses unroutable replies outright instead of accepting a message that could never be delivered, surfacing the per-thread reason and offering a resend ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **openapi:** the spec covers the above — `CheckStats.availability24h`, the superadmin entitlements editor and suppression fields, and validate's severities, codes and extended request. `internal` is no longer advertised as a writable check field ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **scheduling:** a check scheduling page that brings an org back under its per-minute rate cap.
+  It shows where execution demand actually comes from, lets each check be stretched or disabled
+  inline with the header total recalculating before anything is saved, and offers an
+  auto-rebalance that proposes longer periods until the org fits its plan. Passive check types
+  are excluded from the table and the omission is explained rather than left as a silent gap.
+  The table is fully usable on a phone, scrolling inside its own container instead of the page.
+  Reached from the checks list and from the over-limit banner
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **rate limits:** an over-limit org is now told that its check executions are being skipped,
+  rather than left to discover unexplained gaps in its own data. A daily rate-limited-skip
+  counter records the loss, `effective_scheduled_at` is preserved across a rate-limited deferral
+  so a skipped run is distinguishable from a late one, and internal checks are exempt from both
+  per-org rate gates. `checksPerMinute` demand, limit and daily skips are exposed on the
+  entitlements payload and surfaced on the Usage page
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **availability:** a real 24h availability figure, computed server-side, replacing a fabricated
+  100%. A bucketed check-availability endpoint sits behind the shared engine with region-scoped
+  reads and one shared bucket classifier, so the dashboard, the uptime bar and the status page
+  cannot drift apart on what "available" means. dash0 renders the true KPI and an availability
+  strip aligned to the response-time chart; status0 colors its chart strip by availability
+  rather than by incidents alone ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **entitlements:** a superadmin org-limits editor, with explicit unlimited toggles rather than
+  an empty field standing in for "no cap", plus the endpoints behind it. An admin override now
+  outranks the next billing push, so a deliberate manual change is not silently reverted by the
+  billing service on its next write ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **integrations:** Gotify and Zulip notification senders, wired into the integration registry
+  with their dash0 forms, icons and locale entries
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **validation:** check validation now reports *every* finding rather than stopping at the
+  first, each carrying a severity, a machine-readable code and the offending slug, alongside an
+  org-rate projection and rate-cap warnings. The document-level `internal` flag is flagged in
+  validate and its contract documented
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **support:** the reply pre-flight is per-thread and refuses unroutable replies outright
+  instead of accepting a message that could never be delivered, surfacing the per-thread reason
+  and offering a resend ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **openapi:** the spec covers the above — `CheckStats.availability24h`, the superadmin
+  entitlements editor and suppression fields, and validate's severities, codes and extended
+  request. `internal` is no longer advertised as a writable check field
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
 
 
 ### Bug Fixes
 
-* **slack:** make the install scope request match the app manifests ([#267](https://github.com/fclairamb/solidping/issues/267)) ([a260aca](https://github.com/fclairamb/solidping/commit/a260aca5eff183ee2dfb1d55c05a68a5931e93e2))
-* **entitlements:** an admin row's null cap means unlimited, and org admins can no longer outrank billing. Legacy admin entitlement rows are relabelled to org-admin before they resolve, so a historical row cannot silently read as unlimited, and an org-admin row is surfaced as its own provenance rather than as free defaults ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **checks:** `internal` is refused on every check write path and no longer typed as writable in dash0, closing a route by which a client could mark its own check internal and escape the org rate gates ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **dash0:** a 403 renders Permission Denied instead of a generic load error, so a permissions problem stops reading as an outage ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **dash0:** the scheduling meter is anchored on the server's own demand figure, its period select floors at the server's 10s minimum, and an unparseable stored period falls back to the ladder rather than rendering blank. A check's real custom period is shown, with a warning before a change would break the org's rate cap ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **dash0:** the design reference no longer overflows the page on mobile. Every example row put its preview in a bare grid item, which defaults to `min-width: auto`, so a preview wider than its column widened the track instead of wrapping — giving the whole page a horizontal scrollbar at 375px ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **dash0:** the checks breadcrumb names the scheduling page. It matched the checks section but had no leaf, so it rendered a bare non-clickable "Checks" crumb indistinguishable from the list page, with no way back ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **integrations:** stale provider links on the Slack and Discord installs are healed rather than left pointing at a workspace that no longer resolves ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **docs:** the API reference resolves its base URL from the browsing host, and a deliberate pick is kept across reference pages instead of being reset on navigation ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **zulip:** the incident-ref suffix is budgeted before a topic is truncated, so the reference survives the character limit instead of being cut off it ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
-* **cli:** the entitlements source enum is converted before concatenation rather than formatted as its underlying value ([#269](https://github.com/fclairamb/solidping/issues/269)) ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **slack:** make the install scope request match the app manifests
+  ([#267](https://github.com/fclairamb/solidping/issues/267))
+  ([a260aca](https://github.com/fclairamb/solidping/commit/a260aca5eff183ee2dfb1d55c05a68a5931e93e2))
+* **entitlements:** an admin row's null cap means unlimited, and org admins can no longer
+  outrank billing. Legacy admin entitlement rows are relabelled to org-admin before they
+  resolve, so a historical row cannot silently read as unlimited, and an org-admin row is
+  surfaced as its own provenance rather than as free defaults
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **checks:** `internal` is refused on every check write path and no longer typed as writable in
+  dash0, closing a route by which a client could mark its own check internal and escape the org
+  rate gates ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **dash0:** a 403 renders Permission Denied instead of a generic load error, so a permissions
+  problem stops reading as an outage ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **dash0:** the scheduling meter is anchored on the server's own demand figure, its period
+  select floors at the server's 10s minimum, and an unparseable stored period falls back to the
+  ladder rather than rendering blank. A check's real custom period is shown, with a warning
+  before a change would break the org's rate cap
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **dash0:** the design reference no longer overflows the page on mobile. Every example row put
+  its preview in a bare grid item, which defaults to `min-width: auto`, so a preview wider than
+  its column widened the track instead of wrapping — giving the whole page a horizontal
+  scrollbar at 375px ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **dash0:** the checks breadcrumb names the scheduling page. It matched the checks section but
+  had no leaf, so it rendered a bare non-clickable "Checks" crumb indistinguishable from the
+  list page, with no way back ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **integrations:** stale provider links on the Slack and Discord installs are healed rather
+  than left pointing at a workspace that no longer resolves
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **docs:** the API reference resolves its base URL from the browsing host, and a deliberate
+  pick is kept across reference pages instead of being reset on navigation
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **zulip:** the incident-ref suffix is budgeted before a topic is truncated, so the reference
+  survives the character limit instead of being cut off it
+  ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
+* **cli:** the entitlements source enum is converted before concatenation rather than formatted
+  as its underlying value ([#269](https://github.com/fclairamb/solidping/issues/269))
+  ([e662950](https://github.com/fclairamb/solidping/commit/e662950a77a9170e6df4fff9eeeb95e76ac97f21))
 
 
 ### Miscellaneous Chores
 
-* release 0.19.0 ([#270](https://github.com/fclairamb/solidping/issues/270)) ([168f5a2](https://github.com/fclairamb/solidping/commit/168f5a27e8f31b1eae8386f99003cfc24a5d8ecf))
+* release 0.19.0 ([#270](https://github.com/fclairamb/solidping/issues/270))
+  ([168f5a2](https://github.com/fclairamb/solidping/commit/168f5a27e8f31b1eae8386f99003cfc24a5d8ecf))
 
 ## [0.18.3](https://github.com/fclairamb/solidping/compare/v0.18.2...v0.18.3) (2026-08-26)
 
 
 ### Bug Fixes
 
-* **dash0:** the region picker shows which regions can actually run a browser check. Workers have advertised a `browser` capability for a while and the regions API aggregates it per region, with the same three-state semantics as IPv6 — but the dashboard rendered none of it, so picking regions for a browser check was guesswork. It now renders as a single icon, because a second text badge beside the IPv6 one would crowd the picker: the state lives in the icon's color and the tooltip. "Unknown" stays distinct from "no" — a region with no live worker, or one running an older agent, may well support browser checks, and saying "no" would be wrong. It is a hint, never a gate: nothing is hidden, filtered or disabled, and the worker remains the authority at run time. Shown in the check form's region picker and on the private locations page ([#265](https://github.com/fclairamb/solidping/issues/265)) ([22d968a](https://github.com/fclairamb/solidping/commit/22d968a988faf2527943a77dad17388f61d589a0))
-* **openapi:** `/openapi.yaml` is served with the requesting host as its server rather than a hardcoded `https://solidping.io`. The interactive explorer already rewrote the list in the browser, but the raw spec is what code generators, Postman and agents read, and they have no such hook — so a spec fetched from a self-hosted instance, a custom domain or localhost pointed every generated client at the wrong host. The origin is now derived per request, honouring `X-Forwarded-Proto` behind a proxy; the cloud stays listed as a second entry and is never duplicated when the origin already is the cloud; and a `Vary` keeps a shared cache from handing an `http://` spec to an `https://` client ([#265](https://github.com/fclairamb/solidping/issues/265))
-* **http:** embedded files are served with a real `Content-Type`. The shared helper passed a whole path to `mime.TypeByExtension`, which takes an extension, so it resolved to nothing for every file — and wrote that empty string through as the header, which is worse than omitting it, because an explicitly-set `Content-Type` suppresses Go's own content sniffing. `/openapi` was serving its HTML genuinely untyped as a result. The YAML type is pinned explicitly rather than read from the host's mime database, which answers differently on Linux and macOS and would otherwise make the header depend on the build machine ([#265](https://github.com/fclairamb/solidping/issues/265))
-* **docs:** the migration guide's links to the API reference resolve again, pointing at the generated reference's own index page instead of a category page that no longer exists ([#265](https://github.com/fclairamb/solidping/issues/265))
+* **dash0:** the region picker shows which regions can actually run a browser check. Workers
+  have advertised a `browser` capability for a while and the regions API aggregates it per
+  region, with the same three-state semantics as IPv6 — but the dashboard rendered none of it,
+  so picking regions for a browser check was guesswork. It now renders as a single icon, because
+  a second text badge beside the IPv6 one would crowd the picker: the state lives in the icon's
+  color and the tooltip. "Unknown" stays distinct from "no" — a region with no live worker, or
+  one running an older agent, may well support browser checks, and saying "no" would be wrong.
+  It is a hint, never a gate: nothing is hidden, filtered or disabled, and the worker remains
+  the authority at run time. Shown in the check form's region picker and on the private
+  locations page ([#265](https://github.com/fclairamb/solidping/issues/265))
+  ([22d968a](https://github.com/fclairamb/solidping/commit/22d968a988faf2527943a77dad17388f61d589a0))
+* **openapi:** `/openapi.yaml` is served with the requesting host as its server rather than a
+  hardcoded `https://solidping.io`. The interactive explorer already rewrote the list in the
+  browser, but the raw spec is what code generators, Postman and agents read, and they have no
+  such hook — so a spec fetched from a self-hosted instance, a custom domain or localhost
+  pointed every generated client at the wrong host. The origin is now derived per request,
+  honouring `X-Forwarded-Proto` behind a proxy; the cloud stays listed as a second entry and is
+  never duplicated when the origin already is the cloud; and a `Vary` keeps a shared cache from
+  handing an `http://` spec to an `https://` client
+  ([#265](https://github.com/fclairamb/solidping/issues/265))
+* **http:** embedded files are served with a real `Content-Type`. The shared helper passed a
+  whole path to `mime.TypeByExtension`, which takes an extension, so it resolved to nothing for
+  every file — and wrote that empty string through as the header, which is worse than omitting
+  it, because an explicitly-set `Content-Type` suppresses Go's own content sniffing. `/openapi`
+  was serving its HTML genuinely untyped as a result. The YAML type is pinned explicitly rather
+  than read from the host's mime database, which answers differently on Linux and macOS and
+  would otherwise make the header depend on the build machine
+  ([#265](https://github.com/fclairamb/solidping/issues/265))
+* **docs:** the migration guide's links to the API reference resolve again, pointing at the
+  generated reference's own index page instead of a category page that no longer exists
+  ([#265](https://github.com/fclairamb/solidping/issues/265))
 
 ## [0.18.2](https://github.com/fclairamb/solidping/compare/v0.18.1...v0.18.2) (2026-08-25)
 
 
 ### Bug Fixes
 
-* **email:** transactional mail is branded, and no longer mangled by real mail clients. Every message now wears the organization's logo (the status page's for subscriber mail, none at all under white-label) and carries a preheader, so the inbox preview line stops scraping the wordmark or a raw URL. Subjects and plaintext parts render through `text/template`: a check named "Search & Discovery" reached the inbox as "Search &amp; Discovery" — in the subject line — while the HTML part keeps escaping as it must. The palette is declared light-only, because Apple Mail, Outlook.com and Gmail on Android auto-invert an undeclared one, recoloring the status banner that carries an incident alert's entire meaning. The uptime report built its fact grid from unstyled `<th>` cells, which rendered centered, unpadded and ragged; it now uses the styled label/value grid the rest of the mail shares. Alerts lead with the figure they are about — total downtime, burn rate, budget remaining — timestamps carry their zone, durations read "15m" rather than "15m0s", the incident UUID moved from a table row to a support footnote, and action buttons stack full-width on a phone. Gradients, elevation and state color throughout, each paired with the flat fallback Outlook needs. A dev-only catalog at `/api/mgmt/email-preview` (Test → Emails in the dashboard) renders every template through the same formatter the mailer uses ([#258](https://github.com/fclairamb/solidping/issues/258)) ([b55b8b4](https://github.com/fclairamb/solidping/commit/b55b8b45c5d9cf2613740f937889d8513dbdcfca))
-* **deps:** update Go dependencies (non-major), including `aws-sdk-go-v2/config` v1.32.39 and `posthog-go` v1.24.1 ([#256](https://github.com/fclairamb/solidping/issues/256)) ([4c114c0](https://github.com/fclairamb/solidping/commit/4c114c0a80b2267d7702f1cf1ca0dd1c52729691)), ([#259](https://github.com/fclairamb/solidping/issues/259)) ([b7074c5](https://github.com/fclairamb/solidping/commit/b7074c563161dc1fb0f996c879fa87d2062fdd5a)), ([#260](https://github.com/fclairamb/solidping/issues/260)) ([441eb21](https://github.com/fclairamb/solidping/commit/441eb21d3343a7d175362002cfec4894335ee677)), ([#261](https://github.com/fclairamb/solidping/issues/261)) ([f4daee9](https://github.com/fclairamb/solidping/commit/f4daee9714bb903a97d8ee0b0a4c21eb9a848ab7))
+* **email:** transactional mail is branded, and no longer mangled by real mail clients. Every
+  message now wears the organization's logo (the status page's for subscriber mail, none at all
+  under white-label) and carries a preheader, so the inbox preview line stops scraping the
+  wordmark or a raw URL. Subjects and plaintext parts render through `text/template`: a check
+  named "Search & Discovery" reached the inbox as "Search &amp; Discovery" — in the subject line
+  — while the HTML part keeps escaping as it must. The palette is declared light-only, because
+  Apple Mail, Outlook.com and Gmail on Android auto-invert an undeclared one, recoloring the
+  status banner that carries an incident alert's entire meaning. The uptime report built its
+  fact grid from unstyled `<th>` cells, which rendered centered, unpadded and ragged; it now
+  uses the styled label/value grid the rest of the mail shares. Alerts lead with the figure they
+  are about — total downtime, burn rate, budget remaining — timestamps carry their zone,
+  durations read "15m" rather than "15m0s", the incident UUID moved from a table row to a
+  support footnote, and action buttons stack full-width on a phone. Gradients, elevation and
+  state color throughout, each paired with the flat fallback Outlook needs. A dev-only catalog
+  at `/api/mgmt/email-preview` (Test → Emails in the dashboard) renders every template through
+  the same formatter the mailer uses ([#258](https://github.com/fclairamb/solidping/issues/258))
+  ([b55b8b4](https://github.com/fclairamb/solidping/commit/b55b8b45c5d9cf2613740f937889d8513dbdcfca))
+* **deps:** update Go dependencies (non-major), including `aws-sdk-go-v2/config` v1.32.39 and
+  `posthog-go` v1.24.1 ([#256](https://github.com/fclairamb/solidping/issues/256))
+  ([4c114c0](https://github.com/fclairamb/solidping/commit/4c114c0a80b2267d7702f1cf1ca0dd1c52729691)),
+  ([#259](https://github.com/fclairamb/solidping/issues/259))
+  ([b7074c5](https://github.com/fclairamb/solidping/commit/b7074c563161dc1fb0f996c879fa87d2062fdd5a)),
+  ([#260](https://github.com/fclairamb/solidping/issues/260))
+  ([441eb21](https://github.com/fclairamb/solidping/commit/441eb21d3343a7d175362002cfec4894335ee677)),
+  ([#261](https://github.com/fclairamb/solidping/issues/261))
+  ([f4daee9](https://github.com/fclairamb/solidping/commit/f4daee9714bb903a97d8ee0b0a4c21eb9a848ab7))
 
 ## [0.18.1](https://github.com/fclairamb/solidping/compare/v0.18.0...v0.18.1) (2026-08-25)
 
 
 ### Bug Fixes
 
-* **dash0:** the response-time chart no longer says "No data available" while it is still loading — on first paint and on every day → week → month switch. `useChartWindowResults` gained an `isEmptyPending` signal, so the terminal empty state is gated on the whole two-pass window having settled rather than on pass 1 alone, while the progressive render keeps drawing rollups in the very same DOM node as raw merges in. The chart-window suite is also frozen against the wall clock instead of racing it: a fixture sampling `Date.now()` once per region could straddle a millisecond boundary and reorder the merged series, turning one assertion unsatisfiable and its `waitFor` into a guaranteed timeout ([#255](https://github.com/fclairamb/solidping/issues/255)) ([2175fd4](https://github.com/fclairamb/solidping/commit/2175fd456cfe05a9d1335284a6b5819d62026b34))
-* **deps:** update github.com/dop251/goja digest to 58e940e ([#253](https://github.com/fclairamb/solidping/issues/253)) ([27a5915](https://github.com/fclairamb/solidping/commit/27a59157cb037e8a881c6b729e6408909b03a453))
+* **dash0:** the response-time chart no longer says "No data available" while it is still
+  loading — on first paint and on every day → week → month switch. `useChartWindowResults`
+  gained an `isEmptyPending` signal, so the terminal empty state is gated on the whole two-pass
+  window having settled rather than on pass 1 alone, while the progressive render keeps drawing
+  rollups in the very same DOM node as raw merges in. The chart-window suite is also frozen
+  against the wall clock instead of racing it: a fixture sampling `Date.now()` once per region
+  could straddle a millisecond boundary and reorder the merged series, turning one assertion
+  unsatisfiable and its `waitFor` into a guaranteed timeout
+  ([#255](https://github.com/fclairamb/solidping/issues/255))
+  ([2175fd4](https://github.com/fclairamb/solidping/commit/2175fd456cfe05a9d1335284a6b5819d62026b34))
+* **deps:** update github.com/dop251/goja digest to 58e940e
+  ([#253](https://github.com/fclairamb/solidping/issues/253))
+  ([27a5915](https://github.com/fclairamb/solidping/commit/27a59157cb037e8a881c6b729e6408909b03a453))
 
 ## [0.18.0](https://github.com/fclairamb/solidping/compare/v0.17.0...v0.18.0) (2026-08-25)
 
 
 ### Features
 
-* **discord:** a first-class Discord bot, not just a webhook. Install it into a server, map servers to organizations, and get incidents as bot-owned threads that edit in place and carry acknowledge and comment buttons. Org members map to Discord identities so on-call mentions reach the right person, comments posted in the thread are ingested back onto the incident through a Gateway supervisor, slash-command and mention dispatch is transport-agnostic, and every inbound interaction is Ed25519-verified with stale and unsigned requests rejected. Ships with a bot settings panel and a server-admin page in the dashboard ([#246](https://github.com/fclairamb/solidping/issues/246)) ([87b33d7](https://github.com/fclairamb/solidping/commit/87b33d70e126be02f3aef8275708310e415fcb6a))
-* **audit:** an organization audit log. Every session-minting path, membership change, token operation, config apply, and escalation / on-call / maintenance / integration / status-page mutation emits a typed event carrying actor metadata and a normalized source address. Payload redaction fails closed on anything it does not recognize, failed logins are flood-controlled, and retention is swept by a cleanup job. The events API gained family, type, actor, target and admin-only IP filters plus working cursors; the dashboard gained an admin-gated audit page; and every event family has a human identity in all four locales ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **slo:** burn-rate alerting on SLOs. Define an alert policy over an SLO and get paged when the error budget burns too fast, evaluated over multiple windows against a shared evaluator. Burn incidents are a distinct incident kind rather than a check failure, with their own lifecycle entry points, their own email and Slack templates, and a periodic sweep job. The dashboard gained an SLO alerting section, a burning badge and a policy edit route ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **diagnostics:** MTR-style path tracing on network failures. A pure-Go path prober with a privilege ladder traces the route when a network-reachability failure opens an incident, so the incident shows where the packets actually stopped. Exposed as an org-level default plus a per-check policy, rendered on the incident and on the onset result page, and pinned never-public ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **support:** a support inbox. Inbound human messages are captured from email, WhatsApp, Telegram, SMS, Slack DMs and Discord DMs into threads and messages, with idempotent capture, abuse ceilings and a mailbox mirror. Replies go back out through per-provider adapters and take their delivery status from the existing provider callbacks, and instance support Reply-To is classified fail-closed per template. Ships with a retention job, org-deletion detach, an OpenAPI-documented API and a `/support` inbox in the dashboard ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **email:** the JMAP inbox consumer is safe to run more than once — inbound mail is deduplicated by `Message-ID` before insert, claimed by archiving it before processing, and the consumer runs under a Postgres advisory lock ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **status-pages:** branding and private pages. Upload a per-page logo and favicon (gated by a white-label entitlement), password-protect a page behind an unlock cookie, and let visitors subscribe over webhook or Slack. Branding moved into settings, and public assets are authorized by file topic ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **incidents:** screenshots of what the browser saw. Browser checks can opt into capturing a screenshot on failure, persisted when the incident opens and rendered in the dashboard. Built on a new generic attachment rail (`files.topic` / `files.details`) with an agent upload endpoint, an out-of-band upload frame, a bounded TTL'd capture LRU for deported agents, orphan reaping, and attachments pinned out of public payloads ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **incidents:** acknowledgement now has a face. The acknowledging actor is resolved and exposed, every paged channel is notified that the incident was acknowledged (Telegram included), and the dashboard and the organization events feed both name who acknowledged it ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **incidents:** flapping is visible. `flap_level` is recorded and exposed on create and reopen, checks carry a live `flapState`, and the dashboard shows a flapping state on check detail plus a "flapping ×N" badge on the incidents list and detail, alongside the actual reopen-cooldown window ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **incidents:** check groups are handled as groups. Active group incidents are closed and member-row incident binding stopped, status pages consolidate group members into a single public entry, the dashboard groups active incidents by check group at read time, and hard children are re-evaluated when a parent incident opens ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **custom-domain:** an explicit custom-domain lifecycle — a stored-cert handshake, a legible 503 while the domain is not ready, a grace and re-promotion sweep, a demotion alert (including demotions reached through Verify), and DNS diagnostics surfaced in the dashboard ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **regions:** a server-scope region migration API with stale-region reconciliation at startup, plus ghost-region detection behind `GET /system/regions/health` ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **watchdog:** the platform monitors itself. A detector package feeds per-detector anomaly gauges through Prometheus, driven by an hourly platform-watchdog job with delivery and parameter validation ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **auth:** flagged accounts are forced through a password rotation, with a dedicated rotation screen in the dashboard ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **auth:** stale SSO provider links heal themselves. A soft-deleted organization used to leave its Discord guild or Slack team link alive, which permanently bricked login for everyone in that guild — the stale link is now cleared and re-linked on the next sign-in, and the same fallback covers user links across all nine connectors ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **import:** UptimeRobot as an import source, with a golden-tested converter and a dashboard source picker ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **performance:** result and chart queries seek instead of scan. Result blobs are skipped when unrequested, the keyset cursor seeks by row value, the chart fetch is split at the raw/rollup boundary into parallel tier queries (and still seeks on SQLite), a per-check per-tier recent-results filter cannot ask for a mixed tier, status-page response times are fetched per check and per tier instead of scanning results, raw-tier queries are clamped to the retention band and report the effective window, and status-page cache directives derive from page visibility ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **dash0:** faceted status and type filters on the checks list, a check filter on the incidents list, documentation links across SLOs, badges, discovery, events and dependencies, incident timestamps rendered in local time with UTC on hover, invitation email delivery status led by the address with the link as fallback, and every auth method a session can carry is labelled ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **discord:** a first-class Discord bot, not just a webhook. Install it into a server, map
+  servers to organizations, and get incidents as bot-owned threads that edit in place and carry
+  acknowledge and comment buttons. Org members map to Discord identities so on-call mentions
+  reach the right person, comments posted in the thread are ingested back onto the incident
+  through a Gateway supervisor, slash-command and mention dispatch is transport-agnostic, and
+  every inbound interaction is Ed25519-verified with stale and unsigned requests rejected. Ships
+  with a bot settings panel and a server-admin page in the dashboard
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+  ([87b33d7](https://github.com/fclairamb/solidping/commit/87b33d70e126be02f3aef8275708310e415fcb6a))
+* **audit:** an organization audit log. Every session-minting path, membership change, token
+  operation, config apply, and escalation / on-call / maintenance / integration / status-page
+  mutation emits a typed event carrying actor metadata and a normalized source address. Payload
+  redaction fails closed on anything it does not recognize, failed logins are flood-controlled,
+  and retention is swept by a cleanup job. The events API gained family, type, actor, target and
+  admin-only IP filters plus working cursors; the dashboard gained an admin-gated audit page;
+  and every event family has a human identity in all four locales
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **slo:** burn-rate alerting on SLOs. Define an alert policy over an SLO and get paged when the
+  error budget burns too fast, evaluated over multiple windows against a shared evaluator. Burn
+  incidents are a distinct incident kind rather than a check failure, with their own lifecycle
+  entry points, their own email and Slack templates, and a periodic sweep job. The dashboard
+  gained an SLO alerting section, a burning badge and a policy edit route
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **diagnostics:** MTR-style path tracing on network failures. A pure-Go path prober with a
+  privilege ladder traces the route when a network-reachability failure opens an incident, so
+  the incident shows where the packets actually stopped. Exposed as an org-level default plus a
+  per-check policy, rendered on the incident and on the onset result page, and pinned
+  never-public ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **support:** a support inbox. Inbound human messages are captured from email, WhatsApp,
+  Telegram, SMS, Slack DMs and Discord DMs into threads and messages, with idempotent capture,
+  abuse ceilings and a mailbox mirror. Replies go back out through per-provider adapters and
+  take their delivery status from the existing provider callbacks, and instance support Reply-To
+  is classified fail-closed per template. Ships with a retention job, org-deletion detach, an
+  OpenAPI-documented API and a `/support` inbox in the dashboard
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **email:** the JMAP inbox consumer is safe to run more than once — inbound mail is
+  deduplicated by `Message-ID` before insert, claimed by archiving it before processing, and the
+  consumer runs under a Postgres advisory lock
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **status-pages:** branding and private pages. Upload a per-page logo and favicon (gated by a
+  white-label entitlement), password-protect a page behind an unlock cookie, and let visitors
+  subscribe over webhook or Slack. Branding moved into settings, and public assets are
+  authorized by file topic ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **incidents:** screenshots of what the browser saw. Browser checks can opt into capturing a
+  screenshot on failure, persisted when the incident opens and rendered in the dashboard. Built
+  on a new generic attachment rail (`files.topic` / `files.details`) with an agent upload
+  endpoint, an out-of-band upload frame, a bounded TTL'd capture LRU for deported agents, orphan
+  reaping, and attachments pinned out of public payloads
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **incidents:** acknowledgement now has a face. The acknowledging actor is resolved and
+  exposed, every paged channel is notified that the incident was acknowledged (Telegram
+  included), and the dashboard and the organization events feed both name who acknowledged it
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **incidents:** flapping is visible. `flap_level` is recorded and exposed on create and reopen,
+  checks carry a live `flapState`, and the dashboard shows a flapping state on check detail plus
+  a "flapping ×N" badge on the incidents list and detail, alongside the actual reopen-cooldown
+  window ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **incidents:** check groups are handled as groups. Active group incidents are closed and
+  member-row incident binding stopped, status pages consolidate group members into a single
+  public entry, the dashboard groups active incidents by check group at read time, and hard
+  children are re-evaluated when a parent incident opens
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **custom-domain:** an explicit custom-domain lifecycle — a stored-cert handshake, a legible
+  503 while the domain is not ready, a grace and re-promotion sweep, a demotion alert (including
+  demotions reached through Verify), and DNS diagnostics surfaced in the dashboard
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **regions:** a server-scope region migration API with stale-region reconciliation at startup,
+  plus ghost-region detection behind `GET /system/regions/health`
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **watchdog:** the platform monitors itself. A detector package feeds per-detector anomaly
+  gauges through Prometheus, driven by an hourly platform-watchdog job with delivery and
+  parameter validation ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **auth:** flagged accounts are forced through a password rotation, with a dedicated rotation
+  screen in the dashboard ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **auth:** stale SSO provider links heal themselves. A soft-deleted organization used to leave
+  its Discord guild or Slack team link alive, which permanently bricked login for everyone in
+  that guild — the stale link is now cleared and re-linked on the next sign-in, and the same
+  fallback covers user links across all nine connectors
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **import:** UptimeRobot as an import source, with a golden-tested converter and a dashboard
+  source picker ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **performance:** result and chart queries seek instead of scan. Result blobs are skipped when
+  unrequested, the keyset cursor seeks by row value, the chart fetch is split at the raw/rollup
+  boundary into parallel tier queries (and still seeks on SQLite), a per-check per-tier
+  recent-results filter cannot ask for a mixed tier, status-page response times are fetched per
+  check and per tier instead of scanning results, raw-tier queries are clamped to the retention
+  band and report the effective window, and status-page cache directives derive from page
+  visibility ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **dash0:** faceted status and type filters on the checks list, a check filter on the incidents
+  list, documentation links across SLOs, badges, discovery, events and dependencies, incident
+  timestamps rendered in local time with UTC on hover, invitation email delivery status led by
+  the address with the link as fallback, and every auth method a session can carry is labelled
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
 
 
 ### Bug Fixes
 
-* **audit:** every session-minting path is recorded, not just password logins; redaction fails closed on unrecognized payload value types and keeps pointer-valued fields; the events cursor gained a uid tie-break; the OAuth grant path is audited and the guard widened past the auth package; and an OAuth grant presented by the wrong client is recorded as token misuse ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **traceroute:** an HTTP response stall is no longer labelled a connect timeout, the connection phase resets at dial start so a redirect chain keeps a real connect timeout, a panic on either trace goroutine is recovered, the per-check policy survives export, import and clone, and an agent-uploaded capture is stamped with the probing region ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **support:** `SP_SUPPORT_RETENTION_DAYS=0` genuinely means keep forever, an abuse-ceiling drop counts as throttled rather than failed, and the re-scan path fails closed with the dedup lookup scoped to the org index ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **charts:** the tier merge is keyed on org and check so navigation cannot serve stale rows, the seam is anchored on the bucket edge with the chart window resolved once, and same-`period_start` rollup points get a uid DESC tie-break ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **status-pages:** public incident history is cached by visibility, and public pages no longer vary on `Cookie` ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **notifications:** browser push notifications are incident-aware, escalation Slack DMs address the check by name and number with an incident link, and the agent websocket subscribes to `check.created` before announcing the connection ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **checks:** the 100th auto-slugged check for one host no longer 500s, and `validating` is accepted in the status filter ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **db:** generic attachments moved out of the already-released migration 014 into a new 015 ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **config:** a hostname-derived worker slug is slugified instead of refused, and the fixed-point property holds by construction ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **dash0:** the login page no longer unmounts mid-org-picker redirect, `apiFetch` tolerates an empty body under any status rather than only 204, breadcrumb leaves resolve for every Organization tab and deep route, the SSL check type is labelled TLS across all surfaces, and an empty check duration renders a literal em dash ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **docs:** the API reference index is served at `/docs/api` ([#246](https://github.com/fclairamb/solidping/issues/246))
-* **slack:** register the login callback in the prod manifest ([#251](https://github.com/fclairamb/solidping/issues/251)) ([32fae86](https://github.com/fclairamb/solidping/commit/32fae86cc55e78180e4febb53df03e5dbe394f59))
+* **audit:** every session-minting path is recorded, not just password logins; redaction fails
+  closed on unrecognized payload value types and keeps pointer-valued fields; the events cursor
+  gained a uid tie-break; the OAuth grant path is audited and the guard widened past the auth
+  package; and an OAuth grant presented by the wrong client is recorded as token misuse
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **traceroute:** an HTTP response stall is no longer labelled a connect timeout, the connection
+  phase resets at dial start so a redirect chain keeps a real connect timeout, a panic on either
+  trace goroutine is recovered, the per-check policy survives export, import and clone, and an
+  agent-uploaded capture is stamped with the probing region
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **support:** `SP_SUPPORT_RETENTION_DAYS=0` genuinely means keep forever, an abuse-ceiling drop
+  counts as throttled rather than failed, and the re-scan path fails closed with the dedup
+  lookup scoped to the org index ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **charts:** the tier merge is keyed on org and check so navigation cannot serve stale rows,
+  the seam is anchored on the bucket edge with the chart window resolved once, and
+  same-`period_start` rollup points get a uid DESC tie-break
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **status-pages:** public incident history is cached by visibility, and public pages no longer
+  vary on `Cookie` ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **notifications:** browser push notifications are incident-aware, escalation Slack DMs address
+  the check by name and number with an incident link, and the agent websocket subscribes to
+  `check.created` before announcing the connection
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **checks:** the 100th auto-slugged check for one host no longer 500s, and `validating` is
+  accepted in the status filter ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **db:** generic attachments moved out of the already-released migration 014 into a new 015
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **config:** a hostname-derived worker slug is slugified instead of refused, and the
+  fixed-point property holds by construction
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **dash0:** the login page no longer unmounts mid-org-picker redirect, `apiFetch` tolerates an
+  empty body under any status rather than only 204, breadcrumb leaves resolve for every
+  Organization tab and deep route, the SSL check type is labelled TLS across all surfaces, and
+  an empty check duration renders a literal em dash
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **docs:** the API reference index is served at `/docs/api`
+  ([#246](https://github.com/fclairamb/solidping/issues/246))
+* **slack:** register the login callback in the prod manifest
+  ([#251](https://github.com/fclairamb/solidping/issues/251))
+  ([32fae86](https://github.com/fclairamb/solidping/commit/32fae86cc55e78180e4febb53df03e5dbe394f59))
 
 ## [0.17.0](https://github.com/fclairamb/solidping/compare/v0.16.2...v0.17.0) (2026-08-20)
 
 
 ### ⚠ BREAKING CHANGES
 
-* **notifications:** Opsgenie is removed and replaced by PagerDuty. Migration 015 hard-deletes existing Opsgenie integrations on upgrade — recreate them as PagerDuty integrations using an Events API v2 routing key ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
-* **api:** the results list endpoint no longer returns `pagination.total`, `nextCursor` or `hasMore`. They were never populated with real values; clients paginate with `limit` plus the returned page size ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** Opsgenie is removed and replaced by PagerDuty. Migration 015 hard-deletes
+  existing Opsgenie integrations on upgrade — recreate them as PagerDuty integrations using an
+  Events API v2 routing key ([#240](https://github.com/fclairamb/solidping/issues/240))
+  ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+* **api:** the results list endpoint no longer returns `pagination.total`, `nextCursor` or
+  `hasMore`. They were never populated with real values; clients paginate with `limit` plus the
+  returned page size ([#240](https://github.com/fclairamb/solidping/issues/240))
 
 
 ### Features
 
-* **slo:** service level objectives, end to end. Define an SLO over a check or a group with a rolling or calendar window, and get its status, its error budget, and how that budget burns down over time. The budget math is DST-safe across calendar windows, maintenance is tagged at ingest so planned downtime never eats the budget, and the burn-down series accrues consumption per step so it can only ever fall. Ships with SLO list, detail and edit pages in the dashboard, an SLO coverage chip on checks, and a `maxSlos` entitlement ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
-* **slo:** scheduled uptime reports — attach a recurring email digest to an SLO. Schedule CRUD, a test-send button, the delivery job, and an email template carrying `List-Unsubscribe` headers and a per-recipient unsubscribe link ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **status-pages:** incident publications. An incident on a status page is now a first-class, editable overlay on top of the underlying check incident: publish or unpublish by hand, or let the page auto-publish after a debounce, with a per-resource override. Resolve and relapse stay in sync with the real incident, subscribers are fanned out to, and webhook events fire. status0 renders active publications with a severity banner, affected-component badges and a collapsible incident history; dash0 gets the page settings, the publish/unpublish block and a dedicated publication editor route. Also exposed as MCP tools ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **incidents:** "What the probe saw" — a check can opt in to capturing the failing HTTP response, which is persisted when the incident opens or reopens and shown as a diagnostics card. The capture rides a dedicated Diagnostics channel, separate from `Output`, and is deliberately kept out of the assertion body, so turning it on can never move a verdict ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **notifications:** PagerDuty (Events API v2) as a notification sender, replacing Opsgenie across the backend, the dashboard and the docs ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **notifications:** Matrix as an org-level notification integration ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **checkers:** browser checks can run against a remote CDP Chrome (`checkers.browser.cdp_url`, `checkers.browser.chrome_path`), with a concurrency cap and a per-region browser capability reported by the workers themselves. Creating a browser check in a region whose workers report no headless Chrome now warns at creation time, and the dashboard surfaces that warning under the region picker ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **smtp:** send-mode SMTP checks submit a real probe email and pair it with delivery, with the matching form fields and delivery-pairing UI in the dashboard ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **auth:** change your password from the dashboard — an authenticated `POST /api/v1/auth/change-password` endpoint and a Password card on the account security page, rate limited and sparing the current session ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **agents:** every agent now reports its build version over the wire. It is stored, exposed in `AgentResponse`, and shown in the dashboard flagged when it drifts from the server's. Long-revoked agents are purged by the `agent_gc` sweep, and a second `DELETE` purges an already-revoked agent immediately ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **db:** a startup migration-integrity guard catches migrations whose content changed after they were recorded as applied — the exact failure that silently skipped migration 013 and left `workers.capabilities` missing on a running instance. It has a `warn` mode (`db.migration_guard_mode`), a self-healing migration 014, and a `solidping migrate repair` CLI command ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **results:** abandoned probes are reaped into a dedicated `abandoned` status instead of lingering as `created` or `running`. They are excluded from availability, declared in the OpenAPI enums, and rendered as a neutral state in both frontends ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **observability:** slow SQL queries now WARN with a callsite label, and a results row-count gauge refreshes on the aggregation job's cadence. The threshold is configurable through `db.slow_query_threshold` / `SP_DB_SLOW_QUERY_THRESHOLD`, defaulting to 500ms ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **sentry:** every 5xx from the handler error funnel is reported, check and job panics carry their identifying tags, and the recovery middleware that the panic path was re-panicking into now exists — mounted inside the request timeout rather than above it. The environment defaults to the run mode, and `SP_SENTRY_TRACES_SAMPLE_RATE` is bound with an explicit default ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **dash0:** the TOTP QR code is rendered client-side instead of relying on a field that was never populated ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **dash0:** entity search in the command palette, plus the sidebar pages that were missing from it; a persistent add-check button on the group header; unified Refresh placement and empty states across the list pages; and the SMS mode panel moved to the bottom of integrations, collapsed by default ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **dash0:** check-type badges and icons are driven from a single canonical check-type identity registry at every call site, the discovery page included ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **checkjs:** JS sub-checks refuse check types the server has disabled ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **analytics:** serve PostHog capture first-party through /ingest ([#235](https://github.com/fclairamb/solidping/issues/235)) ([b9f6858](https://github.com/fclairamb/solidping/commit/b9f6858eb60131cd1cbb333d0c4c8f2ac5a5896e))
+* **slo:** service level objectives, end to end. Define an SLO over a check or a group with a
+  rolling or calendar window, and get its status, its error budget, and how that budget burns
+  down over time. The budget math is DST-safe across calendar windows, maintenance is tagged at
+  ingest so planned downtime never eats the budget, and the burn-down series accrues consumption
+  per step so it can only ever fall. Ships with SLO list, detail and edit pages in the
+  dashboard, an SLO coverage chip on checks, and a `maxSlos` entitlement
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+  ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+* **slo:** scheduled uptime reports — attach a recurring email digest to an SLO. Schedule CRUD,
+  a test-send button, the delivery job, and an email template carrying `List-Unsubscribe`
+  headers and a per-recipient unsubscribe link
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **status-pages:** incident publications. An incident on a status page is now a first-class,
+  editable overlay on top of the underlying check incident: publish or unpublish by hand, or let
+  the page auto-publish after a debounce, with a per-resource override. Resolve and relapse stay
+  in sync with the real incident, subscribers are fanned out to, and webhook events fire.
+  status0 renders active publications with a severity banner, affected-component badges and a
+  collapsible incident history; dash0 gets the page settings, the publish/unpublish block and a
+  dedicated publication editor route. Also exposed as MCP tools
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **incidents:** "What the probe saw" — a check can opt in to capturing the failing HTTP
+  response, which is persisted when the incident opens or reopens and shown as a diagnostics
+  card. The capture rides a dedicated Diagnostics channel, separate from `Output`, and is
+  deliberately kept out of the assertion body, so turning it on can never move a verdict
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** PagerDuty (Events API v2) as a notification sender, replacing Opsgenie
+  across the backend, the dashboard and the docs
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** Matrix as an org-level notification integration
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **checkers:** browser checks can run against a remote CDP Chrome (`checkers.browser.cdp_url`,
+  `checkers.browser.chrome_path`), with a concurrency cap and a per-region browser capability
+  reported by the workers themselves. Creating a browser check in a region whose workers report
+  no headless Chrome now warns at creation time, and the dashboard surfaces that warning under
+  the region picker ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **smtp:** send-mode SMTP checks submit a real probe email and pair it with delivery, with the
+  matching form fields and delivery-pairing UI in the dashboard
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **auth:** change your password from the dashboard — an authenticated
+  `POST /api/v1/auth/change-password` endpoint and a Password card on the account security page,
+  rate limited and sparing the current session
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **agents:** every agent now reports its build version over the wire. It is stored, exposed in
+  `AgentResponse`, and shown in the dashboard flagged when it drifts from the server's.
+  Long-revoked agents are purged by the `agent_gc` sweep, and a second `DELETE` purges an
+  already-revoked agent immediately ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **db:** a startup migration-integrity guard catches migrations whose content changed after
+  they were recorded as applied — the exact failure that silently skipped migration 013 and left
+  `workers.capabilities` missing on a running instance. It has a `warn` mode
+  (`db.migration_guard_mode`), a self-healing migration 014, and a `solidping migrate repair`
+  CLI command ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **results:** abandoned probes are reaped into a dedicated `abandoned` status instead of
+  lingering as `created` or `running`. They are excluded from availability, declared in the
+  OpenAPI enums, and rendered as a neutral state in both frontends
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **observability:** slow SQL queries now WARN with a callsite label, and a results row-count
+  gauge refreshes on the aggregation job's cadence. The threshold is configurable through
+  `db.slow_query_threshold` / `SP_DB_SLOW_QUERY_THRESHOLD`, defaulting to 500ms
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **sentry:** every 5xx from the handler error funnel is reported, check and job panics carry
+  their identifying tags, and the recovery middleware that the panic path was re-panicking into
+  now exists — mounted inside the request timeout rather than above it. The environment defaults
+  to the run mode, and `SP_SENTRY_TRACES_SAMPLE_RATE` is bound with an explicit default
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** the TOTP QR code is rendered client-side instead of relying on a field that was
+  never populated ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** entity search in the command palette, plus the sidebar pages that were missing from
+  it; a persistent add-check button on the group header; unified Refresh placement and empty
+  states across the list pages; and the SMS mode panel moved to the bottom of integrations,
+  collapsed by default ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** check-type badges and icons are driven from a single canonical check-type identity
+  registry at every call site, the discovery page included
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **checkjs:** JS sub-checks refuse check types the server has disabled
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **analytics:** serve PostHog capture first-party through /ingest
+  ([#235](https://github.com/fclairamb/solidping/issues/235))
+  ([b9f6858](https://github.com/fclairamb/solidping/commit/b9f6858eb60131cd1cbb333d0c4c8f2ac5a5896e))
 
 
 ### Performance
 
-* **availability:** the per-check availability endpoint walked its five periods in a plain loop, so the call cost the *sum* of ten DB round trips (~8s measured). It now fans out through a bounded `errgroup` that writes by index, so the response keeps the requested order, with a period-count cap ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **incidents:** the incidents list did N+1 enrichment queries — a `limit=50` page cost ~900ms. Member enrichment is now opt-in via `with=members`, and what remains is batched into at most three queries per page regardless of page size ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **uptime-bar:** availability is split into tier-aligned raw and rollup queries, with the raw retention resolved from the live performance parameters and the raw row cap sized from the org's measured probe rate ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **availability:** the per-check availability endpoint walked its five periods in a plain loop,
+  so the call cost the *sum* of ten DB round trips (~8s measured). It now fans out through a
+  bounded `errgroup` that writes by index, so the response keeps the requested order, with a
+  period-count cap ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **incidents:** the incidents list did N+1 enrichment queries — a `limit=50` page cost ~900ms.
+  Member enrichment is now opt-in via `with=members`, and what remains is batched into at most
+  three queries per page regardless of page size
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **uptime-bar:** availability is split into tier-aligned raw and rollup queries, with the raw
+  retention resolved from the live performance parameters and the raw row cap sized from the
+  org's measured probe rate ([#240](https://github.com/fclairamb/solidping/issues/240))
 
 
 ### Bug Fixes
 
-* **smtp:** `mail_from` is validated as a real address, closing an SMTP/header injection hole ([#240](https://github.com/fclairamb/solidping/issues/240)) ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
-* **checks:** auto-slug races on create and clone are resolved instead of surfacing a raw `23505` ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **checkhttp:** JSONPath assertions are evaluated on checks that have no body matcher ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **notifications:** deleting a notification route deletes its contact with it, and dangling routes are cleaned up in the v0.17.0 migration ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **sqlite:** the post-006 unique index survives the 016 table rebuild ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **api:** the results list joins checks so `with=checkSlug,checkName` is actually populated, and every result status the server emits is declared in the schema ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **status0:** the availability-bar tooltip no longer goes stale when moving onto an adjacent segment, and incident failure snapshot blocks get a destructive tint ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **dash0:** the 2FA temp token is sent as a Bearer header during login verify, duplicate empty-state CTA buttons are gone from six list pages, picker labels resolve, and SLO slugs auto-generate ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **blast-radius:** the table rendered raw 36-char check UUIDs and overflowed a 375px viewport. Names are hydrated and truncated, rows link to both the child incident and the check, and the missing locale keys are filled in across all four languages ([#240](https://github.com/fclairamb/solidping/issues/240))
-* **deps:** update go dependencies (non-major) ([#243](https://github.com/fclairamb/solidping/issues/243)) ([29a25af](https://github.com/fclairamb/solidping/commit/29a25aff339e0918eb71957689f514d98695965d))
-* **deps:** update module github.com/arran4/golang-ical to v0.3.6 ([#242](https://github.com/fclairamb/solidping/issues/242)) ([5d53ff8](https://github.com/fclairamb/solidping/commit/5d53ff8bb35f80b11e826622ed94207d364568b2))
-* **deps:** update module github.com/rabbitmq/amqp091-go to v1.14.0 ([#241](https://github.com/fclairamb/solidping/issues/241)) ([7fd51a3](https://github.com/fclairamb/solidping/commit/7fd51a36dd0284a50c81e826b49308ad43d24d09))
-* **deps:** update module github.com/stretchr/testify to v1.12.0 ([#236](https://github.com/fclairamb/solidping/issues/236)) ([763543f](https://github.com/fclairamb/solidping/commit/763543f070701d8b75972cd022245ef7264192c6))
+* **smtp:** `mail_from` is validated as a real address, closing an SMTP/header injection hole
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+  ([749f108](https://github.com/fclairamb/solidping/commit/749f108c17ee4a318dad935a26f44c1822b385c0))
+* **checks:** auto-slug races on create and clone are resolved instead of surfacing a raw
+  `23505` ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **checkhttp:** JSONPath assertions are evaluated on checks that have no body matcher
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **notifications:** deleting a notification route deletes its contact with it, and dangling
+  routes are cleaned up in the v0.17.0 migration
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **sqlite:** the post-006 unique index survives the 016 table rebuild
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **api:** the results list joins checks so `with=checkSlug,checkName` is actually populated,
+  and every result status the server emits is declared in the schema
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **status0:** the availability-bar tooltip no longer goes stale when moving onto an adjacent
+  segment, and incident failure snapshot blocks get a destructive tint
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **dash0:** the 2FA temp token is sent as a Bearer header during login verify, duplicate
+  empty-state CTA buttons are gone from six list pages, picker labels resolve, and SLO slugs
+  auto-generate ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **blast-radius:** the table rendered raw 36-char check UUIDs and overflowed a 375px viewport.
+  Names are hydrated and truncated, rows link to both the child incident and the check, and the
+  missing locale keys are filled in across all four languages
+  ([#240](https://github.com/fclairamb/solidping/issues/240))
+* **deps:** update go dependencies (non-major)
+  ([#243](https://github.com/fclairamb/solidping/issues/243))
+  ([29a25af](https://github.com/fclairamb/solidping/commit/29a25aff339e0918eb71957689f514d98695965d))
+* **deps:** update module github.com/arran4/golang-ical to v0.3.6
+  ([#242](https://github.com/fclairamb/solidping/issues/242))
+  ([5d53ff8](https://github.com/fclairamb/solidping/commit/5d53ff8bb35f80b11e826622ed94207d364568b2))
+* **deps:** update module github.com/rabbitmq/amqp091-go to v1.14.0
+  ([#241](https://github.com/fclairamb/solidping/issues/241))
+  ([7fd51a3](https://github.com/fclairamb/solidping/commit/7fd51a36dd0284a50c81e826b49308ad43d24d09))
+* **deps:** update module github.com/stretchr/testify to v1.12.0
+  ([#236](https://github.com/fclairamb/solidping/issues/236))
+  ([763543f](https://github.com/fclairamb/solidping/commit/763543f070701d8b75972cd022245ef7264192c6))
 
 ## [0.16.2](https://github.com/fclairamb/solidping/compare/v0.16.1...v0.16.2) (2026-08-16)
 
 
 ### Bug Fixes
 
-* **status0:** the response-time graph of a multi-region check rendered **blank**. Regions do not sample in lockstep — each worker has its own second of the minute, so five regions checking every minute produce five distinct timestamps per minute. Plotting keyed those timestamps exactly, which turned 500 samples into 500 rows holding one region's value and four gaps, and since a gap in the data is deliberately drawn as a gap rather than as a straight line across an outage, no series ever had two adjacent points to draw a line between. The graph was there; it just had nothing to draw. Samples are now grouped into shared slots sized from the finest sampling interval across the regions, which also repairs the tooltip — it could previously only ever name one region, whichever one happened to own the timestamp under the cursor. A lone sample with gaps on both sides now draws a point, so data can no longer be present and invisible ([#233](https://github.com/fclairamb/solidping/issues/233)) ([e66443e](https://github.com/fclairamb/solidping/commit/e66443e7a2e8c12786f436279b232305ba462d8b))
-* **status0:** the availability bar spaced its day blocks unevenly. Thirty blocks and a fixed gap cannot divide an arbitrary card width — 30 blocks in a 686px row is 19.97px each — and browsers paint element backgrounds on whole device pixels, so they held the gaps and took the fraction out of the blocks. Measured across 61 widths in both Chrome and WebKit, that is a full pixel of width difference between blocks, and it is worst at a fractional device pixel ratio (browser zoom, or a scaled display), where it lands on roughly every other block. A thin block reads as extra space beside it, which is what made the row look ragged. The bar is drawn as a single SVG now: the blocks are shapes rather than boxes, so they keep their exact fractional geometry and are antialiased instead of snapped, and the measured spread drops from 1.50 to 0.25 device pixels
+* **status0:** the response-time graph of a multi-region check rendered **blank**. Regions do
+  not sample in lockstep — each worker has its own second of the minute, so five regions
+  checking every minute produce five distinct timestamps per minute. Plotting keyed those
+  timestamps exactly, which turned 500 samples into 500 rows holding one region's value and four
+  gaps, and since a gap in the data is deliberately drawn as a gap rather than as a straight
+  line across an outage, no series ever had two adjacent points to draw a line between. The
+  graph was there; it just had nothing to draw. Samples are now grouped into shared slots sized
+  from the finest sampling interval across the regions, which also repairs the tooltip — it
+  could previously only ever name one region, whichever one happened to own the timestamp under
+  the cursor. A lone sample with gaps on both sides now draws a point, so data can no longer be
+  present and invisible ([#233](https://github.com/fclairamb/solidping/issues/233))
+  ([e66443e](https://github.com/fclairamb/solidping/commit/e66443e7a2e8c12786f436279b232305ba462d8b))
+* **status0:** the availability bar spaced its day blocks unevenly. Thirty blocks and a fixed
+  gap cannot divide an arbitrary card width — 30 blocks in a 686px row is 19.97px each — and
+  browsers paint element backgrounds on whole device pixels, so they held the gaps and took the
+  fraction out of the blocks. Measured across 61 widths in both Chrome and WebKit, that is a
+  full pixel of width difference between blocks, and it is worst at a fractional device pixel
+  ratio (browser zoom, or a scaled display), where it lands on roughly every other block. A thin
+  block reads as extra space beside it, which is what made the row look ragged. The bar is drawn
+  as a single SVG now: the blocks are shapes rather than boxes, so they keep their exact
+  fractional geometry and are antialiased instead of snapped, and the measured spread drops from
+  1.50 to 0.25 device pixels
 
 ## [0.16.1](https://github.com/fclairamb/solidping/compare/v0.16.0...v0.16.1) (2026-08-16)
 
 
 ### Bug Fixes
 
-* **deps:** update module github.com/urfave/cli/v3 to v3.11.0 ([#229](https://github.com/fclairamb/solidping/issues/229)) ([ef34e53](https://github.com/fclairamb/solidping/commit/ef34e53a414ec27c780e0079787cb1f7a8c7d917))
+* **deps:** update module github.com/urfave/cli/v3 to v3.11.0
+  ([#229](https://github.com/fclairamb/solidping/issues/229))
+  ([ef34e53](https://github.com/fclairamb/solidping/commit/ef34e53a414ec27c780e0079787cb1f7a8c7d917))
 
 ## [0.16.0](https://github.com/fclairamb/solidping/compare/v0.15.1...v0.16.0) (2026-08-16)
 
 
 ### Security — ⚠ Breaking
 
-* **api:** `POST /api/v1/orgs/:org/jobs` is closed down, and this **breaks any script that used it to enqueue a job type other than `sleep`**. The endpoint accepted *any* registered job type from *any* authenticated org member, including a read-only `viewer`. Two of those types are directly abusable: `email` sends attacker-authored HTML through the deployment's own SMTP sender — a phishing primitive wearing the install's From: address and its SPF/DKIM alignment, to unconstrained recipients — and `webhook` issues arbitrary server-side HTTP requests with attacker-chosen method, headers and body, i.e. SSRF against cloud metadata endpoints, cluster-internal services and the API's own loopback. The route now requires **org admin** and accepts only **allowlisted** job types, the allowlist being `sleep` alone; everything else is refused with 403. It is an allowlist, not a blocklist, so a job type added later stays closed until someone opts it in deliberately. Nothing first-party used the endpoint for those types — the dashboard's jobs views are read-only, and SolidPing's own transactional mail, test API and schedulers enqueue through the job service directly, which is deliberately not subject to the allowlist and keeps full access to every type. The one first-party caller is `solidping jobs create --type …`, which is now equally limited to `sleep` and says so in its help. While here, the handler's status mapping was fixed: a malformed config or an unknown job type was reported as **500 `INTERNAL_ERROR`**, and is now **400 `VALIDATION_ERROR`**; only genuine infrastructure failures remain 500
+* **api:** `POST /api/v1/orgs/:org/jobs` is closed down, and this **breaks any script that used
+  it to enqueue a job type other than `sleep`**. The endpoint accepted *any* registered job type
+  from *any* authenticated org member, including a read-only `viewer`. Two of those types are
+  directly abusable: `email` sends attacker-authored HTML through the deployment's own SMTP
+  sender — a phishing primitive wearing the install's From: address and its SPF/DKIM alignment,
+  to unconstrained recipients — and `webhook` issues arbitrary server-side HTTP requests with
+  attacker-chosen method, headers and body, i.e. SSRF against cloud metadata endpoints,
+  cluster-internal services and the API's own loopback. The route now requires **org admin** and
+  accepts only **allowlisted** job types, the allowlist being `sleep` alone; everything else is
+  refused with 403. It is an allowlist, not a blocklist, so a job type added later stays closed
+  until someone opts it in deliberately. Nothing first-party used the endpoint for those types —
+  the dashboard's jobs views are read-only, and SolidPing's own transactional mail, test API and
+  schedulers enqueue through the job service directly, which is deliberately not subject to the
+  allowlist and keeps full access to every type. The one first-party caller is
+  `solidping jobs create --type …`, which is now equally limited to `sleep` and says so in its
+  help. While here, the handler's status mapping was fixed: a malformed config or an unknown job
+  type was reported as **500 `INTERNAL_ERROR`**, and is now **400 `VALIDATION_ERROR`**; only
+  genuine infrastructure failures remain 500
 
 ### Security
 
-* **entitlements:** the `#bt=` upgrade token appended to the dashboard's upgrade link is now minted with its own dedicated HS256 secret instead of reusing `entitlements.billing_inbound_secret`. That bearer travels on every service call between the billing service and this one, so a credential with the broadest exposure was also the power to mint an upgrade token for *any* organization — a leak that should have cost one service call instead granted plan escalation across the whole deployment. The two are now separate parameters, and both ends prefer the new secret while still accepting the old one, so deploy order does not matter. Migration is: ship this (nothing moves — the fallback mints exactly as before, warning once per process), generate one new secret and set it on both sides, confirm the fallback warning has stopped, then turn the legacy path off on billing. **Only that last step closes the exposure** — the ones before it make it closeable. Setting both parameters to the *same* value logs an ERROR at boot and still starts, rather than silently collapsing back into the shape being fixed
+* **entitlements:** the `#bt=` upgrade token appended to the dashboard's upgrade link is now
+  minted with its own dedicated HS256 secret instead of reusing
+  `entitlements.billing_inbound_secret`. That bearer travels on every service call between the
+  billing service and this one, so a credential with the broadest exposure was also the power to
+  mint an upgrade token for *any* organization — a leak that should have cost one service call
+  instead granted plan escalation across the whole deployment. The two are now separate
+  parameters, and both ends prefer the new secret while still accepting the old one, so deploy
+  order does not matter. Migration is: ship this (nothing moves — the fallback mints exactly as
+  before, warning once per process), generate one new secret and set it on both sides, confirm
+  the fallback warning has stopped, then turn the legacy path off on billing. **Only that last
+  step closes the exposure** — the ones before it make it closeable. Setting both parameters to
+  the *same* value logs an ERROR at boot and still starts, rather than silently collapsing back
+  into the shape being fixed
 
 ### Features
 
-* **checks:** a new **prometheus** check type, in two modes. *Scrape* pulls a metrics endpoint and grades a named metric; *promql* runs a query against a Prometheus server and grades the result. Both support graded warning/critical thresholds in either direction, so "under 10 is critical" reads as naturally as "over 90 is critical", and the response body is capped at 5 MB so a runaway exposition page cannot exhaust a worker ([#226](https://github.com/fclairamb/solidping/issues/226)) ([a5ee7c4](https://github.com/fclairamb/solidping/commit/a5ee7c4397499f9d5d216164b6bba12859c464b0))
-* **checks:** domain expiration is resolved over **RDAP**, falling back to WHOIS only when RDAP is unavailable. RDAP returns structured JSON with a real date field, where WHOIS is unstructured text whose layout differs per registry — which is why expiry parsing was the fragile part of the check. The lookup method is selectable per check from an Advanced field, and domain checks gained the same warning/critical day tiers the SSL check already had, so "expires in 30 days" can warn long before it becomes an outage
-* **checks:** check periods can exceed 24 hours — one week, two weeks and 30 days join the existing intervals. Certificate and domain-expiry checks do not need to run every minute, and the scheduler, aggregation and availability calculations were each proven against long periods rather than assumed to handle them
-* **regions:** workers self-probe their IPv4 and IPv6 egress and report it, and a region's capability is aggregated from its live workers as a genuine **three state** — yes, no, or *unknown*. Unknown never collapses into no: a region served by an agent that predates capability reporting would otherwise be advertised as IPv6-incapable, and users would avoid regions that work perfectly well. A check targeting IPv6 from a region reporting no v6 egress **warns and still runs** — the capability is advertisory, and nothing about it gates execution. The dashboard surfaces the advertised egress at the point where the region is actually chosen
-* **integrations:** incident comments fan out through the notification pipeline, so a comment written in one place reaches the others instead of being visible only where it was typed. Slack comment ingestion is explicit by default — an incident channel is a conversation, and silently promoting every message in it to an incident comment is rarely what anyone wants — with an explicit `/comment` command on both Slack and Telegram, the Telegram one resolving org-qualified incident references
-* **sms:** SMS and voice can be configured at the **instance** level, in two modes. Either the deployment provides a shared sender that organizations use as-is, or an organization brings its own provider credentials and overrides it. Resolution order between the two is pinned by tests rather than left to precedence-by-accident. Adds an OVH SMS client with its delivery-receipt endpoint, and instance-level spend guards that are checked *before* the per-org reservation — a guard applied after the reservation is a guard that has already let the spend through. The guards also cover verification and test sends, which are the two paths most likely to be used to probe a deployment's limits
+* **checks:** a new **prometheus** check type, in two modes. *Scrape* pulls a metrics endpoint
+  and grades a named metric; *promql* runs a query against a Prometheus server and grades the
+  result. Both support graded warning/critical thresholds in either direction, so "under 10 is
+  critical" reads as naturally as "over 90 is critical", and the response body is capped at 5 MB
+  so a runaway exposition page cannot exhaust a worker
+  ([#226](https://github.com/fclairamb/solidping/issues/226))
+  ([a5ee7c4](https://github.com/fclairamb/solidping/commit/a5ee7c4397499f9d5d216164b6bba12859c464b0))
+* **checks:** domain expiration is resolved over **RDAP**, falling back to WHOIS only when RDAP
+  is unavailable. RDAP returns structured JSON with a real date field, where WHOIS is
+  unstructured text whose layout differs per registry — which is why expiry parsing was the
+  fragile part of the check. The lookup method is selectable per check from an Advanced field,
+  and domain checks gained the same warning/critical day tiers the SSL check already had, so
+  "expires in 30 days" can warn long before it becomes an outage
+* **checks:** check periods can exceed 24 hours — one week, two weeks and 30 days join the
+  existing intervals. Certificate and domain-expiry checks do not need to run every minute, and
+  the scheduler, aggregation and availability calculations were each proven against long periods
+  rather than assumed to handle them
+* **regions:** workers self-probe their IPv4 and IPv6 egress and report it, and a region's
+  capability is aggregated from its live workers as a genuine **three state** — yes, no, or
+  *unknown*. Unknown never collapses into no: a region served by an agent that predates
+  capability reporting would otherwise be advertised as IPv6-incapable, and users would avoid
+  regions that work perfectly well. A check targeting IPv6 from a region reporting no v6 egress
+  **warns and still runs** — the capability is advertisory, and nothing about it gates
+  execution. The dashboard surfaces the advertised egress at the point where the region is
+  actually chosen
+* **integrations:** incident comments fan out through the notification pipeline, so a comment
+  written in one place reaches the others instead of being visible only where it was typed.
+  Slack comment ingestion is explicit by default — an incident channel is a conversation, and
+  silently promoting every message in it to an incident comment is rarely what anyone wants —
+  with an explicit `/comment` command on both Slack and Telegram, the Telegram one resolving
+  org-qualified incident references
+* **sms:** SMS and voice can be configured at the **instance** level, in two modes. Either the
+  deployment provides a shared sender that organizations use as-is, or an organization brings
+  its own provider credentials and overrides it. Resolution order between the two is pinned by
+  tests rather than left to precedence-by-accident. Adds an OVH SMS client with its
+  delivery-receipt endpoint, and instance-level spend guards that are checked *before* the
+  per-org reservation — a guard applied after the reservation is a guard that has already let
+  the spend through. The guards also cover verification and test sends, which are the two paths
+  most likely to be used to probe a deployment's limits
 * **sms:** outbound SMS carries the A2P 10DLC opt-out disclosure required for US messaging
 * **entitlements:** the SaaS free-tier check rate rises to 10 per minute
-* **dash0:** form controls have their own `--control` surface token instead of rendering the exact same colour as the page behind them, and the segmented control was extracted into a shared `SegmentedControl` primitive — a raised pill on a recessed track, so the active segment reads as raised rather than as the darker one
-* **status0:** the public status page has a dark mode, which the rest of the site has had all along. It follows the system preference on first paint and can be overridden from a header toggle that persists the choice. The default is resolved before first paint rather than after hydration — a status page is the one surface people open at 3am specifically because something is broken, and a white flash on a dark phone is a poor way to greet them. `theme-color` metas are set for both schemes so the browser chrome matches, and the response-time colouring and the subscribe widget's success and error states were moved onto design tokens so they stay legible in both themes instead of being hard-coded for light ([#224](https://github.com/fclairamb/solidping/issues/224)) ([54b97bd](https://github.com/fclairamb/solidping/commit/54b97bd0491f31191d8a444a4252de1b9308a337))
-* **status-pages:** response-time graphs plot one series per region instead of averaging every region into a single line. A check running from three continents was previously drawn as one curve, which hid exactly the thing a multi-region check exists to reveal — that one region is slow while the others are fine. Grouping happens server-side within the same point budget, so a page with many regions stays as cheap to render as before, and the incident strip rolls a period up by worst-status-wins rather than by whichever result happened to be last
-* **status0:** the status page hero, header and typography were restyled to match the rest of the product
-* **integrations:** Telegram contacts paged for an incident are now told when it ends. Being woken by an alert and never hearing that the outage resolved is the failure mode that teaches people to stop trusting the pager. The resolution notice is delivered to each chat that was actually paged, anchored to the original message's thread, and is exempt from the sweep that cancels an incident's pending ack/snooze/resolve jobs — a resolution notice cancelled along with the paging cycle it belongs to would never be sent at all
-* **integrations:** a single Telegram chat linked to several organizations no longer routes commands to an arbitrary one. Incident references are rendered and parsed org-qualified, commands and ack button presses are dispatched across every linked org, acknowledgements are attributed to the right one, and contact lookups are ordered deterministically (oldest link first) instead of depending on row order
-* **integrations:** Telegram incident alerts carry a **🔎 View** button next to **✅ Acknowledge** instead of burying the dashboard link in a text line at the bottom of the message. A URL button needs no callback verb, so this adds no new dispatch surface. Acknowledging or resolving an incident now edits the message down to the View button alone rather than stripping the keyboard entirely — the ack action becomes stale, but navigating to a resolved incident's history does not. The `/incidents` listing and `/incident <#ref>` detail replies use the same keyboard
-* **email:** every transactional email is rendered through the shared template system. Five send sites still hand-rolled their own strings — the escalation-policy alert (plain text only, and it addressed the incident by its raw 36-character UUID), both test-send emails, the member paging nudge, and the status-subscriber confirm/update mails, which carried an entire parallel HTML builder duplicating what the base template already provided. All five now render through the formatter with proper HTML and text parts, and every template has a preview fixture so it can be iterated on visually
-* **email:** incident emails show the incident number. Incidents have carried a short per-org reference (`#42`) since v0.15.0, surfaced in the dashboard, Slack and Telegram, but the four incident email templates never received it — so an email was the one alert you could not quote back at anyone. It now appears in both the subject and the details table, in the HTML and plaintext parts alike
-* **dash0:** notification lists say which event was notified. The incident detail page's Notifications card, the notification detail page, the incident event log and the integration detail page's deliveries table all previously showed either nothing or a bare `incident.created` code string, so a resolved incident's card was several near-identical rows you had to click through one at a time. Each event type now has one canonical emoji and colour, applied consistently across the dashboard and aligned with what the Slack, Teams and Telegram surfaces already send, so one event reads the same everywhere. The emoji and tint are layered on the translated label rather than replacing it
-* **dash0:** timestamps across the incidents and jobs pages use a shared `TimeAgo` component — relative by default, exact time on hover, click to copy. A relative timestamp alone ("46m ago") is unusable for incident analysis, where the absolute time is what you correlate against everything else
+* **dash0:** form controls have their own `--control` surface token instead of rendering the
+  exact same colour as the page behind them, and the segmented control was extracted into a
+  shared `SegmentedControl` primitive — a raised pill on a recessed track, so the active segment
+  reads as raised rather than as the darker one
+* **status0:** the public status page has a dark mode, which the rest of the site has had all
+  along. It follows the system preference on first paint and can be overridden from a header
+  toggle that persists the choice. The default is resolved before first paint rather than after
+  hydration — a status page is the one surface people open at 3am specifically because something
+  is broken, and a white flash on a dark phone is a poor way to greet them. `theme-color` metas
+  are set for both schemes so the browser chrome matches, and the response-time colouring and
+  the subscribe widget's success and error states were moved onto design tokens so they stay
+  legible in both themes instead of being hard-coded for light
+  ([#224](https://github.com/fclairamb/solidping/issues/224))
+  ([54b97bd](https://github.com/fclairamb/solidping/commit/54b97bd0491f31191d8a444a4252de1b9308a337))
+* **status-pages:** response-time graphs plot one series per region instead of averaging every
+  region into a single line. A check running from three continents was previously drawn as one
+  curve, which hid exactly the thing a multi-region check exists to reveal — that one region is
+  slow while the others are fine. Grouping happens server-side within the same point budget, so
+  a page with many regions stays as cheap to render as before, and the incident strip rolls a
+  period up by worst-status-wins rather than by whichever result happened to be last
+* **status0:** the status page hero, header and typography were restyled to match the rest of
+  the product
+* **integrations:** Telegram contacts paged for an incident are now told when it ends. Being
+  woken by an alert and never hearing that the outage resolved is the failure mode that teaches
+  people to stop trusting the pager. The resolution notice is delivered to each chat that was
+  actually paged, anchored to the original message's thread, and is exempt from the sweep that
+  cancels an incident's pending ack/snooze/resolve jobs — a resolution notice cancelled along
+  with the paging cycle it belongs to would never be sent at all
+* **integrations:** a single Telegram chat linked to several organizations no longer routes
+  commands to an arbitrary one. Incident references are rendered and parsed org-qualified,
+  commands and ack button presses are dispatched across every linked org, acknowledgements are
+  attributed to the right one, and contact lookups are ordered deterministically (oldest link
+  first) instead of depending on row order
+* **integrations:** Telegram incident alerts carry a **🔎 View** button next to **✅ Acknowledge**
+  instead of burying the dashboard link in a text line at the bottom of the message. A URL
+  button needs no callback verb, so this adds no new dispatch surface. Acknowledging or
+  resolving an incident now edits the message down to the View button alone rather than
+  stripping the keyboard entirely — the ack action becomes stale, but navigating to a resolved
+  incident's history does not. The `/incidents` listing and `/incident <#ref>` detail replies
+  use the same keyboard
+* **email:** every transactional email is rendered through the shared template system. Five send
+  sites still hand-rolled their own strings — the escalation-policy alert (plain text only, and
+  it addressed the incident by its raw 36-character UUID), both test-send emails, the member
+  paging nudge, and the status-subscriber confirm/update mails, which carried an entire parallel
+  HTML builder duplicating what the base template already provided. All five now render through
+  the formatter with proper HTML and text parts, and every template has a preview fixture so it
+  can be iterated on visually
+* **email:** incident emails show the incident number. Incidents have carried a short per-org
+  reference (`#42`) since v0.15.0, surfaced in the dashboard, Slack and Telegram, but the four
+  incident email templates never received it — so an email was the one alert you could not quote
+  back at anyone. It now appears in both the subject and the details table, in the HTML and
+  plaintext parts alike
+* **dash0:** notification lists say which event was notified. The incident detail page's
+  Notifications card, the notification detail page, the incident event log and the integration
+  detail page's deliveries table all previously showed either nothing or a bare
+  `incident.created` code string, so a resolved incident's card was several near-identical rows
+  you had to click through one at a time. Each event type now has one canonical emoji and
+  colour, applied consistently across the dashboard and aligned with what the Slack, Teams and
+  Telegram surfaces already send, so one event reads the same everywhere. The emoji and tint are
+  layered on the translated label rather than replacing it
+* **dash0:** timestamps across the incidents and jobs pages use a shared `TimeAgo` component —
+  relative by default, exact time on hover, click to copy. A relative timestamp alone ("46m
+  ago") is unusable for incident analysis, where the absolute time is what you correlate against
+  everything else
 
 ### Bug Fixes
 
-* **checks:** checkers are the single owner of their default check slug, so two check types can no longer both claim the same one and silently de-duplicate into a surprising name. `checkdnsbl` and `checksip` had no default slug at all and now have one
-* **sms:** the instance spend guards are evaluated before the per-org reservation rather than after it, and they now apply to verification and test sends too — both paths previously bypassed the instance ceiling entirely
-* **dash0:** check-type help links resolve through a docs anchor map keyed by the raw backend type string rather than the frontend's `CheckType` union, so a type whose backend name differs from its frontend spelling links to its own documentation section instead of the top of the page
-* **dash0:** chart tooltips, the trimmed top bars and the event dots on response-time graphs ([#225](https://github.com/fclairamb/solidping/issues/225))
-* **custom-domains:** a status page served on a custom domain now answers `/status0` SPA routes and `/api/mgmt/version`, so deep links and the version probe work there as they do on the primary host
-* **tlsedge:** an instance refuses to serve a host it no longer owns rather than continuing to answer for it
-* **status-pages:** creating a status page without a slug generates one instead of failing validation
-* **deps:** update go dependencies (non-major) ([#222](https://github.com/fclairamb/solidping/issues/222)) ([55b475c](https://github.com/fclairamb/solidping/commit/55b475c9702c06b88656f01b8021fb8f488e19cd))
-* **deps:** update module github.com/oapi-codegen/runtime to v1.7.0 ([#228](https://github.com/fclairamb/solidping/issues/228)) ([27a5b78](https://github.com/fclairamb/solidping/commit/27a5b78cbdbd2d579dd5640adf9e4408447eab54))
-* **deps:** update module github.com/slack-go/slack to v0.29.0 ([#227](https://github.com/fclairamb/solidping/issues/227)) ([2b82ed8](https://github.com/fclairamb/solidping/commit/2b82ed85de6f1c1f434bbd7ed66cfe52b71583cd))
+* **checks:** checkers are the single owner of their default check slug, so two check types can
+  no longer both claim the same one and silently de-duplicate into a surprising name.
+  `checkdnsbl` and `checksip` had no default slug at all and now have one
+* **sms:** the instance spend guards are evaluated before the per-org reservation rather than
+  after it, and they now apply to verification and test sends too — both paths previously
+  bypassed the instance ceiling entirely
+* **dash0:** check-type help links resolve through a docs anchor map keyed by the raw backend
+  type string rather than the frontend's `CheckType` union, so a type whose backend name differs
+  from its frontend spelling links to its own documentation section instead of the top of the
+  page
+* **dash0:** chart tooltips, the trimmed top bars and the event dots on response-time graphs
+  ([#225](https://github.com/fclairamb/solidping/issues/225))
+* **custom-domains:** a status page served on a custom domain now answers `/status0` SPA routes
+  and `/api/mgmt/version`, so deep links and the version probe work there as they do on the
+  primary host
+* **tlsedge:** an instance refuses to serve a host it no longer owns rather than continuing to
+  answer for it
+* **status-pages:** creating a status page without a slug generates one instead of failing
+  validation
+* **deps:** update go dependencies (non-major)
+  ([#222](https://github.com/fclairamb/solidping/issues/222))
+  ([55b475c](https://github.com/fclairamb/solidping/commit/55b475c9702c06b88656f01b8021fb8f488e19cd))
+* **deps:** update module github.com/oapi-codegen/runtime to v1.7.0
+  ([#228](https://github.com/fclairamb/solidping/issues/228))
+  ([27a5b78](https://github.com/fclairamb/solidping/commit/27a5b78cbdbd2d579dd5640adf9e4408447eab54))
+* **deps:** update module github.com/slack-go/slack to v0.29.0
+  ([#227](https://github.com/fclairamb/solidping/issues/227))
+  ([2b82ed8](https://github.com/fclairamb/solidping/commit/2b82ed85de6f1c1f434bbd7ed66cfe52b71583cd))
 
 ## [0.15.1](https://github.com/fclairamb/solidping/compare/v0.15.0...v0.15.1) (2026-08-14)
 
 
 ### Bug Fixes
 
-* **dash0:** a maintenance window attached to no checks no longer reads as a neutral "0 checks". Membership resolves purely through the join table, so a window with nothing attached suppresses *nothing* — it is inert, not org-wide. Rendered in muted grey it looked like an ordinary count, which meant the one state an operator most needs to catch — a window created and then never pointed at anything, silently paging straight through the planned work it was supposed to cover — was the state the UI drew most quietly. It is now an amber warning, and a window whose suppression is live is marked with the pulse dot rather than a static badge ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
-* **dash0:** the escalation policy list stopped hiding the two things you actually open it to check. The API already returned the step count and the per-check and per-group usage, and the page rendered none of them — its Description and Repeats columns were, for most policies, two columns of em dashes. There are now Steps and Used by columns, a policy that no check or group references is called out as unused, and a policy with zero steps — attached to checks but paging nobody — carries the same amber warning as an empty maintenance window. Repeat intervals read as a duration ("every 15 min") instead of a raw second count ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
-* **dash0:** the events audit log is scannable. Every row previously carried a full locale timestamp (`8/14/2026, 12:38:30 PM`), an icon, and a badge in the same neutral outline regardless of what had happened — so a page of fifty events offered no way to find the one that mattered without reading all of them. Timestamps are now relative with the exact time on hover, and each badge is tinted by event family: failure and escalation red, recovery emerald, operator acknowledgement amber, configuration blue, onboarding violet. The tint is layered on the translated label rather than replacing it, and an unrecognized event type falls back to the plain badge instead of inventing a colour ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
-* **dash0:** the dashboard and every list view — checks, incidents, integrations, status pages, on-call, escalation policies, maintenance windows, events — now share one list surface: a card-elevated table on new neutral elevation tokens, a header tinted a step down from its rows, a hover tint that makes a whole row read as one target, and a single empty-state treatment so a list that renders nothing says so instead of showing an empty frame. Each new primitive is catalogued in the in-app design reference alongside the exact import line, so the next page starts from the shipped pattern rather than reinventing it ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
-* **dash0:** two list tables were unusable below roughly 700px. The card wrapper clips to its own radius, so without an inner scroll container the trailing columns and the per-row edit and delete buttons were not merely off-screen but unreachable on a phone; separately, uncapped schedule text pushed the maintenance window table wider than the viewport and scrolled the page body sideways ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
-* **dash0:** the production build works again. Four imports and a helper left behind by the previous UI pass were unreferenced, which fails `tsc` and so failed `bun run build` — the type check runs as part of the build, so this broke the build outright rather than merely warning ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
-* **dash0:** the events page keeps its type filter in the URL instead of component state, so a filtered view survives a refresh, can be bookmarked, and moves under browser back/forward like the rest of the dashboard ([#220](https://github.com/fclairamb/solidping/issues/220)) ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** a maintenance window attached to no checks no longer reads as a neutral "0 checks".
+  Membership resolves purely through the join table, so a window with nothing attached
+  suppresses *nothing* — it is inert, not org-wide. Rendered in muted grey it looked like an
+  ordinary count, which meant the one state an operator most needs to catch — a window created
+  and then never pointed at anything, silently paging straight through the planned work it was
+  supposed to cover — was the state the UI drew most quietly. It is now an amber warning, and a
+  window whose suppression is live is marked with the pulse dot rather than a static badge
+  ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** the escalation policy list stopped hiding the two things you actually open it to
+  check. The API already returned the step count and the per-check and per-group usage, and the
+  page rendered none of them — its Description and Repeats columns were, for most policies, two
+  columns of em dashes. There are now Steps and Used by columns, a policy that no check or group
+  references is called out as unused, and a policy with zero steps — attached to checks but
+  paging nobody — carries the same amber warning as an empty maintenance window. Repeat
+  intervals read as a duration ("every 15 min") instead of a raw second count
+  ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** the events audit log is scannable. Every row previously carried a full locale
+  timestamp (`8/14/2026, 12:38:30 PM`), an icon, and a badge in the same neutral outline
+  regardless of what had happened — so a page of fifty events offered no way to find the one
+  that mattered without reading all of them. Timestamps are now relative with the exact time on
+  hover, and each badge is tinted by event family: failure and escalation red, recovery emerald,
+  operator acknowledgement amber, configuration blue, onboarding violet. The tint is layered on
+  the translated label rather than replacing it, and an unrecognized event type falls back to
+  the plain badge instead of inventing a colour
+  ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** the dashboard and every list view — checks, incidents, integrations, status pages,
+  on-call, escalation policies, maintenance windows, events — now share one list surface: a
+  card-elevated table on new neutral elevation tokens, a header tinted a step down from its
+  rows, a hover tint that makes a whole row read as one target, and a single empty-state
+  treatment so a list that renders nothing says so instead of showing an empty frame. Each new
+  primitive is catalogued in the in-app design reference alongside the exact import line, so the
+  next page starts from the shipped pattern rather than reinventing it
+  ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** two list tables were unusable below roughly 700px. The card wrapper clips to its
+  own radius, so without an inner scroll container the trailing columns and the per-row edit and
+  delete buttons were not merely off-screen but unreachable on a phone; separately, uncapped
+  schedule text pushed the maintenance window table wider than the viewport and scrolled the
+  page body sideways ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** the production build works again. Four imports and a helper left behind by the
+  previous UI pass were unreferenced, which fails `tsc` and so failed `bun run build` — the type
+  check runs as part of the build, so this broke the build outright rather than merely warning
+  ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
+* **dash0:** the events page keeps its type filter in the URL instead of component state, so a
+  filtered view survives a refresh, can be bookmarked, and moves under browser back/forward like
+  the rest of the dashboard ([#220](https://github.com/fclairamb/solidping/issues/220))
+  ([6d343fa](https://github.com/fclairamb/solidping/commit/6d343fabc0e2e5f449ce61f92a0c58be3ed5569a))
 
 ## [0.15.0](https://github.com/fclairamb/solidping/compare/v0.14.0...v0.15.0) (2026-08-14)
 
 
 ### Features
 
-* **incidents:** every incident now has a short, human-scale reference — `#42` — alongside its UUID. Nobody was ever going to type a 36-character UUID into a chat window on a phone, which is what blocked any typed incident command. The number is a per-organization, monotonically increasing column assigned at creation, concurrency-safe on both Postgres and SQLite, and existing incidents are backfilled oldest-first so `#1` really is the org's first incident. Soft-deleted incidents keep their number and numbers are never reused, so `#42` means one incident forever — a reused number would turn an ack typed from an old alert into an ack of somebody else's outage. The reference is surfaced everywhere it is useful: the API, the dashboard's incident list and detail, Slack messages and Telegram ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
-* **integrations:** the Telegram bot is no longer notify-only. Alert messages carry an inline **Acknowledge** button — press it and the incident is acked through the same service path Slack uses, a toast confirms it, and the original message is edited in place to "✅ Acknowledged by … at …" with the button removed. Pressing it again on an already-acked or resolved incident reports the current state instead of erroring. Alongside the button there is a typed command set — `/status` for one-line org health, `/incidents` for the open list with a per-incident ack button, `/ack [#ref]` (bare, with a single open incident, acks it; with several it lists the candidates and acks nothing), `/incident <#ref>` for the latest detail, and `/help` — registered via `setMyCommands` so they autocomplete in the client. Commands and button presses alike are refused in chats that have not been linked to an account ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
-* **incidents:** an incident now records *what* caused it, not just that it happened. The `details` column existed but nothing ever wrote to it — meanwhile the Slack formatter was already reading `failure_reason` out of it and, finding nothing, captioning every alert with the literal "Check failed". The first failing result is now snapshotted into the incident at open — a copy, not a reference, because the aggregation job deletes raw results and a pointer to a deleted row is worthless a week later — capturing the standardized error, status, region, duration and the checker's own output, size-capped so a pathological payload cannot bloat the row. Reopening records the relapse under `last_failure` without disturbing the original cause. The dashboard's incident detail grows a "First failure" card (and a "Latest relapse" variant), and both Slack readers light up as a side effect ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
-* **agents:** the TLS edge can chain to a second instance. The deployed topology has a single dynamic-custom-domain slot at the edge — the proxy TCP-passthroughs unknown SNI to one SolidPing instance, which issues certificates on demand for its own verified domains and dead-ends everything else. An instance can now forward a connection for a host it neither reserves nor serves to a configured upstream, prefixed with a PROXY protocol v2 header carrying the original client address, so two instances can share one edge. The fork happens strictly below TLS termination — the first hop never holds the second's certificates — by peeking the ClientHello for SNI (handling a hello split across TCP segments) and replaying every buffered byte onward. The plaintext `:80` listener gets the same treatment keyed on the `Host` header, without which the downstream could never solve an HTTP-01 challenge. Fail-closed throughout: no SNI, a malformed hello, or a peek timeout all stay local rather than being forwarded on a guess, a chain misconfigured into a cycle is refused rather than ping-ponging until file-descriptor exhaustion, and an unreachable upstream closes the connection instead of falling back to terminating a host we already decided is not ours. Off unless an upstream is configured ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+* **incidents:** every incident now has a short, human-scale reference — `#42` — alongside its
+  UUID. Nobody was ever going to type a 36-character UUID into a chat window on a phone, which
+  is what blocked any typed incident command. The number is a per-organization, monotonically
+  increasing column assigned at creation, concurrency-safe on both Postgres and SQLite, and
+  existing incidents are backfilled oldest-first so `#1` really is the org's first incident.
+  Soft-deleted incidents keep their number and numbers are never reused, so `#42` means one
+  incident forever — a reused number would turn an ack typed from an old alert into an ack of
+  somebody else's outage. The reference is surfaced everywhere it is useful: the API, the
+  dashboard's incident list and detail, Slack messages and Telegram
+  ([#217](https://github.com/fclairamb/solidping/issues/217))
+  ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+* **integrations:** the Telegram bot is no longer notify-only. Alert messages carry an inline
+  **Acknowledge** button — press it and the incident is acked through the same service path
+  Slack uses, a toast confirms it, and the original message is edited in place to "✅
+  Acknowledged by … at …" with the button removed. Pressing it again on an already-acked or
+  resolved incident reports the current state instead of erroring. Alongside the button there is
+  a typed command set — `/status` for one-line org health, `/incidents` for the open list with a
+  per-incident ack button, `/ack [#ref]` (bare, with a single open incident, acks it; with
+  several it lists the candidates and acks nothing), `/incident <#ref>` for the latest detail,
+  and `/help` — registered via `setMyCommands` so they autocomplete in the client. Commands and
+  button presses alike are refused in chats that have not been linked to an account
+  ([#217](https://github.com/fclairamb/solidping/issues/217))
+  ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+* **incidents:** an incident now records *what* caused it, not just that it happened. The
+  `details` column existed but nothing ever wrote to it — meanwhile the Slack formatter was
+  already reading `failure_reason` out of it and, finding nothing, captioning every alert with
+  the literal "Check failed". The first failing result is now snapshotted into the incident at
+  open — a copy, not a reference, because the aggregation job deletes raw results and a pointer
+  to a deleted row is worthless a week later — capturing the standardized error, status, region,
+  duration and the checker's own output, size-capped so a pathological payload cannot bloat the
+  row. Reopening records the relapse under `last_failure` without disturbing the original cause.
+  The dashboard's incident detail grows a "First failure" card (and a "Latest relapse" variant),
+  and both Slack readers light up as a side effect
+  ([#217](https://github.com/fclairamb/solidping/issues/217))
+  ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+* **agents:** the TLS edge can chain to a second instance. The deployed topology has a single
+  dynamic-custom-domain slot at the edge — the proxy TCP-passthroughs unknown SNI to one
+  SolidPing instance, which issues certificates on demand for its own verified domains and
+  dead-ends everything else. An instance can now forward a connection for a host it neither
+  reserves nor serves to a configured upstream, prefixed with a PROXY protocol v2 header
+  carrying the original client address, so two instances can share one edge. The fork happens
+  strictly below TLS termination — the first hop never holds the second's certificates — by
+  peeking the ClientHello for SNI (handling a hello split across TCP segments) and replaying
+  every buffered byte onward. The plaintext `:80` listener gets the same treatment keyed on the
+  `Host` header, without which the downstream could never solve an HTTP-01 challenge.
+  Fail-closed throughout: no SNI, a malformed hello, or a peek timeout all stay local rather
+  than being forwarded on a guess, a chain misconfigured into a cycle is refused rather than
+  ping-ponging until file-descriptor exhaustion, and an unreachable upstream closes the
+  connection instead of falling back to terminating a host we already decided is not ours. Off
+  unless an upstream is configured ([#217](https://github.com/fclairamb/solidping/issues/217))
+  ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
 
 ### Bug Fixes
 
-* **dash0:** the check detail page listed the same regions in two different orders — the Response Times chart showed them in whatever order they first appeared in the results window, while the Recent Results filter sorted them alphabetically by slug. Because org-relative private-region slugs start with `@`, which sorts ahead of letters, a custom region jumped in front of the standard ones in the filter but not in the chart. Both rows now share one canonical order: standard regions first, then custom ones, alphabetical by display name within each group ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
-* **dash0:** the check detail page no longer shows a documentation icon in its header toolbar. The check *edit* page already links to the same page, which is where check types are actually configured; on the detail page it was redundant toolbar noise ([#217](https://github.com/fclairamb/solidping/issues/217)) ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+* **dash0:** the check detail page listed the same regions in two different orders — the
+  Response Times chart showed them in whatever order they first appeared in the results window,
+  while the Recent Results filter sorted them alphabetically by slug. Because org-relative
+  private-region slugs start with `@`, which sorts ahead of letters, a custom region jumped in
+  front of the standard ones in the filter but not in the chart. Both rows now share one
+  canonical order: standard regions first, then custom ones, alphabetical by display name within
+  each group ([#217](https://github.com/fclairamb/solidping/issues/217))
+  ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
+* **dash0:** the check detail page no longer shows a documentation icon in its header toolbar.
+  The check *edit* page already links to the same page, which is where check types are actually
+  configured; on the detail page it was redundant toolbar noise
+  ([#217](https://github.com/fclairamb/solidping/issues/217))
+  ([a8cbaf3](https://github.com/fclairamb/solidping/commit/a8cbaf3c5222526d4094430cde36a0733a9113cf))
 
 ## [0.14.0](https://github.com/fclairamb/solidping/compare/v0.13.0...v0.14.0) (2026-08-13)
 
 
 ### Features
 
-* **notifications:** Slack channel alerts can now mention the on-call person. A new `user_integration_identities` table records who each org member is on a given Slack workspace, populated by an automatic `users.lookupByEmail` match after OAuth and re-runnable from the integration panel, with a manual override for anyone the match misses. When the new **Mention the on-call person in alerts** switch is on, `incident.created` and `incident.escalated` prepend `<@id>` for every human target on the escalation policy's first step — the schedule-resolved on-call plus any direct user targets, deduplicated. Resolved and reopened messages stay mention-free, a member without a mapped identity degrades to a plain-text name, and a failure to resolve mentions never blocks the alert itself. The switch defaults on for newly created Slack integrations and stays off for existing ones ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **notifications:** admins can finally see who is actually reachable. The members page gains a paging-coverage column showing each member's channels and whether they are verified, with an explicit "email fallback only" state, and the same warning badge appears next to anyone rostered on an on-call schedule or named as a user target in an escalation policy. The coverage endpoint deliberately exposes only channel *types* and verified flags — never phone numbers or handles. Admins can also pre-provision a phone or WhatsApp contact for a colleague in **unverified** state and send a "set up your paging" nudge; an admin can never create a verified contact nor flip one to verified ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **agents:** private regions are now stored org-relatively (`@aws-paris` instead of `@acmetech/aws-paris`), so renaming an organization no longer strands its agents. Previously the org slug was baked into every stored region string at write time, and a rename left pre-existing agents and checks matching each other on the old spelling while the API advertised the new one — every check created afterwards sat in `validating` forever with nothing surfaced. A migration rewrites every stored region across agents, checks, jobs, org defaults, enrollment tokens and historical results, collapsing duplicate spellings, which also retroactively repairs installs already broken by a past rename. The legacy `@<org>/<slug>` form is still accepted on input for the org's own current and previous slugs, and rejected for anyone else's ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **agents:** the tlsedge listeners speak PROXY protocol (v1 and v2), so custom domains behind a TLS passthrough keep the real client IP. Without it every request through the passthrough appears to come from the proxy's own address and per-IP rate limiting silently collapses. Gated behind `acme.proxy_protocol` with an explicit trusted-CIDR list: headers from a trusted source are honoured, headers from anywhere else are ignored rather than trusted, and enabling the feature with an empty CIDR list fails at startup rather than trusting everyone ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **reliability:** the server now fails fast on a structural database fault instead of retrying forever. A missing table, a corrupt file or a moved database is classified once in a shared `db/dbfault` package — by SQLSTATE on Postgres and result code on SQLite — logged as a single clear line, surfaced as a 503 on `/api/mgmt/health`, and then shuts the process down so a supervisor can restart it and re-run migrations. Transient faults (dropped connections, serialization failures, lock timeouts, `too_many_connections`, admin shutdown) are unchanged and still retry ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **dash0:** small documentation links across the dashboard. A new `DocsLink` primitive renders a discreet icon button in the page header, wired to the matching page under `/docs` for checks, incidents, on-call, status pages, custom domains, maintenance windows, private locations, integrations, API tokens, MCP and organization authentication. Pages with no genuinely relevant docs page simply don't get one ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **dash0:** the command palette now has entries for the Organization and Account sections themselves, not just their sub-pages, so typing "organization" or "account" finds them ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **dash0:** the check detail page uses a single `region` parameter shared by the chart, the Recent Results table and the duration stats, instead of separate `graphRegion` and `resultsRegion` keys that had to be set one at a time. Selecting a region anywhere scopes the whole page, and switching regions re-renders in place — no chart remount, no reload, no lost zoom ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **dash0:** private-location agents show "Last seen" as a live relative time ("5m ago") that ticks in place, with the exact local timestamp on hover ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **notifications:** Slack channel alerts can now mention the on-call person. A new
+  `user_integration_identities` table records who each org member is on a given Slack workspace,
+  populated by an automatic `users.lookupByEmail` match after OAuth and re-runnable from the
+  integration panel, with a manual override for anyone the match misses. When the new **Mention
+  the on-call person in alerts** switch is on, `incident.created` and `incident.escalated`
+  prepend `<@id>` for every human target on the escalation policy's first step — the
+  schedule-resolved on-call plus any direct user targets, deduplicated. Resolved and reopened
+  messages stay mention-free, a member without a mapped identity degrades to a plain-text name,
+  and a failure to resolve mentions never blocks the alert itself. The switch defaults on for
+  newly created Slack integrations and stays off for existing ones
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **notifications:** admins can finally see who is actually reachable. The members page gains a
+  paging-coverage column showing each member's channels and whether they are verified, with an
+  explicit "email fallback only" state, and the same warning badge appears next to anyone
+  rostered on an on-call schedule or named as a user target in an escalation policy. The
+  coverage endpoint deliberately exposes only channel *types* and verified flags — never phone
+  numbers or handles. Admins can also pre-provision a phone or WhatsApp contact for a colleague
+  in **unverified** state and send a "set up your paging" nudge; an admin can never create a
+  verified contact nor flip one to verified
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **agents:** private regions are now stored org-relatively (`@aws-paris` instead of
+  `@acmetech/aws-paris`), so renaming an organization no longer strands its agents. Previously
+  the org slug was baked into every stored region string at write time, and a rename left
+  pre-existing agents and checks matching each other on the old spelling while the API
+  advertised the new one — every check created afterwards sat in `validating` forever with
+  nothing surfaced. A migration rewrites every stored region across agents, checks, jobs, org
+  defaults, enrollment tokens and historical results, collapsing duplicate spellings, which also
+  retroactively repairs installs already broken by a past rename. The legacy `@<org>/<slug>`
+  form is still accepted on input for the org's own current and previous slugs, and rejected for
+  anyone else's ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **agents:** the tlsedge listeners speak PROXY protocol (v1 and v2), so custom domains behind a
+  TLS passthrough keep the real client IP. Without it every request through the passthrough
+  appears to come from the proxy's own address and per-IP rate limiting silently collapses.
+  Gated behind `acme.proxy_protocol` with an explicit trusted-CIDR list: headers from a trusted
+  source are honoured, headers from anywhere else are ignored rather than trusted, and enabling
+  the feature with an empty CIDR list fails at startup rather than trusting everyone
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **reliability:** the server now fails fast on a structural database fault instead of retrying
+  forever. A missing table, a corrupt file or a moved database is classified once in a shared
+  `db/dbfault` package — by SQLSTATE on Postgres and result code on SQLite — logged as a single
+  clear line, surfaced as a 503 on `/api/mgmt/health`, and then shuts the process down so a
+  supervisor can restart it and re-run migrations. Transient faults (dropped connections,
+  serialization failures, lock timeouts, `too_many_connections`, admin shutdown) are unchanged
+  and still retry ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **dash0:** small documentation links across the dashboard. A new `DocsLink` primitive renders
+  a discreet icon button in the page header, wired to the matching page under `/docs` for
+  checks, incidents, on-call, status pages, custom domains, maintenance windows, private
+  locations, integrations, API tokens, MCP and organization authentication. Pages with no
+  genuinely relevant docs page simply don't get one
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **dash0:** the command palette now has entries for the Organization and Account sections
+  themselves, not just their sub-pages, so typing "organization" or "account" finds them
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **dash0:** the check detail page uses a single `region` parameter shared by the chart, the
+  Recent Results table and the duration stats, instead of separate `graphRegion` and
+  `resultsRegion` keys that had to be set one at a time. Selecting a region anywhere scopes the
+  whole page, and switching regions re-renders in place — no chart remount, no reload, no lost
+  zoom ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **dash0:** private-location agents show "Last seen" as a live relative time ("5m ago") that
+  ticks in place, with the exact local timestamp on hover
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
 
 ### Bug Fixes
 
-* **jobs:** a job runner that hit a persistent, instantly-failing error used to spin at CPU speed and log every attempt — one incident filled a 460 GB disk in seventeen hours at ~30 GB/h. Consecutive failures now back off exponentially from 100 ms to a 30 s cap with jitter, and repeated identical errors are logged at exponentially spaced counts with a single summary line on recovery. A worker parked at the cap still shuts down promptly, and a runner backing off no longer counts itself as available ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **jobs:** a runner no longer retires itself when a *job's* context is cancelled. The terminal status write runs on a detached context that the soft-delete watcher can cancel, and the resulting error was indistinguishable from the worker's own shutdown — a narrow race could silently shrink the pool on a perfectly healthy server ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **notifications:** an admin adding a paging contact for a member could silently de-verify a number that member had already verified, if the contact existed with no notification route attached. The duplicate check now looks the contact up by type and value rather than through the route join ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **dash0:** a check group containing zero checks showed three skeleton placeholder rows instead of an empty state — and on an organization with more checks than one page, kept showing them indefinitely, because the group deferred to the still-loading infinite-scroll stream rather than the group's own server-side count ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **dash0:** the account API-tokens toolbar wraps on narrow screens instead of squeezing the search field down to a few characters ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **agents:** the e2e harness no longer tears down the database while a server it started is still running, and a spawned server can be told to exit with its parent instead of being orphaned ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
-* **deps:** update module golang.org/x/net to v0.58.0 ([#213](https://github.com/fclairamb/solidping/issues/213)) ([0b2a7c9](https://github.com/fclairamb/solidping/commit/0b2a7c944c9e401d0cd49263be0e6bd0253e9d33))
+* **jobs:** a job runner that hit a persistent, instantly-failing error used to spin at CPU
+  speed and log every attempt — one incident filled a 460 GB disk in seventeen hours at ~30
+  GB/h. Consecutive failures now back off exponentially from 100 ms to a 30 s cap with jitter,
+  and repeated identical errors are logged at exponentially spaced counts with a single summary
+  line on recovery. A worker parked at the cap still shuts down promptly, and a runner backing
+  off no longer counts itself as available
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **jobs:** a runner no longer retires itself when a *job's* context is cancelled. The terminal
+  status write runs on a detached context that the soft-delete watcher can cancel, and the
+  resulting error was indistinguishable from the worker's own shutdown — a narrow race could
+  silently shrink the pool on a perfectly healthy server
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **notifications:** an admin adding a paging contact for a member could silently de-verify a
+  number that member had already verified, if the contact existed with no notification route
+  attached. The duplicate check now looks the contact up by type and value rather than through
+  the route join ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **dash0:** a check group containing zero checks showed three skeleton placeholder rows instead
+  of an empty state — and on an organization with more checks than one page, kept showing them
+  indefinitely, because the group deferred to the still-loading infinite-scroll stream rather
+  than the group's own server-side count
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **dash0:** the account API-tokens toolbar wraps on narrow screens instead of squeezing the
+  search field down to a few characters
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **agents:** the e2e harness no longer tears down the database while a server it started is
+  still running, and a spawned server can be told to exit with its parent instead of being
+  orphaned ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **deps:** update module golang.org/x/net to v0.58.0
+  ([#213](https://github.com/fclairamb/solidping/issues/213))
+  ([0b2a7c9](https://github.com/fclairamb/solidping/commit/0b2a7c944c9e401d0cd49263be0e6bd0253e9d33))
 
 ### Documentation
 
-* **agents:** the private-locations identity documentation no longer tells operators to run `base64` inside the agent container. The shipped image is distroless — no shell, no `base64`, no `tar` — so `kubectl exec`, `kubectl cp` and `fly ssh console` all fail, which left `SP_AGENT_PRINT_KEYS` (which prints private key material to stdout, and thence to the log pipeline) as the de-facto only Kubernetes path. The docs now describe the two supported shapes — `SP_AGENT_KEYS` from an env var or a Secret — and show a working extraction route: a throwaway enrollment Pod sharing an `emptyDir` with an ordinary sidecar, piped straight into the Secret so the key material never lands in a terminal or a log ([#215](https://github.com/fclairamb/solidping/issues/215)) ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
+* **agents:** the private-locations identity documentation no longer tells operators to run
+  `base64` inside the agent container. The shipped image is distroless — no shell, no `base64`,
+  no `tar` — so `kubectl exec`, `kubectl cp` and `fly ssh console` all fail, which left
+  `SP_AGENT_PRINT_KEYS` (which prints private key material to stdout, and thence to the log
+  pipeline) as the de-facto only Kubernetes path. The docs now describe the two supported shapes
+  — `SP_AGENT_KEYS` from an env var or a Secret — and show a working extraction route: a
+  throwaway enrollment Pod sharing an `emptyDir` with an ordinary sidecar, piped straight into
+  the Secret so the key material never lands in a terminal or a log
+  ([#215](https://github.com/fclairamb/solidping/issues/215))
+  ([eaa4236](https://github.com/fclairamb/solidping/commit/eaa4236755339a2b965fe5092acd640654c7c201))
 
 ## [0.13.0](https://github.com/fclairamb/solidping/compare/v0.12.0...v0.13.0) (2026-08-12)
 
 
 ### Features
 
-* **orgs:** deleting an organization no longer logs the owner out. `DELETE /orgs/:org` now answers 200 with a replacement session scoped to an organization the caller still belongs to — omitting `organizations` entirely when none survives — and the dashboard adopts it, so the owner stays signed in and lands somewhere real instead of being bounced to the login screen holding a token for an organization that no longer exists. Co-members of the deleted org have their sessions revoked, and a stale token is rejected by `/auth/me` rather than half-working ([#212](https://github.com/fclairamb/solidping/issues/212)) ([b90aec8](https://github.com/fclairamb/solidping/commit/b90aec8d1325b7ee0ef276b01e354a301bdd9873))
-* **notifications:** every ready notification method now carries the Test button, and the visibility rule became generic. The dashboard used to decide per contact type — which is how a connected Telegram contact ended up as the one method without a Test button even after the backend learned to send Telegram tests. The row now shows the button for any route whose contact is ready to be paged (types with a setup round-trip — phone, WhatsApp, Telegram — once verified or connected; every other type, including future ones, from creation), and the backend matches: SMS tests ride the org's default Twilio connection like a verification code does, WhatsApp tests go out through the approved alert template with self-describing values, and a contact whose setup round-trip is incomplete is refused instead of tested. A structural test pins the rule by walking every pageable contact type through the test dispatcher and failing on any that reaches the "provider not configured" default ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **dash0:** a design-system pass over the surfaces that had drifted or were carrying browser defaults. Status badges and alerts trade saturated fills for a ~15% tint of the status color with the color itself as text, through new `--status-*-foreground` tokens that darken in light mode and lighten in dark — so a table row no longer shouts and the real alarm has somewhere to escalate to. Toasts stop rendering all 200 call sites identically monochrome: the surface stays neutral and the meaning lives in the icon hue. The 104 `font-mono` call sites get JetBrains Mono instead of whatever the OS shipped, with tracking-tight tabular numerals for large figures, and light-mode cards are lighter than the page rather than darker, so a raised surface reads as raised ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **docs:** a Data Retention page tells self-hosters how long their data actually lives — that results roll up raw → hour → day → month with the finer rows deleted, what the 24h/7d/2mo defaults mean for charts and status pages, which knobs tune them (the three `SP_PERFORMANCE_AGGREGATION_RETENTION_*` variables or the Server → Aggregation tab, env winning), and the rule that bites: raising retention never restores already-rolled-up history, so it has to be raised before the history is needed ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **orgs:** deleting an organization no longer logs the owner out. `DELETE /orgs/:org` now
+  answers 200 with a replacement session scoped to an organization the caller still belongs to —
+  omitting `organizations` entirely when none survives — and the dashboard adopts it, so the
+  owner stays signed in and lands somewhere real instead of being bounced to the login screen
+  holding a token for an organization that no longer exists. Co-members of the deleted org have
+  their sessions revoked, and a stale token is rejected by `/auth/me` rather than half-working
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
+  ([b90aec8](https://github.com/fclairamb/solidping/commit/b90aec8d1325b7ee0ef276b01e354a301bdd9873))
+* **notifications:** every ready notification method now carries the Test button, and the
+  visibility rule became generic. The dashboard used to decide per contact type — which is how a
+  connected Telegram contact ended up as the one method without a Test button even after the
+  backend learned to send Telegram tests. The row now shows the button for any route whose
+  contact is ready to be paged (types with a setup round-trip — phone, WhatsApp, Telegram — once
+  verified or connected; every other type, including future ones, from creation), and the
+  backend matches: SMS tests ride the org's default Twilio connection like a verification code
+  does, WhatsApp tests go out through the approved alert template with self-describing values,
+  and a contact whose setup round-trip is incomplete is refused instead of tested. A structural
+  test pins the rule by walking every pageable contact type through the test dispatcher and
+  failing on any that reaches the "provider not configured" default
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **dash0:** a design-system pass over the surfaces that had drifted or were carrying browser
+  defaults. Status badges and alerts trade saturated fills for a ~15% tint of the status color
+  with the color itself as text, through new `--status-*-foreground` tokens that darken in light
+  mode and lighten in dark — so a table row no longer shouts and the real alarm has somewhere to
+  escalate to. Toasts stop rendering all 200 call sites identically monochrome: the surface
+  stays neutral and the meaning lives in the icon hue. The 104 `font-mono` call sites get
+  JetBrains Mono instead of whatever the OS shipped, with tracking-tight tabular numerals for
+  large figures, and light-mode cards are lighter than the page rather than darker, so a raised
+  surface reads as raised ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **docs:** a Data Retention page tells self-hosters how long their data actually lives — that
+  results roll up raw → hour → day → month with the finer rows deleted, what the 24h/7d/2mo
+  defaults mean for charts and status pages, which knobs tune them (the three
+  `SP_PERFORMANCE_AGGREGATION_RETENTION_*` variables or the Server → Aggregation tab, env
+  winning), and the rule that bites: raising retention never restores already-rolled-up history,
+  so it has to be raised before the history is needed
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
 
 
 ### Bug Fixes
 
-* **availability:** a 365-day or year-to-date availability window reports on the whole window instead of silently covering only the most recent ~2 months. The window query never read the terminal `month` rollups, and with the tightened default retention everything older than the day tier's two months lives only there; the union now includes the month tier — the tiers stay disjoint by construction, so nothing double-counts — and the endpoint's 12-month lookback rejection, a data-horizon guard the same change made obsolete, became a 10-year input-sanity cap, so multi-year windows are now valid ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **telegram:** the notifications page's Test button reaches Telegram. Test dispatch knew email, Slack and web push but had no Telegram case, so it fell through to a generic "provider not configured" 422 — on the one button a user presses to confirm the setup they have just finished, while real escalation delivery through the same contact worked. Sending a test needs only the bot token, matching alert dispatch, so it also works on an instance whose bot username is not known yet ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **telegram:** a bot username derived at boot is written down even when the startup lookup missed it. The synchronous resolver gets one `getMe` bounded to three seconds so it cannot delay boot; when that call lost a race with a cold DNS cache the username stayed unknown and nothing was persisted, so the connect surface answered "telegram is not configured" on every later request while the asynchronous bootstrap — which has a far more generous budget — had already succeeded and logged "Telegram bot ready". The bootstrap now persists what it learned, so the next restart resolves the username from the database with no network call at all ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **dash0:** the org-admin guard no longer strands the deleter on the dead slug. The organization layout bounces a non-admin to `/orgs/$org` during render, and right after an owner deleted their last organization the adopted replacement session is org-less and carries no admin role — so the guard fired on the very next render and won the race against the deliberate navigation to `/no-org`, landing the user on the deleted org's dashboard where every query 404s. The guard is skipped for an org this tab just deleted, which is exactly the window in which its verdict is meaningless ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **web:** the favicon and manifest resolve from the app base instead of the current SPA route. The links were bare relative hrefs, so on a nested route the browser asked for `/dash0/orgs/x/checks/favicon.svg`, got the index.html SPA fallback where it expected an image, and fell back to the default icon. Anchoring them at `/` lets the build rebase them onto the app base, and an e2e test asserts the icon resolves from a deep route ([#212](https://github.com/fclairamb/solidping/issues/212))
-* **deps:** update module golang.org/x/crypto to v0.55.0 ([#210](https://github.com/fclairamb/solidping/issues/210)) ([c0dbdff](https://github.com/fclairamb/solidping/commit/c0dbdff71172c6acecfcfb5e8513d62d709af356))
+* **availability:** a 365-day or year-to-date availability window reports on the whole window
+  instead of silently covering only the most recent ~2 months. The window query never read the
+  terminal `month` rollups, and with the tightened default retention everything older than the
+  day tier's two months lives only there; the union now includes the month tier — the tiers stay
+  disjoint by construction, so nothing double-counts — and the endpoint's 12-month lookback
+  rejection, a data-horizon guard the same change made obsolete, became a 10-year input-sanity
+  cap, so multi-year windows are now valid
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **telegram:** the notifications page's Test button reaches Telegram. Test dispatch knew email,
+  Slack and web push but had no Telegram case, so it fell through to a generic "provider not
+  configured" 422 — on the one button a user presses to confirm the setup they have just
+  finished, while real escalation delivery through the same contact worked. Sending a test needs
+  only the bot token, matching alert dispatch, so it also works on an instance whose bot
+  username is not known yet ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **telegram:** a bot username derived at boot is written down even when the startup lookup
+  missed it. The synchronous resolver gets one `getMe` bounded to three seconds so it cannot
+  delay boot; when that call lost a race with a cold DNS cache the username stayed unknown and
+  nothing was persisted, so the connect surface answered "telegram is not configured" on every
+  later request while the asynchronous bootstrap — which has a far more generous budget — had
+  already succeeded and logged "Telegram bot ready". The bootstrap now persists what it learned,
+  so the next restart resolves the username from the database with no network call at all
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **dash0:** the org-admin guard no longer strands the deleter on the dead slug. The
+  organization layout bounces a non-admin to `/orgs/$org` during render, and right after an
+  owner deleted their last organization the adopted replacement session is org-less and carries
+  no admin role — so the guard fired on the very next render and won the race against the
+  deliberate navigation to `/no-org`, landing the user on the deleted org's dashboard where
+  every query 404s. The guard is skipped for an org this tab just deleted, which is exactly the
+  window in which its verdict is meaningless
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **web:** the favicon and manifest resolve from the app base instead of the current SPA route.
+  The links were bare relative hrefs, so on a nested route the browser asked for
+  `/dash0/orgs/x/checks/favicon.svg`, got the index.html SPA fallback where it expected an
+  image, and fell back to the default icon. Anchoring them at `/` lets the build rebase them
+  onto the app base, and an e2e test asserts the icon resolves from a deep route
+  ([#212](https://github.com/fclairamb/solidping/issues/212))
+* **deps:** update module golang.org/x/crypto to v0.55.0
+  ([#210](https://github.com/fclairamb/solidping/issues/210))
+  ([c0dbdff](https://github.com/fclairamb/solidping/commit/c0dbdff71172c6acecfcfb5e8513d62d709af356))
 
 ## [0.12.0](https://github.com/fclairamb/solidping/compare/v0.11.0...v0.12.0) (2026-08-10)
 
 
 ### Features
 
-* **telegram:** Telegram joins the alert channels, driven by an instance-owned bot. A user connects by following a one-time deep link that opens a chat with the bot, and escalations are dispatched there with per-incident threading, so a single incident stays one conversation rather than a stream of unrelated messages. The dashboard's notifications page hosts the connect and reconnect flow, and a public capability flag lets the frontend hide the channel entirely on an instance that has no bot configured ([#209](https://github.com/fclairamb/solidping/issues/209)) ([f1dd548](https://github.com/fclairamb/solidping/commit/f1dd5483326ada48147f194703fc44aad56d98ee))
-* **telegram:** a bot token is the only setting an operator has to provide. The bot's username and the webhook secret are derived from the token at boot and persisted, the webhook is re-registered on every start so a rotated secret converges on its own, and `SP_TELEGRAM_ENABLED` became a tri-state switch — unset means "on if a token is present", leaving an explicit `true`/`false` as a deliberate override ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **whatsapp:** WhatsApp alerts carry a button linking straight to the check, so a page can be acted on without hunting for the check in the dashboard ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **embed:** the embedded status widget links back to the status page by default, with a `data-link="false"` opt-out for pages that would rather not navigate away. The dashboard's widget card exposes it as a toggle ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **heartbeat:** a heartbeat ping can report how long the job it guards actually took — `durationMs` in the structured body is threaded into the recorded result's duration instead of being discarded ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **checks:** the checks list serves each check's last status change directly, so "how long has this been up" no longer has to be reconstructed from result history ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **dash0:** each row of the account Organizations list gets a direct Settings shortcut, replacing a switch-then-navigate detour ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** Telegram joins the alert channels, driven by an instance-owned bot. A user
+  connects by following a one-time deep link that opens a chat with the bot, and escalations are
+  dispatched there with per-incident threading, so a single incident stays one conversation
+  rather than a stream of unrelated messages. The dashboard's notifications page hosts the
+  connect and reconnect flow, and a public capability flag lets the frontend hide the channel
+  entirely on an instance that has no bot configured
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+  ([f1dd548](https://github.com/fclairamb/solidping/commit/f1dd5483326ada48147f194703fc44aad56d98ee))
+* **telegram:** a bot token is the only setting an operator has to provide. The bot's username
+  and the webhook secret are derived from the token at boot and persisted, the webhook is
+  re-registered on every start so a rotated secret converges on its own, and
+  `SP_TELEGRAM_ENABLED` became a tri-state switch — unset means "on if a token is present",
+  leaving an explicit `true`/`false` as a deliberate override
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **whatsapp:** WhatsApp alerts carry a button linking straight to the check, so a page can be
+  acted on without hunting for the check in the dashboard
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **embed:** the embedded status widget links back to the status page by default, with a
+  `data-link="false"` opt-out for pages that would rather not navigate away. The dashboard's
+  widget card exposes it as a toggle ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **heartbeat:** a heartbeat ping can report how long the job it guards actually took —
+  `durationMs` in the structured body is threaded into the recorded result's duration instead of
+  being discarded ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **checks:** the checks list serves each check's last status change directly, so "how long has
+  this been up" no longer has to be reconstructed from result history
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **dash0:** each row of the account Organizations list gets a direct Settings shortcut,
+  replacing a switch-then-navigate detour
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
 
 
 ### Bug Fixes
 
-* **checks:** the checks list no longer burns a CPU core. Last-result lookups descend a per-check index instead of sequentially scanning the results table, a live results event refreshes only what changed rather than refetching the whole list, and the steady-state poll runs every 10s as intended. Regression tests assert the absence of sequential scans and of temp-file spill, each with a positive control ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **api:** `getCheck` declares its `with` query parameter in the OpenAPI spec — the endpoint accepted it but never advertised it, so generated clients could not pass it ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **telegram:** an escalation with no severity set can page Telegram, instead of being silently dropped ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **telegram:** a connect attempt from a group chat, or with an empty chat id, is refused rather than producing a contact that can never be delivered to ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **telegram:** a bare `SP_TELEGRAM_ENABLED=` is read as unset rather than as an explicit "off" ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **docs:** the WhatsApp template instructions match what Meta actually accepts, and the placeholder code spans stay on one line so MDX can parse them ([#209](https://github.com/fclairamb/solidping/issues/209))
-* **deps:** update go dependencies (non-major) ([#207](https://github.com/fclairamb/solidping/issues/207)) ([24985eb](https://github.com/fclairamb/solidping/commit/24985eb906fb6b1ce85463ff3a56a4ee2b54cc62))
+* **checks:** the checks list no longer burns a CPU core. Last-result lookups descend a
+  per-check index instead of sequentially scanning the results table, a live results event
+  refreshes only what changed rather than refetching the whole list, and the steady-state poll
+  runs every 10s as intended. Regression tests assert the absence of sequential scans and of
+  temp-file spill, each with a positive control
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **api:** `getCheck` declares its `with` query parameter in the OpenAPI spec — the endpoint
+  accepted it but never advertised it, so generated clients could not pass it
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** an escalation with no severity set can page Telegram, instead of being silently
+  dropped ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** a connect attempt from a group chat, or with an empty chat id, is refused rather
+  than producing a contact that can never be delivered to
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **telegram:** a bare `SP_TELEGRAM_ENABLED=` is read as unset rather than as an explicit "off"
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **docs:** the WhatsApp template instructions match what Meta actually accepts, and the
+  placeholder code spans stay on one line so MDX can parse them
+  ([#209](https://github.com/fclairamb/solidping/issues/209))
+* **deps:** update go dependencies (non-major)
+  ([#207](https://github.com/fclairamb/solidping/issues/207))
+  ([24985eb](https://github.com/fclairamb/solidping/commit/24985eb906fb6b1ce85463ff3a56a4ee2b54cc62))
 
 ## [0.11.0](https://github.com/fclairamb/solidping/compare/v0.10.0...v0.11.0) (2026-08-09)
 
 
 ### ⚠ BREAKING CHANGES
 
-* **members:** the member-management write routes (`POST`/`PATCH`/`DELETE /api/v1/orgs/:org/members`) are now admin-only. Any member of an organization — including a read-only `viewer` — could previously add members, change other members' roles (including promoting themselves to `admin`) and remove members; there was no admin check on the routes or in the handlers. Reads stay open to every member, because the escalation-policy editor and the member picker need them. An integration that wrote members with a non-admin token now receives a `403 FORBIDDEN` ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **cli:** `sp auth login` now uses the RFC 8628 device-authorization flow, replacing the loopback-browser flow. A host with no browser — a server, a container, an SSH session — can authenticate by visiting a URL elsewhere and entering a code, and the CLI no longer opens a local listening port to catch a redirect ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **orgs:** deleting an organization is owner-only and requires confirming the slug. Organization creators become `owner`, and every role gate is now hierarchy-aware, so an `admin` no longer inherits the ability to remove the organization or to touch an owner ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **integrations:** saving a Twilio connection now verifies the credentials against Twilio before persisting. A wrong Account SID or auth token — or one belonging to a different region than the connection declares — is rejected at configuration time with a `VALIDATION_ERROR` rather than failing silently at 3 a.m. on the first page ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **members:** the member-management write routes
+  (`POST`/`PATCH`/`DELETE /api/v1/orgs/:org/members`) are now admin-only. Any member of an
+  organization — including a read-only `viewer` — could previously add members, change other
+  members' roles (including promoting themselves to `admin`) and remove members; there was no
+  admin check on the routes or in the handlers. Reads stay open to every member, because the
+  escalation-policy editor and the member picker need them. An integration that wrote members
+  with a non-admin token now receives a `403 FORBIDDEN`
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **cli:** `sp auth login` now uses the RFC 8628 device-authorization flow, replacing the
+  loopback-browser flow. A host with no browser — a server, a container, an SSH session — can
+  authenticate by visiting a URL elsewhere and entering a code, and the CLI no longer opens a
+  local listening port to catch a redirect
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **orgs:** deleting an organization is owner-only and requires confirming the slug.
+  Organization creators become `owner`, and every role gate is now hierarchy-aware, so an
+  `admin` no longer inherits the ability to remove the organization or to touch an owner
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **integrations:** saving a Twilio connection now verifies the credentials against Twilio
+  before persisting. A wrong Account SID or auth token — or one belonging to a different region
+  than the connection declares — is rejected at configuration time with a `VALIDATION_ERROR`
+  rather than failing silently at 3 a.m. on the first page
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
 
 ### Features
 
-* **orgs:** an `owner` role sits above `admin`, with the privilege hierarchy enforced against the live membership row rather than the JWT claim. Only an owner may grant ownership, modify or remove another owner, or delete the organization, and the last owner cannot be removed ([#204](https://github.com/fclairamb/solidping/issues/204)) ([e4c9cb7](https://github.com/fclairamb/solidping/commit/e4c9cb791c114d7da0881737bb8ea6ab4689dfa8))
-* **orgs:** organizations get an editable profile — display name, uploaded logo, and a slug rename that keeps working. Previous slugs are stored and redirect across every org-scoped API group, so renaming no longer breaks dashboard links, status pages, badges or embedded widgets; aliases are released at the database choke points and replaced logo files are retired ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **orgs:** a user who already belongs to an organization can create another one. A new Organizations tab in the account section lists every org with its logo, slug and the user's role, marks the current one, switches between them, and hosts the create form — previously reachable only by hand-typing `/no-org` or calling the API ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **status pages:** a status page can now be embedded anywhere. A public summary endpoint exposes the server-computed rollup, an SVG badge endpoint renders it as an image, and a JavaScript widget served from `/embed/v1/widget.js` drops a live status block into any page — with `data-force-status` and `data-size` attributes, a live preview, size selection and label overrides in the dashboard's appearance settings ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **cli:** the device-authorization flow is backed by RFC 8628 endpoints with org-bound consent, persisted request storage on both database dialects, and a dashboard consent page with an org picker ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **checks:** a check can be pinned to an address family with a shared `ipVersion` option, so an IPv4-only or IPv6-only probe is a deliberate choice rather than whatever the resolver returned. Invalid, unsupported and tunneled values are rejected at write time, the dashboard shows which family the probe actually used, and Better Stack imports carry `ip_version` across with a warning about its both-families default ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **checks:** HTTP checks gain `verifySsl` and `followRedirects` options, exposed as dashboard toggles and mapped by the importers instead of being warned about and dropped ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **integrations:** a Twilio connection can name its region, so an account provisioned in Ireland (`ie1`) or Australia (`au1`) works instead of every request landing on US1 and failing authentication. The region is validated by format rather than an allowlist, so a region Twilio adds later needs no code change, and it resolves the API base on all three paths — escalation SMS, escalation voice, and phone-contact verification ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **auth:** federated-login and Slack organization joins go through one shared admission policy, so who may be admitted into an org is decided at a single chokepoint rather than per-provider. Slack workspace members are admitted into their linked org through it, and the Slack app install routes through the same gate ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **entitlements:** the billing service authenticates by signing its requests — HMAC-SHA256 over timestamp, method, path and body digest — with independent key sets per direction, so keys rotate without a lockstep restart. The legacy static bearer still works but is now gated and logged as deprecated ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **config:** `SP_NODE_ROLE` accepts a comma-separated list, so one node can run `api` and `jobs` without also running checks ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **docs:** the documentation site gets offline local search ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **orgs:** an `owner` role sits above `admin`, with the privilege hierarchy enforced against
+  the live membership row rather than the JWT claim. Only an owner may grant ownership, modify
+  or remove another owner, or delete the organization, and the last owner cannot be removed
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+  ([e4c9cb7](https://github.com/fclairamb/solidping/commit/e4c9cb791c114d7da0881737bb8ea6ab4689dfa8))
+* **orgs:** organizations get an editable profile — display name, uploaded logo, and a slug
+  rename that keeps working. Previous slugs are stored and redirect across every org-scoped API
+  group, so renaming no longer breaks dashboard links, status pages, badges or embedded widgets;
+  aliases are released at the database choke points and replaced logo files are retired
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **orgs:** a user who already belongs to an organization can create another one. A new
+  Organizations tab in the account section lists every org with its logo, slug and the user's
+  role, marks the current one, switches between them, and hosts the create form — previously
+  reachable only by hand-typing `/no-org` or calling the API
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **status pages:** a status page can now be embedded anywhere. A public summary endpoint
+  exposes the server-computed rollup, an SVG badge endpoint renders it as an image, and a
+  JavaScript widget served from `/embed/v1/widget.js` drops a live status block into any page —
+  with `data-force-status` and `data-size` attributes, a live preview, size selection and label
+  overrides in the dashboard's appearance settings
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **cli:** the device-authorization flow is backed by RFC 8628 endpoints with org-bound consent,
+  persisted request storage on both database dialects, and a dashboard consent page with an org
+  picker ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **checks:** a check can be pinned to an address family with a shared `ipVersion` option, so an
+  IPv4-only or IPv6-only probe is a deliberate choice rather than whatever the resolver
+  returned. Invalid, unsupported and tunneled values are rejected at write time, the dashboard
+  shows which family the probe actually used, and Better Stack imports carry `ip_version` across
+  with a warning about its both-families default
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **checks:** HTTP checks gain `verifySsl` and `followRedirects` options, exposed as dashboard
+  toggles and mapped by the importers instead of being warned about and dropped
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **integrations:** a Twilio connection can name its region, so an account provisioned in
+  Ireland (`ie1`) or Australia (`au1`) works instead of every request landing on US1 and failing
+  authentication. The region is validated by format rather than an allowlist, so a region Twilio
+  adds later needs no code change, and it resolves the API base on all three paths — escalation
+  SMS, escalation voice, and phone-contact verification
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **auth:** federated-login and Slack organization joins go through one shared admission policy,
+  so who may be admitted into an org is decided at a single chokepoint rather than per-provider.
+  Slack workspace members are admitted into their linked org through it, and the Slack app
+  install routes through the same gate
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **entitlements:** the billing service authenticates by signing its requests — HMAC-SHA256 over
+  timestamp, method, path and body digest — with independent key sets per direction, so keys
+  rotate without a lockstep restart. The legacy static bearer still works but is now gated and
+  logged as deprecated ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **config:** `SP_NODE_ROLE` accepts a comma-separated list, so one node can run `api` and
+  `jobs` without also running checks ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **docs:** the documentation site gets offline local search
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
 
 ### Bug Fixes
 
-* **checks:** an address-family failure now reports the same status on every check type, instead of surfacing differently depending on which checker ran ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **orgs:** a deleted organization's internal checks are stopped along with it ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **dash0:** editing an organization's name no longer rewrites its slug. The slug is a load-bearing address, so moving it is now always something the user typed on purpose rather than a side effect of retitling ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **slack:** the Slack auto-join opt-out fails closed, and how to set it is documented ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **deps:** `go generate` for the API client works again — `go-yit` had drifted past the `yaml-jsonpath` version `oapi-codegen` requires, breaking the tool's own build ([#204](https://github.com/fclairamb/solidping/issues/204))
-* **migrations:** the unreleased migration is named `010_v0_10_0` rather than `v0_9_0`, so a consolidated release-cycle migration is not silently skipped against a database that already recorded the older number ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **checks:** an address-family failure now reports the same status on every check type, instead
+  of surfacing differently depending on which checker ran
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **orgs:** a deleted organization's internal checks are stopped along with it
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **dash0:** editing an organization's name no longer rewrites its slug. The slug is a
+  load-bearing address, so moving it is now always something the user typed on purpose rather
+  than a side effect of retitling ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **slack:** the Slack auto-join opt-out fails closed, and how to set it is documented
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **deps:** `go generate` for the API client works again — `go-yit` had drifted past the
+  `yaml-jsonpath` version `oapi-codegen` requires, breaking the tool's own build
+  ([#204](https://github.com/fclairamb/solidping/issues/204))
+* **migrations:** the unreleased migration is named `010_v0_10_0` rather than `v0_9_0`, so a
+  consolidated release-cycle migration is not silently skipped against a database that already
+  recorded the older number ([#204](https://github.com/fclairamb/solidping/issues/204))
 
 ## [0.10.0](https://github.com/fclairamb/solidping/compare/v0.9.0...v0.10.0) (2026-08-08)
 
 
 ### Features
 
-* **checkers:** ClickHouse health checks over the native protocol ([#203](https://github.com/fclairamb/solidping/issues/203)) ([57d6f67](https://github.com/fclairamb/solidping/commit/57d6f670484827a87164810007b3960e2926cc13))
+* **checkers:** ClickHouse health checks over the native protocol
+  ([#203](https://github.com/fclairamb/solidping/issues/203))
+  ([57d6f67](https://github.com/fclairamb/solidping/commit/57d6f670484827a87164810007b3960e2926cc13))
 
 
 ### Bug Fixes
 
-* **deps:** update dependency motion to v13 ([#202](https://github.com/fclairamb/solidping/issues/202)) ([5425dcf](https://github.com/fclairamb/solidping/commit/5425dcffee6413c491d5a09ba0ff0886cb19b96f))
-* **deps:** update github.com/dop251/goja digest to 493f220 ([#200](https://github.com/fclairamb/solidping/issues/200)) ([d029a09](https://github.com/fclairamb/solidping/commit/d029a092c129eaecb8b2a58b2278a74dfb887137))
+* **deps:** update dependency motion to v13
+  ([#202](https://github.com/fclairamb/solidping/issues/202))
+  ([5425dcf](https://github.com/fclairamb/solidping/commit/5425dcffee6413c491d5a09ba0ff0886cb19b96f))
+* **deps:** update github.com/dop251/goja digest to 493f220
+  ([#200](https://github.com/fclairamb/solidping/issues/200))
+  ([d029a09](https://github.com/fclairamb/solidping/commit/d029a092c129eaecb8b2a58b2278a74dfb887137))
 
 ## [0.9.0](https://github.com/fclairamb/solidping/compare/v0.8.0...v0.9.0) (2026-08-07)
 
 
 ### Features
 
-* **cli:** config-as-code for checks. `sp checks export` / `import` round-trip a whole check catalog as YAML, `sp checks diff` shows what an import would change before it runs, and `sp checks validate` accepts a complete export document offline — no server, no credentials — so a catalog can be linted in CI ([#198](https://github.com/fclairamb/solidping/issues/198)) ([ec971d6](https://github.com/fclairamb/solidping/commit/ec971d676c3a120b89803bfedd8f87c45ed38396))
-* **config:** `SP_NODE_NAME` overrides a worker's identity instead of deriving it from `os.Hostname()`. Worker identity becomes a deployment decision rather than an accident of the container's UTS namespace, which unblocks running check workers under Kubernetes `hostNetwork: true` — there the pod's `spec.hostname` is ignored and the node name, dots and all, is rejected by the `workers.slug` constraint. It also fixes silent slug collisions: two workers whose hostnames shared their first 15 characters previously collapsed onto one `workers` row and fought over it. The check worker and the job worker now share one identity helper, and a truncated hostname logs a warning naming the resulting slug ([#198](https://github.com/fclairamb/solidping/issues/198))
-* **config:** an illegal worker slug now fails fast at startup with a message naming the offending value and `SP_NODE_NAME`, instead of surfacing as an opaque Postgres constraint violation after the worker has already started and silently failed to register ([#198](https://github.com/fclairamb/solidping/issues/198))
-* **docs:** a Tour page that shows the product in motion. A regenerable Playwright pipeline (`make showcase`) drives the real dashboard to produce screenshots and an AV1 screen recording of the create-an-HTTP-check flow, so the docs site finally shows what SolidPing looks like instead of only describing it. The media regenerates on demand rather than rotting as the UI changes ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **cli:** config-as-code for checks. `sp checks export` / `import` round-trip a whole check
+  catalog as YAML, `sp checks diff` shows what an import would change before it runs, and
+  `sp checks validate` accepts a complete export document offline — no server, no credentials —
+  so a catalog can be linted in CI ([#198](https://github.com/fclairamb/solidping/issues/198))
+  ([ec971d6](https://github.com/fclairamb/solidping/commit/ec971d676c3a120b89803bfedd8f87c45ed38396))
+* **config:** `SP_NODE_NAME` overrides a worker's identity instead of deriving it from
+  `os.Hostname()`. Worker identity becomes a deployment decision rather than an accident of the
+  container's UTS namespace, which unblocks running check workers under Kubernetes
+  `hostNetwork: true` — there the pod's `spec.hostname` is ignored and the node name, dots and
+  all, is rejected by the `workers.slug` constraint. It also fixes silent slug collisions: two
+  workers whose hostnames shared their first 15 characters previously collapsed onto one
+  `workers` row and fought over it. The check worker and the job worker now share one identity
+  helper, and a truncated hostname logs a warning naming the resulting slug
+  ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **config:** an illegal worker slug now fails fast at startup with a message naming the
+  offending value and `SP_NODE_NAME`, instead of surfacing as an opaque Postgres constraint
+  violation after the worker has already started and silently failed to register
+  ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **docs:** a Tour page that shows the product in motion. A regenerable Playwright pipeline
+  (`make showcase`) drives the real dashboard to produce screenshots and an AV1 screen recording
+  of the create-an-HTTP-check flow, so the docs site finally shows what SolidPing looks like
+  instead of only describing it. The media regenerates on demand rather than rotting as the UI
+  changes ([#198](https://github.com/fclairamb/solidping/issues/198))
 
 
 ### Bug Fixes
 
-* **agents:** agent private keys are never written to logs or stdout. Key material was previously echoed during agent bootstrap; printing it now requires opting in explicitly with `SP_AGENT_PRINT_KEYS`. A malformed `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` entry is no longer echoed into the logs either ([#198](https://github.com/fclairamb/solidping/issues/198))
-* **checks:** `ValidateDocument` no longer mutates the document it was handed, so validating an export could no longer alter it before import ([#198](https://github.com/fclairamb/solidping/issues/198))
-* **e2e:** end-to-end specs no longer silently test the wrong server. Specs across the dashboard and the public status page read a dead `E2E_API_BASE` variable or a hardcoded `localhost:4000`, so they hit the local dev loop regardless of `E2E_BASE_URL` — a suite pointed at a test server was quietly validating something else entirely. Both suites now derive their origin from a shared fixtures module, with a lint guard in each config so it cannot regress ([#198](https://github.com/fclairamb/solidping/issues/198))
-* **e2e:** session-sensitive tests get a dedicated login instead of mutating the shared worker session, removing a source of cross-test flakiness ([#198](https://github.com/fclairamb/solidping/issues/198))
-* **e2e:** the `kubernetes-cluster` spec cleans up after itself when an assertion fails, instead of leaking state into later tests ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **agents:** agent private keys are never written to logs or stdout. Key material was
+  previously echoed during agent bootstrap; printing it now requires opting in explicitly with
+  `SP_AGENT_PRINT_KEYS`. A malformed `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` entry is no longer
+  echoed into the logs either ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **checks:** `ValidateDocument` no longer mutates the document it was handed, so validating an
+  export could no longer alter it before import
+  ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **e2e:** end-to-end specs no longer silently test the wrong server. Specs across the dashboard
+  and the public status page read a dead `E2E_API_BASE` variable or a hardcoded
+  `localhost:4000`, so they hit the local dev loop regardless of `E2E_BASE_URL` — a suite
+  pointed at a test server was quietly validating something else entirely. Both suites now
+  derive their origin from a shared fixtures module, with a lint guard in each config so it
+  cannot regress ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **e2e:** session-sensitive tests get a dedicated login instead of mutating the shared worker
+  session, removing a source of cross-test flakiness
+  ([#198](https://github.com/fclairamb/solidping/issues/198))
+* **e2e:** the `kubernetes-cluster` spec cleans up after itself when an assertion fails, instead
+  of leaking state into later tests ([#198](https://github.com/fclairamb/solidping/issues/198))
 
 ## [0.8.0](https://github.com/fclairamb/solidping/compare/v0.7.1...v0.8.0) (2026-08-05)
 
 
 ### Features
 
-* **status pages:** per-page availability colour thresholds. Each status page can now set its own green/amber floors instead of everything being judged against a hardcoded 99.9/99.0, via a new typed `settings` JSONB column on `status_pages`. The public payload always exposes the resolved effective values, so consumers never need to know the defaults. Badges deliberately stay on the global defaults — they are check-scoped and have no page context ([#196](https://github.com/fclairamb/solidping/issues/196))
-* **status pages:** small-bucket availability calibration. A bucket with exactly one failed sample now renders at worst amber, never red; red requires at least two failures. This fixes the cliff where a single failed minute painted a whole hour red on 1-minute checks, so bar harshness reflects incident severity rather than check frequency ([#196](https://github.com/fclairamb/solidping/issues/196))
-* **dash0:** list-page search boxes sync to the URL as `?q=`. Filtered views on checks, status updates, status pages, maintenance windows, integrations, escalation policies and dependencies are now shareable and bookmarkable, and survive a reload or back-navigation ([#196](https://github.com/fclairamb/solidping/issues/196))
-* **agents:** fleet-wide Agents view on the server page, backed by a new superadmin `GET /api/v1/system/agents`. Platform-operated `kind='system'` agents belong to no organization and were previously listed nowhere — visible only by querying the database by hand. Includes a staleness cue for agents unheard-from for more than five minutes, since the GC only retires them after seven days ([#196](https://github.com/fclairamb/solidping/issues/196))
-* **slugs:** entity slug maximum raised from 20/40/50 to 100 characters, consistently across checks, check groups, status pages and severities. Long descriptive names are no longer rejected or silently truncated. Organization slugs (a URL path segment and JWT claim) and private region slugs are deliberately unchanged ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **status pages:** per-page availability colour thresholds. Each status page can now set its
+  own green/amber floors instead of everything being judged against a hardcoded 99.9/99.0, via a
+  new typed `settings` JSONB column on `status_pages`. The public payload always exposes the
+  resolved effective values, so consumers never need to know the defaults. Badges deliberately
+  stay on the global defaults — they are check-scoped and have no page context
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **status pages:** small-bucket availability calibration. A bucket with exactly one failed
+  sample now renders at worst amber, never red; red requires at least two failures. This fixes
+  the cliff where a single failed minute painted a whole hour red on 1-minute checks, so bar
+  harshness reflects incident severity rather than check frequency
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **dash0:** list-page search boxes sync to the URL as `?q=`. Filtered views on checks, status
+  updates, status pages, maintenance windows, integrations, escalation policies and dependencies
+  are now shareable and bookmarkable, and survive a reload or back-navigation
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **agents:** fleet-wide Agents view on the server page, backed by a new superadmin
+  `GET /api/v1/system/agents`. Platform-operated `kind='system'` agents belong to no
+  organization and were previously listed nowhere — visible only by querying the database by
+  hand. Includes a staleness cue for agents unheard-from for more than five minutes, since the
+  GC only retires them after seven days
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **slugs:** entity slug maximum raised from 20/40/50 to 100 characters, consistently across
+  checks, check groups, status pages and severities. Long descriptive names are no longer
+  rejected or silently truncated. Organization slugs (a URL path segment and JWT claim) and
+  private region slugs are deliberately unchanged
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
 
 
 ### Bug Fixes
 
-* **checkers:** retry transient DNS failures instead of burning the whole check budget ([#194](https://github.com/fclairamb/solidping/issues/194)) ([deda12e](https://github.com/fclairamb/solidping/commit/deda12e480e1f0ccab08793afa6b79136912827d))
-* **db:** widen the slug length CHECK constraints that shadowed the application-level limit. Both dialects capped slugs at 40/50 characters in the database, so a longer slug passed validation and then failed at write time ([#196](https://github.com/fclairamb/solidping/issues/196))
-* **dash0:** stop the new `?q=` write-back from looping on a logged-out deep link, which nested `returnTo` one level deeper on each pass until the renderer hung ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **checkers:** retry transient DNS failures instead of burning the whole check budget
+  ([#194](https://github.com/fclairamb/solidping/issues/194))
+  ([deda12e](https://github.com/fclairamb/solidping/commit/deda12e480e1f0ccab08793afa6b79136912827d))
+* **db:** widen the slug length CHECK constraints that shadowed the application-level limit.
+  Both dialects capped slugs at 40/50 characters in the database, so a longer slug passed
+  validation and then failed at write time
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **dash0:** stop the new `?q=` write-back from looping on a logged-out deep link, which nested
+  `returnTo` one level deeper on each pass until the renderer hung
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
 
 
 ### Miscellaneous Chores
 
-* **fly:** deployment config for the Tokyo (`jp-1`) platform check agent, with identity pinned via `SP_AGENT_KEYS` so the agent row stays stable across deploys ([#196](https://github.com/fclairamb/solidping/issues/196))
+* **fly:** deployment config for the Tokyo (`jp-1`) platform check agent, with identity pinned
+  via `SP_AGENT_KEYS` so the agent row stays stable across deploys
+  ([#196](https://github.com/fclairamb/solidping/issues/196))
 
 ## [0.7.1](https://github.com/fclairamb/solidping/compare/v0.7.0...v0.7.1) (2026-08-04)
 
 
 ### Bug Fixes
 
-* **deps:** Go dependencies rolled forward — koanf (`v2`, and the json/yaml/env/structs providers), `docker/go-connections` v0.8.1, `go.uber.org/zap` v1.28.0, and the OTel OTLP trace/metric exporters v1.45.0. The OTel **log** signal (`otel/log`, `otel/sdk/log`, and the two `otlplog` exporters) is deliberately held at 0.20.x: `contrib/bridges/otelslog` is only released up to v0.19.0, which is built against the v0.20.0 API, so advancing the log modules alone breaks the build (`undefined: log.Value` / `log.KeyValue`). A Renovate rule pins them until the bridge catches up. ([#190](https://github.com/fclairamb/solidping/issues/190)) ([e090f93](https://github.com/fclairamb/solidping/commit/e090f93d04313553e1150ea5d2e0d2973639e77e))
+* **deps:** Go dependencies rolled forward — koanf (`v2`, and the json/yaml/env/structs
+  providers), `docker/go-connections` v0.8.1, `go.uber.org/zap` v1.28.0, and the OTel OTLP
+  trace/metric exporters v1.45.0. The OTel **log** signal (`otel/log`, `otel/sdk/log`, and the
+  two `otlplog` exporters) is deliberately held at 0.20.x: `contrib/bridges/otelslog` is only
+  released up to v0.19.0, which is built against the v0.20.0 API, so advancing the log modules
+  alone breaks the build (`undefined: log.Value` / `log.KeyValue`). A Renovate rule pins them
+  until the bridge catches up. ([#190](https://github.com/fclairamb/solidping/issues/190))
+  ([e090f93](https://github.com/fclairamb/solidping/commit/e090f93d04313553e1150ea5d2e0d2973639e77e))
 
 ## [0.7.0](https://github.com/fclairamb/solidping/compare/v0.6.2...v0.7.0) (2026-08-04)
 
@@ -649,376 +2255,1156 @@ Two batches landed in this release: [#170](https://github.com/fclairamb/solidpin
 
 #### Status pages
 
-* **custom domains + TLS:** custom domains are now single-CNAME with automatic HTTPS — mode-aware verification (`shared`/`token`), a new DB-backed `tls_storage` layer (migration `009_v0_8_0`), and an in-server ACME edge (`certmagic`, Let's Encrypt, on-demand gate on `:80`/`:443`) that issues, persists and reuses certificates without an external TLS proxy; dash0 shows a certificate-status chip on the custom-domain field. The external-proxy path is kept as an alternative rather than removed. ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3)), ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **appearance (custom CSS):** status pages can now be visually customized — a new dash0 route (`/orgs/:org/status-pages/:uid/appearance`) pairs a monospace CSS editor with a live preview `iframe` that renders through the actual production status0 page, updated via a 300ms-debounced, origin-checked `postMessage` (no server round-trip). `customCss` is exposed end-to-end (DB column, storage services, API DTOs, CLI `--custom-css`/`--custom-css-file`, MCP tools), capped at 64 KB with `@import` rejected (external `url()` stays allowed), and rendered on the public page as a React text child so a stray `</style>` can't break out. Documented with the full CSS variables theming API (`--brand`, `--background`, `--foreground`, status colors, `.dark`, …) and covered by Playwright E2E. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **appearance (theming hooks):** custom CSS can now retarget the page logo and the version string, which previously had no stable hook to style against. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **group resources:** a status page can publish a check *group* as a single resource, so a host monitored by several checks reads as one line to subscribers instead of leaking your internal monitoring topology. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **custom domains + TLS:** custom domains are now single-CNAME with automatic HTTPS —
+  mode-aware verification (`shared`/`token`), a new DB-backed `tls_storage` layer (migration
+  `009_v0_8_0`), and an in-server ACME edge (`certmagic`, Let's Encrypt, on-demand gate on
+  `:80`/`:443`) that issues, persists and reuses certificates without an external TLS proxy;
+  dash0 shows a certificate-status chip on the custom-domain field. The external-proxy path is
+  kept as an alternative rather than removed.
+  ([#170](https://github.com/fclairamb/solidping/issues/170))
+  ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3)),
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **appearance (custom CSS):** status pages can now be visually customized — a new dash0 route
+  (`/orgs/:org/status-pages/:uid/appearance`) pairs a monospace CSS editor with a live preview
+  `iframe` that renders through the actual production status0 page, updated via a
+  300ms-debounced, origin-checked `postMessage` (no server round-trip). `customCss` is exposed
+  end-to-end (DB column, storage services, API DTOs, CLI `--custom-css`/`--custom-css-file`, MCP
+  tools), capped at 64 KB with `@import` rejected (external `url()` stays allowed), and rendered
+  on the public page as a React text child so a stray `</style>` can't break out. Documented
+  with the full CSS variables theming API (`--brand`, `--background`, `--foreground`, status
+  colors, `.dark`, …) and covered by Playwright E2E.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **appearance (theming hooks):** custom CSS can now retarget the page logo and the version
+  string, which previously had no stable hook to style against.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **group resources:** a status page can publish a check *group* as a single resource, so a host
+  monitored by several checks reads as one line to subscribers instead of leaking your internal
+  monitoring topology. ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
 
 #### Checks, groups, and hosts
 
-* **check groups (status rollup):** groups now carry an aggregated status, so a host monitored by several checks can be read as one unit rather than as N independent signals. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **checks list (collapsed groups):** grouped checks collapse into a single status row — one dead host no longer reads as four unrelated failures. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **checks by host:** a new view organizes checks by the host they probe, matching the way failures actually correlate in practice. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **check groups (slug):** the group slug is now editable from the dashboard, so DevOps scripts that address groups by slug are no longer stuck with whatever the group was first called. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **heartbeat checks:** the heartbeat token can now be viewed and regenerated from the check page, instead of being visible only at creation. ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
-* **importers:** import existing checks from **Gatus**, **Better Stack**, and **Uptime Kuma**, so moving to SolidPing doesn't mean re-entering a monitoring estate by hand. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **check groups (status rollup):** groups now carry an aggregated status, so a host monitored
+  by several checks can be read as one unit rather than as N independent signals.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **checks list (collapsed groups):** grouped checks collapse into a single status row — one
+  dead host no longer reads as four unrelated failures.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **checks by host:** a new view organizes checks by the host they probe, matching the way
+  failures actually correlate in practice.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **check groups (slug):** the group slug is now editable from the dashboard, so DevOps scripts
+  that address groups by slug are no longer stuck with whatever the group was first called.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **heartbeat checks:** the heartbeat token can now be viewed and regenerated from the check
+  page, instead of being visible only at creation.
+  ([#170](https://github.com/fclairamb/solidping/issues/170))
+  ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
+* **importers:** import existing checks from **Gatus**, **Better Stack**, and **Uptime Kuma**,
+  so moving to SolidPing doesn't mean re-entering a monitoring estate by hand.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
 
 #### Alerting and integrations
 
-* **SMS / voice:** new alert channels that can actually wake someone up — SMS and voice call, alongside the existing chat and email destinations. ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
-* **WhatsApp:** a WhatsApp alert channel driven directly through Meta's Cloud API — no BSP in the middle. Monthly send volume is metered and surfaced on the org Usage page. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **Microsoft Teams:** a Teams notification integration, plus a Slack-grade **Teams bot** with two-way interaction rather than one-way webhook posts. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **escalation policies:** the user picker now shows each user's email next to their name, so same-named users are distinguishable when building a rotation. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **SMS / voice:** new alert channels that can actually wake someone up — SMS and voice call,
+  alongside the existing chat and email destinations.
+  ([#170](https://github.com/fclairamb/solidping/issues/170))
+  ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
+* **WhatsApp:** a WhatsApp alert channel driven directly through Meta's Cloud API — no BSP in
+  the middle. Monthly send volume is metered and surfaced on the org Usage page.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **Microsoft Teams:** a Teams notification integration, plus a Slack-grade **Teams bot** with
+  two-way interaction rather than one-way webhook posts.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **escalation policies:** the user picker now shows each user's email next to their name, so
+  same-named users are distinguishable when building a rotation.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
 
 #### Private locations
 
-* **system agents (fly.io):** cloud/platform workers are generalized into platform-operated "system agents" alongside the existing customer-managed deported agents. Enrollment tokens for platform agents are reconciled declaratively from `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` (not mintable through the org-admin routes — dropping the fly secret is the revocation path), a new self-rescheduling `agent_gc` job retires silent `kind=system` agents after a configurable window (default 7 days) and prunes consumed reconnect nonces, and server-side EWMA cost/delay accounting is now persisted for results submitted over the agent transport, matching the in-process worker's behavior. Adds a fly.io deploy reference (`deploy/fly/`) and an ops runbook. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **system agents (fly.io):** cloud/platform workers are generalized into platform-operated
+  "system agents" alongside the existing customer-managed deported agents. Enrollment tokens for
+  platform agents are reconciled declaratively from `SP_SYSTEM_AGENT_ENROLLMENT_TOKENS` (not
+  mintable through the org-admin routes — dropping the fly secret is the revocation path), a new
+  self-rescheduling `agent_gc` job retires silent `kind=system` agents after a configurable
+  window (default 7 days) and prunes consumed reconnect nonces, and server-side EWMA cost/delay
+  accounting is now persisted for results submitted over the agent transport, matching the
+  in-process worker's behavior. Adds a fly.io deploy reference (`deploy/fly/`) and an ops
+  runbook. ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
 
 #### Platform
 
-* **analytics:** PostHog is now wired into both the backend and the dashboard, so product usage is measurable instead of guessed at. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **docs:** `llms.txt` and `llms-full.txt` are served at the conventional root path (`/llms.txt`), not just under `/docs`, so crawlers find them where they expect (GitHub issue [#183](https://github.com/fclairamb/solidping/issues/183)). ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **entitlements:** `maxCustomDomains` was enforced but invisible — it now appears on the org Usage page and in the wiki, and a cap of `0` renders as a real saturated `0 / 0` row rather than falling through to "Unlimited". ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **analytics:** PostHog is now wired into both the backend and the dashboard, so product usage
+  is measurable instead of guessed at.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **docs:** `llms.txt` and `llms-full.txt` are served at the conventional root path
+  (`/llms.txt`), not just under `/docs`, so crawlers find them where they expect (GitHub issue
+  [#183](https://github.com/fclairamb/solidping/issues/183)).
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **entitlements:** `maxCustomDomains` was enforced but invisible — it now appears on the org
+  Usage page and in the wiki, and a cap of `0` renders as a real saturated `0 / 0` row rather
+  than falling through to "Unlimited".
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
 
 ### Bug Fixes
 
-* **dashboard (check stats):** the dashboard's check counters were wrong for any org with more than 100 checks — they counted the first page rather than the org. Backed by a new cached stats API (GitHub issue [#172](https://github.com/fclairamb/solidping/issues/172)). ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **dashboard (active incidents):** the same class of bug on the incident counter — the "Active incidents" KPI capped at the requested page size (5) because the incidents list endpoint returned no total. The endpoint now returns `pagination.total`, computed from the same filter as the list so the count can't drift from it, and the tile reads the total. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **custom domains (TLS storage, Postgres):** prefix-based lookups in the Postgres TLS store (`TLSStorageList`, and the prefix branch of `TLSStorageDelete`) used a half-open key range (`key >= 'certificates/' AND key < 'certificates0'`) that only matches under the `C` collation — every common non-C collation (including glibc `en_US.utf8`, the default on the official postgres image and most distro installs) primary-ignores `/`, so the range silently matched nothing. On an affected database this meant `customDomainCertStatus` stayed `"none"` forever even after a successful ACME issuance, and a prefix delete could leave certificate private keys behind undeleted. Fixed by switching to a collation-independent `LIKE 'prefix%' ESCAPE '\'` match (the SQLite store is unaffected and intentionally keeps its range comparison — see its code comment). ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **integrations (Google Chat / Mattermost):** the senders read `webhookUrl` while the dashboard saved `webhook_url`, so a webhook configured through the UI never fired. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **checks list (filtering):** empty check groups are hidden while a search or filter is active, instead of leaving a wall of empty group headers behind (GitHub issue [#171](https://github.com/fclairamb/solidping/issues/171)). ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **results (compaction):** aggregation was not transactional — a window of raw rows could survive compaction, leaving duplicated data behind. ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
-* **results (storage):** tier-1 storage trim — dead columns and duplicated payloads dropped from the results table. ([#170](https://github.com/fclairamb/solidping/issues/170)) ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
-* **status0:** a regression guard for the recurring `removeChild` crash, which had no E2E coverage until now. ([#175](https://github.com/fclairamb/solidping/issues/175)) ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
-* **deps:** Go dependencies rolled forward ([#167](https://github.com/fclairamb/solidping/issues/167), [#178](https://github.com/fclairamb/solidping/issues/178), [#184](https://github.com/fclairamb/solidping/issues/184), [#189](https://github.com/fclairamb/solidping/issues/189)), `dop251/goja` ([#159](https://github.com/fclairamb/solidping/issues/159), [#169](https://github.com/fclairamb/solidping/issues/169)), `prometheus/common` to v0.70.1 ([#168](https://github.com/fclairamb/solidping/issues/168)), `sijms/go-ora` to v3 ([#186](https://github.com/fclairamb/solidping/issues/186), [#187](https://github.com/fclairamb/solidping/issues/187)), `vanng822/go-premailer` to v1.35.0 ([#188](https://github.com/fclairamb/solidping/issues/188)), and recharts to v3.10.1 ([#177](https://github.com/fclairamb/solidping/issues/177)).
+* **dashboard (check stats):** the dashboard's check counters were wrong for any org with more
+  than 100 checks — they counted the first page rather than the org. Backed by a new cached
+  stats API (GitHub issue [#172](https://github.com/fclairamb/solidping/issues/172)).
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **dashboard (active incidents):** the same class of bug on the incident counter — the "Active
+  incidents" KPI capped at the requested page size (5) because the incidents list endpoint
+  returned no total. The endpoint now returns `pagination.total`, computed from the same filter
+  as the list so the count can't drift from it, and the tile reads the total.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **custom domains (TLS storage, Postgres):** prefix-based lookups in the Postgres TLS store
+  (`TLSStorageList`, and the prefix branch of `TLSStorageDelete`) used a half-open key range
+  (`key >= 'certificates/' AND key < 'certificates0'`) that only matches under the `C` collation
+  — every common non-C collation (including glibc `en_US.utf8`, the default on the official
+  postgres image and most distro installs) primary-ignores `/`, so the range silently matched
+  nothing. On an affected database this meant `customDomainCertStatus` stayed `"none"` forever
+  even after a successful ACME issuance, and a prefix delete could leave certificate private
+  keys behind undeleted. Fixed by switching to a collation-independent
+  `LIKE 'prefix%' ESCAPE '\'` match (the SQLite store is unaffected and intentionally keeps its
+  range comparison — see its code comment).
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **integrations (Google Chat / Mattermost):** the senders read `webhookUrl` while the dashboard
+  saved `webhook_url`, so a webhook configured through the UI never fired.
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **checks list (filtering):** empty check groups are hidden while a search or filter is active,
+  instead of leaving a wall of empty group headers behind (GitHub issue
+  [#171](https://github.com/fclairamb/solidping/issues/171)).
+  ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **results (compaction):** aggregation was not transactional — a window of raw rows could
+  survive compaction, leaving duplicated data behind.
+  ([#170](https://github.com/fclairamb/solidping/issues/170))
+  ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
+* **results (storage):** tier-1 storage trim — dead columns and duplicated payloads dropped from
+  the results table. ([#170](https://github.com/fclairamb/solidping/issues/170))
+  ([1184b15](https://github.com/fclairamb/solidping/commit/1184b156c27192e2a67f9cc9842b446116e2d9e3))
+* **status0:** a regression guard for the recurring `removeChild` crash, which had no E2E
+  coverage until now. ([#175](https://github.com/fclairamb/solidping/issues/175))
+  ([9ffd436](https://github.com/fclairamb/solidping/commit/9ffd436a4e40f5968439a425824c0525784851d8))
+* **deps:** Go dependencies rolled forward
+  ([#167](https://github.com/fclairamb/solidping/issues/167),
+  [#178](https://github.com/fclairamb/solidping/issues/178),
+  [#184](https://github.com/fclairamb/solidping/issues/184),
+  [#189](https://github.com/fclairamb/solidping/issues/189)), `dop251/goja`
+  ([#159](https://github.com/fclairamb/solidping/issues/159),
+  [#169](https://github.com/fclairamb/solidping/issues/169)), `prometheus/common` to v0.70.1
+  ([#168](https://github.com/fclairamb/solidping/issues/168)), `sijms/go-ora` to v3
+  ([#186](https://github.com/fclairamb/solidping/issues/186),
+  [#187](https://github.com/fclairamb/solidping/issues/187)), `vanng822/go-premailer` to v1.35.0
+  ([#188](https://github.com/fclairamb/solidping/issues/188)), and recharts to v3.10.1
+  ([#177](https://github.com/fclairamb/solidping/issues/177)).
 
 ## [0.6.2](https://github.com/fclairamb/solidping/compare/v0.6.1...v0.6.2) (2026-07-21)
 
 
 ### Bug Fixes
 
-* **checks (DNS):** the check form had no way to assert on what a DNS lookup actually resolved to — it could only confirm the lookup succeeded. A record, AAAA record, and every other supported record type (CNAME, MX, NS, TXT) now expose an "Expected" field: A/AAAA use a chip input (validated as IPv4/IPv6 respectively, invalid entries block save) since a lookup can return multiple IPs, while the others use a one-value-per-line textarea (TXT values may contain spaces, which a chip input would incorrectly split on) matched exactly against the resolved records. The check fails unless every listed value is present; leaving the field empty keeps today's behavior of only requiring a successful resolution. Switching record type always writes only the matching config key, never both (the backend rejects a config carrying both `expected_ips` and `expected_values`). ([#161](https://github.com/fclairamb/solidping/issues/161)) ([d91e60b](https://github.com/fclairamb/solidping/commit/d91e60b60b452d38ba84326e680e932b25bbacec))
+* **checks (DNS):** the check form had no way to assert on what a DNS lookup actually resolved
+  to — it could only confirm the lookup succeeded. A record, AAAA record, and every other
+  supported record type (CNAME, MX, NS, TXT) now expose an "Expected" field: A/AAAA use a chip
+  input (validated as IPv4/IPv6 respectively, invalid entries block save) since a lookup can
+  return multiple IPs, while the others use a one-value-per-line textarea (TXT values may
+  contain spaces, which a chip input would incorrectly split on) matched exactly against the
+  resolved records. The check fails unless every listed value is present; leaving the field
+  empty keeps today's behavior of only requiring a successful resolution. Switching record type
+  always writes only the matching config key, never both (the backend rejects a config carrying
+  both `expected_ips` and `expected_values`).
+  ([#161](https://github.com/fclairamb/solidping/issues/161))
+  ([d91e60b](https://github.com/fclairamb/solidping/commit/d91e60b60b452d38ba84326e680e932b25bbacec))
 
 ## [0.6.1](https://github.com/fclairamb/solidping/compare/v0.6.0...v0.6.1) (2026-07-21)
 
 
 ### Bug Fixes
 
-* **checks (HTTP):** the expected-status field only ever accepted a single numeric code, even though the backend has long supported a list of exact codes and `NXX` wildcards (`4XX`, `5XX`, …) — the UI just never exposed it. The HTTP check form now uses a chip input: type or paste `200 201 4XX` (space/comma/semicolon/Enter-separated) to get one removable chip per code, invalid patterns render as a destructive chip and block save, and a plain `200`-only check keeps saving with neither status key (today's implicit-default behavior, unchanged). Existing checks using the deprecated single `expectedStatus` field keep working and migrate to the list on next save. The chip input itself is a new reusable `TokenChipsInput` shared with (and replacing the bespoke implementation behind) the email-integration recipients field, and is documented in the dashboard's design reference. ([#158](https://github.com/fclairamb/solidping/issues/158)) ([85f6d41](https://github.com/fclairamb/solidping/commit/85f6d41f90f8b9a85ef01bcdafad531e00596215))
+* **checks (HTTP):** the expected-status field only ever accepted a single numeric code, even
+  though the backend has long supported a list of exact codes and `NXX` wildcards (`4XX`, `5XX`,
+  …) — the UI just never exposed it. The HTTP check form now uses a chip input: type or paste
+  `200 201 4XX` (space/comma/semicolon/Enter-separated) to get one removable chip per code,
+  invalid patterns render as a destructive chip and block save, and a plain `200`-only check
+  keeps saving with neither status key (today's implicit-default behavior, unchanged). Existing
+  checks using the deprecated single `expectedStatus` field keep working and migrate to the list
+  on next save. The chip input itself is a new reusable `TokenChipsInput` shared with (and
+  replacing the bespoke implementation behind) the email-integration recipients field, and is
+  documented in the dashboard's design reference.
+  ([#158](https://github.com/fclairamb/solidping/issues/158))
+  ([85f6d41](https://github.com/fclairamb/solidping/commit/85f6d41f90f8b9a85ef01bcdafad531e00596215))
 
 ## [0.6.0](https://github.com/fclairamb/solidping/compare/v0.5.0...v0.6.0) (2026-07-21)
 
 
 ### Features
 
-* **checks (multi-region):** selecting several regions no longer divides the check frequency between them — the configured period now applies **per region**. A 1-minute check on 3 regions runs every minute *in each region* (previously every 3 minutes per region), with executions staggered evenly across the period by default (e.g. +0s / +20s / +40s). A new optional **`regionSpread`** override — a first-class field on the check, exposed as a "Region spread" control on the check form (shown with 2+ regions, all locales) — forces a custom inter-region offset (e.g. `1s` for near-simultaneous sampling to compare cross-region latency); validated `0 ≤ spread < period`, empty reverts to automatic spreading. Existing multi-region checks are migrated by an idempotent startup reconcile (migration `007_v0_6_0`, `checks.region_spread`). (**behavior change**: a multi-region check now actually executes `regions ×` more often and its checks-per-minute consumption is counted as `regions × 60s / period` — the check form and the org Usage page both say so.) ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **check groups:** groups are now manageable end-to-end from the dashboard — a group edit page with an **escalation policy** picker (and a policy indicator on the groups list), direct edit/delete row actions replacing the old overflow menu, delete from the edit page, and a breadcrumb back to the checks index. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **checks (list API):** opt-in **`sort=group`** on `GET /checks` orders results by check group with a composite keyset cursor, so the grouped checks index paginates correctly instead of slicing groups apart across pages; default ordering is unchanged and unknown `sort` values are rejected. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **private locations (deported agents):** a new **`maxDeportedAgents`** entitlement caps how many agents an org can enroll — enforced at both enrollment-token mint and agent enrollment — with agent usage shown on the org Usage page and a SaaS plan-gate ladder documented. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **server (internal):** the HTTP router migrated from the archived `uptrace/bunrouter` to **`go-chi/chi`** behind an in-repo `httpx` adapter that keeps error-returning handlers and the middleware-group ergonomics; route-matching precedence is covered by table-driven parity tests. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **checks (multi-region):** selecting several regions no longer divides the check frequency
+  between them — the configured period now applies **per region**. A 1-minute check on 3 regions
+  runs every minute *in each region* (previously every 3 minutes per region), with executions
+  staggered evenly across the period by default (e.g. +0s / +20s / +40s). A new optional
+  **`regionSpread`** override — a first-class field on the check, exposed as a "Region spread"
+  control on the check form (shown with 2+ regions, all locales) — forces a custom inter-region
+  offset (e.g. `1s` for near-simultaneous sampling to compare cross-region latency); validated
+  `0 ≤ spread < period`, empty reverts to automatic spreading. Existing multi-region checks are
+  migrated by an idempotent startup reconcile (migration `007_v0_6_0`, `checks.region_spread`).
+  (**behavior change**: a multi-region check now actually executes `regions ×` more often and
+  its checks-per-minute consumption is counted as `regions × 60s / period` — the check form and
+  the org Usage page both say so.) ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **check groups:** groups are now manageable end-to-end from the dashboard — a group edit page
+  with an **escalation policy** picker (and a policy indicator on the groups list), direct
+  edit/delete row actions replacing the old overflow menu, delete from the edit page, and a
+  breadcrumb back to the checks index.
+  ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **checks (list API):** opt-in **`sort=group`** on `GET /checks` orders results by check group
+  with a composite keyset cursor, so the grouped checks index paginates correctly instead of
+  slicing groups apart across pages; default ordering is unchanged and unknown `sort` values are
+  rejected. ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **private locations (deported agents):** a new **`maxDeportedAgents`** entitlement caps how
+  many agents an org can enroll — enforced at both enrollment-token mint and agent enrollment —
+  with agent usage shown on the org Usage page and a SaaS plan-gate ladder documented.
+  ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **server (internal):** the HTTP router migrated from the archived `uptrace/bunrouter` to
+  **`go-chi/chi`** behind an in-repo `httpx` adapter that keeps error-returning handlers and the
+  middleware-group ergonomics; route-matching precedence is covered by table-driven parity
+  tests. ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
 
 
 ### Bug Fixes
 
-* **checks (sub-minute):** a sub-minute check could sit idle past its tick when every worker was parked on the long-poll — the fetcher now wakes on a next-eligible-job hint instead of waiting out the full poll interval, on both in-process workers and deported agents. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **dash0 (check groups):** the checks index no longer flashes a false "no checks" empty state for a group whose checks live on a later page. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **dash0 (dialogs):** long unbreakable strings (e.g. enrollment tokens) no longer blow the dialog grid out past the viewport; an E2E guard pins the containment. ([#156](https://github.com/fclairamb/solidping/issues/156)) ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
-* **deps:** update dependency recharts to v3.10.0 ([#155](https://github.com/fclairamb/solidping/issues/155)) ([6c855f4](https://github.com/fclairamb/solidping/commit/6c855f4250f9c164f88735dbadbaa4fe9c0430a0))
-* **deps:** update github.com/dop251/goja digest to 0fc1d42 ([#150](https://github.com/fclairamb/solidping/issues/150)) ([05b578c](https://github.com/fclairamb/solidping/commit/05b578c4a46404246e60de8b25c7e6c4c9f49583))
-* **deps:** update go dependencies (non-major) ([#154](https://github.com/fclairamb/solidping/issues/154)) ([03ce71c](https://github.com/fclairamb/solidping/commit/03ce71c4983464b65ab81b588579d0fc3be834dc))
+* **checks (sub-minute):** a sub-minute check could sit idle past its tick when every worker was
+  parked on the long-poll — the fetcher now wakes on a next-eligible-job hint instead of waiting
+  out the full poll interval, on both in-process workers and deported agents.
+  ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **dash0 (check groups):** the checks index no longer flashes a false "no checks" empty state
+  for a group whose checks live on a later page.
+  ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **dash0 (dialogs):** long unbreakable strings (e.g. enrollment tokens) no longer blow the
+  dialog grid out past the viewport; an E2E guard pins the containment.
+  ([#156](https://github.com/fclairamb/solidping/issues/156))
+  ([a08bfd8](https://github.com/fclairamb/solidping/commit/a08bfd8ff56c7449a206e62f0613c874a3a5372b))
+* **deps:** update dependency recharts to v3.10.0
+  ([#155](https://github.com/fclairamb/solidping/issues/155))
+  ([6c855f4](https://github.com/fclairamb/solidping/commit/6c855f4250f9c164f88735dbadbaa4fe9c0430a0))
+* **deps:** update github.com/dop251/goja digest to 0fc1d42
+  ([#150](https://github.com/fclairamb/solidping/issues/150))
+  ([05b578c](https://github.com/fclairamb/solidping/commit/05b578c4a46404246e60de8b25c7e6c4c9f49583))
+* **deps:** update go dependencies (non-major)
+  ([#154](https://github.com/fclairamb/solidping/issues/154))
+  ([03ce71c](https://github.com/fclairamb/solidping/commit/03ce71c4983464b65ab81b588579d0fc3be834dc))
 
 ## [0.5.0](https://github.com/fclairamb/solidping/compare/v0.4.1...v0.5.0) (2026-07-19)
 
 
 ### Features
 
-* **private locations (deported agents):** monitor infrastructure that has no inbound access at all, by running a SolidPing agent inside your own network. Enroll it with a single-use `spe_` token (stored hash-only) and it generates its own keys and connects **outbound-only** over a WebSocket (`GET /api/v1/agent/ws`), authenticating reconnects with an Ed25519 signature over `method|path|timestamp|nonce` (±5min skew, nonce replay cache) — no usable agent credential is ever stored server-side, only public keys. Checks are pinned to a customer-defined **private region**, namespaced `@<org>/<region>` and matched on exact equality only, so a cloud worker can never prefix-match its way into a private job. A check that targets private regions only has its credentials **sealed to that region's agents** (`filippo.io/age` X25519 multi-recipient, in a v2 envelope alongside the existing v1 symmetric one), so the server provably cannot open them. Adds an org **Private locations** page, region CRUD + enrollment-token mint/list/cancel + agent list/revoke, agent mode via `SP_NODE_ROLE=agent` (`SP_AGENT_SERVER_URL`, `SP_AGENT_ENROLLMENT_TOKEN`, `SP_AGENT_KEYS_FILE`, `SP_AGENT_KEYS`, `SP_AGENT_NAME`), and migration `006_v0_5_0` (`agents`, `agent_enrollment_tokens`, `checks.config_sealed`, `check_jobs.config_sealed`). (**breaking**: the unused HTTP edge-worker API — `/api/v1/workers/{register,heartbeat,claim-jobs,submit-result}` — plaintext `spw_` worker tokens, and the `workers.token` column are **removed**; in-process workers and heartbeats are unaffected) ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **private locations (deported agents):** registering an agent is now a guided, step-by-step wizard (pick or create the private region, mint the enrollment token, copy-paste-ready `docker run` / `docker compose` / Kubernetes snippets with the server URL and token already filled in, then a live "waiting for connection" step that reports the new agent by name) instead of a bare token dropped on the page with no instructions; the enrollment-token list also now keeps a consumed token visible for an hour after use (with who used it), so the wizard's own success check can't lose the token it's watching to a race with the list dropping it. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **checks (SSH tunnels):** now works for **18 check types** (was `http`/`tcp` only) — databases (`postgres`, `mysql`, `mssql`, `oracle`), message brokers/queues (`redis`, `mongodb`, `rabbitmq`, `kafka`), and more (`smtp`, `imap`, `pop3`, `ssl`, `grpc`, `websocket`, `ftp`, `mqtt`) can all probe through a bastion; UDP/ICMP-based types stay untunneled since SSH only forwards TCP. HTTP and TCP checks reach services only available through a bastion by dialing through an existing SSH check's connection — set `tunnelCheckUid`, or pick the bastion in the tunnel selector on the check form. Hostnames are resolved **on the far side** of the tunnel, so private DNS names work. Tunnel setup is measured as its own `tunnel_setup_ms` metric and deliberately **excluded from the check's reported latency**, and a tunnel failure is classified distinctly from the target being down. The selector is driven by server-declared `supportsTunnel` capability metadata rather than a hard-coded list. A bastion **must** have `expected_fingerprint` set to be usable as a tunnel — an unverified bastion is a silent MITM on everything it carries, so this is refused rather than warned about — tunnels cannot be chained, and deleting a check that others tunnel through is refused with `409`. The SSH/SFTP check form now exposes the private-key and host-key-fingerprint fields directly (previously the only way to make a bastion tunnel-eligible was via the API). Tunnels also now work when the dependent check is dispatched to a **deported agent**: the bastion's sealed credentials ship to the agent verbatim — never re-encrypted, never exposed to the server on this path — and the agent resolves the tunnel itself; the referenced SSH check must be allocated to every private region the dependent runs in, and a cloud-region dependent's bastion may not be sealed-only. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **checks (SSH tunnels):** the empty-state selector now deep-links straight to a preselected SSH check form instead of dropping you on the plain checks list and losing your place; the disabled-option copy names the missing field ("needs a host key fingerprint") instead of the raw config key; the checks list shows a muted icon with a "via `<bastion>`" tooltip on tunneled checks. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **incidents:** incidents can now carry a discussion — comment from the incident page in the dashboard, or reply in the Slack thread SolidPing posted for the incident and it's ingested back as a comment (reverse thread lookup), with retry-safe dedupe so a flaky Slack API call can't double-post the same comment. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **auth:** OAuth/MCP clients (and the `sp` CLI) can now revoke their own grant once their work is done, instead of it lingering until TTL — a standards-compliant RFC 7009 `POST /api/v1/oauth/revoke` endpoint (advertised via `revocation_endpoint`), a bearer-only `DELETE /api/v1/auth/tokens/current` for a client that no longer holds its refresh token, `GET /api/v1/tokens` now marks which grant is "yours" (`isCurrent`), and `sp auth logout` revokes server-side before clearing local credentials. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **server:** unrecognized `SP_*` environment variables now log a startup warning, so a typo'd or stale env var in a deploy is no longer silently ignored. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **escalation:** organization default escalation policy plus an incident assignment picker, alongside a consolidation of the migration set. ([#148](https://github.com/fclairamb/solidping/issues/148)) ([bb585a8](https://github.com/fclairamb/solidping/commit/bb585a8e3db6e6ab51cd7ed4e88ad770c6cce71c))
+* **private locations (deported agents):** monitor infrastructure that has no inbound access at
+  all, by running a SolidPing agent inside your own network. Enroll it with a single-use `spe_`
+  token (stored hash-only) and it generates its own keys and connects **outbound-only** over a
+  WebSocket (`GET /api/v1/agent/ws`), authenticating reconnects with an Ed25519 signature over
+  `method|path|timestamp|nonce` (±5min skew, nonce replay cache) — no usable agent credential is
+  ever stored server-side, only public keys. Checks are pinned to a customer-defined **private
+  region**, namespaced `@<org>/<region>` and matched on exact equality only, so a cloud worker
+  can never prefix-match its way into a private job. A check that targets private regions only
+  has its credentials **sealed to that region's agents** (`filippo.io/age` X25519
+  multi-recipient, in a v2 envelope alongside the existing v1 symmetric one), so the server
+  provably cannot open them. Adds an org **Private locations** page, region CRUD +
+  enrollment-token mint/list/cancel + agent list/revoke, agent mode via `SP_NODE_ROLE=agent`
+  (`SP_AGENT_SERVER_URL`, `SP_AGENT_ENROLLMENT_TOKEN`, `SP_AGENT_KEYS_FILE`, `SP_AGENT_KEYS`,
+  `SP_AGENT_NAME`), and migration `006_v0_5_0` (`agents`, `agent_enrollment_tokens`,
+  `checks.config_sealed`, `check_jobs.config_sealed`). (**breaking**: the unused HTTP
+  edge-worker API — `/api/v1/workers/{register,heartbeat,claim-jobs,submit-result}` — plaintext
+  `spw_` worker tokens, and the `workers.token` column are **removed**; in-process workers and
+  heartbeats are unaffected) ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **private locations (deported agents):** registering an agent is now a guided, step-by-step
+  wizard (pick or create the private region, mint the enrollment token, copy-paste-ready
+  `docker run` / `docker compose` / Kubernetes snippets with the server URL and token already
+  filled in, then a live "waiting for connection" step that reports the new agent by name)
+  instead of a bare token dropped on the page with no instructions; the enrollment-token list
+  also now keeps a consumed token visible for an hour after use (with who used it), so the
+  wizard's own success check can't lose the token it's watching to a race with the list dropping
+  it. ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **checks (SSH tunnels):** now works for **18 check types** (was `http`/`tcp` only) — databases
+  (`postgres`, `mysql`, `mssql`, `oracle`), message brokers/queues (`redis`, `mongodb`,
+  `rabbitmq`, `kafka`), and more (`smtp`, `imap`, `pop3`, `ssl`, `grpc`, `websocket`, `ftp`,
+  `mqtt`) can all probe through a bastion; UDP/ICMP-based types stay untunneled since SSH only
+  forwards TCP. HTTP and TCP checks reach services only available through a bastion by dialing
+  through an existing SSH check's connection — set `tunnelCheckUid`, or pick the bastion in the
+  tunnel selector on the check form. Hostnames are resolved **on the far side** of the tunnel,
+  so private DNS names work. Tunnel setup is measured as its own `tunnel_setup_ms` metric and
+  deliberately **excluded from the check's reported latency**, and a tunnel failure is
+  classified distinctly from the target being down. The selector is driven by server-declared
+  `supportsTunnel` capability metadata rather than a hard-coded list. A bastion **must** have
+  `expected_fingerprint` set to be usable as a tunnel — an unverified bastion is a silent MITM
+  on everything it carries, so this is refused rather than warned about — tunnels cannot be
+  chained, and deleting a check that others tunnel through is refused with `409`. The SSH/SFTP
+  check form now exposes the private-key and host-key-fingerprint fields directly (previously
+  the only way to make a bastion tunnel-eligible was via the API). Tunnels also now work when
+  the dependent check is dispatched to a **deported agent**: the bastion's sealed credentials
+  ship to the agent verbatim — never re-encrypted, never exposed to the server on this path —
+  and the agent resolves the tunnel itself; the referenced SSH check must be allocated to every
+  private region the dependent runs in, and a cloud-region dependent's bastion may not be
+  sealed-only. ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **checks (SSH tunnels):** the empty-state selector now deep-links straight to a preselected
+  SSH check form instead of dropping you on the plain checks list and losing your place; the
+  disabled-option copy names the missing field ("needs a host key fingerprint") instead of the
+  raw config key; the checks list shows a muted icon with a "via `<bastion>`" tooltip on
+  tunneled checks. ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **incidents:** incidents can now carry a discussion — comment from the incident page in the
+  dashboard, or reply in the Slack thread SolidPing posted for the incident and it's ingested
+  back as a comment (reverse thread lookup), with retry-safe dedupe so a flaky Slack API call
+  can't double-post the same comment.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **auth:** OAuth/MCP clients (and the `sp` CLI) can now revoke their own grant once their work
+  is done, instead of it lingering until TTL — a standards-compliant RFC 7009
+  `POST /api/v1/oauth/revoke` endpoint (advertised via `revocation_endpoint`), a bearer-only
+  `DELETE /api/v1/auth/tokens/current` for a client that no longer holds its refresh token,
+  `GET /api/v1/tokens` now marks which grant is "yours" (`isCurrent`), and `sp auth logout`
+  revokes server-side before clearing local credentials.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **server:** unrecognized `SP_*` environment variables now log a startup warning, so a typo'd
+  or stale env var in a deploy is no longer silently ignored.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **escalation:** organization default escalation policy plus an incident assignment picker,
+  alongside a consolidation of the migration set.
+  ([#148](https://github.com/fclairamb/solidping/issues/148))
+  ([bb585a8](https://github.com/fclairamb/solidping/commit/bb585a8e3db6e6ab51cd7ed4e88ad770c6cce71c))
 
 
 ### Bug Fixes
 
-* **checks / integrations (secrets):** ⚠️ fixed an active credential leak — with `SP_ENCRYPTION_MASTER_KEY` unset, `GET`/`LIST` responses on checks and integration connections returned secrets (SSH private keys, HTTP basic-auth passwords, connection tokens) **in plaintext to any org member, including `viewer`s**. Secret/public config separation is now unconditional in every storage mode: a new plaintext envelope replaces the old behavior of merging secrets back into the public config when no master key is configured, pre-existing rows with secrets sitting in the public column are migrated on startup, and API responses redact any type-declared secret field as defense-in-depth regardless of storage mode. **If you have run with encryption disabled, rotate any check or integration credentials configured before upgrading.** ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **checks (encryption):** with `SP_ENCRYPTION_MASTER_KEY` set, **encrypted checks ran without their secrets**. The in-process worker only ever read the public half of the config, so HTTP passwords, SSH private keys and database passwords were silently stripped before execution — the check then ran, and failed or misreported, as if the credential had never been configured. Secrets are now decrypted and merged at the claim boundary, and a job whose envelope cannot be opened is **never dispatched credential-less and never silently skipped**: it is dropped from the batch and reported as an explicit error result naming the fix, which also releases its lease so the check goes visibly red instead of stalling. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **checks (logging):** secret config values are no longer written to the per-execution `Executing check job` log line, which printed the check's config verbatim at INFO level. This also affected **deployments with encryption disabled**, where secrets live in the public config by design and were already being logged in the clear. Values whose keys the check type declares secret are now replaced with `<redacted>` (keys are kept, so the line stays debuggable), and a check type that cannot be resolved has every value redacted rather than none. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **checks (HTTP):** basic-auth credentials are no longer stored in cleartext — username and password are folded into a single encrypted `basicAuth` config key. Editing an HTTP check no longer silently wipes its stored secret headers. (**breaking** for API consumers reading `config.username` / `config.password` directly: both leave the public config once a check is re-saved. Existing rows keep working until then — lazy migration, no backfill.) ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **incidents:** an incident could **auto-resolve on its first success**, ignoring the configured recovery period, because the recovery clock was shared across consecutive incidents and still carried the previous incident's timestamp. It is now scoped to the incident it resolves. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **rate limiting:** the default per-client HTTP limits were low enough that **normal dashboard use produced 429s** — on an org with live checks, one checks-page tab refetches every check-group panel on each realtime tick (~200 req/min for 10 groups), eating most of the old `300/min` budget, so a reload or a second tab tripped the limit. Defaults are now sized against that measured profile: `requests_per_minute` 300 → **1800**, `burst` 60 → **360**, `rate_queue` 10 → **60**, `concurrency_queue` 10 → **40** (`max_concurrent` stays at 20 — a page-load burst of parallel fetches now parks briefly in the deeper waiting room instead of 429ing; deployments that set `SP_SERVER_RATE_LIMITING_*` explicitly are unaffected). ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **dash0 (checks):** the checks list page issued one request per check group on every realtime tick, which is what drove the rate-limit pressure above in the first place; it's now batched into a single query grouped client-side, and the query retry policy honors a `429` response's `Retry-After` header instead of a fixed backoff. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **private locations (deported agents):** a deported agent that lost its connection to the server gave no indication in its own logs and only reconnected lazily, on the next claim/submit — so a silent network drop could leave express dispatch dead until the next poll, and an in-flight request could block for the full 30s timeout even though the connection was already gone. The agent now logs disconnects, proactively reconnects with exponential backoff, pings its own connection for liveness (catching a "half-open" drop within seconds instead of an OS-level TCP timeout), and fails in-flight requests immediately when the connection drops instead of waiting out the full timeout. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **dash0 (realtime):** the live-updates WebSocket authenticated only via the shared `access_token` cookie, which another app on the same host can shadow (browsers ignore ports when scoping cookies) — causing the socket to `401` forever and reconnect-loop while the rest of the dashboard kept working normally over REST. It now authenticates the same way REST does, via a bearer token carried as a WebSocket subprotocol (browsers can't set an `Authorization` header on the handshake), with the cookie kept only as a fallback. ([#145](https://github.com/fclairamb/solidping/issues/145)) ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
-* **checks (SSH tunnels):** with `SP_ENCRYPTION_MASTER_KEY` unset, every check tunneled through an SSH bastion **failed on every execution** (`cannot decrypt the ssh check credentials... (encryption disabled)`), even though the referenced SSH check itself ran fine — fallout from the credential-separation fix above: secrets now always live in a plaintext envelope when no master key is configured, but the SSH tunnel resolver and the Freebox LAN-lookup channel resolver still gated on `Enabled()` before ever trying to open it. Both now open a plaintext envelope first and only fall back to the key-requiring error for envelopes that actually need a key, matching how the rest of the codebase (job-secret merge, API loaders) already handles this. ([#149](https://github.com/fclairamb/solidping/issues/149)) ([4223bdb](https://github.com/fclairamb/solidping/commit/4223bdb4110614453f15c87db6d945cb3f22c765))
+* **checks / integrations (secrets):** ⚠️ fixed an active credential leak — with
+  `SP_ENCRYPTION_MASTER_KEY` unset, `GET`/`LIST` responses on checks and integration connections
+  returned secrets (SSH private keys, HTTP basic-auth passwords, connection tokens) **in
+  plaintext to any org member, including `viewer`s**. Secret/public config separation is now
+  unconditional in every storage mode: a new plaintext envelope replaces the old behavior of
+  merging secrets back into the public config when no master key is configured, pre-existing
+  rows with secrets sitting in the public column are migrated on startup, and API responses
+  redact any type-declared secret field as defense-in-depth regardless of storage mode. **If you
+  have run with encryption disabled, rotate any check or integration credentials configured
+  before upgrading.** ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **checks (encryption):** with `SP_ENCRYPTION_MASTER_KEY` set, **encrypted checks ran without
+  their secrets**. The in-process worker only ever read the public half of the config, so HTTP
+  passwords, SSH private keys and database passwords were silently stripped before execution —
+  the check then ran, and failed or misreported, as if the credential had never been configured.
+  Secrets are now decrypted and merged at the claim boundary, and a job whose envelope cannot be
+  opened is **never dispatched credential-less and never silently skipped**: it is dropped from
+  the batch and reported as an explicit error result naming the fix, which also releases its
+  lease so the check goes visibly red instead of stalling.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **checks (logging):** secret config values are no longer written to the per-execution
+  `Executing check job` log line, which printed the check's config verbatim at INFO level. This
+  also affected **deployments with encryption disabled**, where secrets live in the public
+  config by design and were already being logged in the clear. Values whose keys the check type
+  declares secret are now replaced with `<redacted>` (keys are kept, so the line stays
+  debuggable), and a check type that cannot be resolved has every value redacted rather than
+  none. ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **checks (HTTP):** basic-auth credentials are no longer stored in cleartext — username and
+  password are folded into a single encrypted `basicAuth` config key. Editing an HTTP check no
+  longer silently wipes its stored secret headers. (**breaking** for API consumers reading
+  `config.username` / `config.password` directly: both leave the public config once a check is
+  re-saved. Existing rows keep working until then — lazy migration, no backfill.)
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **incidents:** an incident could **auto-resolve on its first success**, ignoring the
+  configured recovery period, because the recovery clock was shared across consecutive incidents
+  and still carried the previous incident's timestamp. It is now scoped to the incident it
+  resolves. ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **rate limiting:** the default per-client HTTP limits were low enough that **normal dashboard
+  use produced 429s** — on an org with live checks, one checks-page tab refetches every
+  check-group panel on each realtime tick (~200 req/min for 10 groups), eating most of the old
+  `300/min` budget, so a reload or a second tab tripped the limit. Defaults are now sized
+  against that measured profile: `requests_per_minute` 300 → **1800**, `burst` 60 → **360**,
+  `rate_queue` 10 → **60**, `concurrency_queue` 10 → **40** (`max_concurrent` stays at 20 — a
+  page-load burst of parallel fetches now parks briefly in the deeper waiting room instead of
+  429ing; deployments that set `SP_SERVER_RATE_LIMITING_*` explicitly are unaffected).
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **dash0 (checks):** the checks list page issued one request per check group on every realtime
+  tick, which is what drove the rate-limit pressure above in the first place; it's now batched
+  into a single query grouped client-side, and the query retry policy honors a `429` response's
+  `Retry-After` header instead of a fixed backoff.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **private locations (deported agents):** a deported agent that lost its connection to the
+  server gave no indication in its own logs and only reconnected lazily, on the next
+  claim/submit — so a silent network drop could leave express dispatch dead until the next poll,
+  and an in-flight request could block for the full 30s timeout even though the connection was
+  already gone. The agent now logs disconnects, proactively reconnects with exponential backoff,
+  pings its own connection for liveness (catching a "half-open" drop within seconds instead of
+  an OS-level TCP timeout), and fails in-flight requests immediately when the connection drops
+  instead of waiting out the full timeout.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **dash0 (realtime):** the live-updates WebSocket authenticated only via the shared
+  `access_token` cookie, which another app on the same host can shadow (browsers ignore ports
+  when scoping cookies) — causing the socket to `401` forever and reconnect-loop while the rest
+  of the dashboard kept working normally over REST. It now authenticates the same way REST does,
+  via a bearer token carried as a WebSocket subprotocol (browsers can't set an `Authorization`
+  header on the handshake), with the cookie kept only as a fallback.
+  ([#145](https://github.com/fclairamb/solidping/issues/145))
+  ([994bc85](https://github.com/fclairamb/solidping/commit/994bc851a887365cb57bd5018a5234f47e2717ac))
+* **checks (SSH tunnels):** with `SP_ENCRYPTION_MASTER_KEY` unset, every check tunneled through
+  an SSH bastion **failed on every execution**
+  (`cannot decrypt the ssh check credentials... (encryption disabled)`), even though the
+  referenced SSH check itself ran fine — fallout from the credential-separation fix above:
+  secrets now always live in a plaintext envelope when no master key is configured, but the SSH
+  tunnel resolver and the Freebox LAN-lookup channel resolver still gated on `Enabled()` before
+  ever trying to open it. Both now open a plaintext envelope first and only fall back to the
+  key-requiring error for envelopes that actually need a key, matching how the rest of the
+  codebase (job-secret merge, API loaders) already handles this.
+  ([#149](https://github.com/fclairamb/solidping/issues/149))
+  ([4223bdb](https://github.com/fclairamb/solidping/commit/4223bdb4110614453f15c87db6d945cb3f22c765))
 
 ## [0.4.1](https://github.com/fclairamb/solidping/compare/v0.4.0...v0.4.1) (2026-07-15)
 
 
 ### Bug Fixes
 
-* **realtime:** enforce org authorization on all REST `/orgs/:org` routes and unify it with the WebSocket check, so cross-org navigation auto-switches org instead of leaking access or breaking the live connection ([#138](https://github.com/fclairamb/solidping/issues/138)) ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
-* **heartbeats:** accept an `Authorization: Bearer` token plus a structured JSON body, rendered as its own result-detail card in dash0 ([#138](https://github.com/fclairamb/solidping/issues/138)) ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
-* **entitlements:** rename the seat-cap limit `maxSsoUsers` → `maxUsers` (provider-neutral), enforced at invitation acceptance (**breaking**: SaaS billing integrations reading `maxSsoUsers` must switch to `maxUsers`) ([#138](https://github.com/fclairamb/solidping/issues/138)) ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
-* **auth:** fix a flaky wall-clock assertion in the local-password-vs-LDAP-priority login test ([#138](https://github.com/fclairamb/solidping/issues/138)) ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
-* **embedded db:** change the embedded-PostgreSQL default port `5434` → `5433` (**breaking** for local setups pinned to the old default port) ([#138](https://github.com/fclairamb/solidping/issues/138)) ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
-* **deps:** update docusaurus monorepo to v3.10.2 ([#135](https://github.com/fclairamb/solidping/issues/135)) ([527e211](https://github.com/fclairamb/solidping/commit/527e21135a972567925e7956efa6678388331dce))
-* **deps:** update github.com/go-asn1-ber/asn1-ber digest to e7dc790 ([#133](https://github.com/fclairamb/solidping/issues/133)) ([8bca879](https://github.com/fclairamb/solidping/commit/8bca87987ada0c87af4f1e4838c55f8a1a529fad))
-* **deps:** update go dependencies (non-major) ([#136](https://github.com/fclairamb/solidping/issues/136)) ([0f8dfc1](https://github.com/fclairamb/solidping/commit/0f8dfc1fe02647e2bfe4c1ff967205e775d4bdf5))
+* **realtime:** enforce org authorization on all REST `/orgs/:org` routes and unify it with the
+  WebSocket check, so cross-org navigation auto-switches org instead of leaking access or
+  breaking the live connection ([#138](https://github.com/fclairamb/solidping/issues/138))
+  ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
+* **heartbeats:** accept an `Authorization: Bearer` token plus a structured JSON body, rendered
+  as its own result-detail card in dash0
+  ([#138](https://github.com/fclairamb/solidping/issues/138))
+  ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
+* **entitlements:** rename the seat-cap limit `maxSsoUsers` → `maxUsers` (provider-neutral),
+  enforced at invitation acceptance (**breaking**: SaaS billing integrations reading
+  `maxSsoUsers` must switch to `maxUsers`)
+  ([#138](https://github.com/fclairamb/solidping/issues/138))
+  ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
+* **auth:** fix a flaky wall-clock assertion in the local-password-vs-LDAP-priority login test
+  ([#138](https://github.com/fclairamb/solidping/issues/138))
+  ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
+* **embedded db:** change the embedded-PostgreSQL default port `5434` → `5433` (**breaking** for
+  local setups pinned to the old default port)
+  ([#138](https://github.com/fclairamb/solidping/issues/138))
+  ([aa1ff56](https://github.com/fclairamb/solidping/commit/aa1ff5617c533aa2d438b04cf8f40b0894b69b4d))
+* **deps:** update docusaurus monorepo to v3.10.2
+  ([#135](https://github.com/fclairamb/solidping/issues/135))
+  ([527e211](https://github.com/fclairamb/solidping/commit/527e21135a972567925e7956efa6678388331dce))
+* **deps:** update github.com/go-asn1-ber/asn1-ber digest to e7dc790
+  ([#133](https://github.com/fclairamb/solidping/issues/133))
+  ([8bca879](https://github.com/fclairamb/solidping/commit/8bca87987ada0c87af4f1e4838c55f8a1a529fad))
+* **deps:** update go dependencies (non-major)
+  ([#136](https://github.com/fclairamb/solidping/issues/136))
+  ([0f8dfc1](https://github.com/fclairamb/solidping/commit/0f8dfc1fe02647e2bfe4c1ff967205e775d4bdf5))
 
 ## [0.4.0](https://github.com/fclairamb/solidping/compare/v0.3.0...v0.4.0) (2026-07-14)
 
 
 ### Features
 
-* **dash0 (checks):** drag-to-select **X-axis time zoom** on the response-time chart — the zoom window lives in the URL (`graphFrom`/`graphTo`) and drives a **server-side fetch of just that window** (picking a finer aggregation tier for narrow spans); the selected point is also URL-persisted (`graphSelected`), so a shared link reproduces both the zoomed window and the highlighted result with its details; "Reset zoom" button + double-click reset; touch-drag works on mobile
-* **admin:** new super-admin **"Aggregation" server-settings tab** to configure the three retention windows (raw→hour in hours, hour→day in days, day→month in months) on the live `performance.aggregation_retention_*` parameters — server-side write validation (integer `>= 1`, else `VALIDATION_ERROR`), client-side floors, and inline notes that changes never re-aggregate or restore already-rolled-up data
-* **aggregation:** tighter default retention — hourly rows now roll up after **7 days** (was 30) and daily rows after **2 months** (was 12); raw stays 24h. Values remain configurable via the new Aggregation tab (**behavior change**: shortens how far back granular history stays queryable for deployments on defaults)
-* **realtime:** WebSocket authentication moved to the **HTTP level, before the upgrade** — the handshake authenticates via `Authorization: Bearer` header or the `access_token` cookie (header wins) and answers a bad/missing token with a plain **HTTP `401`** instead of upgrading-then-closing; the in-band `{"type":"auth","token":…}` message and the `SP_REALTIME_AUTH_GRACE` grace window are **removed** (**breaking** for custom WS clients that authenticated in-band — send the token as a header or cookie instead); org-scope (`4403`) and disabled (`4404`) remain post-upgrade close codes, `4401` now means mid-connection token expiry only
-* **integrations (email):** notification emails can target **multiple recipient addresses** — chip/tag input with paste support (comma/semicolon/space/newline separators), per-address validation with invalid chips flagged in red and blocking save, deduplication, and mobile-friendly tap targets
+* **dash0 (checks):** drag-to-select **X-axis time zoom** on the response-time chart — the zoom
+  window lives in the URL (`graphFrom`/`graphTo`) and drives a **server-side fetch of just that
+  window** (picking a finer aggregation tier for narrow spans); the selected point is also
+  URL-persisted (`graphSelected`), so a shared link reproduces both the zoomed window and the
+  highlighted result with its details; "Reset zoom" button + double-click reset; touch-drag
+  works on mobile
+* **admin:** new super-admin **"Aggregation" server-settings tab** to configure the three
+  retention windows (raw→hour in hours, hour→day in days, day→month in months) on the live
+  `performance.aggregation_retention_*` parameters — server-side write validation (integer
+  `>= 1`, else `VALIDATION_ERROR`), client-side floors, and inline notes that changes never
+  re-aggregate or restore already-rolled-up data
+* **aggregation:** tighter default retention — hourly rows now roll up after **7 days** (was 30)
+  and daily rows after **2 months** (was 12); raw stays 24h. Values remain configurable via the
+  new Aggregation tab (**behavior change**: shortens how far back granular history stays
+  queryable for deployments on defaults)
+* **realtime:** WebSocket authentication moved to the **HTTP level, before the upgrade** — the
+  handshake authenticates via `Authorization: Bearer` header or the `access_token` cookie
+  (header wins) and answers a bad/missing token with a plain **HTTP `401`** instead of
+  upgrading-then-closing; the in-band `{"type":"auth","token":…}` message and the
+  `SP_REALTIME_AUTH_GRACE` grace window are **removed** (**breaking** for custom WS clients that
+  authenticated in-band — send the token as a header or cookie instead); org-scope (`4403`) and
+  disabled (`4404`) remain post-upgrade close codes, `4401` now means mid-connection token
+  expiry only
+* **integrations (email):** notification emails can target **multiple recipient addresses** —
+  chip/tag input with paste support (comma/semicolon/space/newline separators), per-address
+  validation with invalid chips flagged in red and blocking save, deduplication, and
+  mobile-friendly tap targets
 
 ### Bug Fixes
 
-* **incidents:** `GET /api/v1/orgs/:org/incidents?checkUid=…` no longer **500s when given a check slug** — the identifier resolves slug-or-uid exactly like `/results`, and an unknown identifier returns an empty page instead of an error (or an unfiltered list); the check detail page now passes the resolved uid (#127)
-* **dash0 (checks):** dependency edges pointing at a **deleted check** no longer render as bogus bare "Hard"/"Soft" badges — orphaned edges are filtered out of the API response, a check's dependency rows are now cleaned up when it is deleted, and the UI falls back to a muted "Unknown check" label for any unresolved ref (#129)
+* **incidents:** `GET /api/v1/orgs/:org/incidents?checkUid=…` no longer **500s when given a
+  check slug** — the identifier resolves slug-or-uid exactly like `/results`, and an unknown
+  identifier returns an empty page instead of an error (or an unfiltered list); the check detail
+  page now passes the resolved uid (#127)
+* **dash0 (checks):** dependency edges pointing at a **deleted check** no longer render as bogus
+  bare "Hard"/"Soft" badges — orphaned edges are filtered out of the API response, a check's
+  dependency rows are now cleaned up when it is deleted, and the UI falls back to a muted
+  "Unknown check" label for any unresolved ref (#129)
 
 ## [0.3.0](https://github.com/fclairamb/solidping/compare/v0.2.3...v0.3.0) (2026-07-12)
 
 
 ### Features
 
-* **checks:** new **RDP** protocol check type — pre-auth X.224 negotiation with NLA and certificate-expiry knobs
-* **checks:** optional **per-check timeout** field (1–30s) in the shared check form; server-side 30s cap, execution context = timeout + 1s
-* **checks:** **configurable global check timeout** (default 15s), execution context = timeout + 1s
-* **checks:** **export format v2** — defaults block, human-readable durations, and deterministic ordering (group empty-last, then slug)
-* **dash0:** badges page check picker swapped the capped `Select` for a live-search `CheckPicker`
-* **dash0:** AI assistants (**MCP**) page moved under Account with a command-palette entry (findable by "MCP" or "AI"); legacy paths redirect
-* **dash0:** empty-state onboarding hero now offers the MCP / AI path for creating checks (mobile-usable)
-* **status:** rich link previews — per-page **Open Graph** metadata injected into served status pages, plus a branded 1200×630 default image
-* **admin:** region slugs resolve to friendly "{emoji} {name}" labels (e.g. "EU1 (default)") on admin surfaces, seeded from `SP_REGIONS`
-* **integrations:** the "Default for new checks" toggle now starts **enabled** when creating an integration
+* **checks:** new **RDP** protocol check type — pre-auth X.224 negotiation with NLA and
+  certificate-expiry knobs
+* **checks:** optional **per-check timeout** field (1–30s) in the shared check form; server-side
+  30s cap, execution context = timeout + 1s
+* **checks:** **configurable global check timeout** (default 15s), execution context = timeout +
+  1s
+* **checks:** **export format v2** — defaults block, human-readable durations, and deterministic
+  ordering (group empty-last, then slug)
+* **dash0:** badges page check picker swapped the capped `Select` for a live-search
+  `CheckPicker`
+* **dash0:** AI assistants (**MCP**) page moved under Account with a command-palette entry
+  (findable by "MCP" or "AI"); legacy paths redirect
+* **dash0:** empty-state onboarding hero now offers the MCP / AI path for creating checks
+  (mobile-usable)
+* **status:** rich link previews — per-page **Open Graph** metadata injected into served status
+  pages, plus a branded 1200×630 default image
+* **admin:** region slugs resolve to friendly "{emoji} {name}" labels (e.g. "EU1 (default)") on
+  admin surfaces, seeded from `SP_REGIONS`
+* **integrations:** the "Default for new checks" toggle now starts **enabled** when creating an
+  integration
 * **i18n:** idiomatic FR/ES/DE auth-page headline translations replacing literal calques
-* **escalation/on-call:** escalation policies and on-call schedules drop their unused `slug` — both are addressed by `uid` only now (API routes, dashboard links); old slug-form URLs return `404` (**breaking**: the `slug` field is gone from create/update/response payloads)
-* **cli:** the `sp` CLI now covers the full API surface — ~20 new command groups (channels + per-check bindings, status-pages/status-updates, maintenance-windows, check-groups/severities/labels/regions/check-types, on-call schedules + escalation-policies, orgs/settings/invitations/membership-requests, entitlements/files/email-suppressions, jobs admin & stats + check-jobs, server & system ops, notifications + routes/contacts, and auth self-service) plus the previously-missing operations on existing groups (incident ack/snooze/resolve, check validate/clone, dependency update/graph, results get, availability, discovery, heartbeat send); the OpenAPI spec and generated client were backfilled to match
-* **dash0:** the check create/edit form was restructured with **progressive disclosure** — an always-visible Identity/Scheduling/Notifications core plus collapsed-by-default sections (Authentication, Organization, Dependencies, Incident tracking, Flapping, Advanced) with header value-summaries and auto-expand on validation error; adds a reusable `CollapsibleSection` primitive and refactors the form behind a per-check-type module registry (one serializer feeds both the preview and the submit), and extends/documents the `/checks/new` query-param prefill
+* **escalation/on-call:** escalation policies and on-call schedules drop their unused `slug` —
+  both are addressed by `uid` only now (API routes, dashboard links); old slug-form URLs return
+  `404` (**breaking**: the `slug` field is gone from create/update/response payloads)
+* **cli:** the `sp` CLI now covers the full API surface — ~20 new command groups (channels +
+  per-check bindings, status-pages/status-updates, maintenance-windows,
+  check-groups/severities/labels/regions/check-types, on-call schedules + escalation-policies,
+  orgs/settings/invitations/membership-requests, entitlements/files/email-suppressions, jobs
+  admin & stats + check-jobs, server & system ops, notifications + routes/contacts, and auth
+  self-service) plus the previously-missing operations on existing groups (incident
+  ack/snooze/resolve, check validate/clone, dependency update/graph, results get, availability,
+  discovery, heartbeat send); the OpenAPI spec and generated client were backfilled to match
+* **dash0:** the check create/edit form was restructured with **progressive disclosure** — an
+  always-visible Identity/Scheduling/Notifications core plus collapsed-by-default sections
+  (Authentication, Organization, Dependencies, Incident tracking, Flapping, Advanced) with
+  header value-summaries and auto-expand on validation error; adds a reusable
+  `CollapsibleSection` primitive and refactors the form behind a per-check-type module registry
+  (one serializer feeds both the preview and the submit), and extends/documents the
+  `/checks/new` query-param prefill
 
 ### Bug Fixes
 
-* **realtime:** fix an EventNotifier listener leak — `GetJobWait` leaked one channel per processed job and eventually silenced the realtime WebSocket with zero logs; adds `Unlisten`, a non-stacking Postgres keepalive ping, and a listener-growth warning
-* **dash0:** unify the `useCheck` query key so a live check update fetches the check **once, not twice** (single canonical cache entry)
-* **dash0:** incidents and checks list pages now subscribe to live updates (they never registered a live scope, so they only updated on reload)
-* **mcp:** method-aware `/api/v1/mcp` (GET redirect/405, DELETE session termination) and JSON 404 for unmatched `/api/` paths — a browser GET no longer falls through to the web UI
-* **rate-limiting:** key authenticated buckets by bearer token with a per-IP cap, fix off-by-one XFF client-IP extraction, and coalesce live-hint cache invalidations to damp refetch storms
-* **auth:** SSO callbacks now set the `access_token` cookie so MCP OAuth consent skips the login-page bounce
-* **checks (DNS):** repair the DNS check form — bind Domain to the host key, add DNS-server and record-type fields, and load samples correctly
-* **checks (DNSBL):** treat Spamhaus `127.255.255.x` replies as error codes rather than genuine listings (fixes false-positive blocklist hits)
-* **dash0 (DNSBL):** render the DNSBL result card with human-readable Spamhaus status-code labels
-* **status:** the status-page Atom feed no longer 500s on Postgres — bind `status_page_uid` through bun (`$1` → `?`)
-* **aggregation:** fix a poison-pill loop where marker-only result buckets re-aggregated forever, duplicating `hour` rollup rows and scheduler jobs unbounded — lifecycle markers are excluded from work discovery, aggregation only reschedules immediately when it made real progress, aggregated writes are idempotent upserts, and a NULL-region-proof unique index closes the duplicate hole (the v0.5.0 migration dedupes existing rows); rollup retention now comes from global `performance.*` parameters
-* **aggregation:** fix an FK-orphan poison pill where a `results` row whose check was hard-deleted failed the rollup insert and permanently halted the org's aggregation — orphaned buckets are skipped in discovery, the job always reschedules its follow-up after a stage error, SQLite enforces foreign keys on every connection, and the v0.5.0 migration purges any existing orphans
-* **jobs:** the `jobs` table no longer grows unbounded — a daily `jobs_cleanup` job soft-deletes finished jobs after 48h and hard-deletes them 24h later (retry-chains drained tail-first), with thresholds configurable via `performance.*` parameters
+* **realtime:** fix an EventNotifier listener leak — `GetJobWait` leaked one channel per
+  processed job and eventually silenced the realtime WebSocket with zero logs; adds `Unlisten`,
+  a non-stacking Postgres keepalive ping, and a listener-growth warning
+* **dash0:** unify the `useCheck` query key so a live check update fetches the check **once, not
+  twice** (single canonical cache entry)
+* **dash0:** incidents and checks list pages now subscribe to live updates (they never
+  registered a live scope, so they only updated on reload)
+* **mcp:** method-aware `/api/v1/mcp` (GET redirect/405, DELETE session termination) and JSON
+  404 for unmatched `/api/` paths — a browser GET no longer falls through to the web UI
+* **rate-limiting:** key authenticated buckets by bearer token with a per-IP cap, fix off-by-one
+  XFF client-IP extraction, and coalesce live-hint cache invalidations to damp refetch storms
+* **auth:** SSO callbacks now set the `access_token` cookie so MCP OAuth consent skips the
+  login-page bounce
+* **checks (DNS):** repair the DNS check form — bind Domain to the host key, add DNS-server and
+  record-type fields, and load samples correctly
+* **checks (DNSBL):** treat Spamhaus `127.255.255.x` replies as error codes rather than genuine
+  listings (fixes false-positive blocklist hits)
+* **dash0 (DNSBL):** render the DNSBL result card with human-readable Spamhaus status-code
+  labels
+* **status:** the status-page Atom feed no longer 500s on Postgres — bind `status_page_uid`
+  through bun (`$1` → `?`)
+* **aggregation:** fix a poison-pill loop where marker-only result buckets re-aggregated
+  forever, duplicating `hour` rollup rows and scheduler jobs unbounded — lifecycle markers are
+  excluded from work discovery, aggregation only reschedules immediately when it made real
+  progress, aggregated writes are idempotent upserts, and a NULL-region-proof unique index
+  closes the duplicate hole (the v0.5.0 migration dedupes existing rows); rollup retention now
+  comes from global `performance.*` parameters
+* **aggregation:** fix an FK-orphan poison pill where a `results` row whose check was
+  hard-deleted failed the rollup insert and permanently halted the org's aggregation — orphaned
+  buckets are skipped in discovery, the job always reschedules its follow-up after a stage
+  error, SQLite enforces foreign keys on every connection, and the v0.5.0 migration purges any
+  existing orphans
+* **jobs:** the `jobs` table no longer grows unbounded — a daily `jobs_cleanup` job soft-deletes
+  finished jobs after 48h and hard-deletes them 24h later (retry-chains drained tail-first),
+  with thresholds configurable via `performance.*` parameters
 
 ## [0.2.3](https://github.com/fclairamb/solidping/compare/v0.2.2...v0.2.3) (2026-07-10)
 
 
 ### Bug Fixes
 
-* **slack:** send `conversations.list`/`users.list` parameters form-encoded so Slack honors `types`/`limit`/`cursor`. Sending them in a JSON body made Slack fall back to defaults (100 items, first page only, public channels only), so the destination picker silently dropped private channels (e.g. `#solidping-dev`) and every channel past the first 100 ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
-* **slack:** de-duplicate destination channels and users by ID and stop pagination on a non-advancing/repeating cursor, fixing the picker listing each channel dozens of times ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
-* **dash0:** preserve the deep `returnTo` destination through third-party (OAuth/SSO) login instead of always landing on the organization root ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
-* **realtimews:** align the WebSocket handshake organization check with the REST middleware, denying cross-org database super-admin access ([#119](https://github.com/fclairamb/solidping/issues/119)) ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **slack:** send `conversations.list`/`users.list` parameters form-encoded so Slack honors
+  `types`/`limit`/`cursor`. Sending them in a JSON body made Slack fall back to defaults (100
+  items, first page only, public channels only), so the destination picker silently dropped
+  private channels (e.g. `#solidping-dev`) and every channel past the first 100
+  ([#119](https://github.com/fclairamb/solidping/issues/119))
+  ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **slack:** de-duplicate destination channels and users by ID and stop pagination on a
+  non-advancing/repeating cursor, fixing the picker listing each channel dozens of times
+  ([#119](https://github.com/fclairamb/solidping/issues/119))
+  ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **dash0:** preserve the deep `returnTo` destination through third-party (OAuth/SSO) login
+  instead of always landing on the organization root
+  ([#119](https://github.com/fclairamb/solidping/issues/119))
+  ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
+* **realtimews:** align the WebSocket handshake organization check with the REST middleware,
+  denying cross-org database super-admin access
+  ([#119](https://github.com/fclairamb/solidping/issues/119))
+  ([46df1de](https://github.com/fclairamb/solidping/commit/46df1deea992db3e1a64751a94ca3549cb10f4f0))
 
 ## [0.2.2](https://github.com/fclairamb/solidping/compare/v0.2.1...v0.2.2) (2026-07-09)
 
 
 ### Features
 
-* **auth:** enterprise SSO — generic OAuth2/OIDC provider (discovery + ID-token validation, `email_verified` gating against account-takeover), SAML 2.0 SP (`crewjam/saml`, full assertion validation, metadata endpoint), and LDAP/AD bind auth (search-then-bind, RFC-4515 escaping, super-admin lockout guard), all sharing `maxSsoUsers` entitlement counting and `UserProvider` linking ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **auth:** per-org configurable max session duration — `auth.session_max_duration` system parameter with a per-org override on the org settings API ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **dash0:** multi-region response-time chart shows red failure segments and always-visible failure dots even on dense views ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **dash0:** colored status badges in "Checks at a glance" and the pinned check-result box ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **incidents:** restyled ack magic-link page with a countdown redirect to the incident ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** enterprise SSO — generic OAuth2/OIDC provider (discovery + ID-token validation,
+  `email_verified` gating against account-takeover), SAML 2.0 SP (`crewjam/saml`, full assertion
+  validation, metadata endpoint), and LDAP/AD bind auth (search-then-bind, RFC-4515 escaping,
+  super-admin lockout guard), all sharing `maxSsoUsers` entitlement counting and `UserProvider`
+  linking ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** per-org configurable max session duration — `auth.session_max_duration` system
+  parameter with a per-org override on the org settings API
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** multi-region response-time chart shows red failure segments and always-visible
+  failure dots even on dense views ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** colored status badges in "Checks at a glance" and the pinned check-result box
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **incidents:** restyled ack magic-link page with a countdown redirect to the incident
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
 
 
 ### Bug Fixes
 
-* **auth:** sessions no longer die ~1h after login — repaired the token-refresh chain and an OAuth handoff that dropped the refresh token ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **auth:** creating an org from `/no-org` now mints an org-scoped session token instead of leaving every API call 403'ing ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **auth:** `auth.Service` reads overlaid `AuthConfig` fields (registration-disabled, session cap) live instead of from a frozen snapshot ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **auth:** a zero-org session is kept alive — `/auth/me` returns no-org info instead of 401-logging-out the user ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **dash0:** deep links survive login — every post-login path resolves through a shared `returnTo` resolver with a tightened same-origin open-redirect guard ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **dash0:** uptime-bar badge shows the full 7d/30d/90d history instead of only 1/2/3 days ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **dash0:** `validateSearch` boolean query-params (`showSuppressed`, `graphFull`) no longer silently no-op from string-vs-bool coercion ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **checks:** `created` lifecycle results are no longer swallowed by aggregation ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **slack:** channel/user pickers paginate (cursor) so large workspaces are fully searchable ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **devloop:** hard-cap the rotating log so a newline-less/hot-looping child can't grow `logs/backend.log` without bound ([#118](https://github.com/fclairamb/solidping/issues/118)) ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
-* **deps:** update go dependencies (non-major) ([#113](https://github.com/fclairamb/solidping/issues/113)) ([8d8debd](https://github.com/fclairamb/solidping/commit/8d8debd2ec5aa1870e7058bf83a53b9614cb49da))
-* **deps:** update go dependencies (non-major) ([#115](https://github.com/fclairamb/solidping/issues/115)) ([d53dafa](https://github.com/fclairamb/solidping/commit/d53dafa57ef824fbdb0bf40b1d836c9acdd90f14))
-* **deps:** update go dependencies (non-major) ([#116](https://github.com/fclairamb/solidping/issues/116)) ([179d2f5](https://github.com/fclairamb/solidping/commit/179d2f50bef2761cda3e35cff7e7dca6e4acbc2e))
+* **auth:** sessions no longer die ~1h after login — repaired the token-refresh chain and an
+  OAuth handoff that dropped the refresh token
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** creating an org from `/no-org` now mints an org-scoped session token instead of
+  leaving every API call 403'ing ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** `auth.Service` reads overlaid `AuthConfig` fields (registration-disabled, session
+  cap) live instead of from a frozen snapshot
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **auth:** a zero-org session is kept alive — `/auth/me` returns no-org info instead of
+  401-logging-out the user ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** deep links survive login — every post-login path resolves through a shared
+  `returnTo` resolver with a tightened same-origin open-redirect guard
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** uptime-bar badge shows the full 7d/30d/90d history instead of only 1/2/3 days
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **dash0:** `validateSearch` boolean query-params (`showSuppressed`, `graphFull`) no longer
+  silently no-op from string-vs-bool coercion
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **checks:** `created` lifecycle results are no longer swallowed by aggregation
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **slack:** channel/user pickers paginate (cursor) so large workspaces are fully searchable
+  ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **devloop:** hard-cap the rotating log so a newline-less/hot-looping child can't grow
+  `logs/backend.log` without bound ([#118](https://github.com/fclairamb/solidping/issues/118))
+  ([4f9cfeb](https://github.com/fclairamb/solidping/commit/4f9cfebb010d1846b6486518d4df7307cc0d2289))
+* **deps:** update go dependencies (non-major)
+  ([#113](https://github.com/fclairamb/solidping/issues/113))
+  ([8d8debd](https://github.com/fclairamb/solidping/commit/8d8debd2ec5aa1870e7058bf83a53b9614cb49da))
+* **deps:** update go dependencies (non-major)
+  ([#115](https://github.com/fclairamb/solidping/issues/115))
+  ([d53dafa](https://github.com/fclairamb/solidping/commit/d53dafa57ef824fbdb0bf40b1d836c9acdd90f14))
+* **deps:** update go dependencies (non-major)
+  ([#116](https://github.com/fclairamb/solidping/issues/116))
+  ([179d2f5](https://github.com/fclairamb/solidping/commit/179d2f50bef2761cda3e35cff7e7dca6e4acbc2e))
 
 ## [0.2.1](https://github.com/fclairamb/solidping/compare/v0.2.0...v0.2.1) (2026-07-08)
 
 
 ### Features
 
-* **dash0:** one-click MCP connector setup — AI assistants page with a URL-only OAuth flow, per-client icons, shared copy/collapsible code primitives ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **dash0:** Recent activity links directly to the originating incident/check and shows the channel name; incident lifecycle events enriched with check UID/name ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **entitlements:** SaaS Free-plan defaults now match the billing Free plan (10 checks, 6/min, no SSO), with a backend-driven "Free"/"Team"/"Self-hosted" plan display identity ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **devloop:** `make dev`/`make dev-test` supervise dash0 and status0 with size-rotated per-process logs instead of unbounded raw output ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **dash0:** one-click MCP connector setup — AI assistants page with a URL-only OAuth flow,
+  per-client icons, shared copy/collapsible code primitives
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **dash0:** Recent activity links directly to the originating incident/check and shows the
+  channel name; incident lifecycle events enriched with check UID/name
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **entitlements:** SaaS Free-plan defaults now match the billing Free plan (10 checks, 6/min,
+  no SSO), with a backend-driven "Free"/"Team"/"Self-hosted" plan display identity
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **devloop:** `make dev`/`make dev-test` supervise dash0 and status0 with size-rotated
+  per-process logs instead of unbounded raw output
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
 
 
 ### Bug Fixes
 
-* **checks:** list endpoint no longer overfetches O(retention) raw rows per check for `lastResult` — one row per check via `DISTINCT ON` ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **e2e:** dashboard E2E suite flaked on per-test login contention; authenticate once per Playwright worker instead of once per test ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **db:** embedded-Postgres orphan sweep + watchdog reclaims leaked dev/test instances left behind by crashed processes ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **realtime:** check-detail live subscription used the URL slug instead of the canonical uid, silently breaking live updates on slug-based check URLs ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **e2e:** hardcoded `localhost:4000` in several spec files ignored `E2E_BASE_URL`, breaking test runs against non-default servers ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **checkworker:** check results fell back to a null region for default-region checks instead of the executing worker's own region ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **notifications:** a malformed notification UID errored on the Postgres `uuid` column cast instead of rendering the friendly not-found state ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
-* **dash0:** live-socket CONNECTING crash + route-level error boundaries ([#108](https://github.com/fclairamb/solidping/issues/108)) ([008c015](https://github.com/fclairamb/solidping/commit/008c015761d958b53f32ec1a956f0300230af7b1))
-* **deps:** update go dependencies (non-major) ([#109](https://github.com/fclairamb/solidping/issues/109)) ([ec616d4](https://github.com/fclairamb/solidping/commit/ec616d4759118d4027cb673909b57bc876dcd554))
-* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.7.2 ([#110](https://github.com/fclairamb/solidping/issues/110)) ([09d6ad0](https://github.com/fclairamb/solidping/commit/09d6ad0890c752442cc7a26f96227e7866da7502))
-* **deps:** update module github.com/ohler55/ojg to v1.28.2 ([#107](https://github.com/fclairamb/solidping/issues/107)) ([335615c](https://github.com/fclairamb/solidping/commit/335615c7db9ef8b3abb0233ccff3e2f4d17792ac))
-* **deps:** update module github.com/wneessen/go-mail to v0.8.0 ([#103](https://github.com/fclairamb/solidping/issues/103)) ([aa533c1](https://github.com/fclairamb/solidping/commit/aa533c104e173acf220848e1797f8b94e18ae4a5))
-* Slack multi-org, region filtering, mail-checker hang fixes, live-status dot ([#100](https://github.com/fclairamb/solidping/issues/100)) ([35f3aa2](https://github.com/fclairamb/solidping/commit/35f3aa23d8f20b605313ed94159942a10c7a6bef))
+* **checks:** list endpoint no longer overfetches O(retention) raw rows per check for
+  `lastResult` — one row per check via `DISTINCT ON`
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **e2e:** dashboard E2E suite flaked on per-test login contention; authenticate once per
+  Playwright worker instead of once per test
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **db:** embedded-Postgres orphan sweep + watchdog reclaims leaked dev/test instances left
+  behind by crashed processes ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **realtime:** check-detail live subscription used the URL slug instead of the canonical uid,
+  silently breaking live updates on slug-based check URLs
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **e2e:** hardcoded `localhost:4000` in several spec files ignored `E2E_BASE_URL`, breaking
+  test runs against non-default servers
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **checkworker:** check results fell back to a null region for default-region checks instead of
+  the executing worker's own region ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **notifications:** a malformed notification UID errored on the Postgres `uuid` column cast
+  instead of rendering the friendly not-found state
+  ([#111](https://github.com/fclairamb/solidping/issues/111))
+  ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **dash0:** live-socket CONNECTING crash + route-level error boundaries
+  ([#108](https://github.com/fclairamb/solidping/issues/108))
+  ([008c015](https://github.com/fclairamb/solidping/commit/008c015761d958b53f32ec1a956f0300230af7b1))
+* **deps:** update go dependencies (non-major)
+  ([#109](https://github.com/fclairamb/solidping/issues/109))
+  ([ec616d4](https://github.com/fclairamb/solidping/commit/ec616d4759118d4027cb673909b57bc876dcd554))
+* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.7.2
+  ([#110](https://github.com/fclairamb/solidping/issues/110))
+  ([09d6ad0](https://github.com/fclairamb/solidping/commit/09d6ad0890c752442cc7a26f96227e7866da7502))
+* **deps:** update module github.com/ohler55/ojg to v1.28.2
+  ([#107](https://github.com/fclairamb/solidping/issues/107))
+  ([335615c](https://github.com/fclairamb/solidping/commit/335615c7db9ef8b3abb0233ccff3e2f4d17792ac))
+* **deps:** update module github.com/wneessen/go-mail to v0.8.0
+  ([#103](https://github.com/fclairamb/solidping/issues/103))
+  ([aa533c1](https://github.com/fclairamb/solidping/commit/aa533c104e173acf220848e1797f8b94e18ae4a5))
+* Slack multi-org, region filtering, mail-checker hang fixes, live-status dot
+  ([#100](https://github.com/fclairamb/solidping/issues/100))
+  ([35f3aa2](https://github.com/fclairamb/solidping/commit/35f3aa23d8f20b605313ed94159942a10c7a6bef))
 
 ## [0.2.0](https://github.com/fclairamb/solidping/compare/v0.1.0...v0.2.0) (2026-07-04)
 
 
 ### Features
 
-* **realtime:** replace SSE with a WebSocket transport with per-entity subscriptions — v1 shipped org-scoped SSE hint events where a connection got every hint for its org; v2 is a clean swap (not yet released, so no deprecation window) to a WebSocket transport where a connection receives nothing until it subscribes to a `check` (by uid) or a `checks`/`incidents`/`events`/`jobs` collection scope, with a pre-authenticated-or-in-band-message handshake, storm collapse above 64 distinct check uids in one flush window, scope-keyed dirty-set dispatch, subscription caps, and a dash0 refcounted subscription registry with per-scope poll-stretch gating ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **scheduler:** check-execution fairness — WFQ-style claim ordering (`effective_scheduled_at`), per-plan tier credit, cost EWMA ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **scheduler:** fast/slow check lanes — `lane` smallint on `check_jobs`, hysteresis classifier, partial claim indexes, reservation-style two-SELECT claim with a reserved fast floor (`fast_lane_reserved`, borrowing allowed), `busySlow` accounting + lane metrics ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **scheduler:** heavy-check demand control — server-side `MinPeriod` validation on create/PATCH (browser 60s, js 30s, global 10s floor; sleep/internal exempt), read-only `scheduling` block (cost/delay EWMA, duty cycle) on check detail with a ≥50% duty-cycle warning, cost-aware execution timeout on by default ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **scheduler:** sleep checker + browser-to-sleep harness for scheduler load testing; cost-distribution management endpoint ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **discovery:** discovery foundation, container discovery, Kubernetes discovery, and a Kubernetes checker ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **maintenance-windows:** dash0 UI, status0 badge, recurrence (backend + frontend), breadcrumbs/timezone polish ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **availability:** server-side availability-statistics API — real per-period measurements replacing the client-side estimate; status pages exclude lifecycle results; uptime bar data-source parity; 24h hourly history period; dashboard KPI tile removed in favor of the server numbers ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **checks:** NTP checker ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **checks:** grey status dot for disabled checks ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **auth:** configurable password hashing, plus a Server Settings UI and rehash-on-change ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **auth:** Microsoft OAuth tenant ID setting ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* memory runtime guardrails + consumption analysis ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **incidents:** adaptive recovery redesigned as capped flapping backoff, with confirmation/recovery probe-count estimates ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **db:** consolidate migrations into a v0.2.0 baseline delta; collapse OAuth storage from three dedicated tables to reusing `state_entries`/`user_tokens` ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **realtime:** replace SSE with a WebSocket transport with per-entity subscriptions — v1
+  shipped org-scoped SSE hint events where a connection got every hint for its org; v2 is a
+  clean swap (not yet released, so no deprecation window) to a WebSocket transport where a
+  connection receives nothing until it subscribes to a `check` (by uid) or a
+  `checks`/`incidents`/`events`/`jobs` collection scope, with a
+  pre-authenticated-or-in-band-message handshake, storm collapse above 64 distinct check uids in
+  one flush window, scope-keyed dirty-set dispatch, subscription caps, and a dash0 refcounted
+  subscription registry with per-scope poll-stretch gating
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **scheduler:** check-execution fairness — WFQ-style claim ordering (`effective_scheduled_at`),
+  per-plan tier credit, cost EWMA ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **scheduler:** fast/slow check lanes — `lane` smallint on `check_jobs`, hysteresis classifier,
+  partial claim indexes, reservation-style two-SELECT claim with a reserved fast floor
+  (`fast_lane_reserved`, borrowing allowed), `busySlow` accounting + lane metrics
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **scheduler:** heavy-check demand control — server-side `MinPeriod` validation on create/PATCH
+  (browser 60s, js 30s, global 10s floor; sleep/internal exempt), read-only `scheduling` block
+  (cost/delay EWMA, duty cycle) on check detail with a ≥50% duty-cycle warning, cost-aware
+  execution timeout on by default ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **scheduler:** sleep checker + browser-to-sleep harness for scheduler load testing;
+  cost-distribution management endpoint
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **discovery:** discovery foundation, container discovery, Kubernetes discovery, and a
+  Kubernetes checker ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **maintenance-windows:** dash0 UI, status0 badge, recurrence (backend + frontend),
+  breadcrumbs/timezone polish ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **availability:** server-side availability-statistics API — real per-period measurements
+  replacing the client-side estimate; status pages exclude lifecycle results; uptime bar
+  data-source parity; 24h hourly history period; dashboard KPI tile removed in favor of the
+  server numbers ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **checks:** NTP checker ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **checks:** grey status dot for disabled checks
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **auth:** configurable password hashing, plus a Server Settings UI and rehash-on-change
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **auth:** Microsoft OAuth tenant ID setting
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* memory runtime guardrails + consumption analysis
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **incidents:** adaptive recovery redesigned as capped flapping backoff, with
+  confirmation/recovery probe-count estimates
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **db:** consolidate migrations into a v0.2.0 baseline delta; collapse OAuth storage from three
+  dedicated tables to reusing `state_entries`/`user_tokens`
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
 
 
 ### Bug Fixes
 
-* **deps:** update dependency recharts to v3.9.2 ([#97](https://github.com/fclairamb/solidping/issues/97)) ([c7917cc](https://github.com/fclairamb/solidping/commit/c7917ccd891e0e1c54d879183982333d1e8cceb4))
-* **deps:** update github.com/dop251/goja digest to b07b744 ([#90](https://github.com/fclairamb/solidping/issues/90)) ([3f33ee6](https://github.com/fclairamb/solidping/commit/3f33ee65bb13b0f3b81c8ddb72e347b311f8b0cc))
-* **deps:** update go dependencies (non-major) ([#92](https://github.com/fclairamb/solidping/issues/92)) ([138e3ae](https://github.com/fclairamb/solidping/commit/138e3ae58b99630331adf7033fe672a09268b7c3))
-* **realtime:** stale OAuth-consent `access_token` cookie fail-fast rejected the WS handshake instead of falling through to fresh in-band auth; plain result writes didn't invalidate the check/checks cache, drifting "last checked" stale ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **slack:** Socket Mode parameter fix ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
-* **incidents:** grouped-incident duplicate-resolved-notification fix; fast-relapse incident reopen fix ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **deps:** update dependency recharts to v3.9.2
+  ([#97](https://github.com/fclairamb/solidping/issues/97))
+  ([c7917cc](https://github.com/fclairamb/solidping/commit/c7917ccd891e0e1c54d879183982333d1e8cceb4))
+* **deps:** update github.com/dop251/goja digest to b07b744
+  ([#90](https://github.com/fclairamb/solidping/issues/90))
+  ([3f33ee6](https://github.com/fclairamb/solidping/commit/3f33ee65bb13b0f3b81c8ddb72e347b311f8b0cc))
+* **deps:** update go dependencies (non-major)
+  ([#92](https://github.com/fclairamb/solidping/issues/92))
+  ([138e3ae](https://github.com/fclairamb/solidping/commit/138e3ae58b99630331adf7033fe672a09268b7c3))
+* **realtime:** stale OAuth-consent `access_token` cookie fail-fast rejected the WS handshake
+  instead of falling through to fresh in-band auth; plain result writes didn't invalidate the
+  check/checks cache, drifting "last checked" stale
+  ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **slack:** Socket Mode parameter fix ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **incidents:** grouped-incident duplicate-resolved-notification fix; fast-relapse incident
+  reopen fix ([#89](https://github.com/fclairamb/solidping/issues/89))
+  ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
 
 
 ### Miscellaneous Chores
 
-* retry release-as trailer for v0.2.0 ([#98](https://github.com/fclairamb/solidping/issues/98)) ([fb8e011](https://github.com/fclairamb/solidping/commit/fb8e0112f28833e53c52e5278634b6fbe01d1ce6))
+* retry release-as trailer for v0.2.0 ([#98](https://github.com/fclairamb/solidping/issues/98))
+  ([fb8e011](https://github.com/fclairamb/solidping/commit/fb8e0112f28833e53c52e5278634b6fbe01d1ce6))
 
 ## [0.1.0](https://github.com/fclairamb/solidping/compare/v0.0.0...v0.1.0) (2026-06-22)
 
 
 ### Features
 
-* add check type registry, sample configs, notification senders, and observability integrations ([eea049e](https://github.com/fclairamb/solidping/commit/eea049e59f998cc0247110fc86d2617b31aedff8))
-* **status:** first-class `Warning` (live) + `Degraded` (aggregated rollup) status values across all three status enums; Warning counts as up for availability and is incident-neutral (never opens/resolves an incident); aggregation promotes a non-failing window containing a Warning to Degraded ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* **checks:** SSL graduated expiry — two-tier `warningDays`/`criticalDays`, expiry decided by the whole-chain minimum, chain-report output + UI; warning tier is amber (no page), critical is Down (pages) ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* **checks:** Docker restart-loop detection — opt-in heuristic; a running-but-crash-looping container reports Warning (doesn't page), not-running/unhealthy still reports Down ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* **mcp:** OAuth 2.1 — turns SolidPing into an embedded OAuth 2.1 authorization server for the MCP endpoint: discovery, RFC 8707 audience binding, authorize/consent/token with mandatory PKCE S256, single-use codes, rotating refresh, RFC 7591 dynamic client registration with a loopback exception; PAT-bearer back-compat preserved ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* config-as-code — `POST /orgs/:org/checks/apply` (+ `sp apply`) reconciling the existing export format: managed-label scope, dry-run/diff, delete-by-absence gated by prune + managed-label + a deletion cap, `${env:}`/`${param:}` secret references resolved server-side; `sp checks export`/`import` added ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* **dash0:** check-detail header action toolbar drops onto its own row so a long check name no longer squeezes it ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* **dash0:** destructive button gets red-tinted elevation tokens so Delete matches the Save button's hover lift ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* refresh the brand mark's favicon set — the 4 favicon/touch PNGs re-rendered from the new `logo.svg` ([#85](https://github.com/fclairamb/solidping/issues/85)) ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
-* **jobs:** admin Jobs observability page with status and type filters ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **jobs:** export background-job metrics to Prometheus ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **jobs:** reap stuck running jobs via a stuck-job reaper ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **jobs:** add Jobs section breadcrumbs ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **notifications:** delivery detail page capturing delivery artifacts (status, bodies, timings) ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **notifications:** flat notification route with source breadcrumb and integration notification history ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **notifications:** show notification durations in days ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **integrations:** rename Channels to Integrations across the dashboard ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **integrations:** stamp a device label on webpush integration subscriptions ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **integrations:** integration edit page save / send-test button states ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **slack:** link the monitor name and status tags in Slack notifications to the dashboard ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **dash0:** dashboard "checks at a glance" overview ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **dash0:** redesign the checks-list label filter as a faceted picker ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **dash0:** standardize every list and section page on the canonical PageHeader component ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **dash0:** check-detail header keeps its actions inline, shrinking to icon-only on mobile instead of an overflow menu ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **badges:** add a Badges button to the check-detail header linking to the badge builder ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **badges:** badge contextual labels; badges link back to their originating check ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **dash0:** uptime bar colours each segment by a segment-width percentage threshold ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **incidents:** restyle incident-detail action buttons (icons and layout) ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **discovery:** discovery detail back arrow and desktop refresh control ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **status-pages:** status-pages detail back-arrow placement in the action cluster; status-updates "new" button placement ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **auth:** remember the last authentication method and propose it first on login ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **auth:** login page polish — inline forgot-password link, tighter dividers, passkey as a link ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **entitlements:** SaaS entitlements with a per-org usage page (maxChecks, maxChecksPerMinute, SSO users) ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* refresh the brand mark — high-fidelity logo and favicon matching solidping.io ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **checkworker:** reduce per-result DB round-trips in the check-worker hot path ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **discovery:** raise `MaxScanChunks` from 256 to 4096 and add a large-range CIDR warning in the UI ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **status-updates:** move the status-update badge to the right side of the status update card ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **webpush:** foundation — VAPID keypair lifecycle, `app_settings` KV table, service worker, subscription hook, and enable button ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **webpush:** dispatch web push to escalation policy users and org-channel subscribers, plus a test-send endpoint ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **badges:** buffer numeric width/minWidth inputs in local state, committing to the URL on blur, so intermediate typing values aren't rejected by route validation ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* custom user-agent, refresh checks, vite plugin switch, CI updates ([#1](https://github.com/fclairamb/solidping/issues/1)) ([cc00858](https://github.com/fclairamb/solidping/commit/cc00858249a731c46e96d2105d3d4c9e49674656))
-* documentation site served at /docs (co-located in web/docs) ([#88](https://github.com/fclairamb/solidping/issues/88)) ([27d9ccd](https://github.com/fclairamb/solidping/commit/27d9ccd4ec933979a5c788be5fdde44f177c61e7))
-* email check frontend (spec 03) ([#30](https://github.com/fclairamb/solidping/issues/30)) ([aebd106](https://github.com/fclairamb/solidping/commit/aebd1062b8a64d7bbc1ef1c99ba332a664432c80))
-* email inbox foundation via JMAP (spec 01) ([#24](https://github.com/fclairamb/solidping/issues/24)) ([0f3b0c1](https://github.com/fclairamb/solidping/commit/0f3b0c1a777ed65b84a28550ab5b9f30743b7fa4))
-* email passive checks (spec 02) ([#27](https://github.com/fclairamb/solidping/issues/27)) ([ba5536f](https://github.com/fclairamb/solidping/commit/ba5536f540257dfec2571ce39a39b0fdabe1de53))
-* **entitlements:** trim to MaxSSOUsers + MaxChecksPerMinute + status page history fixes ([#50](https://github.com/fclairamb/solidping/issues/50)) ([a007de0](https://github.com/fclairamb/solidping/commit/a007de0fc3774b209fa35e5e5d1693e63d7f0b4b))
-* **entitlements:** trim to MaxSSOUsers + MaxChecksPerMinute, enforce both ([#49](https://github.com/fclairamb/solidping/issues/49)) ([d25cc5f](https://github.com/fclairamb/solidping/commit/d25cc5fe794669115c03ab5fe37f4890d9c0aeae))
-* group incident correlation (spec 04 backend v1) ([#31](https://github.com/fclairamb/solidping/issues/31)) ([1883986](https://github.com/fclairamb/solidping/commit/18839861b23250d74cd4abe3e64d7c1a67c8f617))
-* **observability:** instrument hot path + add bench harness ([#60](https://github.com/fclairamb/solidping/issues/60)) ([c6604cc](https://github.com/fclairamb/solidping/commit/c6604cc1dbe72b6447c7240a23f22a7211d04b13))
-* **oncall:** searchable timezone dropdown + sidebar logo polish ([#46](https://github.com/fclairamb/solidping/issues/46)) ([4396898](https://github.com/fclairamb/solidping/commit/4396898f09d40daf9a841dd7b92c18b922fd0008))
-* per-IP HTTP rate limiting and concurrency limiting ([#59](https://github.com/fclairamb/solidping/issues/59)) ([f9cc273](https://github.com/fclairamb/solidping/commit/f9cc2736e55fe7f0fbd8673a9652e63df4cd1b80))
-* soften HTTP rate limits with bounded queues + request timeout ([#63](https://github.com/fclairamb/solidping/issues/63)) ([025501b](https://github.com/fclairamb/solidping/commit/025501bc874b3c903b6d5b1f101739cf23c2958f))
-* SolidPing — distributed uptime monitoring platform ([eef4383](https://github.com/fclairamb/solidping/commit/eef4383fdeff1219159714db70510b7b6c8067b0))
-* **statuspages:** drag-and-drop resource reordering + dash conventions ([#41](https://github.com/fclairamb/solidping/issues/41)) ([cf910d4](https://github.com/fclairamb/solidping/commit/cf910d469e239ca02172a9f18fe01a065fdf626f))
+* add check type registry, sample configs, notification senders, and observability integrations
+  ([eea049e](https://github.com/fclairamb/solidping/commit/eea049e59f998cc0247110fc86d2617b31aedff8))
+* **status:** first-class `Warning` (live) + `Degraded` (aggregated rollup) status values across
+  all three status enums; Warning counts as up for availability and is incident-neutral (never
+  opens/resolves an incident); aggregation promotes a non-failing window containing a Warning to
+  Degraded ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* **checks:** SSL graduated expiry — two-tier `warningDays`/`criticalDays`, expiry decided by
+  the whole-chain minimum, chain-report output + UI; warning tier is amber (no page), critical
+  is Down (pages) ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* **checks:** Docker restart-loop detection — opt-in heuristic; a running-but-crash-looping
+  container reports Warning (doesn't page), not-running/unhealthy still reports Down
+  ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* **mcp:** OAuth 2.1 — turns SolidPing into an embedded OAuth 2.1 authorization server for the
+  MCP endpoint: discovery, RFC 8707 audience binding, authorize/consent/token with mandatory
+  PKCE S256, single-use codes, rotating refresh, RFC 7591 dynamic client registration with a
+  loopback exception; PAT-bearer back-compat preserved
+  ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* config-as-code — `POST /orgs/:org/checks/apply` (+ `sp apply`) reconciling the existing export
+  format: managed-label scope, dry-run/diff, delete-by-absence gated by prune + managed-label +
+  a deletion cap, `${env:}`/`${param:}` secret references resolved server-side;
+  `sp checks export`/`import` added ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* **dash0:** check-detail header action toolbar drops onto its own row so a long check name no
+  longer squeezes it ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* **dash0:** destructive button gets red-tinted elevation tokens so Delete matches the Save
+  button's hover lift ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* refresh the brand mark's favicon set — the 4 favicon/touch PNGs re-rendered from the new
+  `logo.svg` ([#85](https://github.com/fclairamb/solidping/issues/85))
+  ([936d830](https://github.com/fclairamb/solidping/commit/936d8304af930542c7a341353eb08a7708aa668a))
+* **jobs:** admin Jobs observability page with status and type filters
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **jobs:** export background-job metrics to Prometheus
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **jobs:** reap stuck running jobs via a stuck-job reaper
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **jobs:** add Jobs section breadcrumbs
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **notifications:** delivery detail page capturing delivery artifacts (status, bodies, timings)
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **notifications:** flat notification route with source breadcrumb and integration notification
+  history ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **notifications:** show notification durations in days
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **integrations:** rename Channels to Integrations across the dashboard
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **integrations:** stamp a device label on webpush integration subscriptions
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **integrations:** integration edit page save / send-test button states
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **slack:** link the monitor name and status tags in Slack notifications to the dashboard
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **dash0:** dashboard "checks at a glance" overview
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **dash0:** redesign the checks-list label filter as a faceted picker
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **dash0:** standardize every list and section page on the canonical PageHeader component
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **dash0:** check-detail header keeps its actions inline, shrinking to icon-only on mobile
+  instead of an overflow menu ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **badges:** add a Badges button to the check-detail header linking to the badge builder
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **badges:** badge contextual labels; badges link back to their originating check
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **dash0:** uptime bar colours each segment by a segment-width percentage threshold
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **incidents:** restyle incident-detail action buttons (icons and layout)
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **discovery:** discovery detail back arrow and desktop refresh control
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **status-pages:** status-pages detail back-arrow placement in the action cluster;
+  status-updates "new" button placement
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **auth:** remember the last authentication method and propose it first on login
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **auth:** login page polish — inline forgot-password link, tighter dividers, passkey as a link
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **entitlements:** SaaS entitlements with a per-org usage page (maxChecks, maxChecksPerMinute,
+  SSO users) ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* refresh the brand mark — high-fidelity logo and favicon matching solidping.io
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **checkworker:** reduce per-result DB round-trips in the check-worker hot path
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **discovery:** raise `MaxScanChunks` from 256 to 4096 and add a large-range CIDR warning in
+  the UI ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **status-updates:** move the status-update badge to the right side of the status update card
+  ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **webpush:** foundation — VAPID keypair lifecycle, `app_settings` KV table, service worker,
+  subscription hook, and enable button ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **webpush:** dispatch web push to escalation policy users and org-channel subscribers, plus a
+  test-send endpoint ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **badges:** buffer numeric width/minWidth inputs in local state, committing to the URL on
+  blur, so intermediate typing values aren't rejected by route validation
+  ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* custom user-agent, refresh checks, vite plugin switch, CI updates
+  ([#1](https://github.com/fclairamb/solidping/issues/1))
+  ([cc00858](https://github.com/fclairamb/solidping/commit/cc00858249a731c46e96d2105d3d4c9e49674656))
+* documentation site served at /docs (co-located in web/docs)
+  ([#88](https://github.com/fclairamb/solidping/issues/88))
+  ([27d9ccd](https://github.com/fclairamb/solidping/commit/27d9ccd4ec933979a5c788be5fdde44f177c61e7))
+* email check frontend (spec 03) ([#30](https://github.com/fclairamb/solidping/issues/30))
+  ([aebd106](https://github.com/fclairamb/solidping/commit/aebd1062b8a64d7bbc1ef1c99ba332a664432c80))
+* email inbox foundation via JMAP (spec 01)
+  ([#24](https://github.com/fclairamb/solidping/issues/24))
+  ([0f3b0c1](https://github.com/fclairamb/solidping/commit/0f3b0c1a777ed65b84a28550ab5b9f30743b7fa4))
+* email passive checks (spec 02) ([#27](https://github.com/fclairamb/solidping/issues/27))
+  ([ba5536f](https://github.com/fclairamb/solidping/commit/ba5536f540257dfec2571ce39a39b0fdabe1de53))
+* **entitlements:** trim to MaxSSOUsers + MaxChecksPerMinute + status page history fixes
+  ([#50](https://github.com/fclairamb/solidping/issues/50))
+  ([a007de0](https://github.com/fclairamb/solidping/commit/a007de0fc3774b209fa35e5e5d1693e63d7f0b4b))
+* **entitlements:** trim to MaxSSOUsers + MaxChecksPerMinute, enforce both
+  ([#49](https://github.com/fclairamb/solidping/issues/49))
+  ([d25cc5f](https://github.com/fclairamb/solidping/commit/d25cc5fe794669115c03ab5fe37f4890d9c0aeae))
+* group incident correlation (spec 04 backend v1)
+  ([#31](https://github.com/fclairamb/solidping/issues/31))
+  ([1883986](https://github.com/fclairamb/solidping/commit/18839861b23250d74cd4abe3e64d7c1a67c8f617))
+* **observability:** instrument hot path + add bench harness
+  ([#60](https://github.com/fclairamb/solidping/issues/60))
+  ([c6604cc](https://github.com/fclairamb/solidping/commit/c6604cc1dbe72b6447c7240a23f22a7211d04b13))
+* **oncall:** searchable timezone dropdown + sidebar logo polish
+  ([#46](https://github.com/fclairamb/solidping/issues/46))
+  ([4396898](https://github.com/fclairamb/solidping/commit/4396898f09d40daf9a841dd7b92c18b922fd0008))
+* per-IP HTTP rate limiting and concurrency limiting
+  ([#59](https://github.com/fclairamb/solidping/issues/59))
+  ([f9cc273](https://github.com/fclairamb/solidping/commit/f9cc2736e55fe7f0fbd8673a9652e63df4cd1b80))
+* soften HTTP rate limits with bounded queues + request timeout
+  ([#63](https://github.com/fclairamb/solidping/issues/63))
+  ([025501b](https://github.com/fclairamb/solidping/commit/025501bc874b3c903b6d5b1f101739cf23c2958f))
+* SolidPing — distributed uptime monitoring platform
+  ([eef4383](https://github.com/fclairamb/solidping/commit/eef4383fdeff1219159714db70510b7b6c8067b0))
+* **statuspages:** drag-and-drop resource reordering + dash conventions
+  ([#41](https://github.com/fclairamb/solidping/issues/41))
+  ([cf910d4](https://github.com/fclairamb/solidping/commit/cf910d469e239ca02172a9f18fe01a065fdf626f))
 
 
 ### Bug Fixes
 
-* **deps:** update dependency i18next to v26 ([#26](https://github.com/fclairamb/solidping/issues/26)) ([d5d1b7e](https://github.com/fclairamb/solidping/commit/d5d1b7edceec47fdc51eec2f4bad16e138906108))
-* **deps:** update dependency lucide-react to v1 ([#28](https://github.com/fclairamb/solidping/issues/28)) ([cdc8e8c](https://github.com/fclairamb/solidping/commit/cdc8e8cc02c18240100586378b3a122d360444d6))
-* **deps:** update dependency react-i18next to v17 ([#29](https://github.com/fclairamb/solidping/issues/29)) ([13135d8](https://github.com/fclairamb/solidping/commit/13135d85bc9f00f7c46220f1b64b08b9ff5d238e))
-* **deps:** update dependency recharts to v3.8.1 ([#14](https://github.com/fclairamb/solidping/issues/14)) ([5d95a3b](https://github.com/fclairamb/solidping/commit/5d95a3b99d6de02adae3aeaf7b052fd242c0f114))
-* **deps:** update go dependencies (non-major) ([#16](https://github.com/fclairamb/solidping/issues/16)) ([2450f13](https://github.com/fclairamb/solidping/commit/2450f1368d251bc5d74e8c2978145c9da53efef7))
-* **deps:** update go dependencies (non-major) ([#19](https://github.com/fclairamb/solidping/issues/19)) ([f842310](https://github.com/fclairamb/solidping/commit/f842310dc631d7461b3e26108ea569bb4b2b8795))
-* **deps:** update go dependencies (non-major) ([#37](https://github.com/fclairamb/solidping/issues/37)) ([c020eca](https://github.com/fclairamb/solidping/commit/c020ecaefdb0676eca0b9961c19cbe6f633a40e6))
-* **deps:** update go dependencies (non-major) ([#44](https://github.com/fclairamb/solidping/issues/44)) ([ff0bcd0](https://github.com/fclairamb/solidping/commit/ff0bcd0026007fd86c33222aeddaea2f329f7540))
-* **deps:** update go dependencies (non-major) ([#52](https://github.com/fclairamb/solidping/issues/52)) ([2e3bc28](https://github.com/fclairamb/solidping/commit/2e3bc2845ffdabdd77db9994d48addb1f91f8e32))
-* **deps:** update go dependencies (non-major) ([#69](https://github.com/fclairamb/solidping/issues/69)) ([a65ed4c](https://github.com/fclairamb/solidping/commit/a65ed4ca10bf1e6a0bcfb09f81e43274a424d2b6))
-* **deps:** update go dependencies (non-major) ([#77](https://github.com/fclairamb/solidping/issues/77)) ([a0920ff](https://github.com/fclairamb/solidping/commit/a0920ffbe3dc38931acb120d62af4d6f441a3d03))
-* **deps:** update go dependencies (non-major) to v1.4.2 ([#86](https://github.com/fclairamb/solidping/issues/86)) ([1eb7504](https://github.com/fclairamb/solidping/commit/1eb7504a2d1917183708ffe1b74fe010ef63d329))
-* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.32.18 ([#72](https://github.com/fclairamb/solidping/issues/72)) ([6406537](https://github.com/fclairamb/solidping/commit/64065376412136a54afc3f7542db0212c13bb833))
-* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.101.0 ([#39](https://github.com/fclairamb/solidping/issues/39)) ([f9c9563](https://github.com/fclairamb/solidping/commit/f9c956369d4c928a849b8bdc59f7340d636ad647))
-* **deps:** update module github.com/go-webauthn/webauthn to v0.17.3 ([#45](https://github.com/fclairamb/solidping/issues/45)) ([593931a](https://github.com/fclairamb/solidping/commit/593931a9d40999d9225722dbe67b5b237db48427))
-* **deps:** update module github.com/go-webauthn/webauthn to v0.17.4 ([#70](https://github.com/fclairamb/solidping/issues/70)) ([fca1c97](https://github.com/fclairamb/solidping/commit/fca1c9783398e4a7e951d5a8fa72930c675b8f08))
-* **deps:** update module github.com/ibm/sarama to v1.48.1 ([#47](https://github.com/fclairamb/solidping/issues/47)) ([93ccf3a](https://github.com/fclairamb/solidping/commit/93ccf3aa1e06d6a1fe25b4557d28a750fbcd2a36))
-* **deps:** update module github.com/ibm/sarama to v1.48.2 ([#54](https://github.com/fclairamb/solidping/issues/54)) ([e84d868](https://github.com/fclairamb/solidping/commit/e84d868829a3304b2f5ff187b117a5ad6a4dec09))
-* **deps:** update module github.com/ibm/sarama to v1.49.0 ([#64](https://github.com/fclairamb/solidping/issues/64)) ([fd61bd7](https://github.com/fclairamb/solidping/commit/fd61bd74497828de9057da68215faa8d1323dd14))
-* **deps:** update module github.com/oapi-codegen/runtime to v1.4.1 ([#65](https://github.com/fclairamb/solidping/issues/65)) ([a3a3e9f](https://github.com/fclairamb/solidping/commit/a3a3e9f378d8768e56838dd15276cd7468d3e1db))
-* **deps:** update module github.com/prometheus/common to v0.67.5 ([#61](https://github.com/fclairamb/solidping/issues/61)) ([095dd6f](https://github.com/fclairamb/solidping/commit/095dd6fda83f4d1d7ad51bf4e84b19eb9ff2d9fc))
-* **deps:** update module github.com/slack-go/slack to v0.24.0 ([#75](https://github.com/fclairamb/solidping/issues/75)) ([6e86d5b](https://github.com/fclairamb/solidping/commit/6e86d5b6307bd0b995c0c0153106435cbd5070e7))
-* **deps:** update module golang.org/x/sys to v0.44.0 ([#42](https://github.com/fclairamb/solidping/issues/42)) ([a245730](https://github.com/fclairamb/solidping/commit/a24573052dfdfd6d02b6db5276ba6ae43e01013f))
-* **deps:** update module golang.org/x/sys to v0.45.0 ([#67](https://github.com/fclairamb/solidping/issues/67)) ([49c3d90](https://github.com/fclairamb/solidping/commit/49c3d902f7eca083c02437bff813dfd4ae5c7712))
-* **deps:** update module golang.org/x/term to v0.43.0 ([#43](https://github.com/fclairamb/solidping/issues/43)) ([4a934f1](https://github.com/fclairamb/solidping/commit/4a934f1448e700ed63c06443e34700ecd1baf724))
-* **deps:** update module google.golang.org/grpc to v1.81.0 ([#36](https://github.com/fclairamb/solidping/issues/36)) ([1be183a](https://github.com/fclairamb/solidping/commit/1be183a4860016fa297ae5dba586868d67bc713b))
-* **deps:** update module google.golang.org/grpc to v1.81.1 ([#55](https://github.com/fclairamb/solidping/issues/55)) ([6bfac2d](https://github.com/fclairamb/solidping/commit/6bfac2d3e345eff4bf80cacedeff0fe3ac74a36e))
-* **webpush:** fix the empty uptime-bar / response-time graph bucket query to read all tiers (raw + hour + day) and accumulate correctly ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **integrations:** webhook URL key mismatch — migration renames `webhook_url` → `url` in `integration_connections.settings` and backfills existing data ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **auth:** invite-already-signed-in — gate the "Creating account for…" note on auth state ([#73](https://github.com/fclairamb/solidping/issues/73)) ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
-* **integrations:** send email-integration notifications to the configured recipients ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **integrations:** render the webhook URL on the integration edit page ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **auth:** passkey login shows a precise error on RP-ID / domain mismatch ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **auth:** forgot-password link is no longer bounced back to login by the org auth guard ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* **badges:** correct the badge uptime-bar last-segment width ([#78](https://github.com/fclairamb/solidping/issues/78)) ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
-* status lifecycle improvements and created/running result handling ([#5](https://github.com/fclairamb/solidping/issues/5)) ([fc64c7d](https://github.com/fclairamb/solidping/commit/fc64c7d87c25f2b6be0f9722f46e024b2c64ca1b))
-* **status0:** white page header and de-duplicated footer ([#48](https://github.com/fclairamb/solidping/issues/48)) ([77506a7](https://github.com/fclairamb/solidping/commit/77506a7533d9e0fc99ffc6dcaef33f2c21a9ac6a))
+* **deps:** update dependency i18next to v26
+  ([#26](https://github.com/fclairamb/solidping/issues/26))
+  ([d5d1b7e](https://github.com/fclairamb/solidping/commit/d5d1b7edceec47fdc51eec2f4bad16e138906108))
+* **deps:** update dependency lucide-react to v1
+  ([#28](https://github.com/fclairamb/solidping/issues/28))
+  ([cdc8e8c](https://github.com/fclairamb/solidping/commit/cdc8e8cc02c18240100586378b3a122d360444d6))
+* **deps:** update dependency react-i18next to v17
+  ([#29](https://github.com/fclairamb/solidping/issues/29))
+  ([13135d8](https://github.com/fclairamb/solidping/commit/13135d85bc9f00f7c46220f1b64b08b9ff5d238e))
+* **deps:** update dependency recharts to v3.8.1
+  ([#14](https://github.com/fclairamb/solidping/issues/14))
+  ([5d95a3b](https://github.com/fclairamb/solidping/commit/5d95a3b99d6de02adae3aeaf7b052fd242c0f114))
+* **deps:** update go dependencies (non-major)
+  ([#16](https://github.com/fclairamb/solidping/issues/16))
+  ([2450f13](https://github.com/fclairamb/solidping/commit/2450f1368d251bc5d74e8c2978145c9da53efef7))
+* **deps:** update go dependencies (non-major)
+  ([#19](https://github.com/fclairamb/solidping/issues/19))
+  ([f842310](https://github.com/fclairamb/solidping/commit/f842310dc631d7461b3e26108ea569bb4b2b8795))
+* **deps:** update go dependencies (non-major)
+  ([#37](https://github.com/fclairamb/solidping/issues/37))
+  ([c020eca](https://github.com/fclairamb/solidping/commit/c020ecaefdb0676eca0b9961c19cbe6f633a40e6))
+* **deps:** update go dependencies (non-major)
+  ([#44](https://github.com/fclairamb/solidping/issues/44))
+  ([ff0bcd0](https://github.com/fclairamb/solidping/commit/ff0bcd0026007fd86c33222aeddaea2f329f7540))
+* **deps:** update go dependencies (non-major)
+  ([#52](https://github.com/fclairamb/solidping/issues/52))
+  ([2e3bc28](https://github.com/fclairamb/solidping/commit/2e3bc2845ffdabdd77db9994d48addb1f91f8e32))
+* **deps:** update go dependencies (non-major)
+  ([#69](https://github.com/fclairamb/solidping/issues/69))
+  ([a65ed4c](https://github.com/fclairamb/solidping/commit/a65ed4ca10bf1e6a0bcfb09f81e43274a424d2b6))
+* **deps:** update go dependencies (non-major)
+  ([#77](https://github.com/fclairamb/solidping/issues/77))
+  ([a0920ff](https://github.com/fclairamb/solidping/commit/a0920ffbe3dc38931acb120d62af4d6f441a3d03))
+* **deps:** update go dependencies (non-major) to v1.4.2
+  ([#86](https://github.com/fclairamb/solidping/issues/86))
+  ([1eb7504](https://github.com/fclairamb/solidping/commit/1eb7504a2d1917183708ffe1b74fe010ef63d329))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/config to v1.32.18
+  ([#72](https://github.com/fclairamb/solidping/issues/72))
+  ([6406537](https://github.com/fclairamb/solidping/commit/64065376412136a54afc3f7542db0212c13bb833))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.101.0
+  ([#39](https://github.com/fclairamb/solidping/issues/39))
+  ([f9c9563](https://github.com/fclairamb/solidping/commit/f9c956369d4c928a849b8bdc59f7340d636ad647))
+* **deps:** update module github.com/go-webauthn/webauthn to v0.17.3
+  ([#45](https://github.com/fclairamb/solidping/issues/45))
+  ([593931a](https://github.com/fclairamb/solidping/commit/593931a9d40999d9225722dbe67b5b237db48427))
+* **deps:** update module github.com/go-webauthn/webauthn to v0.17.4
+  ([#70](https://github.com/fclairamb/solidping/issues/70))
+  ([fca1c97](https://github.com/fclairamb/solidping/commit/fca1c9783398e4a7e951d5a8fa72930c675b8f08))
+* **deps:** update module github.com/ibm/sarama to v1.48.1
+  ([#47](https://github.com/fclairamb/solidping/issues/47))
+  ([93ccf3a](https://github.com/fclairamb/solidping/commit/93ccf3aa1e06d6a1fe25b4557d28a750fbcd2a36))
+* **deps:** update module github.com/ibm/sarama to v1.48.2
+  ([#54](https://github.com/fclairamb/solidping/issues/54))
+  ([e84d868](https://github.com/fclairamb/solidping/commit/e84d868829a3304b2f5ff187b117a5ad6a4dec09))
+* **deps:** update module github.com/ibm/sarama to v1.49.0
+  ([#64](https://github.com/fclairamb/solidping/issues/64))
+  ([fd61bd7](https://github.com/fclairamb/solidping/commit/fd61bd74497828de9057da68215faa8d1323dd14))
+* **deps:** update module github.com/oapi-codegen/runtime to v1.4.1
+  ([#65](https://github.com/fclairamb/solidping/issues/65))
+  ([a3a3e9f](https://github.com/fclairamb/solidping/commit/a3a3e9f378d8768e56838dd15276cd7468d3e1db))
+* **deps:** update module github.com/prometheus/common to v0.67.5
+  ([#61](https://github.com/fclairamb/solidping/issues/61))
+  ([095dd6f](https://github.com/fclairamb/solidping/commit/095dd6fda83f4d1d7ad51bf4e84b19eb9ff2d9fc))
+* **deps:** update module github.com/slack-go/slack to v0.24.0
+  ([#75](https://github.com/fclairamb/solidping/issues/75))
+  ([6e86d5b](https://github.com/fclairamb/solidping/commit/6e86d5b6307bd0b995c0c0153106435cbd5070e7))
+* **deps:** update module golang.org/x/sys to v0.44.0
+  ([#42](https://github.com/fclairamb/solidping/issues/42))
+  ([a245730](https://github.com/fclairamb/solidping/commit/a24573052dfdfd6d02b6db5276ba6ae43e01013f))
+* **deps:** update module golang.org/x/sys to v0.45.0
+  ([#67](https://github.com/fclairamb/solidping/issues/67))
+  ([49c3d90](https://github.com/fclairamb/solidping/commit/49c3d902f7eca083c02437bff813dfd4ae5c7712))
+* **deps:** update module golang.org/x/term to v0.43.0
+  ([#43](https://github.com/fclairamb/solidping/issues/43))
+  ([4a934f1](https://github.com/fclairamb/solidping/commit/4a934f1448e700ed63c06443e34700ecd1baf724))
+* **deps:** update module google.golang.org/grpc to v1.81.0
+  ([#36](https://github.com/fclairamb/solidping/issues/36))
+  ([1be183a](https://github.com/fclairamb/solidping/commit/1be183a4860016fa297ae5dba586868d67bc713b))
+* **deps:** update module google.golang.org/grpc to v1.81.1
+  ([#55](https://github.com/fclairamb/solidping/issues/55))
+  ([6bfac2d](https://github.com/fclairamb/solidping/commit/6bfac2d3e345eff4bf80cacedeff0fe3ac74a36e))
+* **webpush:** fix the empty uptime-bar / response-time graph bucket query to read all tiers
+  (raw + hour + day) and accumulate correctly
+  ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **integrations:** webhook URL key mismatch — migration renames `webhook_url` → `url` in
+  `integration_connections.settings` and backfills existing data
+  ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **auth:** invite-already-signed-in — gate the "Creating account for…" note on auth state
+  ([#73](https://github.com/fclairamb/solidping/issues/73))
+  ([a976856](https://github.com/fclairamb/solidping/commit/a976856d541d7216e7172486a8cc89cba0a5759d))
+* **integrations:** send email-integration notifications to the configured recipients
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **integrations:** render the webhook URL on the integration edit page
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **auth:** passkey login shows a precise error on RP-ID / domain mismatch
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **auth:** forgot-password link is no longer bounced back to login by the org auth guard
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* **badges:** correct the badge uptime-bar last-segment width
+  ([#78](https://github.com/fclairamb/solidping/issues/78))
+  ([fe003e4](https://github.com/fclairamb/solidping/commit/fe003e4f86119af8a3e9425949b34966422d1d85))
+* status lifecycle improvements and created/running result handling
+  ([#5](https://github.com/fclairamb/solidping/issues/5))
+  ([fc64c7d](https://github.com/fclairamb/solidping/commit/fc64c7d87c25f2b6be0f9722f46e024b2c64ca1b))
+* **status0:** white page header and de-duplicated footer
+  ([#48](https://github.com/fclairamb/solidping/issues/48))
+  ([77506a7](https://github.com/fclairamb/solidping/commit/77506a7533d9e0fc99ffc6dcaef33f2c21a9ac6a))

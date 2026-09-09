@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, DASH_BASE } from "./fixtures";
 
 // Deterministically seeded in test mode (server/test/testdata/testdata.go,
 // createTestIncidentNotification): an active incident whose Details carry a
@@ -12,7 +12,7 @@ test.describe("Incident failure details", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`/dash0/orgs/test/incidents/${INCIDENT_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByText("Incident Details")).toBeVisible();
@@ -35,7 +35,7 @@ test.describe("Incident failure details", () => {
     const page = authenticatedPage;
 
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto(`/dash0/orgs/test/incidents/${INCIDENT_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/incidents/${INCIDENT_UID}`);
     await page.waitForLoadState("networkidle");
 
     const card = page.getByTestId("failure-details-card");

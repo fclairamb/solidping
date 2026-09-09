@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, STATUS_BASE } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 // Coverage for spec 2026-08-28-16: publishing one check on a status page used
@@ -119,7 +119,7 @@ test.describe("Publish a check on a status page", () => {
       expect(servicesSection?.resources ?? []).toHaveLength(1);
       expect(servicesSection.resources[0].checkUid).toBe(check.uid);
 
-      await page.goto(`/status0/test/${publicSlug}`);
+      await page.goto(`${STATUS_BASE}/test/${publicSlug}`);
       await page.waitForLoadState("networkidle");
       await expect(page.getByText(checkName).first()).toBeVisible();
     } finally {

@@ -9,6 +9,8 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+
+	"github.com/fclairamb/solidping/server/internal/config"
 )
 
 // ackPageStyle is the inline stylesheet shared by every magic-link ack
@@ -90,7 +92,8 @@ func ackIcon(kind ackPageKind) string {
 // pair) — url.PathEscape is applied anyway as defense in depth, so a stray
 // character in either value can't reshape the path.
 func buildIncidentURL(orgSlug, incidentUID string) string {
-	return "/dash0/orgs/" + url.PathEscape(orgSlug) + "/incidents/" + url.PathEscape(incidentUID)
+	return config.DashboardBasePath + "/orgs/" + url.PathEscape(orgSlug) +
+		"/incidents/" + url.PathEscape(incidentUID)
 }
 
 // jsStringLiteral renders s as a double-quoted JavaScript string literal

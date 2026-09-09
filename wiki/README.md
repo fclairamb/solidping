@@ -73,7 +73,7 @@ Project-wide standards and naming rules.
 - [conventions/regions.md](conventions/regions.md) — Region naming (`$continent-$region-$city`) and wildcard matching; org-relative private regions (`@<slug>`), the audit of every path that matches one, and migration 012
 - [conventions/runners.md](conventions/runners.md) — Check & job runner pools: configuration, sizing, fetching architecture, node roles
 - [conventions/state-entries.md](conventions/state-entries.md) — State entries table for Slack thread metadata
-- [conventions/frontend-urls.md](conventions/frontend-urls.md) — Dashboard URL routing (`/dash/orgs/{orgSlug}/...`)
+- [conventions/frontend-urls.md](conventions/frontend-urls.md) — SPA base paths (`/d`, `/s`), the legacy `/dash0` / `/status0` redirects, and dashboard URL routing (`/d/orgs/{orgSlug}/...`)
 - [conventions/email-templates.md](conventions/email-templates.md) — Transactional email templates: required blocks (preheader, text), the label/value fact grid, and why the subject and plaintext parts render through text/template
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code

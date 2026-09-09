@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE } from "./fixtures";
 
 // The backend serializes discovery scans per org (409 DISCOVERY_ALREADY_RUNNING
 // while any plan or chunk job is live), so a test that starts a scan must wait
@@ -42,7 +42,7 @@ async function waitForScanQuiescence(page: Page) {
 test.describe("Network Discovery", () => {
   test.beforeEach(async ({ page }) => {
     // Log in with test credentials.
-    await page.goto("/dash0/orgs/test/login");
+    await page.goto(`${DASH_BASE}/orgs/test/login`);
     await page.getByTestId("login-email").fill("test@test.com");
     await page.getByTestId("login-password").fill("test");
     await page.getByTestId("login-submit").click();
@@ -50,7 +50,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("discovery sidebar link is visible for admin", async ({ page }) => {
-    await page.goto("/dash0/orgs/test");
+    await page.goto(`${DASH_BASE}/orgs/test`);
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
     // Discovery link should appear in the sidebar.
@@ -59,13 +59,13 @@ test.describe("Network Discovery", () => {
   });
 
   test("can navigate to discovery index", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /new scan|start new scan/i })).toBeVisible();
   });
 
   test("the discover-via-Freebox dropdown is removed from the index", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     // The standalone Freebox launcher dropdown no longer exists; the unified
     // "Start new scan" flow owns the Freebox path now.
@@ -75,7 +75,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("source filter is visible on the scans list", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     // The source filter is a combobox (Radix Select) labelled "Filter by source".
     await expect(
       page.getByRole("combobox", { name: /filter by source/i }),
@@ -83,14 +83,14 @@ test.describe("Network Discovery", () => {
   });
 
   test("can navigate to new scan form", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await expect(page.getByLabel(/cidr/i)).toBeVisible();
     await expect(page.getByRole("checkbox")).toBeVisible();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
   });
 
   test("new scan form defaults to the LAN method with CIDR fields visible", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     // The scan-method select defaults to LAN.
     const methodSelect = page.getByRole("combobox", { name: /scan method/i });
     await expect(methodSelect).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("Freebox method option is hidden when no granted channel exists", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     // Open the scan-method select; the test org has no granted Freebox channel,
     // so only the LAN option is offered.
     await page.getByRole("combobox", { name: /scan method/i }).click();
@@ -109,14 +109,14 @@ test.describe("Network Discovery", () => {
   });
 
   test("start scan button is disabled without confirmation", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     // Confirmation not checked — submit should be disabled.
     await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
   });
 
   test("start scan button enables after confirmation", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
@@ -131,7 +131,7 @@ test.describe("Network Discovery", () => {
 
     // Create a scan through the form; on success it navigates to the detail page.
     await waitForScanQuiescence(page);
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /start scan/i }).click();
@@ -143,7 +143,7 @@ test.describe("Network Discovery", () => {
     await expect(page.getByText(jobUid)).toBeVisible();
 
     // Back on the index, the table must render without throwing.
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     const table = page.getByRole("table");
     await expect(table).toBeVisible();
@@ -155,7 +155,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("scan list no longer shows the bogus IP Address column", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     // The first column header used to be "IP Address" while rendering the scan
     // UID — it has been removed. The header row should not contain it.
@@ -166,7 +166,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("discovery page header uses the Network breadcrumb crumb", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     // The breadcrumb (in the header bar) carries the discovery label, matching
     // the sidebar entry. There are two "Discovery" texts (sidebar + breadcrumb).
     await expect(
@@ -180,7 +180,7 @@ test.describe("Network Discovery", () => {
   // page renders the chunk-progress indicator.
   test("large range fans out into chunks and can be stopped mid-scan", async ({ page }) => {
     await waitForScanQuiescence(page);
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     // 10.10.0.0/18 = 16384 addresses → 4 chunks of /20.
     await page.fill("textarea", "10.10.0.0/18");
     await page.getByRole("checkbox").check();
@@ -207,14 +207,14 @@ test.describe("Network Discovery", () => {
 
     // The new-scan form re-arms: its Start button is gated only by the confirm
     // checkbox, not by a sticky client-side guard.
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
   test("entering a /8 CIDR shows the large-range warning with host and chunk estimate", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     // 10.0.0.0/8 = 16,777,216 addresses → 4096 chunks.
     await page.fill("textarea", "10.0.0.0/8");
 
@@ -242,7 +242,7 @@ test.describe("Network Discovery", () => {
   test("detail header places the back arrow in the right cluster and labels refresh on desktop", async ({
     page,
   }) => {
-    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // The back arrow is rendered (ghost icon button with aria-label "Back").
@@ -273,7 +273,7 @@ test.describe("Network Discovery", () => {
     // Narrow the viewport below the Tailwind `sm` (640px) breakpoint.
     await page.setViewportSize({ width: 390, height: 800 });
 
-    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // The Refresh button is still present (accessible via its aria-label) but
@@ -287,7 +287,7 @@ test.describe("Network Discovery", () => {
   // The seeded scan renders its suggested checks GROUPED under 127.0.0.1, with a
   // group header carrying the source badge and per-check rows beneath.
   test("scan detail renders discovered checks grouped by host", async ({ page }) => {
-    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // A group card for 127.0.0.1 is shown.
@@ -302,7 +302,7 @@ test.describe("Network Discovery", () => {
 
   // The group header offers "select all in group", which arms the Promote button.
   test("selecting a whole group enables the Promote action", async ({ page }) => {
-    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     const promoteButton = page.getByRole("button", { name: /promote selected/i });
@@ -323,7 +323,7 @@ test.describe("Network Discovery", () => {
   // and selecting it reveals the Docker-endpoint textarea prefilled with the
   // local socket. The test org has no Docker dependency for this form-level check.
   test("container method is offered and reveals the host textarea", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await expect(page.getByRole("combobox", { name: /scan method/i })).toBeVisible();
 
     // Open the method select and pick Containers.
@@ -339,7 +339,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("container scan start button arms only after confirmation", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await page.getByRole("combobox", { name: /scan method/i }).click();
     await page.getByRole("option", { name: /containers/i }).click();
 
@@ -352,7 +352,7 @@ test.describe("Network Discovery", () => {
   test("Kubernetes method option is hidden when no cluster connection exists", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     // Open the scan-method select; the test org has no kubernetes cluster
     // connection, so the Kubernetes option is not offered (capability-gated).
     await page.getByRole("combobox", { name: /scan method/i }).click();
@@ -367,7 +367,7 @@ test.describe("Network Discovery", () => {
   test("source filter includes the registry sources on the scans list", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     // The source filter is registry-driven; opening it shows the kubernetes
     // source (registered by the kubernetes discovery type) alongside the rest.
     await page.getByRole("combobox", { name: /filter by source/i }).click();
@@ -386,7 +386,7 @@ test.describe("Network Discovery", () => {
     // Mobile width: the button is present (by accessible name) but its text label
     // is hidden.
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(
       page.getByRole("heading", { name: /network discovery/i }),
     ).toBeVisible();
@@ -410,14 +410,14 @@ test.describe("Network Discovery", () => {
     // first — this test used to flake with 409 DISCOVERY_ALREADY_RUNNING while
     // the stopped /18 fan-out's chunks were still draining.
     await waitForScanQuiescence(page);
-    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /start scan/i }).click();
     await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
 
     // Back on the index, click the first body row — the whole row is clickable.
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(page.getByRole("table")).toBeVisible();
     const firstRow = page.locator("tbody tr").first();
     await expect(firstRow).toBeVisible();
@@ -434,7 +434,7 @@ test.describe("Network Discovery", () => {
   test("scan list has no View-checks link and no CIDRs column header", async ({
     page,
   }) => {
-    await page.goto("/dash0/orgs/test/discovery");
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
     await expect(
       page.getByRole("heading", { name: /network discovery/i }),
     ).toBeVisible();
@@ -452,7 +452,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("notifications page renders the My pages header", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/me/notifications");
+    await page.goto(`${DASH_BASE}/orgs/test/me/notifications`);
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: /my pages/i }),

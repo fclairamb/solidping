@@ -20,7 +20,7 @@ Run it with:
 # DEFAULT run mode on purpose — see "Nothing on camera is a fixture" below.
 mkdir -p /tmp/showcase-db
 PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
-E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
+E2E_BASE_URL=http://localhost:4321/d/ make showcase
 ```
 
 **`SP_DB_DIR` is load-bearing.** The SQLite file is written to

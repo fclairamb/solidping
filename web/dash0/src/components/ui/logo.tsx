@@ -12,7 +12,7 @@ type LogoProps = {
  * Renders the SolidPing brand mark from the SVG asset shipped in
  * web/dash0/public/logo.svg. The base URL is read from
  * `import.meta.env.BASE_URL` so the same component works in dev (`/`)
- * and in production (`/dash0/`) without consumers having to know.
+ * and in production (`/d/`) without consumers having to know.
  */
 export function Logo({ size = 32, variant = "mark", className }: LogoProps) {
   const base = import.meta.env.BASE_URL || "/";

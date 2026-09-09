@@ -345,7 +345,7 @@ func TestSendPagingNudgeEmailsTheMember(t *testing.T) {
 	r.NoError(fx.svc.SendPagingNudge(ctx, fx.org.Slug, member.UID))
 	r.Equal(1, fx.mailer.sent)
 	r.Equal([]string{"colleague@acme.test"}, fx.mailer.last.Recipients.To)
-	r.Contains(fx.mailer.last.Text, "/dash0/orgs/"+fx.org.Slug+"/account/notifications")
+	r.Contains(fx.mailer.last.Text, "/d/orgs/"+fx.org.Slug+"/account/notifications")
 }
 
 // TestSendPagingNudgeWithoutEmailSender surfaces a clear error rather than

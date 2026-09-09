@@ -288,7 +288,7 @@ or the SVG badge. Sets `Cache-Control` per the shared visibility rule
 
 `status` is one of `operational | degraded | down | maintenance | unknown`.
 `page.url` is the canonical public URL: the verified custom domain when
-active, otherwise the absolute `/status0/{org}/{slug}` URL derived from the
+active, otherwise the absolute `/s/{org}/{slug}` URL derived from the
 request host.
 
 ### Caching on the public surface
@@ -330,7 +330,7 @@ replies into a map of which pages exist.
 `Accept-Language` is absent from both: a page renders in the language stored on
 the page row, not the one the browser asks for.
 
-The path-based shell (`/status0/...`) is the one surface that stays
+The path-based shell (`/s/...`) is the one surface that stays
 unconditionally `public, max-age=60`, and it is safe: `status0MetaForPath`
 resolves the page **without** installing the request's unlock grant, so
 `statuspagelock.Allows` denies by default and a gated page's name or

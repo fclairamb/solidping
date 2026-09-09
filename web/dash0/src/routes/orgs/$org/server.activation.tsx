@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -88,9 +88,17 @@ function ActivationPage() {
               </TableHeader>
               <TableBody>
                 {(data?.data || []).map((row) => (
-                  <TableRow key={row.organizationUid}>
+                  <TableRow key={row.organizationUid} data-testid={`activation-row-${row.slug}`}>
                     <TableCell>
-                      <div className="font-medium">{row.name || row.slug}</div>
+                      <Link
+                        to="/orgs/$org/organization/audit"
+                        params={{ org: row.slug }}
+                        className="font-medium text-primary hover:underline"
+                        title={t("activation.openAudit", "Open audit log")}
+                        data-testid={`activation-org-link-${row.slug}`}
+                      >
+                        {row.name || row.slug}
+                      </Link>
                       <div className="text-xs text-muted-foreground">{row.slug}</div>
                     </TableCell>
                     <TableCell className="text-sm">{fmtTs(row.signupAt)}</TableCell>

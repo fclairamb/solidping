@@ -12,6 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -68,6 +69,18 @@ func newReportEnv(
 ) (*sqlite.Service, *models.Organization, *jobdef.JobContext, *capturingJobService) {
 	t.Helper()
 
+	// A year-old org by default: plenty of history, so the pre-signup-window
+	// guard (B) never accidentally fires in tests that aren't about it.
+	return newReportEnvAt(t, now, now.Add(-365*24*time.Hour))
+}
+
+// newReportEnvAt is newReportEnv with an explicit org.CreatedAt, for the
+// guard-B tests that care about the org's age relative to the report window.
+func newReportEnvAt(
+	t *testing.T, now, orgCreatedAt time.Time,
+) (*sqlite.Service, *models.Organization, *jobdef.JobContext, *capturingJobService) {
+	t.Helper()
+
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -80,7 +93,7 @@ func newReportEnv(
 		UID:       uuid.New().String(),
 		Slug:      "acme",
 		Name:      "acme",
-		CreatedAt: now.Add(-365 * 24 * time.Hour),
+		CreatedAt: orgCreatedAt,
 		UpdatedAt: now,
 	}
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
@@ -103,6 +116,15 @@ func newReportEnv(
 	}
 
 	return dbSvc, org, jctx, jobs
+}
+
+// newCheck creates one enabled, ungrouped HTTP check for org.
+func newCheck(t *testing.T, dbSvc *sqlite.Service, org *models.Organization) {
+	t.Helper()
+
+	ctx := t.Context()
+	check := models.NewCheck(org.UID, "web", "http")
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
 }
 
 // TestUptimeReportPeriodCloseDetectionInTimezone pins that a schedule reports on
@@ -154,6 +176,10 @@ func TestUptimeReportRunsOncePerPeriod(t *testing.T) {
 
 	dbSvc, org, jctx, jobs := newReportEnv(t, now)
 
+	// A check, so the scope is non-empty and guard A does not suppress this
+	// send — this test is about run-once idempotency, not about empty scope.
+	newCheck(t, dbSvc, org)
+
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com", "bob@acme.com"}
 	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
@@ -181,6 +207,10 @@ func TestUptimeReportRespectsSuppressionList(t *testing.T) {
 	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
 
 	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	// A check, so guard A does not suppress this send — this test is about
+	// the suppression list, not about empty scope.
+	newCheck(t, dbSvc, org)
 
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com", "bob@acme.com"}
@@ -234,6 +264,10 @@ func TestUptimeReportSkipsDisabledSchedule(t *testing.T) {
 
 	dbSvc, org, jctx, jobs := newReportEnv(t, now)
 
+	// A check, so guard A does not suppress the enabled schedule's send —
+	// this test is about the Enabled flag, not about empty scope.
+	newCheck(t, dbSvc, org)
+
 	enabled := models.NewReportSchedule(org.UID, "On", models.ReportFrequencyMonthly)
 	enabled.Recipients = []string{"alice@acme.com"}
 	r.NoError(dbSvc.CreateReportSchedule(ctx, enabled))
@@ -286,6 +320,10 @@ func TestUptimeReportCarriesUnsubscribeHeaders(t *testing.T) {
 
 	dbSvc, org, jctx, jobs := newReportEnv(t, now)
 
+	// A check, so guard A does not suppress this send — this test is about
+	// the unsubscribe headers, not about empty scope.
+	newCheck(t, dbSvc, org)
+
 	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
 	schedule.Recipients = []string{"alice@acme.com"}
 	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
@@ -318,4 +356,201 @@ func TestUptimeReportCarriesUnsubscribeHeaders(t *testing.T) {
 	data, ok := cfg.TemplateData.(map[string]any)
 	r.True(ok)
 	r.Equal(cfg.ListUnsubscribeURL, data["UnsubscribeURL"])
+}
+
+// buildGuardStub wraps a db.Service and fails the test the moment ListChecks
+// is called. It is used to prove that guard B (the pre-signup-window skip)
+// suppresses a period before Builder.Build ever runs scopeChecks — not just
+// that the guard happens to also produce zero checks.
+type buildGuardStub struct {
+	db.Service
+
+	t *testing.T
+}
+
+func (s *buildGuardStub) ListChecks(
+	_ context.Context, _ string, _ *models.ListChecksFilter,
+) ([]*models.Check, int64, error) {
+	s.t.Fatal("ListChecks must not be called: guard B should suppress before Build runs")
+
+	return nil, 0, nil
+}
+
+// TestUptimeReportSkipsEmptyScopeOrgWide is spec case 7: an org-wide schedule
+// on an org with zero checks must enqueue nothing, but the period still has
+// to be claimed — otherwise the sweep would retry the same empty schedule
+// every hour forever.
+func TestUptimeReportSkipsEmptyScopeOrgWide(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	r.Empty(jobs.recipients(t), "an empty-scope schedule must not mail a 'No data' report")
+
+	stored, err := dbSvc.GetReportSchedule(ctx, org.UID, schedule.UID)
+	r.NoError(err)
+	r.NotNil(stored.LastPeriodStart, "the period must still be claimed even though nothing was mailed")
+}
+
+// TestUptimeReportSkipsEmptyScopeScoped is spec case 8: a schedule scoped to a
+// check group with no members is suppressed even though the ORG has checks.
+// This guards against implementing guard A as "org has no checks" instead of
+// "the resolved scope has no checks".
+func TestUptimeReportSkipsEmptyScopeScoped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	// The org has a check, but it is ungrouped, so a schedule scoped to any
+	// check group resolves to zero checks.
+	newCheck(t, dbSvc, org)
+
+	schedule := models.NewReportSchedule(org.UID, "Group digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com"}
+	schedule.CheckGroupUIDs = []string{uuid.New().String()}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	r.Empty(jobs.recipients(t), "a scoped schedule whose group has no members must not mail")
+}
+
+// TestUptimeReportSendsNonEmptyScope is spec case 9, the positive control for
+// guard A: a schedule whose scope resolves to at least one check still mails
+// every recipient, exactly as before this change.
+func TestUptimeReportSendsNonEmptyScope(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	newCheck(t, dbSvc, org)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com", "bob@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	r.Equal([]string{"alice@acme.com", "bob@acme.com"}, jobs.recipients(t))
+}
+
+// TestUptimeReportSkipsPeriodBeforeOrgExisted is spec case 10: a period that
+// closed entirely before the org existed is suppressed. The org has a check,
+// so guard A alone could not explain a zero-email result here — only guard B
+// can. buildGuardStub additionally proves Build (and its ListChecks call)
+// never runs at all, confirming guard B fires before builder.Build.
+func TestUptimeReportSkipsPeriodBeforeOrgExisted(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	// The monthly window for `now` is July (2026-07-01T00:00:00Z ..
+	// 2026-08-01T00:00:00Z). Create the org an hour after that window closed,
+	// but before the sweep runs.
+	orgCreatedAt := time.Date(2026, 8, 1, 1, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnvAt(t, now, orgCreatedAt)
+
+	newCheck(t, dbSvc, org)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	jctx.DBService = &buildGuardStub{Service: jctx.DBService, t: t}
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	r.Empty(jobs.recipients(t), "a period that closed before the org existed must not be mailed")
+
+	stored, err := dbSvc.GetReportSchedule(ctx, org.UID, schedule.UID)
+	r.NoError(err)
+	r.NotNil(stored.LastPeriodStart, "the period must still be claimed so the sweep does not retry hourly")
+}
+
+// TestUptimeReportSendsWindowStraddlingOrgCreation is spec case 11, the
+// positive control for guard B: an org created partway through the reported
+// window still gets that report — only a window that closed entirely before
+// the org existed is suppressed.
+func TestUptimeReportSendsWindowStraddlingOrgCreation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	// Inside the July window (2026-07-01T00:00:00Z .. 2026-08-01T00:00:00Z).
+	orgCreatedAt := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnvAt(t, now, orgCreatedAt)
+
+	newCheck(t, dbSvc, org)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+
+	r.Equal([]string{"alice@acme.com"}, jobs.recipients(t))
+}
+
+// TestUptimeReportSecondSweepAfterSuppressionEnqueuesNothing is spec case 12:
+// once a period has been suppressed (and therefore claimed), a second sweep
+// inside the same period enqueues nothing and does not re-claim the period.
+// It is the claim from MarkReportScheduleRun that guarantees this, not the
+// guard re-evaluating to the same answer twice.
+func TestUptimeReportSecondSweepAfterSuppressionEnqueuesNothing(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
+
+	dbSvc, org, jctx, jobs := newReportEnv(t, now)
+
+	schedule := models.NewReportSchedule(org.UID, "Monthly digest", models.ReportFrequencyMonthly)
+	schedule.Recipients = []string{"alice@acme.com"}
+	r.NoError(dbSvc.CreateReportSchedule(ctx, schedule))
+
+	run := &UptimeReportJobRun{}
+	r.NoError(run.Run(ctx, jctx))
+	r.Empty(jobs.recipients(t), "first sweep: empty scope must be suppressed")
+
+	first, err := dbSvc.GetReportSchedule(ctx, org.UID, schedule.UID)
+	r.NoError(err)
+	r.NotNil(first.LastPeriodStart)
+
+	r.NoError(run.Run(ctx, jctx))
+	r.Empty(jobs.recipients(t), "second sweep in the same period must still enqueue nothing")
+
+	second, err := dbSvc.GetReportSchedule(ctx, org.UID, schedule.UID)
+	r.NoError(err)
+	r.Equal(first.LastPeriodStart.UTC(), second.LastPeriodStart.UTC(),
+		"the second sweep must not re-claim or advance the period")
 }

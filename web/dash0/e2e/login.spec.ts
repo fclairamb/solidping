@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE } from "./fixtures";
+import { fetchAuthCapabilities, LAST_AUTH_METHOD_KEY } from "./fixtures";
 
 test.describe("Login Flow", () => {
   test("should display login page", async ({ page }) => {
@@ -247,26 +247,6 @@ test.describe("Login: deep-link returnTo", () => {
     expect(finalUrl.searchParams.get("status")).toBe("down");
   });
 });
-
-const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
-
-// Fetches /auth/providers so the config-dependent tests can decide whether
-// the test backend actually has an OAuth provider / passkeys configured, and
-// skip gracefully (covered by manual browser verification) when it doesn't.
-async function fetchAuthCapabilities(
-  baseURL: string | undefined,
-): Promise<{ providers: { type: string; name: string }[]; passkeysEnabled: boolean }> {
-  const root = baseURL ? new URL(baseURL).origin : API_BASE;
-  const res = await fetch(`${root}/api/v1/auth/providers`);
-  const body = (await res.json()) as {
-    data?: { type: string; name: string }[];
-    passkeysEnabled?: boolean;
-  };
-  return {
-    providers: body.data ?? [],
-    passkeysEnabled: body.passkeysEnabled ?? false,
-  };
-}
 
 test.describe("Login: forgot-password link placement", () => {
   test("renders the forgot-password link on the password label row", async ({

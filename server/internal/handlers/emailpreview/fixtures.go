@@ -1,6 +1,10 @@
 package emailpreview
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+)
 
 // Fixture constants shared across multiple templates below — pulled out
 // once a literal repeats within this file (goconst). keyOrgName/keyDashboardURL
@@ -8,14 +12,14 @@ import "sort"
 // view-models below since multiple templates share field names.
 const (
 	fixtureOrgName        = "Acme Corp"
-	fixtureDashboardURL   = "https://solidping.example/dash0"
+	fixtureDashboardURL   = "https://solidping.example" + config.DashboardBasePath
 	fixtureIncidentUID    = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
 	fixtureIncidentNumber = 42
 	fixtureCheckName      = "Production API"
 	// fixtureCheckURL is a UID-shaped check dashboard link — links are built
 	// from the check's UID, not its slug, so a check rename never breaks the
 	// link and the URL never falls back to unlinked text.
-	fixtureCheckURL       = "https://solidping.example/dash0/orgs/acme/checks/3f7a9c2e-6b1d-4e0a-9c8f-1a2b3c4d5e6f"
+	fixtureCheckURL       = fixtureDashboardURL + "/orgs/acme/checks/3f7a9c2e-6b1d-4e0a-9c8f-1a2b3c4d5e6f"
 	fixtureStatusPageName = "Acme Status"
 	// fixturePersonName is the one human the previews name, so an org member
 	// reads as the same person whether they invited someone or acked an alert.
@@ -100,7 +104,7 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 // same field set (ResolvedAt/Duration are simply ignored by templates that
 // don't reference them).
 func incidentFixture() map[string]any {
-	incidentURL := "https://solidping.example/dash0/orgs/acme/incidents/" + fixtureIncidentUID
+	incidentURL := fixtureDashboardURL + "/orgs/acme/incidents/" + fixtureIncidentUID
 	ackURL := "https://solidping.example/api/v1/orgs/acme/incidents/" +
 		fixtureIncidentUID + "/ack?token=preview-token"
 
@@ -173,7 +177,7 @@ func resolvedIncidentFixture() map[string]any {
 // the four incident-lifecycle templates: no ack/unsubscribe (it's an internal
 // paging email, not a per-recipient incident notification).
 func escalationFixture() map[string]any {
-	incidentURL := "https://solidping.example/dash0/orgs/acme/incidents/" + fixtureIncidentUID
+	incidentURL := fixtureDashboardURL + "/orgs/acme/incidents/" + fixtureIncidentUID
 
 	return map[string]any{
 		"CheckName":      fixtureCheckName,
@@ -203,7 +207,7 @@ func testEmailFixture() map[string]any {
 func pagingNudgeFixture() map[string]any {
 	return map[string]any{
 		keyOrgName:         fixtureOrgName,
-		"NotificationsURL": "https://solidping.example/dash0/orgs/acme/account/notifications",
+		"NotificationsURL": fixtureDashboardURL + "/orgs/acme/account/notifications",
 	}
 }
 
@@ -226,7 +230,7 @@ func statusSubscriberUpdateFixture() map[string]any {
 		"Label":        "New incident",
 		"Title":        "Elevated error rates",
 		"BodyMarkdown": "We are investigating elevated error rates on the API.",
-		"LinkURL":      "https://solidping.example/status0/acme/acme-status",
+		"LinkURL":      "https://solidping.example" + config.StatusBasePath + "/acme/acme-status",
 		"PageName":     fixtureStatusPageName,
 		"SubscriberUnsubscribeURL": "https://solidping.example/api/v1/public/status-subscribers/" +
 			"unsubscribe?token=preview-token",
@@ -241,7 +245,7 @@ func registrationFixture() map[string]any {
 
 func passwordResetFixture() map[string]any {
 	return map[string]any{
-		"ResetURL": "https://solidping.example/dash0/reset-password?token=preview-token",
+		"ResetURL": fixtureDashboardURL + "/reset-password?token=preview-token",
 	}
 }
 
@@ -250,7 +254,7 @@ func invitationFixture() map[string]any {
 		keyOrgName:    fixtureOrgName,
 		"Role":        "admin",
 		"InviterName": fixturePersonName,
-		"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
+		"InviteURL":   fixtureDashboardURL + "/invitations/preview-token",
 		// Dynamic on purpose: the template used to hardcode "7 days" here
 		// regardless of the actual invite TTL. This fixture value is
 		// deliberately NOT "7 days" so the preview harness would catch a
@@ -277,7 +281,7 @@ func membershipRequestNewFixture() map[string]any {
 		"RequesterName":  "Bob Builder",
 		"RequesterEmail": "bob@example.com",
 		"Message":        "I'd like to help monitor our new services.",
-		"RequestsURL":    "https://solidping.example/dash0/orgs/acme/organization/requests",
+		"RequestsURL":    fixtureDashboardURL + "/orgs/acme/organization/requests",
 	}
 }
 
@@ -412,7 +416,7 @@ func customDomainDemotedFixture() map[string]any {
 		"StatusPageName": fixtureStatusPageName,
 		"Domain":         "status.acme.com",
 		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
-		"SettingsURL": "https://solidping.example/dash0/orgs/acme/status-pages/" +
+		"SettingsURL": fixtureDashboardURL + "/orgs/acme/status-pages/" +
 			"3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51",
 	}
 }

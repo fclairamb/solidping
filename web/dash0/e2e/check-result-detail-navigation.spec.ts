@@ -1,4 +1,4 @@
-import { test, expect, mockSloCoverage } from "./fixtures";
+import { test, expect, mockSloCoverage, type Page } from "./fixtures";
 
 /**
  * Tests for the result detail page's Previous/Next navigation buttons
@@ -46,7 +46,7 @@ const detailFixtures: Record<string, Record<string, unknown>> = {
 };
 
 test.describe("Result detail prev/next navigation", () => {
-  async function gotoCheckDetail(page: Parameters<Parameters<typeof test.extend>[0]["authenticatedPage"]>[0]) {
+  async function gotoCheckDetail(page: Page) {
     // The check-detail header's SLO coverage chip fires an unconditional
     // GET /slos?checkUid=… (spec 2026-08-20-01). Stub it so the networkidle
     // wait below has nothing real left to settle.

@@ -161,7 +161,7 @@ func TestSendEmail_Integration(t *testing.T) {
 		"CheckType":   "http",
 		"StartedAt":   "2026-07-05 10:00:00",
 		"IncidentUID": "inc-integration-test",
-		"IncidentURL": "https://solidping.com/dash0/orgs/default/incidents/inc-integration-test",
+		"IncidentURL": "https://solidping.com/d/orgs/default/incidents/inc-integration-test",
 	}
 
 	_, html, _, err := formatter.Format("incident-created.html", data)

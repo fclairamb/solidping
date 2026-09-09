@@ -191,7 +191,8 @@
       "email": "E-mail",
       "role": "Rôle",
       "joinedAt": "Rejoint le",
-      "coverage": "Astreinte"
+      "coverage": "Astreinte",
+      "lastSeen": "Vu pour la dernière fois"
     },
     "role": {
       "owner": "Propriétaire",
@@ -243,6 +244,12 @@
       "nudgeAction": "Envoyer la relance",
       "nudgeSent": "E-mail de relance envoyé",
       "nudgeFailed": "Impossible d'envoyer la relance"
+    },
+    "lastSeen": {
+      "never": "Jamais",
+      "viaSession": "Tableau de bord",
+      "viaToken": "Jeton API",
+      "breakdownLine": "{{channel}} · {{time}}"
     }
   },
   "checkRateLimit": {

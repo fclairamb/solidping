@@ -291,7 +291,7 @@ func TestSAMLHandleACS_HappyPath(t *testing.T) {
 	svc, ctx := setupSAMLTestService(t, idp, nil)
 	org := setupSAMLTestOrg(ctx, t, svc)
 
-	_, err := svc.GenerateAuthnRequest(ctx, "/dash0/orgs/"+org.Slug, org.Slug)
+	_, err := svc.GenerateAuthnRequest(ctx, "/d/orgs/"+org.Slug, org.Slug)
 	require.NoError(t, err)
 
 	spClient, err := svc.serviceProvider(ctx)
@@ -339,7 +339,7 @@ func TestSAMLHandleACS_HappyPath(t *testing.T) {
 func mintSAMLState(ctx context.Context, t *testing.T, svc *SAMLService, orgSlug string) *SAMLRelayState {
 	t.Helper()
 
-	redirectURL, err := svc.GenerateAuthnRequest(ctx, "/dash0/orgs/"+orgSlug, orgSlug)
+	redirectURL, err := svc.GenerateAuthnRequest(ctx, "/d/orgs/"+orgSlug, orgSlug)
 	require.NoError(t, err)
 
 	parsed, err := url.Parse(redirectURL)

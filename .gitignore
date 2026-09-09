@@ -41,13 +41,15 @@ bench-results/
 /data/
 /server/data/
 
-# Resources
-server/internal/app/res/
-
 # Various garbage
 .DS_Store
 *.db
 *.db-journal
+# SQLite writes these two alongside *.db in WAL mode. They are not covered by
+# *.db (different suffix), and a dev run leaves a multi-megabyte -wal behind —
+# one reached the repo this way before they were listed here.
+*.db-shm
+*.db-wal
 logs/
 agent-keys.json
 

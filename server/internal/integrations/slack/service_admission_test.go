@@ -209,9 +209,9 @@ func TestInstallCallbackRedirectsPendingToNoOrg(t *testing.T) {
 	r.Equal(http.StatusFound, rec.Code)
 
 	location := rec.Header().Get("Location")
-	r.Contains(location, "/dash0/no-org")
+	r.Contains(location, "/d/no-org")
 	r.Contains(location, "membershipPending="+org.Slug)
-	r.NotContains(location, "/dash0/auth/slack/complete")
+	r.NotContains(location, "/d/auth/slack/complete")
 }
 
 // TestInstallDoesNotJoinForeignTargetOrg is the cross-tenant negative for the

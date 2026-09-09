@@ -55,6 +55,7 @@ import {
   DirectChannelIcon,
   directChannelLabel,
 } from "@/components/integrations/integration-icon";
+import { useWebPushMigration } from "@/hooks/useWebPushMigration";
 
 export const Route = createFileRoute("/orgs/$org/account/notifications")({
   component: NotificationsPage,
@@ -935,6 +936,12 @@ function NotificationsPage() {
   const telegramAvailable = useTelegramEnabled();
 
   const routes = data?.data ?? [];
+
+  // Repairs a browser-push contact orphaned by the /dash0 -> /d base-path move
+  // (spec 2026-09-09-01 §5): the old service-worker registration was torn down
+  // at boot, which killed its push subscription, so the stored row is replaced
+  // with a fresh one rather than left to rot. No-op for everyone else.
+  useWebPushMigration(org, data?.data);
   const slackSuggestion = !dismissedSlack ? data?.slackSuggestion : undefined;
   // SMS/voice is available once the org has an enabled Twilio integration.
   const smsAvailable = (integrations ?? []).some(

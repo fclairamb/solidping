@@ -41,7 +41,7 @@ func (h *GitHubOAuthHandler) Login(writer http.ResponseWriter, req *http.Request
 
 	redirectURI := req.URL.Query().Get("redirect_uri")
 	if redirectURI == "" {
-		redirectURI = "/dash0/orgs/" + orgSlug
+		redirectURI = config.DashboardBasePath + "/orgs/" + orgSlug
 	}
 
 	// Generate and store state with org slug

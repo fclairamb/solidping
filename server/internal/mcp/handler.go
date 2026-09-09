@@ -180,7 +180,7 @@ func (h *Handler) Stop() {
 // sent: the dashboard's org-less MCP setup route, which resolves the org
 // client-side and forwards to /orgs/$org/mcp. The from=get search param keys
 // the contextual "you opened the API endpoint in a browser" hint.
-const dashboardMCPPath = "/dash0/mcp?from=get"
+const dashboardMCPPath = config.DashboardBasePath + "/mcp?from=get"
 
 // allowedMCPMethods is the Allow header value advertised on 405 responses:
 // the methods the MCP endpoint actually implements.

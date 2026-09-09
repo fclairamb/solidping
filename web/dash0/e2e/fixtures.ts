@@ -16,6 +16,67 @@ export const API_BASE = process.env.E2E_BASE_URL
   : "http://localhost:4000";
 
 /**
+ * DASH_BASE is the URL prefix the dashboard is mounted at, matching
+ * playwright.config.ts's `baseURL` and `config.DashboardBasePath`
+ * (server/internal/config/config.go).
+ *
+ * Spec files use it instead of writing the prefix out in every `page.goto`:
+ * the prefix moved once already (`/dash0` → `/d`, spec 2026-09-09-01), and 49
+ * hard-coded gotos is exactly the kind of thing that makes a move painful.
+ */
+export const DASH_BASE = "/d";
+
+/**
+ * STATUS_BASE is the PUBLIC STATUS PAGE app's prefix (`web/status0`), for the
+ * dash0 tests that assert a link out to it. Mirrors `config.StatusBasePath`.
+ */
+export const STATUS_BASE = "/s";
+
+/**
+ * escapeRegExp makes a string safe to interpolate into a `new RegExp(...)`
+ * pattern. Use it whenever an assertion is built from `DASH_BASE` /
+ * `STATUS_BASE`: hard-coding the prefix into a regex literal is exactly what
+ * left `/dash0` assertions behind when the prefix moved (spec 2026-09-09-01).
+ */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * localStorage key `lib/last-auth-method.ts` writes the remembered sign-in
+ * method to. Seeded via `page.addInitScript` by the tests that assert the
+ * /login promotion — and by the /register tests that assert it does NOT
+ * happen there.
+ */
+export const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
+
+/**
+ * Reads `/api/v1/auth/providers` so config-dependent tests can decide whether
+ * this backend actually has an OAuth provider / passkeys configured, and skip
+ * gracefully (covered by manual browser verification) when it doesn't.
+ *
+ * Shared by `login.spec.ts` and `register-oauth-buttons.spec.ts`, which assert
+ * two halves of the same feature (spec 2026-09-09-02).
+ */
+export async function fetchAuthCapabilities(
+  baseURL: string | undefined,
+): Promise<{
+  providers: { type: string; name: string }[];
+  passkeysEnabled: boolean;
+}> {
+  const root = baseURL ? new URL(baseURL).origin : API_BASE;
+  const res = await fetch(`${root}/api/v1/auth/providers`);
+  const body = (await res.json()) as {
+    data?: { type: string; name: string }[];
+    passkeysEnabled?: boolean;
+  };
+  return {
+    providers: body.data ?? [],
+    passkeysEnabled: body.passkeysEnabled ?? false,
+  };
+}
+
+/**
  * Test fixture that provides authenticated page context.
  * Uses the test credentials (test@test.com/test) for login.
  *

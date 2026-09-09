@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
 )
@@ -237,7 +238,7 @@ func (s *Service) SendOperatorNoticeTest(
 		Body: "This is a test of the operator notifications on this SolidPing instance.\n" +
 			"If you are reading it, the route it arrived on works.\n\n" +
 			"Requested by " + user.Email + ".",
-		URL: strings.TrimRight(baseURL, "/") + "/dash0/",
+		URL: strings.TrimRight(baseURL, "/") + config.DashboardBasePath + "/",
 	}
 
 	report := opsnotify.DeliverToUser(ctx, *s.opsNotice, slog.Default(), user.UID, &notice)

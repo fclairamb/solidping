@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
  * - Builds the complete server (frontend + backend with embedded resources)
  * - Starts PostgreSQL via docker-compose
  * - Runs the server with SOLIDPING_RUN_MODE=test for predictable test data
- * - Tests against http://localhost:4000/dash0/ (production build)
+ * - Tests against http://localhost:4000/d/ (production build)
  * - Uses admin@solidping.io/solidpass credentials (default test mode)
  *
  * See https://playwright.dev/docs/test-configuration.
@@ -38,7 +38,7 @@ export default defineConfig({
     // This is the production server with embedded frontend. Overridable via
     // E2E_BASE_URL so a side-car test server (e.g. on another port) can be
     // targeted locally without disturbing a dev server on :4000.
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/",
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4000/d/",
     // Collect trace when retrying the failed test
     trace: "on-first-retry",
     // Take screenshot on failure
