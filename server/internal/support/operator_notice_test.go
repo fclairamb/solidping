@@ -166,6 +166,8 @@ func TestCapture_NoticeFoldWindowCollapsesABurst(t *testing.T) {
 // 4 vs 8. Without t.Parallel() the test runs in the sequential phase, where
 // every parallel sibling is still paused, so the read/act/assert is atomic
 // with respect to them. Do not add t.Parallel() back.
+//
+//nolint:paralleltest // deliberately sequential: see above, it asserts an exact delta on a process-global counter
 func TestCapture_MirrorStillCountedAlongsideTheNotice(t *testing.T) {
 	r := require.New(t)
 	notices := collectNotices(t, "+33690000004")
