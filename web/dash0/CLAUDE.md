@@ -265,8 +265,8 @@ The frontend is embedded in the Go backend:
   build. CI runs it as its own step (`bun run typecheck:e2e`) in both the `dash0`
   and `status0` jobs.
 - **`bun run lint:e2e`** (`eslint e2e`) is the dash0 job's lint step. It is
-  scoped on purpose: the unscoped `bun run lint` is red on base with ~42 errors
-  and ~447 warnings, effectively all `react-hooks` findings under `src/`. Paying
+  scoped on purpose: the unscoped `bun run lint` is red on base with ~39 errors
+  and ~440 warnings, effectively all `react-hooks` findings under `src/`. Paying
   that debt down is its own spec — do not relax the config to make `lint` green,
   and do not widen the CI step until the debt is gone.
 

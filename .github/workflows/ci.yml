@@ -193,7 +193,7 @@ jobs:
         run: bun run typecheck:e2e
 
       # Scoped to ./e2e on purpose. `bun run lint` (a bare `eslint .`) is red on
-      # base with ~42 errors + ~447 warnings, effectively all under src/
+      # base with ~39 errors + ~440 warnings, effectively all under src/
       # (react-hooks), so adding it here would land red on day one; paying that
       # debt down is its own spec. Scoping to e2e keeps the e2e-only regression
       # guards — the E2E_API_BASE/localhost:4000 rules and
@@ -242,7 +242,7 @@ jobs:
         run: bun run typecheck:e2e
 
       # Errors fail the job; warnings do not (eslint's default exit code).
-      # The baseline here is 0 errors + 9 pre-existing
+      # The baseline here is 0 errors plus a dozen pre-existing
       # react-refresh/only-export-components warnings on the route files, so
       # --max-warnings 0 would land red on day one. Unlike dash0 — whose src/
       # ESLint debt forces its lint step to be scoped to e2e/ — this is a bare
