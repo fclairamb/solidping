@@ -109,7 +109,6 @@ jobs:
 
       - name: Create embed placeholders for lint/test
         run: |
-          mkdir -p internal/app/res && echo "placeholder" > internal/app/res/index.html
           mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
           # web/status0's `build:widget` script emits the embeddable status
@@ -163,39 +162,6 @@ jobs:
 
       - name: Run tests
         run: go test -count=1 ./... -short
-
-  dash:
-    name: Dash Build
-    runs-on: ubuntu-24.04
-    needs: [changes]
-    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
-    defaults:
-      run:
-        working-directory: web/dash
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: oven-sh/setup-bun@v2
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Run lint
-        run: bunx eslint .
-
-      - name: Build
-        run: bun run build
-
-      - name: Upload dash dist
-        uses: actions/upload-artifact@v7
-        with:
-          name: dash-dist
-          path: web/dash/dist
-          retention-days: 1
 
   dash0:
     name: Dash0 Build
@@ -319,7 +285,7 @@ jobs:
   build:
     name: Build Binary
     runs-on: ubuntu-24.04
-    needs: [changes, dash, dash0, status0, docs]
+    needs: [changes, dash0, status0, docs]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
@@ -328,12 +294,6 @@ jobs:
         with:
           go-version: "1.27"
           cache-dependency-path: server/go.sum
-
-      - name: Download dash dist
-        uses: actions/download-artifact@v8
-        with:
-          name: dash-dist
-          path: server/internal/app/res
 
       - name: Download dash0 dist
         uses: actions/download-artifact@v8
@@ -612,7 +572,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-24.04
-    needs: [changes, backend-lint, dash, dash0, status0, docs, build, e2e-tests]
+    needs: [changes, backend-lint, dash0, status0, docs, build, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

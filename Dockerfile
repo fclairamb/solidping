@@ -1,26 +1,4 @@
-# Stage 1a: Dash Build
-FROM node:24-alpine AS dash-builder
-
-# Install bun
-RUN apk add --no-cache curl unzip bash && \
-    curl -fsSL https://bun.sh/install | bash && \
-    ln -s /root/.bun/bin/bun /usr/local/bin/bun
-
-WORKDIR /build/dash
-
-# Copy dash package files
-COPY web/dash/package.json web/dash/bun.lock ./
-
-# Install dependencies
-RUN bun install --frozen-lockfile
-
-# Copy dash source
-COPY web/dash/ ./
-
-# Build dash
-RUN bun run build
-
-# Stage 1b: Dash0 Build
+# Stage 1a: Dash0 Build
 FROM node:24-alpine AS dash0-builder
 
 # Install bun
@@ -42,7 +20,7 @@ COPY web/dash0/ ./
 # Build dash0
 RUN bun run build
 
-# Stage 1c: Status0 Build
+# Stage 1b: Status0 Build
 FROM node:24-alpine AS status0-builder
 
 # Install bun
@@ -64,7 +42,7 @@ COPY web/status0/ ./
 # Build status0
 RUN bun run build
 
-# Stage 1d: Docs Build (Docusaurus, incl. generated API reference)
+# Stage 1c: Docs Build (Docusaurus, incl. generated API reference)
 FROM node:24-alpine AS docs-builder
 
 # Install bun
@@ -122,8 +100,7 @@ RUN go mod download
 # Copy backend source
 COPY server/ ./
 
-# Copy dash build artifacts to embed location
-COPY --from=dash-builder /build/dash/dist ./internal/app/res
+# Copy SPA build artifacts to embed locations
 COPY --from=dash0-builder /build/dash0/dist ./internal/app/dash0res
 COPY --from=status0-builder /build/status0/dist ./internal/app/status0res
 COPY --from=docs-builder /build/web/docs/build ./internal/app/docsres

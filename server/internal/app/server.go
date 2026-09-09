@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -168,9 +169,6 @@ const runModeTest = "test"
 
 // ErrUnsupportedDatabaseType is returned when an unsupported database type is specified.
 var ErrUnsupportedDatabaseType = errors.New("unsupported database type")
-
-//go:embed all:res
-var resFiles embed.FS
 
 //go:embed all:dash0res
 var dash0Files embed.FS
@@ -2766,12 +2764,42 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req *http.Request) err
 	for i := range s.config.Server.Redirects {
 		rule := &s.config.Server.Redirects[i]
 		if strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
-			return s.serveAppRedirect(writer, req, *rule, s.serveAppStatic)
+			return s.serveAppRedirect(writer, req, *rule, nil)
 		}
 	}
 
-	return s.serveAppStatic(writer, req)
+	// Nothing matched. There is no longer a catch-all SPA shell to fall back
+	// on (the legacy web/dash app was retired), so an unmatched path is a
+	// plain 404 rather than the old dashboard rendered under a typo'd URL.
+	writer.Header().Set("Content-Type", contentTypeHTML)
+	writer.WriteHeader(http.StatusNotFound)
+
+	_, err := io.WriteString(writer, notFoundHTML)
+
+	return err
 }
+
+// notFoundHTML is the body served for an unmatched path. Self-contained on
+// purpose: it must render without any SPA asset, since the whole point is that
+// no SPA answers this path.
+const notFoundHTML = `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not found</title>
+<style>
+:root{color-scheme:light dark}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:28rem;padding:2rem;text-align:center}
+h1{font-size:1.25rem;margin:0 0 .75rem}
+p{margin:.5rem 0;opacity:.85}
+</style></head>
+<body><main>
+<h1>Not found</h1>
+<p>There is nothing at this address.</p>
+</main></body></html>
+`
 
 // serveAppRedirect proxies requests to the configured dev server.
 // If a fallback function is provided and the proxy fails (e.g., dev server is down),
@@ -2891,54 +2919,6 @@ func (s *Server) proxyPostHog(writer http.ResponseWriter, req *http.Request) err
 	}
 
 	proxy.ServeHTTP(writer, req)
-
-	return nil
-}
-
-// serveAppStatic serves static files from the embedded filesystem.
-func (s *Server) serveAppStatic(writer http.ResponseWriter, req *http.Request) error {
-	filePath := path.Join("res", req.URL.Path)
-
-	slog.InfoContext(req.Context(), "Serving static file", "path", filePath)
-
-	maxAgeSeconds := 31536000 // 1 year for assets
-
-	// Try to read the file from the embedded filesystem
-	data, err := resFiles.ReadFile(filePath)
-	if err != nil {
-		// If file not found, serve index.html (SPA routing)
-		maxAgeSeconds = 60 // Shorter cache for index.html
-		filePath = path.Join("res", "index.html")
-
-		data, err = resFiles.ReadFile(filePath)
-		if err != nil {
-			slog.ErrorContext(req.Context(), "Error reading file", "error", err)
-			http.Error(writer, "File not found", http.StatusNotFound)
-
-			return nil
-		}
-	}
-
-	// Determine content type based on file extension
-	contentType := http.DetectContentType(data)
-
-	switch {
-	case strings.HasSuffix(filePath, ".css"):
-		contentType = contentTypeCSS
-	case strings.HasSuffix(filePath, ".js"):
-		contentType = contentTypeJS
-	case strings.HasSuffix(filePath, ".svg"):
-		contentType = contentTypeSVG
-	case strings.HasSuffix(filePath, ".html"):
-		contentType = contentTypeHTML
-	}
-
-	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
-	writer.Header().Set("Content-Type", contentType)
-
-	if _, err := writer.Write(data); err != nil {
-		return err
-	}
 
 	return nil
 }
