@@ -103,18 +103,3 @@ export async function deletePasskey(uid: string): Promise<void> {
     method: "DELETE",
   });
 }
-
-// AuthProviders extends the existing /auth/providers shape with
-// passkeysEnabled. Lives here for now since both flags drive the login
-// page's passkey rendering.
-export interface AuthProvidersResponse {
-  data: Array<{ name: string; type: string }>;
-  registrationEnabled: boolean;
-  passkeysEnabled: boolean;
-}
-
-export async function getAuthProviders(): Promise<AuthProvidersResponse> {
-  return apiFetch<AuthProvidersResponse>("/api/v1/auth/providers", {
-    skipAuth: true,
-  });
-}

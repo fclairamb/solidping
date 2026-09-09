@@ -3404,8 +3404,20 @@ export interface AuthProvider {
 interface ProvidersResponse {
   data?: AuthProvider[];
   registrationEnabled?: boolean;
+  passkeysEnabled?: boolean;
 }
 
+/**
+ * The public auth-capability probe: which third-party providers are
+ * configured, whether password self-registration is open, and whether
+ * passkeys are usable.
+ *
+ * All three come from one `/api/v1/auth/providers` response
+ * (server/internal/handlers/auth/providers_available.go). The login page used
+ * to fetch the same endpoint a second time via `getAuthProviders()` purely
+ * because this hook dropped `passkeysEnabled` on the floor — spec
+ * 2026-09-09-02 surfaced the field instead of the duplicate request.
+ */
 export function useProviders() {
   return useQuery({
     queryKey: ["providers"],
@@ -3417,6 +3429,7 @@ export function useProviders() {
       return {
         providers: response.data || [],
         registrationEnabled: response.registrationEnabled || false,
+        passkeysEnabled: response.passkeysEnabled || false,
       };
     },
     staleTime: Infinity,

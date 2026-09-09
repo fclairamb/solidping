@@ -12,7 +12,8 @@ import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { ApiError } from "@/api/client";
-import { useRegister } from "@/api/hooks";
+import { useProviders, useRegister } from "@/api/hooks";
+import { OAuthProviderButtons } from "@/components/auth/oauth-provider-buttons";
 import { clearSignupAttribution, readSignupAttribution } from "@/lib/attribution";
 
 export const Route = createFileRoute("/orgs/$org/register")({
@@ -23,6 +24,7 @@ function RegisterPage() {
   const { t } = useTranslation(["auth", "common"]);
   const { org } = Route.useParams();
   const register = useRegister();
+  const { data: providersData } = useProviders();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -112,6 +114,32 @@ function RegisterPage() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          {/* Every provider callback runs findOrCreateUser, so a first-time
+              "Continue with GitHub" creates the account — these buttons are a
+              sign-up path, not a sign-in one wrongly pasted here (spec
+              2026-09-09-02). Three deliberate differences from /login:
+
+              - No promoted "last used" slot: a visitor on /register is
+                claiming to be new, so promoting a remembered provider is the
+                wrong signal. The grid still records oauth:<type> on click, so
+                the NEXT login promotes whatever they signed up with.
+              - No passkey button: /passkeys/register/begin|finish are mounted
+                on rootAuthProtected, so a passkey can do nothing for someone
+                without an account yet. Passkeys are added from account
+                settings after the first login.
+              - Not gated on registrationEnabled: that flag mirrors
+                auth.registration_email_pattern and gates *password*
+                self-registration only (handlers/auth/service.go);
+                findOrCreateUser never consults it, and /login already shows
+                the same buttons regardless. This page follows the backend,
+                not the password form. */}
+          <OAuthProviderButtons
+            org={org}
+            providers={providersData?.providers}
+            disabled={register.isPending}
+            testIdPrefix="register"
+          />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
