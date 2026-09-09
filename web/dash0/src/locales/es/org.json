@@ -191,7 +191,8 @@
       "email": "Correo",
       "role": "Rol",
       "joinedAt": "Se unió",
-      "coverage": "Aviso"
+      "coverage": "Aviso",
+      "lastSeen": "Visto por última vez"
     },
     "role": {
       "owner": "Propietario",
@@ -243,6 +244,12 @@
       "nudgeAction": "Enviar recordatorio",
       "nudgeSent": "Recordatorio enviado",
       "nudgeFailed": "No se pudo enviar el recordatorio"
+    },
+    "lastSeen": {
+      "never": "Nunca",
+      "viaSession": "Panel",
+      "viaToken": "Token de API",
+      "breakdownLine": "{{channel}} · {{time}}"
     }
   },
   "checkRateLimit": {

@@ -3742,6 +3742,12 @@ export interface MemberResponse {
   role: MemberRole;
   joinedAt?: string;
   createdAt: string;
+  // lastSessionActivityAt / lastTokenActivityAt are two DELIBERATELY separate
+  // signals — dashboard presence vs. a credential (PAT/OAuth grant) being
+  // used — never pre-merged by the API. See src/lib/last-seen.ts for the
+  // derivation into one headline value + channel for display.
+  lastSessionActivityAt?: string;
+  lastTokenActivityAt?: string;
 }
 
 export function useMembers(org: string, opts?: ListQueryOptions) {

@@ -191,7 +191,8 @@
       "email": "Email",
       "role": "Role",
       "joinedAt": "Joined",
-      "coverage": "Paging"
+      "coverage": "Paging",
+      "lastSeen": "Last seen"
     },
     "role": {
       "owner": "Owner",
@@ -243,6 +244,12 @@
       "nudgeAction": "Send nudge email",
       "nudgeSent": "Nudge email sent",
       "nudgeFailed": "Could not send the nudge email"
+    },
+    "lastSeen": {
+      "never": "Never",
+      "viaSession": "Dashboard",
+      "viaToken": "API token",
+      "breakdownLine": "{{channel}} · {{time}}"
     }
   },
   "checkRateLimit": {
