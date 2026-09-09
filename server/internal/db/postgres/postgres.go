@@ -1192,7 +1192,9 @@ func (s *Service) DeleteUserTokensByOrg(ctx context.Context, orgUID string) (int
 
 // TokenActivityByUsers implements db.Service. See db.FoldTokenActivity for
 // the folding rules shared with the SQLite backend.
-func (s *Service) TokenActivityByUsers(ctx context.Context, userUIDs []string) (map[string]db.UserTokenActivity, error) {
+func (s *Service) TokenActivityByUsers(
+	ctx context.Context, userUIDs []string,
+) (map[string]db.UserTokenActivity, error) {
 	if len(userUIDs) == 0 {
 		return nil, nil //nolint:nilnil // empty input intentionally skips the query entirely
 	}

@@ -191,16 +191,16 @@ func (s *Service) ListMembers(ctx context.Context, orgSlug string) (*ListMembers
 }
 
 // maxTimePtr returns the later of two optional timestamps, or nil if both are nil.
-func maxTimePtr(a, b *time.Time) *time.Time {
+func maxTimePtr(first, second *time.Time) *time.Time {
 	switch {
-	case a == nil:
-		return b
-	case b == nil:
-		return a
-	case b.After(*a):
-		return b
+	case first == nil:
+		return second
+	case second == nil:
+		return first
+	case second.After(*first):
+		return second
 	default:
-		return a
+		return first
 	}
 }
 

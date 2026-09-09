@@ -26,25 +26,27 @@ func FoldTokenActivity(tokens []*models.UserToken) map[string]UserTokenActivity 
 	activity := make(map[string]UserTokenActivity, len(tokens))
 
 	for _, token := range tokens {
-		a := activity[token.UserUID]
+		userActivity := activity[token.UserUID]
 
 		switch token.Type {
 		case models.TokenTypeRefresh:
-			if token.LastActiveAt != nil && (a.SessionAt == nil || token.LastActiveAt.After(*a.SessionAt)) {
-				a.SessionAt = token.LastActiveAt
+			if token.LastActiveAt != nil &&
+				(userActivity.SessionAt == nil || token.LastActiveAt.After(*userActivity.SessionAt)) {
+				userActivity.SessionAt = token.LastActiveAt
 			}
 		case models.TokenTypePAT:
-			if token.LastActiveAt != nil && (a.TokenAt == nil || token.LastActiveAt.After(*a.TokenAt)) {
-				a.TokenAt = token.LastActiveAt
+			if token.LastActiveAt != nil &&
+				(userActivity.TokenAt == nil || token.LastActiveAt.After(*userActivity.TokenAt)) {
+				userActivity.TokenAt = token.LastActiveAt
 			}
 		case models.TokenTypeOAuthRefresh:
 			createdAt := token.CreatedAt
-			if a.TokenAt == nil || createdAt.After(*a.TokenAt) {
-				a.TokenAt = &createdAt
+			if userActivity.TokenAt == nil || createdAt.After(*userActivity.TokenAt) {
+				userActivity.TokenAt = &createdAt
 			}
 		}
 
-		activity[token.UserUID] = a
+		activity[token.UserUID] = userActivity
 	}
 
 	return activity

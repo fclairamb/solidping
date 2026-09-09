@@ -782,6 +782,139 @@ func testUsersWithOrg(ctx context.Context, t *testing.T, svc db.Service) {
 		assert.Equal(t, models.MemberRoleViewer, updated.Role)
 	})
 
+	t.Run("TokenActivityByUsers", func(t *testing.T) {
+		now := time.Now().UTC().Truncate(time.Second)
+
+		newToken := func(userUID string, tokenType models.TokenType) *models.UserToken {
+			return models.NewUserToken(userUID, nil, uuid.New().String(), tokenType)
+		}
+
+		t.Run("EmptyInputTouchesNoQuery", func(t *testing.T) {
+			activity, err := svc.TokenActivityByUsers(ctx, nil)
+			require.NoError(t, err)
+			assert.Nil(t, activity)
+		})
+
+		t.Run("MultipleRefreshRowsPickLatest", func(t *testing.T) {
+			user := models.NewUser("token-activity-refresh@example.com")
+			require.NoError(t, svc.CreateUser(ctx, user))
+
+			older := newToken(user.UID, models.TokenTypeRefresh)
+			older.LastActiveAt = tokenActivityTimePtr(now.Add(-2 * time.Hour))
+			require.NoError(t, svc.CreateUserToken(ctx, older))
+
+			newer := newToken(user.UID, models.TokenTypeRefresh)
+			newer.LastActiveAt = tokenActivityTimePtr(now.Add(-1 * time.Hour))
+			require.NoError(t, svc.CreateUserToken(ctx, newer))
+
+			activity, err := svc.TokenActivityByUsers(ctx, []string{user.UID})
+			require.NoError(t, err)
+
+			got := activity[user.UID]
+			require.NotNil(t, got.SessionAt)
+			assert.WithinDuration(t, *newer.LastActiveAt, *got.SessionAt, time.Second)
+			assert.Nil(t, got.TokenAt)
+		})
+
+		t.Run("SoftDeletedRefreshWithLatestActivityWins", func(t *testing.T) {
+			user := models.NewUser("token-activity-refresh-deleted@example.com")
+			require.NoError(t, svc.CreateUser(ctx, user))
+
+			live := newToken(user.UID, models.TokenTypeRefresh)
+			live.LastActiveAt = tokenActivityTimePtr(now.Add(-3 * time.Hour))
+			require.NoError(t, svc.CreateUserToken(ctx, live))
+
+			// Logged out (or revoked) but STILL the most recent activity: a
+			// soft delete must not erase presence.
+			deleted := newToken(user.UID, models.TokenTypeRefresh)
+			deleted.LastActiveAt = tokenActivityTimePtr(now.Add(-1 * time.Hour))
+			deleted.DeletedAt = tokenActivityTimePtr(now.Add(-30 * time.Minute))
+			require.NoError(t, svc.CreateUserToken(ctx, deleted))
+
+			activity, err := svc.TokenActivityByUsers(ctx, []string{user.UID})
+			require.NoError(t, err)
+
+			got := activity[user.UID]
+			require.NotNil(t, got.SessionAt)
+			assert.WithinDuration(t, *deleted.LastActiveAt, *got.SessionAt, time.Second)
+		})
+
+		t.Run("PATIsolatedFromSessionAndUnusedPATContributesNothing", func(t *testing.T) {
+			user := models.NewUser("token-activity-pat@example.com")
+			require.NoError(t, svc.CreateUser(ctx, user))
+
+			session := newToken(user.UID, models.TokenTypeRefresh)
+			session.LastActiveAt = tokenActivityTimePtr(now.Add(-5 * time.Hour))
+			require.NoError(t, svc.CreateUserToken(ctx, session))
+
+			patUsed := newToken(user.UID, models.TokenTypePAT)
+			patUsed.LastActiveAt = tokenActivityTimePtr(now.Add(-1 * time.Hour))
+			require.NoError(t, svc.CreateUserToken(ctx, patUsed))
+
+			// Minted, never used: LastActiveAt stays nil and must not count.
+			patUnused := newToken(user.UID, models.TokenTypePAT)
+			require.NoError(t, svc.CreateUserToken(ctx, patUnused))
+
+			activity, err := svc.TokenActivityByUsers(ctx, []string{user.UID})
+			require.NoError(t, err)
+
+			got := activity[user.UID]
+			require.NotNil(t, got.SessionAt)
+			assert.WithinDuration(t, *session.LastActiveAt, *got.SessionAt, time.Second)
+			require.NotNil(t, got.TokenAt)
+			assert.WithinDuration(t, *patUsed.LastActiveAt, *got.TokenAt, time.Second)
+		})
+
+		t.Run("OAuthRefreshRotationUsesNewestCreatedAtIncludingSoftDeleted", func(t *testing.T) {
+			user := models.NewUser("token-activity-oauth@example.com")
+			require.NoError(t, svc.CreateUser(ctx, user))
+
+			oldGrant := newToken(user.UID, models.TokenTypeOAuthRefresh)
+			oldGrant.CreatedAt = now.Add(-10 * time.Hour)
+			oldGrant.DeletedAt = tokenActivityTimePtr(now.Add(-9 * time.Hour))
+			require.NoError(t, svc.CreateUserToken(ctx, oldGrant))
+
+			rotated := newToken(user.UID, models.TokenTypeOAuthRefresh)
+			rotated.CreatedAt = now.Add(-9 * time.Hour)
+			require.NoError(t, svc.CreateUserToken(ctx, rotated))
+
+			activity, err := svc.TokenActivityByUsers(ctx, []string{user.UID})
+			require.NoError(t, err)
+
+			got := activity[user.UID]
+			require.NotNil(t, got.TokenAt)
+			assert.WithinDuration(t, rotated.CreatedAt, *got.TokenAt, time.Second)
+		})
+
+		t.Run("OAuthOnlyUserHasNoSessionActivity", func(t *testing.T) {
+			user := models.NewUser("token-activity-oauth-only@example.com")
+			require.NoError(t, svc.CreateUser(ctx, user))
+
+			grant := newToken(user.UID, models.TokenTypeOAuthRefresh)
+			grant.CreatedAt = now.Add(-4 * time.Hour)
+			require.NoError(t, svc.CreateUserToken(ctx, grant))
+
+			activity, err := svc.TokenActivityByUsers(ctx, []string{user.UID})
+			require.NoError(t, err)
+
+			got := activity[user.UID]
+			assert.Nil(t, got.SessionAt)
+			require.NotNil(t, got.TokenAt)
+			assert.WithinDuration(t, grant.CreatedAt, *got.TokenAt, time.Second)
+		})
+
+		t.Run("UserWithNoTokenRowsIsAbsentFromMap", func(t *testing.T) {
+			user := models.NewUser("token-activity-none@example.com")
+			require.NoError(t, svc.CreateUser(ctx, user))
+
+			activity, err := svc.TokenActivityByUsers(ctx, []string{user.UID})
+			require.NoError(t, err)
+
+			_, ok := activity[user.UID]
+			assert.False(t, ok)
+		})
+	})
+
 	t.Run("ListMembersByUserWithOrgName", func(t *testing.T) {
 		namedOrg := models.NewOrganization("member-named-org", "Member Named Org")
 		err := svc.CreateOrganization(ctx, namedOrg)
@@ -2651,3 +2784,7 @@ func testEventsTargetPayloadFilters(ctx context.Context, t *testing.T, svc db.Se
 
 // strPtrTest is a local pointer helper for the filter structs above.
 func strPtrTest(value string) *string { return &value }
+
+// tokenActivityTimePtr is a local pointer helper for the TokenActivityByUsers
+// test cases above.
+func tokenActivityTimePtr(value time.Time) *time.Time { return &value }
