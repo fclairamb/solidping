@@ -1,11 +1,20 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
+import {
+  API_BASE as BASE,
+  STATUS_BASE,
+  resolveDefaultStatusPage,
+} from "./fixtures";
 
 test.describe("Status page subscribe widget", () => {
   test("subscribe widget submits and shows check-your-inbox state", async ({
     page,
   }) => {
-    await page.goto(`${BASE}${STATUS_BASE}/default/status-0`);
+    // Resolved, not hardcoded — `default`/`status-0` only exists on a
+    // `make dev` server, while CI runs `SP_RUNMODE=test` (`test` /
+    // `test-status-page`). See resolveDefaultStatusPage.
+    const target = await resolveDefaultStatusPage();
+
+    await page.goto(`${BASE}${STATUS_BASE}/${target.org}/${target.slug}`);
     await page.waitForLoadState("networkidle");
 
     // Widget heading is visible.
@@ -35,8 +44,10 @@ test.describe("Status page subscribe widget", () => {
   });
 
   test("feed.xml endpoint returns Atom XML", async ({ request }) => {
+    const target = await resolveDefaultStatusPage();
+
     const res = await request.get(
-      `${BASE}/api/v1/status-pages/default/status-0/feed.xml`
+      `${BASE}/api/v1/status-pages/${target.org}/${target.slug}/feed.xml`,
     );
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("application/atom+xml");

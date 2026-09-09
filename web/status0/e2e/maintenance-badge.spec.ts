@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { API_BASE as BASE, STATUS_BASE } from "./fixtures";
+import {
+  API_BASE as BASE,
+  STATUS_BASE,
+  resolveDefaultStatusPage,
+} from "./fixtures";
 
 /**
  * Verifies the "Scheduled Maintenance" badge on the public status page.
@@ -16,7 +20,13 @@ test.describe("Public status page — scheduled maintenance badge", () => {
   test("maintenance resource shows the Scheduled Maintenance badge", async ({
     page,
   }) => {
-    await page.goto(`${BASE}${STATUS_BASE}/default`);
+    // Resolved rather than hardcoded to `default`: on a `SP_RUNMODE=test`
+    // server that org does not exist, so the page 404s and the badge count is
+    // zero for a reason that has nothing to do with maintenance windows — the
+    // skip below would then be reporting the wrong thing.
+    const target = await resolveDefaultStatusPage();
+
+    await page.goto(`${BASE}${STATUS_BASE}/${target.org}`);
     await page.waitForLoadState("networkidle");
 
     const badge = page.getByTestId("resource-maintenance-badge");
