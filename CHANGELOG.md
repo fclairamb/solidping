@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/fclairamb/solidping/compare/v0.27.0...v0.27.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **deps:** update go dependencies (non-major) ([#354](https://github.com/fclairamb/solidping/issues/354)) ([b82ae73](https://github.com/fclairamb/solidping/commit/b82ae7313f6f4b84be0f47b459f0f9153c7348ff))
+
 ## [0.27.0](https://github.com/fclairamb/solidping/compare/v0.26.1...v0.27.0) (2026-09-08)
 
 
