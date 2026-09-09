@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.27.1](https://github.com/fclairamb/solidping/compare/v0.27.0...v0.27.1) (2026-09-09)
 
 
 ### Features
@@ -21,6 +21,48 @@
   subscription is tied to the address the service worker was registered under, so the dashboard
   retires the old registration on first load and re-subscribes, replacing the stored
   subscription rather than leaving a dead one behind
+* **auth:** the sign-up form now offers every sign-in provider the login page does. On the
+  backend there has never been a separate "sign up with Google" — the first time a provider
+  hands back an identity we have not seen, the account is created there and then, so
+  "Continue with GitHub" on a first visit **is** registration. The only place to click it,
+  though, was a page headed "Sign in", reachable from a small "Already have an account?" link
+  at the bottom of the sign-up form — so a visitor arriving from the marketing site either
+  worked that out or typed a password they never wanted. The same brand-iconed buttons now sit
+  above the name/email/password fields on the sign-up page. Two deliberate differences from the
+  login page: no "last used" shortcut, because someone on the sign-up page is telling you they
+  are new; and no passkey button, because enrolling a passkey needs an account to attach it to
+* **dash0:** the organization members list now shows when each member was last seen, and
+  whether it was a person or a credential. The table previously showed only a **Joined** date,
+  which says nothing about whether someone still uses SolidPing — the question an admin
+  actually has before reclaiming a seat, chasing an unverified paging contact, or working out
+  whose automation is still running. The new **Last seen** column shows the more recent of two
+  separately tracked signals, with a small icon for which one it was: a dashboard session, or
+  an API credential (a personal access token, or an OAuth grant used by the CLI or an MCP
+  client). They are kept apart on purpose. Merged into one number, a departed colleague whose
+  nightly cron job still runs reads as simply "active"; kept apart, they read as what they are
+  — "no dashboard since March, token used last night". A token that was minted and never used
+  does not count as access, and a member who has never signed in and holds no token reads
+  "Never" rather than showing an empty cell
+* **dash0:** on the super-admin activation funnel, an organization's name is now a link
+  straight to that organization's audit log, instead of plain text you had to copy and paste a
+  slug out of
+
+
+### Bug Fixes
+
+* **reports:** a brand-new organization is no longer emailed a weekly uptime report covering a
+  week that closed before it existed. One account received a report 57 minutes after signing
+  up: no data, "All checks (0)", for a week that had ended two days before the organization
+  was created. Two separate causes, both in the scheduled sweep rather than in the report
+  builder. The sweep mailed every recipient without first asking whether the schedule's scope
+  resolved to any checks at all, so an organization with none — or a schedule pinned to an
+  empty group — was mailed "no data" every period. And because a new schedule has no record of
+  a previous run, the first period it claimed was simply whichever one had just closed, which
+  for a new account can predate the account. Both cases are now skipped, and deliberately
+  skipped *after* the period is marked as run, so a suppressed period is consumed rather than
+  re-evaluated every hour for the life of the schedule. Asking for a test send still delivers
+  the report, empty or not — that is a deliberate request to see what it looks like
+* **deps:** update go dependencies (non-major) ([#354](https://github.com/fclairamb/solidping/issues/354)) ([b82ae73](https://github.com/fclairamb/solidping/commit/b82ae7313f6f4b84be0f47b459f0f9153c7348ff))
 
 
 ### Miscellaneous Chores
@@ -31,6 +73,15 @@
   rendered the *old* dashboard's shell and answered `200` to search engines rather than saying
   "not found". Unmatched addresses now answer a plain 404. Builds are one stage shorter as a
   result
+* **dash0:** the hosted dashboard now records session replays, fully masked, to answer one
+  question the event stream cannot: where a first-run user stalls before creating their first
+  check. Every replay is captured with all text and all input values masked, so what is stored
+  is layout, scrolling, cursor movement and which control was clicked — never a check name, a
+  monitored URL, an incident, or anything typed. That keeps replay inside the same promise the
+  rest of the analytics configuration makes: SolidPing learns how its interface is used, never
+  what a customer monitors. As before, none of this runs unless analytics is configured at all,
+  which a self-hosted installation has to opt into
+
 
 ## [0.27.0](https://github.com/fclairamb/solidping/compare/v0.26.1...v0.27.0) (2026-09-08)
 
