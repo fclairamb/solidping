@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.28.0](https://github.com/fclairamb/solidping/compare/v0.27.1...v0.28.0) (2026-09-11)
+
+
+### Features
+
+* **server:** campaign links under /demo carry utm_source ([#363](https://github.com/fclairamb/solidping/issues/363)) ([3142588](https://github.com/fclairamb/solidping/commit/31425888456fb5eae2974b51486832df08041e1a))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to fabc3b8 ([#364](https://github.com/fclairamb/solidping/issues/364)) ([139541f](https://github.com/fclairamb/solidping/commit/139541f79910964430568084468d463b297a53b9))
+* **deps:** update go dependencies (non-major) ([#359](https://github.com/fclairamb/solidping/issues/359)) ([1cd404c](https://github.com/fclairamb/solidping/commit/1cd404c79f019f78a2e2f7a3ba7e2fc226253be2))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.113.1 ([#366](https://github.com/fclairamb/solidping/issues/366)) ([22e2e65](https://github.com/fclairamb/solidping/commit/22e2e65da4a776268fdc889f14fc68f836d20e50))
+* **deps:** update module go.mongodb.org/mongo-driver/v2 to v2.9.1 ([#361](https://github.com/fclairamb/solidping/issues/361)) ([37c55f9](https://github.com/fclairamb/solidping/commit/37c55f9cf99a6da9f96588a2f2a3af5161758520))
+
 ## [0.27.1](https://github.com/fclairamb/solidping/compare/v0.27.0...v0.27.1) (2026-09-09)
 
 
