@@ -2203,6 +2203,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/demo", s.serveDemoShortcut)
 	mainGroup.GET("/demo/", s.serveDemoShortcut)
 
+	// Campaign links: /demo/<source> bounces to /demo/?utm_source=<source>
+	// so a printed or posted link can carry its attribution. See
+	// serveDemoCampaignShortcut.
+	mainGroup.GET("/demo/*path", s.serveDemoCampaignShortcut)
+
 	// Documentation site (Docusaurus), embedded and served at /docs on every
 	// host. docs.solidping.io redirects its root here (see handlerWithDocsHost).
 	mainGroup.GET("/docs", s.serveDocsRoute)
@@ -2749,6 +2754,45 @@ func (s *Server) serveDemoShortcut(writer http.ResponseWriter, req *http.Request
 	}
 
 	http.Redirect(writer, req, demoShortcutLocation, http.StatusFound)
+
+	return nil
+}
+
+// serveDemoCampaignShortcut turns a campaign link — /demo/<source> — into the
+// canonical /demo/?utm_source=<source>, so one memorable path per channel can
+// be printed, posted or handed out and still be attributable. The redirect is
+// a 302 for the same reason the plain shortcut is one: a 301 would be cached
+// by the browser and outlive the campaign, and outlive demo mode being turned
+// off.
+//
+// The source segment is attacker-controlled, so it is only ever re-emitted
+// url-encoded into a fixed /demo/ prefix — the Location is built, never
+// concatenated, which is what keeps this from being an open redirect or a
+// header-injection point. Any query string on the way in is dropped rather
+// than merged, matching serveDemoShortcut's rule that an incoming query on a
+// demo link is never forwarded.
+//
+// With demo mode off it delegates to serveAppRoot exactly like the plain
+// shortcut, so a self-hosted instance 404s these paths instead of advertising
+// a demo it does not run.
+func (s *Server) serveDemoCampaignShortcut(writer http.ResponseWriter, req *http.Request) error {
+	if !s.config.Demo.Enabled {
+		return s.serveAppRoot(writer, req)
+	}
+
+	source := strings.Trim(strings.TrimPrefix(req.URL.Path, "/demo/"), "/")
+	if source == "" {
+		// Defensive: /demo/ has its own exact route, so this is unreachable
+		// through the router. Land on the plain shortcut rather than emit
+		// utm_source=.
+		http.Redirect(writer, req, demoShortcutLocation, http.StatusFound)
+
+		return nil
+	}
+
+	location := "/demo/?" + url.Values{"utm_source": []string{source}}.Encode()
+
+	http.Redirect(writer, req, location, http.StatusFound)
 
 	return nil
 }
