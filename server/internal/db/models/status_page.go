@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -430,15 +429,11 @@ func HideBrandingSettingsPatch(hide bool) string {
 // query.
 const SectionSelectorMaxLabels = 10
 
-// SectionSelectorMaxValueLen caps a selector label value, matching the label
-// authoring cap in the dashboard (label-shared.ts VALUE_MAX).
-const SectionSelectorMaxValueLen = 200
-
-// sectionSelectorKeyPattern mirrors the label key rule enforced when a label is
-// authored (web/dash0 label-shared.ts KEY_REGEX): a selector that cannot match
-// any authorable key is a typo, not a filter, and is better rejected at the API
-// than silently matching nothing forever.
-var sectionSelectorKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{2,50}$`)
+// SectionSelectorMaxValueLen caps a selector label value. It IS the label
+// value cap (LabelValueMaxLen), aliased here so selector code reads in its own
+// vocabulary; a selector that could not match an authorable value would be a
+// filter matching nothing forever.
+const SectionSelectorMaxValueLen = LabelValueMaxLen
 
 // Selector validation errors. They are returned to the API layer, which maps
 // them onto VALIDATION_ERROR.
@@ -507,7 +502,7 @@ func (sel *SectionSelector) Validate() error {
 	}
 
 	for key, value := range sel.Labels {
-		if !sectionSelectorKeyPattern.MatchString(key) {
+		if !LabelKeyPattern.MatchString(key) {
 			return fmt.Errorf("%w: %q", ErrSelectorLabelKeyInvalid, key)
 		}
 
