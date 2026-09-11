@@ -182,7 +182,25 @@ func TestValidateDocumentGenericRuleViolations(t *testing.T) {
 		{
 			name:     "label with empty value",
 			mutate:   func(doc *ExportDocument) { doc.Checks[0].Labels["app"] = "" },
-			expected: "must have a non-empty string value",
+			expected: "must be non-empty and at most 200 characters",
+		},
+		{
+			// The document validator now uses the SAME label key rule the
+			// database enforces (spec 2026-09-10-01). It used to accept these
+			// three and hand them to a write Postgres would refuse.
+			name:     "label key too short for the DB rule",
+			mutate:   func(doc *ExportDocument) { doc.Checks[0].Labels["os"] = "linux" },
+			expected: `label key is invalid: "os"`,
+		},
+		{
+			name:     "label key starting with a digit",
+			mutate:   func(doc *ExportDocument) { doc.Checks[0].Labels["1abc"] = "x" },
+			expected: `label key is invalid: "1abc"`,
+		},
+		{
+			name:     "label key with a dot",
+			mutate:   func(doc *ExportDocument) { doc.Checks[0].Labels["k8s.cluster"] = "prod" },
+			expected: `label key is invalid: "k8s.cluster"`,
 		},
 		{
 			name: "dependsOn points nowhere",

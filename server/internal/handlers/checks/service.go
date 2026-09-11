@@ -1267,127 +1267,18 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, ErrOrganizationNotFound
 	}
 
-	// `internal` is never writable from a request (spec 2026-08-27-01): it is
-	// what exempts a check from the quota below, so accepting it here would
-	// hand every caller a quota bypass. Routed through the shared
-	// requestFieldFindings (spec 2026-08-28-14) — same function ValidateCheck
-	// uses — so this and the dry-run endpoint can never disagree about it.
-	if findings := requestFieldFindings(requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
-		return CheckResponse{}, findings[0].Err
-	}
-
-	// Enforce the MaxChecks quota before doing any work. Nothing reaching this
-	// path can be internal (rejected above), so the quota always applies —
-	// server-created internal checks are written through db.CreateCheck and
-	// never pass here.
-	if s.entitlements != nil {
-		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
-			return CheckResponse{}, quotaErr
-		}
-	}
-
-	// Label keys and values are validated HERE — before the check row is
-	// inserted, not inside the GetOrCreateLabel loop that used to run after it
-	// (spec 2026-09-10-01). A key Postgres refuses used to surface as a raw
-	// SQLSTATE *after* the check existed, leaving a half-configured row behind.
-	if labelErr := models.ValidateLabels(req.Labels); labelErr != nil {
-		return CheckResponse{}, labelErr
-	}
-
-	// Get the checker to validate the configuration
-	checker, ok := registry.GetChecker(checkerdef.CheckType(req.Type))
-	if !ok {
-		return CheckResponse{}, ErrInvalidCheckType
-	}
-
-	// Parse the period if provided
-	var period time.Duration
-	if req.Period != nil && *req.Period != "" {
-		var duration timeutils.Duration
-		if scanErr := duration.Scan(*req.Period); scanErr != nil {
-			return CheckResponse{}, scanErr
-		}
-		period = time.Duration(duration)
-	}
-
-	// Enforce per-type period bounds (spec 2026-07-01-04 D1). Internal
-	// checks and the synthetic sleep type are exempt; an absent period
-	// falls back to the default and needs no validation. Nothing created
-	// here is internal any more (spec 2026-08-27-01), hence the constant.
-	if periodErr := validatePeriodForType(req.Type, period, false); periodErr != nil {
-		return CheckResponse{}, periodErr
-	}
-
-	// Track if slug was user-provided
-	userProvidedSlug := req.Slug != ""
-
-	// Validate slug format if provided by user
-	if userProvidedSlug {
-		if slugErr := validateSlug(req.Slug); slugErr != nil {
-			return CheckResponse{}, slugErr
-		}
-	}
-
-	// Resolve regions BEFORE any config work: credential sealing (spec
-	// 2026-07-16-02) keys off the check's private regions, and the tunnel
-	// region rules (spec 2026-07-18-07) are validated against the resolved
-	// set, not the raw request.
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	// EVERY request-level rule this path enforces lives in planCreateCheck,
+	// which writes nothing and hands back the resolved values used below. The
+	// import dry run calls the same function, which is what makes a dry run
+	// that says "all good" mean the real run will succeed (spec
+	// 2026-09-10-01) — the two cannot drift because there is only one copy.
+	plan, err := s.planCreateCheck(ctx, org, req)
 	if err != nil {
-		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
-	}
-
-	// Demo-session payload rules (spec 2026-09-06-02): the type allowlist, the
-	// period floor and public regions only. Deliberately AFTER
-	// ResolveRegionsForCheck so the region rule is applied to the resolved,
-	// about-to-be-stored set rather than to the raw request — an alias or an
-	// org default cannot smuggle a private region past it.
-	if demoErr := assertDemoCheckShape(ctx, req.Type, period, resolvedRegions); demoErr != nil {
-		return CheckResponse{}, demoErr
-	}
-
-	// Normalize the config into its canonical stored shape (e.g. HTTP's
-	// username/password → basicAuth fold) before validating it, so the rules
-	// below see exactly what will be persisted.
-	effective := req.Config
-
-	if req.Config != nil {
-		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
-		if normErr != nil {
-			return CheckResponse{}, normErr
-		}
-
-		effective = normalized
-	}
-
-	// The shared config validators — the uniform timeout cap, the
-	// address-family rule, the tunnel reference rules and the SMTP send-mode
-	// rules. Run from the same list the dry-run validate endpoint reads, so
-	// the form's preview and this enforcement cannot drift.
-	if cfgErr := s.firstConfigValidationError(
-		ctx, org.UID, req.Type, effective, resolvedRegions,
-	); cfgErr != nil {
-		return CheckResponse{}, cfgErr
-	}
-
-	// Send-mode SMTP checks need a period floor so the paired inbox can't be
-	// flooded (spec 2026-08-19-04).
-	if intervalErr := validateSMTPSendInterval(req.Type, effective, period); intervalErr != nil {
-		return CheckResponse{}, intervalErr
-	}
-
-	// Create CheckSpec for validation
-	spec := &checkerdef.CheckSpec{
-		Name:   req.Name,
-		Slug:   req.Slug,
-		Period: period,
-		Config: req.Config,
-	}
-
-	// Validate the spec - this may modify Name and Slug
-	if err := checker.Validate(spec); err != nil { //nolint:govet // Intentional shadowing for scoped error
 		return CheckResponse{}, err
 	}
+
+	spec := plan.spec
+	userProvidedSlug, resolvedRegions, effective := plan.userProvidedSlug, plan.regions, plan.effective
 
 	// Handle slug conflicts
 	finalSlug, err := s.ensureUniqueSlug(ctx, org.UID, spec.Slug, userProvidedSlug)
@@ -1454,22 +1345,9 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// The remaining request-level guards — regionSpread's bound, the
 	// tracerouteOnFailure enum, the flapping knobs' floors, and the incident
-	// periods' bound — run through the same shared requestFieldFindings
-	// ValidateCheck uses (spec 2026-08-28-14), in the order they've always
-	// been checked in. Only the first finding is used here; the field is then
-	// set from the (now known-valid) request below.
-	if findings := requestFieldFindings(requestFieldValues{
-		RegionSpreadPeriod:        time.Duration(check.Period),
-		RegionSpread:              req.RegionSpread,
-		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
-		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
-		TracerouteOnFailure:       req.TracerouteOnFailure,
-		FlappingWindowSeconds:     req.FlappingWindowSeconds,
-		FlapBackoffFactor:         req.FlapBackoffFactor,
-		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
-	}); len(findings) > 0 {
-		return CheckResponse{}, findings[0].Err
-	}
+	// periods' bound — already ran inside planCreateCheck, against the same
+	// effective period computed there. The fields are set from the (now
+	// known-valid) request below.
 
 	// Set the optional inter-region spread override (spec 2026-07-20-05).
 	// Empty string = default. Bound already checked above.
@@ -2088,27 +1966,10 @@ func (s *Service) UpsertCheck(
 		return updatedCheck, false, nil
 	}
 
-	// Check doesn't exist - create it
-	createReq := CreateCheckRequest{
-		Name:          req.Name,
-		Slug:          slug,
-		Description:   req.Description,
-		CheckGroupUID: req.CheckGroupUID,
-		Type:          req.Type,
-		Config:        req.Config,
-		Regions:       req.Regions,
-		Enabled:       req.Enabled,
-		// Internal is deliberately NOT forwarded (spec 2026-08-27-01).
-		Period:                    req.Period,
-		Labels:                    req.Labels,
-		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
-		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
-		TracerouteOnFailure:       req.TracerouteOnFailure,
-		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
-		FlappingWindowSeconds:     req.FlappingWindowSeconds,
-		FlapBackoffFactor:         req.FlapBackoffFactor,
-		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
-	}
+	// Check doesn't exist - create it. Built through the same helper the
+	// dry-run planner uses, so the plan is made from exactly the request that
+	// will be written.
+	createReq := upsertToCreateRequest(slug, req)
 
 	check, err := s.CreateCheck(ctx, orgSlug, createReq)
 	if err != nil {
@@ -3349,10 +3210,22 @@ type ExportedDependency struct {
 
 // ImportResult represents the result of an import operation.
 type ImportResult struct {
-	Created int           `json:"created"`
-	Updated int           `json:"updated"`
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	// Skipped counts the document entries whose dependsOn edges were NOT
+	// applied: on a real run, those whose own upsert failed in pass 1; on a
+	// dry run, every entry carrying dependsOn, since pass 2 cannot resolve
+	// edges against state the dry run did not write. It was declared and never
+	// incremented until spec 2026-09-10-01 — a field that always reads 0
+	// implies a semantics the endpoint does not have.
 	Skipped int           `json:"skipped"`
 	Errors  []ImportError `json:"errors"`
+	// DryRun echoes whether this was a dry run, and Caveats names the
+	// validations a dry run genuinely cannot perform without writing. A dry
+	// run reports the same created/updated/errors a real run would; where it
+	// provably cannot, it says so here rather than omitting it silently.
+	DryRun  bool     `json:"dryRun"`
+	Caveats []string `json:"caveats,omitempty"`
 }
 
 // ImportError represents an error for a specific check during import.
@@ -3360,7 +3233,21 @@ type ImportError struct {
 	Index int    `json:"index"`
 	Slug  string `json:"slug"`
 	Error string `json:"error"`
+	// State is set only in the one outcome where an item failed AND left
+	// something behind: "created-incomplete" means the check row was inserted,
+	// finishing it failed, and the compensating delete failed too — so the row
+	// really is on disk. Absent means nothing was written for this item.
+	State string `json:"state,omitempty"`
 }
+
+// ImportStateCreatedIncomplete is the ImportError.State value for a check that
+// exists but is not fully configured. Named because callers key on it.
+const ImportStateCreatedIncomplete = "created-incomplete"
+
+// dryRunCaveatSlugRace is the one validation a dry run cannot reproduce: two
+// concurrent writers can claim the same slug between the plan and the write.
+const dryRunCaveatSlugRace = "a concurrent create can still claim a slug between this dry run and the real import; " +
+	"everything else reported here is exactly what the real run would report"
 
 // ExportChecks exports checks for an organization in the portable JSON format.
 //
@@ -3650,6 +3537,11 @@ func (s *Service) ImportChecks(
 
 	result := &ImportResult{
 		Errors: []ImportError{},
+		DryRun: dryRun,
+	}
+
+	if dryRun {
+		result.Caveats = []string{dryRunCaveatSlugRace}
 	}
 
 	pass1Failed := make(map[string]struct{}, 0)
@@ -3675,6 +3567,15 @@ func (s *Service) ImportChecks(
 	// Skipped on dry-run since pass 1 only simulated the upserts.
 	if !dryRun {
 		s.importDependencies(ctx, org.UID, doc.Checks, pass1Failed, result)
+	} else {
+		// A dry run cannot resolve edges against state it did not write, so
+		// it counts the pass-2 work it is not doing rather than pretending
+		// there was none.
+		for i := range doc.Checks {
+			if len(doc.Checks[i].DependsOn) > 0 {
+				result.Skipped++
+			}
+		}
 	}
 
 	return result, nil
@@ -3727,6 +3628,7 @@ func (s *Service) importDependencies(
 		}
 
 		if _, failed := pass1Failed[entry.Slug]; failed {
+			result.Skipped++
 			result.Errors = append(result.Errors, ImportError{
 				Index: i, Slug: entry.Slug,
 				Error: "skipped dependsOn: pass-1 upsert failed for this check",
@@ -3899,8 +3801,20 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 	return nil
 }
 
-// importSingleCheck handles importing a single check.
-// Returns (wasCreated, error). wasCreated is true if a new check was created, false if updated.
+// importSingleCheck imports a single check in two phases.
+//
+// PLAN (always runs, dry run included): the per-entry contract, the
+// created-vs-updated lookup, group resolution, building the
+// UpsertCheckRequest, and then the SAME request validation the write path
+// performs — label keys/values, the checker's own Validate, regions, period
+// and alerting bounds, and the entitlement quota for a would-create item.
+// Before spec 2026-09-10-01 the dry run returned right after the slug lookup,
+// so a document that could not possibly be written dry-ran clean.
+//
+// APPLY (real run only): the group creation and the upsert itself.
+//
+// Returns (wasCreated, error). wasCreated is true if a new check was (or would
+// be) created, false if updated.
 func (s *Service) importSingleCheck(
 	ctx context.Context,
 	org *models.Organization,
@@ -3914,37 +3828,89 @@ func (s *Service) importSingleCheck(
 		return false, validationErr
 	}
 
-	// Check if slug exists to determine created vs updated
-	existing, _ := s.db.GetCheckByUidOrSlug(ctx, org.UID, exportedCheck.Slug)
-	created := existing == nil
+	// Resolve the group. On a dry run an absent group is "would create" —
+	// recorded in the local map so a second entry naming the same group plans
+	// against the same decision, but never written.
+	checkGroupUID, groupErr := s.resolveImportGroup(ctx, org, exportedCheck, groupByName, dryRun)
+	if groupErr != nil {
+		return false, &ImportError{
+			Index: index, Slug: exportedCheck.Slug, Error: "failed to create group: " + groupErr.Error(),
+		}
+	}
+
+	upsertReq := buildImportUpsertRequest(exportedCheck, checkGroupUID)
 
 	if dryRun {
+		created, planErr := s.PlanUpsert(ctx, org, exportedCheck.Slug, &upsertReq)
+		if planErr != nil {
+			return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
+		}
+
 		return created, nil
 	}
 
-	// Resolve group by name (case-insensitive), auto-create if needed
-	var checkGroupUID *string
-	if exportedCheck.Group != "" {
-		group, ok := groupByName[strings.ToLower(exportedCheck.Group)]
-		if !ok {
-			// Auto-create group
-			groupSlug := sanitizeSlug(strings.ToLower(exportedCheck.Group))
-			newGroup := models.NewCheckGroup(org.UID, exportedCheck.Group, groupSlug)
-			if createErr := s.db.CreateCheckGroup(ctx, newGroup); createErr != nil {
-				return false, &ImportError{
-					Index: index, Slug: exportedCheck.Slug,
-					Error: "failed to create group: " + createErr.Error(),
-				}
-			}
-			groupByName[strings.ToLower(exportedCheck.Group)] = newGroup
-			group = newGroup
+	_, created, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
+	if upsertErr != nil {
+		importErr := &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
+
+		// The one case where a failed item still left a row on disk: the
+		// check was inserted and neither completed nor removed. Reported so
+		// the caller can see exactly which slugs exist instead of trusting a
+		// created count that would be a lie (spec 2026-09-10-01).
+		if errors.Is(upsertErr, ErrCheckCreatedIncomplete) {
+			importErr.State = ImportStateCreatedIncomplete
 		}
-		checkGroupUID = &group.UID
+
+		return false, importErr
 	}
 
-	// Build upsert request. The alerting fields are already resolved
-	// (check value → document default → absent) by the time the document is
-	// decoded, so a nil pointer here means "use the system default".
+	return created, nil
+}
+
+// resolveImportGroup resolves (and, on a real run, auto-creates) the check
+// group named by a document entry, returning nil when the entry names none.
+func (s *Service) resolveImportGroup(
+	ctx context.Context,
+	org *models.Organization,
+	exportedCheck *ExportCheck,
+	groupByName map[string]*models.CheckGroup,
+	dryRun bool,
+) (*string, error) {
+	if exportedCheck.Group == "" {
+		return nil, nil //nolint:nilnil // no group is a valid absence, not an error
+	}
+
+	key := strings.ToLower(exportedCheck.Group)
+
+	group, ok := groupByName[key]
+	if !ok {
+		groupSlug := sanitizeSlug(key)
+		group = models.NewCheckGroup(org.UID, exportedCheck.Group, groupSlug)
+
+		if !dryRun {
+			if createErr := s.db.CreateCheckGroup(ctx, group); createErr != nil {
+				return nil, createErr
+			}
+		}
+
+		groupByName[key] = group
+	}
+
+	// On a dry run this UID belongs to a group that does not exist. That is
+	// fine and deliberate: nothing downstream of here writes on a dry run, and
+	// the planner never dereferences the group — what matters is that the
+	// planned request has the same SHAPE the real one will.
+	return &group.UID, nil
+}
+
+// buildImportUpsertRequest turns one document entry into the upsert request
+// both the plan and the apply phase use — one construction, so a dry run can
+// never validate a different request from the one that gets written.
+//
+// The alerting fields are already resolved (check value → document default →
+// absent) by the time the document is decoded, so a nil pointer here means
+// "use the system default".
+func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string) UpsertCheckRequest {
 	upsertReq := UpsertCheckRequest{
 		Name:          exportedCheck.Name,
 		Description:   exportedCheck.Description,
@@ -3968,12 +3934,7 @@ func (s *Service) importSingleCheck(
 
 	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
 
-	_, _, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
-	if upsertErr != nil {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
-	}
-
-	return created, nil
+	return upsertReq
 }
 
 // importedTraceroutePolicy resolves a document's path-trace field to something
