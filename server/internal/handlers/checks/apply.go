@@ -26,7 +26,20 @@ const applyCountCreated = "created"
 // org slug). Reconcile (delete-by-absence) only ever touches checks carrying
 // this label with the matching value — hand-created checks are never adopted
 // or deleted.
-const ManagedLabelKey = "solidping.io/managed"
+//
+// It was `solidping.io/managed` until spec 2026-09-10-01. That spelling
+// carries a dot and a slash, which the Postgres `labels_key_check` CHECK has
+// refused since day one — so /apply and every importer that stamps it were
+// broken on Postgres and only ever appeared to work against the laxer SQLite
+// backend the test suites use. The key now obeys the one canonical rule
+// (models.LabelKeyPattern); SQLite rows carrying the old spelling are renamed
+// by migration 021.
+const ManagedLabelKey = "solidping-managed"
+
+// LegacyManagedLabelKey is the pre-2026-09-10 spelling of ManagedLabelKey,
+// kept only so the SQLite migration and its test can name the same string the
+// application used to write.
+const LegacyManagedLabelKey = "solidping.io/managed"
 
 // DefaultDeletionCap is the maximum number of managed checks a single apply
 // will delete-by-absence without an explicit force opt-in. A bad manifest

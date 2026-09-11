@@ -14,7 +14,7 @@ query flags, managed scope, secret references, deletion safety) is documented at
 ## The managed scope
 
 Apply stamps every check it owns with a reserved label
-`solidping.io/managed=<manifest-name>` (the manifest name is the document's
+`solidping-managed=<manifest-name>` (the manifest name is the document's
 `organization` field, falling back to the org slug). The reconcile scope is
 exactly the checks carrying that label. **Hand-created checks are never adopted,
 modified destructively, or deleted** — they surface in the plan as `unmanaged`.

@@ -276,7 +276,7 @@ first non-space byte). YAML is the hand-authoring surface; JSON is what export
 emits — both parse to the same plan.
 
 **Managed scope.** Apply stamps every check it owns with a reserved label
-`solidping.io/managed=<manifest-name>`, where the manifest name is the document's
+`solidping-managed=<manifest-name>`, where the manifest name is the document's
 `organization` field (falling back to the org slug). The reconcile scope is
 exactly the checks carrying that label. Hand-created checks (no managed label)
 are reported as `unmanaged` and are **never** adopted, modified destructively,
@@ -345,7 +345,7 @@ Request body, per source:
 | `betterstack` | `{"token": "...", "baseUrl": "..."}` | The server fetches every page of `/api/v2/monitors` **and** `/api/v2/heartbeats`. `baseUrl` is optional (tests / proxies). The token is used transiently for that fetch and is **never persisted, logged, or echoed in an error**. |
 
 Each converted document is applied under a per-source managed manifest
-(`solidping.io/managed=gatus` / `betterstack` / `uptime-kuma`), so re-importing
+(`solidping-managed=gatus` / `betterstack` / `uptime-kuma`), so re-importing
 the same source updates in place and stays idempotent. `prune` is never enabled
 for a conversion — a foreign export is a partial view of the org.
 
