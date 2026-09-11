@@ -44,15 +44,25 @@ export function DependencyWarningHint({ warning }: DependencyWarningHintProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
+        {/*
+         * The ~44px touch target is REAL padding around the glyph, not an
+         * absolutely-positioned overlay: DependencyRowList clips its
+         * children with overflow-hidden (so a hover fill never pokes past
+         * the container's rounded corners), and that clip applies just as
+         * much to a negative-margin or absolutely-positioned hit area as to
+         * any other painted content — an overlay would get sliced flush at
+         * the list's top/bottom edge, silently shrinking the target on the
+         * first and last row. Real padding instead grows this button's own
+         * box in normal flow, which the row's `items-center` flex simply
+         * makes room for (min-h-10 is a floor, not a cap) — nothing
+         * overflows the list, so nothing gets clipped, on any row.
+         */}
         <button
           type="button"
           data-testid="dependency-warning-hint"
           aria-label={title}
-          className="relative inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-amber-600 dark:text-amber-400"
+          className="inline-flex shrink-0 items-center justify-center rounded-full p-[15px] text-amber-600 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
         >
-          {/* Invisible ~44px hit area around the small glyph, so the tap
-              target is comfortable without the icon itself growing. */}
-          <span aria-hidden="true" className="absolute -inset-[15px]" />
           <Info className="h-3.5 w-3.5" />
         </button>
       </PopoverTrigger>
