@@ -19,6 +19,15 @@ Apply stamps every check it owns with a reserved label
 exactly the checks carrying that label. **Hand-created checks are never adopted,
 modified destructively, or deleted** — they surface in the plan as `unmanaged`.
 
+> **Renamed 2026-09-10 (spec 2026-09-10-01).** The key was
+> `solidping.io/managed`. A dot and a slash are not storable label key
+> characters — the Postgres `labels_key_check` CHECK
+> (`^[a-z][a-z0-9-]{2,50}$`) has refused them since the 001 baseline, so apply
+> and every importer that stamps this label were broken on Postgres and only
+> ever appeared to work against the laxer SQLite backend the test suites use.
+> SQLite rows carrying the old key are renamed in place by migration `021`, so
+> an existing deployment keeps its managed scope.
+
 Plan actions (matched on `slug` within the managed scope):
 
 | Action | Meaning |

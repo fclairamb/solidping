@@ -264,6 +264,46 @@ in the existing `errors` array. Pass 2 is skipped silently for any check
 whose pass-1 upsert failed, with an explicit
 `skipped dependsOn: pass-1 upsert failed for this check` error.
 
+**`?dryRun=true` validates everything the real run validates** (spec
+2026-09-10-01). Each entry is *planned* — the per-entry contract, the
+created-vs-updated lookup, group resolution (an absent group is recorded as
+would-create, never written), the upsert request built, and then the same
+request validation the write path runs: label keys and values, the checker's
+own `Validate` on the config, region resolution, period and alerting bounds,
+and the `MaxChecks` quota counted across the whole document. A dry run
+therefore returns the same `created` / `updated` / `errors` — the same per-item
+error strings — the real run would, and writes nothing.
+
+It used to return as soon as it had decided created-vs-updated, so a document
+that could not possibly be written dry-ran to `{"created": N, "errors": []}`.
+
+Response fields:
+
+| Field | Meaning |
+|---|---|
+| `created` / `updated` | Entries created / updated (or, on a dry run, that would be) |
+| `skipped` | Entries whose `dependsOn` edges were **not** applied — on a real run those whose own upsert failed, on a dry run every entry carrying `dependsOn` (pass 2 cannot resolve edges against state a dry run did not write) |
+| `errors[]` | Per-entry `{index, slug, error, state?}` |
+| `errors[].state` | Set **only** to `created-incomplete`: the check row was inserted, finishing it failed, and the compensating delete failed too — the row really is on disk. Absent means nothing was written for that entry |
+| `dryRun` | Echo of the request |
+| `caveats[]` | Dry run only: the validations a dry run provably cannot perform (a concurrent create claiming a slug between the plan and the write) |
+
+**A failed entry leaves no check behind.** `CreateCheck` inserts the check row
+before writing its labels; when anything after the insert fails it now performs
+a compensating **hard** delete of the row it just inserted (a soft delete would
+keep the slug claimed) and emits no `check.created` or activation event, so an
+entry is counted as `created` only when it really was created. Before this, a
+47-check import reported `created: 0, errors: [47 × label error]` while all 47
+half-configured checks stayed on disk.
+
+**Label keys** obey one rule everywhere — `^[a-z][a-z0-9-]{2,50}$`, values
+non-empty and at most 200 characters — checked in Go before any write
+(`models.ValidateLabels`) and mirrored by the `labels_key_check` CHECK on both
+backends. A violating key is a per-entry `errors[]` message naming the key and
+the rule, and a `400 VALIDATION_ERROR` on `POST /checks` / `PATCH /checks/:uid`
+— never a driver string with a SQLSTATE in it. SQLite used to accept keys
+Postgres could not store; migration `021` closed that.
+
 ### POST /api/v1/orgs/:org/checks/apply
 Reconcile checks against a declarative manifest (config-as-code). Auth:
 **admin** (org admin role required). This is the *reconcile sibling* of
@@ -277,7 +317,11 @@ emits — both parse to the same plan.
 
 **Managed scope.** Apply stamps every check it owns with a reserved label
 `solidping-managed=<manifest-name>`, where the manifest name is the document's
-`organization` field (falling back to the org slug). The reconcile scope is
+`organization` field (falling back to the org slug). The key was
+`solidping.io/managed` until spec 2026-09-10-01 — a spelling the Postgres
+`labels_key_check` CHECK has always refused, so apply and the importers were
+broken on Postgres and only appeared to work against SQLite. SQLite rows
+carrying the old key are renamed by migration `021`. The reconcile scope is
 exactly the checks carrying that label. Hand-created checks (no managed label)
 are reported as `unmanaged` and are **never** adopted, modified destructively,
 or deleted.
