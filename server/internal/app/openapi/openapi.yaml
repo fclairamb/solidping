@@ -14464,6 +14464,20 @@ components:
           type: integer
         defaultPeriodSeconds:
           type: integer
+        supportsTunnel:
+          type: boolean
+          description: The type can run through an SSH check's tunnel (`tunnelCheckUid`).
+        supportsIpVersion:
+          type: boolean
+          description: The type honours the shared `ipVersion` key (auto/ipv4/ipv6).
+        secretFields:
+          type: array
+          description: >-
+            Top-level config keys this type stores encrypted. Their values are
+            never returned by a read, so a client must not echo them back when
+            it preserves config keys its own form does not model.
+          items:
+            type: string
 
     CheckTypeListResponse:
       type: object

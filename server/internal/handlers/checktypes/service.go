@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 )
 
 // CheckTypeResponse is the JSON representation of a check type with its status.
@@ -29,6 +30,14 @@ type CheckTypeResponse struct {
 	// SupportsTunnel — the dashboard gates its selector on the flag, not on a
 	// hard-coded list.
 	SupportsIPVersion bool `json:"supportsIpVersion"`
+	// SecretFields lists the top-level config keys this type stores encrypted
+	// (the checker's `SecretFields()`), sorted. Their values never come back on
+	// a read, so the dashboard uses this to know which keys it must NOT carry
+	// over when it preserves the config keys its form does not model
+	// (spec 2026-09-11-01) — re-sending a credential the operator never touched
+	// would defeat the dirty-flag contract. Always present, `[]` when the type
+	// has no secrets.
+	SecretFields []string `json:"secretFields"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.
@@ -134,6 +143,22 @@ func durationToSeconds(duration time.Duration) int {
 	return int(duration / time.Second)
 }
 
+// secretFieldsFor returns the sorted secret config keys a check type declares,
+// or an empty (non-nil) slice for a type with no secrets or no parsable config.
+func secretFieldsFor(checkType checkerdef.CheckType) []string {
+	cfg, ok := registry.ParseConfig(checkType)
+	if !ok {
+		return []string{}
+	}
+
+	fields := credentials.SecretFieldsFor(cfg)
+	out := make([]string, len(fields))
+	copy(out, fields)
+	sort.Strings(out)
+
+	return out
+}
+
 func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 	data := make([]CheckTypeResponse, 0, len(statuses))
 
@@ -149,6 +174,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
 			SupportsTunnel:       statuses[idx].SupportsTunnel,
 			SupportsIPVersion:    statuses[idx].SupportsIPVersion,
+			SecretFields:         secretFieldsFor(statuses[idx].Type),
 		})
 	}
 
