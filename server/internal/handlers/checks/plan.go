@@ -13,6 +13,65 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
+// DryRunCaveat names one validation an import dry run provably cannot perform
+// without writing. The spec behind this (2026-09-10-01) is explicit that such
+// a gap must be DOCUMENTED IN THE RESPONSE rather than silently omitted — a
+// dry run whose unstated limits the caller has to guess at is the failure mode
+// the whole change exists to remove.
+type DryRunCaveat string
+
+const (
+	// DryRunCaveatSlugRace is unconditional: the plan reads the org's current
+	// slugs, and a concurrent writer can claim one in the gap before the real
+	// import.
+	DryRunCaveatSlugRace DryRunCaveat = "a concurrent create can claim a slug between this dry run and the real " +
+		"import, turning a planned create into a conflict"
+
+	// DryRunCaveatSecretMerge is reported when the document would update a
+	// check that already holds encrypted or region-sealed config: the real
+	// update validates the MERGE of the document's config with the stored
+	// secrets (mergePatchConfig), which a dry run cannot reproduce without
+	// decrypting a row it must not touch. The plan validates the document's
+	// config on its own, so a rule that depends on a stored secret field is
+	// checked differently here.
+	DryRunCaveatSecretMerge DryRunCaveat = "one or more checks this document would update hold encrypted or " +
+		"region-sealed config; their configs were validated as written rather than merged with the stored " +
+		"secrets, so a rule that depends on a secret field is not fully reproduced here"
+)
+
+// caveatSet collects the caveats a dry run accumulated, de-duplicated and in a
+// stable order (first-seen), so two runs of the same document report the same
+// list.
+type caveatSet struct {
+	seen  map[DryRunCaveat]struct{}
+	order []DryRunCaveat
+}
+
+func newCaveatSet() *caveatSet {
+	return &caveatSet{seen: make(map[DryRunCaveat]struct{}, 2)}
+}
+
+func (c *caveatSet) add(caveat DryRunCaveat) {
+	if c == nil {
+		return
+	}
+
+	if _, ok := c.seen[caveat]; ok {
+		return
+	}
+
+	c.seen[caveat] = struct{}{}
+	c.order = append(c.order, caveat)
+}
+
+func (c *caveatSet) list() []DryRunCaveat {
+	if c == nil {
+		return nil
+	}
+
+	return c.order
+}
+
 // createPlan is everything planCreateCheck resolved on the way to deciding a
 // create request is valid. CreateCheck consumes it instead of recomputing any
 // of it, which is what keeps "what the dry run checks" and "what the write
@@ -221,10 +280,19 @@ func planPeriod(checkType string, raw *string) (time.Duration, error) {
 // everything an import document can actually get wrong — label keys and
 // values, the period bounds, region resolution, the shared config validators
 // and the checker's own Validate on the incoming config, and the request-field
-// guards. The gap is named in the response rather than hidden: see
-// DryRunCaveat.
+// guards.
+//
+// The one gap is named in the response, never hidden: when the existing check
+// holds encrypted or region-sealed config, the real update validates the MERGE
+// of the document's config with the stored secrets, and this records
+// DryRunCaveatSecretMerge on the caveat collector so the dry-run response says
+// so.
 func (s *Service) planUpdateCheck(
-	ctx context.Context, org *models.Organization, existing *models.Check, req *UpsertCheckRequest,
+	ctx context.Context,
+	org *models.Organization,
+	existing *models.Check,
+	req *UpsertCheckRequest,
+	caveats *caveatSet,
 ) error {
 	if req.Internal != nil {
 		return ErrInternalFieldNotWritable
@@ -264,6 +332,10 @@ func (s *Service) planUpdateCheck(
 		regionsForCheck = resolved
 	}
 
+	if req.Config != nil && checkHoldsSecretConfig(existing) {
+		caveats.add(DryRunCaveatSecretMerge)
+	}
+
 	if cfgErr := s.planUpdateConfig(ctx, org, existing, req.Config, regionsForCheck, period); cfgErr != nil {
 		return cfgErr
 	}
@@ -281,6 +353,16 @@ func (s *Service) planUpdateCheck(
 	}
 
 	return nil
+}
+
+// checkHoldsSecretConfig reports whether a stored check carries config the
+// server splits out and encrypts (or seals to a private region's agents). Only
+// for those does the real update's merge differ from validating the document's
+// config as written — for a plaintext row the two are the same input, and
+// claiming a caveat would be noise.
+func checkHoldsSecretConfig(check *models.Check) bool {
+	return check.ConfigPrivate != nil || check.ConfigSealed != nil ||
+		(check.ConfigPrivateKeys != nil && *check.ConfigPrivateKeys != "" && *check.ConfigPrivateKeys != "[]")
 }
 
 // planUpdateConfig runs the config-level rules the update path enforces
@@ -322,9 +404,15 @@ func (s *Service) planUpdateConfig(
 // PlanUpsert validates an upsert request exactly the way the write path will,
 // without writing anything, and reports whether the item would be created.
 // pendingCreates is how many creations the caller has already planned in this
-// batch but not written — see planCreateCheck's quota gate.
+// batch but not written — see planCreateCheck's quota gate. caveats collects
+// what this plan could not fully reproduce.
 func (s *Service) PlanUpsert(
-	ctx context.Context, org *models.Organization, slug string, req *UpsertCheckRequest, pendingCreates int,
+	ctx context.Context,
+	org *models.Organization,
+	slug string,
+	req *UpsertCheckRequest,
+	pendingCreates int,
+	caveats *caveatSet,
 ) (bool, error) {
 	// Same lookup UpsertCheck performs. A missing row is not an error here
 	// (both backends answer sql.ErrNoRows), only a real query failure is.
@@ -334,7 +422,7 @@ func (s *Service) PlanUpsert(
 	}
 
 	if existing != nil {
-		return false, s.planUpdateCheck(ctx, org, existing, req)
+		return false, s.planUpdateCheck(ctx, org, existing, req, caveats)
 	}
 
 	if req.Internal != nil {

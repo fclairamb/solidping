@@ -40,7 +40,7 @@ func (s *Service) attachLabels(ctx context.Context, orgUID, checkUID string, lab
 	for _, key := range keys {
 		label, err := s.db.GetOrCreateLabel(ctx, orgUID, key, labels[key])
 		if err != nil {
-			return translateLabelWriteError(key, labels[key], err)
+			return translateLabelWriteError(ctx, key, labels[key], err)
 		}
 
 		labelUIDs = append(labelUIDs, label.UID)
@@ -56,7 +56,14 @@ func (s *Service) attachLabels(ctx context.Context, orgUID, checkUID string, lab
 // translateLabelWriteError maps a database-level label CHECK violation onto
 // the canonical validation error, and otherwise passes the error through with
 // a single (not doubled) prefix.
-func translateLabelWriteError(key, value string, err error) error {
+//
+// The driver error NEVER travels in the returned message: a SQLSTATE and a
+// constraint name are schema detail, and leaking them into an import report is
+// precisely the symptom spec 2026-09-10-01 exists to remove. On the one branch
+// where the driver error carries information nobody else has — the Go rule and
+// the database CHECK disagreeing — it is logged at ERROR (an operator has to
+// know the two have drifted) and dropped from the response.
+func translateLabelWriteError(ctx context.Context, key, value string, err error) error {
 	if !db.IsLabelConstraintViolation(err) {
 		return fmt.Errorf("label %q: %w", key, err)
 	}
@@ -72,9 +79,11 @@ func translateLabelWriteError(key, value string, err error) error {
 	}
 
 	// The database refused something the Go rule accepts — a genuine drift
-	// between the two. Still reported as a validation error (the caller can
-	// act on it) but with the underlying error kept for the logs.
-	return fmt.Errorf("%w: %q: rejected by the database: %w", models.ErrLabelKeyInvalid, key, err)
+	// between the two, and a bug in this repo rather than in the request.
+	slog.ErrorContext(ctx, "label rejected by the database but accepted by the Go rule",
+		"label_key", key, "error", err)
+
+	return fmt.Errorf("%w: %q: rejected by the database", models.ErrLabelKeyInvalid, key)
 }
 
 // compensateFailedCreate removes a check that was inserted but could not be

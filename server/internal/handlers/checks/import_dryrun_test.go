@@ -5,8 +5,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
 
 // TestImportDryRunRejectsWhatTheRealRunRejects is regression test 2 of spec
@@ -147,4 +149,73 @@ func TestImportDryRunCatchesQuota(t *testing.T) {
 	r.Equal(dry.Created, applied.Created)
 	r.Len(applied.Errors, len(dry.Errors))
 	r.Equal(1, rig.countChecks(t))
+}
+
+// secretCheck is a check entry whose config carries a credential the server
+// encrypts at rest, so the stored row gets a private config side.
+func secretCheck(slug, password string) map[string]any {
+	return map[string]any{
+		"name": "Acme " + slug, "slug": slug, "type": "http", "enabled": true,
+		"config": map[string]any{
+			"url":       "https://example.com/" + slug,
+			"basicAuth": "alice:" + password,
+		},
+	}
+}
+
+// TestImportDryRunNamesTheSecretMergeCaveat pins the one gap the planner
+// genuinely has: for a check that already holds encrypted or region-sealed
+// config, the real update validates the MERGE of the document's config with
+// the stored secrets, which a dry run cannot reproduce without decrypting a
+// row it must not touch. The spec requires such a gap to be named in the
+// RESPONSE rather than silently omitted.
+func TestImportDryRunNamesTheSecretMergeCaveat(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	rig := newLabelRigWithCreds(t, "dry-caveat", nil, creds)
+
+	// A create-only dry run carries the slug-race caveat and nothing else:
+	// there is no stored row whose secrets could differ from the document.
+	createOnly := importDocument(rig.org.Slug, secretCheck("caveat-one", "hunter2"))
+
+	dry := rig.importDoc(t, createOnly, true)
+	r.Equal([]checks.DryRunCaveat{checks.DryRunCaveatSlugRace}, dry.Caveats,
+		"a create-only document has no stored secrets to merge")
+
+	// Write it for real, so the next run is a would-update against a row with
+	// an encrypted config side.
+	applied := rig.importDoc(t, createOnly, false)
+	r.Empty(applied.Errors, "%+v", applied.Errors)
+	r.Equal(1, applied.Created)
+
+	stored, err := rig.dbSvc.GetCheckByUidOrSlug(t.Context(), rig.org.UID, "caveat-one")
+	r.NoError(err)
+	r.NotNil(stored.ConfigPrivate, "the fixture must really hold an encrypted config side")
+
+	// Now the same document is a would-update, and the caveat appears.
+	dryUpdate := rig.importDoc(t, createOnly, true)
+	r.Equal(0, dryUpdate.Created)
+	r.Equal(1, dryUpdate.Updated)
+	r.Contains(dryUpdate.Caveats, checks.DryRunCaveatSecretMerge)
+	r.Contains(dryUpdate.Caveats, checks.DryRunCaveatSlugRace)
+
+	// Negative control: a would-update against a check with NO stored secrets
+	// has nothing the merge could change, so the caveat must not appear — a
+	// caveat emitted unconditionally would tell the caller nothing.
+	plain := importDocument(rig.org.Slug, httpCheck("caveat-plain", nil))
+
+	applied = rig.importDoc(t, plain, false)
+	r.Empty(applied.Errors, "%+v", applied.Errors)
+
+	dryPlain := rig.importDoc(t, plain, true)
+	r.Equal(1, dryPlain.Updated)
+	r.NotContains(dryPlain.Caveats, checks.DryRunCaveatSecretMerge)
+	r.Equal([]checks.DryRunCaveat{checks.DryRunCaveatSlugRace}, dryPlain.Caveats)
+
+	// A real run never carries caveats at all — it is not planning anything.
+	r.Empty(rig.importDoc(t, plain, false).Caveats)
 }

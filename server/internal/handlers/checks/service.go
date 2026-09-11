@@ -3221,11 +3221,12 @@ type ImportResult struct {
 	Skipped int           `json:"skipped"`
 	Errors  []ImportError `json:"errors"`
 	// DryRun echoes whether this was a dry run, and Caveats names the
-	// validations a dry run genuinely cannot perform without writing. A dry
-	// run reports the same created/updated/errors a real run would; where it
-	// provably cannot, it says so here rather than omitting it silently.
-	DryRun  bool     `json:"dryRun"`
-	Caveats []string `json:"caveats,omitempty"`
+	// validations THIS dry run could not perform without writing (see
+	// DryRunCaveat). A dry run reports the same created/updated/errors a real
+	// run would, EXCEPT where a caveat says otherwise — which is why the
+	// caveats travel in the response rather than in the documentation.
+	DryRun  bool           `json:"dryRun"`
+	Caveats []DryRunCaveat `json:"caveats,omitempty"`
 }
 
 // ImportError represents an error for a specific check during import.
@@ -3243,11 +3244,6 @@ type ImportError struct {
 // ImportStateCreatedIncomplete is the ImportError.State value for a check that
 // exists but is not fully configured. Named because callers key on it.
 const ImportStateCreatedIncomplete = "created-incomplete"
-
-// dryRunCaveatSlugRace is the one validation a dry run cannot reproduce: two
-// concurrent writers can claim the same slug between the plan and the write.
-const dryRunCaveatSlugRace = "a concurrent create can still claim a slug between this dry run and the real import; " +
-	"everything else reported here is exactly what the real run would report"
 
 // ExportChecks exports checks for an organization in the portable JSON format.
 //
@@ -3540,8 +3536,14 @@ func (s *Service) ImportChecks(
 		DryRun: dryRun,
 	}
 
+	// A dry run reports what it could not fully reproduce. The slug race is
+	// unconditional (it is a property of planning ahead of writing at all);
+	// the rest are discovered per item as the document is planned.
+	var caveats *caveatSet
+
 	if dryRun {
-		result.Caveats = []string{dryRunCaveatSlugRace}
+		caveats = newCaveatSet()
+		caveats.add(DryRunCaveatSlugRace)
 	}
 
 	pass1Failed := make(map[string]struct{}, 0)
@@ -3557,7 +3559,7 @@ func (s *Service) ImportChecks(
 		}
 
 		created, importErr := s.importSingleCheck(
-			ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName, pendingCreates)
+			ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName, pendingCreates, caveats)
 		if importErr != nil {
 			result.Errors = append(result.Errors, *importErr)
 			pass1Failed[doc.Checks[i].Slug] = struct{}{}
@@ -3586,6 +3588,8 @@ func (s *Service) ImportChecks(
 				result.Skipped++
 			}
 		}
+
+		result.Caveats = caveats.list()
 	}
 
 	return result, nil
@@ -3837,6 +3841,7 @@ func (s *Service) importSingleCheck(
 	dryRun bool,
 	groupByName map[string]*models.CheckGroup,
 	pendingCreates int,
+	caveats *caveatSet,
 ) (bool, *ImportError) {
 	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
 		return false, validationErr
@@ -3855,7 +3860,7 @@ func (s *Service) importSingleCheck(
 	upsertReq := buildImportUpsertRequest(exportedCheck, checkGroupUID)
 
 	if dryRun {
-		created, planErr := s.PlanUpsert(ctx, org, exportedCheck.Slug, &upsertReq, pendingCreates)
+		created, planErr := s.PlanUpsert(ctx, org, exportedCheck.Slug, &upsertReq, pendingCreates, caveats)
 		if planErr != nil {
 			return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
 		}

@@ -2,7 +2,9 @@ package checks_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -39,6 +42,17 @@ type labelRig struct {
 // injects a failure after the check insert.
 func newLabelRig(t *testing.T, slug string, dbWrap func(db.Service) db.Service) *labelRig {
 	t.Helper()
+
+	return newLabelRigWithCreds(t, slug, dbWrap, disabledCreds(t))
+}
+
+// newLabelRigWithCreds is newLabelRig with the credentials service spelled
+// out, so a test can run against a real KEK and get checks whose config is
+// genuinely encrypted at rest.
+func newLabelRigWithCreds(
+	t *testing.T, slug string, dbWrap func(db.Service) db.Service, creds credentials.Service,
+) *labelRig {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -56,7 +70,7 @@ func newLabelRig(t *testing.T, slug string, dbWrap func(db.Service) db.Service) 
 	}
 
 	entSvc := entcore.NewService(wired, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
-	svc := checks.NewService(wired, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
+	svc := checks.NewService(wired, notifier.NewLocalEventNotifier(), creds, entSvc)
 	handler := checks.NewHandler(svc, &config.Config{})
 
 	router := httpx.New()
@@ -286,4 +300,63 @@ func TestSQLiteLabelKeyCheckMatchesPostgres(t *testing.T) {
 		r.NoError(labelErr, "key %q must be accepted", key)
 		r.NotNil(label)
 	}
+}
+
+// errPGLabelDrift is a Postgres CHECK violation, worded exactly the way the
+// driver words it — SQLSTATE and all. It stands for the one case the
+// classifier cannot resolve: the database refusing a key the Go rule accepts.
+var errPGLabelDrift = errors.New(
+	`ERROR: new row for relation "labels" violates check constraint "labels_key_check" (SQLSTATE=23514)`)
+
+// driftLabelDB makes the database refuse a label key that models.ValidateLabels
+// accepts — a Go-rule/CHECK drift, which is a bug in this repo rather than in
+// the request.
+type driftLabelDB struct {
+	db.Service
+
+	driftKey string
+}
+
+func (d *driftLabelDB) GetOrCreateLabel(
+	ctx context.Context, orgUID, key, value string,
+) (*models.Label, error) {
+	if key == d.driftKey {
+		return nil, errPGLabelDrift
+	}
+
+	return d.Service.GetOrCreateLabel(ctx, orgUID, key, value)
+}
+
+// TestLabelRuleDriftNeverLeaksTheDriverError covers the defense-in-depth
+// branch: when the database refuses a key the Go rule accepted, the caller
+// still gets a clean validation message. The driver string — SQLSTATE,
+// constraint name, relation name — belongs in the operator's log, not in an
+// import report.
+func TestLabelRuleDriftNeverLeaksTheDriverError(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rig := newLabelRig(t, "lbl-drift", func(inner db.Service) db.Service {
+		return &driftLabelDB{Service: inner, driftKey: "environment"}
+	})
+
+	result := rig.importDoc(t,
+		importDocument(rig.org.Slug, httpCheck("drift-one", map[string]string{"environment": "prod"})), false)
+
+	r.Equal(0, result.Created)
+	r.Len(result.Errors, 1)
+
+	msg := result.Errors[0].Error
+	r.Contains(msg, "label key is invalid")
+	r.Contains(msg, `"environment"`)
+	r.Contains(msg, "rejected by the database")
+
+	// The whole point: none of the driver's wording survives into the response.
+	r.NotContains(msg, "SQLSTATE")
+	r.NotContains(msg, "labels_key_check")
+	r.NotContains(msg, "relation")
+	r.NotContains(msg, "23514")
+
+	// And it is still a rollback, not a half-written check.
+	r.Equal(0, rig.countChecks(t))
 }

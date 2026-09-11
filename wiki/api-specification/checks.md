@@ -272,7 +272,8 @@ request validation the write path runs: label keys and values, the checker's
 own `Validate` on the config, region resolution, period and alerting bounds,
 and the `MaxChecks` quota counted across the whole document. A dry run
 therefore returns the same `created` / `updated` / `errors` — the same per-item
-error strings — the real run would, and writes nothing.
+error strings — the real run would, and writes nothing. Where it provably
+cannot, it says so in `caveats[]` rather than over-claiming.
 
 It used to return as soon as it had decided created-vs-updated, so a document
 that could not possibly be written dry-ran to `{"created": N, "errors": []}`.
@@ -286,7 +287,7 @@ Response fields:
 | `errors[]` | Per-entry `{index, slug, error, state?}` |
 | `errors[].state` | Set **only** to `created-incomplete`: the check row was inserted, finishing it failed, and the compensating delete failed too — the row really is on disk. Absent means nothing was written for that entry |
 | `dryRun` | Echo of the request |
-| `caveats[]` | Dry run only: the validations a dry run provably cannot perform (a concurrent create claiming a slug between the plan and the write) |
+| `caveats[]` | Dry run only: the validations **this** dry run could not perform without writing (`checks.DryRunCaveat`). `DryRunCaveatSlugRace` is unconditional — a concurrent create can claim a slug between the plan and the write. `DryRunCaveatSecretMerge` appears only when the document would update a check whose stored config is encrypted or region-sealed: the real update validates the *merge* of the document's config with those stored secrets, which a dry run cannot reproduce without decrypting a row it must not touch, so it validates the config as written instead |
 
 **A failed entry leaves no check behind.** `CreateCheck` inserts the check row
 before writing its labels; when anything after the insert fails it now performs

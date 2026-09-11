@@ -2,6 +2,7 @@ package checks_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
@@ -136,11 +137,13 @@ func TestImportMidItemFailureLeavesNoCheckBehind(t *testing.T) {
 	r.Empty(result.Errors[0].State, "the compensating delete worked, so nothing is left over")
 
 	// The failed slug resolves to nothing — a SOFT delete would have kept the
-	// slug claimed and this would still find a row.
+	// slug claimed and this would still find a row. Both backends answer a
+	// missing row with sql.ErrNoRows and a nil check, so both halves are
+	// asserted unconditionally: a guarded assertion here would pass even if
+	// the row survived.
 	orphan, err := rig.dbSvc.GetCheckByUidOrSlug(ctx, rig.org.UID, "atom-two")
-	if err == nil {
-		r.Nil(orphan, "the failed check must not exist")
-	}
+	r.ErrorIs(err, sql.ErrNoRows, "the failed check's slug must be free again")
+	r.Nil(orphan, "the failed check must not exist")
 
 	r.Equal(2, rig.countChecks(t))
 
