@@ -151,7 +151,19 @@ test.describe("Check dependencies", () => {
     await expect(
       dependsOn.getByRole("button", { name: "Remove dependency" }),
     ).toHaveCount(0);
-    await expect(dependsOn.locator("button")).toHaveCount(0);
+    // Backstop against a future mutation control sneaking in without the
+    // three explicit checks above being updated: the confirmation-margin
+    // hint (spec 2026-09-10-02, dependency-warning-hint) is the one
+    // legitimate non-mutating button this list can carry — it opens a
+    // read-only explanation, nothing more — so "no button that isn't a
+    // hint" is what "no mutation affordance" actually means now. This check
+    // creates two default-settings checks and links them Hard, and a
+    // confirmation-margin warning genuinely fires for that combination
+    // (child confirmation 120s < parent's required margin of parent
+    // confirmation + period + timeout), so the hint IS expected here.
+    await expect(
+      dependsOn.locator("button:not([data-testid='dependency-warning-hint'])"),
+    ).toHaveCount(0);
   });
 
   test("changing an existing dependency's kind and description on the edit page is saved", async ({
