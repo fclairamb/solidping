@@ -82,3 +82,63 @@ func TestServeDemoShortcutCustomHost404s(t *testing.T) {
 
 	r.Equal(http.StatusNotFound, w.Result().StatusCode)
 }
+
+// TestServeDemoCampaignShortcut covers /demo/<source>: a campaign link bounces
+// to the canonical /demo/?utm_source=<source> with a 302, and the source
+// segment is url-encoded on the way out so a hostile segment cannot escape the
+// fixed /demo/ prefix (open redirect) or break the header (CRLF).
+func TestServeDemoCampaignShortcut(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := &Server{config: &config.Config{Demo: config.DemoConfig{Enabled: true}}}
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{path: "/demo/hackernews", want: "/demo/?utm_source=hackernews"},
+		{path: "/demo/hackernews/", want: "/demo/?utm_source=hackernews"},
+		{path: "/demo/print-flyer-2026", want: "/demo/?utm_source=print-flyer-2026"},
+		// An incoming query is dropped, not merged — same rule as the plain
+		// shortcut.
+		{path: "/demo/hn?returnTo=/orgs/acme", want: "/demo/?utm_source=hn"},
+		// Hostile segments stay inside the /demo/ prefix once encoded.
+		{path: "/demo/a%20b", want: "/demo/?utm_source=a+b"},
+		{path: "/demo/x%26utm_medium%3Devil", want: "/demo/?utm_source=x%26utm_medium%3Devil"},
+		{path: "/demo/a/b", want: "/demo/?utm_source=a%2Fb"},
+	}
+
+	for _, tc := range cases {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.path, http.NoBody)
+		w := httptest.NewRecorder()
+		r.NoError(s.serveDemoCampaignShortcut(w, req))
+
+		resp := w.Result()
+		defer func() { _ = resp.Body.Close() }()
+
+		r.Equal(http.StatusFound, resp.StatusCode, "path %s", tc.path)
+		r.Equal(tc.want, resp.Header.Get("Location"), "path %s", tc.path)
+	}
+}
+
+// TestServeDemoCampaignShortcutDisabled is the negative control: with demo
+// mode off a campaign link must not advertise a demo that does not exist. It
+// delegates to serveAppRoot, which 404s an unmatched path — it must never
+// redirect.
+func TestServeDemoCampaignShortcutDisabled(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s := &Server{config: &config.Config{Demo: config.DemoConfig{Enabled: false}}}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/demo/hackernews", http.NoBody)
+	w := httptest.NewRecorder()
+	r.NoError(s.serveDemoCampaignShortcut(w, req))
+
+	resp := w.Result()
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusNotFound, resp.StatusCode)
+	r.Empty(resp.Header.Get("Location"))
+}
