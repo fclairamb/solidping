@@ -42,6 +42,8 @@ func TestRouteMatchingPrecedence(t *testing.T) {
 	api.GET("/orgs/:org/checks/export", marker("checks-export"))
 
 	main.GET("/demo", marker("demo"))
+	main.GET("/demo/", marker("demo-slash"))
+	main.GET("/demo/*path", marker("demo-campaign"))
 	main.GET("/docs", marker("docs-root"))
 	main.GET("/docs/*path", marker("docs-wild"))
 	main.GET("/d", marker("dash0-root"))
@@ -72,6 +74,12 @@ func TestRouteMatchingPrecedence(t *testing.T) {
 		{name: "docs is not swallowed by /d", method: http.MethodGet, path: "/docs", want: "docs-root"},
 		{name: "docs subpath is not swallowed by /d", method: http.MethodGet, path: "/docs/intro", want: "docs-wild"},
 		{name: "demo is not swallowed by /d", method: http.MethodGet, path: "/demo", want: "demo"},
+		// Campaign links (/demo/<source>) share the /demo prefix with the two
+		// exact shortcut routes. The exact routes must keep winning for the
+		// bare paths; only a non-empty segment reaches the campaign handler.
+		{name: "demo campaign segment", method: http.MethodGet, path: "/demo/hackernews", want: "demo-campaign"},
+		{name: "demo campaign nested segment", method: http.MethodGet, path: "/demo/a/b", want: "demo-campaign"},
+		{name: "demo exact still beats the campaign wildcard", method: http.MethodGet, path: "/demo", want: "demo"},
 		{name: "dash0-ish path is not the dashboard", method: http.MethodGet, path: "/dashboard", want: "app-catchall"},
 		{name: "api list beats catchall", method: http.MethodGet, path: "/api/v1/orgs/acme/checks", want: "checks-list"},
 		{name: "api param route", method: http.MethodGet, path: "/api/v1/orgs/acme/checks/x1", want: "check-get"},
