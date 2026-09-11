@@ -1286,6 +1286,14 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		}
 	}
 
+	// Label keys and values are validated HERE — before the check row is
+	// inserted, not inside the GetOrCreateLabel loop that used to run after it
+	// (spec 2026-09-10-01). A key Postgres refuses used to surface as a raw
+	// SQLSTATE *after* the check existed, leaving a half-configured row behind.
+	if labelErr := models.ValidateLabels(req.Labels); labelErr != nil {
+		return CheckResponse{}, labelErr
+	}
+
 	// Get the checker to validate the configuration
 	checker, ok := registry.GetChecker(checkerdef.CheckType(req.Type))
 	if !ok {
@@ -1513,19 +1521,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, errCreate
 	}
 
-	// Handle labels if provided
+	// Handle labels if provided. Keys and values were validated at the top of
+	// this function, so anything failing here is infrastructure (DB down
+	// mid-item, a unique race) — and the check row is ALREADY written. It must
+	// not survive: see compensateFailedCreate (spec 2026-09-10-01).
 	if len(req.Labels) > 0 {
-		labelUIDs := make([]string, 0, len(req.Labels))
-		for key, value := range req.Labels {
-			label, err := s.db.GetOrCreateLabel(ctx, org.UID, key, value) //nolint:govet
-			if err != nil {
-				return CheckResponse{}, fmt.Errorf("failed to create label: %w", err)
-			}
-			labelUIDs = append(labelUIDs, label.UID)
-		}
-		//nolint:govet // Intentional shadowing for scoped error
-		if err := s.db.SetCheckLabels(ctx, check.UID, labelUIDs); err != nil {
-			return CheckResponse{}, fmt.Errorf("failed to set check labels: %w", err)
+		if labelErr := s.attachLabels(ctx, org.UID, check.UID, req.Labels); labelErr != nil {
+			return CheckResponse{}, s.compensateFailedCreate(ctx, check, labelErr)
 		}
 	}
 
@@ -1753,6 +1755,16 @@ func (s *Service) UpdateCheck(
 		}
 	}
 
+	// Labels are validated before ANY write, for the same reason as on create
+	// (spec 2026-09-10-01): the label loop runs at the very end of this
+	// function, so a bad key used to be discovered only after the check row,
+	// its jobs and its schedule had already been updated.
+	if req.Labels != nil {
+		if labelErr := models.ValidateLabels(*req.Labels); labelErr != nil {
+			return CheckResponse{}, labelErr
+		}
+	}
+
 	// Build update object
 	update := models.CheckUpdate{}
 	if req.CheckGroupUID != nil {
@@ -1926,18 +1938,11 @@ func (s *Service) UpdateCheck(
 		}
 	}
 
-	// Handle labels if provided (nil means no change, empty map means clear all)
+	// Handle labels if provided (nil means no change, empty map means clear all).
+	// Keys/values were validated before the update above.
 	if req.Labels != nil {
-		labelUIDs := make([]string, 0, len(*req.Labels))
-		for key, value := range *req.Labels {
-			label, labelErr := s.db.GetOrCreateLabel(ctx, org.UID, key, value)
-			if labelErr != nil {
-				return CheckResponse{}, fmt.Errorf("failed to create label: %w", labelErr)
-			}
-			labelUIDs = append(labelUIDs, label.UID)
-		}
-		if setLabelsErr := s.db.SetCheckLabels(ctx, check.UID, labelUIDs); setLabelsErr != nil {
-			return CheckResponse{}, fmt.Errorf("failed to set check labels: %w", setLabelsErr)
+		if labelErr := s.attachLabels(ctx, org.UID, check.UID, *req.Labels); labelErr != nil {
+			return CheckResponse{}, labelErr
 		}
 	}
 

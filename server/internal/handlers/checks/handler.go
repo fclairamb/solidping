@@ -826,7 +826,8 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 func isCheckFieldValidationError(err error) bool {
 	var periodErr *periodBoundError
 
-	return errors.Is(err, errIncidentPeriodOutOfRange) ||
+	return models.IsLabelValidationError(err) ||
+		errors.Is(err, errIncidentPeriodOutOfRange) ||
 		errors.Is(err, errRegionSpreadOutOfRange) ||
 		// A legacy `@<org>/<slug>` region naming somebody ELSE's org is a
 		// caller mistake (or an attempt), not a server fault — 400, never 500.

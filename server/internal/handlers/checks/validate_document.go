@@ -30,10 +30,6 @@ const docWhere = "document"
 // literally three times.
 const issueDuplicateSlug = "duplicate slug"
 
-// labelKeyRegex matches a lowercase, kebab/dotted label key (mirrors the
-// reference workflow's LABEL_KEY_RE).
-var labelKeyRegex = regexp.MustCompile(`^[a-z0-9]+(?:[-.][a-z0-9]+)*$`)
-
 // regionRegex matches a plain cloud region slug, an org-relative private region
 // ("@private-location", the stored form since spec 2026-08-13-01), or the LEGACY
 // fully-qualified "@org/private-location" spelling — which stays accepted here
@@ -321,16 +317,24 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 		}
 	}
 
-	for key, value := range check.Labels {
-		if !labelKeyRegex.MatchString(key) {
-			issues = append(issues, DocumentIssue{
-				Where: where, Message: fmt.Sprintf("label key %q must be lowercase kebab/dotted", key),
-			})
+	// The label rules are the canonical ones (models.ValidateLabelKey /
+	// ValidateLabelValue) — the same code the create/update/import write paths
+	// run. This validator used to carry its own, laxer regex that accepted
+	// 1-2 char keys, leading digits and dots: it green-lit documents Postgres
+	// could not store (spec 2026-09-10-01). Keys are walked in sorted order so
+	// a document always produces its issues in the same order.
+	labelKeys := make([]string, 0, len(check.Labels))
+	for key := range check.Labels {
+		labelKeys = append(labelKeys, key)
+	}
+	sort.Strings(labelKeys)
+
+	for _, key := range labelKeys {
+		if err := models.ValidateLabelKey(key); err != nil {
+			issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
 		}
-		if value == "" {
-			issues = append(issues, DocumentIssue{
-				Where: where, Message: fmt.Sprintf("label %q must have a non-empty string value", key),
-			})
+		if err := models.ValidateLabelValue(key, check.Labels[key]); err != nil {
+			issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
 		}
 	}
 

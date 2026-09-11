@@ -356,6 +356,16 @@ type Service interface {
 	ListChecksByTunnelCheckUID(ctx context.Context, orgUID, tunnelCheckUID string) ([]*models.Check, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
 	DeleteCheck(ctx context.Context, uid string) error
+	// PurgeCheck HARD-deletes a check row (and, through the on-delete-cascade
+	// foreign keys, its check_jobs / check_labels / check_connections /
+	// results). DeleteCheck is a soft delete and keeps the slug claimed; this
+	// releases it.
+	//
+	// It exists for exactly one caller: the compensating delete that undoes a
+	// check whose creation could not be finished (spec 2026-09-10-01). It is
+	// NOT the user-facing delete and must not become one — a soft delete is
+	// what makes a real deletion recoverable.
+	PurgeCheck(ctx context.Context, uid string) error
 	// ListChecksWithStaleJobPeriods returns enabled, non-deleted checks that
 	// have at least one check_job whose period no longer matches the check's
 	// period — the one-shot startup reconcile target (spec 2026-07-20-05).

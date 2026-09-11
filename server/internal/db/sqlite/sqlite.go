@@ -2003,6 +2003,18 @@ func (s *Service) DeleteCheck(ctx context.Context, uid string) error {
 	return err
 }
 
+// PurgeCheck hard-deletes the check row; every child table that references
+// checks(uid) with on delete cascade goes with it. Used only by the
+// compensating delete for a half-created check (spec 2026-09-10-01).
+func (s *Service) PurgeCheck(ctx context.Context, uid string) error {
+	_, err := s.db.NewDelete().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", uid).
+		Exec(ctx)
+
+	return err
+}
+
 // CheckJob operations
 
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
