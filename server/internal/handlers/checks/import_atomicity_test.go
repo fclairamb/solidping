@@ -152,6 +152,30 @@ func TestImportMidItemFailureLeavesNoCheckBehind(t *testing.T) {
 	r.NoError(err)
 	r.Empty(jobs, "the half-created check's check_jobs must be gone too")
 
+	// No check.created event was emitted for it either — a consumer of the
+	// event stream must not be told about a check that does not exist.
+	failedUID := poison.failedUID()
+	events, err := rig.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: rig.org.UID,
+		CheckUID:        &failedUID,
+		EventTypes:      []models.EventType{models.EventTypeCheckCreated},
+	})
+	r.NoError(err)
+	r.Empty(events, "a check that was rolled back must not have announced itself")
+
+	// Positive control on that assertion: the checks that DID succeed emitted
+	// their check.created event, so the absence above means something.
+	survivor, err := rig.dbSvc.GetCheckByUidOrSlug(ctx, rig.org.UID, "atom-one")
+	r.NoError(err)
+
+	events, err = rig.dbSvc.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: rig.org.UID,
+		CheckUID:        &survivor.UID,
+		EventTypes:      []models.EventType{models.EventTypeCheckCreated},
+	})
+	r.NoError(err)
+	r.NotEmpty(events)
+
 	// Group link check (the incident report claimed the created checks had
 	// none): the two that succeeded carry the auto-created group.
 	groups, err := rig.dbSvc.ListCheckGroups(ctx, rig.org.UID)
