@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { httpModule, type HttpState } from "./http";
+import { checkTypeRegistry, type CheckTypeModule } from "./index";
+import {
+  assembleSubmittedConfig,
+  SHARED_FORM_CONFIG_KEYS,
+  type CheckConfig,
+} from "./common";
 import type { AssertionNode } from "@/components/checks/json-assertion-editor";
 
 // Base state for toConfig tests — a valid URL and the implicit ["200"]
@@ -19,8 +25,29 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     authDirty: false,
     headersDirty: false,
     jsonPathAssertions: null,
+    body: "",
+    headers: [],
     ...overrides,
   };
+}
+
+// The secret keys the check-types metadata advertises for `http`
+// (checkhttp.SecretFields). Hard-coded here only because the unit test has no
+// API; the form itself reads them from the server.
+const HTTP_SECRET_FIELDS = ["basicAuth", "password", "secretHeaders"];
+
+// saveUntouched reproduces exactly what the shared form submits when a check is
+// opened and saved without touching a field: seed the module from the stored
+// config, serialize it back, and layer the passthrough the form assembles.
+function saveUntouched(stored: CheckConfig): CheckConfig {
+  const state = httpModule.fromConfig(stored);
+  const { config } = httpModule.toConfig(state);
+  return assembleSubmittedConfig({
+    initialConfig: stored,
+    ownedKeys: httpModule.ownedKeys,
+    secretFields: HTTP_SECRET_FIELDS,
+    moduleConfig: config,
+  });
 }
 
 describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
@@ -314,5 +341,276 @@ describe("httpModule — jsonPathAssertions round-trip", () => {
     );
     expect(config.jsonPathAssertions).toEqual(leaf);
     expect(config.verifySsl).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec 2026-09-11-01: the form must not delete config keys it does not model.
+//
+// Every assertion below is on the config the form would SUBMIT — the same
+// object `check-form.tsx` builds and PATCHes — because the bug is invisible in
+// client state: the module's own round-trip has always looked fine.
+// ---------------------------------------------------------------------------
+
+describe("unmodeled config keys survive an untouched save", () => {
+  // The reported case, verbatim in shape: a POST to a token endpoint whose
+  // body, headers and snake-spelled expected status the form has never shown.
+  const stored: CheckConfig = {
+    url: "https://sso.acme.com/realms/acme/protocol/openid-connect/token",
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "grant_type=password&client_id=admin-cli&scope=openid",
+    expected_status: 200,
+    followRedirects: false,
+    body_expect: "access_token",
+    body_pattern: "\"expires_in\":\\s*\\d+",
+    headers_pattern: { "content-type": "^application/json" },
+    jsonPathAssertions: {
+      type: "assertion",
+      path: "$.token_type",
+      operator: "eq",
+      value: "Bearer",
+    } as unknown as AssertionNode,
+  };
+
+  it("keeps the keys the form does not model, byte-for-byte", () => {
+    const submitted = saveUntouched(stored);
+    expect(submitted.body_expect).toBe(stored.body_expect);
+    expect(submitted.body_pattern).toBe(stored.body_pattern);
+    expect(submitted.headers_pattern).toEqual(stored.headers_pattern);
+  });
+
+  it("keeps the request body and plain headers (now modelled)", () => {
+    const submitted = saveUntouched(stored);
+    expect(submitted.body).toBe(stored.body);
+    expect(submitted.headers).toEqual(stored.headers);
+  });
+
+  it("keeps the effective expected status from the snake-case spelling", () => {
+    const state = httpModule.fromConfig(stored);
+    expect(state.expectedStatusCodes).toEqual(["200"]);
+    const submitted = saveUntouched(stored);
+    // 200 is the implicit default, so neither key needs to be written — what
+    // must never happen is a DIFFERENT effective status.
+    const effective =
+      submitted.expectedStatusCodes ??
+      submitted.expected_status_codes ??
+      submitted.expectedStatus ??
+      submitted.expected_status ??
+      ["200"];
+    expect(effective).toEqual(["200"]);
+  });
+
+  it("preserves a non-default snake expected_status as a real chip", () => {
+    const withNonDefault = { ...stored, expected_status: 201 };
+    const state = httpModule.fromConfig(withNonDefault);
+    expect(state.expectedStatusCodes).toEqual(["201"]);
+    const submitted = saveUntouched(withNonDefault);
+    expect(submitted.expectedStatusCodes).toEqual(["201"]);
+    // The legacy spelling is owned, so it is not resurrected alongside it.
+    expect(submitted).not.toHaveProperty("expected_status");
+  });
+
+  it("does not resurrect an owned key the user cleared", () => {
+    // jsonPathAssertions IS modelled: clearing it in the UI must still delete
+    // it, which is exactly what the passthrough must not undo.
+    const state = httpModule.fromConfig(stored);
+    const { config } = httpModule.toConfig({
+      ...state,
+      jsonPathAssertions: null,
+    });
+    const submitted = assembleSubmittedConfig({
+      initialConfig: stored,
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: config,
+    });
+    expect(submitted).not.toHaveProperty("jsonPathAssertions");
+    expect(submitted).not.toHaveProperty("json_path_assertions");
+    // …while the unmodeled keys are still there.
+    expect(submitted.body_expect).toBe(stored.body_expect);
+  });
+
+  it("clears plain headers when the editor is emptied", () => {
+    const state = httpModule.fromConfig(stored);
+    const { config } = httpModule.toConfig({ ...state, headers: [] });
+    const submitted = assembleSubmittedConfig({
+      initialConfig: stored,
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: config,
+    });
+    expect(submitted).not.toHaveProperty("headers");
+  });
+
+  it("never carries a secret field through, even if one is present", () => {
+    // Secrets are stripped from every read today, so this cannot normally
+    // happen — but if a deployment ever did return them, the passthrough must
+    // not be what re-sends a credential the user never touched. The module's
+    // own dirty flags decide that; here both sections are untouched, so the
+    // ONLY way a secret could reach the payload is the passthrough.
+    const leaky: CheckConfig = {
+      ...stored,
+      basicAuth: "user:hunter2",
+      password: "hunter2",
+      secretHeaders: { "x-api-key": "shhh" },
+    };
+    const state = httpModule.fromConfig(leaky);
+    const { config } = httpModule.toConfig({
+      ...state,
+      authDirty: false,
+      headersDirty: false,
+    });
+    expect(config).not.toHaveProperty("password");
+    const submitted = assembleSubmittedConfig({
+      initialConfig: leaky,
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: config,
+    });
+    expect(submitted).not.toHaveProperty("basicAuth");
+    expect(submitted).not.toHaveProperty("password");
+    expect(submitted).not.toHaveProperty("secretHeaders");
+    // Positive control: the same assembly DID carry the non-secret keys.
+    expect(submitted.body_expect).toBe(stored.body_expect);
+  });
+
+  it("excludes secret fields even when the module does not own them", () => {
+    // A module that models none of its type's secrets must still not have them
+    // resurrected by the passthrough — that is what `secretFields` is for, and
+    // it is why the list comes from the server rather than from ownedKeys.
+    const submitted = assembleSubmittedConfig({
+      initialConfig: { keepMe: "yes", apiToken: "shhh" },
+      ownedKeys: [],
+      secretFields: ["apiToken"],
+      moduleConfig: {},
+    });
+    expect(submitted).toEqual({ keepMe: "yes" });
+  });
+
+  it("never carries a shared-form key through", () => {
+    // timeout / tunnelCheckUid / ipVersion are owned by check-form.tsx itself;
+    // the passthrough must leave them to it or clearing the timeout input
+    // would stop deleting the key.
+    const withShared: CheckConfig = {
+      ...stored,
+      timeout: "15s",
+      tunnelCheckUid: "some-uid",
+      ipVersion: "ipv6",
+    };
+    const submitted = saveUntouched(withShared);
+    for (const key of SHARED_FORM_CONFIG_KEYS) {
+      expect(submitted).not.toHaveProperty(key);
+    }
+  });
+
+  it("is a no-op in create mode (no initial config)", () => {
+    const { config } = httpModule.toConfig(baseState({ url: "https://a.dev" }));
+    const submitted = assembleSubmittedConfig({
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: config,
+    });
+    expect(submitted).toEqual({ url: "https://a.dev" });
+  });
+
+  it("cannot smuggle an http-only key into another type's payload", () => {
+    // The form drops the passthrough source on a type switch; this pins the
+    // contract the helper relies on — no initialConfig, no passthrough.
+    const tcp = checkTypeRegistry.tcp;
+    const { config } = tcp.toConfig(tcp.fromConfig({ host: "a.dev", port: 22 }));
+    const submitted = assembleSubmittedConfig({
+      initialConfig: undefined,
+      ownedKeys: tcp.ownedKeys,
+      moduleConfig: config,
+    });
+    expect(submitted).not.toHaveProperty("body");
+    expect(submitted).not.toHaveProperty("headers_pattern");
+    expect(submitted).toEqual({ host: "a.dev", port: 22 });
+  });
+});
+
+describe("the body editor's method gate does not destroy the body", () => {
+  it("keeps a body set while the method is GET", () => {
+    const state = httpModule.fromConfig({
+      url: "https://example.com",
+      method: "POST",
+      body: "a=1",
+    });
+    const asGet: HttpState = { ...state, method: "GET" };
+    // The editor is hidden for GET, but the value is still serialized, so
+    // switching back to POST finds it intact.
+    const { config } = httpModule.toConfig(asGet);
+    expect(config.body).toBe("a=1");
+    expect(httpModule.fromConfig(config).body).toBe("a=1");
+  });
+});
+
+describe("every registered module declares the config keys it writes", () => {
+  // Mechanical under-declaration guard: a key `toConfig` writes but does not
+  // declare in `ownedKeys` is a key the passthrough will resurrect after the
+  // user clears it. Driving fromConfig with several value SHAPES exercises the
+  // type-dependent branches (arrays, maps, booleans, numbers) without needing
+  // a hand-written fixture per module.
+  const shapes: ((key: string) => unknown)[] = [
+    () => "1",
+    () => 1,
+    () => true,
+    () => ["1"],
+    () => ({ "1": "1" }),
+  ];
+
+  const modules = new Map<string, CheckTypeModule>();
+  for (const [type, mod] of Object.entries(checkTypeRegistry)) {
+    if (!modules.has(mod.types.join(","))) modules.set(mod.types.join(","), mod);
+    expect(mod.types).toContain(type);
+  }
+
+  const keyPool = new Set<string>();
+  for (const mod of modules.values()) {
+    for (const key of mod.ownedKeys) keyPool.add(key);
+  }
+
+  for (const [name, mod] of modules) {
+    it(`${name}: toConfig writes only declared keys`, () => {
+      const declared = new Set(mod.ownedKeys);
+      // ownedKeys must never claim a key the shared form owns, or the shared
+      // field would be overwritten by a stale module value.
+      for (const shared of SHARED_FORM_CONFIG_KEYS) {
+        expect(declared.has(shared)).toBe(false);
+      }
+      // Seed from the union of every module's declared keys, NOT just this
+      // module's: seeding only what a module declares makes the guard vacuous
+      // — an undeclared key would never be seeded, so `fromConfig` would read
+      // "" for it and `toConfig` would never write it.
+      const seeds: CheckConfig[] = [{}];
+      for (const shape of shapes) {
+        const seed: CheckConfig = {};
+        for (const key of keyPool) seed[key] = shape(key);
+        seeds.push(seed);
+      }
+      for (const seed of seeds) {
+        const { config } = mod.toConfig(mod.fromConfig(seed));
+        for (const written of Object.keys(config)) {
+          expect(
+            declared.has(written),
+            `${name} writes "${written}" but does not declare it in ownedKeys`,
+          ).toBe(true);
+        }
+      }
+    });
+  }
+
+  it("declares ownedKeys for every module that models any config", () => {
+    // heartbeat and email model no config key at all — that is deliberate and
+    // is what makes the passthrough preserve a heartbeat's public `token`.
+    const noConfigModules = ["heartbeat", "email"];
+    for (const [name, mod] of modules) {
+      if (noConfigModules.includes(name)) {
+        expect(mod.ownedKeys).toEqual([]);
+        continue;
+      }
+      expect(mod.ownedKeys.length, `${name} declares no ownedKeys`).toBeGreaterThan(0);
+    }
   });
 });
