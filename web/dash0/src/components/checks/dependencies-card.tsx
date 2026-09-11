@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Pencil } from "lucide-react";
@@ -6,11 +7,12 @@ import {
   useCheckDependencies,
   type CheckRef,
   type DependencyEdge,
+  type DependencyWarning,
 } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { resolveCheckRefLabel } from "@/lib/dependency-graph";
-import { DependencyWarnings } from "@/components/checks/dependency-warnings";
+import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
 import {
   DependencyEmptyRow,
   DependencyKindBadge,
@@ -36,6 +38,18 @@ export function DependenciesCard({ org, checkUid }: DependenciesCardProps) {
 
   const dependsOn = deps?.dependsOn ?? [];
   const dependedOnBy = deps?.dependedOnBy ?? [];
+
+  // Warnings only ever concern hard `dependsOn` edges (soft edges are never
+  // linted — see the server's confirmationMarginWarnings), so this map is
+  // only ever consulted for the "Depends on" list below, keyed by the edge's
+  // own uid (DependencyWarning.dependencyUid).
+  const warningsByEdgeUid = useMemo(() => {
+    const map = new Map<string, DependencyWarning>();
+    for (const warning of deps?.warnings ?? []) {
+      map.set(warning.dependencyUid, warning);
+    }
+    return map;
+  }, [deps?.warnings]);
 
   return (
     <Card>
@@ -63,7 +77,6 @@ export function DependenciesCard({ org, checkUid }: DependenciesCardProps) {
         </Button>
       </CardHeader>
       <CardContent className="space-y-6">
-        <DependencyWarnings warnings={deps?.warnings} />
         <DependencyEdgeSection
           org={org}
           title={t("dependencies:dependsOn")}
@@ -73,6 +86,7 @@ export function DependenciesCard({ org, checkUid }: DependenciesCardProps) {
           side="parent"
           loading={isLoading}
           testId="depends-on-list"
+          warningsByEdgeUid={warningsByEdgeUid}
         />
         <DependencyEdgeSection
           org={org}
@@ -99,6 +113,10 @@ interface DependencyEdgeSectionProps {
   side: "parent" | "child";
   loading: boolean;
   testId: string;
+  /** Confirmation-margin warnings, keyed by edge uid. Only ever passed on
+   * the "Depends on" (side="parent") section — see the note above the map's
+   * construction in DependenciesCard. */
+  warningsByEdgeUid?: Map<string, DependencyWarning>;
 }
 
 function DependencyEdgeSection({
@@ -110,6 +128,7 @@ function DependencyEdgeSection({
   side,
   loading,
   testId,
+  warningsByEdgeUid,
 }: DependencyEdgeSectionProps) {
   return (
     <div className="space-y-2">
@@ -118,24 +137,30 @@ function DependencyEdgeSection({
         <p className="text-xs text-muted-foreground">{help}</p>
       </div>
       <DependencyRowList data-testid={testId}>
-        {edges.map((edge) => (
-          <DependencyRow
-            key={edge.uid}
-            interactive
-            identity={
-              <DependencyCheckLink
-                org={org}
-                check={side === "parent" ? edge.parentCheck : edge.childCheck}
-              />
-            }
-            kind={<DependencyKindBadge kind={edge.kind} />}
-            description={
-              edge.description ? (
-                <DependencyRowText>{edge.description}</DependencyRowText>
-              ) : null
-            }
-          />
-        ))}
+        {edges.map((edge) => {
+          const warning = warningsByEdgeUid?.get(edge.uid);
+          return (
+            <DependencyRow
+              key={edge.uid}
+              interactive
+              identity={
+                <DependencyCheckLink
+                  org={org}
+                  check={side === "parent" ? edge.parentCheck : edge.childCheck}
+                />
+              }
+              kind={<DependencyKindBadge kind={edge.kind} />}
+              hint={
+                warning ? <DependencyWarningHint warning={warning} /> : null
+              }
+              description={
+                edge.description ? (
+                  <DependencyRowText>{edge.description}</DependencyRowText>
+                ) : null
+              }
+            />
+          );
+        })}
         {!loading && edges.length === 0 && (
           <DependencyEmptyRow>{emptyLabel}</DependencyEmptyRow>
         )}
