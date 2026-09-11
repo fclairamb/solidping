@@ -877,7 +877,13 @@
     "followRedirects": "Seguir redirecciones",
     "followRedirectsOffHelp": "La comprobación evaluará la primera respuesta (p. ej. un 3XX) en lugar de seguirla hasta su destino.",
     "captureFailingResponse": "Capturar la respuesta fallida",
-    "captureFailingResponseHelp": "Cuando esta comprobación falla, la respuesta recibida (línea de estado, cabeceras con valores sensibles ocultos y hasta 16 KB del cuerpo) se guarda en el incidente que abre. Los cuerpos de respuesta pueden contener datos personales — la captura solo es visible para su equipo y nunca aparece en una página de estado."
+    "captureFailingResponseHelp": "Cuando esta comprobación falla, la respuesta recibida (línea de estado, cabeceras con valores sensibles ocultos y hasta 16 KB del cuerpo) se guarda en el incidente que abre. Los cuerpos de respuesta pueden contener datos personales — la captura solo es visible para su equipo y nunca aparece en una página de estado.",
+    "requestBody": "Cuerpo de la solicitud",
+    "requestBodyDescription": "Se envía tal cual. Añada una cabecera Content-Type acorde (p. ej. application/json).",
+    "requestHeaders": "Cabeceras de la solicitud",
+    "requestHeadersDescription": "Cabeceras simples, almacenadas y mostradas en claro. Ponga las claves de API y los tokens en las cabeceras secretas.",
+    "addRequestHeader": "Añadir cabecera",
+    "removeRequestHeader": "Eliminar {{header}}"
   },
   "ipVersion": {
     "label": "Versión IP (opcional)",

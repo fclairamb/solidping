@@ -25,6 +25,7 @@ export interface A2sState {
 
 export const a2sModule: CheckTypeModule<A2sState> = {
   types: ["a2s"],
+  ownedKeys: ["host", "port", "minPlayers", "maxPlayers"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -108,6 +109,7 @@ export interface MinecraftState {
 
 export const minecraftModule: CheckTypeModule<MinecraftState> = {
   types: ["minecraft"],
+  ownedKeys: ["host", "port", "edition", "minPlayers", "maxPlayers"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),

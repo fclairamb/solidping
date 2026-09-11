@@ -4485,6 +4485,13 @@ export interface CheckTypeInfo {
    * hard-coded type list.
    */
   supportsIpVersion?: boolean;
+  /**
+   * Top-level config keys this type stores encrypted. Their values never come
+   * back on a read, so the check form uses this to know which keys it must NOT
+   * carry over when it preserves the config keys its own form does not model
+   * (spec 2026-09-11-01).
+   */
+  secretFields?: string[];
 }
 
 export function useCheckTypes(org: string) {

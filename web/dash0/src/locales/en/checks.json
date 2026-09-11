@@ -877,7 +877,13 @@
     "followRedirects": "Follow redirects",
     "followRedirectsOffHelp": "The check will evaluate the first response (e.g. a 3XX) instead of following it to its destination.",
     "captureFailingResponse": "Capture the failing response",
-    "captureFailingResponseHelp": "When this check fails, the response it received (status line, headers with sensitive values redacted, and up to 16 KB of the body) is kept on the incident it opens. Response bodies can contain personal data — the capture is visible to your team only and never appears on a status page."
+    "captureFailingResponseHelp": "When this check fails, the response it received (status line, headers with sensitive values redacted, and up to 16 KB of the body) is kept on the incident it opens. Response bodies can contain personal data — the capture is visible to your team only and never appears on a status page.",
+    "requestBody": "Request body",
+    "requestBodyDescription": "Sent as-is. Set a Content-Type header to match (e.g. application/json).",
+    "requestHeaders": "Request headers",
+    "requestHeadersDescription": "Plain headers, stored and shown in clear. Put API keys and tokens in Secret headers instead.",
+    "addRequestHeader": "Add header",
+    "removeRequestHeader": "Remove {{header}}"
   },
   "ipVersion": {
     "label": "IP version (optional)",

@@ -26,6 +26,7 @@ export interface ClickhouseState {
 
 export const clickhouseModule: CheckTypeModule<ClickhouseState> = {
   types: ["clickhouse"],
+  ownedKeys: ["host", "port", "username", "password", "database", "query", "secure", "tls_verify"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),

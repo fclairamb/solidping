@@ -82,8 +82,9 @@ import {
 import {
   getConfigField,
   durationStringToSeconds,
+  assembleSubmittedConfig,
 } from "@/components/checks/form/types/common";
-import type { CheckType } from "@/components/checks/form/types/common";
+import type { CheckConfig, CheckType } from "@/components/checks/form/types/common";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -574,6 +575,20 @@ export function CheckForm({
     checkTypeRegistry[initialType].fromConfig(initialData?.config ?? {}),
   );
 
+  // Source of the unmodeled-key passthrough (spec 2026-09-11-01): the config
+  // this form was seeded from, so keys no type module models — an HTTP check's
+  // request `body`, `body_expect`, … — survive a save instead of being dropped
+  // by the server's replace-semantics PATCH merge.
+  //
+  // It carries its own `type` and is only honoured while that still matches the
+  // selected one, so switching type can never smuggle an http-only key into a
+  // tcp payload. In create mode it starts empty, which makes the whole thing a
+  // no-op; applying a sample re-points it at the sample's config.
+  const [passthroughSource, setPassthroughSource] = useState<{
+    type: CheckType;
+    config: CheckConfig;
+  }>(() => ({ type: initialType, config: initialData?.config ?? {} }));
+
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   // Region Spread: "" = unset (keep automatic default). Seeded from the
   // stored override, if any — absent means the check uses the automatic
@@ -738,16 +753,21 @@ export function CheckForm({
     () => activeModule.toConfig(configState),
     [activeModule, configState],
   );
+  // Server-declared secret config keys for the active type. Their values never
+  // come back on a read, so they must never be carried over by the passthrough
+  // — that would re-send a credential the operator did not touch and defeat the
+  // secret editors' dirty-flag contract.
+  const activeSecretFields = checkTypeInfoMap.get(type)?.secretFields;
   const currentConfig = useMemo(() => {
-    const cfg: Record<string, unknown> = { ...serialized.config };
+    const shared: Record<string, unknown> = {};
     if (!isPassiveType(type) && timeoutSeconds !== "") {
       const tv = parseInt(timeoutSeconds, 10);
-      if (!isNaN(tv)) cfg.timeout = `${tv}s`;
+      if (!isNaN(tv)) shared.timeout = `${tv}s`;
     }
     // Only tunnel-capable types carry the key; switching to a type that cannot
     // tunnel drops it rather than submitting a config the server would reject.
     if (supportsTunnel && tunnelCheckUid !== "") {
-      cfg.tunnelCheckUid = tunnelCheckUid;
+      shared.tunnelCheckUid = tunnelCheckUid;
     }
     // Only pinned families are written: `auto` is the default, and a tunneled
     // check may not carry the key at all (the server rejects the pair), so a
@@ -758,9 +778,16 @@ export function CheckForm({
       ipVersion !== IP_VERSION_AUTO &&
       !(supportsTunnel && tunnelCheckUid !== "")
     ) {
-      cfg.ipVersion = ipVersion;
+      shared.ipVersion = ipVersion;
     }
-    return cfg;
+    return assembleSubmittedConfig({
+      initialConfig:
+        passthroughSource.type === type ? passthroughSource.config : undefined,
+      ownedKeys: activeModule.ownedKeys,
+      secretFields: activeSecretFields,
+      moduleConfig: serialized.config,
+      sharedConfig: shared,
+    });
   }, [
     serialized,
     type,
@@ -769,6 +796,9 @@ export function CheckForm({
     tunnelCheckUid,
     supportsIpVersion,
     ipVersion,
+    activeModule,
+    activeSecretFields,
+    passthroughSource,
   ]);
 
   const { errors: fieldErrors, warnings: fieldWarnings } = useCheckValidationResult(
@@ -813,6 +843,7 @@ export function CheckForm({
     setSlug(sample.slug);
     setPeriod(secondsToHMS(sample.periodSeconds));
     setConfigState(checkTypeRegistry[type].fromConfig(sample.config));
+    setPassthroughSource({ type, config: sample.config });
     setTimeoutSeconds(durationStringToSeconds(getConfigField(sample.config, "timeout")));
     setTunnelCheckUid(getConfigField(sample.config, "tunnelCheckUid"));
     setIpVersion(getConfigField(sample.config, "ipVersion") || IP_VERSION_AUTO);
@@ -1150,6 +1181,10 @@ export function CheckForm({
                                   setConfigState(
                                     checkTypeRegistry[newType].fromConfig(currentConfig),
                                   );
+                                  // Drop the passthrough: the keys the PREVIOUS
+                                  // type did not model mean nothing to the new
+                                  // one, and the new checker would reject them.
+                                  setPassthroughSource({ type: newType, config: {} });
                                   setType(newType);
                                   setPeriod(getDefaultPeriodHMS(newType));
                                   onTypeChange?.(newType);

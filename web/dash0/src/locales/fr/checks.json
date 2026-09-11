@@ -877,7 +877,13 @@
     "followRedirects": "Suivre les redirections",
     "followRedirectsOffHelp": "Le contrôle évaluera la première réponse (par ex. un 3XX) au lieu de suivre la redirection jusqu'à sa destination.",
     "captureFailingResponse": "Capturer la réponse en échec",
-    "captureFailingResponseHelp": "Quand ce contrôle échoue, la réponse reçue (ligne de statut, en-têtes avec valeurs sensibles masquées, et jusqu'à 16 Ko du corps) est conservée sur l'incident qu'il ouvre. Les corps de réponse peuvent contenir des données personnelles — la capture n'est visible que par votre équipe et n'apparaît jamais sur une page de statut."
+    "captureFailingResponseHelp": "Quand ce contrôle échoue, la réponse reçue (ligne de statut, en-têtes avec valeurs sensibles masquées, et jusqu'à 16 Ko du corps) est conservée sur l'incident qu'il ouvre. Les corps de réponse peuvent contenir des données personnelles — la capture n'est visible que par votre équipe et n'apparaît jamais sur une page de statut.",
+    "requestBody": "Corps de la requête",
+    "requestBodyDescription": "Envoyé tel quel. Ajoutez un en-tête Content-Type correspondant (par ex. application/json).",
+    "requestHeaders": "En-têtes de la requête",
+    "requestHeadersDescription": "En-têtes simples, stockés et affichés en clair. Placez plutôt les clés d'API et les jetons dans les en-têtes secrets.",
+    "addRequestHeader": "Ajouter un en-tête",
+    "removeRequestHeader": "Supprimer {{header}}"
   },
   "ipVersion": {
     "label": "Version IP (optionnel)",

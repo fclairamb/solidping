@@ -22,6 +22,7 @@ export interface SqlDbState {
 
 export const sqlDatabaseModule: CheckTypeModule<SqlDbState> = {
   types: ["postgresql", "mysql", "mssql", "oracle"],
+  ownedKeys: ["host", "port", "username", "password", "database", "query"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -129,6 +130,7 @@ export interface RedisState {
 
 export const redisModule: CheckTypeModule<RedisState> = {
   types: ["redis"],
+  ownedKeys: ["host", "port", "password", "database"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -211,6 +213,7 @@ export interface MongoState {
 
 export const mongodbModule: CheckTypeModule<MongoState> = {
   types: ["mongodb"],
+  ownedKeys: ["host", "port", "username", "password", "database"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -306,6 +309,7 @@ export interface RabbitmqState {
 
 export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
   types: ["rabbitmq"],
+  ownedKeys: ["host", "port", "username", "password", "vhost", "queue", "tls", "tls_verify"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),

@@ -877,7 +877,13 @@
     "followRedirects": "Weiterleitungen folgen",
     "followRedirectsOffHelp": "Die Prüfung wertet die erste Antwort (z. B. ein 3XX) aus, statt ihr bis zum Ziel zu folgen.",
     "captureFailingResponse": "Fehlerhafte Antwort erfassen",
-    "captureFailingResponseHelp": "Wenn diese Prüfung fehlschlägt, wird die empfangene Antwort (Statuszeile, Header mit geschwärzten sensiblen Werten und bis zu 16 KB des Bodys) am geöffneten Vorfall gespeichert. Antwortkörper können personenbezogene Daten enthalten — die Erfassung ist nur für Ihr Team sichtbar und erscheint nie auf einer Statusseite."
+    "captureFailingResponseHelp": "Wenn diese Prüfung fehlschlägt, wird die empfangene Antwort (Statuszeile, Header mit geschwärzten sensiblen Werten und bis zu 16 KB des Bodys) am geöffneten Vorfall gespeichert. Antwortkörper können personenbezogene Daten enthalten — die Erfassung ist nur für Ihr Team sichtbar und erscheint nie auf einer Statusseite.",
+    "requestBody": "Anfrage-Body",
+    "requestBodyDescription": "Wird unverändert gesendet. Setzen Sie einen passenden Content-Type-Header (z. B. application/json).",
+    "requestHeaders": "Anfrage-Header",
+    "requestHeadersDescription": "Einfache Header, im Klartext gespeichert und angezeigt. API-Schlüssel und Tokens gehören stattdessen in die geheimen Header.",
+    "addRequestHeader": "Header hinzufügen",
+    "removeRequestHeader": "{{header}} entfernen"
   },
   "ipVersion": {
     "label": "IP-Version (optional)",

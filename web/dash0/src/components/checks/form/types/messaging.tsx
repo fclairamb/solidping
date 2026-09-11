@@ -128,6 +128,7 @@ function grpcToConfig(state: GrpcState): {
 
 export const grpcModule: CheckTypeModule<GrpcState> = {
   types: ["grpc"],
+  ownedKeys: ["host", "port", "serviceName", "tls", "tlsSkipVerify", "metadata", "secretMetadata"],
   fromConfig: grpcFromConfig,
   toConfig: grpcToConfig,
   Fields: GrpcFields,
@@ -420,6 +421,7 @@ export interface KafkaState {
 
 export const kafkaModule: CheckTypeModule<KafkaState> = {
   types: ["kafka"],
+  ownedKeys: ["brokers", "topic", "username", "password", "tls", "produceTest", "saslUsername", "saslPassword", "saslMechanism"],
   fromConfig: (config) => ({
     brokers: Array.isArray(config.brokers)
       ? (config.brokers as string[]).join(", ")
@@ -537,6 +539,7 @@ export interface MqttState {
 
 export const mqttModule: CheckTypeModule<MqttState> = {
   types: ["mqtt"],
+  ownedKeys: ["host", "port", "username", "password", "topic", "tls"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),

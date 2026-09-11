@@ -34,6 +34,7 @@ export interface SslState {
 
 export const sslModule: CheckTypeModule<SslState> = {
   types: ["ssl"],
+  ownedKeys: ["host", "port", "serverName", "server_name", "criticalDays", "thresholdDays", "threshold_days", "warningDays", "warning_days"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -160,6 +161,7 @@ export interface NtpState {
 
 export const ntpModule: CheckTypeModule<NtpState> = {
   types: ["ntp"],
+  ownedKeys: ["host", "port", "version", "offset_warn_ms", "offset_crit_ms", "max_stratum"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -304,6 +306,7 @@ export interface RdpState {
 
 export const rdpModule: CheckTypeModule<RdpState> = {
   types: ["rdp"],
+  ownedKeys: ["host", "port", "require_nla", "warning_days", "critical_days"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -434,6 +437,7 @@ export interface SipState {
 
 export const sipModule: CheckTypeModule<SipState> = {
   types: ["sip"],
+  ownedKeys: ["host", "port", "transport", "mode", "domain", "username", "password", "expect_status"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -607,6 +611,7 @@ export interface JsState {
 
 export const jsModule: CheckTypeModule<JsState> = {
   types: ["js"],
+  ownedKeys: ["script"],
   fromConfig: (config) => ({ script: getConfigField(config, "script") }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -659,6 +664,7 @@ export interface SleepState {
 
 export const sleepModule: CheckTypeModule<SleepState> = {
   types: ["sleep"],
+  ownedKeys: ["sleep_ms", "jitter_ms", "status"],
   fromConfig: (config) => ({
     sleepMs: getConfigField(config, "sleep_ms"),
     jitterMs: getConfigField(config, "jitter_ms"),
@@ -758,6 +764,9 @@ export type EmptyState = Record<string, never>;
 
 export const heartbeatModule: CheckTypeModule<EmptyState> = {
   types: ["heartbeat"],
+  // Models no config key at all — which is exactly what makes the shared
+  // form's passthrough preserve a heartbeat's public `token` on save.
+  ownedKeys: [],
   fromConfig: () => ({}),
   toConfig: () => ({ config: {}, errors: [] }),
   Fields: HeartbeatFields,
@@ -775,6 +784,8 @@ function HeartbeatFields() {
 // ── Email (passive) ──
 export const emailModule: CheckTypeModule<EmptyState> = {
   types: ["email"],
+  // No modelled config key; see heartbeatModule above.
+  ownedKeys: [],
   fromConfig: () => ({}),
   toConfig: () => ({ config: {}, errors: [] }),
   Fields: EmailFields,

@@ -16,6 +16,21 @@ import type {
 
 export interface CheckTypeModule<S = unknown> {
   types: CheckType[];
+  // Every config key this module models — i.e. reads in `fromConfig` or writes
+  // in `toConfig` — in EVERY spelling the module or the server accepts
+  // (`expectedStatus` *and* `expected_status`, …).
+  //
+  // Required on purpose (spec 2026-09-11-01): it is what lets the shared form
+  // tell "a key this module deliberately cleared" from "a key this module has
+  // never heard of". Keys absent from this list are carried through untouched
+  // from the config the form was seeded from instead of being dropped by the
+  // server's replace-semantics PATCH merge — see `assembleSubmittedConfig`.
+  //
+  // Under-declaring resurrects a key the module meant to clear; over-declaring
+  // reverts that key to the pre-spec behaviour (silently deleted on save).
+  // `http.test.ts` mechanically checks that every key `toConfig` writes for a
+  // fully-populated state is declared here.
+  ownedKeys: readonly string[];
   fromConfig(config: CheckConfig): S;
   toConfig(state: S): { config: CheckConfig; errors: FieldErrors };
   Fields: FC<CheckTypeFieldsProps<S>>;

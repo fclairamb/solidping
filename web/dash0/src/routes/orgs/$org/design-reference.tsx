@@ -194,6 +194,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
+import { KeyValueRows, type KeyValueRow } from "@/components/ui/key-value-rows";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
@@ -2457,6 +2458,11 @@ function FormsSection() {
         />
 
         <ExampleRow
+          preview={<KeyValueRowsExample />}
+          importLine={`import { KeyValueRows } from "@/components/ui/key-value-rows";\n\nconst [rows, setRows] = useState<KeyValueRow[]>([]);\n\n<KeyValueRows\n  rows={rows}\n  onChange={setRows}\n  addLabel="Add header"\n  keyPlaceholder="Header-Name"\n  valuePlaceholder="value"\n  removeLabel={(key) => \`Remove \${key}\`}\n  testIdPrefix="request-header"\n/>\n\n{/* secretValues renders the value inputs as password fields */}`}
+        />
+
+        <ExampleRow
           preview={
             <div className="w-full max-w-sm space-y-2">
               <Label htmlFor="dr-code-textarea">Code textarea</Label>
@@ -2766,6 +2772,33 @@ function ImageFieldExample() {
       }
       importLine={`const fileInput = useRef<HTMLInputElement>(null);\n// isUploadedLogoPath(value) === !value.startsWith("http") && value !== ""\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {currentUrl ? <img src={currentUrl} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n{showUrlField ? (\n  <Input type="url" value={urlDraft} onChange={...} className="min-w-0 flex-1" />\n) : (\n  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">\n    <Badge variant="secondary">Uploaded file</Badge>\n    <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={() => setShowUrlField(true)}>Use an external URL instead</Button>\n  </div>\n)}\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  {currentUrl ? "Replace" : "Upload"}\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
     />
+  );
+}
+
+// KeyValueRowsExample showcases the shared key/value row editor used for HTTP
+// request headers, secret headers and other Record<string, string> config keys.
+function KeyValueRowsExample() {
+  const [rows, setRows] = useState<KeyValueRow[]>([
+    { key: "Content-Type", value: "application/json" },
+  ]);
+  return (
+    <div className="w-full max-w-sm space-y-2">
+      <Label>Key / value rows</Label>
+      <KeyValueRows
+        rows={rows}
+        onChange={setRows}
+        addLabel="Add header"
+        keyPlaceholder="Header-Name"
+        valuePlaceholder="value"
+        removeLabel={(key) => `Remove ${key || "header"}`}
+        testIdPrefix="dr-key-value"
+      />
+      <p className="text-xs text-muted-foreground">
+        Stacks key over value below <code>sm</code> so it never scrolls
+        horizontally on a phone. Pass <code>secretValues</code> for masked
+        values.
+      </p>
+    </div>
   );
 }
 
