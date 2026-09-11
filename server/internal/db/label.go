@@ -13,12 +13,14 @@ const (
 
 // sqliteLabelCheckFragments are how SQLite words the same violations. It says
 // "CHECK constraint failed: <name>" for a named constraint and, for the
-// anonymous inline CHECKs the older baseline used, names the TABLE instead —
-// hence the two fragments.
-var sqliteLabelCheckFragments = []string{
-	"CHECK constraint failed: " + LabelKeyConstraint,
-	"CHECK constraint failed: " + LabelValueConstraint,
-	"CHECK constraint failed: labels",
+// anonymous inline CHECKs the pre-021 baseline used, names the TABLE instead —
+// hence the third fragment.
+func sqliteLabelCheckFragments() []string {
+	return []string{
+		"CHECK constraint failed: " + LabelKeyConstraint,
+		"CHECK constraint failed: " + LabelValueConstraint,
+		"CHECK constraint failed: labels",
+	}
 }
 
 // IsLabelConstraintViolation reports whether err is the database refusing a
@@ -42,7 +44,7 @@ func IsLabelConstraintViolation(err error) bool {
 		return true
 	}
 
-	for _, fragment := range sqliteLabelCheckFragments {
+	for _, fragment := range sqliteLabelCheckFragments() {
 		if strings.Contains(msg, fragment) {
 			return true
 		}

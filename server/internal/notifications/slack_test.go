@@ -301,6 +301,8 @@ func (m *mockDBService) UpdateCheck(_ context.Context, _ string, _ *models.Check
 }
 func (m *mockDBService) DeleteCheck(_ context.Context, _ string) error { panic("not implemented") }
 
+func (m *mockDBService) PurgeCheck(_ context.Context, _ string) error { panic("not implemented") }
+
 func (m *mockDBService) ListChecksWithStaleJobPeriods(_ context.Context) ([]*models.Check, error) {
 	panic("not implemented")
 }

@@ -87,7 +87,7 @@ func translateLabelWriteError(key, value string, err error) error {
 // label validation moved ahead of the insert, the only failures that can still
 // land here are infrastructure ones, which makes a compensating delete both
 // sufficient and far smaller in blast radius than teaching both backends to
-// honour a context transaction.
+// honor a context transaction.
 //
 // PurgeCheck, not DeleteCheck: DeleteCheck is a SOFT delete, so the slug would
 // stay claimed and the very next import of the corrected document would fail

@@ -36,16 +36,16 @@ func TestImportDryRunRejectsWhatTheRealRunRejects(t *testing.T) {
 	r.Equal(0, rig.countChecks(t), "a dry run writes nothing")
 
 	// And the real run reports EXACTLY the same thing, per item.
-	real := rig.importDoc(t, doc, false)
+	applied := rig.importDoc(t, doc, false)
 
-	r.False(real.DryRun)
-	r.Equal(dry.Created, real.Created)
-	r.Equal(dry.Updated, real.Updated)
-	r.Len(real.Errors, len(dry.Errors))
+	r.False(applied.DryRun)
+	r.Equal(dry.Created, applied.Created)
+	r.Equal(dry.Updated, applied.Updated)
+	r.Len(applied.Errors, len(dry.Errors))
 
 	for i := range dry.Errors {
-		r.Equal(dry.Errors[i].Slug, real.Errors[i].Slug)
-		r.Equal(dry.Errors[i].Error, real.Errors[i].Error,
+		r.Equal(dry.Errors[i].Slug, applied.Errors[i].Slug)
+		r.Equal(dry.Errors[i].Error, applied.Errors[i].Error,
 			"dry run and real run must produce the same per-item error string")
 	}
 
@@ -74,10 +74,10 @@ func TestImportDryRunPositiveControls(t *testing.T) {
 	r.NotEmpty(dry.Caveats, "the dry run must name what it provably cannot check")
 
 	// The real run produces the IDENTICAL counts the dry run promised.
-	real := rig.importDoc(t, doc, false)
-	r.Empty(real.Errors, "%+v", real.Errors)
-	r.Equal(dry.Created, real.Created)
-	r.Equal(dry.Updated, real.Updated)
+	applied := rig.importDoc(t, doc, false)
+	r.Empty(applied.Errors, "%+v", applied.Errors)
+	r.Equal(dry.Created, applied.Created)
+	r.Equal(dry.Updated, applied.Updated)
 	r.Equal(2, rig.countChecks(t))
 
 	// Re-running the same document is now an update, and the dry run says so
@@ -107,10 +107,10 @@ func TestImportDryRunCatchesInvalidConfig(t *testing.T) {
 	r.Len(dry.Errors, 1)
 	r.Equal("broken-config", dry.Errors[0].Slug)
 
-	real := rig.importDoc(t, importDocument(rig.org.Slug, bad), false)
-	r.Equal(0, real.Created)
-	r.Len(real.Errors, 1)
-	r.Equal(dry.Errors[0].Error, real.Errors[0].Error)
+	applied := rig.importDoc(t, importDocument(rig.org.Slug, bad), false)
+	r.Equal(0, applied.Created)
+	r.Len(applied.Errors, 1)
+	r.Equal(dry.Errors[0].Error, applied.Errors[0].Error)
 	r.Equal(0, rig.countChecks(t))
 }
 
@@ -143,8 +143,8 @@ func TestImportDryRunCatchesQuota(t *testing.T) {
 	r.Equal("quota-two", dry.Errors[0].Slug)
 	r.Equal(0, rig.countChecks(t))
 
-	real := rig.importDoc(t, doc, false)
-	r.Equal(dry.Created, real.Created)
-	r.Len(real.Errors, len(dry.Errors))
+	applied := rig.importDoc(t, doc, false)
+	r.Equal(dry.Created, applied.Created)
+	r.Len(applied.Errors, len(dry.Errors))
 	r.Equal(1, rig.countChecks(t))
 }

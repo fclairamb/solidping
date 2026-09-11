@@ -3591,6 +3591,18 @@ func (s *Service) ImportChecks(
 	return result, nil
 }
 
+// anyDependsOn reports whether any entry in the document declares a dependency
+// — pass 2 is skipped entirely when none does.
+func anyDependsOn(checks []ExportCheck) bool {
+	for i := range checks {
+		if len(checks[i].DependsOn) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 // importDependencies applies the additive dep merge for pass 2 of import.
 // Skipped silently for any check whose pass-1 upsert failed; otherwise
 // resolves slugs, runs validators, and writes/updates edges. Errors land in
@@ -3602,16 +3614,7 @@ func (s *Service) importDependencies(
 	pass1Failed map[string]struct{},
 	result *ImportResult,
 ) {
-	hasAnyDeps := false
-	for i := range checks {
-		if len(checks[i].DependsOn) > 0 {
-			hasAnyDeps = true
-
-			break
-		}
-	}
-
-	if !hasAnyDeps {
+	if !anyDependsOn(checks) {
 		return
 	}
 

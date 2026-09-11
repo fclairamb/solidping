@@ -40,7 +40,7 @@ type createPlan struct {
 // validation the real path performs is worse than no dry run, so the
 // validation now lives in exactly one function that both callers run.
 //
-//nolint:cyclop // one linear gate per rule; splitting it would hide the order
+//nolint:cyclop,funlen,gocritic // one linear gate per rule; splitting it would hide the order
 func (s *Service) planCreateCheck(
 	ctx context.Context, org *models.Organization, req CreateCheckRequest, pendingCreates int,
 ) (*createPlan, error) {
@@ -154,8 +154,8 @@ func (s *Service) planCreateCheck(
 		Config: req.Config,
 	}
 
-	if err := checker.Validate(spec); err != nil { //nolint:govet // scoped shadow
-		return nil, err
+	if validateErr := checker.Validate(spec); validateErr != nil {
+		return nil, validateErr
 	}
 
 	// The remaining request-level guards — regionSpread's bound, the
@@ -264,28 +264,8 @@ func (s *Service) planUpdateCheck(
 		regionsForCheck = resolved
 	}
 
-	if req.Config != nil {
-		normalized, normErr := normalizeCheckConfig(existing.Type, req.Config)
-		if normErr != nil {
-			return normErr
-		}
-
-		if cfgErr := s.validatePatchedConfig(
-			existing.Type, normalized, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
-			existing.ConfigPrivateKeys,
-		); cfgErr != nil {
-			return cfgErr
-		}
-
-		if cfgErr := s.firstConfigValidationError(
-			ctx, org.UID, existing.Type, normalized, regionsForCheck,
-		); cfgErr != nil {
-			return cfgErr
-		}
-
-		if intervalErr := validateSMTPSendInterval(existing.Type, normalized, period); intervalErr != nil {
-			return intervalErr
-		}
+	if cfgErr := s.planUpdateConfig(ctx, org, existing, req.Config, regionsForCheck, period); cfgErr != nil {
+		return cfgErr
 	}
 
 	if findings := requestFieldFindings(requestFieldValues{
@@ -303,13 +283,49 @@ func (s *Service) planUpdateCheck(
 	return nil
 }
 
+// planUpdateConfig runs the config-level rules the update path enforces
+// against an incoming config, writing nothing. A nil config is a no-op: the
+// document is not changing it.
+func (s *Service) planUpdateConfig(
+	ctx context.Context,
+	org *models.Organization,
+	existing *models.Check,
+	config map[string]any,
+	regionsForCheck []string,
+	period time.Duration,
+) error {
+	if config == nil {
+		return nil
+	}
+
+	normalized, normErr := normalizeCheckConfig(existing.Type, config)
+	if normErr != nil {
+		return normErr
+	}
+
+	if cfgErr := s.validatePatchedConfig(
+		existing.Type, normalized, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
+		existing.ConfigPrivateKeys,
+	); cfgErr != nil {
+		return cfgErr
+	}
+
+	if cfgErr := s.firstConfigValidationError(
+		ctx, org.UID, existing.Type, normalized, regionsForCheck,
+	); cfgErr != nil {
+		return cfgErr
+	}
+
+	return validateSMTPSendInterval(existing.Type, normalized, period)
+}
+
 // PlanUpsert validates an upsert request exactly the way the write path will,
 // without writing anything, and reports whether the item would be created.
 // pendingCreates is how many creations the caller has already planned in this
 // batch but not written — see planCreateCheck's quota gate.
 func (s *Service) PlanUpsert(
 	ctx context.Context, org *models.Organization, slug string, req *UpsertCheckRequest, pendingCreates int,
-) (created bool, err error) {
+) (bool, error) {
 	// Same lookup UpsertCheck performs. A missing row is not an error here
 	// (both backends answer sql.ErrNoRows), only a real query failure is.
 	existing, lookupErr := s.db.GetCheckByUidOrSlug(ctx, org.UID, slug)
