@@ -42,7 +42,7 @@ type createPlan struct {
 //
 //nolint:cyclop // one linear gate per rule; splitting it would hide the order
 func (s *Service) planCreateCheck(
-	ctx context.Context, org *models.Organization, req CreateCheckRequest,
+	ctx context.Context, org *models.Organization, req CreateCheckRequest, pendingCreates int,
 ) (*createPlan, error) {
 	// `internal` is never writable from a request (spec 2026-08-27-01): it is
 	// what exempts a check from the quota below, so accepting it here would
@@ -56,7 +56,12 @@ func (s *Service) planCreateCheck(
 	// server-created internal checks are written through db.CreateCheck and
 	// never pass here.
 	if s.entitlements != nil {
-		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
+		// pendingCreates is non-zero only for a dry run, which has decided on
+		// creations it has not written: without it a 100-check document would
+		// dry-run clean against a cap of 1 and then fail on item 2 for real.
+		if quotaErr := s.entitlements.CheckCreateAllowedWithPending(
+			ctx, org.UID, pendingCreates,
+		); quotaErr != nil {
 			return nil, quotaErr
 		}
 	}
@@ -300,8 +305,10 @@ func (s *Service) planUpdateCheck(
 
 // PlanUpsert validates an upsert request exactly the way the write path will,
 // without writing anything, and reports whether the item would be created.
+// pendingCreates is how many creations the caller has already planned in this
+// batch but not written — see planCreateCheck's quota gate.
 func (s *Service) PlanUpsert(
-	ctx context.Context, org *models.Organization, slug string, req *UpsertCheckRequest,
+	ctx context.Context, org *models.Organization, slug string, req *UpsertCheckRequest, pendingCreates int,
 ) (created bool, err error) {
 	// Same lookup UpsertCheck performs. A missing row is not an error here
 	// (both backends answer sql.ErrNoRows), only a real query failure is.
@@ -320,7 +327,7 @@ func (s *Service) PlanUpsert(
 
 	createReq := upsertToCreateRequest(slug, req)
 
-	_, planErr := s.planCreateCheck(ctx, org, createReq)
+	_, planErr := s.planCreateCheck(ctx, org, createReq, pendingCreates)
 
 	return true, planErr
 }

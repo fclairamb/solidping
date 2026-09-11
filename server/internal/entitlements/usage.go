@@ -244,6 +244,16 @@ func (s *Service) CustomDomainAllowed(ctx context.Context, orgUID string) error 
 // CheckMembership. A tight race may slip one extra check past the cap;
 // acceptable for a soft quota guard.
 func (s *Service) CheckCreateAllowed(ctx context.Context, orgUID string) error {
+	return s.CheckCreateAllowedWithPending(ctx, orgUID, 0)
+}
+
+// CheckCreateAllowedWithPending is CheckCreateAllowed for a caller that is
+// PLANNING several creations without having written any of them yet — an
+// import dry run, which must report the same quota breach the real run would
+// (spec 2026-09-10-01). `pending` is how many creations this caller has
+// already decided on; counting only what is on disk would let a 100-check
+// document dry-run clean against a cap of 1.
+func (s *Service) CheckCreateAllowedWithPending(ctx context.Context, orgUID string, pending int) error {
 	resolved, err := s.Resolve(ctx, orgUID)
 	if err != nil {
 		return fmt.Errorf("resolve entitlements: %w", err)
@@ -260,11 +270,13 @@ func (s *Service) CheckCreateAllowed(ctx context.Context, orgUID string) error {
 		return fmt.Errorf("count checks: %w", err)
 	}
 
-	if len(rates) >= limit {
+	usage := len(rates) + pending
+
+	if usage >= limit {
 		return &QuotaError{
 			LimitName:    "MaxChecks",
 			Limit:        limit,
-			CurrentUsage: len(rates),
+			CurrentUsage: usage,
 		}
 	}
 

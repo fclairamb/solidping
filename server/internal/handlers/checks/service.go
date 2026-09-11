@@ -1272,7 +1272,7 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// import dry run calls the same function, which is what makes a dry run
 	// that says "all good" mean the real run will succeed (spec
 	// 2026-09-10-01) — the two cannot drift because there is only one copy.
-	plan, err := s.planCreateCheck(ctx, org, req)
+	plan, err := s.planCreateCheck(ctx, org, req, 0)
 	if err != nil {
 		return CheckResponse{}, err
 	}
@@ -3547,7 +3547,17 @@ func (s *Service) ImportChecks(
 	pass1Failed := make(map[string]struct{}, 0)
 
 	for i := range doc.Checks {
-		created, importErr := s.importSingleCheck(ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName)
+		// pendingCreates only matters on a dry run: it is how many creations
+		// this document has already decided on but not written, which is what
+		// lets the quota gate see the document as a whole. On a real run the
+		// creations are on disk and the gate counts them itself.
+		pendingCreates := 0
+		if dryRun {
+			pendingCreates = result.Created
+		}
+
+		created, importErr := s.importSingleCheck(
+			ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName, pendingCreates)
 		if importErr != nil {
 			result.Errors = append(result.Errors, *importErr)
 			pass1Failed[doc.Checks[i].Slug] = struct{}{}
@@ -3823,6 +3833,7 @@ func (s *Service) importSingleCheck(
 	index int,
 	dryRun bool,
 	groupByName map[string]*models.CheckGroup,
+	pendingCreates int,
 ) (bool, *ImportError) {
 	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
 		return false, validationErr
@@ -3841,7 +3852,7 @@ func (s *Service) importSingleCheck(
 	upsertReq := buildImportUpsertRequest(exportedCheck, checkGroupUID)
 
 	if dryRun {
-		created, planErr := s.PlanUpsert(ctx, org, exportedCheck.Slug, &upsertReq)
+		created, planErr := s.PlanUpsert(ctx, org, exportedCheck.Slug, &upsertReq, pendingCreates)
 		if planErr != nil {
 			return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
 		}
