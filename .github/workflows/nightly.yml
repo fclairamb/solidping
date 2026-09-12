@@ -1,0 +1,160 @@
+name: Nightly
+
+# The test layer that cannot run on a pull request.
+#
+# `-short` used to be one switch guarding three unrelated needs — a database,
+# the public internet, a Docker daemon — so the Postgres suites could not be
+# turned on per-PR without also turning on live WHOIS lookups and a Pebble CA
+# container. Spec 2026-09-12-05 split them: the database half is now the
+# `backend-postgres` job in ci.yml, and what is left (the `slowtests` build tag)
+# runs here, where a flaky registrar or a slow image pull costs a nightly
+# notification instead of blocking a merge.
+#
+# The Postgres layer is repeated here on purpose: a nightly run against main
+# catches an environment-shaped breakage (a Postgres release, a runner image
+# change) on a day nobody happened to touch server code.
+#
+# Layer map: wiki/testing/test-layers.md
+
+on:
+  schedule:
+    # 03:17 UTC — off the hour, where GitHub's scheduled-run queue is shortest.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slowtests:
+    name: Live network + Docker suites
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      - name: Create embed placeholders for tests
+        run: |
+          mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
+          mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
+          mkdir -p internal/app/status0res/embed/v1
+          echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
+          echo "placeholder" > internal/app/docsres/404.html
+          echo "placeholder" > internal/app/docsres/llms.txt
+          echo "placeholder" > internal/app/docsres/llms-full.txt
+          echo '[]' > internal/app/docsres/search-index.json
+
+      # Scoped to the packages that actually carry tagged files. Building the
+      # whole tree under a tag it does not use would only slow this down.
+      - name: Run the slowtests layer
+        run: |
+          set -o pipefail
+          go test -count=1 -p 1 -tags slowtests -v \
+            ./internal/checkers/... ./internal/tlsedge/... 2>&1 \
+            | tee "$RUNNER_TEMP/slowtests.log"
+
+      # Same reasoning as the backend-postgres guard in ci.yml: these suites
+      # self-skip when Docker is missing, so an exit code of 0 does not mean
+      # they ran. Naming the tests explicitly is what makes a silently
+      # disappeared suite visible.
+      - name: Assert the tagged suites really ran
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/slowtests.log"
+          for name in \
+            TestACMEEndToEndWithPebble \
+            TestACMEChainedFallbackWithPebble \
+            TestDomainChecker_Execute \
+            TestSSLChecker_Execute
+          do
+            if ! grep -qE "^--- PASS: ${name}\b" "$log"; then
+              echo "::error::${name} did not PASS (skipped, failed, or no longer compiled into the slowtests layer)"
+              exit 1
+            fi
+          done
+          echo "All four tagged suites passed."
+
+      - name: Upload the test log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: slowtests-log
+          path: ${{ runner.temp }}/slowtests.log
+          retention-days: 7
+
+  postgres:
+    name: Postgres layer (against main)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      - name: Cache embedded PostgreSQL binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.embedded-postgres-go
+          key: embedded-postgres-${{ runner.os }}-${{ hashFiles('server/go.sum') }}
+          restore-keys: |
+            embedded-postgres-${{ runner.os }}-
+
+      - name: Create embed placeholders for tests
+        run: |
+          mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
+          mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
+          mkdir -p internal/app/status0res/embed/v1
+          echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
+          echo "placeholder" > internal/app/docsres/404.html
+          echo "placeholder" > internal/app/docsres/llms.txt
+          echo "placeholder" > internal/app/docsres/llms-full.txt
+          echo '[]' > internal/app/docsres/search-index.json
+
+      - name: Run the Postgres test layer
+        run: |
+          set -o pipefail
+          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./... 2>&1 \
+            | tee "$RUNNER_TEMP/postgres-tests.log"
+
+      - name: Assert the Postgres layer really ran
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/postgres-tests.log"
+
+          if grep -E '^\s*--- SKIP: .*([Pp]ostgres|Pg[A-Z])' "$log"; then
+            echo "::error::A Postgres test was SKIPPED. This job exists to run them; a skip here is a failure."
+            exit 1
+          fi
+
+          passed=$(grep -cE '^--- PASS: .*([Pp]ostgres|Pg[A-Z])' "$log" || true)
+          echo "Postgres-named tests passed: $passed"
+          if [[ "$passed" -lt 100 ]]; then
+            echo "::error::Only $passed Postgres tests passed (floor 100). The layer did not run."
+            exit 1
+          fi
+
+      - name: Upload the test log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-postgres-tests-log
+          path: ${{ runner.temp }}/postgres-tests.log
+          retention-days: 7
