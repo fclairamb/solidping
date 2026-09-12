@@ -253,9 +253,53 @@ func (s *Service) planApplyUpdate(
 func (s *Service) validateSecretRefs(
 	ctx context.Context, orgUID string, doc *ExportDocument,
 ) ([]string, error) {
+	findings, sawEnvRef := s.secretRefFindings(ctx, orgUID, doc)
+
+	// The write path's contract is a single 400, so it reports the first
+	// finding — but it reads the SAME list the document-validate endpoint
+	// turns into one issue per check, so the two can never disagree about
+	// which references resolve.
+	if len(findings) > 0 {
+		return nil, fmt.Errorf("check %q: %w", findings[0].where, findings[0].err)
+	}
+
+	if !sawEnvRef {
+		return nil, nil
+	}
+
+	// ${env:} is the self-hosted form: it resolves against the environment of
+	// whichever process ends up executing the check, which means an operator
+	// deploy to change it and, for a check running on a deported agent, THAT
+	// agent's environment rather than the API's. Both are features; neither is
+	// obvious from the manifest, so say so once per document.
+	return []string{
+		"${env:…} resolves on the process that executes the check (a deported agent uses its own " +
+			"environment, and changing the value needs a restart) — use ${param:…} for an " +
+			"organization-managed value you can rotate over the API",
+	}, nil
+}
+
+// secretRefFinding is one check whose config carries a reference that does not
+// resolve, plus whether any ${env:} reference was seen at all (which is a
+// warning, not a failure).
+type secretRefFinding struct {
+	where string
+	err   error
+}
+
+// secretRefFindings walks every check's config and reports EVERY unresolvable
+// reference, in document order. The single source of truth for both callers:
+// validateSecretRefs (the write path, first error only) and secretRefIssues
+// (the document-validate endpoint, all of them).
+func (s *Service) secretRefFindings(
+	ctx context.Context, orgUID string, doc *ExportDocument,
+) ([]secretRefFinding, bool) {
 	resolve := secretref.DocumentResolver(s.db, orgUID)
 
-	sawEnvRef := false
+	var (
+		findings  []secretRefFinding
+		sawEnvRef bool
+	)
 
 	for idx := range doc.Checks {
 		cfg := doc.Checks[idx].Config
@@ -276,24 +320,11 @@ func (s *Service) validateSecretRefs(
 		// which is exactly what dry run exists to prevent. The resolved copy is
 		// thrown away: validation proves resolvability, it never stores.
 		if _, _, err := secretref.ResolveConfig(ctx, cfg, resolve); err != nil {
-			return nil, fmt.Errorf("check %q: %w", doc.Checks[idx].Slug, err)
+			findings = append(findings, secretRefFinding{where: doc.Checks[idx].Slug, err: err})
 		}
 	}
 
-	if !sawEnvRef {
-		return nil, nil
-	}
-
-	// ${env:} is the self-hosted form: it resolves against the environment of
-	// whichever process ends up executing the check, which means an operator
-	// deploy to change it and, for a check running on a deported agent, THAT
-	// agent's environment rather than the API's. Both are features; neither is
-	// obvious from the manifest, so say so once per document.
-	return []string{
-		"${env:…} resolves on the process that executes the check (a deported agent uses its own " +
-			"environment, and changing the value needs a restart) — use ${param:…} for an " +
-			"organization-managed value you can rotate over the API",
-	}, nil
+	return findings, sawEnvRef
 }
 
 // ApplyChecks reconciles the manifest against the managed scope. With DryRun it

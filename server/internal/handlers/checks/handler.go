@@ -73,6 +73,10 @@ const (
 	// queryTrue is the literal a boolean query flag must equal to be enabled
 	// (e.g. ?dryRun=true).
 	queryTrue = "true"
+	// msgPlanRequiresAdmin explains the refusal of `?plan=true` to a
+	// non-admin: validating a document is member-level, but planning it reads
+	// the organization's whole check set.
+	msgPlanRequiresAdmin = "Admin access required to compute the reconcile plan (drop ?plan=true to validate only)"
 )
 
 // Handler provides HTTP handlers for check management endpoints.
@@ -89,14 +93,45 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
-// ValidateCheck handles validating a check configuration without persisting.
+// ValidateCheck handles POST /api/v1/orgs/:org/checks/validate. It is
+// CONTENT-NEGOTIATED (spec 2026-09-11-04): a body carrying a top-level
+// `checks` list — JSON or YAML — is a whole export/manifest document and takes
+// the document path; anything else is a single check definition and behaves
+// exactly as before.
+//
+// Authorization is split rather than uniform, which is the point of the change:
+//
+//   - The DOCUMENT path is member-level. Validating a file writes nothing, and
+//     a CI job that only wants "is this valid?" must not need a write-capable
+//     token — needing one is why third parties kept maintaining their own
+//     validators, which then drifted from the server by construction.
+//   - The SINGLE-CHECK path keeps the write floor, enforced INLINE here
+//     because the route itself no longer carries RequireOrgWrite. It answers
+//     with middleware.ViewerWriteMessage verbatim, so the route-table proof in
+//     internal/app still recognizes the floor.
+//   - `?plan=true` needs admin: the plan reads the org's whole check set.
 func (h *Handler) ValidateCheck(
 	writer http.ResponseWriter, req *http.Request,
 ) error {
 	orgSlug := httpx.Param(req, "org")
 
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
+			{Name: fieldBody, Message: "could not read request body"},
+		})
+	}
+
+	if IsDocumentBody(body) {
+		return h.validateDocument(writer, req, orgSlug, body)
+	}
+
+	if !h.orgRoleAtLeast(req, models.MemberRoleUser) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, mw.ViewerWriteMessage)
+	}
+
 	var validateReq ValidateCheckRequest
-	if err := json.NewDecoder(req.Body).Decode(&validateReq); err != nil {
+	if err := json.Unmarshal(body, &validateReq); err != nil {
 		return h.WriteValidationError(
 			writer, "Invalid JSON", []base.ValidationErrorField{
 				{Name: fieldBody, Message: msgInvalidJSON},
@@ -109,6 +144,70 @@ func (h *Handler) ValidateCheck(
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// validateDocument answers the whole-document form of /checks/validate.
+func (h *Handler) validateDocument(
+	writer http.ResponseWriter, req *http.Request, orgSlug string, body []byte,
+) error {
+	doc, err := ParseManifest(body, req.Header.Get("Content-Type"))
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid document", []base.ValidationErrorField{
+			{Name: fieldBody, Message: err.Error()},
+		})
+	}
+
+	withPlan := req.URL.Query().Get("plan") == queryTrue
+	if withPlan && !h.orgRoleAtLeast(req, models.MemberRoleAdmin) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, msgPlanRequiresAdmin)
+	}
+
+	resp, err := h.svc.ValidateDocumentForOrg(req.Context(), orgSlug, doc, withPlan)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationNotFound) {
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// orgRoleAtLeast reports whether the authenticated caller holds at least
+// minRole in the request's organization — the same hierarchical test
+// AuthMiddleware.requireOrgRole makes, done inline for the one route that
+// carries two different floors on two different bodies.
+//
+// Two passes-through mirror the middleware exactly: a super admin always
+// qualifies, and a trusted service request (which resolves no user and has no
+// membership row) is let past, as RequireOrgAccess and RequireOrgWrite both
+// let it past. The role is read from the MEMBERSHIP ROW, never from claims, so
+// a demotion takes effect on the next request rather than the next token.
+func (h *Handler) orgRoleAtLeast(req *http.Request, minRole models.MemberRole) bool {
+	ctx := req.Context()
+
+	user, ok := mw.GetUserFromContext(ctx)
+	if !ok {
+		return true
+	}
+
+	if user.SuperAdmin {
+		return true
+	}
+
+	org, ok := mw.GetOrganizationFromContext(ctx)
+	if !ok {
+		return false
+	}
+
+	member, err := h.svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	if err != nil || member == nil {
+		return false
+	}
+
+	return member.Role.AtLeast(minRole)
 }
 
 // parseTypeFilter splits the `type` query parameter — singular name,

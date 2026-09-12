@@ -194,7 +194,10 @@ func checksValidateDocumentAction(cliCtx *Context, raw []byte) error {
 	output.PrintError(os.Stdout, fmt.Sprintf("Document is invalid: %d problem(s)", len(issues)))
 	for i := range issues {
 		issue := &issues[i]
-		output.PrintMessage(os.Stdout, fmt.Sprintf("  [%s] %s", issue.Where, issue.Message))
+		// The CODE is printed alongside the prose: it is the stable half, and
+		// it is what a CI job allow-lists (spec 2026-09-11-04).
+		output.PrintMessage(os.Stdout, fmt.Sprintf("  [%s] %s %s: %s",
+			issue.Where, issue.Code, issue.Field, issue.Message))
 	}
 
 	return cli.Exit("", 1)

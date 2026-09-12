@@ -498,7 +498,18 @@ func GetCommands() []*cli.Command {
 					Name:      "diff",
 					Usage:     "Show how a local export file differs from what SolidPing currently holds",
 					ArgsUsage: "<file>",
-					Action:    checksDiffAction,
+					Description: "Asks the server for the reconcile plan (a dry run that mutates nothing) and " +
+						"prints one row per check: create, update (with the fields that move), unchanged, " +
+						"delete or unmanaged. Exit 0 = no drift, 1 = drift, >=2 = error. " +
+						"--text falls back to a textual diff of the file against a fresh export, which is " +
+						"also what happens automatically when the caller cannot plan (plans are admin-only).",
+					Flags: append(GetGlobalFlags(),
+						&cli.BoolFlag{
+							Name:  "text",
+							Usage: "Render a textual unified diff instead of the server's reconcile plan",
+						},
+					),
+					Action: checksDiffAction,
 				},
 			},
 		},

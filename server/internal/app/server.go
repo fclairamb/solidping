@@ -1074,7 +1074,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	importersHandler := importers.NewHandler(checksService, s.config)
 	importersHandler.RegisterRoutes(orgChecksAdmin)
 
-	orgChecks.POST("/validate", checksHandler.ValidateCheck)
+	// /checks/validate is registered on the READ-level chain (spec
+	// 2026-09-11-04): posting a whole config-as-code document to it writes
+	// nothing, and a CI job that only asks "is this file valid?" must not need
+	// a write-capable token. The single-check form of the same route keeps the
+	// write floor, enforced inline in the handler (which answers with
+	// middleware.ViewerWriteMessage, so TestEveryOrgScopedWriteRouteRefusesViewers
+	// still recognizes the gate), and `?plan=true` needs admin.
+	//
+	// Import, apply and export are deliberately NOT relaxed: they mutate, and
+	// apply can delete by absence.
+	orgGroupSelf("/orgs/:org/checks").POST("/validate", checksHandler.ValidateCheck)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)

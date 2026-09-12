@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/fclairamb/solidping/server/pkg/cli/output"
+	"github.com/fclairamb/solidping/server/pkg/client"
 )
 
 // diffJSONIndent is the indent used when rendering documents for the diff, so
@@ -159,10 +160,54 @@ func diffExitCode(outcome diffOutcome, err error) int {
 	}
 }
 
-// checksDiffAction implements `sp checks diff <file>`: fetches the live
-// export, loads the local file, strips exportedAt from both, and prints a
-// unified diff. Exit 0 (no drift) / 1 (drift) / >=2 (errors) — CI-friendly,
-// matching the reference workflow's solidping_config.py diff command.
+// planDrift reports whether a reconcile plan says the file and the instance
+// disagree. `unmanaged` is deliberately NOT drift: the slug exists and the
+// manifest describes it, it simply is not owned by this manifest yet — it is
+// surfaced in the table, never in the exit code.
+func planDrift(res *applyResult) bool {
+	return res.Created+res.Updated+res.Deleted > 0
+}
+
+// reportDiffPlan renders a server-computed reconcile plan as the answer to
+// "does this file match?" — the question `sp checks diff` exists for.
+func reportDiffPlan(cliCtx *Context, file string, res *applyResult) error {
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(map[string]any{
+			"drift": planDrift(res), "file": file, "plan": res,
+		})
+	}
+
+	printApplyPlan(res)
+	printApplySummary(res)
+
+	if !planDrift(res) {
+		output.PrintSuccess(os.Stdout, fmt.Sprintf(
+			"No drift: %s matches SolidPing (%d unchanged)", file, res.Unchanged))
+
+		return nil
+	}
+
+	output.PrintError(os.Stdout, fmt.Sprintf("Drift: %s does not match SolidPing", file))
+
+	return cli.Exit("", 1)
+}
+
+// checksDiffAction implements `sp checks diff <file>`.
+//
+// It asks the SERVER for the reconcile plan (a dry run that mutates nothing)
+// and reports its counts: `created=0 updated=0 deleted=0` is the machine-
+// readable "the file matches the instance" (spec 2026-09-11-04). Before that
+// the answer had to be reconstructed client-side from a textual diff, because
+// a dry-run import counted every matched slug as an update — so every external
+// tool grew its own normalizer, and every one of them drifted.
+//
+// The textual diff remains, as `--text` and as the automatic fallback when the
+// plan cannot be computed (the plan is admin-only, and an older server does not
+// report `unchanged` at all).
+//
+// Exit 0 (no drift) / 1 (drift) / >=2 (errors) — unchanged, CI-friendly.
+//
+//nolint:cyclop // one linear fallback chain: plan, then text diff
 func checksDiffAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -182,6 +227,21 @@ func checksDiffAction(ctx context.Context, cmd *cli.Command) error {
 	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
 	if err != nil {
 		return cliCtx.HandleAuthError(err)
+	}
+
+	if !cmd.Bool("text") {
+		// Prune + force on a DRY RUN: nothing is written either way, and both
+		// flags only widen what the plan is allowed to report — without prune a
+		// managed check the file no longer carries would be invisible, and
+		// without force the deletion cap would refuse to answer at all.
+		planRaw, planErr := apiClient.ApplyChecks(ctx, cliCtx.GetOrg(), localRaw, detectContentType(file),
+			client.ApplyOptions{DryRun: true, Prune: true, Force: true})
+		if planErr == nil {
+			var planRes applyResult
+			if json.Unmarshal(planRaw, &planRes) == nil {
+				return reportDiffPlan(cliCtx, file, &planRes)
+			}
+		}
 	}
 
 	liveRaw, exportErr := apiClient.ExportChecks(ctx, cliCtx.GetOrg())

@@ -25,10 +25,44 @@ var (
 
 // applyPlanEntry mirrors the server-side ApplyPlanEntry for pretty-printing.
 type applyPlanEntry struct {
-	Slug         string `json:"slug"`
-	PreviousSlug string `json:"previousSlug,omitempty"`
-	Action       string `json:"action"`
-	Reason       string `json:"reason,omitempty"`
+	Slug         string             `json:"slug"`
+	PreviousSlug string             `json:"previousSlug,omitempty"`
+	Action       string             `json:"action"`
+	Reason       string             `json:"reason,omitempty"`
+	Changes      []checkFieldChange `json:"changes,omitempty"`
+}
+
+// checkFieldChange mirrors the server-side CheckFieldChange: one field an
+// update would move, already masked server-side where the value is a secret or
+// a ${…} reference.
+type checkFieldChange struct {
+	Field string `json:"field"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+}
+
+// changeSummary renders a plan entry's field diff on one line, for the table.
+func changeSummary(entry *applyPlanEntry) string {
+	if len(entry.Changes) == 0 {
+		return entry.Reason
+	}
+
+	parts := make([]string, 0, len(entry.Changes))
+	for i := range entry.Changes {
+		parts = append(parts, fmt.Sprintf("%s: %s -> %s",
+			entry.Changes[i].Field, orEmptyMarker(entry.Changes[i].From), orEmptyMarker(entry.Changes[i].To)))
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+// orEmptyMarker keeps an absent value visible in a diff line.
+func orEmptyMarker(value string) string {
+	if value == "" {
+		return "(unset)"
+	}
+
+	return value
 }
 
 // applyResult mirrors the server-side ApplyResult for pretty-printing.
@@ -38,6 +72,7 @@ type applyResult struct {
 	Pruned    bool             `json:"pruned"`
 	Created   int              `json:"created"`
 	Updated   int              `json:"updated"`
+	Unchanged int              `json:"unchanged"`
 	Deleted   int              `json:"deleted"`
 	Unmanaged int              `json:"unmanaged"`
 	Plan      []applyPlanEntry `json:"plan"`
@@ -69,14 +104,14 @@ func printApplyPlan(res *applyResult) {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"ACTION", colSlug, "REASON"})
+	tbl.AppendHeader(table.Row{"ACTION", colSlug, "DETAIL"})
 	for i := range res.Plan {
 		entry := &res.Plan[i]
 		slug := entry.Slug
 		if entry.PreviousSlug != "" {
 			slug = entry.PreviousSlug + " -> " + entry.Slug
 		}
-		tbl.AppendRow(table.Row{strings.ToUpper(entry.Action), slug, entry.Reason})
+		tbl.AppendRow(table.Row{strings.ToUpper(entry.Action), slug, changeSummary(entry)})
 	}
 	tbl.Render()
 }
@@ -89,8 +124,8 @@ func printApplySummary(res *applyResult) {
 	}
 
 	output.PrintMessage(os.Stdout, fmt.Sprintf(
-		"%s: %d created, %d updated, %d deleted, %d unmanaged (manifest: %s)",
-		prefix, res.Created, res.Updated, res.Deleted, res.Unmanaged, res.Manifest))
+		"%s: %d created, %d updated, %d unchanged, %d deleted, %d unmanaged (manifest: %s)",
+		prefix, res.Created, res.Updated, res.Unchanged, res.Deleted, res.Unmanaged, res.Manifest))
 
 	for _, w := range res.Warnings {
 		output.PrintMessage(os.Stdout, "WARNING: "+w)
