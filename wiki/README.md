@@ -91,6 +91,7 @@ Operational procedures for diagnosing the running system.
 
 ## Testing
 
+- [testing/test-layers.md](testing/test-layers.md) — Which Go test layer runs where (PR CI / nightly / local only): `make test` is `-short` and covers **no** Postgres, `make test-postgres` and the `backend-postgres` job do, `SP_TEST_REQUIRE_POSTGRES` turns a skip into a failure, and the `slowtests` build tag holds the live-network/Docker suites
 - [testing/e2e-ci.md](testing/e2e-ci.md) — E2E test infrastructure: CI environment, Playwright config, local execution
 - [testing/http-test-checks.md](testing/http-test-checks.md) — Fake API test checks: 5 predefined scenarios (stable, flaky, unstable, slow, 503)
 
