@@ -507,7 +507,9 @@ func (s *Service) validatePeriodFindings(
 
 	// Nothing validated here can be internal — the flag is not writable
 	// (spec 2026-08-27-01) — hence the constant false.
-	if err := validatePeriodForType(req.Type, period, false); err != nil {
+	if err := validatePeriodForType(
+		req.Type, period, false, parsedConfigForType(req.Type, effective),
+	); err != nil {
 		findings.addErrorFrom(err, fieldPeriod, CodeInvalidPeriod)
 	}
 

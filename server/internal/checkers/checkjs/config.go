@@ -2,12 +2,24 @@ package checkjs
 
 import (
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/dop251/goja"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
+
+// browserOpenRE recognizes a script that drives a browser.
+//
+// It is a HEURISTIC and the spec (2026-09-12-06 §7) says so. A false negative
+// (`var b = browser; b.open()`) simply runs at the `js` floor, under the
+// semaphore's protection; a false positive (the call in a comment) is a
+// validation error the user can read and work around. A runtime rule cannot do
+// better, because Execute never sees the check's period.
+//
+// Compiled once, read-only.
+var browserOpenRE = regexp.MustCompile(`\bbrowser\s*\.\s*open\s*\(`)
 
 const (
 	maxScriptSize  = 64 * 1024 // 64KB max script size
@@ -158,6 +170,30 @@ func stringMapToAny(in map[string]string) map[string]any {
 // already absent from every rendered document (spec 2026-09-11-02).
 func (c *JSConfig) SecretFields() []string {
 	return []string{fieldSecrets}
+}
+
+// MinPeriodHint raises this check's period floor to the `browser` type's when
+// the script opens a browser. Implements checkerdef.MinPeriodHint.
+//
+// A `js` check is scheduled as a `js` check (30 s floor), but a script holding
+// a page for most of a 30 s window costs exactly what the `browser` floor
+// exists to prevent: on a 4-slot worker one such check starves every browser
+// check next to it into "timed out waiting for a free browser slot". So a
+// script that uses the browser inherits the browser's floor, decided here —
+// at validation time, the only place that sees both the period and the script.
+//
+// Zero means "no opinion", which is every script that never opens a browser.
+func (c *JSConfig) MinPeriodHint() time.Duration {
+	if !browserOpenRE.MatchString(c.Script) {
+		return 0
+	}
+
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeBrowser)
+	if meta == nil {
+		return 0
+	}
+
+	return meta.MinPeriod
 }
 
 // Validate checks that the configuration fields are within acceptable bounds.

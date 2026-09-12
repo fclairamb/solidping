@@ -137,7 +137,7 @@ func (s *Service) planCreateCheck(
 		return nil, ErrInvalidCheckType
 	}
 
-	period, err := planPeriod(req.Type, req.Period)
+	period, err := planPeriod(req.Type, req.Period, req.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +279,7 @@ func (s *Service) planCreateCheck(
 // planPeriod parses an optional period string and enforces the per-type bounds
 // (spec 2026-07-01-04 D1), returning the RAW period — zero when the request
 // proposes none, which is what the bounds check itself treats as "exempt".
-func planPeriod(checkType string, raw *string) (time.Duration, error) {
+func planPeriod(checkType string, raw *string, configMap map[string]any) (time.Duration, error) {
 	period := time.Duration(0)
 
 	if raw != nil && *raw != "" {
@@ -294,7 +294,9 @@ func planPeriod(checkType string, raw *string) (time.Duration, error) {
 	// Internal checks and the synthetic sleep type are exempt; an absent
 	// period falls back to the default and needs no validation. Nothing
 	// planned here is internal (spec 2026-08-27-01), hence the constant.
-	if periodErr := validatePeriodForType(checkType, period, false); periodErr != nil {
+	if periodErr := validatePeriodForType(
+		checkType, period, false, parsedConfigForType(checkType, configMap),
+	); periodErr != nil {
 		return 0, periodErr
 	}
 
@@ -355,7 +357,17 @@ func (s *Service) planUpdateCheck(
 
 		period = time.Duration(duration)
 
-		if periodErr := validatePeriodForType(existing.Type, period, existing.Internal); periodErr != nil {
+		// A document that also rewrites the config is held to the NEW script's
+		// floor; one that only moves the period, to the stored script's.
+		configForPeriod := existing.Config
+		if req.Config != nil {
+			configForPeriod = req.Config
+		}
+
+		if periodErr := validatePeriodForType(
+			existing.Type, period, existing.Internal,
+			parsedConfigForType(existing.Type, configForPeriod),
+		); periodErr != nil {
 			return periodErr
 		}
 	}

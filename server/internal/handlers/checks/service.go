@@ -277,6 +277,11 @@ type periodBoundError struct {
 	CheckType string
 	Bound     time.Duration
 	TooLong   bool
+	// Reason names WHY the floor is higher than the type's own, when a
+	// config-derived hint raised it (spec 2026-09-12-06 §7). Empty for the
+	// plain per-type bound, so every existing message is byte-for-byte
+	// unchanged.
+	Reason string
 }
 
 func (e *periodBoundError) Error() string {
@@ -285,8 +290,41 @@ func (e *periodBoundError) Error() string {
 		direction = "at most"
 	}
 
-	return fmt.Sprintf("period for %s checks must be %s %s", e.CheckType, direction, formatPeriodBound(e.Bound))
+	msg := fmt.Sprintf("period for %s checks must be %s %s", e.CheckType, direction, formatPeriodBound(e.Bound))
+	if e.Reason != "" {
+		msg += ": " + e.Reason
+	}
+
+	return msg
 }
+
+// parsedConfigForType parses a raw config map into its per-type Config so a
+// validator can ask it questions the map cannot answer. Returns nil for an
+// unknown type or a config the type refuses — a period check must never fail
+// because the CONFIG is malformed; the config validators report that, with a
+// message about the config.
+func parsedConfigForType(checkType string, configMap map[string]any) checkerdef.Config {
+	if configMap == nil {
+		return nil
+	}
+
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return nil
+	}
+
+	if err := cfg.FromMap(configMap); err != nil {
+		return nil
+	}
+
+	return cfg
+}
+
+// browserFloorReason is the explanation attached to a `js` check refused for
+// the browser floor. It has to say what the user can DO about it — either
+// raise the period or stop opening a browser — because the type's own
+// documented floor is 30s and the error would otherwise read as a bug.
+const browserFloorReason = "scripts that open a browser have the browser check's 1m floor"
 
 // formatPeriodBound renders a period bound compactly, the way users write
 // periods: whole hours as "6h", whole minutes at or above ten minutes as
@@ -311,7 +349,14 @@ func formatPeriodBound(bound time.Duration) string {
 // is the load-harness dial (spec 2026-07-01-01) and must stay free to express
 // pathological mixes. Existing rows are grandfathered: this runs only on
 // create/update writes, never via migration.
-func validatePeriodForType(checkType string, period time.Duration, internal bool) error {
+//
+// `config` is the check's PARSED config, or nil when the caller has none. It
+// is consulted for a checkerdef.MinPeriodHint — a floor the config's CONTENT
+// raises above the type's own, today only "this script opens a browser"
+// (spec 2026-09-12-06 §7).
+func validatePeriodForType(
+	checkType string, period time.Duration, internal bool, config checkerdef.Config,
+) error {
 	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
 		return nil
 	}
@@ -328,8 +373,18 @@ func validatePeriodForType(checkType string, period time.Duration, internal bool
 		maxPeriod = meta.MaxPeriod
 	}
 
+	// max(type floor, config-derived floor).
+	var reason string
+
+	if hinter, ok := config.(checkerdef.MinPeriodHint); ok && config != nil {
+		if hint := hinter.MinPeriodHint(); hint > minPeriod {
+			minPeriod = hint
+			reason = browserFloorReason
+		}
+	}
+
 	if period < minPeriod {
-		return &periodBoundError{CheckType: checkType, Bound: minPeriod}
+		return &periodBoundError{CheckType: checkType, Bound: minPeriod, Reason: reason}
 	}
 
 	if maxPeriod > 0 && period > maxPeriod {
@@ -1744,7 +1799,14 @@ func (s *Service) UpdateCheck(
 		// next write to the period. The internal flag comes from the stored
 		// row: a PATCH can no longer toggle it (spec 2026-08-27-01), and the
 		// type cannot change on PATCH either.
-		if periodErr := validatePeriodForType(check.Type, time.Duration(duration), check.Internal); periodErr != nil {
+		// check.Config is the POST-merge config when this PATCH also changed
+		// it (applyConfigUpdate ran above), and the stored one otherwise — so
+		// a period-only PATCH is held to the stored script's floor, and a
+		// script+period PATCH to the new script's.
+		if periodErr := validatePeriodForType(
+			check.Type, time.Duration(duration), check.Internal,
+			parsedConfigForType(check.Type, check.Config),
+		); periodErr != nil {
 			return CheckResponse{}, periodErr
 		}
 		update.Period = &duration

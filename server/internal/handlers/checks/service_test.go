@@ -264,7 +264,7 @@ func TestValidatePeriodForType(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			err := validatePeriodForType(tt.checkType, tt.period, tt.internal)
+			err := validatePeriodForType(tt.checkType, tt.period, tt.internal, nil)
 			if tt.wantErr == "" {
 				r.NoError(err)
 				return
