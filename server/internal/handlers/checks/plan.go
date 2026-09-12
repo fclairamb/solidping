@@ -145,9 +145,12 @@ func (s *Service) planCreateCheck(
 	// The EFFECTIVE period — what the row will carry — is only used by the
 	// regionSpread bound, which is how CreateCheck has always checked it
 	// (against check.Period, i.e. the default when the request omits one).
+	// defaultPeriodForType is the same type-aware resolution CreateCheck uses
+	// to fill in check.Period itself (spec 2026-09-11-07), so this can never
+	// disagree with what actually gets stored.
 	effectivePeriod := period
 	if effectivePeriod == 0 {
-		effectivePeriod = defaultCheckPeriod
+		effectivePeriod = defaultPeriodForType(req.Type)
 	}
 
 	userProvidedSlug := req.Slug != ""

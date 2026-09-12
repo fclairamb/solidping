@@ -78,8 +78,8 @@ type ValidateCheckRequest struct {
 	Internal *bool `json:"internal,omitempty"`
 	// RegionSpread is the proposed inter-region scheduling offset (spec
 	// 2026-07-20-05). Checked against 0 <= regionSpread < period, using the
-	// proposed Period above when given, else the same 1-minute default
-	// CreateCheck falls back to.
+	// proposed Period above when given, else the same type-aware default
+	// CreateCheck falls back to (defaultPeriodForType, spec 2026-09-11-07).
 	RegionSpread *string `json:"regionSpread,omitempty"`
 	// ConfirmationPeriodSeconds / RecoveryPeriodSeconds are the wall-clock
 	// incident-tracking periods (spec 2026-05-08-02), checked against
@@ -1346,13 +1346,22 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// of this function (spec 2026-08-27-01), so every check created here is a
 	// normal, fully metered customer check.
 
-	// Set period (default is 1 minute from NewCheck)
+	// Set period: the request's own value when it proposed one (already
+	// parsed and bounds-checked against the type by planCreateCheck via
+	// planPeriod, above); otherwise the type's own default via
+	// defaultPeriodForType (spec 2026-09-11-07), replacing NewCheck's flat
+	// one-minute constant — a type with a MinPeriod above one minute (ssl,
+	// domain, dnsbl, js, browser) must not silently start out below its own
+	// floor. See NewCheck's own comment for why NewCheck keeps that flat
+	// constant instead of resolving it there.
 	if req.Period != nil && *req.Period != "" {
 		var duration timeutils.Duration
 		if err := duration.Scan(*req.Period); err != nil { //nolint:govet
 			return CheckResponse{}, err
 		}
 		check.Period = duration
+	} else {
+		check.Period = timeutils.Duration(defaultPeriodForType(req.Type))
 	}
 
 	// The remaining request-level guards — regionSpread's bound, the
