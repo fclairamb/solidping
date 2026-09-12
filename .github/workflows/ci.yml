@@ -251,6 +251,15 @@ jobs:
             exit 1
           fi
 
+          # Belt and braces, and free of false positives: this exact wording is
+          # only ever printed by internal/testsupport's SKIP branch, so seeing
+          # it means SP_TEST_REQUIRE_POSTGRES did not reach the test binary --
+          # regardless of whether the test's name happens to say "Postgres".
+          if grep -E 'embedded postgres (unavailable|init failed):.*set SP_TEST_REQUIRE_POSTGRES=1' "$log"; then
+            echo "::error::A test skipped on an embedded-Postgres failure: SP_TEST_REQUIRE_POSTGRES did not take effect."
+            exit 1
+          fi
+
           # Floor on the count, so a change that stops COMPILING the suites in
           # (say) internal/db/postgres cannot quietly empty this job out. 116
           # top-level Postgres-named tests exist as of spec 2026-09-12-05;

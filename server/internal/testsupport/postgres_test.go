@@ -1,6 +1,7 @@
 package testsupport_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -108,6 +109,33 @@ func TestPostgresInitFailedFailsWhenRequired(t *testing.T) {
 	r.Empty(rec.skipped)
 	r.Contains(rec.failed, "embedded postgres init failed")
 	r.Contains(rec.failed, errBoom.Error())
+}
+
+// TestPostgresUnavailableTestMainTellsTheCallerToDie is the TestMain path: no
+// *testing.T exists there, so the decision is "abort the binary or not".
+func TestPostgresUnavailableTestMainTellsTheCallerToDie(t *testing.T) {
+	t.Setenv(testsupport.EnvRequirePostgres, "1")
+
+	out := &bytes.Buffer{}
+	mustExit := testsupport.PostgresUnavailableTestMain(out, errBoom)
+
+	r := require.New(t)
+	r.True(mustExit, "SP_TEST_REQUIRE_POSTGRES=1 must abort the test binary, not run it empty")
+	r.Contains(out.String(), "embedded postgres unavailable")
+	r.Contains(out.String(), errBoom.Error())
+	r.Contains(out.String(), "FAILURE")
+}
+
+func TestPostgresUnavailableTestMainKeepsSkippingWhenNotRequired(t *testing.T) {
+	t.Setenv(testsupport.EnvRequirePostgres, "")
+
+	out := &bytes.Buffer{}
+	mustExit := testsupport.PostgresUnavailableTestMain(out, errBoom)
+
+	r := require.New(t)
+	r.False(mustExit, "an unset variable must leave the local skip behavior alone")
+	r.Contains(out.String(), "embedded postgres unavailable")
+	r.Contains(out.String(), testsupport.EnvRequirePostgres)
 }
 
 // TestRealTestingTSatisfiesTB is the compile-time link between the recorder

@@ -4,6 +4,8 @@
 package testsupport
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -78,17 +80,54 @@ func postgresUnusable(testingT TB, stage string, err error) {
 	testingT.Helper()
 
 	if RequirePostgres() {
-		testingT.Fatalf(
-			"%s: %v\n"+
-				"%s is set, so this is a FAILURE and not a skip: this run was asked to prove the "+
-				"Postgres layer actually executes. Fix the embedded Postgres startup (binary "+
-				"download, port clash, or the shared ~/.embedded-postgres-go/extracted pwfile race "+
-				"-- run with -p 1) rather than unsetting the variable.",
-			stage, err, EnvRequirePostgres,
-		)
+		testingT.Fatalf("%s", requiredMessage(stage, err))
 
 		return
 	}
 
-	testingT.Skipf("%s: %v (set %s=1 to make this a failure instead)", stage, err, EnvRequirePostgres)
+	testingT.Skipf("%s", skippedMessage(stage, err))
+}
+
+// requiredMessage and skippedMessage are shared by the TB helpers and by
+// PostgresUnavailableTestMain so the two paths cannot drift apart.
+func requiredMessage(stage string, err error) string {
+	return fmt.Sprintf(
+		"%s: %v\n"+
+			"%s is set, so this is a FAILURE and not a skip: this run was asked to prove the "+
+			"Postgres layer actually executes. Fix the embedded Postgres startup (binary "+
+			"download, port clash, or the shared ~/.embedded-postgres-go/extracted pwfile race "+
+			"-- run with -p 1) rather than unsetting the variable.",
+		stage, err, EnvRequirePostgres,
+	)
+}
+
+func skippedMessage(stage string, err error) string {
+	return fmt.Sprintf("%s: %v (set %s=1 to make this a failure instead)", stage, err, EnvRequirePostgres)
+}
+
+// PostgresUnavailableTestMain is the TestMain-shaped counterpart of
+// PostgresUnavailable. A TestMain has no *testing.T, so it cannot reach
+// t.Fatalf; it decides for the whole binary instead.
+//
+// It writes the explanation to out and reports whether the caller must abort
+// the test binary with a non-zero status. A false return means the caller
+// should keep whatever skip-everything behavior it had — the developer-laptop
+// default.
+//
+// The one caller today is test/integration/scenario, whose TestMain boots a
+// shared embedded Postgres and, on failure, used to run the suite anyway so
+// that every scenario self-skipped. That is the same hole as a bare t.Skipf,
+// worded differently, and it is inside the backend-postgres job's ./... scope.
+func PostgresUnavailableTestMain(out io.Writer, err error) bool {
+	required := RequirePostgres()
+
+	if required {
+		_, _ = fmt.Fprintf(out, "%s\n", requiredMessage("embedded postgres unavailable", err))
+
+		return true
+	}
+
+	_, _ = fmt.Fprintf(out, "%s\n", skippedMessage("embedded postgres unavailable", err))
+
+	return false
 }
