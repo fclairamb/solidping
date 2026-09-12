@@ -207,7 +207,16 @@ Mirrors `registerEnv()`: a read-only `secrets` object built from the effective
 
 - `jsModule` grows an `env` plaintext editor and a `secrets` write-only editor,
   both on the shared `KeyValueRows` primitive (`secretValues` for the latter).
-  `ownedKeys: ["script", "env", "secrets"]` — the `-01` table test enforces it.
+  `ownedKeys: ["script", "env", "secrets"]`. The `-01` table test enforces it —
+  but only after this spec extended it. `undeclaredKeysFor` drove each module
+  from `fromConfig` alone, and a write guarded by a DIRTY FLAG is unreachable
+  that way: `secrets` is written under `if (state.secretsDirty)` and
+  `fromConfig` hard-codes that false (a secret map never comes back on a read,
+  so there is nothing to seed it from). The audit therefore reported `jsModule`
+  clean with `secrets` REMOVED from `ownedKeys` — it was auditing a write that
+  could not fire. A second pass per seed, over a state with every boolean
+  flipped true, makes it reachable, and a committed positive control pins that:
+  it fails if the pass is removed.
 - `secretsDirty` reproduces `HttpAuthFields`' contract through the shared
   primitive: a row count that GREW is an "add" and does not dirty; an edit or a
   removal does. Not dirty ⇒ `secrets` is absent from the payload ⇒ the server

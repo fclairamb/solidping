@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { httpModule, type HttpState } from "./http";
+import { jsModule } from "./misc";
 import { checkTypeRegistry, type CheckTypeModule } from "./index";
 import {
   assembleSubmittedConfig,
@@ -614,12 +615,33 @@ function undeclaredKeysFor(mod: CheckTypeModule): string[] {
     seedProxy({ "1": "1" }),
   ];
   for (const seed of seeds) {
-    const { config } = mod.toConfig(mod.fromConfig(seed));
-    for (const written of Object.keys(config)) {
-      if (!declared.has(written)) found.add(written);
+    const state = mod.fromConfig(seed);
+    // Two passes per seed. The second flips every boolean in the state to
+    // true, because a module's DIRTY FLAGS are not seeded from config — they
+    // are set by the editor's own onChange — and a write guarded by one is
+    // unreachable from `fromConfig` alone at ANY seed. A JS check's `secrets`
+    // is exactly that shape: `if (state.secretsDirty)`, and `fromConfig` hard-
+    // codes it false, so the single-pass version audited a write that could
+    // never fire and reported "declared" for a key nothing had exercised.
+    for (const variant of [state, allFlagsOn(state)]) {
+      const { config } = mod.toConfig(variant);
+      for (const written of Object.keys(config)) {
+        if (!declared.has(written)) found.add(written);
+      }
     }
   }
   return [...found].sort();
+}
+
+// allFlagsOn returns a copy of a module state with every boolean property set
+// to true — the state an operator produces by touching a dirty-flagged editor.
+function allFlagsOn<S>(state: S): S {
+  if (!state || typeof state !== "object") return state;
+  const out = { ...(state as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(out)) {
+    if (typeof value === "boolean") out[key] = true;
+  }
+  return out as S;
 }
 
 // ---------------------------------------------------------------------------
@@ -737,6 +759,29 @@ describe("every registered module declares the config keys it writes", () => {
         `removing "${drop}" from ownedKeys must be caught`,
       ).toContain(drop);
     }
+  });
+
+  // SECOND POSITIVE CONTROL, for the dirty-flag shape (spec 2026-09-11-05).
+  //
+  // `secrets` is written only under `if (state.secretsDirty)`, and
+  // `jsModule.fromConfig` hard-codes that flag false — a secret map never comes
+  // back on a read, so there is nothing to seed it from. The seed-only version
+  // of the audit above therefore reported jsModule clean with `secrets`
+  // REMOVED from ownedKeys: the write was unreachable, so nothing was audited.
+  // The all-flags-on pass is what makes it reachable, and this proves it.
+  it("catches a key written only behind a dirty flag (positive control)", () => {
+    const sabotaged: CheckTypeModule = {
+      ...(jsModule as unknown as CheckTypeModule),
+      ownedKeys: jsModule.ownedKeys.filter((k) => k !== "secrets"),
+    };
+    expect(
+      undeclaredKeysFor(sabotaged),
+      'removing "secrets" from jsModule.ownedKeys must be caught',
+    ).toContain("secrets");
+
+    // …and the real module is clean, so the control above is not passing
+    // merely because the audit reports `secrets` for everyone.
+    expect(undeclaredKeysFor(jsModule as unknown as CheckTypeModule)).toEqual([]);
   });
 
   it("declares ownedKeys for every module that models any config", () => {
