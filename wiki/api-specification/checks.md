@@ -336,13 +336,21 @@ or deleted.
   existing managed check reconciles the rename in place instead of delete+create.
 
 **Secret references.** Config string values may contain `${env:NAME}` and
-`${param:KEY}` references, resolved **server-side at apply time** (env vars; the
-`parameters` table — org-scoped first, then system-wide) into the existing
-encrypted `config_private` envelope. The committed manifest stays secret-free.
-A missing/unresolvable reference is a hard apply error. When
-`SP_ENCRYPTION_MASTER_KEY` is unset (plaintext fallback), resolving a secret ref
-emits a `warnings[]` entry rather than refusing — the resolved value lands in
-plaintext config.
+`${param:KEY}` references. Since spec 2026-09-11-03 the **reference is what is
+stored**: apply and import only *validate* that every reference resolves, and
+the value is materialized at execution time — it never reaches the `config`
+column and never comes back from `GET /checks/:uid` or `/checks/export`, so the
+manifest round-trips as written. A missing or unresolvable reference is a hard
+`400 VALIDATION_ERROR` from **both** endpoints, dry run included. A document
+using `${env:}` gets one advisory `warnings[]` entry: it resolves on the process
+that executes the check, which for a deported agent is that agent's environment.
+See [`features/config-as-code.md`](../features/config-as-code.md#secret-references).
+
+`${param:KEY}` reads the org's `parameters` table (org-scoped first, then
+system-wide), managed by an org admin at
+[`/orgs/:org/parameters`](orgs.md#organization-parameters) or with
+`sp params set`. Keys SolidPing owns for its own per-org configuration (the
+`sp.` prefix, `encryption.`, `auth.`, `registration.`, …) are unresolvable.
 
 **Deletion safety (belt-and-suspenders).** Delete-by-absence happens **only**
 when all of: (a) `?prune=true` is set, (b) the check carries the managed label,

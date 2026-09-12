@@ -212,6 +212,49 @@ Get organization settings. Auth: required
 ### PATCH /api/v1/orgs/:org/settings
 Update organization settings. Auth: required (admin)
 
+## Organization Parameters
+
+The values a config-as-code manifest references as `${param:KEY}` (spec
+2026-09-11-03). Every route is **admin only**. Before this existed the only HTTP
+surface onto the `parameters` table was `/api/v1/system/parameters`, super-admin
+only — so the documented `${param:}` mechanism had no way for an org admin to
+create the parameter it told them to reference.
+
+Two rules shape the surface:
+
+- **A secret parameter is write-only.** `value` is *absent* — not blanked — from
+  every read, in the list and in the single-key get alike. There is no reveal
+  route; rotation is "set it again".
+- **Reserved keys are refused with 400.** The `sp.` prefix is reserved for
+  SolidPing's own future per-org keys, and the existing platform namespaces
+  (`encryption.`, `auth.`, `registration.`, `demo.`, `samples.`, `diagnostics.`,
+  `status_page.`, `email.`, `entitlements.`, `notifications.`, `aggregation.`,
+  plus `default_regions` / `custom_regions`) are refused too — an org must not be
+  able to overwrite the key its own encryption DEK lives under. The same registry
+  makes those keys unresolvable through `${param:}`, so a check body cannot read
+  them out either.
+
+### GET /api/v1/orgs/:org/parameters
+List the organization's parameters. Auth: required (admin).
+Response: `{ "data": [ { "key", "value"?, "secret", "updatedAt" } ] }` —
+`value` present only for non-secret parameters.
+
+### GET /api/v1/orgs/:org/parameters/:key
+Get one parameter. Auth: required (admin). 404 when absent.
+
+### PUT /api/v1/orgs/:org/parameters/:key
+Create the parameter, or replace its value (rotation — the key, and every
+`${param:KEY}` reference to it, is unchanged). Auth: required (admin).
+
+Body: `{ "value": "<string>", "secret": true }`. `secret` defaults to **true**.
+Keys match `^[a-z][a-z0-9_.-]{0,63}$`; values are capped at 8 KiB.
+
+### DELETE /api/v1/orgs/:org/parameters/:key
+Delete the parameter. Auth: required (admin). A missing key answers **404**, not
+a cheerful 204: deleting a parameter makes every check referencing it fail with
+`unresolved secret reference` at its next run, so "I deleted nothing" has to be
+said out loud.
+
 ## Organization Tokens
 
 ### GET /api/v1/orgs/:org/tokens
