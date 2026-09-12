@@ -26,7 +26,11 @@ import {
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
 import { useDemoConfig, usePublicConfigLoading } from "@/api/public-config";
-import { demoAutoLoginOwnsRedirect, parseDemoFlag } from "@/lib/demo";
+import {
+  demoAutoLoginOwnsRedirect,
+  demoEntryDecision,
+  parseDemoFlag,
+} from "@/lib/demo";
 import { pickAccessibleOrg } from "@/lib/accessible-org";
 import {
   getLastAuthMethod,
@@ -345,6 +349,26 @@ function LoginPage() {
       return;
     }
 
+    // The one invariant (spec 2026-09-12-01 §A): the demo is only ever signed
+    // into from the demo org's OWN login page. Standing on another org's page,
+    // hop there first and let its `?demo` effect do the sign-in — signing in
+    // here would apply the demo session while the URL still names this org,
+    // and the cross-org navigation that follows makes the org layout warn
+    // "You don't have access to <this org> — showing <demo> instead." on the
+    // product's own front door. `replace`, so Back returns to wherever the
+    // visitor came from rather than to the page that bounced them.
+    const decision = demoEntryDecision(org, demoConfig.orgSlug);
+    if (decision === "unavailable") return;
+    if (decision === "hopTo") {
+      navigate({
+        to: "/orgs/$org/login",
+        params: { org: demoConfig.orgSlug as string },
+        search: { session_expired: false, returnTo: undefined, demo: true },
+        replace: true,
+      });
+      return;
+    }
+
     setError(null);
     setIsLoading(true);
 
@@ -371,6 +395,7 @@ function LoginPage() {
     isAuthenticated,
     user?.isDemo,
     navigate,
+    org,
     login,
     routeResult,
     reportError,
@@ -382,7 +407,13 @@ function LoginPage() {
   // login while the first is still in flight. Writing state here would also
   // trip react-hooks' cascading-render rule for no benefit, since nothing
   // renders off this value.
-  const demoAutoLoginStarted = useRef(false);
+  //
+  // It holds the ORG it fired for rather than a bare boolean: since spec
+  // 2026-09-12-01 the effect's first act on a foreign org's page is to hop to
+  // `/orgs/<demo>/login?demo=true`, and the latch has to re-arm there. Keying
+  // it by org does that whether or not the router remounts this component
+  // across the param change — a detail of the router we should not depend on.
+  const demoAutoLoginStartedFor = useRef<string | null>(null);
 
   useEffect(() => {
     // `authLoading` joins the one-shot guard rather than sitting in a second
@@ -395,7 +426,7 @@ function LoginPage() {
       !demoAutoLogin ||
       !demoAvailable ||
       authLoading ||
-      demoAutoLoginStarted.current
+      demoAutoLoginStartedFor.current === org
     ) {
       return;
     }
@@ -405,9 +436,9 @@ function LoginPage() {
     // (applyLoginResponse), so a visitor holding a session in their own org
     // needs no sign-out step — and gets no confirmation dialog either: the
     // whole point of the link is zero clicks.
-    demoAutoLoginStarted.current = true;
+    demoAutoLoginStartedFor.current = org;
     void enterDemo();
-  }, [demoAutoLogin, demoAvailable, authLoading, enterDemo]);
+  }, [demoAutoLogin, demoAvailable, authLoading, org, enterDemo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

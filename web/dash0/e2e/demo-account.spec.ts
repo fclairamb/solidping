@@ -25,6 +25,117 @@ async function demoConfig(request: import("@playwright/test").APIRequestContext)
     | undefined;
 }
 
+/**
+ * Records EVERY toast this page ever renders, into `window.__spToasts`.
+ *
+ * A `MutationObserver` rather than polling with a Playwright locator: the
+ * assertion these feed is that a toast NEVER appears, and a locator sampled
+ * every few hundred milliseconds can step over a toast that came and went
+ * between two samples. Installed via `addInitScript`, so it is armed before
+ * any application code runs on every document this page loads.
+ */
+async function recordToasts(page: import("@playwright/test").Page) {
+  await page.addInitScript(() => {
+    const store: string[] = [];
+    (window as unknown as { __spToasts: string[] }).__spToasts = store;
+
+    const sweep = () => {
+      for (const el of document.querySelectorAll("[data-sonner-toast]")) {
+        const text = (el as HTMLElement).innerText.trim();
+        if (text && !store.includes(text)) store.push(text);
+      }
+    };
+
+    const arm = () => {
+      sweep();
+      new MutationObserver(sweep).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    };
+
+    if (document.body) arm();
+    else document.addEventListener("DOMContentLoaded", arm);
+  });
+}
+
+/** Every toast text seen so far on the CURRENT document. */
+async function toastsSeen(page: import("@playwright/test").Page) {
+  return page.evaluate(
+    () => (window as unknown as { __spToasts?: string[] }).__spToasts ?? [],
+  );
+}
+
+/** The org layout's non-member fallback — the toast this spec is about. */
+const ACCESS_TOAST = /don't have access to/i;
+
+/**
+ * Asserts the non-member fallback toast is not rendered, and keeps asserting
+ * it for a couple of seconds.
+ *
+ * A single `expect(locator).not.toBeVisible()` would pass on a toast that has
+ * simply not appeared YET — the whole flow is a sequence of navigations, and
+ * the offending one is the LAST of them. Polling a recorder that never forgets
+ * is the only form of this assertion that is not a race.
+ *
+ * Its ability to fail is not taken on faith either: "a genuine non-member
+ * bookmark still explains itself" below drives the same recorder through the
+ * case the toast exists for and asserts it IS seen.
+ */
+async function expectNoAccessToast(
+  page: import("@playwright/test").Page,
+  windowMs = 2500,
+) {
+  const deadline = Date.now() + windowMs;
+  for (;;) {
+    const seen = await toastsSeen(page);
+    expect(
+      seen.filter((text) => ACCESS_TOAST.test(text)),
+      "entering the live demo must never warn about an org the visitor never asked for",
+    ).toEqual([]);
+    if (Date.now() >= deadline) return;
+    await page.waitForTimeout(200);
+  }
+}
+
+/**
+ * Records every main-frame navigation, SPA history pushes included.
+ *
+ * The old tests only ever looked at the FINAL URL, which is why a demo entry
+ * that detoured through a foreign org — the thing that produced the toast —
+ * passed them unchanged.
+ */
+function recordNavigations(page: import("@playwright/test").Page) {
+  const urls: string[] = [];
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) urls.push(frame.url());
+  });
+
+  return urls;
+}
+
+/**
+ * The recorded URLs that sit inside an org OTHER than the demo and are not an
+ * org login/register page.
+ *
+ * Login pages are allowed through whatever org they name: they are where a
+ * demo entry legitimately starts (the button is offered on every org's login
+ * page) and where `/`, `/login` and `/demo` land before the hop. What must
+ * never be seen is a foreign org's *dashboard* — that is a session being
+ * pointed at an org it is not a member of.
+ */
+function strayOrgUrls(urls: string[], demoOrg: string): string[] {
+  return urls.filter((url) => {
+    const { pathname } = new URL(url);
+    const slug = /\/orgs\/([^/?#]+)/.exec(pathname)?.[1];
+
+    return Boolean(
+      slug && slug !== demoOrg && !/\/orgs\/[^/]+\/(login|register)$/.test(pathname),
+    );
+  });
+}
+
 test.describe("Public live demo", () => {
   test("the instance advertises a demo in test mode", async ({ request }) => {
     const demo = await demoConfig(request);
@@ -190,6 +301,147 @@ test.describe("Public live demo", () => {
     expect(page.url()).not.toContain("/orgs/test");
     await page.waitForLoadState("networkidle");
     expect(logins, "a valid demo session must not log in again").toHaveLength(0);
+  });
+
+  // Spec 2026-09-12-01. The demo is signed into ONLY from the demo org's own
+  // login page; every other entry point hops there first. What these pin is
+  // the symptom that made it a bug report: the product's front door greeting a
+  // first-time visitor with "You don't have access to default — showing demo
+  // instead." about an org they never asked for.
+
+  test("the demo button hops to the demo org instead of signing in from a foreign org", async ({
+    page,
+    request,
+  }) => {
+    const demo = await demoConfig(request);
+    const org = demo?.orgSlug as string;
+
+    await recordToasts(page);
+    const navigations = recordNavigations(page);
+    const forbiddenUrls: string[] = [];
+    page.on("response", (response) => {
+      if (response.status() === 403) forbiddenUrls.push(response.url());
+    });
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("login-demo").click();
+
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+
+    await expectNoAccessToast(page);
+
+    expect(
+      strayOrgUrls(navigations, org),
+      "the demo entry must never route through another org's dashboard",
+    ).toEqual([]);
+    // Stricter than strayOrgUrls for the one org this test actually starts in:
+    // /orgs/test must appear ONLY as the login page the visitor started on.
+    expect(
+      navigations.filter((url) =>
+        /\/orgs\/test(\/(?!login$)|$)/.test(new URL(url).pathname),
+      ),
+      "nothing beyond the starting login page may live under /orgs/test",
+    ).toEqual([]);
+    await page.waitForLoadState("networkidle");
+    expect(forbiddenUrls).toEqual([]);
+  });
+
+  for (const [label, path] of [
+    ["an org login page with ?demo=1", "orgs/test/login?demo=1"],
+    ["an org login page with ?demo=true", "orgs/test/login?demo=true"],
+    ["the root login page", "login?demo=true"],
+    ["the dashboard root", "?demo=true"],
+    ["an org page with no /login", "orgs/test?demo=true"],
+    // Absolute, so Playwright resolves it against the origin rather than the
+    // suite's /d/ baseURL: the real server-side 302.
+    ["the /demo shortcut", "/demo"],
+  ] as const) {
+    test(`${label} enters the demo with no access warning`, async ({
+      page,
+      request,
+    }) => {
+      const demo = await demoConfig(request);
+      const org = demo?.orgSlug as string;
+
+      await recordToasts(page);
+      const navigations = recordNavigations(page);
+
+      await page.goto(path);
+
+      await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+      await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+
+      await expectNoAccessToast(page);
+      expect(
+        strayOrgUrls(navigations, org),
+        "the demo entry must never route through another org's dashboard",
+      ).toEqual([]);
+    });
+  }
+
+  test("a visitor holding another org's session follows a demo link with no access warning", async ({
+    page,
+    request,
+  }) => {
+    const demo = await demoConfig(request);
+    const org = demo?.orgSlug as string;
+
+    await page.goto("orgs/test/login");
+    await page.getByTestId("login-title").waitFor({ state: "visible", timeout: 20000 });
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+    await page.waitForURL((url) => !url.pathname.includes("login"), {
+      timeout: 20000,
+    });
+
+    // Armed only now: the ordinary sign-in above is not what this asserts, and
+    // addInitScript applies from the next document load anyway.
+    await recordToasts(page);
+    const navigations = recordNavigations(page);
+
+    await page.goto("orgs/test/login?demo=1");
+
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+
+    await expectNoAccessToast(page);
+    expect(strayOrgUrls(navigations, org)).toEqual([]);
+  });
+
+  test("a genuine non-member bookmark still explains itself", async ({
+    page,
+    request,
+  }) => {
+    // The negative control for everything above (spec 2026-09-12-01 §C.4), and
+    // the proof that `expectNoAccessToast` is capable of failing: the SAME
+    // recorder, driven through the case the fallback exists for.
+    //
+    // The demo session is the only non-super-admin the test fixture ships —
+    // test@test.com is a super admin, and pickAccessibleOrg lets a super admin
+    // into any org without a word — so the demo visitor bookmarking /orgs/test
+    // is exactly "an org you are not a member of".
+    const demo = await demoConfig(request);
+    const org = demo?.orgSlug as string;
+
+    await recordToasts(page);
+
+    await page.goto("orgs/test/login?demo=1");
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
+
+    await page.goto("orgs/test");
+
+    // Redirected into the org they CAN use, and told why.
+    await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    await expect(page.getByText(ACCESS_TOAST)).toBeVisible({ timeout: 20000 });
+    await expect
+      .poll(async () => (await toastsSeen(page)).filter((t) => ACCESS_TOAST.test(t)), {
+        timeout: 20000,
+      })
+      .not.toEqual([]);
   });
 
   test("a demo visitor can rename and then delete a check they created", async ({

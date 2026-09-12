@@ -7,6 +7,7 @@ import {
   useLocation,
   useMatches,
   useNavigate,
+  useRouterState,
 } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -67,6 +68,7 @@ import { useFeedback } from "@/components/feedback/useFeedback";
 import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
 import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { demoFlagFromLocation } from "@/lib/demo";
+import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { pickAccessibleOrg } from "@/lib/accessible-org";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -115,7 +117,15 @@ export const Route = createFileRoute("/orgs/$org")({
     if (demoFlagFromLocation(location.search, location.searchStr)) {
       throw redirect({
         to: "/orgs/$org/login",
-        params: { org: params.org },
+        // Aim at the demo org itself when the public-config document is
+        // already in the query cache (spec 2026-09-12-01 §A): the demo is now
+        // signed into ONLY from the demo org's own login page, so any other
+        // slug here costs a second hop. Read synchronously and fall straight
+        // back to the URL's org — a beforeLoad that awaited the network would
+        // stall every demo deep link behind a request.
+        params: {
+          org: readCachedDemoOrgSlug(context.queryClient) || params.org,
+        },
         search: { session_expired: false, returnTo: undefined, demo: true },
         replace: true,
       });
@@ -995,10 +1005,36 @@ function OrgLayout() {
   const navigate = useNavigate();
   const auth = useAuth();
   const { t } = useTranslation("org");
-  // Anchored to the org-level login/register routes — see isOrgPublicRoute for
-  // why a bare `.endsWith("/register")` is wrong, and why the org param must
-  // not be interpolated into the pattern here.
-  const isLoginPage = isOrgPublicRoute(location.pathname);
+  // From the COMMITTED matches, never from `useLocation().pathname` — the two
+  // are different router stores and `org` above comes from the match one
+  // (spec 2026-09-12-01 §B).
+  //
+  // `router.state.location` flips to the PENDING destination the moment a
+  // navigation starts, while `Route.useParams()` keeps the committed params
+  // until the new matches land. Mixing them commits a render that describes
+  // two different URLs at once: navigating `/orgs/test/login` → `/orgs/demo`
+  // produced `{ pathname: "/orgs/demo", org: "test", isLoginPage: false }`,
+  // reproduced under Playwright for this spec, which is enough for
+  // `needsAccessibleOrgRedirect` below to fire and warn "You don't have
+  // access to test — showing demo instead." about a navigation the app itself
+  // was already making. Reading the route ids off `useMatches()` puts both
+  // halves of that decision on the same snapshot.
+  //
+  // Route ids, not a pathname regex: they cannot be confused by a nested
+  // authenticated route that merely ends in "/register" (the hazard
+  // isOrgPublicRoute exists to avoid — it still guards `beforeLoad`, which
+  // runs before any match exists and so genuinely only has a pathname).
+  const routeMatches = useMatches();
+  const isLoginPage = routeMatches.some(
+    (match) =>
+      match.routeId === "/orgs/$org/login" ||
+      match.routeId === "/orgs/$org/register",
+  );
+  // Neither cross-org guard below may evaluate against a half-committed
+  // transition: belt and braces for the same tear, and it also covers any
+  // FUTURE read either guard grows. `status` is "pending" for the whole of an
+  // in-flight navigation and "idle" once the matches are settled.
+  const routerIsIdle = useRouterState({ select: (state) => state.status }) === "idle";
   const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const { data: features } = useFeatures({ enabled: !isLoginPage });
@@ -1020,6 +1056,7 @@ function OrgLayout() {
   const needsOrgSwitch =
     auth.isAuthenticated &&
     !auth.isLoading &&
+    routerIsIdle &&
     !isLoginPage &&
     auth.org !== null &&
     auth.org !== org &&
@@ -1080,6 +1117,7 @@ function OrgLayout() {
     // precisely so this gate covers it — the login page's twin branch gates on
     // the same flag.
     !auth.isLoading &&
+    routerIsIdle &&
     !isLoginPage &&
     // The OAuth callback does its own hard redirect below; the session it is
     // about to adopt is not the one `auth` currently describes.

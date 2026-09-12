@@ -1,5 +1,7 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { parseDemoFlag } from "@/lib/demo";
 
 export const Route = createFileRoute("/")({
@@ -29,17 +31,24 @@ function getStoredOrg(): string | null {
 function RootRedirect() {
   const { demo } = Route.useSearch();
   const { org } = useAuth();
+  const queryClient = useQueryClient();
   // The demo flag is answered BEFORE the session is consulted: a visitor who
   // already holds a session (their own org, or the demo itself) followed a link
   // that says "demo", and sending them to `useAuth().org` instead is exactly
-  // the bug this route had. Any org slug works in the path — the login page
-  // signs into the configured demo org regardless — so reuse the same
-  // stored-org-else-`default` choice the root /login route makes.
+  // the bug this route had.
+  //
+  // Aim at the demo org itself when the public-config document is already
+  // cached (spec 2026-09-12-01 §A): the demo is signed into only from the demo
+  // org's own login page, so any other slug here just costs an extra hop. Never
+  // WAIT for that document — the login page hops on its own — hence the same
+  // stored-org-else-`default` fallback the root /login route uses.
   if (demo) {
     return (
       <Navigate
         to="/orgs/$org/login"
-        params={{ org: getStoredOrg() || "default" }}
+        params={{
+          org: readCachedDemoOrgSlug(queryClient) || getStoredOrg() || "default",
+        }}
         search={{ session_expired: false, returnTo: undefined, demo: true }}
         replace
       />
