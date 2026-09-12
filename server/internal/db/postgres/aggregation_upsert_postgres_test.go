@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portAggUpsert is distinct from every other _postgres_test.go file's
@@ -32,12 +33,12 @@ func TestUpsertAggregatedResult_Idempotent_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portAggUpsert, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("agg-upsert-pg-org", "Agg Upsert PG Org")
@@ -108,12 +109,12 @@ func TestListResults_ExcludeStatuses_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portAggUpsert, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("agg-exclude-pg-org", "Agg Exclude PG Org")
@@ -164,12 +165,12 @@ func TestListResults_RequireCheckExists_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portAggUpsert, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("agg-orphan-pg-org", "Agg Orphan PG Org")

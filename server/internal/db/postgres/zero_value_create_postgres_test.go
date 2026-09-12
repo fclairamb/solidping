@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // --- Zero values survive CREATE, Postgres half (spec 2026-08-30-04) ---------
@@ -31,13 +32,13 @@ func zeroValuePG(t *testing.T) (context.Context, *Service, string) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portZeroValueCreate, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("zerovalues", "Acme Zero")

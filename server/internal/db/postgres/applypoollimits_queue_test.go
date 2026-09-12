@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/sqlitedriver"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // TestApplyPoolLimits_QueuesRatherThanErrors pins the "production is not
@@ -121,7 +122,7 @@ func TestNewEmbedded_PoolBoundedBelowNonSuperuserConnectionLimit(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portEmbeddedPoolBounded, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 

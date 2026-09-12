@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // This file exists because spec 2026-09-11-03 shipped a feature that was
@@ -72,14 +73,13 @@ func TestMain(m *testing.M) {
 }
 
 // newPostgresOrg returns the shared embedded Postgres plus a fresh organization,
-// self-skipping under -short (the default `make test` / CI mode) and when
-// embedded Postgres genuinely cannot start, mirroring every other
-// _postgres_test.go in the repo.
+// self-skipping under -short (the default `make test` mode) and, when embedded
+// Postgres genuinely cannot start, deferring to testsupport.PostgresUnavailable
+// — a skip locally, a hard failure under SP_TEST_REQUIRE_POSTGRES=1.
 //
 // Worth knowing before trusting a green run here: `make test` passes `-short`,
-// so this file SKIPS there. It has to be run explicitly — `go test
-// ./internal/handlers/orgparams/` with no -short — which is what the batch gate
-// now does.
+// so this file SKIPS there. The non-short layer runs in the `backend-postgres`
+// CI job and locally via `make test-postgres` (wiki/testing/test-layers.md).
 func newPostgresOrg(t *testing.T, slug string) (*postgres.Service, *models.Organization) {
 	t.Helper()
 
@@ -110,7 +110,7 @@ func newPostgresOrg(t *testing.T, slug string) (*postgres.Service, *models.Organ
 	})
 
 	if errStartPG != nil || pgSvc == nil {
-		t.Skipf("embedded postgres unavailable: %v", errStartPG)
+		testsupport.PostgresUnavailable(t, errStartPG)
 	}
 
 	r := require.New(t)

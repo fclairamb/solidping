@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portPerCheckIncidentsMigration is distinct from every other
@@ -79,13 +80,13 @@ func TestPerCheckIncidentsMigrationClosesActiveGroupIncidents_Postgres(t *testin
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portPerCheckIncidentsMigration, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("acmepci", "Acme PCI")
