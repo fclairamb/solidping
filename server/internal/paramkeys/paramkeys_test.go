@@ -1,6 +1,7 @@
 package paramkeys_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -58,6 +59,16 @@ func TestPlatformKeysAreOutsideTheOrgNamespace(t *testing.T) {
 		// because it is not in the org namespace at all.
 		_, owned := paramkeys.PublicKey(key)
 		r.Falsef(owned, "%q is a platform key and must not read as org-managed", key)
+
+		// The direction a namespace cannot enforce structurally: nothing stops
+		// a future contributor from calling SetOrgParameter with a
+		// `usr.`-prefixed key, which would hand a platform row to the org
+		// parameters API (or let an org's row be read as platform config).
+		// This is the guard for it — every platform key named here must stay
+		// out of the org namespace, and adding one that isn't fails here.
+		r.Falsef(strings.HasPrefix(key, paramkeys.OrgKeyPrefix),
+			"platform key %q must never live under %q — that namespace belongs to the org "+
+				"parameters API (see the doc on db.Service.SetOrgParameter)", key, paramkeys.OrgKeyPrefix)
 	}
 }
 

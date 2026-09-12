@@ -298,7 +298,8 @@ func TestApplyStoresEnvSecretRefAsAReference(t *testing.T) {
 }
 
 // TestApplyResolvesParamSecretRef verifies ${param:KEY} resolution against the
-// org parameters table (org-scoped takes precedence over system-wide).
+// org's own parameters — and only those. There is no system-wide fallback; the
+// system row seeded below is there to prove it is not consulted.
 func TestApplyResolvesParamSecretRef(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

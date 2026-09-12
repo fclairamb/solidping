@@ -9812,7 +9812,7 @@ type ClientInterface interface {
 
 	// SetOrgParameterWithBody Create or rotate an organization parameter
 	//
-	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -9821,7 +9821,7 @@ type ClientInterface interface {
 
 	// SetOrgParameter Create or rotate an organization parameter
 	//
-	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -14672,7 +14672,7 @@ func (c *Client) GetOrgParameter(ctx context.Context, org OrgPath, key Parameter
 
 // SetOrgParameterWithBody Create or rotate an organization parameter
 //
-// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -14691,7 +14691,7 @@ func (c *Client) SetOrgParameterWithBody(ctx context.Context, org OrgPath, key P
 
 // SetOrgParameter Create or rotate an organization parameter
 //
-// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -32933,7 +32933,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetOrgParameterWithBodyWithResponse Create or rotate an organization parameter
 	//
-	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -32942,7 +32942,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetOrgParameterWithResponse Create or rotate an organization parameter
 	//
-	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -52697,7 +52697,7 @@ func (c *ClientWithResponses) GetOrgParameterWithResponse(ctx context.Context, o
 
 // SetOrgParameterWithBodyWithResponse Create or rotate an organization parameter
 //
-// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -52712,7 +52712,7 @@ func (c *ClientWithResponses) SetOrgParameterWithBodyWithResponse(ctx context.Co
 
 // SetOrgParameterWithResponse Create or rotate an organization parameter
 //
-// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is reserved for SolidPing. No other name is forbidden: an organization's parameters are stored in a namespace of their own, so a key can never collide with, overwrite or read SolidPing's per-organization configuration — even when it is spelled the same. Admin only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

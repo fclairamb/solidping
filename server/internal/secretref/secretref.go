@@ -23,9 +23,11 @@ const (
 	// operator-managed, needs a restart to change, and on a deported agent it
 	// resolves against THAT agent's environment (per-region secrets).
 	SchemeEnv = "env"
-	// SchemeParam reads the org-scoped `parameters` table, falling back to the
-	// system-wide one. SaaS form: API-managed, resolved on the API and shipped
-	// inside the sealed job payload.
+	// SchemeParam reads the referencing organization's OWN parameters, and
+	// nothing else — no system-wide fallback, and org-managed rows live in a
+	// namespace the platform never writes to (see the paramkeys package). SaaS
+	// form: API-managed, resolved on the API and shipped inside the sealed job
+	// payload.
 	SchemeParam = "param"
 )
 

@@ -24,6 +24,19 @@ func readBody(t *testing.T, resp *http.Response) string {
 	return string(raw)
 }
 
+// assertNoStoragePrefix pins the one contract a Contains assertion cannot: the
+// storage namespace is INVISIBLE in the API.
+//
+// `paramkeys.OrgKeyPrefix` is an implementation detail — the operator writes
+// `sso-password` and the row is `usr.sso-password` — and every existing
+// assertion in this file would stay green if List/Get stopped stripping it,
+// because "usr.sso-password" contains "sso-password". This is the assertion
+// that fails instead.
+func assertNoStoragePrefix(r *require.Assertions, body, what string) {
+	r.NotContainsf(body, paramkeys.OrgKeyPrefix,
+		"%s must show the key the operator wrote, never the row it is stored in", what)
+}
+
 // TestOrgParametersRoutesAreAdminOnlyAndNeverReturnASecret covers the API half
 // of spec 2026-09-11-03 through the REAL router, because every one of these
 // properties is enforced by something a handler-only test would not run: the
@@ -84,6 +97,7 @@ func TestOrgParametersRoutesAreAdminOnlyAndNeverReturnASecret(t *testing.T) {
 	r.Equal(http.StatusOK, resp.StatusCode)
 	r.Contains(body, `"secret":true`)
 	r.NotContains(body, "hunter2", "GET must never return a secret parameter's value")
+	assertNoStoragePrefix(r, body, "GET")
 
 	// --- LIST: both keys present, the secret one still without its value. ---
 	resp = env.do(http.MethodGet, base, env.jwts[models.MemberRoleAdmin], "", nil)
@@ -94,6 +108,7 @@ func TestOrgParametersRoutesAreAdminOnlyAndNeverReturnASecret(t *testing.T) {
 	r.Contains(body, "sso-password")
 	r.Contains(body, "region-label")
 	r.NotContains(body, "hunter2", "the list must never return a secret parameter's value")
+	assertNoStoragePrefix(r, body, "the list")
 
 	// --- The reserved SolidPing namespace is refused. ---
 	for _, key := range []string{"sp.anything", "sp.deeply.nested"} {

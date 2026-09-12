@@ -7393,9 +7393,11 @@ paths:
       description: >
         Creates the parameter, or replaces its value (rotation — the key and
         every `${param:KEY}` reference to it are unchanged). Keys must match
-        `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org
-        configuration — the `sp.` prefix among them — are refused with a 400.
-        Admin only.
+        `^[a-z][a-z0-9_.-]{0,63}$`. Only the `sp.` prefix is refused (400); it is
+        reserved for SolidPing. No other name is forbidden: an organization's
+        parameters are stored in a namespace of their own, so a key can never
+        collide with, overwrite or read SolidPing's per-organization
+        configuration — even when it is spelled the same. Admin only.
       operationId: setOrgParameter
       security:
         - bearerAuth: []

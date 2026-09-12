@@ -1,6 +1,7 @@
 package agentws_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -161,4 +162,5 @@ func TestUnresolvableParamRefDropsTheJobForAnAgent(t *testing.T) {
 	r.True(ok, "the drop must be visible in the check's history, not silent")
 	r.NotNil(got.Status)
 	r.Equal(int(models.ResultStatusError), *got.Status)
+	r.Contains(fmt.Sprint(got.Output), "unresolved secret reference: param:sso-authtest-password")
 }

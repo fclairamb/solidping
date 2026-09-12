@@ -827,6 +827,15 @@ type Service interface {
 	// GetOrgParameter retrieves an org-scoped parameter by orgUID and key, returns nil if not found.
 	GetOrgParameter(ctx context.Context, orgUID, key string) (*models.Parameter, error)
 	// SetOrgParameter creates or updates an org-scoped parameter.
+	//
+	// NEVER write a key under the `usr.` prefix (paramkeys.OrgKeyPrefix) from
+	// platform code. That namespace is owned end-to-end by the org parameters
+	// API (spec 2026-09-11-03): org admins can overwrite and delete anything in
+	// it, and `${param:KEY}` in any check config reads it. A platform key
+	// placed there would be an org's to rewrite — and an org's row would be
+	// read as platform configuration. It is the one direction the namespace
+	// cannot enforce on its own; paramkeys.TestPlatformKeysAreOutsideTheOrgNamespace
+	// is the guard.
 	SetOrgParameter(ctx context.Context, orgUID, key string, value any, secret bool) error
 	// DeleteOrgParameter soft-deletes an org-scoped parameter.
 	DeleteOrgParameter(ctx context.Context, orgUID, key string) error
