@@ -132,8 +132,6 @@ func (s *Service) loadOrgCheckSnapshot(ctx context.Context, orgUID string) (*org
 //   - dependsOn is additive (import pass 2 merges), so only an edge the
 //     document adds or re-kinds counts;
 //   - a nil alerting pointer means "no opinion", never "reset to zero".
-//
-//nolint:cyclop,funlen // one linear comparison per field; splitting hides the set
 func (s *Service) diffCheck(
 	ctx context.Context,
 	org *models.Organization,
@@ -172,7 +170,7 @@ func (s *Service) diffCheck(
 		add("group", current.Group, desired.Group)
 	}
 
-	for _, field := range []struct {
+	alerting := []struct {
 		name            string
 		current, wanted *int
 	}{
@@ -182,12 +180,14 @@ func (s *Service) diffCheck(
 		{fieldFlappingWindowSeconds, current.FlappingWindowSeconds, desired.FlappingWindowSeconds},
 		{fieldFlapBackoffFactor, current.FlapBackoffFactor, desired.FlapBackoffFactor},
 		{fieldMaxRecoveryMultiplier, current.MaxRecoveryMultiplier, desired.MaxRecoveryMultiplier},
-	} {
-		if field.wanted == nil {
+	}
+
+	for i := range alerting {
+		if alerting[i].wanted == nil {
 			continue
 		}
 
-		add(field.name, intPtrString(field.current), strconv.Itoa(*field.wanted))
+		add(alerting[i].name, intPtrString(alerting[i].current), strconv.Itoa(*alerting[i].wanted))
 	}
 
 	if len(desired.Regions) > 0 {
@@ -336,15 +336,17 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 	sort.Strings(ordered)
 
 	for _, key := range ordered {
-		from, to := canonicalConfigValue(current.Config[key]), canonicalConfigValue(desiredPublic[key])
-		if from == to {
+		stored := canonicalConfigValue(current.Config[key])
+		wanted := canonicalConfigValue(desiredPublic[key])
+
+		if stored == wanted {
 			continue
 		}
 
 		changes = append(changes, CheckFieldChange{
 			Field: fieldConfigPrefix + key,
-			From:  maskReferences(from),
-			To:    maskReferences(to),
+			From:  maskReferences(stored),
+			To:    maskReferences(wanted),
 		})
 	}
 

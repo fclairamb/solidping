@@ -70,6 +70,9 @@ const (
 	// msgInternalNotWritable explains the refusal of a client-supplied
 	// `internal` (spec 2026-08-27-01) — read-only, server-owned.
 	msgInternalNotWritable = "The internal flag is read-only: it marks server-created checks and cannot be set by a client"
+	// msgUnreadableBody is the field message for a request body that could not
+	// be read off the wire at all.
+	msgUnreadableBody = "could not read request body"
 	// queryTrue is the literal a boolean query flag must equal to be enabled
 	// (e.g. ?dryRun=true).
 	queryTrue = "true"
@@ -115,10 +118,10 @@ func (h *Handler) ValidateCheck(
 ) error {
 	orgSlug := httpx.Param(req, "org")
 
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
+	body, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
 		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
-			{Name: fieldBody, Message: "could not read request body"},
+			{Name: fieldBody, Message: msgUnreadableBody},
 		})
 	}
 
@@ -131,7 +134,7 @@ func (h *Handler) ValidateCheck(
 	}
 
 	var validateReq ValidateCheckRequest
-	if err := json.Unmarshal(body, &validateReq); err != nil {
+	if decodeErr := json.Unmarshal(body, &validateReq); decodeErr != nil {
 		return h.WriteValidationError(
 			writer, "Invalid JSON", []base.ValidationErrorField{
 				{Name: fieldBody, Message: msgInvalidJSON},
@@ -680,7 +683,7 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) er
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
-			{Name: fieldBody, Message: "could not read request body"},
+			{Name: fieldBody, Message: msgUnreadableBody},
 		})
 	}
 
@@ -723,7 +726,7 @@ func (h *Handler) ApplyChecks(writer http.ResponseWriter, req *http.Request) err
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
-			{Name: fieldBody, Message: "could not read request body"},
+			{Name: fieldBody, Message: msgUnreadableBody},
 		})
 	}
 

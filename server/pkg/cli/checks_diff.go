@@ -173,7 +173,7 @@ func planDrift(res *applyResult) bool {
 func reportDiffPlan(cliCtx *Context, file string, res *applyResult) error {
 	if !cliCtx.IsText() {
 		return cliCtx.Outputter.Print(map[string]any{
-			"drift": planDrift(res), "file": file, "plan": res,
+			"drift": planDrift(res), flagFile: file, "plan": res,
 		})
 	}
 
@@ -206,8 +206,6 @@ func reportDiffPlan(cliCtx *Context, file string, res *applyResult) error {
 // report `unchanged` at all).
 //
 // Exit 0 (no drift) / 1 (drift) / >=2 (errors) — unchanged, CI-friendly.
-//
-//nolint:cyclop // one linear fallback chain: plan, then text diff
 func checksDiffAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -257,7 +255,7 @@ func checksDiffAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if !cliCtx.IsText() {
-		return cliCtx.Outputter.Print(map[string]any{"drift": outcome.Drift, "file": file})
+		return cliCtx.Outputter.Print(map[string]any{"drift": outcome.Drift, flagFile: file})
 	}
 
 	if !outcome.Drift {

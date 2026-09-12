@@ -174,7 +174,7 @@ func TestValidateDocumentPlanRequiresAdmin(t *testing.T) {
 
 // TestImportAndApplyStayAdminOnly is the guard against the collateral this
 // change could easily have caused. Relaxing /checks/validate to member level
-// must not have relaxed its neighbours: they mutate, and apply can delete by
+// must not have relaxed its neighbors: they mutate, and apply can delete by
 // absence.
 func TestImportAndApplyStayAdminOnly(t *testing.T) {
 	t.Parallel()

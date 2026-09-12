@@ -134,12 +134,10 @@ func manifestName(doc *ExportDocument, orgSlug string) string {
 // ordered plan. Pure with respect to the DB: it only reads. Matching is on
 // slug within the managed-label scope; an explicit previousSlug (or uid) on a
 // file check reconciles a rename in place.
-//
-//nolint:cyclop,funlen // single-pass reconcile over file + managed set
 func (s *Service) computeApplyPlan(
 	ctx context.Context, org *models.Organization, snapshot *orgCheckSnapshot,
 	doc *ExportDocument, manifest string,
-) ([]ApplyPlanEntry, error) {
+) []ApplyPlanEntry {
 	// managedSlugs: slug -> true for checks carrying our managed label.
 	managedSlugs := make(map[string]bool)
 	existingSlugs := make(map[string]bool, len(snapshot.rows))
@@ -213,7 +211,7 @@ func (s *Service) computeApplyPlan(
 		})
 	}
 
-	return plan, nil
+	return plan
 }
 
 // planApplyUpdate decides update-vs-unchanged for one managed slug. Apply
@@ -374,10 +372,7 @@ func (s *Service) ApplyChecks(
 		return nil, err
 	}
 
-	plan, err := s.computeApplyPlan(ctx, org, snapshot, doc, manifest)
-	if err != nil {
-		return nil, err
-	}
+	plan := s.computeApplyPlan(ctx, org, snapshot, doc, manifest)
 	result.Plan = plan
 
 	for i := range plan {

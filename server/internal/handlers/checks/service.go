@@ -3303,7 +3303,7 @@ const ImportStateCreatedIncomplete = "created-incomplete"
 
 // ExportChecks exports checks for an organization in the portable JSON format.
 //
-//nolint:cyclop,funlen,gocritic,gocognit // group/label/dep resolution in one pass
+//nolint:gocritic // group/label/dep resolution in one pass
 func (s *Service) ExportChecks(
 	ctx context.Context, orgSlug string, opts ListChecksOptions,
 ) (*ExportDocument, error) {
@@ -3630,6 +3630,85 @@ func (s *Service) importChecks(
 		groupByName[strings.ToLower(g.Name)] = g
 	}
 
+	result, snapshot, caveats, prepErr := s.prepareImport(ctx, org, doc, dryRun)
+	if prepErr != nil {
+		return nil, prepErr
+	}
+
+	pass1Failed := make(map[string]struct{}, 0)
+
+	for i := range doc.Checks {
+		// pendingCreates only matters on a dry run: it is how many creations
+		// this document has already decided on but not written, which is what
+		// lets the quota gate see the document as a whole. On a real run the
+		// creations are on disk and the gate counts them itself.
+		pendingCreates := 0
+		if dryRun {
+			pendingCreates = result.Created
+		}
+
+		action, changes, importErr := s.importSingleCheck(ctx, &importItem{
+			org: org, orgSlug: orgSlug, entry: &doc.Checks[i], index: i, dryRun: dryRun,
+			groupByName: groupByName, pendingCreates: pendingCreates, caveats: caveats,
+			snapshot: snapshot, diffOpts: diffOpts,
+		})
+		if importErr != nil {
+			result.Errors = append(result.Errors, *importErr)
+			pass1Failed[doc.Checks[i].Slug] = struct{}{}
+
+			continue
+		}
+
+		result.record(doc.Checks[i].Slug, action, changes)
+	}
+
+	// Pass 2: apply dependsOn after every check has been upserted, so a
+	// payload can declare both endpoints of an edge for the first time.
+	// Skipped on dry-run since pass 1 only simulated the upserts.
+	if !dryRun {
+		s.importDependencies(ctx, org.UID, doc.Checks, pass1Failed, result)
+
+		return result, nil
+	}
+
+	countSkippedDependencies(doc.Checks, result)
+	result.Caveats = caveats.list()
+
+	return result, nil
+}
+
+// record files one decided entry: the plan row plus the counter it belongs to.
+func (r *ImportResult) record(slug, action string, changes []CheckFieldChange) {
+	r.Plan = append(r.Plan, ImportPlanEntry{Slug: slug, Action: action, Changes: changes})
+
+	switch action {
+	case ActionCreate:
+		r.Created++
+	case ActionUnchanged:
+		r.Unchanged++
+	default:
+		r.Updated++
+	}
+}
+
+// countSkippedDependencies is the dry run's accounting for the pass-2 work it
+// is not doing: it cannot resolve edges against state it did not write, so it
+// counts them as skipped rather than pretending there was none.
+func countSkippedDependencies(checks []ExportCheck, result *ImportResult) {
+	for i := range checks {
+		if len(checks[i].DependsOn) > 0 {
+			result.Skipped++
+		}
+	}
+}
+
+// prepareImport does everything an import must settle BEFORE it touches a
+// single entry: prove every secret reference resolves (so a missing one fails
+// before any mutation), read the org's current state once, and seed the result
+// and the dry run's caveat collector.
+func (s *Service) prepareImport(
+	ctx context.Context, org *models.Organization, doc *ExportDocument, dryRun bool,
+) (*ImportResult, *orgCheckSnapshot, *caveatSet, error) {
 	// Import and apply take the SAME document, so they must treat secret
 	// references the same way (spec 2026-09-11-03). Before that spec only
 	// ApplyChecks validated them: a manifest that /apply handled correctly was
@@ -3639,7 +3718,7 @@ func (s *Service) importChecks(
 	// 400 from both endpoints, dry run included.
 	refWarnings, refErr := s.validateSecretRefs(ctx, org.UID, doc)
 	if refErr != nil {
-		return nil, refErr
+		return nil, nil, nil, refErr
 	}
 
 	// The org's CURRENT state, projected through the exporter's own code, is
@@ -3647,7 +3726,7 @@ func (s *Service) importChecks(
 	// a real run reports the same actions its dry run did.
 	snapshot, snapErr := s.loadOrgCheckSnapshot(ctx, org.UID)
 	if snapErr != nil {
-		return nil, snapErr
+		return nil, nil, nil, snapErr
 	}
 
 	result := &ImportResult{
@@ -3667,63 +3746,7 @@ func (s *Service) importChecks(
 		caveats.add(DryRunCaveatSlugRace)
 	}
 
-	pass1Failed := make(map[string]struct{}, 0)
-
-	for i := range doc.Checks {
-		// pendingCreates only matters on a dry run: it is how many creations
-		// this document has already decided on but not written, which is what
-		// lets the quota gate see the document as a whole. On a real run the
-		// creations are on disk and the gate counts them itself.
-		pendingCreates := 0
-		if dryRun {
-			pendingCreates = result.Created
-		}
-
-		action, changes, importErr := s.importSingleCheck(ctx, importItem{
-			org: org, orgSlug: orgSlug, entry: &doc.Checks[i], index: i, dryRun: dryRun,
-			groupByName: groupByName, pendingCreates: pendingCreates, caveats: caveats,
-			snapshot: snapshot, diffOpts: diffOpts,
-		})
-		if importErr != nil {
-			result.Errors = append(result.Errors, *importErr)
-			pass1Failed[doc.Checks[i].Slug] = struct{}{}
-
-			continue
-		}
-
-		result.Plan = append(result.Plan, ImportPlanEntry{
-			Slug: doc.Checks[i].Slug, Action: action, Changes: changes,
-		})
-
-		switch action {
-		case ActionCreate:
-			result.Created++
-		case ActionUnchanged:
-			result.Unchanged++
-		default:
-			result.Updated++
-		}
-	}
-
-	// Pass 2: apply dependsOn after every check has been upserted, so a
-	// payload can declare both endpoints of an edge for the first time.
-	// Skipped on dry-run since pass 1 only simulated the upserts.
-	if !dryRun {
-		s.importDependencies(ctx, org.UID, doc.Checks, pass1Failed, result)
-	} else {
-		// A dry run cannot resolve edges against state it did not write, so
-		// it counts the pass-2 work it is not doing rather than pretending
-		// there was none.
-		for i := range doc.Checks {
-			if len(doc.Checks[i].DependsOn) > 0 {
-				result.Skipped++
-			}
-		}
-
-		result.Caveats = caveats.list()
-	}
-
-	return result, nil
+	return result, snapshot, caveats, nil
 }
 
 // anyDependsOn reports whether any entry in the document declares a dependency
@@ -3964,7 +3987,7 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 // Returns (action, changes, error): the action is one of ActionCreate,
 // ActionUpdate or ActionUnchanged, and changes is populated for ActionUpdate.
 func (s *Service) importSingleCheck(
-	ctx context.Context, item importItem,
+	ctx context.Context, item *importItem,
 ) (string, []CheckFieldChange, *ImportError) {
 	exportedCheck, index := item.entry, item.index
 	org, orgSlug, dryRun := item.org, item.orgSlug, item.dryRun
@@ -4050,7 +4073,7 @@ type importItem struct {
 // falls through to `update` with no field list rather than to a false
 // `unchanged` — an unprovable equality is never reported as equality.
 func (s *Service) planImportAction(
-	ctx context.Context, org *models.Organization, item importItem,
+	ctx context.Context, org *models.Organization, item *importItem,
 ) (string, []CheckFieldChange) {
 	current, existing := item.snapshot.lookup(item.entry.Slug)
 	if current == nil || existing == nil {
