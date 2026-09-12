@@ -12,6 +12,10 @@
 --   SECTION: label-key-check       labels.key / labels.value CHECK parity with Postgres
 --   SECTION: check-name-backfill   checks.name = slug where the name is blank
 --   SECTION: parameter-key-check   parameters.key CHECK parity with Postgres
+--   SECTION: period-below-floor-backfill  raise a check's period to its type's
+--                                          own default when it is still at the
+--                                          flat 1m fingerprint AND below the
+--                                          type's own MinPeriod
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -269,3 +273,63 @@ create unique index parameters_system_key_idx on parameters (key)
 --bun:split
 
 PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: period-below-floor-backfill  (spec 2026-09-11-07)
+--
+-- Raise a check's period to its type's own default when it is BOTH below that
+-- type's MinPeriod AND exactly equal to models.NewCheck's flat one-minute
+-- constant — the fingerprint of "the server picked this because the create
+-- request supplied no period", not a value any human ever typed. A row at some
+-- other below-floor value (say 30m on a dnsbl check) was typed by a human
+-- through some earlier path and is left alone: validatePeriodForType's own
+-- comment states the standing decision that existing rows are grandfathered,
+-- and this backfill is narrower than that decision, not an exception to it —
+-- these particular rows were never a value anyone chose.
+--
+-- Without this, an org whose ssl/domain/dnsbl check was created with no
+-- period keeps a period below its own type's floor forever, and its own
+-- GET /checks/export document keeps failing its own POST /checks/import
+-- (period for ssl checks must be at least 1h) — the exact bug CreateCheck's
+-- new defaultPeriodForType resolver (server/internal/handlers/checks/
+-- validate.go) fixes going forward. This is the one-time catch-up for rows
+-- created before the fix shipped.
+--
+-- PERIOD_BACKFILL_TYPES: browser, dnsbl, domain, js, ssl
+--
+-- The list above is EVERY checkerdef type that declares a MinPeriod > 0 today
+-- — TestPeriodBackfillTypeListMatchesCheckerdef (checkerdef package) pins it
+-- against checkerdef.ListCheckTypeMetas so a future type with a floor cannot
+-- be silently missed here. `js` and `browser` are included for completeness
+-- even though their own floor (30s, 1m) sits at or below the flat one-minute
+-- fingerprint, so their branch of the WHERE clause below never matches any
+-- row — that is what makes the parity test meaningful rather than trivially
+-- true (a type list that only ever named the 3 types that DO need backfill
+-- today would still pass a test that only checked "no floor type is missing
+-- from a hardcoded 3-item list").
+--
+-- period is stored as text 'HH:MM:SS' here (unlike Postgres' native
+-- interval), but that is still a safe lexicographic comparison: every value
+-- involved is zero-padded to the same width by
+-- timeutils.formatDurationAsInterval, so string order matches duration order.
+-- ==========================================================================
+
+update checks
+   set period = case type
+                  when 'ssl'     then '06:00:00'
+                  when 'domain'  then '24:00:00'
+                  when 'dnsbl'   then '01:00:00'
+                  when 'js'      then '00:01:00'
+                  when 'browser' then '00:05:00'
+                end
+ where type in ('ssl', 'domain', 'dnsbl', 'js', 'browser')
+   and period = '00:01:00'
+   and period < case type
+                  when 'ssl'     then '01:00:00'
+                  when 'domain'  then '06:00:00'
+                  when 'dnsbl'   then '00:15:00'
+                  when 'js'      then '00:00:30'
+                  when 'browser' then '00:01:00'
+                end;

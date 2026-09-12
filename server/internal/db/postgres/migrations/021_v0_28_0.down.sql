@@ -3,6 +3,21 @@
 -- 021_v0_28_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: period-below-floor-backfill
+--
+-- Deliberately NOT reversed, for the same reason check-name-backfill below
+-- isn't: the up-migration raised each affected row's period from the flat
+-- 1-minute constant to its type's own default, and nothing records which rows
+-- were at 1m immediately beforehand versus a value an operator set moments
+-- before a rollback. A schema rollback does not need it either — the column
+-- is unchanged.
+-- ==========================================================================
+
+select 1;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: parameter-key-hyphens
 --
 -- Restores the pre-v0.28.0 CHECK (no hyphen). This is a NARROWING, so it fails
