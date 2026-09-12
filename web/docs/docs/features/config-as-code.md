@@ -89,8 +89,9 @@ that still looks meaningful.
 Every export carries `secrets: stripped`, and it is a promise about two sets of
 keys:
 
-- **Declared secrets** — passwords, private keys, `secretHeaders`, `basicAuth`.
-  These live encrypted and never appear in any API response either.
+- **Declared secrets** — passwords, private keys, `secretHeaders`, `basicAuth`,
+  a JS check's `secrets` map. These live encrypted and never appear in any API
+  response either.
 - **Export-redacted fields** — keys that are perfectly ordinary at rest but must
   not reach a committed file: an email check's ingest token, and an SMTP probe's
   `delivery_to` (which contains one).

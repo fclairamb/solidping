@@ -1184,6 +1184,94 @@ Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals)
 - Conditional checks based on time or state
 - Aggregating multiple checks into one
 
+#### Script parameters: `env` and `secrets`
+
+A script reads its parameters from two maps, and the difference between them is
+where the value is stored:
+
+| Config key | Storage | Engine global | For |
+|---|---|---|---|
+| `env` | public `config`, plaintext | `env.BASE_URL` | non-secret parameters — a base URL, a username, a threshold |
+| `secrets` | encrypted, never returned on a read | `secrets.PASSWORD` | credentials |
+
+`env` values come back on `GET` and appear in a config-as-code export, so they
+are diffable and reviewable. `secrets` values do not: they are stripped from
+every export, never echoed to the dashboard, and **preserved when a write omits
+the key** — which is what lets you edit anything else on the check without
+re-entering the credential.
+
+Both maps accept [secret references](config-as-code.md) —
+`${param:my-key}` and `${env:MY_VAR}` — so a tracked manifest can carry
+`secrets: { PASSWORD: "${param:sso-password}" }` and nothing sensitive in git.
+
+```json
+{
+  "env": { "BASE_URL": "https://acme.com" },
+  "secrets": { "PASSWORD": "${param:sso-password}" }
+}
+```
+
+#### The `http` helper
+
+`http.get|post|put|patch|delete|head(url, options)` performs one request. These
+functions are **stateless**: nothing is carried from one call to the next.
+
+**Options**
+
+| Option | Default | Meaning |
+|---|---|---|
+| `body` | — | Request body, as a string |
+| `headers` | — | Request headers, as a `{name: value}` object |
+| `followRedirects` | `true` | `false` returns the 3xx itself, `Location` intact |
+| `maxRedirects` | `10` | Redirect hops to follow; capped at 10 |
+| `timeout` | the check's timeout | A duration string (`"2s"`) or a number of milliseconds; never longer than the check's own timeout |
+
+**Response**
+
+| Field | Meaning |
+|---|---|
+| `statusCode` | HTTP status of the final response |
+| `body` | Response body (capped at 1 MB) |
+| `headers` | Response headers, with **canonical keys** (`Content-Type`, `Location`) — a single value is a string, a repeated header is an array |
+| `url` | The **final** URL, after any redirects that were followed |
+| `redirects` | The chain that was walked: `[{statusCode, location}]`, empty when nothing was followed |
+| `duration` | Milliseconds |
+| `error` | Present instead of the above when the request could not be made |
+
+Stopping at a redirect is what makes an OAuth-style flow assertable — there, the
+`302` carrying `code=` **is** the success signal:
+
+```js
+var r = http.get(authorizeUrl, { followRedirects: false });
+return { status: r.statusCode === 302 && /code=/.test(r.headers.Location) ? "up" : "down" };
+```
+
+#### Sessions: `http.session()`
+
+`http.session()` returns an object with the same six verbs, plus `cookies(url)`,
+all backed by **one cookie jar**. Cookies set by one call — including ones set
+*during* a redirect chain — are carried into the next, which is what a
+multi-step login needs:
+
+```js
+var s = http.session();
+var page = s.get(env.BASE_URL + "/auth");          // Set-Cookie captured
+var r = s.post(page.url, {
+  body: "username=" + env.USERNAME + "&password=" + encodeURIComponent(secrets.PASSWORD),
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  followRedirects: false,
+});
+return { status: r.statusCode === 302 ? "up" : "down" };
+```
+
+`s.cookies(url)` returns the cookies that would be sent to that URL, as
+`[{name, value, domain, path}]`, for assertions. The jar is per-execution: it is
+never persisted, and it is bounded (100 cookies, 4 KiB each) so a misbehaving
+target cannot grow the check without limit.
+
+Every `http.*` call — session or not — counts against the same 20-call budget as
+`solidping.check()`.
+
 ### Browser {#browser}
 
 Headless browser-based monitoring using a real browser engine.

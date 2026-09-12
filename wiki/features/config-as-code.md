@@ -41,8 +41,11 @@ Since spec 2026-09-11-02 the exporter removes **`SecretFields()` ∪
 `ExportRedactedFields()`** from every check's config:
 
 - `SecretFields()` — what the checker declares secret (passwords, private keys,
-  `secretHeaders`, `basicAuth`, …). These live in the encrypted `config_private`
-  column and never appear in any API response either.
+  `secretHeaders`, `basicAuth`, a JS check's `secrets` map, …). These live in the
+  encrypted `config_private` column and never appear in any API response either.
+  A JS check's sibling `env` map is deliberately NOT declared: it is the
+  plaintext half of the split (spec 2026-09-11-05), so script parameters stay
+  diffable while credentials do not.
 - `ExportRedactedFields()` — keys that are **public at rest** but must never
   reach a committed file: an email check's ingest token, and an SMTP probe's
   `delivery_to` (which embeds one). Before that spec a document stamped
