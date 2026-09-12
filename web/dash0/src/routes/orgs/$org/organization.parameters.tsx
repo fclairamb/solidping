@@ -113,7 +113,7 @@ function OrgParametersPage() {
         icon={KeyRound}
         title={t("parameters.title")}
         description={t("parameters.subtitle")}
-        docsHref="/docs/features/config-as-code#secret-references"
+        docsHref="/docs/cli#secrets-parameters-and-references"
         actions={
           <Button onClick={openCreate} data-testid="parameter-add">
             <Plus className="mr-1.5 h-4 w-4" />

@@ -82,6 +82,37 @@ sp checks export --file config.yaml
 
 `sp checks export` picks its output format from `--format yaml|json`, defaulting to the `--file` extension (`.yaml`/`.yml` → YAML, everything else including stdout → JSON). YAML output preserves the document's field order — two exports of unchanged live state produce byte-identical files, so diffs in version control only ever show real changes.
 
+## Secrets: parameters and references
+
+A tracked config file must not carry passwords. Anywhere a check config takes a string, write a reference instead — `${param:KEY}` for a value SolidPing stores for your organization, `${env:NAME}` for one the machine running the check holds in its environment:
+
+```yaml
+checks:
+  - slug: sso-login
+    name: SSO login
+    type: http
+    config:
+      url: https://sso.acme.com/token
+      method: POST
+      body: "grant_type=password&username=probe&password=${param:sso-authtest-password}"
+```
+
+Manage the parameters the file references with `sp params`:
+
+```bash
+sp params set sso-authtest-password 'hunter2'   # secret by default
+sp params set region-label paris --public       # a plain, readable setting
+sp params list                                  # secret values are never shown
+sp params get sso-authtest-password             # key, flag and timestamp — no value
+sp params delete sso-authtest-password
+```
+
+A secret parameter is **write-only**: nothing reads the value back, so rotating one is simply setting it again under the same key — every check referencing it keeps working with no file change. The value is resolved when the check runs, never stored in the check: `sp checks export` gives you back the reference you wrote, so the loop above round-trips unchanged.
+
+If a reference cannot be resolved, `sp checks import` and `sp apply` refuse the whole file (including on `--dry-run`) rather than storing it, and a parameter deleted later turns the check red with `unresolved secret reference: param:…` instead of quietly probing with the literal text.
+
+`${env:}` resolves on whichever process executes the check — for a check pinned to a private location, that is the agent's own environment, not the server's. That is useful for per-region credentials, and worth remembering when a value seems to be missing.
+
 ## Output Formats
 
 The client can print human-readable tables or machine-readable output for scripting:
