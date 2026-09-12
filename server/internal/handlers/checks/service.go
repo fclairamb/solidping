@@ -4809,7 +4809,7 @@ func secretPlaceholderShapeFor(checkType, key string) any {
 	}
 
 	val := reflect.ValueOf(cfg)
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
