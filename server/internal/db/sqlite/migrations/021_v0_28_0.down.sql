@@ -3,6 +3,59 @@
 -- 021_v0_28_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: parameter-key-check
+--
+-- Drops the CHECK by rebuilding the table without it, restoring the laxer
+-- pre-v0.28.0 shape (no constraint on `key` at all). The rows the up-migration
+-- deleted stay deleted: a down migration cannot invent them back, and they were
+-- rows Postgres could never have held.
+-- ==========================================================================
+
+PRAGMA foreign_keys=OFF;
+
+--bun:split
+
+create table parameters_old (
+  uid               text primary key,
+  organization_uid  text references organizations(uid) on delete cascade, -- Owning organization. NULL for system-wide parameters
+  key               text not null, -- Dot-separated configuration key (e.g., smtp.host, slack.default_channel)
+  value             text not null, -- Configuration value as JSON
+  secret            integer, -- Whether this value is sensitive and should be masked in API responses
+  created_at        text not null default (datetime('now')),
+  updated_at        text not null default (datetime('now')),
+  deleted_at        text
+);
+
+--bun:split
+
+insert into parameters_old (uid, organization_uid, key, value, secret, created_at, updated_at, deleted_at)
+select uid, organization_uid, key, value, secret, created_at, updated_at, deleted_at from parameters;
+
+--bun:split
+
+drop table parameters;
+
+--bun:split
+
+alter table parameters_old rename to parameters;
+
+--bun:split
+
+create unique index parameters_org_key_idx on parameters (organization_uid, key)
+  where deleted_at is null and organization_uid is not null;
+
+--bun:split
+
+create unique index parameters_system_key_idx on parameters (key)
+  where deleted_at is null and organization_uid is null;
+
+--bun:split
+
+PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: check-name-backfill
 --
 -- Deliberately NOT reversed. The up-migration copied each nameless check's

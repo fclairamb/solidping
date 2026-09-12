@@ -132,7 +132,12 @@ Mechanics worth knowing before you touch an existing file:
 **parameters** - Key-value configuration per organization
 - `uid` (uuid) - Primary key
 - `organization_uid` - Foreign key to organizations
-- `key` (text) - Configuration key (alphanumeric + underscores + dots)
+- `key` (text) - Configuration key. CHECK-enforced on **both** engines as of
+  `021_v0_28_0`: lowercase letters, digits, `_`, `.` and `-`. The hyphen was
+  added by spec 2026-09-11-03 (org-managed parameters use it, and Postgres had
+  refused it since the 001 baseline while SQLite had no CHECK at all — the
+  divergence shipped a 500). Org-managed rows live under the `usr.` prefix
+  (`internal/paramkeys`); never write that prefix from platform code
 - `value` (jsonb) - Configuration value
 - `secret` (boolean) - Whether value is sensitive
 

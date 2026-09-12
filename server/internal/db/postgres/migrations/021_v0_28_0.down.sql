@@ -3,6 +3,24 @@
 -- 021_v0_28_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: parameter-key-hyphens
+--
+-- Restores the pre-v0.28.0 CHECK (no hyphen). This is a NARROWING, so it fails
+-- loudly if any org has since created a hyphenated parameter — which is the
+-- correct behaviour for a rollback that would otherwise leave the database
+-- holding rows its own constraint forbids. Delete or rename those keys first.
+-- ==========================================================================
+
+alter table parameters drop constraint if exists parameters_key_check;
+
+--bun:split
+
+alter table parameters
+  add constraint parameters_key_check check (key ~ '^[a-z0-9_\.]+$');
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: check-name-backfill
 --
 -- Deliberately NOT reversed. The up-migration copied each nameless check's
