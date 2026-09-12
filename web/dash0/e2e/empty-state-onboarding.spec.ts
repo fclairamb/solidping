@@ -117,6 +117,102 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     expect(formBox!.y).toBeLessThan(mcpBox!.y);
   });
 
+  // Spec 2026-09-12-04: the hero's three activation defects — chips that
+  // wiped the input, nothing that ever moved the caret, and a dead disabled
+  // submit. These run against the stubbed-empty `test` org because none of
+  // them POSTs a check (the validation ones fail client-side on purpose); the
+  // SSL create that DOES post lives in the real-empty-org block below.
+  test("focuses the quick-create input on mount and on every chip click", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoEmptyDashboard(page);
+
+    // On mount: the desktop Playwright browser reports `(pointer: fine)`, so
+    // the conditional mount-focus applies.
+    await expect(page.getByTestId("quick-start-input")).toBeFocused();
+
+    // Click somewhere inert to move the caret away, then prove each chip
+    // brings it back. Pre-fix the chip handler touched no ref at all, so the
+    // focus stayed on the chip button.
+    for (const chip of ["icmp", "ssl", "http"] as const) {
+      await page.getByRole("heading", { name: /welcome/i }).click();
+      await expect(page.getByTestId("quick-start-input")).not.toBeFocused();
+      await page.getByTestId(`quick-start-${chip}`).click();
+      await expect(page.getByTestId("quick-start-input")).toBeFocused();
+    }
+  });
+
+  test("a hostname survives every chip switch, a URL is cleared only where it cannot apply", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoEmptyDashboard(page);
+    const input = page.getByTestId("quick-start-input");
+
+    // A bare hostname is a valid target for HTTP, Ping AND SSL, so it must
+    // survive the whole round trip. Pre-fix, `setValue("")` ran on every one
+    // of these clicks and each assertion below would read "".
+    await input.fill("example.com");
+    await page.getByTestId("quick-start-ssl").click();
+    await expect(input).toHaveValue("example.com");
+    await page.getByTestId("quick-start-icmp").click();
+    await expect(input).toHaveValue("example.com");
+    await page.getByTestId("quick-start-http").click();
+    await expect(input).toHaveValue("example.com");
+
+    // A full URL still applies to HTTP...
+    await input.fill("https://acme.com/health");
+    await page.getByTestId("quick-start-ssl").click();
+    // ...but not to a host-based type: `https://acme.com/health` can never be
+    // an SSL host or a ping target, so clearing it is correct. Without this
+    // negative case the test above would also pass against a naive "never
+    // clear anything" implementation.
+    await expect(input).toHaveValue("");
+
+    await input.fill("https://acme.com/health");
+    await page.getByTestId("quick-start-icmp").click();
+    await expect(input).toHaveValue("");
+  });
+
+  test("the submit is never a dead disabled button: it explains what is missing", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoEmptyDashboard(page);
+    const input = page.getByTestId("quick-start-input");
+    const submit = page.getByTestId("quick-start-submit");
+
+    // Empty input: enabled (pre-fix it was `disabled` and clicking it was a
+    // silent no-op).
+    await expect(input).toHaveValue("");
+    await expect(submit).toBeEnabled();
+
+    await submit.click();
+    const error = page.getByTestId("quick-start-error");
+    await expect(error).toBeVisible();
+    await expect(error).toContainText(/url or hostname/i);
+    // Announced, not just painted: the message sits inside the role="alert"
+    // banner and the field is marked invalid and described by it.
+    await expect(page.locator('[role="alert"]', { has: error })).toBeVisible();
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    await expect(input).toHaveAttribute("aria-describedby", "quick-input-error");
+    // Focus lands back where the fix has to happen.
+    await expect(input).toBeFocused();
+
+    // A value that cannot apply to the selected type gets its own message
+    // rather than a silent no-op or an opaque server error.
+    await page.getByTestId("quick-start-icmp").click();
+    await input.fill("https://acme.com/health");
+    await submit.click();
+    await expect(error).toContainText(/no http:\/\//i);
+
+    // Typing clears the message again.
+    await input.fill("acme.com");
+    await expect(error).not.toBeVisible();
+    await expect(input).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   // Spec 2026-08-29-07: submitting the quick-create form used to just clear
   // the input and let the dashboard re-render into the regular view once the
   // checks list refetched. It now navigates straight to the new check's own
@@ -246,6 +342,56 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       await expect(page.getByTestId("kpi-tile-monitored")).toContainText(
         "1 Active",
       );
+    });
+
+    // Spec 2026-09-12-04: the SSL chip posted `config.domain`, but
+    // checkssl.SSLConfig.FromMap reads only `host`, so the key was dropped and
+    // the create came back 400 "host is required" — one of the hero's three
+    // chips could never produce a check for anybody. Asserting through the
+    // real API is the only way to catch this: a stubbed POST would have
+    // happily accepted the wrong key.
+    test("the SSL chip actually creates an SSL check from a bare domain", async ({
+      page,
+    }) => {
+      const orgSlug = await seedEmptyOrg(page);
+
+      await page.goto(`orgs/${orgSlug}`);
+      await page.waitForLoadState("networkidle");
+
+      await page.getByTestId("quick-start-ssl").click();
+      await page.getByTestId("quick-start-input").fill("acme.com");
+      await page.getByTestId("quick-start-submit").click();
+
+      await page.waitForURL(new RegExp(`/orgs/${orgSlug}/checks/[^/]+/?$`));
+      await expect(
+        page.locator('[data-testid="check-detail-header"] h1'),
+      ).toContainText("SSL — acme.com");
+      // No error banner survived on the way out — i.e. this is a real create,
+      // not a navigation that happened to race a rejection.
+      await expect(page.getByTestId("quick-start-error")).toHaveCount(0);
+    });
+
+    // A bare hostname must also work for HTTP even though the backend insists
+    // on a scheme (checkhttp.Validate: "must start with http:// or https://"):
+    // the hero promotes it to https:// on submit. Pre-fix the input was
+    // type="url" + required, so a scheme-less value never reached the submit
+    // handler at all — the browser silently refused the form.
+    test("a scheme-less hostname creates an HTTP check over https", async ({
+      page,
+    }) => {
+      const orgSlug = await seedEmptyOrg(page);
+
+      await page.goto(`orgs/${orgSlug}`);
+      await page.waitForLoadState("networkidle");
+
+      await page.getByTestId("quick-start-input").fill("acme.com");
+      await page.getByTestId("quick-start-submit").click();
+
+      await page.waitForURL(new RegExp(`/orgs/${orgSlug}/checks/[^/]+/?$`));
+      await expect(
+        page.locator('[data-testid="check-detail-header"] h1'),
+      ).toContainText("HTTP — acme.com");
+      await expect(page.getByText("https://acme.com").first()).toBeVisible();
     });
   });
 });
