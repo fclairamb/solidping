@@ -3230,10 +3230,40 @@ type ExportedDependency struct {
 	Description string `json:"description,omitempty"`
 }
 
+// ImportPlanEntry is one reconcile decision for a single document entry: what
+// the import would do to that slug and, for an update, exactly which fields
+// move. It is the per-check half of the counts below — a caller that needs to
+// know WHY a file does not match reads this rather than diffing client-side.
+type ImportPlanEntry struct {
+	Slug   string `json:"slug"`
+	Action string `json:"action"`
+	// Changes is populated for `update` only. Secret-bearing and
+	// reference-derived values are masked (see CheckFieldChange).
+	Changes []CheckFieldChange `json:"changes,omitempty"`
+}
+
 // ImportResult represents the result of an import operation.
 type ImportResult struct {
 	Created int `json:"created"`
+	// Updated counts the entries that would change at least one field.
+	// Before spec 2026-09-11-04 it counted every MATCHED slug, changed or
+	// not: re-importing a file that was byte-for-byte the current export
+	// answered `created=1 updated=482`, so the one question config-as-code
+	// exists to answer — does this file match the instance? — had no answer
+	// short of a client-side diff.
 	Updated int `json:"updated"`
+	// Unchanged counts the matched entries whose NORMALIZED EFFECTIVE state
+	// is already what the document asks for. `created=0 updated=0 deleted=0`
+	// with a non-zero Unchanged is the machine-readable "the file matches".
+	Unchanged int `json:"unchanged"`
+	// Deleted and Unmanaged are structurally zero for /import — it has no
+	// managed scope and never deletes by absence. They are reported anyway so
+	// /import and /apply answer with the same five counters and a CI job can
+	// read one shape (see ApplyResult for the endpoint that moves them).
+	Deleted   int `json:"deleted"`
+	Unmanaged int `json:"unmanaged"`
+	// Plan is the per-entry decision, in document order.
+	Plan []ImportPlanEntry `json:"plan"`
 	// Skipped counts the document entries whose dependsOn edges were NOT
 	// applied: on a real run, those whose own upsert failed in pass 1; on a
 	// dry run, every entry carrying dependsOn, since pass 2 cannot resolve
@@ -3566,6 +3596,16 @@ func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]a
 func (s *Service) ImportChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool,
 ) (*ImportResult, error) {
+	// A plain import stamps no managed label, so the label is ordinary user
+	// data here and a document that drops it really would drop it.
+	return s.importChecks(ctx, orgSlug, doc, dryRun, diffOptions{})
+}
+
+// importChecks is ImportChecks with the comparison options /apply needs (it
+// stamps the managed label itself, after the plan is computed).
+func (s *Service) importChecks(
+	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool, diffOpts diffOptions,
+) (*ImportResult, error) {
 	if !isSupportedExportVersion(doc.Version) {
 		return nil, ErrUnsupportedExportVersion
 	}
@@ -3602,8 +3642,17 @@ func (s *Service) ImportChecks(
 		return nil, refErr
 	}
 
+	// The org's CURRENT state, projected through the exporter's own code, is
+	// what "unchanged" is measured against. Read ONCE, before any mutation, so
+	// a real run reports the same actions its dry run did.
+	snapshot, snapErr := s.loadOrgCheckSnapshot(ctx, org.UID)
+	if snapErr != nil {
+		return nil, snapErr
+	}
+
 	result := &ImportResult{
 		Errors:   []ImportError{},
+		Plan:     make([]ImportPlanEntry, 0, len(doc.Checks)),
 		DryRun:   dryRun,
 		Warnings: refWarnings,
 	}
@@ -3630,8 +3679,11 @@ func (s *Service) ImportChecks(
 			pendingCreates = result.Created
 		}
 
-		created, importErr := s.importSingleCheck(
-			ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName, pendingCreates, caveats)
+		action, changes, importErr := s.importSingleCheck(ctx, importItem{
+			org: org, orgSlug: orgSlug, entry: &doc.Checks[i], index: i, dryRun: dryRun,
+			groupByName: groupByName, pendingCreates: pendingCreates, caveats: caveats,
+			snapshot: snapshot, diffOpts: diffOpts,
+		})
 		if importErr != nil {
 			result.Errors = append(result.Errors, *importErr)
 			pass1Failed[doc.Checks[i].Slug] = struct{}{}
@@ -3639,9 +3691,16 @@ func (s *Service) ImportChecks(
 			continue
 		}
 
-		if created {
+		result.Plan = append(result.Plan, ImportPlanEntry{
+			Slug: doc.Checks[i].Slug, Action: action, Changes: changes,
+		})
+
+		switch action {
+		case ActionCreate:
 			result.Created++
-		} else {
+		case ActionUnchanged:
+			result.Unchanged++
+		default:
 			result.Updated++
 		}
 	}
@@ -3902,42 +3961,46 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 //
 // APPLY (real run only): the group creation and the upsert itself.
 //
-// Returns (wasCreated, error). wasCreated is true if a new check was (or would
-// be) created, false if updated.
+// Returns (action, changes, error): the action is one of ActionCreate,
+// ActionUpdate or ActionUnchanged, and changes is populated for ActionUpdate.
 func (s *Service) importSingleCheck(
-	ctx context.Context,
-	org *models.Organization,
-	orgSlug string,
-	exportedCheck *ExportCheck,
-	index int,
-	dryRun bool,
-	groupByName map[string]*models.CheckGroup,
-	pendingCreates int,
-	caveats *caveatSet,
-) (bool, *ImportError) {
+	ctx context.Context, item importItem,
+) (string, []CheckFieldChange, *ImportError) {
+	exportedCheck, index := item.entry, item.index
+	org, orgSlug, dryRun := item.org, item.orgSlug, item.dryRun
+
 	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
-		return false, validationErr
+		return "", nil, validationErr
 	}
 
 	// Resolve the group. On a dry run an absent group is "would create" —
 	// recorded in the local map so a second entry naming the same group plans
 	// against the same decision, but never written.
-	checkGroupUID, groupErr := s.resolveImportGroup(ctx, org, exportedCheck, groupByName, dryRun)
+	checkGroupUID, groupErr := s.resolveImportGroup(ctx, org, exportedCheck, item.groupByName, dryRun)
 	if groupErr != nil {
-		return false, &ImportError{
+		return "", nil, &ImportError{
 			Index: index, Slug: exportedCheck.Slug, Error: "failed to create group: " + groupErr.Error(),
 		}
 	}
 
 	upsertReq := buildImportUpsertRequest(exportedCheck, checkGroupUID)
 
+	// Computed from the PRE-write snapshot, so a real run reports the same
+	// decision its dry run did rather than "everything I just wrote changed".
+	action, changes := s.planImportAction(ctx, org, item)
+
 	if dryRun {
-		created, planErr := s.PlanUpsert(ctx, org, exportedCheck.Slug, &upsertReq, pendingCreates, caveats)
+		created, planErr := s.PlanUpsert(
+			ctx, org, exportedCheck.Slug, &upsertReq, item.pendingCreates, item.caveats)
 		if planErr != nil {
-			return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
+			return "", nil, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
 		}
 
-		return created, nil
+		if created {
+			return ActionCreate, nil, nil
+		}
+
+		return action, changes, nil
 	}
 
 	_, created, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
@@ -3952,10 +4015,54 @@ func (s *Service) importSingleCheck(
 			importErr.State = ImportStateCreatedIncomplete
 		}
 
-		return false, importErr
+		return "", nil, importErr
 	}
 
-	return created, nil
+	if created {
+		return ActionCreate, nil, nil
+	}
+
+	return action, changes, nil
+}
+
+// importItem carries one document entry plus everything the planner and the
+// writer need for it. A struct rather than nine positional parameters, which
+// is also what keeps the argument-limit linter quiet.
+type importItem struct {
+	org            *models.Organization
+	orgSlug        string
+	entry          *ExportCheck
+	index          int
+	dryRun         bool
+	groupByName    map[string]*models.CheckGroup
+	pendingCreates int
+	caveats        *caveatSet
+	snapshot       *orgCheckSnapshot
+	diffOpts       diffOptions
+}
+
+// planImportAction decides create/update/unchanged for one entry against the
+// pre-write snapshot. A slug the snapshot does not know is a create; one it
+// knows is an update only when at least one field actually moves.
+//
+// The snapshot is keyed by SLUG while the upsert resolves uid-or-slug, so a
+// document entry naming a UID can match a row the snapshot did not index. That
+// falls through to `update` with no field list rather than to a false
+// `unchanged` — an unprovable equality is never reported as equality.
+func (s *Service) planImportAction(
+	ctx context.Context, org *models.Organization, item importItem,
+) (string, []CheckFieldChange) {
+	current, existing := item.snapshot.lookup(item.entry.Slug)
+	if current == nil || existing == nil {
+		return ActionCreate, nil
+	}
+
+	changes := s.diffCheck(ctx, org, existing, current, item.entry, item.diffOpts)
+	if len(changes) == 0 {
+		return ActionUnchanged, nil
+	}
+
+	return ActionUpdate, changes
 }
 
 // resolveImportGroup resolves (and, on a real run, auto-creates) the check

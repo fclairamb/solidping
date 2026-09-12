@@ -47,8 +47,12 @@ const DefaultDeletionCap = 10
 
 // Apply plan actions.
 const (
-	ApplyActionCreate    = "create"
-	ApplyActionUpdate    = "update"
+	ApplyActionCreate = "create"
+	ApplyActionUpdate = "update"
+	// ApplyActionUnchanged is the action spec 2026-09-11-04 adds: the slug is
+	// managed, present in both, and the normalized effective state already
+	// matches — writing it would change nothing.
+	ApplyActionUnchanged = ActionUnchanged
 	ApplyActionRename    = "rename"
 	ApplyActionDelete    = "delete"
 	ApplyActionUnmanaged = "unmanaged"
@@ -91,16 +95,23 @@ type ApplyPlanEntry struct {
 	PreviousSlug string `json:"previousSlug,omitempty"`
 	Action       string `json:"action"`
 	Reason       string `json:"reason,omitempty"`
+	// Changes is the field-level diff behind an `update`, with secret-bearing
+	// and reference-derived values masked. Absent for every other action.
+	Changes []CheckFieldChange `json:"changes,omitempty"`
 }
 
 // ApplyResult is the extended import result returned by apply. It reports the
 // full plan plus the create/update/delete/unmanaged counts and any warnings.
 type ApplyResult struct {
-	Manifest  string           `json:"manifest"`
-	DryRun    bool             `json:"dryRun"`
-	Pruned    bool             `json:"pruned"`
-	Created   int              `json:"created"`
-	Updated   int              `json:"updated"`
+	Manifest string `json:"manifest"`
+	DryRun   bool   `json:"dryRun"`
+	Pruned   bool   `json:"pruned"`
+	Created  int    `json:"created"`
+	Updated  int    `json:"updated"`
+	// Unchanged counts the managed checks the manifest already describes
+	// exactly. `created=0 updated=0 deleted=0` with a non-zero Unchanged is
+	// the machine-readable "the file matches the instance".
+	Unchanged int              `json:"unchanged"`
 	Deleted   int              `json:"deleted"`
 	Unmanaged int              `json:"unmanaged"`
 	Plan      []ApplyPlanEntry `json:"plan"`
@@ -126,35 +137,15 @@ func manifestName(doc *ExportDocument, orgSlug string) string {
 //
 //nolint:cyclop,funlen // single-pass reconcile over file + managed set
 func (s *Service) computeApplyPlan(
-	ctx context.Context, org *models.Organization, doc *ExportDocument, manifest string,
+	ctx context.Context, org *models.Organization, snapshot *orgCheckSnapshot,
+	doc *ExportDocument, manifest string,
 ) ([]ApplyPlanEntry, error) {
-	// Existing checks in the org, with their labels, so we can tell managed
-	// from unmanaged and detect delete-by-absence.
-	existing, _, err := s.db.ListChecks(ctx, org.UID, &models.ListChecksFilter{})
-	if err != nil {
-		return nil, fmt.Errorf("list checks for plan: %w", err)
-	}
-
-	uids := make([]string, 0, len(existing))
-	slugByUID := make(map[string]string, len(existing))
-	for _, c := range existing {
-		uids = append(uids, c.UID)
-		if c.Slug != nil {
-			slugByUID[c.UID] = *c.Slug
-		}
-	}
-
-	labelsByUID, err := s.db.GetLabelsForChecks(ctx, uids)
-	if err != nil {
-		return nil, fmt.Errorf("load labels for plan: %w", err)
-	}
-
 	// managedSlugs: slug -> true for checks carrying our managed label.
 	managedSlugs := make(map[string]bool)
-	existingSlugs := make(map[string]bool, len(existing))
-	for uid, slug := range slugByUID {
+	existingSlugs := make(map[string]bool, len(snapshot.rows))
+	for slug, row := range snapshot.rows {
 		existingSlugs[slug] = true
-		for _, lbl := range labelsByUID[uid] {
+		for _, lbl := range snapshot.labels[row.UID] {
 			if lbl.Key == ManagedLabelKey && lbl.Value == manifest {
 				managedSlugs[slug] = true
 			}
@@ -188,7 +179,12 @@ func (s *Service) computeApplyPlan(
 		case !existingSlugs[entry.Slug]:
 			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: ApplyActionCreate})
 		case managedSlugs[entry.Slug]:
-			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: ApplyActionUpdate})
+			// The heart of the round trip: a managed slug whose normalized
+			// effective state already matches the manifest is `unchanged`, not
+			// `update`. Computed against the snapshot the exporter itself
+			// produces, so re-applying a fresh export is provably a no-op.
+			action, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
+			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: action, Changes: changes})
 		default:
 			// Slug exists but is NOT managed by this manifest: report, never
 			// auto-adopt. The apply will (re)stamp the managed label so a future
@@ -218,6 +214,26 @@ func (s *Service) computeApplyPlan(
 	}
 
 	return plan, nil
+}
+
+// planApplyUpdate decides update-vs-unchanged for one managed slug. Apply
+// stamps the managed label AFTER this runs, so that label is excluded from the
+// comparison — otherwise every managed check would report a label change that
+// the very same apply immediately makes true.
+func (s *Service) planApplyUpdate(
+	ctx context.Context, org *models.Organization, snapshot *orgCheckSnapshot, entry *ExportCheck,
+) (string, []CheckFieldChange) {
+	current, existing := snapshot.lookup(entry.Slug)
+	if current == nil || existing == nil {
+		return ApplyActionUpdate, nil
+	}
+
+	changes := s.diffCheck(ctx, org, existing, current, entry, diffOptions{IgnoreManagedLabel: true})
+	if len(changes) == 0 {
+		return ApplyActionUnchanged, nil
+	}
+
+	return ApplyActionUpdate, changes
 }
 
 // validateSecretRefs walks every check's config and proves that every
@@ -322,7 +338,12 @@ func (s *Service) ApplyChecks(
 	}
 	result.Warnings = append(result.Warnings, warnings...)
 
-	plan, err := s.computeApplyPlan(ctx, org, doc, manifest)
+	snapshot, err := s.loadOrgCheckSnapshot(ctx, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := s.computeApplyPlan(ctx, org, snapshot, doc, manifest)
 	if err != nil {
 		return nil, err
 	}
@@ -334,6 +355,8 @@ func (s *Service) ApplyChecks(
 			result.Created++
 		case ApplyActionUpdate:
 			result.Updated++
+		case ApplyActionUnchanged:
+			result.Unchanged++
 		case ApplyActionUnmanaged:
 			result.Unmanaged++
 		case ApplyActionDelete:
@@ -369,12 +392,13 @@ func (s *Service) ApplyChecks(
 
 	// Create/update via the existing import path (handles groups, config,
 	// labels, and dependsOn in two passes).
-	importResult, err := s.ImportChecks(ctx, orgSlug, doc, false)
+	importResult, err := s.importChecks(ctx, orgSlug, doc, false, diffOptions{IgnoreManagedLabel: true})
 	if err != nil {
 		return nil, err
 	}
 	result.Created = importResult.Created
 	result.Updated = importResult.Updated
+	result.Unchanged = importResult.Unchanged
 	result.Errors = append(result.Errors, importResult.Errors...)
 
 	// Prune managed, absent checks.
@@ -404,6 +428,7 @@ func (s *Service) ApplyChecks(
 			"manifest":        manifest,
 			applyCountCreated: result.Created,
 			"updated":         result.Updated,
+			"unchanged":       result.Unchanged,
 			"deleted":         result.Deleted,
 			"unmanaged":       result.Unmanaged,
 			"pruned":          opts.Prune,

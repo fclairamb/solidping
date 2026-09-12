@@ -91,8 +91,9 @@ func hasManagedLabel(
 }
 
 // TestApplyPlanCreateUpdateUnmanaged covers the core plan computation: create
-// (slug absent), update (slug present + managed), unmanaged (slug present
-// without the managed label).
+// (slug absent), update (slug present + managed + a field actually moves),
+// unchanged (slug present + managed + nothing moves) and unmanaged (slug
+// present without the managed label).
 func TestApplyPlanCreateUpdateUnmanaged(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -110,20 +111,43 @@ func TestApplyPlanCreateUpdateUnmanaged(t *testing.T) {
 	})
 	r.NoError(err)
 
-	// Now apply a manifest with: api (update), web (create), manual (unmanaged).
+	// Now apply a manifest with: api (update — the URL moves), same (unchanged
+	// — byte-identical to what was applied), web (create), manual (unmanaged).
+	_, err = svc.ApplyChecks(ctx, org.Slug, doc("apply-org",
+		manifestCheck("api"), manifestCheck("same")), checks.ApplyOptions{})
+	r.NoError(err)
+
+	movedAPI := manifestCheck("api")
+	movedAPI.Config = map[string]any{"url": "https://example.com/api-v2"}
+
 	plan, err := svc.ApplyChecks(ctx, org.Slug, doc("apply-org",
-		manifestCheck("api"), manifestCheck("web"), manifestCheck("manual"),
+		movedAPI, manifestCheck("same"), manifestCheck("web"), manifestCheck("manual"),
 	), checks.ApplyOptions{DryRun: true})
 	r.NoError(err)
 
 	actions := map[string]string{}
+	changes := map[string][]checks.CheckFieldChange{}
 	for _, e := range plan.Plan {
 		actions[e.Slug] = e.Action
+		changes[e.Slug] = e.Changes
 	}
 	r.Equal(checks.ApplyActionUpdate, actions["api"])
+	r.Equal(checks.ApplyActionUnchanged, actions["same"],
+		"a managed check the manifest already describes exactly must not read as an update")
 	r.Equal(checks.ApplyActionCreate, actions["web"])
 	r.Equal(checks.ApplyActionUnmanaged, actions["manual"])
 	r.Equal(1, plan.Unmanaged)
+	r.Equal(1, plan.Updated)
+	r.Equal(1, plan.Unchanged)
+
+	// The update names the field that moves, with both values — that is what
+	// makes a plan reviewable instead of a count to trust.
+	r.Equal([]checks.CheckFieldChange{{
+		Field: "config.url",
+		From:  `"https://example.com/api"`,
+		To:    `"https://example.com/api-v2"`,
+	}}, changes["api"])
+	r.Empty(changes["same"], "an unchanged entry carries no field diff")
 }
 
 // TestApplyDryRunMutatesNothing verifies a dry-run computes the plan but never
@@ -446,10 +470,13 @@ func TestApplyExportRoundTripIsIdempotent(t *testing.T) {
 	res, err := svc.ApplyChecks(ctx, org.Slug, exported, checks.ApplyOptions{DryRun: true})
 	r.NoError(err)
 	r.Equal(0, res.Created, "round-tripped export must not create new checks")
-	r.Equal(2, res.Updated, "round-tripped export must reconcile as updates, not creates")
+	r.Equal(0, res.Updated, "a fresh export changes nothing, so nothing is an update")
+	r.Equal(2, res.Unchanged, "round-tripped export must reconcile as unchanged")
+	r.Equal(0, res.Deleted)
 	r.Equal(0, res.Unmanaged, "round-tripped checks carry the managed label")
 	for _, e := range res.Plan {
-		r.Equal(checks.ApplyActionUpdate, e.Action, "slug %s should be an update", e.Slug)
+		r.Equal(checks.ApplyActionUnchanged, e.Action, "slug %s should be unchanged", e.Slug)
+		r.Empty(e.Changes, "slug %s should carry no field diff", e.Slug)
 	}
 }
 

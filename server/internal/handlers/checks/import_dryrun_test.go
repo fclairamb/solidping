@@ -82,11 +82,13 @@ func TestImportDryRunPositiveControls(t *testing.T) {
 	r.Equal(dry.Updated, applied.Updated)
 	r.Equal(2, rig.countChecks(t))
 
-	// Re-running the same document is now an update, and the dry run says so
-	// before the real one does.
+	// Re-running the same document changes nothing, and the dry run says so
+	// before the real one does: `created=0 updated=0` with N unchanged is the
+	// machine-readable "the file matches the instance" (spec 2026-09-11-04).
 	dryAgain := rig.importDoc(t, doc, true)
 	r.Equal(0, dryAgain.Created)
-	r.Equal(2, dryAgain.Updated)
+	r.Equal(0, dryAgain.Updated)
+	r.Equal(2, dryAgain.Unchanged)
 	r.Empty(dryAgain.Errors)
 }
 
@@ -196,7 +198,10 @@ func TestImportDryRunNamesTheSecretMergeCaveat(t *testing.T) {
 	r.NoError(err)
 	r.NotNil(stored.ConfigPrivate, "the fixture must really hold an encrypted config side")
 
-	// Now the same document is a would-update, and the caveat appears.
+	// Now the same document is a would-write against an existing check, and
+	// the caveat appears. The document carries the check's declared secret
+	// inline, which a dry run cannot compare against the encrypted column — so
+	// it is an update (a masked one), never a claimed "unchanged".
 	dryUpdate := rig.importDoc(t, createOnly, true)
 	r.Equal(0, dryUpdate.Created)
 	r.Equal(1, dryUpdate.Updated)
@@ -212,7 +217,8 @@ func TestImportDryRunNamesTheSecretMergeCaveat(t *testing.T) {
 	r.Empty(applied.Errors, "%+v", applied.Errors)
 
 	dryPlain := rig.importDoc(t, plain, true)
-	r.Equal(1, dryPlain.Updated)
+	r.Equal(0, dryPlain.Updated)
+	r.Equal(1, dryPlain.Unchanged)
 	r.NotContains(dryPlain.Caveats, checks.DryRunCaveatSecretMerge)
 	r.Equal([]checks.DryRunCaveat{checks.DryRunCaveatSlugRace}, dryPlain.Caveats)
 

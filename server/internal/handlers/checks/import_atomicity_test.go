@@ -192,13 +192,14 @@ func TestImportMidItemFailureLeavesNoCheckBehind(t *testing.T) {
 		r.Equal(groups[0].UID, *check.CheckGroupUID)
 	}
 
-	// Re-importing the corrected document creates the missing one and updates
-	// the two that made it — which is only possible because the failed slug
-	// was really released.
+	// Re-importing the corrected document creates the missing one and leaves
+	// the two that made it untouched — which is only possible because the
+	// failed slug was really released.
 	fixed := rig.importDoc(t, poisonDoc(rig.org.Slug, "prod"), false)
 	r.Empty(fixed.Errors, "%+v", fixed.Errors)
 	r.Equal(1, fixed.Created)
-	r.Equal(2, fixed.Updated)
+	r.Equal(0, fixed.Updated)
+	r.Equal(2, fixed.Unchanged)
 	r.Equal(3, rig.countChecks(t))
 }
 
