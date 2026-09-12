@@ -4,6 +4,7 @@ package checkjs
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -188,6 +189,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerSleep()
 	r.registerSolidping()
 	r.registerHTTP()
+	r.registerBase64()
 }
 
 // registerEnv exposes config.Env as a read-only "env" object.
@@ -272,6 +274,43 @@ func (r *jsRuntime) registerSleep() {
 
 		return goja.Undefined()
 	})
+}
+
+// registerBase64 exposes base64.encode(string)/decode(string), the one
+// encoding/decoding primitive goja does not ship (btoa/atob are browser APIs,
+// not ECMAScript, and the runtime registers neither).
+//
+// Standard (padded) encoding only — that is what HTTP Basic auth requires
+// (`user:pass` -> base64 -> `Authorization: Basic <value>`) and what every
+// other consumer of this global expects. Text only: goja strings are UTF-16,
+// so a decode of arbitrary binary is not representable as a JS string — the
+// documented contract is limited to text (Basic-auth credentials, JSON
+// tokens), not general-purpose binary round-tripping.
+func (r *jsRuntime) registerBase64() {
+	base64Obj := r.vm.NewObject()
+
+	_ = base64Obj.Set("encode", func(call goja.FunctionCall) goja.Value {
+		input := call.Argument(0).String()
+
+		return r.vm.ToValue(base64.StdEncoding.EncodeToString([]byte(input)))
+	})
+
+	_ = base64Obj.Set("decode", func(call goja.FunctionCall) goja.Value {
+		input := call.Argument(0).String()
+
+		decoded, err := base64.StdEncoding.DecodeString(input)
+		if err != nil {
+			// Malformed input MUST throw rather than return an empty or
+			// partial string: a silent empty string would turn a typo'd
+			// credential into a check that probes with an empty password and
+			// reports "down" with nothing visibly wrong in the script itself.
+			panic(r.vm.NewGoError(fmt.Errorf("base64.decode: %w", err)))
+		}
+
+		return r.vm.ToValue(string(decoded))
+	})
+
+	_ = r.vm.Set("base64", base64Obj)
 }
 
 // registerSolidping exposes the solidping.check() function and typed wrappers.
