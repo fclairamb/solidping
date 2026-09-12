@@ -167,5 +167,6 @@
   "security": "Sécurité",
   "slos": "SLO",
   "reportSchedules": "Rapports de dispo.",
-  "audit": "Audit"
+  "audit": "Audit",
+  "parameters": "Paramètres"
 }

@@ -8019,3 +8019,65 @@ export function useDeleteUiState(key: string) {
 export function onboardingUiStateKey(org: string) {
   return `onboarding.${org}`;
 }
+
+// ─── Organization parameters (spec 2026-09-11-03) ──────────────────────────
+//
+// The values a config-as-code manifest references as `${param:KEY}`. A secret
+// parameter is WRITE-ONLY: the API omits `value` entirely — not blanks it — so
+// there is nothing here to "reveal", and the UI must not pretend otherwise.
+
+export interface OrgParameter {
+  key: string;
+  /** Absent when `secret` is true. There is no endpoint that returns it. */
+  value?: string;
+  secret: boolean;
+  updatedAt: string;
+}
+
+export interface SetOrgParameterRequest {
+  value: string;
+  secret?: boolean;
+}
+
+export function useOrgParameters(org: string, opts?: ListQueryOptions) {
+  return useQuery({
+    queryKey: ["orgParameters", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OrgParameter[] }>(
+        `/api/v1/orgs/${org}/parameters`,
+      );
+      return response.data ?? [];
+    },
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: opts?.staleTime,
+  });
+}
+
+export function useSetOrgParameter(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ key, ...request }: SetOrgParameterRequest & { key: string }) =>
+      apiFetch<OrgParameter>(
+        `/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`,
+        { method: "PUT", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orgParameters", org] });
+    },
+  });
+}
+
+export function useDeleteOrgParameter(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (key: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orgParameters", org] });
+    },
+  });
+}
