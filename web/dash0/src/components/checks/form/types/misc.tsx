@@ -13,6 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  KeyValueRows,
+  type KeyValueRow,
+} from "@/components/ui/key-value-rows";
+import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";
 import { getFieldError } from "@/hooks/use-check-validation";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 import type { CheckTypeModule } from "./index";
@@ -607,15 +612,61 @@ function SipFields({ state, onChange }: CheckTypeFieldsProps<SipState>) {
 // ── JavaScript ──
 export interface JsState {
   script: string;
+  // Plaintext script parameters. Public config, so they come back on GET and
+  // need no dirty flag: an empty editor omits the key, which is what clears a
+  // stored value.
+  env: KeyValueRow[];
+  // Credentials. Encrypted at rest and NEVER returned on a read, so the editor
+  // starts empty on every edit and must not be serialized until the operator
+  // actually touches it — see secretsDirty.
+  secrets: KeyValueRow[];
+  // Dirty flag for the `secrets` section. Not dirty ⇒ `secrets` is absent from
+  // the submitted config ⇒ the server's preserve-absent-secrets merge keeps the
+  // stored map. Sending it anyway is what wipes a credential on every unrelated
+  // edit (specs 2026-05-18-07, 2026-08-28-12). Always seeded false: unlike
+  // HTTP's basic-auth pair there is no public half that could come back.
+  secretsDirty: boolean;
+}
+
+// seedKeyValueRows turns a config map into editor rows, tolerating a missing or
+// malformed value the same lenient way the rest of the seeding does.
+function seedKeyValueRows(raw: unknown): KeyValueRow[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  return Object.entries(raw as Record<string, unknown>).map(([key, value]) => ({
+    key,
+    value: value === undefined || value === null ? "" : String(value),
+  }));
+}
+
+// rowsToMap drops rows with no key — a freshly added blank row must not write
+// an empty-named entry.
+function rowsToMap(rows: KeyValueRow[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const { key, value } of rows) {
+    if (key) out[key] = value;
+  }
+  return out;
 }
 
 export const jsModule: CheckTypeModule<JsState> = {
   types: ["js"],
-  ownedKeys: ["script"],
-  fromConfig: (config) => ({ script: getConfigField(config, "script") }),
+  ownedKeys: ["script", "env", "secrets"],
+  fromConfig: (config) => ({
+    script: getConfigField(config, "script"),
+    env: seedKeyValueRows(config.env),
+    // `secrets` is never in a GET response; if a deployment somehow returned
+    // it, seeding from it would re-send a credential the operator never typed.
+    secrets: [],
+    secretsDirty: false,
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.script) cfg.script = state.script;
+    const env = rowsToMap(state.env);
+    if (Object.keys(env).length > 0) cfg.env = env;
+    // Untouched ⇒ key absent ⇒ the stored secrets are preserved. Touched ⇒ the
+    // map is sent, and an explicit {} is what clears them.
+    if (state.secretsDirty) cfg.secrets = rowsToMap(state.secrets);
     const errors: FieldErrors = state.script
       ? []
       : [{ name: "script", message: "Script is required" }];
@@ -626,31 +677,67 @@ export const jsModule: CheckTypeModule<JsState> = {
 
 function JsFields({ state, onChange, errors }: CheckTypeFieldsProps<JsState>) {
   const { t } = useTranslation("checks");
+  const { configPrivateKeys } = useCheckFormFields();
   return (
-    <div className="space-y-2">
-      <Label htmlFor="script">{t("misc.script")}</Label>
-      <CodeMirror
-        value={state.script}
-        onChange={(value) => onChange({ ...state, script: value })}
-        extensions={[javascript()]}
-        theme={
-          document.documentElement.classList.contains("dark") ? "dark" : "light"
-        }
-        height="200px"
-        className={cn(
-          "rounded-md border text-sm",
-          getFieldError(errors, "script") && "border-destructive",
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="script">{t("misc.script")}</Label>
+        <CodeMirror
+          value={state.script}
+          onChange={(value) => onChange({ ...state, script: value })}
+          extensions={[javascript()]}
+          theme={
+            document.documentElement.classList.contains("dark") ? "dark" : "light"
+          }
+          height="200px"
+          className={cn(
+            "rounded-md border text-sm",
+            getFieldError(errors, "script") && "border-destructive",
+          )}
+          data-testid="check-script"
+        />
+        {getFieldError(errors, "script") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "script")}
+          </p>
         )}
-        data-testid="check-script"
-      />
-      {getFieldError(errors, "script") && (
-        <p className="text-xs text-destructive">
-          {getFieldError(errors, "script")}
+        <p className="text-xs text-muted-foreground">
+          {t("misc.scriptHelp")}
         </p>
-      )}
-      <p className="text-xs text-muted-foreground">
-        {t("misc.scriptHelp")}
-      </p>
+      </div>
+      <div className="space-y-2">
+        <div>
+          <Label>{t("misc.jsEnv")}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t("misc.jsEnvHelp")}
+          </p>
+        </div>
+        <KeyValueRows
+          rows={state.env}
+          onChange={(env) => onChange({ ...state, env })}
+          addLabel={t("misc.jsAddEnv")}
+          keyPlaceholder="BASE_URL"
+          valuePlaceholder="https://acme.com"
+          removeLabel={(key) => t("misc.jsRemoveEnv", { key })}
+          testIdPrefix="js-env"
+        />
+      </div>
+      <SecretKeyValueRows
+        label={t("misc.jsSecrets")}
+        description={t("misc.jsSecretsHelp")}
+        rows={state.secrets}
+        dirty={state.secretsDirty}
+        onChange={(secrets, secretsDirty) =>
+          onChange({ ...state, secrets, secretsDirty })
+        }
+        stored={configPrivateKeys?.includes("secrets")}
+        storedLabel={t("http.encryptedEnterNewValues")}
+        addLabel={t("misc.jsAddSecret")}
+        keyPlaceholder="PASSWORD"
+        valuePlaceholder="value"
+        removeLabel={(key) => t("misc.jsRemoveSecret", { key })}
+        testIdPrefix="js-secret"
+      />
     </div>
   );
 }

@@ -195,6 +195,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
 import { KeyValueRows, type KeyValueRow } from "@/components/ui/key-value-rows";
+import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
@@ -2458,6 +2459,11 @@ function FormsSection() {
         />
 
         <ExampleRow
+          preview={<SecretKeyValueRowsExample />}
+          importLine={`import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";\n\nconst [rows, setRows] = useState<KeyValueRow[]>([]);\nconst [dirty, setDirty] = useState(false);\n\n<SecretKeyValueRows\n  label="Secrets"\n  description="Stored encrypted, never shown again."\n  rows={rows}\n  dirty={dirty}\n  onChange={(next, nextDirty) => { setRows(next); setDirty(nextDirty); }}\n  stored={configPrivateKeys?.includes("secrets")}\n  storedLabel={t("http.encryptedEnterNewValues")}\n  addLabel="Add secret"\n  testIdPrefix="js-secret"\n/>\n\n{/* Untouched (dirty === false) ⇒ omit the key from the submitted\n    config ⇒ the server preserves the stored values. */}`}
+        />
+
+        <ExampleRow
           preview={<KeyValueRowsExample />}
           importLine={`import { KeyValueRows } from "@/components/ui/key-value-rows";\n\nconst [rows, setRows] = useState<KeyValueRow[]>([]);\n\n<KeyValueRows\n  rows={rows}\n  onChange={setRows}\n  addLabel="Add header"\n  keyPlaceholder="Header-Name"\n  valuePlaceholder="value"\n  removeLabel={(key) => \`Remove \${key}\`}\n  testIdPrefix="request-header"\n/>\n\n{/* secretValues renders the value inputs as password fields */}`}
         />
@@ -2797,6 +2803,41 @@ function KeyValueRowsExample() {
         Stacks key over value below <code>sm</code> so it never scrolls
         horizontally on a phone. Pass <code>secretValues</code> for masked
         values.
+      </p>
+    </div>
+  );
+}
+
+// SecretKeyValueRowsExample showcases the WRITE-ONLY variant: a stored-value
+// placeholder plus the dirty rule that keeps an untouched section out of the
+// submitted config. Use it for any encrypted map key (a JS check's `secrets`);
+// plain KeyValueRows stays right for a public map.
+function SecretKeyValueRowsExample() {
+  const [rows, setRows] = useState<KeyValueRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  return (
+    <div className="w-full max-w-sm space-y-2">
+      <SecretKeyValueRows
+        label="Secrets (encrypted)"
+        description="Stored encrypted, never returned on a read."
+        rows={rows}
+        dirty={dirty}
+        onChange={(next, nextDirty) => {
+          setRows(next);
+          setDirty(nextDirty);
+        }}
+        stored
+        storedLabel="(encrypted — enter new values to replace)"
+        addLabel="Add secret"
+        keyPlaceholder="PASSWORD"
+        valuePlaceholder="value"
+        removeLabel={(key) => `Remove ${key || "secret"}`}
+        testIdPrefix="dr-secret-key-value"
+      />
+      <p className="text-xs text-muted-foreground">
+        Clicking <em>Add</em> does not dirty the section; typing or removing a
+        row does. That is what stops a stray click plus a save from wiping a
+        stored credential.
       </p>
     </div>
   );
