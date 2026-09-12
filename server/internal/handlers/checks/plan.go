@@ -228,17 +228,22 @@ func (s *Service) planCreateCheck(
 		return nil, validateErr
 	}
 
-	// The name is required, non-blank, and checked HERE — after
-	// checker.Validate, which is what auto-derives a name for a request that
-	// omitted one ("SMTP: mail.acme.com", "Domain: acme.com", …). Only a
-	// request that explicitly supplied a blank/whitespace name can fail this.
+	// A name the caller actually SUPPLIED must survive trimming (spec
+	// 2026-09-11-02). An absent one (which this request shape cannot tell
+	// apart from `""`) is not an error: checker.Validate has just derived one
+	// for most types ("SMTP: mail.acme.com", "Domain: acme.com", …) and
+	// CreateCheck falls back to the slug for the types that derive none —
+	// which is the same answer the backfill migration gives existing rows, and
+	// what checkDisplayName has always rendered anyway.
 	//
-	// An empty name is not a cosmetic problem: the exporter omits an empty
-	// string, and both ValidateDocument and the exp-devops validator require
-	// `name` — so the server was producing documents the server itself refuses
-	// to consume (spec 2026-09-11-02).
-	if nameErr := validateCheckName(spec.Name); nameErr != nil {
-		return nil, nameErr
+	// What must never happen again is a check whose STORED name is blank: the
+	// exporter omits an empty string, and both ValidateDocument and the import
+	// path require `name`, so such a check made the server produce a document
+	// the server itself refuses to consume.
+	if req.Name != "" {
+		if nameErr := validateCheckName(req.Name); nameErr != nil {
+			return nil, nameErr
+		}
 	}
 
 	// The remaining request-level guards — regionSpread's bound, the
@@ -416,20 +421,38 @@ func (s *Service) planUpdateConfig(
 		return normErr
 	}
 
+	// Mirror what the real update does to the incoming config BEFORE it
+	// validates it (spec 2026-09-11-02): an export-redacted field the document
+	// omits is preserved from the stored check, or derived from what the
+	// document did carry. Without this the dry run would reject the very
+	// document the exporter produces — a `secrets: stripped` export omits the
+	// email ingest token and the SMTP delivery_to by design.
+	//
+	// On a COPY: `normalized` can be the caller's own map when the type needs
+	// no normalization, and a planner must not write into the document it is
+	// checking.
+	planned := make(map[string]any, len(normalized)+1)
+	for key, value := range normalized {
+		planned[key] = value
+	}
+
+	preserveAbsentRedactedFields(existing, planned)
+	planned = withInjectedConfig(planned, s.deriveRedactedFields(ctx, org.UID, existing.Type, planned))
+
 	if cfgErr := s.validatePatchedConfig(
-		existing.Type, normalized, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
+		existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
 		existing.ConfigPrivateKeys,
 	); cfgErr != nil {
 		return cfgErr
 	}
 
 	if cfgErr := s.firstConfigValidationError(
-		ctx, org.UID, existing.Type, normalized, regionsForCheck,
+		ctx, org.UID, existing.Type, planned, regionsForCheck,
 	); cfgErr != nil {
 		return cfgErr
 	}
 
-	return validateSMTPSendInterval(existing.Type, normalized, period)
+	return validateSMTPSendInterval(existing.Type, planned, period)
 }
 
 // PlanUpsert validates an upsert request exactly the way the write path will,

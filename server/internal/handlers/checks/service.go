@@ -1302,10 +1302,21 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.CheckGroupUID = req.CheckGroupUID
 	}
 
-	// Set name from validated spec
-	if spec.Name != "" {
-		check.Name = &spec.Name
+	// Set the name from the validated spec, falling back to the resolved slug.
+	//
+	// The fallback is what keeps the "a check always has a non-blank name"
+	// invariant true for the check types whose Validate derives no name at all
+	// (tcp, udp, icmp, …). Before spec 2026-09-11-02 those checks were stored
+	// with a NULL name, which exports as an absent `name` key — a document
+	// ValidateDocument and the import path both reject. The slug is the same
+	// answer the backfill migration gives existing rows, and the one
+	// checkDisplayName has always rendered for them.
+	resolvedName := spec.Name
+	if strings.TrimSpace(resolvedName) == "" {
+		resolvedName = finalSlug
 	}
+
+	check.Name = &resolvedName
 
 	// Set description
 	if req.Description != "" {
@@ -3424,6 +3435,18 @@ func (s *Service) ExportChecks(
 // intPtr returns a pointer to v. Used by the exporter to populate the
 // pointer-typed ExportCheck alerting fields from concrete model values.
 func intPtr(v int) *int { return &v }
+
+// ExportedConfigFor returns the config a check would carry in an export
+// document: its stored config minus every key the exporter strips.
+//
+// Exported for the cross-checker export-leak tripwire in checkers/registry
+// (TestExportNeverCarriesAMintedToken), which has to run the REAL exporter —
+// a test that re-implemented the stripping rule would stay green against an
+// exporter that stopped applying it, which is exactly the regression that let
+// a live ingest token reach a customer's git history.
+func ExportedConfigFor(check *models.Check) map[string]any {
+	return stripSecretKeysForExport(check)
+}
 
 // stripSecretKeysForExport returns the check's Config with every key
 // declared as secret by the checker (and every key already in
