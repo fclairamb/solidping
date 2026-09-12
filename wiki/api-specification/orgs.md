@@ -225,14 +225,16 @@ Two rules shape the surface:
 - **A secret parameter is write-only.** `value` is *absent* — not blanked — from
   every read, in the list and in the single-key get alike. There is no reveal
   route; rotation is "set it again".
-- **Reserved keys are refused with 400.** The `sp.` prefix is reserved for
-  SolidPing's own future per-org keys, and the existing platform namespaces
-  (`encryption.`, `auth.`, `registration.`, `demo.`, `samples.`, `diagnostics.`,
-  `status_page.`, `email.`, `entitlements.`, `notifications.`, `aggregation.`,
-  plus `default_regions` / `custom_regions`) are refused too — an org must not be
-  able to overwrite the key its own encryption DEK lives under. The same registry
-  makes those keys unresolvable through `${param:}`, so a check body cannot read
-  them out either.
+- **Platform keys are unreachable, structurally.** Org-managed parameters are
+  stored in their own namespace (`usr.`, an implementation detail that never
+  appears in the API), which SolidPing never writes to. An org admin therefore
+  cannot overwrite the key their own encryption DEK lives under, and
+  `${param:}` — which reads only that namespace, with no system-wide fallback —
+  cannot read platform material out through a check config. This replaced a
+  denylist of platform prefixes that was incomplete on the day it was written
+  (it missed `msteams.app_secret`, both PostHog keys and
+  `telegram.webhook_secret`). The `sp.` prefix is separately refused with a 400,
+  reserved for whatever the platform wants to publish to organizations later.
 
 ### GET /api/v1/orgs/:org/parameters
 List the organization's parameters. Auth: required (admin).

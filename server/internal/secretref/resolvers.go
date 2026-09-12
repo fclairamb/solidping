@@ -13,9 +13,16 @@ import (
 // Taking an interface (rather than db.Service) keeps this package a leaf, so
 // the worker, the agent dispatch path and the checks handlers can all share the
 // grammar without dragging the whole database surface with them.
+//
+// One method, deliberately. It used to have a GetSystemParameter twin, because
+// `${param:}` fell back to the system-wide table when the org had no such key —
+// which made every instance-wide credential (`msteams.app_secret`,
+// `posthog.personal_api_key`, `telegram.webhook_secret`, the SMTP password…)
+// readable by any org admin who could write a check config. The fallback is
+// gone: `param:` is the org-scoped, API-managed form the spec describes, and
+// there is nothing else for it to read.
 type ParamStore interface {
 	GetOrgParameter(ctx context.Context, orgUID, key string) (*models.Parameter, error)
-	GetSystemParameter(ctx context.Context, key string) (*models.Parameter, error)
 }
 
 // StringValue extracts the stringified value from a parameter's `{"value": …}`
@@ -40,37 +47,33 @@ func StringValue(param *models.Parameter) (string, bool) {
 	}
 }
 
-// LookupParam resolves a `${param:KEY}` reference: the org-scoped parameter
-// wins over the system-wide one. The `secret` flag only masks API responses, so
-// the plaintext value is read directly here.
+// LookupParam resolves a `${param:KEY}` reference against the referencing
+// organization's OWN parameters, and nothing else.
+//
+// The lookup is deny-by-default: it reads exactly one row,
+// `paramkeys.StorageKey(key)`, inside the namespace only an org admin can write
+// (see the paramkeys package doc for why that namespace exists rather than a
+// denylist). A platform key — org-scoped like `encryption.dek`, or instance-wide
+// like `msteams.app_secret` — is unreachable because it is not in the namespace.
+//
+// The `secret` flag only masks API responses, so the plaintext value is read
+// directly here.
 func LookupParam(ctx context.Context, store ParamStore, orgUID, key string) (string, error) {
 	if store == nil {
 		return "", Unresolvedf(SchemeParam, key)
 	}
 
-	// A reserved key is platform material, not org data: `${param:encryption.dek}`
-	// in an HTTP check's body would POST the org's wrapped encryption key to a
-	// URL of the author's choosing, and `${param:email.password}` would do the
-	// same for the instance's SMTP credentials (the system-parameter fallback
-	// below reaches those). Refused as simply "not found" — the reference is
-	// unresolvable, and saying which internal key exists is itself a hint.
-	if paramkeys.IsReserved(key) {
+	param, err := store.GetOrgParameter(ctx, orgUID, paramkeys.StorageKey(key))
+	if err != nil || param == nil {
 		return "", Unresolvedf(SchemeParam, key)
 	}
 
-	if orgParam, err := store.GetOrgParameter(ctx, orgUID, key); err == nil && orgParam != nil {
-		if value, ok := StringValue(orgParam); ok {
-			return value, nil
-		}
+	value, ok := StringValue(param)
+	if !ok {
+		return "", Unresolvedf(SchemeParam, key)
 	}
 
-	if sysParam, err := store.GetSystemParameter(ctx, key); err == nil && sysParam != nil {
-		if value, ok := StringValue(sysParam); ok {
-			return value, nil
-		}
-	}
-
-	return "", Unresolvedf(SchemeParam, key)
+	return value, nil
 }
 
 // LookupEnv resolves an `${env:NAME}` reference against this process's

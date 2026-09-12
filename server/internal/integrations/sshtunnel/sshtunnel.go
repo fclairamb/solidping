@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
 
@@ -240,8 +241,17 @@ func LoadConfig(
 		return nil, wrapErr("load", fmt.Errorf("%w: %s", ErrChained, tunnelCheckUID))
 	}
 
+	// Same materialization the agent-side twin does (spec 2026-09-11-03, audit
+	// item 5): a `${env:}` in the bastion's config resolves here, on the process
+	// that will dial, and anything else fails loudly instead of being offered to
+	// the SSH server as a literal password.
+	resolved, _, refErr := secretref.ResolveConfig(ctx, effective, secretref.ExecutionResolver())
+	if refErr != nil {
+		return nil, wrapErr("load", refErr)
+	}
+
 	cfg := &checkssh.SSHConfig{}
-	if err := cfg.FromMap(effective); err != nil {
+	if err := cfg.FromMap(resolved); err != nil {
 		return nil, wrapErr("load", err)
 	}
 

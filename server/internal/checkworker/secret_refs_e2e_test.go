@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // This file covers the execution half of spec 2026-09-11-03: a check config
@@ -100,7 +101,7 @@ func TestWorkerResolvesParamReferenceAtExecution(t *testing.T) {
 
 	org := models.NewOrganization("param-ref-e2e", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
-	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "sso-password", "hunter2", true))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey("sso-password"), "hunter2", true))
 
 	const reference = "grant_type=password&password=${param:sso-password}"
 
@@ -226,7 +227,7 @@ func TestRealHTTPCheckSendsTheResolvedBody(t *testing.T) {
 
 	org := models.NewOrganization("http-ref-e2e", "")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
-	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "sso-password", "hunter2", true))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey("sso-password"), "hunter2", true))
 
 	const reference = "grant_type=password&username=probe&password=${param:sso-password}"
 

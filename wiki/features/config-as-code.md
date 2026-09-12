@@ -85,11 +85,28 @@ sp params delete sso-authtest-password
 
 Keys match `^[a-z][a-z0-9_.-]{0,63}$`. A `secret: true` parameter is
 **write-only**: no endpoint returns its value, so rotation is "set it again",
-never "read it back". Keys SolidPing owns for its own per-org configuration —
-the `sp.` prefix, plus `encryption.`, `auth.`, `registration.` and friends — are
-refused with a 400, and are equally unresolvable through `${param:}`: an org
-must not be able to read its own wrapped encryption key, or the instance's SMTP
-password, out through a check body.
+never "read it back". The `sp.` prefix is reserved for SolidPing and refused
+with a 400.
+
+**`${param:}` reads the referencing organization's own parameters, and nothing
+else.** Two properties make that true structurally rather than by a list of
+forbidden names:
+
+- Org-managed parameters are **stored in their own namespace** (`usr.`, never
+  visible in the API, the CLI or a reference). The platform's per-org rows — the
+  wrapped encryption DEK, the registration policy, the session ceiling — are not
+  in it, so no key an org admin can name reaches them. An org may even create a
+  parameter *called* `encryption.dek`; it is a different row, and it resolves to
+  their value.
+- There is **no system-wide fallback**. `${param:}` used to fall back to the
+  system `parameters` table when the org had no such key, which made every
+  instance credential in it — the Teams app secret, the PostHog API keys, the
+  Telegram webhook secret, the SMTP password — readable by any org admin who
+  could write a check config and point it at a URL they controlled.
+
+This replaced a denylist of platform key prefixes, which was already missing
+four instance credentials on the day it was written. A denylist over a namespace
+other people keep adding to is not a boundary.
 
 `${env:}` resolves on **whichever process executes the check**. For a check
 running on a deported agent that is the *agent's* environment, not the API's —

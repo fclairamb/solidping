@@ -13,8 +13,13 @@
 //
 //   - A `secret: true` parameter is WRITE-ONLY. Its value never comes back, from
 //     the list or from the single-key read. There is no "reveal" route.
-//   - Platform-owned keys are refused (paramkeys.Validate). The same table holds
-//     the org's wrapped encryption DEK.
+//   - Platform keys are unreachable, structurally. Every row this package writes
+//     or reads lives under paramkeys.OrgKeyPrefix — a namespace nothing in
+//     SolidPing writes to — so no key an org admin can name resolves to the
+//     org's wrapped encryption DEK, its registration policy or its session
+//     ceiling. That is a namespace, not a denylist, because the denylist this
+//     replaced was already missing four instance credentials on the day it was
+//     written. See the paramkeys package doc.
 package orgparams
 
 import (
@@ -77,9 +82,9 @@ type SetRequest struct {
 	Secret *bool  `json:"secret,omitempty"`
 }
 
-// List returns every org-managed parameter, secret values elided. Reserved
-// platform keys are filtered out: they live in the same table but they are not
-// the organization's to see or edit.
+// List returns every org-managed parameter, secret values elided. Rows outside
+// the org-managed namespace are skipped: the platform's own per-org
+// configuration shares this table and is none of the organization's business.
 func (s *Service) List(ctx context.Context, orgSlug string) (*ListResponse, error) {
 	org, err := s.org(ctx, orgSlug)
 	if err != nil {
@@ -94,11 +99,12 @@ func (s *Service) List(ctx context.Context, orgSlug string) (*ListResponse, erro
 	out := make([]*Parameter, 0, len(rows))
 
 	for _, row := range rows {
-		if paramkeys.IsReserved(row.Key) {
+		key, owned := paramkeys.PublicKey(row.Key)
+		if !owned {
 			continue
 		}
 
-		out = append(out, project(row))
+		out = append(out, project(key, row))
 	}
 
 	return &ListResponse{Data: out}, nil
@@ -115,7 +121,7 @@ func (s *Service) Get(ctx context.Context, orgSlug, key string) (*Parameter, err
 		return nil, validErr
 	}
 
-	row, err := s.db.GetOrgParameter(ctx, org.UID, key)
+	row, err := s.db.GetOrgParameter(ctx, org.UID, paramkeys.StorageKey(key))
 	if err != nil {
 		return nil, fmt.Errorf("get org parameter: %w", err)
 	}
@@ -124,7 +130,7 @@ func (s *Service) Get(ctx context.Context, orgSlug, key string) (*Parameter, err
 		return nil, ErrNotFound
 	}
 
-	return project(row), nil
+	return project(key, row), nil
 }
 
 // Set creates or replaces a parameter. Writing an existing key is the rotation
@@ -148,18 +154,18 @@ func (s *Service) Set(ctx context.Context, orgSlug, key string, req *SetRequest)
 		secret = *req.Secret
 	}
 
-	if setErr := s.db.SetOrgParameter(ctx, org.UID, key, req.Value, secret); setErr != nil {
+	if setErr := s.db.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey(key), req.Value, secret); setErr != nil {
 		return nil, fmt.Errorf("set org parameter: %w", setErr)
 	}
 
-	row, err := s.db.GetOrgParameter(ctx, org.UID, key)
+	row, err := s.db.GetOrgParameter(ctx, org.UID, paramkeys.StorageKey(key))
 	if err != nil || row == nil {
 		// The write succeeded; answer from what we know rather than failing a
 		// successful mutation on a read-back hiccup.
 		return &Parameter{Key: key, Secret: secret, UpdatedAt: time.Now()}, nil //nolint:nilerr // see above
 	}
 
-	return project(row), nil
+	return project(key, row), nil
 }
 
 // Delete removes a parameter. A missing key is ErrNotFound rather than a silent
@@ -175,7 +181,7 @@ func (s *Service) Delete(ctx context.Context, orgSlug, key string) error {
 		return validErr
 	}
 
-	row, err := s.db.GetOrgParameter(ctx, org.UID, key)
+	row, err := s.db.GetOrgParameter(ctx, org.UID, paramkeys.StorageKey(key))
 	if err != nil {
 		return fmt.Errorf("get org parameter: %w", err)
 	}
@@ -184,7 +190,7 @@ func (s *Service) Delete(ctx context.Context, orgSlug, key string) error {
 		return ErrNotFound
 	}
 
-	if delErr := s.db.DeleteOrgParameter(ctx, org.UID, key); delErr != nil {
+	if delErr := s.db.DeleteOrgParameter(ctx, org.UID, paramkeys.StorageKey(key)); delErr != nil {
 		return fmt.Errorf("delete org parameter: %w", delErr)
 	}
 
@@ -200,11 +206,13 @@ func (s *Service) org(ctx context.Context, orgSlug string) (*models.Organization
 	return org, nil
 }
 
-// project maps a stored row onto the API shape, eliding a secret value.
-func project(row *models.Parameter) *Parameter {
+// project maps a stored row onto the API shape, eliding a secret value. The key
+// is passed in already stripped of the storage namespace: the API never shows
+// where the row physically lives.
+func project(key string, row *models.Parameter) *Parameter {
 	secret := row.Secret != nil && *row.Secret
 
-	out := &Parameter{Key: row.Key, Secret: secret, UpdatedAt: row.UpdatedAt}
+	out := &Parameter{Key: key, Secret: secret, UpdatedAt: row.UpdatedAt}
 	if secret {
 		return out
 	}

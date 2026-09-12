@@ -15,6 +15,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // setupApplyService builds a checks service backed by an in-memory SQLite DB.
@@ -33,6 +34,12 @@ func setupApplyService(t *testing.T, withMasterKey bool) (*checks.Service, db.Se
 
 	org := models.NewOrganization("apply-org", "Apply Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// The spec-03 leak guard. Registered AFTER the Close cleanup above so that,
+	// cleanups running LIFO, it greps the database while it is still open.
+	// Every test built on this helper is audited for a resolved secret sitting
+	// in a public config — see leak_guard_test.go.
+	registerLeakGuard(t, dbSvc, org.UID)
 
 	var kek []byte
 	if withMasterKey {
@@ -298,8 +305,14 @@ func TestApplyResolvesParamSecretRef(t *testing.T) {
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
 
+	// The system parameter is seeded deliberately: since the spec-03 audit,
+	// `${param:}` has NO system-wide fallback (it made every instance
+	// credential — the Teams app secret, the PostHog keys, the SMTP password —
+	// readable by any org admin who could write a check config). Seeding it here
+	// proves the org-scoped row is what resolves, and that the system row is
+	// simply not consulted.
 	r.NoError(dbSvc.SetSystemParameter(ctx, "shared_token", "system-value", true))
-	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "shared_token", "org-value", true))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey("shared_token"), "org-value", true))
 
 	c := manifestCheck("param-check")
 	c.Config = map[string]any{
@@ -386,7 +399,7 @@ func TestApplySecretRefLeaksNothingWithoutAMasterKey(t *testing.T) {
 	svc, dbSvc, org := setupApplyService(t, false) // no master key → plaintext envelope
 	ctx := t.Context()
 
-	t.Setenv("SP_TEST_PLAINTEXT_TOKEN", "exposed")
+	t.Setenv("SP_TEST_PLAINTEXT_TOKEN", "exposed-fixture-value")
 
 	c := manifestCheck("warned")
 	c.Config = map[string]any{
@@ -408,7 +421,7 @@ func TestApplySecretRefLeaksNothingWithoutAMasterKey(t *testing.T) {
 
 	blob, marshalErr := json.Marshal(row.Config)
 	r.NoError(marshalErr)
-	r.NotContains(string(blob), "exposed", "no resolved value may reach the public config")
+	r.NotContains(string(blob), "exposed-fixture-value", "no resolved value may reach the public config")
 }
 
 // TestApplyExportRoundTripIsIdempotent verifies that applying an exported

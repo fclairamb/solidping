@@ -346,11 +346,12 @@ using `${env:}` gets one advisory `warnings[]` entry: it resolves on the process
 that executes the check, which for a deported agent is that agent's environment.
 See [`features/config-as-code.md`](../features/config-as-code.md#secret-references).
 
-`${param:KEY}` reads the org's `parameters` table (org-scoped first, then
-system-wide), managed by an org admin at
+`${param:KEY}` reads the referencing organization's OWN parameters and nothing
+else — no system-wide fallback, and org-managed rows live in a namespace the
+platform never writes to, so no key an org admin can name resolves to platform
+material. Manage them at
 [`/orgs/:org/parameters`](orgs.md#organization-parameters) or with
-`sp params set`. Keys SolidPing owns for its own per-org configuration (the
-`sp.` prefix, `encryption.`, `auth.`, `registration.`, …) are unresolvable.
+`sp params set`.
 
 **Deletion safety (belt-and-suspenders).** Delete-by-absence happens **only**
 when all of: (a) `?prune=true` is set, (b) the check carries the managed label,

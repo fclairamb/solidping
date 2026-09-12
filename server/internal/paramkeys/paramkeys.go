@@ -1,17 +1,32 @@
-// Package paramkeys owns what an ORG-MANAGED parameter key may be called.
+// Package paramkeys owns what an ORG-MANAGED parameter key may be called, and
+// where it is stored.
 //
 // It exists because two very different things share one `parameters` table: the
-// platform's own per-org configuration (the wrapped encryption DEK, the
-// registration policy, the session ceiling, the demo-seed bookkeeping) and,
+// platform's own configuration (the wrapped encryption DEK, the registration
+// policy, the session ceiling, the Teams app secret, the PostHog API keys) and,
 // since spec 2026-09-11-03, arbitrary values an org admin creates over the API
 // to be referenced from a check config as `${param:KEY}`.
 //
-// Those two sets must not meet. An org admin who could PUT `encryption.dek`
-// would lock every credential the org owns out of its own envelopes; one who
-// could reference `${param:encryption.dek}` from an HTTP check's body would
-// post the wrapped DEK to a URL of their choosing. So the reserved registry
-// below gates BOTH directions — the write API and the reference resolver — and
-// lives in a leaf package so neither side can drift from the other.
+// Those two sets must not meet — in either direction. An org admin who could
+// PUT `encryption.dek` would lock every credential the org owns out of its own
+// envelopes; one who could write `body: "x=${param:msteams.app_secret}"` on an
+// HTTP check pointed at a URL of their choosing would exfiltrate an instance
+// credential.
+//
+// # Why a namespace and not a denylist
+//
+// The first cut of this package was a denylist of platform key prefixes. It was
+// incomplete on the day it was written — `msteams.app_secret`,
+// `posthog.personal_api_key`, `posthog.project_api_key` and
+// `telegram.webhook_secret` all sailed through it — and it could only ever stay
+// correct if every future contributor adding a system parameter remembered to
+// come here. That is the wrong shape for a security boundary.
+//
+// So the boundary is structural instead: every org-managed parameter is stored
+// under the OrgKeyPrefix namespace, which the platform never writes to, and
+// `${param:KEY}` resolves nothing else — no system-parameter fallback, no
+// denylist to keep in sync. A platform key is unreachable because it is not in
+// the namespace, not because somebody listed it.
 package paramkeys
 
 import (
@@ -21,88 +36,61 @@ import (
 	"strings"
 )
 
-// KeyPattern is the shape of an org-managed parameter key: lowercase, starting
-// with a letter, up to 64 characters of letters, digits, underscore, dot and
-// dash.
+// KeyPattern is the shape of an org-managed parameter key as the operator
+// writes it: lowercase, starting with a letter, up to 64 characters of letters,
+// digits, underscore, dot and dash.
 var KeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 
 var (
 	// ErrInvalidKey is returned for a key that does not match KeyPattern.
 	ErrInvalidKey = errors.New("invalid parameter key")
-	// ErrReservedKey is returned for a key the platform owns.
+	// ErrReservedKey is returned for a key inside the reserved SolidPing
+	// namespace.
 	ErrReservedKey = errors.New("reserved parameter key")
 )
 
-// ReservedPrefix is the namespace spec 2026-09-11-03 reserves for everything
-// SolidPing itself stores per-org from here on. New internal keys go under it;
-// the ones below predate it and are listed one by one because renaming a key
-// that is already written to customer databases is a migration, not a rule.
+// ReservedPrefix is the namespace spec 2026-09-11-03 reserves for SolidPing's
+// own keys. Nothing depends on it for safety any more — OrgKeyPrefix does that
+// — but it is refused over the API as specified, so the name stays available
+// for whatever the platform wants to publish to organizations later.
 const ReservedPrefix = "sp."
 
-// reservedPrefixes are the key namespaces the platform writes for its own
-// purposes. An org-managed key may not fall inside any of them.
+// OrgKeyPrefix is the storage namespace every org-managed parameter lives
+// under, and the reason no denylist is needed. It never appears in the API, the
+// CLI or a `${param:}` reference: the operator writes `api_token` and the row is
+// `usr.api_token`.
 //
-// Keep this in sync with whatever the server itself calls SetOrgParameter with
-// — TestReservedRegistryCoversEveryPlatformOwnedKey pins the current set and
-// fails when a new platform key escapes it.
-//
-//nolint:gochecknoglobals // lookup table
-var reservedPrefixes = []string{
-	ReservedPrefix,
-	"aggregation.",   // internal/systemconfig
-	"auth.",          // session ceiling, password algorithm
-	"demo.",          // internal/jobs/jobtypes/job_startup_demo.go
-	"diagnostics.",   // models.ParamKeyTracerouteEnabled
-	"email.",         // internal/systemconfig
-	"encryption.",    // credentials.ParamStore — the wrapped org DEK
-	"entitlements.",  // SaaS plan material
-	"notifications.", // operator notification routing
-	"registration.",  // internal/handlers/auth/join_policy.go
-	"samples.",       // internal/jobs/jobtypes/job_startup_demo.go
-	"status_page.",   // internal/handlers/incidentpublications
-	"regions.",       // reserved alongside the two flat region keys below
+// Nothing in SolidPing writes a parameter under this prefix for its own
+// purposes, and nothing may start: it is the one namespace whose contents are
+// fully controlled by an organization's admins and readable by any check config
+// that organization owns.
+const OrgKeyPrefix = "usr."
+
+// StorageKey maps the key an operator wrote onto the row it is stored in.
+func StorageKey(key string) string {
+	return OrgKeyPrefix + key
 }
 
-// reservedKeys are the platform-owned keys that carry no dotted namespace at
-// all. They predate the convention; they are still ours.
-//
-//nolint:gochecknoglobals // lookup table
-var reservedKeys = []string{
-	"default_regions", // internal/regions/regions.go
-	"custom_regions",  // internal/regions/regions.go
-}
+// PublicKey maps a stored row's key back to what the operator wrote. The bool
+// is false for a row outside the org-managed namespace — a platform key sharing
+// the table — which callers listing an org's parameters must skip.
+func PublicKey(storageKey string) (string, bool) {
+	rest, ok := strings.CutPrefix(storageKey, OrgKeyPrefix)
 
-// IsReserved reports whether a key belongs to the platform rather than to the
-// organization. Both the write API and the `${param:}` resolver consult it, so
-// a reserved key can neither be created nor read through a check config.
-func IsReserved(key string) bool {
-	lower := strings.ToLower(key)
-
-	for _, prefix := range reservedPrefixes {
-		if strings.HasPrefix(lower, prefix) {
-			return true
-		}
-	}
-
-	for _, reserved := range reservedKeys {
-		if lower == reserved {
-			return true
-		}
-	}
-
-	return false
+	return rest, ok
 }
 
 // Validate checks a key an org admin supplied. It returns ErrInvalidKey for a
-// malformed key and ErrReservedKey for a platform-owned one; both map to a 400.
+// malformed key and ErrReservedKey for one inside the reserved SolidPing
+// namespace; both map to a 400.
 func Validate(key string) error {
 	if !KeyPattern.MatchString(key) {
 		return fmt.Errorf("%w: %q must match %s", ErrInvalidKey, key, KeyPattern.String())
 	}
 
-	if IsReserved(key) {
+	if strings.HasPrefix(strings.ToLower(key), ReservedPrefix) {
 		return fmt.Errorf(
-			"%w: %q is reserved for SolidPing's own per-organization configuration", ErrReservedKey, key)
+			"%w: the %q prefix is reserved for SolidPing", ErrReservedKey, ReservedPrefix)
 	}
 
 	return nil

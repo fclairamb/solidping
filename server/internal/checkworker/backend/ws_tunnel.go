@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // buildTunnelConfig turns a dispatched tunnel block into a ready-to-dial SSH
@@ -19,7 +20,9 @@ import (
 // It is the agent-side twin of the server's sshtunnel.LoadConfig, minus the DB
 // lookup (the server already re-asserted eligibility at claim time) — the agent
 // only ever sees the sealed blob, never config_private.
-func buildTunnelConfig(identity string, tunnel *agents.AgentJobTunnel) (*checkssh.SSHConfig, error) {
+func buildTunnelConfig(
+	ctx context.Context, identity string, tunnel *agents.AgentJobTunnel,
+) (*checkssh.SSHConfig, error) {
 	merged := tunnel.Config
 
 	if tunnel.ConfigSealed != nil && *tunnel.ConfigSealed != "" {
@@ -31,8 +34,26 @@ func buildTunnelConfig(identity string, tunnel *agents.AgentJobTunnel) (*checkss
 		merged = credentials.MergeConfig(tunnel.Config, secrets)
 	}
 
+	// Materialize secret references before the config becomes an SSH dial
+	// (spec 2026-09-11-03, audit item 5). Without this the bastion path was the
+	// one place a reference still reached a remote endpoint VERBATIM: a
+	// `${env:}`/`${param:}` in the bastion's public config went straight into
+	// SSHConfig.Password and was offered to the server as a literal.
+	//
+	// ExecutionResolver resolves `${env:}` from this process's environment and
+	// refuses anything else, so a `${param:}` here fails loudly with the same
+	// "unresolved secret reference" the rest of the pipeline produces — which
+	// the caller turns into a tunnel_failed error result — rather than dialing
+	// with the literal. `${param:}` is not supported in a bastion config: the
+	// tunnel block is resolved from a check row on a path that holds no
+	// parameter store.
+	resolved, _, refErr := secretref.ResolveConfig(ctx, merged, secretref.ExecutionResolver())
+	if refErr != nil {
+		return nil, refErr
+	}
+
 	cfg := &checkssh.SSHConfig{}
-	if err := cfg.FromMap(merged); err != nil {
+	if err := cfg.FromMap(resolved); err != nil {
 		return nil, err
 	}
 

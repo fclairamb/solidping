@@ -244,21 +244,23 @@ func (s *Service) validateSecretRefs(
 	for idx := range doc.Checks {
 		cfg := doc.Checks[idx].Config
 
-		for key, val := range cfg {
-			strVal, ok := val.(string)
-			if !ok || !secretref.Contains(strVal) {
-				continue
-			}
-
-			for _, match := range secretref.Pattern.FindAllStringSubmatch(strVal, -1) {
+		secretref.VisitStrings(cfg, func(_ string, value string) {
+			for _, match := range secretref.Pattern.FindAllStringSubmatch(value, -1) {
 				if match[1] == secretref.SchemeEnv {
 					sawEnvRef = true
 				}
 			}
+		})
 
-			if _, _, err := secretref.ResolveString(ctx, strVal, resolve); err != nil {
-				return nil, fmt.Errorf("check %q config %q: %w", doc.Checks[idx].Slug, key, err)
-			}
+		// The SAME traversal execution uses, so the two cannot disagree about
+		// what counts as a reference. Validating only top-level strings — which
+		// this did until the spec-03 audit — let a nested one through: a gRPC
+		// check's `metadata` is a map, so `metadata.authorization =
+		// "${param:missing}"` passed both dry runs and then failed at execution,
+		// which is exactly what dry run exists to prevent. The resolved copy is
+		// thrown away: validation proves resolvability, it never stores.
+		if _, _, err := secretref.ResolveConfig(ctx, cfg, resolve); err != nil {
+			return nil, fmt.Errorf("check %q: %w", doc.Checks[idx].Slug, err)
 		}
 	}
 

