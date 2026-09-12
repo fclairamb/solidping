@@ -273,6 +273,17 @@ An error-translation helper that writes these responses therefore needs the requ
 is the shape the codebase uses.
 
 ## Testing
+
+**`make test` is `-short` and therefore tests SQLite only.** Every
+`*_postgres_test.go` self-skips there. The Postgres layer runs via
+`make test-postgres` and in the `backend-postgres` CI job; the live-network and
+Docker suites sit behind `//go:build slowtests` and run nightly. A new
+Postgres-backed test routes its startup failure through
+`testsupport.PostgresUnavailable` / `testsupport.PostgresInitFailed`, never a
+bare `t.Skipf` — under `SP_TEST_REQUIRE_POSTGRES=1` that turns an unusable
+database into a failure instead of a green run that proved nothing. Full layer
+map: `wiki/testing/test-layers.md`.
+
 - **Framework**: Table-driven tests with testcontainers for integration tests
 - **Assertions**: Use `testify/require` for all test assertions (NOT standard `testing` package assertions)
 - **Test runner**: gotestsum for enhanced test output
