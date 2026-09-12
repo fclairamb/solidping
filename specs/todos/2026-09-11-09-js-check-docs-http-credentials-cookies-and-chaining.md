@@ -253,3 +253,47 @@ Make `checks.json:947` say the same thing. If the engine currently *accepts* a
 returned `timeout`, the docs change is the deliverable here — do **not** also
 change the engine to reject it in this spec; note it as a follow-up if you think
 it is worth tightening.
+
+## Implementation Plan
+
+Landing on `batch/2026-09-11`, after `2026-09-11-05` (already shipped on this
+branch: `http.session()`, redirect options, `env`/`secrets` split — see its
+archived spec and `checkjs/checker.go`, `config.go`, `httpsession.go`). Note:
+`-05` already added an `env`/`secrets` / `http` helper / `http.session()`
+write-up directly inside `check-types.md` (lines ~1187-1274) — that content
+moves to the new dedicated page rather than being duplicated.
+
+1. **Base64 runtime globals** (`checkjs/checker.go`): `base64.encode(string)
+   string` / `base64.decode(string) string` over Go's `encoding/base64`
+   `StdEncoding`. `decode` throws (`vm.NewGoError`) on malformed input rather
+   than returning a partial/empty string. Unit tests in a new
+   `base64_test.go`: round trip, known vector
+   (`base64.encode("user:pass") === "dXNlcjpwYXNz"`), a padding case, and the
+   malformed-input throw.
+2. **Dedicated page** `web/docs/docs/features/javascript-checks.md`
+   (`sidebar_position: 24`, title "JavaScript checks"), covering: how a script
+   runs, configuration (`script`/`timeout`/`env`/`secrets`, dashboard-only-owns
+   `script`), the result contract (`up`/`down`/`error`, `timeout` reserved for
+   the runtime), the full API reference (`http.*`, `http.session()`,
+   `solidping.*`, `env`/`secrets`, `console`/`sleep`, `base64`), limits, full
+   tested examples, troubleshooting.
+3. **Shrink `check-types.md`'s JS section** to the summary + use cases +
+   a link box to the new page, moving the `env`/`secrets`, `http` helper and
+   `http.session()` subsections there (rewritten to fold in the base64 example
+   and the extra examples).
+4. **`checks.json` (all 4 locales)**: clarify that `timeout` is never a value
+   a script should return — it is what the runtime reports when it interrupts
+   the script.
+5. **Test harness** `checkjs/docs_examples_test.go`: parse every fenced `js`
+   block from `javascript-checks.md`, `goja.Compile` all of them; blocks
+   tagged `<!-- test: name -->` are executed against an `httptest` fixture
+   server (JSON health, bearer-token login, form login with cookies/redirect,
+   create/read/delete) and asserted on `status`; a negative test flips the
+   fixture's login to reject the password and asserts the chaining example
+   returns `down`. `samples.go`'s existing sample goes through the same
+   harness.
+6. **`samples.go`**: promote the bearer-token chain and the sub-check
+   aggregation examples into `GetSampleConfigs`, with `env` placeholders.
+7. QA: `make build-backend lint-back test` (backend + docs example harness),
+   `make build-docs` (Docusaurus build). No dash0 changes needed — the `env`/
+   `secrets` editors already exist in `misc.tsx` from `-05`.
