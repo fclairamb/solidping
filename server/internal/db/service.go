@@ -820,6 +820,10 @@ type Service interface {
 	// Organization Parameter operations (organization_uid IS NOT NULL)
 	// ListOrgParametersByKey returns all org-scoped parameters with a specific key.
 	ListOrgParametersByKey(ctx context.Context, key string) ([]*models.Parameter, error)
+	// ListOrgParameters returns every live parameter owned by one organization,
+	// ordered by key. Values come back as stored — masking a secret one is the
+	// API layer's job, not the store's.
+	ListOrgParameters(ctx context.Context, orgUID string) ([]*models.Parameter, error)
 	// GetOrgParameter retrieves an org-scoped parameter by orgUID and key, returns nil if not found.
 	GetOrgParameter(ctx context.Context, orgUID, key string) (*models.Parameter, error)
 	// SetOrgParameter creates or updates an org-scoped parameter.

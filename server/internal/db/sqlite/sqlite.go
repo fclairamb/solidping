@@ -4425,6 +4425,24 @@ func (s *Service) ListOrgParametersByKey(ctx context.Context, key string) ([]*mo
 	return params, nil
 }
 
+// ListOrgParameters returns every live parameter owned by one organization,
+// ordered by key.
+func (s *Service) ListOrgParameters(ctx context.Context, orgUID string) ([]*models.Parameter, error) {
+	var params []*models.Parameter
+
+	err := s.db.NewSelect().
+		Model(&params).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("key ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list org parameters: %w", err)
+	}
+
+	return params, nil
+}
+
 // GetOrgParameter retrieves an org-scoped parameter by orgUID and key.
 func (s *Service) GetOrgParameter(ctx context.Context, orgUID, key string) (*models.Parameter, error) {
 	param := new(models.Parameter)

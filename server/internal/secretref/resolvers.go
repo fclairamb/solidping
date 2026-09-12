@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // ParamStore is the narrow slice of the DB service a `${param:}` lookup needs.
@@ -44,6 +45,16 @@ func StringValue(param *models.Parameter) (string, bool) {
 // the plaintext value is read directly here.
 func LookupParam(ctx context.Context, store ParamStore, orgUID, key string) (string, error) {
 	if store == nil {
+		return "", Unresolvedf(SchemeParam, key)
+	}
+
+	// A reserved key is platform material, not org data: `${param:encryption.dek}`
+	// in an HTTP check's body would POST the org's wrapped encryption key to a
+	// URL of the author's choosing, and `${param:email.password}` would do the
+	// same for the instance's SMTP credentials (the system-parameter fallback
+	// below reaches those). Refused as simply "not found" — the reference is
+	// unresolvable, and saying which internal key exists is itself a hint.
+	if paramkeys.IsReserved(key) {
 		return "", Unresolvedf(SchemeParam, key)
 	}
 

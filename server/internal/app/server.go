@@ -85,6 +85,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
+	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/handlers/ovhsmscb"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
@@ -843,6 +844,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSettings := orgGroup("/orgs/:org/settings")
 	orgSettings.GET("", authHandler.GetOrgSettings)
 	orgSettings.PATCH("", authHandler.UpdateOrgSettings)
+
+	// Org parameters (spec 2026-09-11-03) — org ADMIN only, structurally, the
+	// same chain orgChecksAdmin uses. These are the values a config-as-code
+	// manifest references as ${param:KEY}; a secret one is write-only, so there
+	// is no route here that returns a stored secret value.
+	orgParamsHandler := orgparams.NewHandler(orgparams.NewService(s.dbService), s.config)
+	orgParams := api.NewGroup("/orgs/:org/parameters").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgParams.GET("", orgParamsHandler.List)
+	orgParams.GET("/:key", orgParamsHandler.Get)
+	orgParams.PUT("/:key", orgParamsHandler.Set)
+	orgParams.DELETE("/:key", orgParamsHandler.Delete)
 
 	// Org membership requests (protected, admin-only checked in handler)
 	orgMembershipRequests := orgGroup("/orgs/:org/membership-requests")
