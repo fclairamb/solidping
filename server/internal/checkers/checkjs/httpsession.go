@@ -78,7 +78,7 @@ func effectiveScope(u *url.URL, cookie *http.Cookie) (string, string) {
 // SetCookies implements http.CookieJar. Oversized cookies are dropped, and once
 // the jar holds maxJarCookies distinct triples only updates to existing ones
 // get through.
-func (j *boundedJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
+func (j *boundedJar) SetCookies(target *url.URL, cookies []*http.Cookie) {
 	accepted := make([]*http.Cookie, 0, len(cookies))
 
 	j.mu.Lock()
@@ -88,7 +88,7 @@ func (j *boundedJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 			continue
 		}
 
-		domain, path := effectiveScope(u, cookie)
+		domain, path := effectiveScope(target, cookie)
 		key := metaKey(domain, path, cookie.Name)
 
 		if _, known := j.meta[key]; !known && len(j.meta) >= maxJarCookies {
@@ -102,7 +102,7 @@ func (j *boundedJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 	j.mu.Unlock()
 
 	if len(accepted) > 0 {
-		j.inner.SetCookies(u, accepted)
+		j.inner.SetCookies(target, accepted)
 	}
 }
 
@@ -143,19 +143,20 @@ func (j *boundedJar) snapshot(rawURL string) []map[string]any {
 // preferring the longest matching path — the same tie-break the cookie spec
 // uses for send order. Falls back to the URL's own host and "/" if nothing was
 // recorded (a cookie the jar somehow holds without this wrapper seeing it).
-func (j *boundedJar) scopeFor(u *url.URL, name string) (string, string) {
+func (j *boundedJar) scopeFor(target *url.URL, name string) (string, string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
-	bestDomain, bestPath := u.Hostname(), "/"
+	bestDomain, bestPath := target.Hostname(), "/"
 	found := false
 
-	for _, meta := range j.meta {
+	for key := range j.meta {
+		meta := j.meta[key]
 		if meta.name != name {
 			continue
 		}
 
-		if !domainMatches(u.Hostname(), meta.domain) || !pathMatches(u.Path, meta.path) {
+		if !domainMatches(target.Hostname(), meta.domain) || !pathMatches(target.Path, meta.path) {
 			continue
 		}
 

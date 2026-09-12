@@ -221,8 +221,10 @@ func TestJarIsBounded(t *testing.T) {
 		{Name: "fine", Value: "ok", Path: "/"},
 	})
 
-	names := make([]string, 0)
-	for _, cookie := range jar.Cookies(target) {
+	stored := jar.Cookies(target)
+	names := make([]string, 0, len(stored))
+
+	for _, cookie := range stored {
 		names = append(names, cookie.Name)
 	}
 

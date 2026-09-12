@@ -68,6 +68,9 @@ const (
 	maxRedirectsCap = 10
 )
 
+// jsKeyStatusCode is the response/redirect field carrying an HTTP status.
+const jsKeyStatusCode = "statusCode"
+
 // Errors a script can provoke through the http helper's option map.
 var (
 	errInvalidTimeoutOption = errors.New(
@@ -636,19 +639,19 @@ func (r *jsRuntime) httpRequest(
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxHTTPBody)))
 	if err != nil {
 		return map[string]any{
-			"statusCode":              resp.StatusCode,
+			jsKeyStatusCode:           resp.StatusCode,
 			checkerdef.OutputKeyError: "failed to read body: " + err.Error(),
 			jsKeyDuration:             duration.Milliseconds(),
 		}
 	}
 
 	return map[string]any{
-		"statusCode":  resp.StatusCode,
-		"body":        string(body),
-		"headers":     responseHeaders(resp),
-		"url":         finalURL(resp, requestURL),
-		"redirects":   redirects,
-		jsKeyDuration: duration.Milliseconds(),
+		jsKeyStatusCode: resp.StatusCode,
+		"body":          string(body),
+		"headers":       responseHeaders(resp),
+		"url":           finalURL(resp, requestURL),
+		"redirects":     redirects,
+		jsKeyDuration:   duration.Milliseconds(),
 	}
 }
 
@@ -672,8 +675,8 @@ func redirectPolicy(opts *httpOptions, redirects *[]map[string]any) func(*http.R
 
 		if req.Response != nil {
 			*redirects = append(*redirects, map[string]any{
-				"statusCode": req.Response.StatusCode,
-				"location":   req.Response.Header.Get("Location"),
+				jsKeyStatusCode: req.Response.StatusCode,
+				"location":      req.Response.Header.Get("Location"),
 			})
 		}
 

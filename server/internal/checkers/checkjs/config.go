@@ -42,10 +42,16 @@ type JSConfig struct {
 // tolerating both the already-typed map (an in-process caller) and the
 // map[string]any a JSON decode produces. Shared by `env` and `secrets` so the
 // two cannot drift in what they accept.
+//
+// An absent key yields an EMPTY map rather than nil: both are `omitempty` for
+// GetConfig and for JSON, and the empty map keeps the signature free of the
+// nil-value/nil-error pair.
 func stringMapFromConfig(configMap map[string]any, key string) (map[string]string, error) {
+	out := map[string]string{}
+
 	raw, present := configMap[key]
 	if !present || raw == nil {
-		return nil, nil
+		return out, nil
 	}
 
 	if typed, ok := raw.(map[string]string); ok {
@@ -56,8 +62,6 @@ func stringMapFromConfig(configMap map[string]any, key string) (map[string]strin
 	if !ok {
 		return nil, checkerdef.NewConfigError(key, "must be a map of string key-value pairs")
 	}
-
-	out := make(map[string]string, len(anyMap))
 
 	for mapKey, mapVal := range anyMap {
 		strVal, ok := mapVal.(string)
