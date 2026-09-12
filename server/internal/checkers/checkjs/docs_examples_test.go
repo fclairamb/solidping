@@ -710,21 +710,22 @@ func TestBrowserLoginSampleRunsAtTheBrowserFloor(t *testing.T) {
 // the doc example, run verbatim, against a real headless Chrome and the
 // httptest login fixture.
 //
-// It runs only when SP_CHECKERS_BROWSER_CDP_URL points at a reachable Chrome
-// and skips with a visible reason otherwise — CI's backend job has none.
+// It runs against SP_CHECKERS_BROWSER_CDP_URL, or a locally installed Chrome
+// found the same way the checker's own exec path finds one, and skips with a
+// visible reason when there is neither — CI's backend job has none.
 //
 //nolint:paralleltest // mutates the process-wide browser settings
 func TestDocExampleBrowserLoginRunsAgainstARealBrowser(t *testing.T) {
-	cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL")
-	if cdpURL == "" {
-		t.Skip("SP_CHECKERS_BROWSER_CDP_URL is not set: no real browser to drive")
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip("no browser available: set SP_CHECKERS_BROWSER_CDP_URL or install a local Chrome/Chromium")
 	}
 
 	r := require.New(t)
 
 	previous := checkbrowser.CurrentSettings()
 	t.Cleanup(func() { checkbrowser.Configure(previous) })
-	checkbrowser.Configure(checkbrowser.Settings{CDPURL: cdpURL})
+	checkbrowser.Configure(settings)
 
 	script := requireExample(t, extractJSExamples(t), "browser-login")
 
@@ -764,6 +765,22 @@ func TestDocExampleBrowserLoginRunsAgainstARealBrowser(t *testing.T) {
 	r.NotNil(wrong.Diagnostics)
 	r.NotNil(wrong.Diagnostics.Screenshot, "the failing branch's capture must be kept on a down verdict")
 	r.NotEmpty(wrong.Diagnostics.Screenshot.PNG)
+}
+
+// liveBrowserSettings picks the browser backend this test should drive: a
+// configured CDP endpoint first, else a Chrome installed on this machine,
+// found with checkbrowser's OWN lookup so "the test ran" and "the checker
+// would have worked" cannot disagree.
+func liveBrowserSettings() (checkbrowser.Settings, bool) {
+	if cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL"); cdpURL != "" {
+		return checkbrowser.Settings{CDPURL: cdpURL}, true
+	}
+
+	if path := checkbrowser.FindChromeBinary(""); path != "" {
+		return checkbrowser.Settings{ChromePath: path}, true
+	}
+
+	return checkbrowser.Settings{}, false
 }
 
 // browserReachableURL rewrites a local httptest URL into one BOTH the test

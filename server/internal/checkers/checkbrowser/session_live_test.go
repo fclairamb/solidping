@@ -11,17 +11,34 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// liveCDPURL reports the CDP endpoint a live test should drive, or "" when
-// there is none. A missing endpoint is a SKIP with a visible reason, never a
-// silent pass: CI's backend job has no Chrome, and a developer running
-// `make test` on a laptop should be told why the live coverage did not run.
-func liveCDPURL(t *testing.T) string {
-	t.Helper()
+// liveBrowserSettings reports the browser backend a live test should drive and
+// whether there is one at all.
+//
+// Two ways to have a browser, in the order the checker itself prefers them: a
+// configured CDP endpoint, else a Chrome installed on this machine — found
+// with the SAME lookup the exec path uses, so "the test ran" and "the checker
+// would have worked" cannot disagree. Neither present is a SKIP with a visible
+// reason, never a silent pass: CI's backend job has no Chrome, and a developer
+// running `make test` should be told why the live coverage did not run.
+func liveBrowserSettings() (Settings, bool) {
+	if cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL"); cdpURL != "" {
+		return Settings{CDPURL: cdpURL}, true
+	}
 
-	return os.Getenv("SP_CHECKERS_BROWSER_CDP_URL")
+	if path := FindChromeBinary(""); path != "" {
+		return Settings{ChromePath: path}, true
+	}
+
+	return Settings{}, false
 }
+
+// liveBrowserSkipReason is the one sentence every skipped live test prints.
+const liveBrowserSkipReason = "no browser available: set SP_CHECKERS_BROWSER_CDP_URL " +
+	"or install a local Chrome/Chromium"
 
 // browserReachableURL rewrites a local httptest URL into one BOTH the test
 // process and the BROWSER can reach.
@@ -126,14 +143,14 @@ func liveFixtureServer(t *testing.T) *httptest.Server {
 //
 //nolint:paralleltest // mutates the process-wide settings
 func TestSessionDrivesARealPage(t *testing.T) {
-	cdpURL := liveCDPURL(t)
-	if cdpURL == "" {
-		t.Skip("SP_CHECKERS_BROWSER_CDP_URL is not set: no real browser to drive")
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
 	}
 
 	r := require.New(t)
 
-	withSettings(t, Settings{CDPURL: cdpURL})
+	withSettings(t, settings)
 
 	fixture := liveFixtureServer(t)
 	base := browserReachableURL(t, fixture.URL)
@@ -229,4 +246,60 @@ func contextWithTimeout(t *testing.T, d time.Duration) (context.Context, context
 	t.Helper()
 
 	return context.WithTimeout(t.Context(), d)
+}
+
+// TestBrowserCheckCapturesARealScreenshot covers the ONE thing the seam-based
+// screenshot tests structurally cannot: that the browser check's default
+// capture path — captureScreenshot delegating to Session.Screenshot — really
+// photographs a real page.
+//
+// Every assertion in screenshot_test.go replaces the capture with a fake,
+// which is right for driving the DECISION but means a broken delegation would
+// pass all of them. This is the positive control for the delegation itself.
+//
+//nolint:paralleltest // mutates the process-wide settings
+func TestBrowserCheckCapturesARealScreenshot(t *testing.T) {
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
+	}
+
+	r := require.New(t)
+
+	withSettings(t, settings)
+
+	fixture := liveFixtureServer(t)
+	base := browserReachableURL(t, fixture.URL)
+
+	checker := &BrowserChecker{}
+
+	// A keyword the page does not contain: a DOWN verdict, which is one of the
+	// two capturableStatus values, on a page that really rendered.
+	failing, err := checker.Execute(t.Context(), &BrowserConfig{
+		URL:        base + "/login",
+		Keyword:    "this-text-is-not-on-the-page",
+		Timeout:    20 * time.Second,
+		Screenshot: true,
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusDown, failing.Status, "output: %#v", failing.Output)
+	r.NotNil(failing.Diagnostics, "an opted-in failing check must carry a capture")
+	r.NotNil(failing.Diagnostics.Screenshot)
+	r.Greater(len(failing.Diagnostics.Screenshot.PNG), 1024,
+		"the real capture path must produce a real image")
+	r.LessOrEqual(len(failing.Diagnostics.Screenshot.PNG), MaxScreenshotBytes)
+
+	// The same check, passing: no capture, because no verdict earns one.
+	passing, err := checker.Execute(t.Context(), &BrowserConfig{
+		URL:        base + "/login",
+		Keyword:    "Sign in",
+		Timeout:    20 * time.Second,
+		Screenshot: true,
+	})
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, passing.Status, "output: %#v", passing.Output)
+
+	if passing.Diagnostics != nil {
+		r.Nil(passing.Diagnostics.Screenshot, "an up verdict keeps no capture")
+	}
 }

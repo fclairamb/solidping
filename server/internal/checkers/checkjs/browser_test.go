@@ -694,6 +694,66 @@ return { status: "up" };
 	r.False(session.goneAt.IsZero(), "the blocked binding must have been released by the cancel")
 }
 
+// TestScreenshotSurvivesAnInterrupt is the case the whole feature exists for:
+// the script photographs the page, THEN hangs, and the operator wants to see
+// what the login looked like when it hung.
+//
+// It is deliberately separate from the table above: that one covers a script
+// that RETURNS `{status:"timeout"}` itself, which never goes through the
+// interrupt path. Only this one proves a capture taken before the deadline
+// survives the runtime cutting the script off — the exact regression an
+// attach-on-normal-return-only implementation passes every other test with.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestScreenshotSurvivesAnInterrupt(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{waitBlock: true, png: []byte("\x89PNGhung-login")}
+	installFakeBrowser(t, session)
+
+	const checkTimeout = 300 * time.Millisecond
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+page.goto("https://acme.com/login");
+page.screenshot();
+page.waitFor("#never-appears");
+return { status: "up" };
+`, checkTimeout)
+
+	r.Equal("timeout", result.Status.String(), "output: %#v", result.Output)
+	r.NotNil(result.Diagnostics,
+		"a capture the script already took must survive the interrupt")
+	r.NotNil(result.Diagnostics.Screenshot)
+	r.Equal([]byte("\x89PNGhung-login"), result.Diagnostics.Screenshot.PNG)
+	r.False(result.Diagnostics.Screenshot.CapturedAt.IsZero())
+	r.Positive(session.closes.Load(), "and the session is still disposed")
+}
+
+// TestNoScreenshotMeansNoDiagnosticsOnAnInterrupt is the negative control for
+// the test above: the interrupt path must not invent a capture, only carry one
+// the script paid for.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestNoScreenshotMeansNoDiagnosticsOnAnInterrupt(t *testing.T) {
+	r := require.New(t)
+
+	installFakeBrowser(t, &fakeSession{waitBlock: true, png: []byte("never-taken")})
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+page.waitFor("#never-appears");
+return { status: "up" };
+`, 300*time.Millisecond)
+
+	r.Equal("timeout", result.Status.String())
+
+	if result.Diagnostics != nil {
+		r.Nil(result.Diagnostics.Screenshot,
+			"no page.screenshot() call means no capture, interrupt or not")
+	}
+}
+
 // TestPerCallTimeoutNeverWidensTheBudget: an explicit `timeout` shortens a
 // wait, and one longer than the check's own budget cannot extend it.
 //

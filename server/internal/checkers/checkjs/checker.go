@@ -156,42 +156,56 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 
 	duration := time.Since(start)
 
+	result := runtime.resultFor(val, err, duration, timeout)
+
+	// ONE exit point for the capture decision, and deliberately so: a
+	// screenshot the script already took must survive every terminal status
+	// the browser check would have kept one for — including the INTERRUPT
+	// path, which is the case the feature exists for ("show me what the page
+	// looked like when the login hung"). Attaching only on the normal-return
+	// path silently threw that away. attachScreenshot itself decides what the
+	// status earns (spec §5), so no branch here has to remember the rule.
+	runtime.attachScreenshot(result)
+
+	return result, nil
+}
+
+// resultFor turns the script's outcome — a returned value, a throw, or an
+// interrupt — into the check's result. Split out of Execute so the capture
+// decision above has a single result to reason about instead of four returns.
+func (r *jsRuntime) resultFor(
+	val goja.Value, err error, duration, timeout time.Duration,
+) *checkerdef.Result {
 	if err != nil {
 		// The check's OWN deadline expiring is a `timeout`, not an `error`:
 		// the runtime cut the script off, which is exactly what the status is
 		// for and what the result contract already promises
 		// (web/docs/docs/features/javascript-checks.md#result-contract). A
 		// cancellation (worker shutdown) is not a timeout and stays `error`.
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(r.execCtx.Err(), context.DeadlineExceeded) {
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
-				Output:   runtime.buildOutput("script timed out after " + timeout.String()),
-			}, nil
+				Output:   r.buildOutput("script timed out after " + timeout.String()),
+			}
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   runtime.buildOutput("script error: " + err.Error()),
-		}, nil
+			Output:   r.buildOutput("script error: " + err.Error()),
+		}
 	}
 
 	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   runtime.buildOutput("script must return a result object"),
-		}, nil
+			Output:   r.buildOutput("script must return a result object"),
+		}
 	}
 
-	result := runtime.parseResult(val, duration)
-
-	// A screenshot the script took is kept only for the verdicts a browser
-	// check would have kept one for — dropped on `up` (spec §5).
-	runtime.attachScreenshot(result)
-
-	return result, nil
+	return r.parseResult(val, duration)
 }
 
 // jsRuntime holds the state for a single JS execution.

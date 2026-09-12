@@ -64,10 +64,12 @@ type BrowserChecker struct {
 	) *checkerdef.Result
 
 	// screenshot replaces the real chromedp capture, for tests only. Nil in
-	// production, where captureScreenshot falls back to fullScreenshot. It is
-	// a separate seam from `session` on purpose: a test needs to drive the
-	// capture decision (opted in? failing? over cap? errored?) without also
-	// having to fake a browser session that produces the right verdict.
+	// production, where captureScreenshot delegates to Session.Screenshot —
+	// the ONE capture this package makes, shared with the JS runtime's
+	// page.screenshot(). It is a separate seam from `session` on purpose: a
+	// test needs to drive the capture decision (opted in? failing? over cap?
+	// errored?) without also having to fake a browser session that produces
+	// the right verdict.
 	screenshot func(ctx context.Context) ([]byte, error)
 }
 
@@ -205,7 +207,12 @@ func (c *BrowserChecker) runBrowser(
 		}
 
 		result := c.session(probeCtx, cfg, start, metrics, output)
-		c.captureScreenshot(sessionCtx, cfg, result)
+
+		// No Session on this path, so there is nothing to capture FROM unless
+		// the test also replaced the capture seam — which is exactly what a
+		// screenshot test does. Without it the capture is refused rather than
+		// reaching for a browser that was never opened.
+		c.captureScreenshot(sessionCtx, cfg, result, nil)
 
 		return result
 	}
@@ -233,12 +240,11 @@ func (c *BrowserChecker) runBrowser(
 	result := c.navigateAndCheck(probeCtx, session, cfg, start, metrics, output)
 
 	// Capture here, not inside the verdict paths: the session is still alive
-	//
-	//nolint:contextcheck // the capture MUST run on the session's own context
 	// (Close runs when this function returns), and this is the ONE place every
 	// failing path funnels through — a new verdict branch cannot forget to
-	// capture.
-	c.captureScreenshot(session.browserCtx, cfg, result)
+	// capture. sessionCtx is the budget that outlives the probe by exactly the
+	// screenshot allowance; the session itself supplies the chromedp context.
+	c.captureScreenshot(sessionCtx, cfg, result, session)
 
 	return result
 }
@@ -250,15 +256,25 @@ func (c *BrowserChecker) runBrowser(
 // check is reported up or down. That is the whole safety argument, and it is
 // why this is a void function with no error return to ignore.
 func (c *BrowserChecker) captureScreenshot(
-	ctx context.Context, cfg *BrowserConfig, result *checkerdef.Result,
+	ctx context.Context, cfg *BrowserConfig, result *checkerdef.Result, session *Session,
 ) {
 	if !cfg.Screenshot || result == nil || !capturableStatus(result.Status) {
 		return
 	}
 
+	// ONE real capture path, with a seam in front of it: the default delegates
+	// to Session.Screenshot — the same method the JS runtime's
+	// page.screenshot() calls — rather than making a second chromedp.Run of
+	// its own. The `screenshot` field stays a seam so a test can drive the
+	// capture DECISION (opted in? failing? over cap? errored?) without having
+	// to produce a real browser.
 	capture := c.screenshot
 	if capture == nil {
-		capture = fullScreenshot
+		if session == nil {
+			return
+		}
+
+		capture = session.Screenshot
 	}
 
 	// A plain child of the still-live SESSION context.
@@ -349,24 +365,6 @@ func browserWasAllocated(ctx context.Context) bool {
 	chromeCtx := chromedp.FromContext(ctx)
 
 	return chromeCtx != nil && chromeCtx.Browser != nil
-}
-
-// fullScreenshot is the production capture: a full-page PNG of the current tab.
-func fullScreenshot(ctx context.Context) ([]byte, error) {
-	// The guard sits immediately before the only chromedp.Run this package
-	// makes outside the probe itself, because making that call is precisely
-	// the hazard — see browserWasAllocated.
-	if !browserWasAllocated(ctx) {
-		return nil, errNoBrowserAllocated
-	}
-
-	var buf []byte
-
-	if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, screenshotQuality)); err != nil {
-		return nil, err
-	}
-
-	return buf, nil
 }
 
 // allocator builds the chromedp allocator for the configured backend: a remote

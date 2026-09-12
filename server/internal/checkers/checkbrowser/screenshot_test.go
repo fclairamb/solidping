@@ -383,8 +383,13 @@ func TestBrowserWasAllocatedGatesTheCapture(t *testing.T) {
 	r.NotNil(chromedp.FromContext(browserCtx), "positive control: a real chromedp context")
 	r.False(browserWasAllocated(browserCtx), "no browser has been allocated yet")
 
-	// And the production capture refuses rather than calling Run.
-	png, err := fullScreenshot(browserCtx)
+	// And the production capture refuses rather than calling Run. It is
+	// reached through Session.Screenshot because that is now the only capture
+	// this package makes — the browser check's own captureScreenshot
+	// delegates to it, so guarding it here guards both callers.
+	session := &Session{browserCtx: browserCtx}
+
+	png, err := session.Screenshot(t.Context())
 	r.ErrorIs(err, errNoBrowserAllocated)
 	r.Nil(png)
 }

@@ -282,20 +282,20 @@ func TestOpenAgainstAnUnreachableEndpointMarksUnavailable(t *testing.T) {
 }
 
 // TestOpenAgainstARealBrowserMarksAvailable is the positive half, and needs a
-// real browser: it runs only when SP_CHECKERS_BROWSER_CDP_URL points at a
-// reachable endpoint, and says so out loud otherwise. CI's backend job has no
-// Chrome, so this is skipped there by design.
+// real browser: it runs against SP_CHECKERS_BROWSER_CDP_URL or a locally
+// installed Chrome, and says so out loud when there is neither. CI's backend
+// job has no Chrome, so this is skipped there by design.
 //
 //nolint:paralleltest // mutates the process-wide settings and availability cache
 func TestOpenAgainstARealBrowserMarksAvailable(t *testing.T) {
-	cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL")
-	if cdpURL == "" {
-		t.Skip("SP_CHECKERS_BROWSER_CDP_URL is not set: no real browser to open")
+	settings, ok := liveBrowserSettings()
+	if !ok {
+		t.Skip(liveBrowserSkipReason)
 	}
 
 	r := require.New(t)
 
-	withSettings(t, Settings{CDPURL: cdpURL})
+	withSettings(t, settings)
 
 	MarkUnavailable()
 	r.False(Available(t.Context()))
