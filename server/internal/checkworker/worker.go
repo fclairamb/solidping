@@ -856,12 +856,23 @@ func (r *CheckWorker) redactedConfig(checkType string, cfg models.JSONMap) map[s
 //
 // A job with no references is untouched (and pays one regexp scan per string).
 func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
-	if !secretref.ContainsInConfig(checkJob.Config) {
+	if len(checkJob.ParamOverlay) == 0 && !secretref.ContainsInConfig(checkJob.Config) {
 		return nil
 	}
 
+	merged := make(map[string]any, len(checkJob.Config))
+	for key, value := range checkJob.Config {
+		merged[key] = value
+	}
+
+	// The ${param:…} half, resolved server-side at claim time and carried here
+	// out of band so it never appeared in the job log.
+	for key, value := range checkJob.ParamOverlay {
+		merged[key] = value
+	}
+
 	resolved, _, err := secretref.ResolveConfig(
-		context.Background(), checkJob.Config, secretref.ExecutionResolver())
+		context.Background(), merged, secretref.ExecutionResolver())
 	if err != nil {
 		return err
 	}

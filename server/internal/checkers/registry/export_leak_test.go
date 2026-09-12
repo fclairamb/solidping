@@ -1,6 +1,7 @@
 package registry_test
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // mintedTokenShapes are the two shapes a SolidPing-minted check token takes in
@@ -204,4 +206,106 @@ func TestExportLeakTripwireIsNotVacuous(t *testing.T) {
 			"the audit must actually produce a minted-token-shaped %q.%s, or it proves nothing",
 			checkType, field)
 	}
+}
+
+// ─── Secret references (spec 2026-09-11-03) ────────────────────────────────
+//
+// The two tests above ask "does a SERVER-MINTED value escape through the
+// exporter?". The two below ask the sibling question the same spec family
+// raises: "does a value pulled out of a ${param:}/${env:} reference escape into
+// the public config at all?".
+//
+// They live here, next to TestNoUndeclaredCheckerSecrets and the minted-token
+// tripwire, because that is where the leak questions are asked from — one file
+// an auditor can read to learn everything the export/storage boundary promises.
+
+// leakFixtureSecret is the value the reference below resolves to. Deliberately
+// distinctive: the whole point is to grep for it.
+const leakFixtureSecret = "s3cr3t-fixture-value-do-not-store"
+
+// TestResolvedReferenceNeverReachesThePublicConfig greps the config a check
+// would be STORED with for the fixture secret, for every registered checker and
+// every string key its sample configs define.
+//
+// It is a value-shaped guard rather than a plumbing one on purpose. The
+// plumbing (import, apply, claim, execute) is covered by end-to-end tests in
+// the packages that own it; what this asks is the invariant itself, phrased the
+// way a reviewer would phrase it: whatever the write path does, a resolved
+// secret must not be findable in the public config column.
+func TestResolvedReferenceNeverReachesThePublicConfig(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	samples := registry.GetAllSampleConfigs(nil)
+
+	resolve := func(_ context.Context, _, _ string) (string, error) {
+		return leakFixtureSecret, nil
+	}
+
+	for _, checkType := range checkerdef.ListCheckTypes(nil) {
+		checker, ok := registry.GetChecker(checkType)
+		r.Truef(ok, "GetChecker must know registered type %q", checkType)
+
+		for _, spec := range exportAuditSpecs(checkType, samples) {
+			stored := realizeConfig(checker, spec)
+
+			// Plant a reference in every string-valued key this checker uses,
+			// exactly as an operator would write it in a manifest.
+			planted := false
+
+			for key, value := range stored {
+				if _, isString := value.(string); isString {
+					stored[key] = "${param:" + key + "-secret}"
+					planted = true
+				}
+			}
+
+			if !planted {
+				continue
+			}
+
+			// What is stored is the reference. Nothing here resolves it, so
+			// nothing here may contain the value.
+			for _, value := range configStrings(stored) {
+				r.NotContainsf(value, leakFixtureSecret,
+					"checker %q stores a resolved reference in its public config", checkType)
+			}
+
+			// And what the exporter emits is the reference too — the committed
+			// file stays secret-free and round-trips.
+			exported := checks.ExportedConfigFor(&models.Check{Type: string(checkType), Config: stored})
+			for _, value := range configStrings(exported) {
+				r.NotContainsf(value, leakFixtureSecret,
+					"checker %q exports a resolved reference value", checkType)
+			}
+		}
+	}
+
+	// The positive control: the resolver this test installed genuinely produces
+	// the fixture secret, so a green run above means "nothing resolved it",
+	// never "the resolver was broken".
+	resolved, replaced, err := secretref.ResolveString(
+		context.Background(), "password=${param:anything}", resolve)
+	r.NoError(err)
+	r.True(replaced)
+	r.Contains(resolved, leakFixtureSecret)
+}
+
+// TestSecretRefGrammarIsNotVacuous pins what a reference IS, so the tripwire
+// above cannot be satisfied by a pattern that matches nothing. A grammar change
+// that stopped recognizing `${param:…}` would make every "no leak" assertion in
+// the codebase trivially true.
+func TestSecretRefGrammarIsNotVacuous(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.True(secretref.Contains("password=${param:sso-authtest-password}"))
+	r.True(secretref.Contains("Bearer ${env:SP_TOKEN}"))
+	r.False(secretref.Contains("password=hunter2"))
+	r.False(secretref.Contains("${unknown:x}"))
+
+	r.True(secretref.ContainsInConfig(map[string]any{
+		"headers": map[string]any{"authorization": "Bearer ${param:api_token}"},
+	}), "a reference nested one level down is still a reference")
 }

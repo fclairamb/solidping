@@ -161,18 +161,18 @@ func (b *DirectBackend) mergeClaimedSecrets(
 	return out
 }
 
-// resolveParamRefs materializes the ${param:…} references in a claimed job's
-// config, in memory. The job row is never written back, so the resolved value
-// exists only for the duration of this execution.
+// resolveParamRefs resolves the ${param:…} references in a claimed job's config
+// and parks the result on the job as a transient overlay. It is NOT merged into
+// job.Config here: the worker's per-job log line prints Config, and a password
+// pulled out of a parameter has no business being in the worker's logs. The
+// overlay is folded in at the last moment, by CheckWorker.materializeConfig.
 func (b *DirectBackend) resolveParamRefs(ctx context.Context, job *models.CheckJob) error {
 	overlay, err := checkjobsvc.ParamOverlay(ctx, b.dbService, job.OrganizationUID, job.Config)
 	if err != nil {
 		return err
 	}
 
-	for key, value := range overlay {
-		job.Config[key] = value
-	}
+	job.ParamOverlay = overlay
 
 	return nil
 }
