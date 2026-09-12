@@ -29,9 +29,16 @@ export interface KeyValueRowsProps {
 }
 
 /**
- * KeyValueRows is the shared key/value row editor used for request headers,
- * secret headers, gRPC metadata and similar `Record<string, string>` config
- * keys.
+ * KeyValueRows is the key/value row editor for a `Record<string, string>`
+ * config key. It is the canonical one — the design reference lists it, and new
+ * editors of this shape should use it.
+ *
+ * It is NOT yet the only one: HTTP's secret-headers editor is still bespoke
+ * inside `HttpAuthFields` (it interleaves an encrypted-placeholder line and a
+ * dirty flag), `messaging.tsx` has `GrpcMetadataEditor` (per-row key
+ * validation) and `infra.tsx` has a local `KeyValueRows` for Prometheus labels
+ * and headers. Folding those in is a follow-up, not something this component's
+ * docstring gets to claim already happened.
  *
  * Two behaviours are load-bearing and must not be "simplified" away:
  *

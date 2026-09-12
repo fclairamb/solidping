@@ -4,6 +4,7 @@ import { httpModule, type HttpState } from "./http";
 import { checkTypeRegistry, type CheckTypeModule } from "./index";
 import {
   assembleSubmittedConfig,
+  passthroughConfigFor,
   SHARED_FORM_CONFIG_KEYS,
   type CheckConfig,
 } from "./common";
@@ -515,18 +516,41 @@ describe("unmodeled config keys survive an untouched save", () => {
   });
 
   it("cannot smuggle an http-only key into another type's payload", () => {
-    // The form drops the passthrough source on a type switch; this pins the
-    // contract the helper relies on — no initialConfig, no passthrough.
+    // The real gate: the form keeps the passthrough source tagged with the type
+    // it came from and `passthroughConfigFor` refuses it once the active type
+    // has moved on. Exercise the MISMATCH — an http-shaped source while `tcp`
+    // is selected — so deleting the gate fails this test.
+    const source = { type: "http" as const, config: stored };
     const tcp = checkTypeRegistry.tcp;
     const { config } = tcp.toConfig(tcp.fromConfig({ host: "a.dev", port: 22 }));
     const submitted = assembleSubmittedConfig({
-      initialConfig: undefined,
+      initialConfig: passthroughConfigFor(source, "tcp"),
       ownedKeys: tcp.ownedKeys,
       moduleConfig: config,
     });
     expect(submitted).not.toHaveProperty("body");
+    expect(submitted).not.toHaveProperty("body_expect");
     expect(submitted).not.toHaveProperty("headers_pattern");
     expect(submitted).toEqual({ host: "a.dev", port: 22 });
+  });
+
+  it("still passes through while the source matches the active type", () => {
+    // Negative control for the gate above: if `passthroughConfigFor` simply
+    // returned undefined always, the test above would pass and the whole
+    // feature would be dead. This is what proves it does not.
+    const source = { type: "http" as const, config: stored };
+    expect(passthroughConfigFor(source, "http")).toBe(stored);
+    expect(passthroughConfigFor(source, "tcp")).toBeUndefined();
+    expect(passthroughConfigFor(undefined, "http")).toBeUndefined();
+
+    const { config } = httpModule.toConfig(httpModule.fromConfig(stored));
+    const submitted = assembleSubmittedConfig({
+      initialConfig: passthroughConfigFor(source, "http"),
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: config,
+    });
+    expect(submitted.body_expect).toBe(stored.body_expect);
   });
 });
 
@@ -546,29 +570,142 @@ describe("the body editor's method gate does not destroy the body", () => {
   });
 });
 
-describe("every registered module declares the config keys it writes", () => {
-  // Mechanical under-declaration guard: a key `toConfig` writes but does not
-  // declare in `ownedKeys` is a key the passthrough will resurrect after the
-  // user clears it. Driving fromConfig with several value SHAPES exercises the
-  // type-dependent branches (arrays, maps, booleans, numbers) without needing
-  // a hand-written fixture per module.
-  const shapes: ((key: string) => unknown)[] = [
-    () => "1",
-    () => 1,
-    () => true,
-    () => ["1"],
-    () => ({ "1": "1" }),
-  ];
+// undeclaredKeysFor returns the config keys a module's `toConfig` writes but
+// does NOT list in `ownedKeys` — i.e. the keys the passthrough would resurrect
+// after the user cleared them, which is the regression this spec exists to
+// prevent ("add a modelled field, forget to declare it").
+//
+// The state is populated by driving `fromConfig` with a PROXY config that
+// answers every property read with a plausible value. That is the whole point:
+// deriving the seed from `ownedKeys` (or from the union of all modules'
+// ownedKeys) can never surface a key nobody declares — the undeclared key is
+// simply never seeded, `fromConfig` reads "", the guarded `if (state.x)` write
+// never fires, and the check passes vacuously. A proxy answers for keys the
+// test has never heard of, so it does not depend on the very list it audits.
+//
+// Several value shapes are tried because the seeding is type-dependent (arrays
+// for expected_ips, maps for headers, "true" strings for switches); the union
+// of every shape's writes is what gets audited.
+function seedProxy(value: unknown): CheckConfig {
+  return new Proxy({} as CheckConfig, {
+    get: (_target, prop) => (typeof prop === "symbol" ? undefined : value),
+    has: () => true,
+    // Object.keys/entries on the config itself is never done by a module, but
+    // keep the trap honest rather than throwing if that ever changes.
+    ownKeys: () => [],
+    getOwnPropertyDescriptor: () => undefined,
+  });
+}
 
+function undeclaredKeysFor(mod: CheckTypeModule): string[] {
+  const declared = new Set(mod.ownedKeys);
+  const found = new Set<string>();
+  const seeds: CheckConfig[] = [
+    {},
+    seedProxy("1"),
+    seedProxy("true"),
+    seedProxy(1),
+    seedProxy(true),
+    // `false` matters: several modules only write a key at its non-default
+    // FALSE value (verifySsl, followRedirects), so no truthy shape reaches
+    // those writes.
+    seedProxy(false),
+    seedProxy(["1"]),
+    seedProxy({ "1": "1" }),
+  ];
+  for (const seed of seeds) {
+    const { config } = mod.toConfig(mod.fromConfig(seed));
+    for (const written of Object.keys(config)) {
+      if (!declared.has(written)) found.add(written);
+    }
+  }
+  return [...found].sort();
+}
+
+// ---------------------------------------------------------------------------
+// The same failure mode as the spec, one layer down: a key declared in
+// `ownedKeys` under BOTH spellings but READ under only one. The stored value
+// never reaches the state, `toConfig` omits the key as "default", and because
+// the key is owned the passthrough does not save it either — so an untouched
+// UI save deletes it. Registry-wide, so it lives beside the guard below.
+// ---------------------------------------------------------------------------
+describe("a stored key is seeded from the spelling it is stored under", () => {
+  it("http: snake verify_ssl / follow_redirects survive a save", () => {
+    const stored: CheckConfig = {
+      url: "https://acme.com/",
+      verify_ssl: false,
+      follow_redirects: false,
+    };
+    const state = httpModule.fromConfig(stored);
+    // Before the fix both seeded `true` — the form showed TLS verification ON
+    // for a check that had it off, and the save made that real.
+    expect(state.verifySsl).toBe(false);
+    expect(state.followRedirects).toBe(false);
+
+    const { config } = httpModule.toConfig(state);
+    const submitted = assembleSubmittedConfig({
+      initialConfig: stored,
+      ownedKeys: httpModule.ownedKeys,
+      secretFields: HTTP_SECRET_FIELDS,
+      moduleConfig: config,
+    });
+    // Re-emitted under the canonical spelling, and — the part that matters —
+    // still OFF rather than silently back on.
+    expect(submitted.verifySsl).toBe(false);
+    expect(submitted.followRedirects).toBe(false);
+    expect(httpModule.fromConfig(submitted).verifySsl).toBe(false);
+    expect(httpModule.fromConfig(submitted).followRedirects).toBe(false);
+  });
+
+  it("http: an explicit camel false still round-trips", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/",
+      verifySsl: false,
+      followRedirects: false,
+    });
+    expect(state.verifySsl).toBe(false);
+    expect(state.followRedirects).toBe(false);
+  });
+
+  it("rabbitmq: a stored tls flag is not turned off by a save", () => {
+    const mod = checkTypeRegistry.rabbitmq;
+    const stored: CheckConfig = { host: "mq.acme.com", tls: true };
+    const { config } = mod.toConfig(mod.fromConfig(stored));
+    const submitted = assembleSubmittedConfig({
+      initialConfig: stored,
+      ownedKeys: mod.ownedKeys,
+      moduleConfig: config,
+    });
+    expect(submitted.tls).toBe(true);
+  });
+
+  it("kafka: a stored saslUsername is not deleted by a save", () => {
+    const mod = checkTypeRegistry.kafka;
+    const stored: CheckConfig = {
+      brokers: ["b1:9092"],
+      topic: "events",
+      saslUsername: "probe",
+    };
+    const { config } = mod.toConfig(mod.fromConfig(stored));
+    const submitted = assembleSubmittedConfig({
+      initialConfig: stored,
+      // saslPassword is a declared secret: absent from the payload is what
+      // makes the server preserve the stored one.
+      secretFields: ["saslPassword"],
+      ownedKeys: mod.ownedKeys,
+      moduleConfig: config,
+    });
+    expect(submitted.saslUsername).toBe("probe");
+    expect(submitted.saslMechanism).toBe("PLAIN");
+    expect(submitted).not.toHaveProperty("saslPassword");
+  });
+});
+
+describe("every registered module declares the config keys it writes", () => {
   const modules = new Map<string, CheckTypeModule>();
   for (const [type, mod] of Object.entries(checkTypeRegistry)) {
     if (!modules.has(mod.types.join(","))) modules.set(mod.types.join(","), mod);
     expect(mod.types).toContain(type);
-  }
-
-  const keyPool = new Set<string>();
-  for (const mod of modules.values()) {
-    for (const key of mod.ownedKeys) keyPool.add(key);
   }
 
   for (const [name, mod] of modules) {
@@ -579,27 +716,28 @@ describe("every registered module declares the config keys it writes", () => {
       for (const shared of SHARED_FORM_CONFIG_KEYS) {
         expect(declared.has(shared)).toBe(false);
       }
-      // Seed from the union of every module's declared keys, NOT just this
-      // module's: seeding only what a module declares makes the guard vacuous
-      // — an undeclared key would never be seeded, so `fromConfig` would read
-      // "" for it and `toConfig` would never write it.
-      const seeds: CheckConfig[] = [{}];
-      for (const shape of shapes) {
-        const seed: CheckConfig = {};
-        for (const key of keyPool) seed[key] = shape(key);
-        seeds.push(seed);
-      }
-      for (const seed of seeds) {
-        const { config } = mod.toConfig(mod.fromConfig(seed));
-        for (const written of Object.keys(config)) {
-          expect(
-            declared.has(written),
-            `${name} writes "${written}" but does not declare it in ownedKeys`,
-          ).toBe(true);
-        }
-      }
+      expect(undeclaredKeysFor(mod)).toEqual([]);
     });
   }
+
+  // POSITIVE CONTROL. A guard that cannot fail is worse than no guard: it
+  // reads as coverage. This sabotages a real module by removing one key from
+  // its declaration and asserts the guard names it — including `body`, the key
+  // THIS spec added, which is declared by no other module and is written only
+  // under `if (state.body)`. The union-seeded version of this test passed with
+  // `body` removed; this one does not.
+  it("actually catches an undeclared key (positive control)", () => {
+    for (const drop of ["body", "headers", "url", "jsonPathAssertions"]) {
+      const sabotaged: CheckTypeModule = {
+        ...(httpModule as unknown as CheckTypeModule),
+        ownedKeys: httpModule.ownedKeys.filter((k) => k !== drop),
+      };
+      expect(
+        undeclaredKeysFor(sabotaged),
+        `removing "${drop}" from ownedKeys must be caught`,
+      ).toContain(drop);
+    }
+  });
 
   it("declares ownedKeys for every module that models any config", () => {
     // heartbeat and email model no config key at all — that is deliberate and

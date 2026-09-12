@@ -427,8 +427,18 @@ export const kafkaModule: CheckTypeModule<KafkaState> = {
       ? (config.brokers as string[]).join(", ")
       : getConfigField(config, "brokers"),
     topic: getConfigField(config, "topic"),
-    username: getConfigField(config, "username"),
-    password: getConfigField(config, "password"),
+    // toConfig writes `saslUsername`/`saslPassword` (KafkaConfig's real keys),
+    // so those are what must be read back — seeding from the plain `username`
+    // spelling alone left the field empty for every stored check, and since
+    // `saslUsername` is a key this module owns, the next save deleted the
+    // credential. `saslPassword` is a declared secret and never comes back, so
+    // it stays empty and the server's preserve-absent-secrets merge keeps it.
+    username:
+      getConfigField(config, "saslUsername") ||
+      getConfigField(config, "username"),
+    password:
+      getConfigField(config, "saslPassword") ||
+      getConfigField(config, "password"),
     tls: getConfigField(config, "tls") === "true",
     produceTest: getConfigField(config, "produceTest") === "true",
   }),

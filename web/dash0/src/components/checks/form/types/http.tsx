@@ -142,8 +142,17 @@ function fromConfig(config: CheckConfig): HttpState {
   // Both keys are only ever stored at their non-default (false) value — see
   // toConfig — so anything other than a literal `false` (absent, true, or a
   // malformed value) means "on", matching the server's default.
-  const verifySsl = config.verifySsl !== false;
-  const followRedirects = config.followRedirects !== false;
+  //
+  // The snake_case fallback is load-bearing, not cosmetic: the server resolves
+  // both spellings (checkhttp's resolveKey), and reading only the camelCase one
+  // seeded `true` for a check stored with `verify_ssl: false`, which toConfig
+  // then omitted as the default — silently turning TLS verification back ON on
+  // the next UI save. Same class of loss as the keys this spec is named after,
+  // except this one weakens a security control.
+  const verifySsl =
+    (config.verifySsl ?? config.verify_ssl) !== false;
+  const followRedirects =
+    (config.followRedirects ?? config.follow_redirects) !== false;
   // Canonical key is snake_case (the server accepts the camelCase alias on
   // read but always re-emits the snake one), so read both and prefer the
   // canonical spelling.

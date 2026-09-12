@@ -63,6 +63,29 @@ export const SHARED_FORM_CONFIG_KEYS: readonly string[] = [
   "ipVersion",
 ];
 
+// PassthroughSource is the config the check form was seeded from, tagged with
+// the check type it belongs to.
+export interface PassthroughSource {
+  type: CheckType;
+  config: CheckConfig;
+}
+
+// passthroughConfigFor gates the unmodeled-key passthrough on the source still
+// describing the ACTIVE type.
+//
+// Without this gate, switching type on the form would carry the previous type's
+// unmodeled keys into the new type's payload — an `http` check's `body` and
+// `headers_pattern` landing in a `tcp` config the checker would reject. The
+// form also resets the source on a type switch; this is the second half of the
+// same contract, and the half a unit test can reach.
+export function passthroughConfigFor(
+  source: PassthroughSource | undefined,
+  activeType: CheckType,
+): CheckConfig | undefined {
+  if (!source || source.type !== activeType) return undefined;
+  return source.config;
+}
+
 // assembleSubmittedConfig builds the config the form previews AND submits.
 //
 // The server's PATCH-merge uses REPLACE semantics for public keys: a public key

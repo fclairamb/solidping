@@ -317,10 +317,14 @@ export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
     password: getConfigField(config, "password"),
     vhost: getConfigField(config, "vhost"),
     queue: getConfigField(config, "queue"),
-    // Preserved quirk: the "Use TLS" checkbox was seeded from the shared
-    // `tls_verify` field (not `tls`), so an existing rabbitmq check's `tls`
-    // flag does not re-check the box on edit unless the user toggles it.
-    tls: getConfigField(config, "tls_verify") === "true",
+    // The stored key is `tls` (RabbitMQConfig.TLS); `tls_verify` is only a
+    // legacy spelling this form used to seed from. Reading `tls` FIRST matters:
+    // seeding from `tls_verify` alone left the box unchecked for a TLS-enabled
+    // check, and since `tls` is a key this module owns, the next save dropped
+    // it — silently turning TLS off.
+    tls:
+      getConfigField(config, "tls") === "true" ||
+      getConfigField(config, "tls_verify") === "true",
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};

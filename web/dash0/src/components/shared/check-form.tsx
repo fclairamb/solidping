@@ -83,8 +83,12 @@ import {
   getConfigField,
   durationStringToSeconds,
   assembleSubmittedConfig,
+  passthroughConfigFor,
 } from "@/components/checks/form/types/common";
-import type { CheckConfig, CheckType } from "@/components/checks/form/types/common";
+import type {
+  CheckType,
+  PassthroughSource,
+} from "@/components/checks/form/types/common";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -584,10 +588,9 @@ export function CheckForm({
   // selected one, so switching type can never smuggle an http-only key into a
   // tcp payload. In create mode it starts empty, which makes the whole thing a
   // no-op; applying a sample re-points it at the sample's config.
-  const [passthroughSource, setPassthroughSource] = useState<{
-    type: CheckType;
-    config: CheckConfig;
-  }>(() => ({ type: initialType, config: initialData?.config ?? {} }));
+  const [passthroughSource, setPassthroughSource] = useState<PassthroughSource>(
+    () => ({ type: initialType, config: initialData?.config ?? {} }),
+  );
 
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   // Region Spread: "" = unset (keep automatic default). Seeded from the
@@ -781,8 +784,7 @@ export function CheckForm({
       shared.ipVersion = ipVersion;
     }
     return assembleSubmittedConfig({
-      initialConfig:
-        passthroughSource.type === type ? passthroughSource.config : undefined,
+      initialConfig: passthroughConfigFor(passthroughSource, type),
       ownedKeys: activeModule.ownedKeys,
       secretFields: activeSecretFields,
       moduleConfig: serialized.config,
