@@ -668,6 +668,128 @@ jobs:
             COMMIT=${{ steps.version.outputs.GIT_HASH }}
             GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
 
+  cli-release:
+    name: Publish the sp CLI
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      # Four archives, one per platform a SolidPing operator actually runs CI
+      # or a laptop on. Until spec 2026-09-11-04 a release published ZERO
+      # assets, so `sp checks validate config.yaml` — the validator the docs
+      # point at — could not be obtained by a GitHub Actions job at all, and
+      # third parties kept maintaining their own Python re-implementations
+      # instead. A validator nobody can download is a validator nobody uses.
+      - name: Build sp for every published platform
+        working-directory: server
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          COMMIT=$(git rev-parse --short HEAD)
+          GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+
+          mkdir -p ../dist
+
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            out="../dist/sp"
+
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -ldflags "-s -w \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Version=${VERSION}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Commit=${COMMIT}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.GitTime=${GIT_TIME}'" \
+              -o "$out" ./cmd/sp
+
+            tar -czf "../dist/sp_${VERSION}_${os}_${arch}.tar.gz" -C ../dist sp
+            rm "$out"
+          done
+
+          cd ../dist
+          sha256sum sp_*.tar.gz > "sp_${VERSION}_checksums.txt"
+          ls -l
+
+      # release-please creates the GitHub release from the same tag push that
+      # triggered this run, so the release may not exist yet. Wait for it rather
+      # than racing it — and if it never appears (a hand-pushed tag), create it,
+      # because an asset with nowhere to go is the failure this job exists to
+      # prevent.
+      - name: Attach the archives to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+
+          for _ in $(seq 1 30); do
+            if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              break
+            fi
+            echo "waiting for release $TAG_NAME to be created..."
+            sleep 10
+          done
+
+          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::warning::release $TAG_NAME was not created by release-please; creating it for the assets"
+            gh release create "$TAG_NAME" --repo "${{ github.repository }}" \
+              --title "$TAG_NAME" --notes "Automated release." --target "${GITHUB_SHA}"
+          fi
+
+          gh release upload "$TAG_NAME" dist/sp_*.tar.gz dist/sp_*_checksums.txt \
+            --repo "${{ github.repository }}" --clobber
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta (sp)
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/sp
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
+
+      - name: Set version variables
+        id: version
+        run: |
+          echo "VERSION=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+          echo "GIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Build and push the sp image
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: Dockerfile.sp
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
+            COMMIT=${{ steps.version.outputs.GIT_HASH }}
+            GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
+
   deploy:
     name: Deploy to k8xp
     runs-on: ubuntu-24.04

@@ -11,6 +11,123 @@ query flags, managed scope, secret references, deletion safety) is documented at
 [`api-specification/checks.md`](../api-specification/checks.md) under
 `POST /api/v1/orgs/:org/checks/apply`.
 
+## The canonical spellings
+
+A round trip only works if both sides agree on how a value is written. Three
+places where the file and the server can legitimately differ — and what the
+server does about each:
+
+| | Canonical (what export emits) | Also accepted on input |
+|---|---|---|
+| Private location | **`@paris`** | `@acme/paris` (the pre-2026-08-13 form) |
+| HTTP status expectation | **`expectedStatusCodes: [200]`** | `expectedStatus` (legacy; never both) |
+| Secrets | **`secrets: stripped`** | `_secretsStripped: true` (v1) |
+
+**The folded `@location` is the canonical form.** The server stores and exports
+it; the long `@org/location` is normalized to it on the way in (for your own
+org) or refused (for anybody else's). Both are *the same region*, so a manifest
+written the long way plans as `unchanged`, not as a change. This is not a
+detail: on the first tracked org, 183 of 197 reported "errors" were exactly
+this difference, and every one of them was a validator concluding the server's
+own export was wrong.
+
+**`expectedStatusCodes` supersedes `expectedStatus`.** Setting both is an error
+(`STATUS_FIELD_CONFLICT`), because the second one is then dead config that reads
+as if it does something.
+
+### What `secrets: stripped` guarantees
+
+Since spec 2026-09-11-02 the exporter removes **`SecretFields()` ∪
+`ExportRedactedFields()`** from every check's config:
+
+- `SecretFields()` — what the checker declares secret (passwords, private keys,
+  `secretHeaders`, `basicAuth`, …). These live in the encrypted `config_private`
+  column and never appear in any API response either.
+- `ExportRedactedFields()` — keys that are **public at rest** but must never
+  reach a committed file: an email check's ingest token, and an SMTP probe's
+  `delivery_to` (which embeds one). Before that spec a document stamped
+  `secrets: stripped` carried a live 48-hex-char ingest token, twice.
+
+**Both sets are restored on import**, so the round trip loses nothing: a secret
+absent from the patch is preserved by the merge, and a redacted field is either
+preserved from the stored check or derived from what the document did carry
+(an SMTP probe's `delivery_to` is rebuilt from its `delivery_check_uid`). A
+`secrets: stripped` document is therefore *not* incomplete, and the validator
+does not treat it as such — a checker complaining that a stripped key is
+missing is suppressed by parameter name on such a document.
+
+What this does NOT mean: a secret you want under version control belongs in a
+`${param:…}` reference (below). The reference is stored verbatim and travels in
+the file; only the value stays out.
+
+## Validating a file, without a write token
+
+`POST /api/v1/orgs/:org/checks/validate` takes a whole document (JSON or YAML)
+and answers with **every** problem, each carrying a stable `code` a CI job can
+allow-list. It is **member-level**: validating writes nothing, and a pipeline
+that only asks "is this file valid?" should not need a token that can delete
+checks. With `?plan=true` (admin) it also returns the reconcile plan.
+
+The full code list and the response shape are in
+[`api-specification/checks.md`](../api-specification/checks.md#validating-a-whole-document).
+
+Offline, with no token and no network at all:
+
+```bash
+sp checks validate config.yaml
+```
+
+That is **the** validator. It runs the server's own `ValidateDocument` — the
+same function `/import`, `/apply` and the endpoint above run — so it cannot
+drift from the server the way a re-implementation must. Everything except
+`UNRESOLVED_SECRET_REF` (which needs the org's parameters) is decidable offline.
+
+An org-specific convention — stack roots, per-environment symmetry, naming
+policy — is genuinely not the server's business and belongs in whatever tooling
+owns that convention. The *format* rules do not.
+
+### Getting `sp` into CI
+
+Every tag publishes four archives (`darwin`/`linux` × `amd64`/`arm64`) plus a
+`sp_<version>_checksums.txt`, and a `ghcr.io/fclairamb/solidping/sp` image:
+
+```yaml
+- name: Validate the SolidPing manifest
+  run: |
+    curl -sSL -o sp.tar.gz \
+      https://github.com/fclairamb/solidping/releases/latest/download/sp_${SP_VERSION}_linux_amd64.tar.gz
+    tar -xzf sp.tar.gz
+    ./sp checks validate solidping/config.yaml
+```
+
+or, with no download at all:
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w ghcr.io/fclairamb/solidping/sp \
+  checks validate config.yaml
+```
+
+Exit 0 = valid, 1 = problems (each printed as `[slug] CODE field: message`),
+≥2 = the file could not be read or parsed.
+
+## Is the file still what is deployed?
+
+```bash
+sp checks diff config.yaml
+```
+
+It asks the server for the reconcile plan (a dry run that mutates nothing) and
+prints one row per check — `create`, `update` with the fields that move,
+`unchanged`, `delete`, `unmanaged` — then exits 0 (no drift) / 1 (drift) /
+≥2 (error). `--text` renders the old textual diff instead, which is also the
+automatic fallback when the caller cannot plan (plans are admin-only).
+
+`created=0 updated=0 deleted=0` is the answer: the file matches the instance.
+Before spec 2026-09-11-04 it could not be obtained from the server at all —
+`import --dry-run` counted every matched slug as an update, so re-importing a
+byte-for-byte copy of the current export reported `updated=482` — and every
+tool that needed the answer built its own normalizer and drifted.
+
 ## The managed scope
 
 Apply stamps every check it owns with a reserved label
@@ -33,7 +150,8 @@ Plan actions (matched on `slug` within the managed scope):
 | Action | Meaning |
 |---|---|
 | `create` | In the manifest, absent from the org. |
-| `update` | Managed slug present in both. |
+| `update` | Managed slug present in both, and a field moves — the entry carries `changes: [{field, from, to}]`, secrets and `${…}` references masked. |
+| `unchanged` | Managed slug present in both, nothing moves. |
 | `unmanaged` | Slug exists without the managed label — reported only. |
 | `delete` | Managed check absent from the manifest (delete-by-absence). |
 | `rename` | Manifest check with `previousSlug`/`uid` → rename in place. |
@@ -153,9 +271,15 @@ carries the managed label, and the delete count is within the deletion cap
 
 ## Authorization
 
-Apply, export, and import are all **admin-only**. (Export/import were
-authentication-only before 2026-06-20 — see the back-compat note in the API
-spec.)
+Apply, export, and import are all **admin-only** — they mutate the whole check
+set, and apply can delete by absence. (Export/import were authentication-only
+before 2026-06-20 — see the back-compat note in the API spec.)
+
+`POST /checks/validate` is the deliberate exception, and only for a **document**
+body: it writes nothing, so it sits at `viewer`. The single-check form of the
+same route keeps the write floor it always had, and `?plan=true` needs admin
+because the plan reads the org's whole check set. Relaxing validate did not
+relax its neighbours; `TestImportAndApplyStayAdminOnly` is what says so.
 
 ## CLI
 

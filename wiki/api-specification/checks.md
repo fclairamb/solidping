@@ -190,7 +190,19 @@ SLO-only.
 ## Validation
 
 ### POST /api/v1/orgs/:org/checks/validate
-Validate a check configuration without persisting. Auth: required
+Validate a check configuration **or a whole config-as-code document** without
+persisting. Auth: see the two floors below.
+
+The route is **content-negotiated** (spec 2026-09-11-04): a body carrying a
+top-level `checks` list — JSON *or* YAML — is a document and takes the document
+path described in [the next section](#validating-a-whole-document); anything
+else is a single check definition and behaves exactly as it always has.
+
+| Body | Auth floor | Response shape |
+|---|---|---|
+| single check | `user` (the write floor — unchanged) | `{valid, fields[], warnings[]}` |
+| whole document | **`viewer`** (reads nothing but the org's parameters) | `{valid, issues[], plan?}` |
+| whole document + `?plan=true` | `admin` | …plus `plan` |
 
 Request body accepts the same shape as `POST /checks` plus:
 
@@ -231,6 +243,74 @@ this dry run and the real create/update paths read
 (`Service.configValidationErrors`): the write paths take the first error, this
 endpoint turns every one into a finding. A rule added there is previewed and
 enforced at once, or not at all.
+
+### Validating a whole document
+
+Same route, a document body. It is **member-level on purpose**: validating
+writes nothing, and a CI job that only wants to know *"is this file valid?"*
+must not need a write-capable token. Needing one is the structural reason third
+parties kept their own re-implementations of the rules — and why those drifted
+from the server the moment a check type was added (one org's validator reported
+197 problems on that org's own export; 183 were a region spelling and 12 were
+check types the validator predated).
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/yaml' --data-binary @config.yaml \
+  'https://solidping.io/api/v1/orgs/acme/checks/validate'
+```
+
+```json
+{
+  "valid": false,
+  "issues": [
+    {"slug": "api", "field": "regions", "code": "REGION_FORMAT",
+     "message": "region \"Paris!\" must be a slug or \"@private-location\""},
+    {"slug": "db", "field": "type", "code": "UNKNOWN_TYPE",
+     "message": "unsupported check type \"postgres9\""}
+  ]
+}
+```
+
+**Every** issue is reported, never the first only — a validator that costs a
+round trip per defect is one nobody runs. `valid` is false exactly when `issues`
+is non-empty.
+
+`code` is the stable half of an issue; `message` is prose and may be reworded.
+A CI job branches on the code and may allow-list classes it accepts. The closed
+set (`checks.DocumentIssueCodes()` in the server, so this list cannot drift from
+what is emitted):
+
+| Code | Reported when |
+|---|---|
+| `UNSUPPORTED_VERSION` | `version` is not 1 or 2 |
+| `MISSING_ORGANIZATION` | no `organization` |
+| `INVALID_SECRETS_MARKER` | `secrets` is set to anything but `stripped` |
+| `EMPTY_CHECKS` | `checks` is empty or absent |
+| `MISSING_FIELD` | a check omits `name`, `slug`, `type` or `config` |
+| `INVALID_SLUG` | a slug that is not kebab-case |
+| `DUPLICATE_SLUG` | the same slug twice in one document |
+| `INTERNAL_NOT_WRITABLE` | a check sets `internal` (server-owned) |
+| `UNKNOWN_TYPE` | no checker implements the type |
+| `INVALID_CONFIG` | the checker's own offline `Validate`, the timeout cap, the address-family rule |
+| `INLINED_CREDENTIAL` | a config key the checker **declares secret** carries a literal value |
+| `STATUS_FIELD_CONFLICT` | `expectedStatus` and `expectedStatusCodes` both set |
+| `INVALID_PERIOD` | `period` is not a duration |
+| `INVALID_LABEL` | a label key or value the database would refuse |
+| `REGION_FORMAT` | a region that is neither a slug nor `@location` |
+| `INVALID_DEPENDS_ON` | missing/self/duplicate/unknown parent, or a bad `kind` |
+| `DEPENDENCY_CYCLE` | a cycle in the `dependsOn` graph |
+| `UNRESOLVED_SECRET_REF` | a `${env:}`/`${param:}` reference that does not resolve **for this org** |
+
+Everything but the last is decidable offline, which is exactly what
+`sp checks validate config.yaml` runs with no token and no network.
+`UNRESOLVED_SECRET_REF` needs the organization's parameters, so only this
+endpoint reports it — and it is the same rule `/import` and `/apply` answer
+`400` on, so a document this endpoint calls valid is one they accept.
+
+With `?plan=true` (admin) the response also carries `plan`: the
+[apply dry run](#post-apiv1orgsorgchecksapply), so one call answers both *"is it
+valid?"* and *"what would it change?"*.
 
 ## Config-as-code: export / import / apply
 
@@ -329,11 +409,38 @@ or deleted.
 
 **Plan / reconcile semantics.** Matching is on `slug` within the managed scope:
 - `create` — slug in the manifest, absent from the org.
-- `update` — managed slug present in both.
+- `update` — managed slug present in both, **and at least one field moves**.
+  The entry carries `changes: [{field, from, to}]`.
+- `unchanged` — managed slug present in both and the normalized effective state
+  already matches. Writing it would change nothing.
 - `unmanaged` — slug exists **without** the managed label (reported only).
 - `delete` — managed check absent from the manifest (delete-by-absence).
 - `rename` — a manifest check with `previousSlug` (or `uid`) referencing an
   existing managed check reconciles the rename in place instead of delete+create.
+
+**`created=0 updated=0 deleted=0` with N `unchanged` is the machine-readable
+"the file matches the instance".** Until spec 2026-09-11-04 `update` counted
+every matched slug whether or not anything moved — an import of a file that was
+byte-for-byte the current export answered `created=1 updated=482` — so the one
+question config-as-code exists to answer had no answer short of a client-side
+diff, and every external tool that grew one drifted. `sp checks diff` is now
+presentation over this response rather than a second normalizer.
+
+"Unchanged" is computed on the **normalized effective** config — the document's
+config put through `normalizeCheckConfig`, regions resolved (so the folded
+`@paris` and the long `@acme/paris` are the same region), periods compared as
+durations, and both sides projected through the exporter's own code. The
+projection is literally the function the exporter uses, so *a fresh export
+plans as a no-op* is a property of the code rather than an agreement between
+two implementations.
+
+Two things a diff deliberately cannot claim, both reported as **masked**
+(`"***"`) rather than silently called equal:
+- a config key the exporter strips (a declared secret, or an export-redacted
+  field) that the document nonetheless supplies — the stored value lives in an
+  encrypted column a dry run must not open;
+- any value containing a `${env:}`/`${param:}` reference, so a plan pasted into
+  a ticket never publishes one.
 
 **Secret references.** Config string values may contain `${env:NAME}` and
 `${param:KEY}` references. Since spec 2026-09-11-03 the **reference is what is
@@ -370,12 +477,23 @@ Query parameters:
   "manifest": "default",
   "dryRun": false,
   "pruned": true,
-  "created": 1, "updated": 2, "deleted": 1, "unmanaged": 0,
-  "plan": [{"slug": "api", "action": "update"}, {"slug": "old", "action": "delete"}],
+  "created": 1, "updated": 1, "unchanged": 47, "deleted": 1, "unmanaged": 0,
+  "plan": [
+    {"slug": "api", "action": "update",
+     "changes": [{"field": "config.url", "from": "\"https://acme.com/api\"",
+                  "to": "\"https://acme.com/api-v2\""}]},
+    {"slug": "web", "action": "unchanged"},
+    {"slug": "old", "action": "delete", "reason": "managed check absent from manifest"}
+  ],
   "warnings": [],
   "errors": []
 }
 ```
+
+`/import` answers with the same five counters and its own `plan[]`
+(`{slug, action, changes?}`). `deleted` and `unmanaged` are structurally zero
+there — import has no managed scope and never deletes by absence — and are
+reported anyway so a CI job reads one shape from either endpoint.
 
 ### POST /api/v1/orgs/:org/checks/import/convert
 Import checks from a third-party monitoring tool. Auth: **admin** (org admin

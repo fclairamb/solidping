@@ -1604,11 +1604,32 @@ paths:
   /api/v1/orgs/{org}/checks/validate:
     post:
       tags: [Checks]
-      summary: Validate a check configuration without persisting it
+      summary: Validate a check configuration, or a whole config-as-code document
       description: >-
         Runs the same validation the create/update paths run, but never writes.
-        Returns whether the payload is valid plus any per-field validation
-        messages.
+
+
+        CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or
+        YAML) is a whole export/manifest document and answers with
+        ValidateDocumentResponse — every issue, each with a stable machine
+        `code`. Anything else is a single check definition and answers with
+        ValidateCheckResponse, unchanged.
+
+
+        Authorization differs per body, deliberately. A document needs only
+        organization MEMBERSHIP: validating writes nothing, and a CI job asking
+        "is this file valid?" must not need a token that can delete checks. A
+        single check keeps the write floor (role `user` or above). /import and
+        /apply remain admin-only.
+
+
+        QUERY FLAG `?plan=true` (document bodies, org admin only): also return
+        the reconcile plan — what applying this document would create, update,
+        leave unchanged, delete or refuse to adopt. It is deliberately not
+        declared as an OpenAPI parameter: declaring one would add a params
+        argument to every generated ValidateCheck call site, for a flag only
+        the document form understands (see
+        wiki/conventions/generated-client.md).
       operationId: validateCheck
       security:
         - bearerAuth: []
@@ -1616,19 +1637,36 @@ paths:
         - $ref: "#/components/parameters/OrgPath"
       requestBody:
         required: true
+        description: >-
+          A single check definition (the schema below), or a whole
+          export/manifest document — `{version, organization, secrets,
+          defaults, checks[]}` — as JSON or YAML. The document form is
+          detected from a top-level `checks` list and answers with
+          ValidateDocumentResponse instead.
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ValidateCheckRequest"
       responses:
         "200":
-          description: Validation result
+          description: >-
+            Validation result. ValidateCheckResponse for a single check;
+            ValidateDocumentResponse (`{valid, issues[], plan?}`) when the body
+            was a whole document.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidateCheckResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >-
+            A viewer posted a single check definition, or a non-admin asked for
+            `?plan=true`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -10258,6 +10296,114 @@ components:
             unchanged; pass `[]` to clear.
           items:
             $ref: "#/components/schemas/ExportedDependency"
+
+    DocumentIssue:
+      type: object
+      required: [slug, code, message]
+      description: >-
+        One problem found in a config-as-code document. `code` is the STABLE
+        half — a CI job branches on it and may allow-list classes it accepts;
+        `message` is prose and may be reworded at any time.
+      properties:
+        slug:
+          type: string
+          description: >-
+            The check the issue belongs to, or the literal "document" for a
+            document-level problem (version, organization, secrets marker,
+            empty checks list).
+        field:
+          type: string
+          description: >-
+            The offending property, in the document's own spelling —
+            `regions`, `period`, `config.url`, `labels.tier`, `dependsOn`.
+        code:
+          type: string
+          description: >-
+            Stable machine code. The closed set is
+            `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`,
+            `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`,
+            `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`,
+            `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`,
+            `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`,
+            `REGION_FORMAT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`,
+            `UNRESOLVED_SECRET_REF`. Everything but the last is decidable
+            offline, which is what `sp checks validate <file>` runs with no
+            token and no network; `UNRESOLVED_SECRET_REF` needs the
+            organization's own parameters and so is reported only here.
+        message:
+          type: string
+      example:
+        slug: api
+        field: regions
+        code: REGION_FORMAT
+        message: 'region "Paris!" must be a slug or "@private-location"'
+
+    CheckFieldChange:
+      type: object
+      required: [field, from, to]
+      description: >-
+        One field an update would change, rendered as strings (JSON for
+        anything structured). Secret-bearing values and any value containing a
+        ${env:}/${param:} reference are masked as "***" — a plan is printed in
+        CI logs and pasted into tickets.
+      properties:
+        field:
+          type: string
+        from:
+          type: string
+        to:
+          type: string
+
+    ValidateDocumentResponse:
+      type: object
+      required: [valid, issues]
+      description: >-
+        The answer for a whole-document body. EVERY issue is reported, never
+        the first only.
+      properties:
+        valid:
+          type: boolean
+          description: True exactly when `issues` is empty.
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentIssue"
+        plan:
+          type: object
+          description: >-
+            Present only with `?plan=true` (org admin) and only when a plan
+            could be computed. It is the /apply dry run: `created=0 updated=0
+            deleted=0` with a non-zero `unchanged` is the machine-readable
+            "this file matches the instance".
+          properties:
+            dryRun:
+              type: boolean
+            created:
+              type: integer
+            updated:
+              type: integer
+            unchanged:
+              type: integer
+            deleted:
+              type: integer
+            unmanaged:
+              type: integer
+            plan:
+              type: array
+              items:
+                type: object
+                properties:
+                  slug:
+                    type: string
+                  action:
+                    type: string
+                    enum: [create, update, unchanged, rename, delete, unmanaged]
+                  reason:
+                    type: string
+                  changes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CheckFieldChange"
 
     ValidateCheckRequest:
       type: object
