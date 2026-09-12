@@ -62,8 +62,10 @@ var TypeEnabled TypeEnabledFunc //nolint:gochecknoglobals // Mirrors ResolveChec
 
 const (
 	maxSubChecks     = 20
-	maxConsoleOutput = 16 * 1024   // 16KB
-	maxHTTPBody      = 1024 * 1024 // 1MB
+	maxConsoleOutput = 16 * 1024 // 16KB
+	// maxHTTPBody is checkerdef's shared payload cap: the same number bounds a
+	// page's text() / evaluate() result, so there is ONE number to change.
+	maxHTTPBody = checkerdef.MaxPayloadBytes
 	// maxRedirectsCap is both the default and the ceiling for a request's
 	// `maxRedirects` option — the same 10 Go's own client defaults to.
 	maxRedirectsCap = 10
@@ -128,6 +130,11 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 
 	runtime := newJSRuntime(ctx, cfg)
 
+	// One page per execution, disposed here whatever the script did — returned
+	// early, threw, or was interrupted. Nothing else releases the browser slot
+	// (spec 2026-09-12-06 §3).
+	defer runtime.closeBrowser()
+
 	// Set up interrupt for timeout
 	go func() {
 		<-ctx.Done()
@@ -145,6 +152,20 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	duration := time.Since(start)
 
 	if err != nil {
+		// The check's OWN deadline expiring is a `timeout`, not an `error`:
+		// the runtime cut the script off, which is exactly what the status is
+		// for and what the result contract already promises
+		// (web/docs/docs/features/javascript-checks.md#result-contract). A
+		// cancellation (worker shutdown) is not a timeout and stays `error`.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusTimeout,
+				Duration: duration,
+				Output: runtime.buildOutput(logLevelError,
+					"script timed out after "+timeout.String()),
+			}, nil
+		}
+
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
@@ -160,7 +181,13 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 		}, nil
 	}
 
-	return runtime.parseResult(val, duration), nil
+	result := runtime.parseResult(val, duration)
+
+	// A screenshot the script took is kept only for the verdicts a browser
+	// check would have kept one for — dropped on `up` (spec §5).
+	runtime.attachScreenshot(result)
+
+	return result, nil
 }
 
 // jsRuntime holds the state for a single JS execution.
@@ -170,6 +197,20 @@ type jsRuntime struct {
 	config        *JSConfig
 	consoleBuf    bytes.Buffer
 	subCheckCount atomic.Int32
+
+	// browser is the page this execution opened, nil until browser.open().
+	// browserOpened stays true after a close, which is what enforces the
+	// one-page-per-execution rule against a script that closes and re-opens.
+	browser       BrowserSession
+	browserOpened bool
+	// browserActions is the page-method budget, counted SEPARATELY from
+	// subCheckCount — see maxBrowserActions.
+	browserActions atomic.Int32
+
+	// screenshotPNG is the last successful page.screenshot() capture, kept
+	// only if the final verdict earns it (see attachScreenshot).
+	screenshotPNG []byte
+	screenshotAt  time.Time
 }
 
 // newJSRuntime creates a new jsRuntime with the given context and config.
@@ -190,6 +231,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerSolidping()
 	r.registerHTTP()
 	r.registerBase64()
+	r.registerBrowser()
 }
 
 // registerEnv exposes config.Env as a read-only "env" object.
@@ -329,9 +371,15 @@ func (r *jsRuntime) registerSolidping() {
 	})
 
 	// Typed wrappers for each supported check type
+	// `browser` is here for the same reason every other type is: the generic
+	// solidping.check("browser", …) form already worked (only `js` and
+	// `heartbeat` are refused), so the wrapper's absence was an inconsistency
+	// rather than a gate. Note this runs a WHOLE browser check and hands back
+	// its verdict; to DRIVE a page, use the `browser` global instead.
 	checkerTypes := []string{
 		"http", "tcp", "dns", "ssl", "icmp", "smtp", "udp", "ssh",
 		"pop3", "imap", "websocket", "postgresql", "ftp", "sftp", "domain",
+		"browser",
 	}
 
 	for _, typeName := range checkerTypes {

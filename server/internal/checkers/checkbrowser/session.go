@@ -41,6 +41,19 @@ var errSessionClosed = errors.New("the browser page is closed")
 // when the underlying error matches none of the recognized shapes.
 var errBrowserStart = errors.New("failed to start a browser")
 
+// infraError is "we could not run a browser at all", carrying the
+// operator-facing message verbatim.
+//
+// A type rather than errors.New at the failure site (err113: no dynamic
+// errors) — and a useful one: Infra recognizes it directly, so every error
+// Open returns is classified as infrastructure BY CONSTRUCTION rather than by
+// re-matching its message downstream.
+type infraError struct {
+	msg string
+}
+
+func (e *infraError) Error() string { return e.msg }
+
 // Session is ONE live headless-Chrome page plus the concurrency slot it holds.
 //
 // It is the single way this codebase opens, drives and tears down a Chrome:
@@ -129,7 +142,7 @@ func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
 			release()
 			MarkUnavailable()
 
-			return nil, errors.New(cdpUnreachableMessage(current.CDPURL, err))
+			return nil, &infraError{msg: cdpUnreachableMessage(current.CDPURL, err)}
 		}
 	}
 
@@ -145,7 +158,7 @@ func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
 		release()
 		MarkUnavailable()
 
-		return nil, errors.New(openFailureMessage(current, err))
+		return nil, &infraError{msg: openFailureMessage(current, err)}
 	}
 
 	// A real allocation is stronger evidence than the probe — same rule
@@ -204,6 +217,11 @@ func Infra(err error) bool {
 		return false
 	}
 
+	var infra *infraError
+	if errors.As(err, &infra) {
+		return true
+	}
+
 	if errors.Is(err, errSessionClosed) || errors.Is(err, errNoBrowserAllocated) {
 		return true
 	}
@@ -225,6 +243,8 @@ func Infra(err error) bool {
 // returns to JavaScript: a binding blocked forever inside chromedp.Run would
 // hold a script past its own timeout. context.AfterFunc is what bridges the
 // two, since a plain child of browserCtx knows nothing about the caller.
+//
+//nolint:contextcheck // deriving from browserCtx is the POINT — see the doc above
 func (s *Session) run(ctx context.Context, actions ...chromedp.Action) error {
 	s.mu.Lock()
 	closed := s.closed
@@ -234,7 +254,7 @@ func (s *Session) run(ctx context.Context, actions ...chromedp.Action) error {
 		return errSessionClosed
 	}
 
-	// The cheap defence the eager allocate already makes redundant: never call
+	// The cheap defense the eager allocate already makes redundant: never call
 	// Run on a context with no browser attached (it would allocate a second
 	// one and can close an already-closed channel inside chromedp).
 	if !browserWasAllocated(s.browserCtx) {

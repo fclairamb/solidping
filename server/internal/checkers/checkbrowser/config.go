@@ -103,26 +103,42 @@ func (c *BrowserConfig) GetConfig() map[string]any {
 	return cfg
 }
 
-// Validate checks if the configuration is valid.
-func (c *BrowserConfig) Validate() error {
-	if c.URL == "" {
+// ValidateNavigationURL applies the browser check's URL rules to any URL a
+// browser is asked to navigate to: `http`/`https` only, `file:`/`data:`/
+// `javascript:` refused, parseable.
+//
+// Exported because a JS script's `page.goto(url)` must be held to EXACTLY the
+// same rules as a browser check's `url` field — one rule set, one place to
+// change it, no way for the scripted path to reach a scheme the configured
+// path refuses (spec 2026-09-12-06 §1).
+func ValidateNavigationURL(rawURL string) error {
+	if rawURL == "" {
 		return checkerdef.NewConfigError("url", "is required")
 	}
 
-	if !strings.HasPrefix(c.URL, "http://") && !strings.HasPrefix(c.URL, "https://") {
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		return checkerdef.NewConfigError("url", "must start with http:// or https://")
 	}
 
 	// Reject dangerous URL schemes
-	lower := strings.ToLower(c.URL)
+	lower := strings.ToLower(rawURL)
 	for _, prefix := range []string{"file://", "data:", "javascript:"} {
 		if strings.HasPrefix(lower, prefix) {
 			return checkerdef.NewConfigError("url", "scheme not allowed")
 		}
 	}
 
-	if _, err := url.Parse(c.URL); err != nil {
+	if _, err := url.Parse(rawURL); err != nil {
 		return checkerdef.NewConfigError("url", "invalid URL format")
+	}
+
+	return nil
+}
+
+// Validate checks if the configuration is valid.
+func (c *BrowserConfig) Validate() error {
+	if err := ValidateNavigationURL(c.URL); err != nil {
+		return err
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {

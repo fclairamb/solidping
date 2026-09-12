@@ -233,6 +233,8 @@ func (c *BrowserChecker) runBrowser(
 	result := c.navigateAndCheck(probeCtx, session, cfg, start, metrics, output)
 
 	// Capture here, not inside the verdict paths: the session is still alive
+	//
+	//nolint:contextcheck // the capture MUST run on the session's own context
 	// (Close runs when this function returns), and this is the ONE place every
 	// failing path funnels through — a new verdict branch cannot forget to
 	// capture.

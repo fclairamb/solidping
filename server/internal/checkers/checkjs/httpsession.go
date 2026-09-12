@@ -129,10 +129,10 @@ func (j *boundedJar) snapshot(rawURL string) []map[string]any {
 	for _, cookie := range cookies {
 		domain, path := j.scopeFor(parsed, cookie.Name)
 		out = append(out, map[string]any{
-			"name":   cookie.Name,
-			"value":  cookie.Value,
-			"domain": domain,
-			"path":   path,
+			"name":     cookie.Name,
+			jsKeyValue: cookie.Value,
+			"domain":   domain,
+			"path":     path,
 		})
 	}
 
