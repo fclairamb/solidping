@@ -944,7 +944,7 @@
     "rdpCertWarningHelp": "Advertencia ámbar (sin aviso). Debe ser ≥ Crítico.",
     "rdpPreAuthHelp": "Solo el saludo previo a la autenticación — no se envían credenciales. Los workers necesitan acceso de red al host RDP (normalmente interno).",
     "script": "Script",
-    "scriptHelp": "Script de JavaScript que devuelve un objeto con estado (\"up\", \"down\" o \"error\") — nunca \"timeout\", que es lo que reporta el motor cuando interrumpe el script — más métricas y salida opcionales.",
+    "scriptHelp": "Script de JavaScript que devuelve un objeto con estado (\"up\", \"down\" o \"error\") — nunca \"timeout\", que es lo que reporta el motor cuando interrumpe el script — más métricas y salida opcionales. Puede controlar una página real de Chrome sin interfaz con la API `browser`: un script que abre una se ejecuta con el periodo mínimo de 1 min del check de navegador.",
     "jsEnv": "Entorno (público)",
     "jsEnvHelp": "Parámetros en texto plano que el script lee como env.NOMBRE — una URL base, un usuario. Se almacenan sin cifrar y se incluyen en las exportaciones.",
     "jsAddEnv": "Añadir variable",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 )
@@ -648,4 +650,231 @@ func TestSamplesBearerChainAndAggregateRun(t *testing.T) {
 		"URL_3": server.URL + "/agg/bad",
 	}, nil)
 	r.Equal("down", aggResult.Status.String(), "output: %#v", aggResult.Output)
+}
+
+// TestBrowserLoginSampleMatchesTheDocExample is the drift guard for the third
+// promoted sample.
+//
+// The other two are kept honest by being EXECUTED against the shared fixture;
+// this one needs a real Chrome, which CI's backend job does not have. So the
+// guard here is stronger rather than weaker: the sample's script must be the
+// doc fence character for character. A change to either that is not made to
+// both fails this test, not a user's check.
+func TestBrowserLoginSampleMatchesTheDocExample(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	docScript := requireExample(t, extractJSExamples(t), "browser-login")
+
+	checker := &JSChecker{}
+
+	var sampleScript string
+
+	for _, sample := range checker.GetSampleConfigs(nil) {
+		if sample.Slug == sampleBrowserLoginSlug {
+			sampleScript, _ = sample.Config["script"].(string)
+		}
+	}
+
+	r.NotEmpty(sampleScript, "expected a promoted %s sample", sampleBrowserLoginSlug)
+	r.Equal(docScript, sampleScript,
+		"the %s sample and the doc example must be the same script", sampleBrowserLoginSlug)
+}
+
+// TestBrowserLoginSampleRunsAtTheBrowserFloor: a sample the server would
+// refuse to save is worse than no sample. A script that opens a browser
+// inherits the browser check's floor, so this one's period must clear it.
+func TestBrowserLoginSampleRunsAtTheBrowserFloor(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	checker := &JSChecker{}
+
+	for _, sample := range checker.GetSampleConfigs(nil) {
+		script, _ := sample.Config["script"].(string)
+		cfg := &JSConfig{Script: script}
+
+		hint := cfg.MinPeriodHint()
+		if hint == 0 {
+			continue
+		}
+
+		r.Equal(sampleBrowserLoginSlug, sample.Slug,
+			"only the browser sample should raise the period floor")
+		r.GreaterOrEqual(sample.Period, hint,
+			"sample %q would be refused by its own period floor", sample.Slug)
+	}
+}
+
+// TestDocExampleBrowserLoginRunsAgainstARealBrowser is §9's end-to-end proof:
+// the doc example, run verbatim, against a real headless Chrome and the
+// httptest login fixture.
+//
+// It runs only when SP_CHECKERS_BROWSER_CDP_URL points at a reachable Chrome
+// and skips with a visible reason otherwise — CI's backend job has none.
+//
+//nolint:paralleltest // mutates the process-wide browser settings
+func TestDocExampleBrowserLoginRunsAgainstARealBrowser(t *testing.T) {
+	cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL")
+	if cdpURL == "" {
+		t.Skip("SP_CHECKERS_BROWSER_CDP_URL is not set: no real browser to drive")
+	}
+
+	r := require.New(t)
+
+	previous := checkbrowser.CurrentSettings()
+	t.Cleanup(func() { checkbrowser.Configure(previous) })
+	checkbrowser.Configure(checkbrowser.Settings{CDPURL: cdpURL})
+
+	script := requireExample(t, extractJSExamples(t), "browser-login")
+
+	fixture := browserFixtureServer(t)
+	base := browserReachableURL(t, fixture.URL)
+
+	checker := &JSChecker{}
+
+	result, err := checker.Execute(t.Context(), &JSConfig{
+		Script:  script,
+		Timeout: 30 * time.Second,
+		Env:     map[string]string{"BASE_URL": base, "USERNAME": "alice@acme.com"},
+		Secrets: map[string]string{"PASSWORD": "hunter2"},
+	})
+	r.NoError(err)
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Contains(result.Metrics, "loginMs")
+
+	// Success path: the example's screenshot call is on the FAILING branch, so
+	// nothing is attached here.
+	if result.Diagnostics != nil {
+		r.Nil(result.Diagnostics.Screenshot)
+	}
+
+	// The negative the example must actually be checking: a wrong password
+	// never reaches the dashboard, so the same script reports down — with the
+	// screenshot its failing branch took, kept because the verdict earns it.
+	wrong, err := checker.Execute(t.Context(), &JSConfig{
+		Script:  script,
+		Timeout: 30 * time.Second,
+		Env:     map[string]string{"BASE_URL": base, "USERNAME": "alice@acme.com"},
+		Secrets: map[string]string{"PASSWORD": "not-the-password"},
+	})
+	r.NoError(err)
+	r.Equal("down", wrong.Status.String(), "output: %#v", wrong.Output)
+	r.Equal("login", wrong.Output["step"])
+	r.NotNil(wrong.Diagnostics)
+	r.NotNil(wrong.Diagnostics.Screenshot, "the failing branch's capture must be kept on a down verdict")
+	r.NotEmpty(wrong.Diagnostics.Screenshot.PNG)
+}
+
+// browserReachableURL rewrites a local httptest URL into one BOTH the test
+// process and the BROWSER can reach.
+//
+// A Chrome in a container cannot dial this process's 127.0.0.1, and the doc
+// example deliberately uses ONE base URL for the page and for the http.get
+// that follows it — so a name only the container resolves would break the
+// second half. This machine's outbound-route address satisfies both, and
+// SP_TEST_BROWSER_HOST overrides it for a setup where it does not (a Chrome
+// sharing this network namespace wants 127.0.0.1).
+func browserReachableURL(t *testing.T, rawURL string) string {
+	t.Helper()
+
+	alias := os.Getenv("SP_TEST_BROWSER_HOST")
+	if alias == "" {
+		alias = outboundHost(t)
+	}
+
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(rawURL, "http://"))
+	require.NoError(t, err, "unexpected httptest URL %q", rawURL)
+
+	return "http://" + net.JoinHostPort(alias, port)
+}
+
+// outboundHost reports the local address this machine would use to reach the
+// outside world. The UDP "connection" sends nothing — it only makes the kernel
+// pick a route — so this works offline and costs a syscall.
+func outboundHost(t *testing.T) string {
+	t.Helper()
+
+	conn, err := net.Dial("udp", "203.0.113.1:9") //nolint:noctx // no packet is sent; this only picks a route
+	require.NoError(t, err, "cannot determine a browser-reachable host address")
+
+	defer func() { _ = conn.Close() }()
+
+	host, _, err := net.SplitHostPort(conn.LocalAddr().String())
+	require.NoError(t, err)
+
+	return host
+}
+
+// browserFixtureServer is the login app the browser example drives: a real
+// form, a session cookie, a JS-rendered dashboard and an authenticated API.
+// It listens on ALL interfaces so a browser outside this process can reach it.
+func browserFixtureServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	const (
+		validUser  = "alice@acme.com"
+		validPass  = "hunter2"
+		sessionVal = "browser-sess-1"
+	)
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/login", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost {
+			_ = req.ParseForm()
+
+			if req.Form.Get("email") == validUser && req.Form.Get("password") == validPass {
+				http.SetCookie(w, &http.Cookie{Name: "session", Value: sessionVal, Path: "/"})
+				http.Redirect(w, req, "/dashboard", http.StatusFound)
+
+				return
+			}
+
+			_, _ = w.Write([]byte(`<html><body><p id="oops">invalid credentials</p></body></html>`))
+
+			return
+		}
+
+		_, _ = w.Write([]byte(`<html><body><form method="post" action="/login">` +
+			`<input id="email" name="email"><input id="password" name="password" type="password">` +
+			`<button type="submit">Sign in</button></form></body></html>`))
+	})
+
+	// The dashboard renders its marker from JavaScript, which is exactly what
+	// a plain browser check (or an http check) could not wait for.
+	mux.HandleFunc("/dashboard", func(w http.ResponseWriter, req *http.Request) {
+		if cookie, err := req.Cookie("session"); err != nil || cookie.Value != sessionVal {
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		_, _ = w.Write([]byte(`<html><title>Dash</title><body><div id="app"></div><script>` +
+			`setTimeout(function () { document.getElementById("app").innerHTML =` +
+			` '<h1 data-testid="dashboard">welcome</h1>'; }, 150);</script></body></html>`))
+	})
+
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, req *http.Request) {
+		if cookie, err := req.Cookie("session"); err != nil || cookie.Value != sessionVal {
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"user":"alice"}`))
+	})
+
+	listener, err := net.Listen("tcp", "0.0.0.0:0") //nolint:noctx // fixture the browser must reach
+	require.NoError(t, err)
+
+	server := httptest.NewUnstartedServer(mux)
+	_ = server.Listener.Close()
+	server.Listener = listener
+	server.Start()
+
+	t.Cleanup(server.Close)
+
+	return server
 }

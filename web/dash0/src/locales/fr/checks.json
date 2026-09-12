@@ -944,7 +944,7 @@
     "rdpCertWarningHelp": "Avertissement ambre (sans alerte). Doit être ≥ Critique.",
     "rdpPreAuthHelp": "Poignée de main pré-authentification uniquement — aucun identifiant n'est envoyé. Les workers ont besoin d'un accès réseau à l'hôte RDP (généralement interne).",
     "script": "Script",
-    "scriptHelp": "Script JavaScript qui retourne un objet avec un statut (\"up\", \"down\" ou \"error\") — jamais \"timeout\", qui est ce que le moteur rapporte quand il interrompt le script — plus des métriques et une sortie optionnelles.",
+    "scriptHelp": "Script JavaScript qui retourne un objet avec un statut (\"up\", \"down\" ou \"error\") — jamais \"timeout\", qui est ce que le moteur rapporte quand il interrompt le script — plus des métriques et une sortie optionnelles. Peut piloter une vraie page Chrome headless via l’API `browser` — un script qui en ouvre une tourne à la période minimale d’1 min du check navigateur.",
     "jsEnv": "Environnement (public)",
     "jsEnvHelp": "Paramètres en clair que le script lit via env.NOM — une URL de base, un identifiant. Stockés non chiffrés et inclus dans les exports.",
     "jsAddEnv": "Ajouter une variable",

@@ -23,25 +23,44 @@ func liveCDPURL(t *testing.T) string {
 	return os.Getenv("SP_CHECKERS_BROWSER_CDP_URL")
 }
 
-// browserReachableURL rewrites a local httptest URL into one the BROWSER can
-// reach. A Chrome in a container cannot dial the test process's 127.0.0.1, so
-// the host is swapped for SP_TEST_BROWSER_HOST (default
-// `host.docker.internal`, which Docker Desktop resolves to the host). Set it
-// to `127.0.0.1` when Chrome shares the test's network namespace.
+// browserReachableURL rewrites a local httptest URL into one BOTH the test
+// process and the BROWSER can reach.
+//
+// A Chrome in a container cannot dial this process's 127.0.0.1, and the doc
+// example deliberately uses ONE base URL for the page and for the http.get
+// that follows it — so a name only the container resolves would break the
+// second half. This machine's outbound-route address satisfies both, and
+// SP_TEST_BROWSER_HOST overrides it for a setup where it does not (a Chrome
+// sharing this network namespace wants 127.0.0.1).
 func browserReachableURL(t *testing.T, rawURL string) string {
 	t.Helper()
 
 	alias := os.Getenv("SP_TEST_BROWSER_HOST")
 	if alias == "" {
-		alias = "host.docker.internal"
+		alias = outboundHost(t)
 	}
 
-	trimmed := strings.TrimPrefix(rawURL, "http://")
-
-	_, port, err := net.SplitHostPort(trimmed)
+	_, port, err := net.SplitHostPort(strings.TrimPrefix(rawURL, "http://"))
 	require.NoError(t, err, "unexpected httptest URL %q", rawURL)
 
 	return "http://" + net.JoinHostPort(alias, port)
+}
+
+// outboundHost reports the local address this machine would use to reach the
+// outside world. The UDP "connection" sends nothing — it only makes the kernel
+// pick a route — so this works offline and costs a syscall.
+func outboundHost(t *testing.T) string {
+	t.Helper()
+
+	conn, err := net.Dial("udp", "203.0.113.1:9") //nolint:noctx // no packet is sent; this only picks a route
+	require.NoError(t, err, "cannot determine a browser-reachable host address")
+
+	defer func() { _ = conn.Close() }()
+
+	host, _, err := net.SplitHostPort(conn.LocalAddr().String())
+	require.NoError(t, err)
+
+	return host
 }
 
 // liveFixtureServer serves a tiny login form on ALL interfaces, so a browser

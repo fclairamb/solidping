@@ -271,6 +271,75 @@ misbehaving target cannot grow a check's memory without limit.
 Every `http.*` call — session or not — counts against the same 20-call budget
 as `solidping.*` below.
 
+### `browser` {#browser}
+
+`browser.open()` gives a script a **real headless-Chrome page** to drive — the
+same Chrome the [`browser` check type](./check-types.md#browser) uses, through
+the same concurrency cap and the same isolated (incognito) context. It is what
+lets a script log in through a JavaScript-driven form, wait for a client-side
+render, and read what a user would actually see.
+
+It is deliberately small. There are no tabs, frames, downloads, uploads,
+request interception, header/UA overrides, viewport emulation, video or
+tracing; `page.evaluate()` is the escape hatch for everything the table does
+not have. This is not Playwright and does not try to become it.
+
+| Call | Returns | Notes |
+|---|---|---|
+| `browser.open()` | `page` | Acquires a browser slot, opens a fresh isolated context and tab. **Throws** — see below. |
+| `page.goto(url)` | `{ ok, url, title, duration, error? }` | Navigates and waits for `body`. `url` must be `http`/`https`. `url` in the result is the URL **after** redirects; there is deliberately **no status code** — read one with `page.evaluate` or `http.get`. |
+| `page.waitFor(selector, { timeout? })` | `{ ok, duration, error? }` | Waits for the selector to become visible. `timeout` is a duration string (`"10s"`) or a number of ms, clamped to the script's remaining time. |
+| `page.click(selector)` | `{ ok, error? }` | Clicks the first match, scrolling it into view. |
+| `page.fill(selector, text)` | `{ ok, error? }` | Clears the field and **sends keys**, so a React/Vue controlled input sees real input events. |
+| `page.press(selector, key)` | `{ ok, error? }` | Sends one key — `"Enter"`, `"Tab"`, `"Escape"`, an arrow, or a single character. |
+| `page.text(selector)` | `{ ok, text, error? }` | Visible text of the first match, capped at 1 MB. |
+| `page.evaluate(expression)` | `{ ok, value, error? }` | Runs the expression **inside the page** (real DOM, page origin) and returns its JSON-serialisable value; a returned Promise is awaited. A throw inside the page is `{ ok: false, error }`. Capped at 1 MB. |
+| `page.url()` | `string` | Current top-frame URL — how you assert you landed on `/dashboard`. |
+| `page.cookies()` | `[{ name, value, domain, path, secure, httpOnly, expires }]` | The page's cookies, so a browser-established session can be handed to `http.*` — see the example below. |
+| `page.screenshot()` | `{ ok, error? }` | Attaches a capture of the page to the result — see below. |
+| `page.close()` | `undefined` | Disposes the page and releases the slot. Called for you when the script ends; calling it twice is a no-op. |
+
+**Target failures return, infrastructure failures throw.** A selector that
+never appeared, a page that threw, a navigation that failed — all of them come
+back as `{ ok: false, error }`, so the script keeps the right to decide whether
+that means `down`. Only *our* infrastructure failing (no Chrome on this
+worker, the CDP connection dying mid-script, the page already closed) throws,
+which the runtime reports as `error` — see
+[Result contract](#result-contract). This is the same split `http.*` makes
+with its `{ error }` return.
+
+**One page per execution.** A second `browser.open()` throws, including after
+a `page.close()`: the page is a resource this script already spent. The slot is
+held from `open()` to `close()` — a script holding a page *is* a browser check
+in flight — so on a saturated worker `open()` waits inside the check's own
+timeout and then reports `timed out waiting for a free browser slot`, exactly
+as a browser check does.
+
+**No Chrome, no page.** `browser.open()` throws when this worker has no
+browser, and the check reports `error`, never `down` — your monitored site is
+not implicated by our sidecar being down. Give every region that runs `js`
+checks a headless-shell sidecar (the shipped `docker-compose.yml` does), or
+pin such checks to regions whose capability list shows `browser`; a `js` check
+is scheduled as a `js` check, so nothing routes it to a browser-capable region
+for you. An operator who disabled the `browser` check type
+(`checkers.enabled`/`checkers.disabled`) disables it here too, with the same
+message.
+
+**Screenshots.** `page.screenshot()` attaches a capture to the result's
+diagnostics, through the same size and time caps a browser check's capture
+uses. The **last** successful call wins, so an early "before" shot can be
+overwritten by the one taken at the moment you decide the target is down. The
+capture is **kept only when the final status is `down` or `timeout`** — the
+verdicts a browser check keeps one for — and dropped otherwise, so a shot on
+an `up` run costs a CDP round-trip and nothing else. As with a browser check,
+the image is what the page looked like when *the script asked*, not a frame
+from the instant of failure.
+
+**Period floor.** A script that calls `browser.open(` is held to the `browser`
+check's **1m** minimum period instead of the `js` type's 30s, decided when the
+check is saved. A headless run costs seconds and holds one of four slots;
+without the floor one such check would starve every browser check beside it.
+
 ### `solidping.<type>(config)` / `solidping.check(type, config)`
 
 Runs another check type's logic inline and returns its result, without
@@ -302,8 +371,10 @@ string.
 |---|---|
 | Script size | 64 KB |
 | Sub-checks (`http.*` + `solidping.*` combined) | 20 per execution |
+| Browser pages | 1 per execution |
+| Browser actions (every `page.*` call except `url()`/`close()`) | 100 per execution, counted **separately** from the 20-call budget above |
 | Console output | 16 KB |
-| HTTP response body | 1 MB |
+| HTTP response body, `page.text()`, `page.evaluate()` | 1 MB (one shared cap) |
 | `env` / `secrets` entries | 50 each |
 | Default / maximum timeout | 30s |
 | Cookie jar (per session) | 100 cookies, 4 KiB each |
@@ -470,6 +541,40 @@ checks.forEach(function (result, index) {
 return { status: worst, metrics: metrics };
 ```
 
+### Form login through a real browser (tested)
+
+The workflow a page-load check cannot express: fill the real form, wait for the
+app to render, then hand the browser's session to a plain HTTP call. Needs a
+worker with a browser — see [`browser`](#browser) — and runs at the 1m floor.
+
+<!-- test: browser-login -->
+```js
+var page = browser.open();
+var nav = page.goto(env.BASE_URL + "/login");
+if (!nav.ok) return { status: "down", output: { step: "load", error: nav.error } };
+page.fill("#email", env.USERNAME);
+page.fill("#password", secrets.PASSWORD);
+page.click("button[type=submit]");
+var dash = page.waitFor("[data-testid=dashboard]", { timeout: "10s" });
+if (!dash.ok) {
+  page.screenshot();
+  return { status: "down", output: { step: "login", url: page.url(), error: dash.error } };
+}
+// Hand the browser's session to a plain HTTP call: cookies go on the header,
+// http.session()'s jar is filled by the target only.
+var cookie = page.cookies().map(function (c) { return c.name + "=" + c.value; }).join("; ");
+var me = http.get(env.BASE_URL + "/api/me", { headers: { Cookie: cookie } });
+if (me.error || me.statusCode !== 200) {
+  return { status: "down", output: { step: "api", statusCode: me.statusCode, error: me.error } };
+}
+return { status: "up", metrics: { loginMs: nav.duration + dash.duration } };
+```
+
+The screenshot on the failing branch is kept only because that branch returns
+`down`; the same call on the success path would be dropped. This example is
+also shipped as the **JS: Browser Form Login** sample in the dashboard's sample
+picker, from the same source, so the two cannot drift.
+
 ### Time-conditional check
 
 Skip the probe outside business hours without calling anything — note that
@@ -544,6 +649,36 @@ editor was left untouched on a save and nothing was ever entered for that key
 in the first place. Remember that a saved `secrets` value never displays
 again, so "is it actually set?" is answered by the row existing with the
 "encrypted" placeholder, not by its value.
+
+**`check type "browser" is disabled on this server`** — an operator turned the
+`browser` check type off (`checkers.enabled` / `checkers.disabled`), and a
+script does not get it back. The same message appears for
+`solidping.check("browser", …)`.
+
+**`Chrome/Chromium not found` / `cannot reach the remote Chrome (CDP)
+endpoint`** — this worker has no browser. The check reports `error`, never
+`down`: your target was never contacted. Give the region a headless-shell
+sidecar (`SP_CHECKERS_BROWSER_CDP_URL`) or pin the check to a region whose
+capability list shows `browser` — `js` checks are not routed to
+browser-capable regions automatically.
+
+**`a page is already open`** — a script may open **one** page per execution,
+and closing it does not buy another. Drive the page you have, or split the
+workflow across two checks.
+
+**`browser action limit of 100 exceeded`** — the 101st `page.*` call returns
+this instead of running. It is a separate budget from the 20-call
+`http.*`/`solidping.*` one; a loop over a long list of selectors is the usual
+cause.
+
+**`period for js checks must be at least 60s: scripts that open a browser have
+the browser check's 1m floor`** — the script contains `browser.open(`, so it
+inherits the [`browser` floor](#browser). Raise the period to `1m`, or stop
+opening a browser.
+
+**`timed out waiting for a free browser slot`** — at most four browser
+executions run at a time per worker, and a script holds its slot from `open()`
+to `close()`. Space browser-using checks out, or add workers.
 
 **Where did my `console.log` go?** — every `console.log/warn/error/info` call
 lands in `output.console` on the result, whether or not the script's own

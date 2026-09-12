@@ -944,7 +944,7 @@
     "rdpCertWarningHelp": "Amber warning (no page). Must be ≥ Critical.",
     "rdpPreAuthHelp": "Pre-auth handshake only — no credentials are sent. Workers need network access to the RDP host (typically internal).",
     "script": "Script",
-    "scriptHelp": "JavaScript script that returns an object with status (\"up\", \"down\", or \"error\") — never \"timeout\", which the runtime reports when it cuts the script off — plus optional metrics and output.",
+    "scriptHelp": "JavaScript script that returns an object with status (\"up\", \"down\", or \"error\") — never \"timeout\", which the runtime reports when it cuts the script off — plus optional metrics and output. Can drive a real headless-Chrome page with the `browser` API — a script that opens one runs at the browser check’s 1m minimum period.",
     "jsEnv": "Environment (public)",
     "jsEnvHelp": "Plaintext parameters the script reads as env.NAME — a base URL, a username. Stored unencrypted and included in exports.",
     "jsAddEnv": "Add variable",

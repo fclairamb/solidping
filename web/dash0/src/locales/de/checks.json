@@ -944,7 +944,7 @@
     "rdpCertWarningHelp": "Gelbe Warnung (kein Alarm). Muss ≥ Kritisch sein.",
     "rdpPreAuthHelp": "Nur Pre-Auth-Handshake — es werden keine Anmeldedaten gesendet. Worker benötigen Netzwerkzugriff auf den RDP-Host (in der Regel intern).",
     "script": "Skript",
-    "scriptHelp": "JavaScript-Skript, das ein Objekt mit Status (\"up\", \"down\" oder \"error\") zurückgibt — niemals \"timeout\", das meldet die Laufzeitumgebung, wenn sie das Skript abbricht — plus optionalen Metriken und optionaler Ausgabe.",
+    "scriptHelp": "JavaScript-Skript, das ein Objekt mit Status (\"up\", \"down\" oder \"error\") zurückgibt — niemals \"timeout\", das meldet die Laufzeitumgebung, wenn sie das Skript abbricht — plus optionalen Metriken und optionaler Ausgabe. Kann mit der `browser`-API eine echte Headless-Chrome-Seite steuern — ein Skript, das eine öffnet, läuft mit der 1-Minuten-Mindestperiode des Browser-Checks.",
     "jsEnv": "Umgebung (öffentlich)",
     "jsEnvHelp": "Klartext-Parameter, die das Skript als env.NAME liest — eine Basis-URL, ein Benutzername. Unverschlüsselt gespeichert und in Exporten enthalten.",
     "jsAddEnv": "Variable hinzufügen",
