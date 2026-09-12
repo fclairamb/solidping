@@ -225,3 +225,63 @@ func TestImportDryRunNamesTheSecretMergeCaveat(t *testing.T) {
 	// A real run never carries caveats at all — it is not planning anything.
 	r.Empty(rig.importDoc(t, plain, false).Caveats)
 }
+
+// httpCheckWithSecretHeaders is a check entry whose secret field is
+// map-shaped (checkhttp.SecretHeaders, a map[string]string), unlike
+// secretCheck's string-shaped basicAuth.
+func httpCheckWithSecretHeaders(slug string, headers map[string]string) map[string]any {
+	converted := make(map[string]any, len(headers))
+	for k, v := range headers {
+		converted[k] = v
+	}
+
+	return map[string]any{
+		"name": "Acme " + slug, "slug": slug, "type": "http", "enabled": true,
+		"config": map[string]any{
+			"url":           "https://example.com/" + slug,
+			"secretHeaders": converted,
+		},
+	}
+}
+
+// TestImportDryRunOmittingMapShapedSecretSucceeds covers plan.go:455's
+// unconditional injection for a map-shaped secret field: ConfigPrivateKeys is
+// populated for every encrypted check, not just sealed-only ones, and an
+// export redacts secrets — so dry-running an org's OWN export of an ordinary
+// AES-envelope HTTP check that carries secretHeaders must not fail with the
+// checker's own "must be a map[string]string" error just because the
+// document omits the header map. This is the call site the sealed-only PATCH
+// tests do not reach (the check here is never sealed at all).
+func TestImportDryRunOmittingMapShapedSecretSucceeds(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	rig := newLabelRigWithCreds(t, "dry-map-secret", nil, creds)
+
+	withHeaders := importDocument(rig.org.Slug,
+		httpCheckWithSecretHeaders("map-secret-one", map[string]string{"X-Api-Key": "hunter2"}))
+
+	applied := rig.importDoc(t, withHeaders, false)
+	r.Empty(applied.Errors, "%+v", applied.Errors)
+	r.Equal(1, applied.Created)
+
+	stored, err := rig.dbSvc.GetCheckByUidOrSlug(t.Context(), rig.org.UID, "map-secret-one")
+	r.NoError(err)
+	r.NotNil(stored.ConfigPrivate, "the fixture must really hold an encrypted config side")
+	r.Nil(stored.ConfigSealed, "this check is never sealed — the dry-run call site is unconditional")
+	r.Contains(privateKeys(t, stored), "secretHeaders")
+
+	// An export-shaped document: the same check, secretHeaders omitted
+	// entirely (an export redacts secrets rather than sending a placeholder).
+	exported := importDocument(rig.org.Slug, httpCheck("map-secret-one", nil))
+
+	dry := rig.importDoc(t, exported, true)
+	r.Empty(dry.Errors, "%+v", dry.Errors,
+		"omitting a map-shaped secret field must not fail the checker's own map-shape validation")
+	r.Equal(0, dry.Created)
+	r.Equal(0, dry.Updated)
+	r.Equal(1, dry.Unchanged, "the document is exactly the org's own export of this check")
+}
