@@ -33,8 +33,12 @@ import (
 func ParamOverlay(
 	ctx context.Context, store secretref.ParamStore, orgUID string, config map[string]any,
 ) (map[string]any, error) {
+	// An empty overlay is the common case (most checks reference nothing), and
+	// it is a perfectly good answer — not a missing one.
+	empty := map[string]any{}
+
 	if len(config) == 0 {
-		return nil, nil
+		return empty, nil
 	}
 
 	resolved, replaced, err := secretref.ResolveConfig(
@@ -44,7 +48,7 @@ func ParamOverlay(
 	}
 
 	if !replaced {
-		return nil, nil
+		return empty, nil
 	}
 
 	overlay := make(map[string]any)

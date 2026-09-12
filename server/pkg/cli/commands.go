@@ -1058,7 +1058,7 @@ func GetCommands() []*cli.Command {
 				{
 					Name:      flagGet,
 					Usage:     "Get a system parameter",
-					ArgsUsage: "<key>",
+					ArgsUsage: argKey,
 					Action:    systemGetAction,
 				},
 				{
@@ -1077,7 +1077,7 @@ func GetCommands() []*cli.Command {
 					Name:      cmdDelete,
 					Aliases:   []string{"rm"},
 					Usage:     "Delete a system parameter",
-					ArgsUsage: "<key>",
+					ArgsUsage: argKey,
 					Action:    systemDeleteAction,
 				},
 				{

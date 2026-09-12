@@ -122,7 +122,7 @@ func TestWorkerResolvesParamReferenceAtExecution(t *testing.T) {
 // difference between the two schemes: `env:` is read from the environment of
 // whichever process runs the check — here, the worker's.
 //
-//nolint:paralleltest // t.Setenv, and shared database state
+// t.Setenv forbids t.Parallel, and the package's tests share database state.
 func TestWorkerResolvesEnvReferenceOnTheExecutingProcess(t *testing.T) {
 	r := require.New(t)
 	rec := &configRecorder{}

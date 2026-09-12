@@ -201,10 +201,10 @@ func (s *Service) org(ctx context.Context, orgSlug string) (*models.Organization
 }
 
 // project maps a stored row onto the API shape, eliding a secret value.
-func project(row *models.Parameter) (out *Parameter) {
+func project(row *models.Parameter) *Parameter {
 	secret := row.Secret != nil && *row.Secret
 
-	out = &Parameter{Key: row.Key, Secret: secret, UpdatedAt: row.UpdatedAt}
+	out := &Parameter{Key: row.Key, Secret: secret, UpdatedAt: row.UpdatedAt}
 	if secret {
 		return out
 	}

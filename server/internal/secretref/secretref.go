@@ -31,8 +31,6 @@ const (
 
 // Pattern matches a single `${env:NAME}` / `${param:KEY}` reference. Group 1 is
 // the scheme, group 2 the name (everything up to the closing brace).
-//
-//nolint:gochecknoglobals // the grammar itself, compiled once
 var Pattern = regexp.MustCompile(`\$\{(env|param):([^}]+)\}`)
 
 var (

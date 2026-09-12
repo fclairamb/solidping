@@ -19,6 +19,8 @@ const (
 
 	flagPublic = "public"
 
+	argKey = "<key>"
+
 	msgParamKeyRequired = "Error: parameter key is required"
 
 	// secretPlaceholder is what a secret parameter shows in the table. It is a
@@ -236,13 +238,13 @@ func paramsCommand() *cli.Command {
 			{
 				Name:      flagGet,
 				Usage:     "Get one parameter",
-				ArgsUsage: "<key>",
+				ArgsUsage: argKey,
 				Action:    paramsGetAction,
 			},
 			{
 				Name:      cmdSet,
 				Usage:     "Create or rotate a parameter",
-				ArgsUsage: "<key> [value]",
+				ArgsUsage: argKey + " [value]",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: flagValue, Usage: "Value to store (alternative to the positional argument)"},
 					&cli.BoolFlag{
@@ -256,7 +258,7 @@ func paramsCommand() *cli.Command {
 				Name:      flagRemove,
 				Aliases:   []string{"rm", cmdDelete},
 				Usage:     "Delete a parameter",
-				ArgsUsage: "<key>",
+				ArgsUsage: argKey,
 				Action:    paramsDeleteAction,
 			},
 		},

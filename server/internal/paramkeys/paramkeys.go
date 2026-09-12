@@ -24,8 +24,6 @@ import (
 // KeyPattern is the shape of an org-managed parameter key: lowercase, starting
 // with a letter, up to 64 characters of letters, digits, underscore, dot and
 // dash.
-//
-//nolint:gochecknoglobals // the rule itself, compiled once
 var KeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 
 var (
