@@ -3462,7 +3462,16 @@ type CheckTypeInfo struct {
 	Labels               []string `json:"labels"`
 	MaxPeriodSeconds     *int     `json:"maxPeriodSeconds,omitempty"`
 	MinPeriodSeconds     *int     `json:"minPeriodSeconds,omitempty"`
-	Type                 string   `json:"type"`
+
+	// SecretFields Top-level config keys this type stores encrypted. Their values are never returned by a read, so a client must not echo them back when it preserves config keys its own form does not model.
+	SecretFields *[]string `json:"secretFields,omitempty"`
+
+	// SupportsIpVersion The type honours the shared `ipVersion` key (auto/ipv4/ipv6).
+	SupportsIpVersion *bool `json:"supportsIpVersion,omitempty"`
+
+	// SupportsTunnel The type can run through an SSH check's tunnel (`tunnelCheckUid`).
+	SupportsTunnel *bool  `json:"supportsTunnel,omitempty"`
+	Type           string `json:"type"`
 }
 
 // CheckTypeListResponse defines model for CheckTypeListResponse.
@@ -5427,6 +5436,24 @@ type OrgLogoResponse struct {
 	Uid     openapi_types.UUID `json:"uid"`
 }
 
+// OrgParameter defines model for OrgParameter.
+type OrgParameter struct {
+	// Key Parameter key
+	Key string `json:"key"`
+
+	// Secret Whether the value is withheld from every read
+	Secret    bool      `json:"secret"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Value The stored value. ABSENT — not blanked — when the parameter is secret: a secret parameter is write-only, and no endpoint returns its value.
+	Value *string `json:"value,omitempty"`
+}
+
+// OrgParameterListResponse defines model for OrgParameterListResponse.
+type OrgParameterListResponse struct {
+	Data *[]OrgParameter `json:"data,omitempty"`
+}
+
 // OrgProfileResponse defines model for OrgProfileResponse.
 type OrgProfileResponse struct {
 	// AccessToken Access token scoped to the new slug. Present only when the slug changed — the caller's previous token is scoped to the old slug and is refused against the new one.
@@ -6153,6 +6180,15 @@ type SetIntegrationIdentityRequest struct {
 type SetMaintenanceWindowChecksRequest struct {
 	CheckGroupUids *[]openapi_types.UUID `json:"checkGroupUids,omitempty"`
 	CheckUids      *[]openapi_types.UUID `json:"checkUids,omitempty"`
+}
+
+// SetOrgParameterRequest defines model for SetOrgParameterRequest.
+type SetOrgParameterRequest struct {
+	// Secret Withhold the value from every read. Defaults to true — a parameter exists to hold something worth not committing.
+	Secret *bool `json:"secret,omitempty"`
+
+	// Value The value to store (max 8 KiB)
+	Value string `json:"value"`
 }
 
 // SetSystemParameterRequest defines model for SetSystemParameterRequest.
@@ -7190,6 +7226,9 @@ type OncallScheduleUidPath = openapi_types.UUID
 // OrgPath defines model for OrgPath.
 type OrgPath = string
 
+// ParameterKeyPath defines model for ParameterKeyPath.
+type ParameterKeyPath = string
+
 // PublicationUidPath defines model for PublicationUidPath.
 type PublicationUidPath = openapi_types.UUID
 
@@ -8035,6 +8074,9 @@ type UpdateOncallScheduleJSONRequestBody = UpdateOncallScheduleRequest
 
 // CreateOncallOverrideJSONRequestBody defines body for CreateOncallOverride for application/json ContentType.
 type CreateOncallOverrideJSONRequestBody = CreateOncallOverrideRequest
+
+// SetOrgParameterJSONRequestBody defines body for SetOrgParameter for application/json ContentType.
+type SetOrgParameterJSONRequestBody = SetOrgParameterRequest
 
 // CreateReportScheduleJSONRequestBody defines body for CreateReportSchedule for application/json ContentType.
 type CreateReportScheduleJSONRequestBody = CreateReportScheduleRequest
@@ -9746,6 +9788,45 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/on-call-schedules/{uid}/preview (the `PreviewOncallSchedule` operationId).
 	PreviewOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListOrgParameters List organization parameters
+	//
+	// Returns the organization's own parameters — the values a config-as-code manifest references as `${param:KEY}`. Secret parameters are listed without their value; there is no endpoint that returns one. Admin only.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/parameters (the `ListOrgParameters` operationId).
+	ListOrgParameters(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteOrgParameter Delete an organization parameter
+	//
+	// Removes the parameter. Every check whose config references it will fail with `unresolved secret reference` at its next execution, so a missing key answers 404 rather than a silent success. Admin only.
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/parameters/{key} (the `DeleteOrgParameter` operationId).
+	DeleteOrgParameter(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrgParameter Get an organization parameter
+	//
+	// Returns one parameter. A secret parameter comes back as key, flag and timestamp, with no value. Admin only.
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/parameters/{key} (the `GetOrgParameter` operationId).
+	GetOrgParameter(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrgParameterWithBody Create or rotate an organization parameter
+	//
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+	SetOrgParameterWithBody(ctx context.Context, org OrgPath, key ParameterKeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrgParameter Create or rotate an organization parameter
+	//
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+	SetOrgParameter(ctx context.Context, org OrgPath, key ParameterKeyPath, body SetOrgParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListRegions List regions available to an organization
 	//
@@ -14528,6 +14609,95 @@ func (c *Client) DeleteOncallOverride(ctx context.Context, org OrgPath, uid Onca
 // Corresponds with GET /api/v1/orgs/{org}/on-call-schedules/{uid}/preview (the `PreviewOncallSchedule` operationId).
 func (c *Client) PreviewOncallSchedule(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewOncallScheduleRequest(c.Server, org, uid, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListOrgParameters List organization parameters
+//
+// Returns the organization's own parameters — the values a config-as-code manifest references as `${param:KEY}`. Secret parameters are listed without their value; there is no endpoint that returns one. Admin only.
+//
+// Corresponds with GET /api/v1/orgs/{org}/parameters (the `ListOrgParameters` operationId).
+func (c *Client) ListOrgParameters(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOrgParametersRequest(c.Server, org)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteOrgParameter Delete an organization parameter
+//
+// Removes the parameter. Every check whose config references it will fail with `unresolved secret reference` at its next execution, so a missing key answers 404 rather than a silent success. Admin only.
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/parameters/{key} (the `DeleteOrgParameter` operationId).
+func (c *Client) DeleteOrgParameter(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteOrgParameterRequest(c.Server, org, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOrgParameter Get an organization parameter
+//
+// Returns one parameter. A secret parameter comes back as key, flag and timestamp, with no value. Admin only.
+//
+// Corresponds with GET /api/v1/orgs/{org}/parameters/{key} (the `GetOrgParameter` operationId).
+func (c *Client) GetOrgParameter(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrgParameterRequest(c.Server, org, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetOrgParameterWithBody Create or rotate an organization parameter
+//
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+func (c *Client) SetOrgParameterWithBody(ctx context.Context, org OrgPath, key ParameterKeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrgParameterRequestWithBody(c.Server, org, key, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetOrgParameter Create or rotate an organization parameter
+//
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+func (c *Client) SetOrgParameter(ctx context.Context, org OrgPath, key ParameterKeyPath, body SetOrgParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrgParameterRequest(c.Server, org, key, body)
 	if err != nil {
 		return nil, err
 	}
@@ -25238,6 +25408,176 @@ func NewPreviewOncallScheduleRequest(server string, org OrgPath, uid OncallSched
 	return req, nil
 }
 
+// NewListOrgParametersRequest constructs an http.Request for the ListOrgParameters method
+func NewListOrgParametersRequest(server string, org OrgPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/parameters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteOrgParameterRequest constructs an http.Request for the DeleteOrgParameter method
+func NewDeleteOrgParameterRequest(server string, org OrgPath, key ParameterKeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/parameters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOrgParameterRequest constructs an http.Request for the GetOrgParameter method
+func NewGetOrgParameterRequest(server string, org OrgPath, key ParameterKeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/parameters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetOrgParameterRequest calls the generic SetOrgParameter builder with application/json body
+func NewSetOrgParameterRequest(server string, org OrgPath, key ParameterKeyPath, body SetOrgParameterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrgParameterRequestWithBody(server, org, key, "application/json", bodyReader)
+}
+
+// NewSetOrgParameterRequestWithBody constructs an http.Request for the SetOrgParameter method, with any body, and a specified content type
+func NewSetOrgParameterRequestWithBody(server string, org OrgPath, key ParameterKeyPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/parameters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListRegionsRequest constructs an http.Request for the ListRegions method
 func NewListRegionsRequest(server string, org OrgPath) (*http.Request, error) {
 	var err error
@@ -32563,6 +32903,51 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/orgs/{org}/on-call-schedules/{uid}/preview (the `PreviewOncallSchedule` operationId).
 	PreviewOncallScheduleWithResponse(ctx context.Context, org OrgPath, uid OncallScheduleUidPath, params *PreviewOncallScheduleParams, reqEditors ...RequestEditorFn) (*PreviewOncallScheduleResult, error)
+
+	// ListOrgParametersWithResponse List organization parameters
+	//
+	// Returns the organization's own parameters — the values a config-as-code manifest references as `${param:KEY}`. Secret parameters are listed without their value; there is no endpoint that returns one. Admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/parameters (the `ListOrgParameters` operationId).
+	ListOrgParametersWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOrgParametersResult, error)
+
+	// DeleteOrgParameterWithResponse Delete an organization parameter
+	//
+	// Removes the parameter. Every check whose config references it will fail with `unresolved secret reference` at its next execution, so a missing key answers 404 rather than a silent success. Admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/orgs/{org}/parameters/{key} (the `DeleteOrgParameter` operationId).
+	DeleteOrgParameterWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*DeleteOrgParameterResult, error)
+
+	// GetOrgParameterWithResponse Get an organization parameter
+	//
+	// Returns one parameter. A secret parameter comes back as key, flag and timestamp, with no value. Admin only.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/orgs/{org}/parameters/{key} (the `GetOrgParameter` operationId).
+	GetOrgParameterWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*GetOrgParameterResult, error)
+
+	// SetOrgParameterWithBodyWithResponse Create or rotate an organization parameter
+	//
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+	SetOrgParameterWithBodyWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrgParameterResult, error)
+
+	// SetOrgParameterWithResponse Create or rotate an organization parameter
+	//
+	// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+	SetOrgParameterWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, body SetOrgParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrgParameterResult, error)
 
 	// ListRegionsWithResponse List regions available to an organization
 	//
@@ -42766,6 +43151,254 @@ func (r PreviewOncallScheduleResult) ContentType() string {
 	return ""
 }
 
+type ListOrgParametersResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgParameterListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListOrgParametersResult) GetJSON200() *OrgParameterListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListOrgParametersResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListOrgParametersResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListOrgParametersResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r ListOrgParametersResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOrgParametersResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOrgParametersResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListOrgParametersResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteOrgParameterResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteOrgParameterResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteOrgParameterResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteOrgParameterResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteOrgParameterResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteOrgParameterResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteOrgParameterResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteOrgParameterResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOrgParameterResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgParameter
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOrgParameterResult) GetJSON200() *OrgParameter {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetOrgParameterResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetOrgParameterResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetOrgParameterResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOrgParameterResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrgParameterResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrgParameterResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOrgParameterResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetOrgParameterResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrgParameter
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetOrgParameterResult) GetJSON200() *OrgParameter {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r SetOrgParameterResult) GetJSON400() *ValidationError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SetOrgParameterResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SetOrgParameterResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SetOrgParameterResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SetOrgParameterResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrgParameterResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrgParameterResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetOrgParameterResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListRegionsResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -52017,6 +52650,81 @@ func (c *ClientWithResponses) PreviewOncallScheduleWithResponse(ctx context.Cont
 	return ParsePreviewOncallScheduleResult(rsp)
 }
 
+// ListOrgParametersWithResponse List organization parameters
+//
+// Returns the organization's own parameters — the values a config-as-code manifest references as `${param:KEY}`. Secret parameters are listed without their value; there is no endpoint that returns one. Admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/parameters (the `ListOrgParameters` operationId).
+func (c *ClientWithResponses) ListOrgParametersWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*ListOrgParametersResult, error) {
+	rsp, err := c.ListOrgParameters(ctx, org, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOrgParametersResult(rsp)
+}
+
+// DeleteOrgParameterWithResponse Delete an organization parameter
+//
+// Removes the parameter. Every check whose config references it will fail with `unresolved secret reference` at its next execution, so a missing key answers 404 rather than a silent success. Admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/orgs/{org}/parameters/{key} (the `DeleteOrgParameter` operationId).
+func (c *ClientWithResponses) DeleteOrgParameterWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*DeleteOrgParameterResult, error) {
+	rsp, err := c.DeleteOrgParameter(ctx, org, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteOrgParameterResult(rsp)
+}
+
+// GetOrgParameterWithResponse Get an organization parameter
+//
+// Returns one parameter. A secret parameter comes back as key, flag and timestamp, with no value. Admin only.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/orgs/{org}/parameters/{key} (the `GetOrgParameter` operationId).
+func (c *ClientWithResponses) GetOrgParameterWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, reqEditors ...RequestEditorFn) (*GetOrgParameterResult, error) {
+	rsp, err := c.GetOrgParameter(ctx, org, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrgParameterResult(rsp)
+}
+
+// SetOrgParameterWithBodyWithResponse Create or rotate an organization parameter
+//
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+func (c *ClientWithResponses) SetOrgParameterWithBodyWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrgParameterResult, error) {
+	rsp, err := c.SetOrgParameterWithBody(ctx, org, key, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrgParameterResult(rsp)
+}
+
+// SetOrgParameterWithResponse Create or rotate an organization parameter
+//
+// Creates the parameter, or replaces its value (rotation — the key and every `${param:KEY}` reference to it are unchanged). Keys must match `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org configuration — the `sp.` prefix among them — are refused with a 400. Admin only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/orgs/{org}/parameters/{key} (the `SetOrgParameter` operationId).
+func (c *ClientWithResponses) SetOrgParameterWithResponse(ctx context.Context, org OrgPath, key ParameterKeyPath, body SetOrgParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrgParameterResult, error) {
+	rsp, err := c.SetOrgParameter(ctx, org, key, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrgParameterResult(rsp)
+}
+
 // ListRegionsWithResponse List regions available to an organization
 //
 // Returns a wrapper object for the known response body format(s).
@@ -60721,6 +61429,197 @@ func ParsePreviewOncallScheduleResult(rsp *http.Response) (*PreviewOncallSchedul
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOrgParametersResult parses an HTTP response from a ListOrgParametersWithResponse call
+func ParseListOrgParametersResult(rsp *http.Response) (*ListOrgParametersResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOrgParametersResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgParameterListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteOrgParameterResult parses an HTTP response from a DeleteOrgParameterWithResponse call
+func ParseDeleteOrgParameterResult(rsp *http.Response) (*DeleteOrgParameterResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteOrgParameterResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrgParameterResult parses an HTTP response from a GetOrgParameterWithResponse call
+func ParseGetOrgParameterResult(rsp *http.Response) (*GetOrgParameterResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrgParameterResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgParameter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetOrgParameterResult parses an HTTP response from a SetOrgParameterWithResponse call
+func ParseSetOrgParameterResult(rsp *http.Response) (*SetOrgParameterResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrgParameterResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrgParameter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound

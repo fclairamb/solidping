@@ -7333,6 +7333,120 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/parameters:
+    get:
+      tags: [Organizations]
+      summary: List organization parameters
+      description: >
+        Returns the organization's own parameters — the values a config-as-code
+        manifest references as `${param:KEY}`. Secret parameters are listed
+        without their value; there is no endpoint that returns one. Admin only.
+      operationId: listOrgParameters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of organization parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgParameterListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/parameters/{key}:
+    get:
+      tags: [Organizations]
+      summary: Get an organization parameter
+      description: >
+        Returns one parameter. A secret parameter comes back as key, flag and
+        timestamp, with no value. Admin only.
+      operationId: getOrgParameter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ParameterKeyPath"
+      responses:
+        "200":
+          description: Organization parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags: [Organizations]
+      summary: Create or rotate an organization parameter
+      description: >
+        Creates the parameter, or replaces its value (rotation — the key and
+        every `${param:KEY}` reference to it are unchanged). Keys must match
+        `^[a-z][a-z0-9_.-]{0,63}$`; keys SolidPing owns for its own per-org
+        configuration — the `sp.` prefix among them — are refused with a 400.
+        Admin only.
+      operationId: setOrgParameter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ParameterKeyPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetOrgParameterRequest"
+      responses:
+        "200":
+          description: Parameter created or rotated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgParameter"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Organizations]
+      summary: Delete an organization parameter
+      description: >
+        Removes the parameter. Every check whose config references it will fail
+        with `unresolved secret reference` at its next execution, so a missing
+        key answers 404 rather than a silent success. Admin only.
+      operationId: deleteOrgParameter
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ParameterKeyPath"
+      responses:
+        "204":
+          description: Parameter deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/settings:
     get:
       tags: [Organizations]
@@ -8051,6 +8165,15 @@ components:
       schema:
         type: string
         pattern: "^[a-z0-9-]{3,20}$"
+
+    ParameterKeyPath:
+      name: key
+      in: path
+      required: true
+      description: Parameter key
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9_.-]{0,63}$"
 
     TokenUidPath:
       name: tokenUid
@@ -13144,6 +13267,47 @@ components:
           $ref: "#/components/schemas/JobsStats"
 
     # System Parameters
+    OrgParameter:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Parameter key
+        value:
+          type: string
+          description: >
+            The stored value. ABSENT — not blanked — when the parameter is
+            secret: a secret parameter is write-only, and no endpoint returns
+            its value.
+        secret:
+          type: boolean
+          description: Whether the value is withheld from every read
+        updatedAt:
+          type: string
+          format: date-time
+      required: [key, secret, updatedAt]
+
+    OrgParameterListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgParameter"
+
+    SetOrgParameterRequest:
+      type: object
+      properties:
+        value:
+          type: string
+          description: The value to store (max 8 KiB)
+        secret:
+          type: boolean
+          description: >
+            Withhold the value from every read. Defaults to true — a parameter
+            exists to hold something worth not committing.
+      required: [value]
+
     SystemParameter:
       type: object
       properties:

@@ -1591,6 +1591,7 @@ func GetCommands() []*cli.Command {
 		entitlementsCommand(),
 		filesCommand(),
 		emailSuppressionsCommand(),
+		paramsCommand(),
 	}
 }
 
