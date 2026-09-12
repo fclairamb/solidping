@@ -41,18 +41,27 @@ that used to work.
 
 | Config key | Type | Set from | Notes |
 |---|---|---|---|
-| `script` | string, ≤ 64 KB | Dashboard form, API, `sp`, config-as-code | The only field the dashboard `js` form edits |
-| `timeout` | duration string, ≤ `30s` | API, `sp`, config-as-code | Defaults to `30s` |
-| `env` | map of string → string, ≤ 50 entries | API, `sp`, config-as-code | Public, plaintext — see below |
-| `secrets` | map of string → string, ≤ 50 entries | API, `sp`, config-as-code | Encrypted — see below |
+| `script` | string, ≤ 64 KB | Dashboard form, API, `sp`, config-as-code | Code editor |
+| `env` | map of string → string, ≤ 50 entries | Dashboard form, API, `sp`, config-as-code | Public, plaintext — see below |
+| `secrets` | map of string → string, ≤ 50 entries | Dashboard form, API, `sp`, config-as-code | Encrypted, write-only in the form — see below |
+| `timeout` | duration string, ≤ `30s` | API, `sp`, config-as-code | Defaults to `30s`. The one field with **no** dashboard control |
 
-**The dashboard form only edits `script`.** `env`, `secrets` and `timeout`
-have no field in the `js` check form — they are set through the REST API, the
-`sp` CLI, or a [config-as-code](./config-as-code.md) document. This is not a
-bug: an existing `env`/`secrets`/`timeout` value is preserved untouched when
-you save the form for something else (the same `ownedKeys` mechanism every
-check-type form uses), so scripting a check via the API and then tweaking its
-name in the dashboard does not silently wipe its parameters.
+**The dashboard form edits `script`, `env`, and `secrets`.** Only `timeout` has
+no field in the `js` check form — it is set through the REST API, the `sp`
+CLI, or a [config-as-code](./config-as-code.md) document. An existing
+`timeout` value is preserved untouched when you save the form for something
+else (the same `ownedKeys` mechanism every check-type form uses), so scripting
+a check's timeout via the API and then tweaking its name in the dashboard does
+not silently reset it.
+
+The `secrets` editor is **write-only**: like every other credential field in
+the dashboard, once a value is saved it is never shown again — the section
+instead shows "•••• (encrypted — enter new values to replace)" in place of the
+stored value. Leaving the section untouched preserves the stored credential;
+editing or removing a row is what changes it (adding a new, still-blank row
+does not — that lets you add a second credential without retyping the first).
+`env` has no such restriction — it is plaintext, so the form shows and edits
+it like any other field.
 
 ### Script parameters: `env` and `secrets`
 
@@ -528,10 +537,13 @@ slow-to-answer `http.*` call with no `timeout` option of its own, or a script
 stuck in a loop are the usual causes; note this is the engine reporting the
 script, not the script reporting itself — see [Result contract](#result-contract).
 
-**`env.X` (or `secrets.X`) is `undefined`** — the dashboard `js` form cannot
-set `env` or `secrets` (see [Configuration](#configuration)); set them through
-the API, `sp`, or a config-as-code document, then edit anything else on the
-check from the dashboard without disturbing them.
+**`env.X` (or `secrets.X`) is `undefined`** — the name is not on the check:
+either it was never added (check the dashboard's `env`/`secrets` editors, or
+the API/`sp`/config-as-code value, for a typo), or — for `secrets` — the
+editor was left untouched on a save and nothing was ever entered for that key
+in the first place. Remember that a saved `secrets` value never displays
+again, so "is it actually set?" is answered by the row existing with the
+"encrypted" placeholder, not by its value.
 
 **Where did my `console.log` go?** — every `console.log/warn/error/info` call
 lands in `output.console` on the result, whether or not the script's own

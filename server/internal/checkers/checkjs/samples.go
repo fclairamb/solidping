@@ -82,10 +82,11 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 			// secret-placeholder injection (tracked separately — see
 			// specs/todos/2026-09-12-02-secret-placeholder-must-match-the-fields-shape.md).
 			// The script still reads `secrets.PASSWORD`, exactly like the doc
-			// example; a user fills that in via the API/CLI/config-as-code
-			// after picking this sample, which is the normal path anyway
-			// since the dashboard `js` form has no `secrets` field of its own
-			// until this sample is chosen and saved once.
+			// example; the dashboard `js` form already has its own `secrets`
+			// editor (misc.tsx), so a user who picks this sample fills the
+			// password in there directly — no API/CLI/config-as-code detour
+			// required, just an empty field to fill in like any other blank
+			// credential field.
 			Name:   "JS: Bearer Token Login Chain",
 			Slug:   sampleBearerChainSlug,
 			Period: time.Minute * 5,
