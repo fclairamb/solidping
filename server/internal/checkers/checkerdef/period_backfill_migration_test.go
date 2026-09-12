@@ -37,7 +37,7 @@ func parsePeriodBackfillTypesMarker(t *testing.T, path string) []string {
 	t.Helper()
 	r := require.New(t)
 
-	content, err := os.ReadFile(path) //nolint:gosec // fixed test-relative path, not user input
+	content, err := os.ReadFile(path)
 	r.NoError(err)
 
 	match := periodBackfillTypesMarker.FindStringSubmatch(string(content))
