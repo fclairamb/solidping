@@ -93,6 +93,13 @@ So `internal/testsupport` reads `SP_TEST_REQUIRE_POSTGRES`; when it is set,
 `PostgresUnavailable` and `PostgresInitFailed` call `t.Fatalf` instead of
 `t.Skipf`. CI sets it. Local runs leave it unset and keep skipping.
 
+`TestMain` has no `*testing.T` and so cannot reach `t.Fatalf`; the variant for
+that shape is `testsupport.PostgresUnavailableTestMain(os.Stderr, err)`, which
+reports whether the caller must `os.Exit(1)` instead of running the suite empty.
+`server/test/integration/scenario` is its one caller — it boots a shared
+embedded Postgres for seven scenarios and used to run them all as skips when
+that failed.
+
 Never "fix" a red `backend-postgres` job by unsetting the variable. A red job
 there means embedded Postgres could not start, and the next thing that fails
 silently will be a real regression.
@@ -104,6 +111,9 @@ alone is not evidence. Both `backend-postgres` (in `ci.yml`) and the nightly
 Postgres job parse the `-v` output and fail if:
 
 - any `--- SKIP` line names a Postgres test, or
+- the log contains `testsupport`'s own skip wording (which can only appear if
+  `SP_TEST_REQUIRE_POSTGRES` never reached the test binary — this one does not
+  depend on how the test is named), or
 - fewer than **100** top-level `--- PASS` lines name one (116 such tests exist
   as of spec `2026-09-12-05`).
 
@@ -144,7 +154,8 @@ the PR layer.
 - **Needs no database, or SQLite only** → nothing to do; it runs everywhere.
 - **Needs PostgreSQL** → guard with `testing.Short()` and route the startup
   failure through `testsupport.PostgresUnavailable` /
-  `testsupport.PostgresInitFailed`. Claim a port number no other
+  `testsupport.PostgresInitFailed` (or `PostgresUnavailableTestMain` from a
+  `TestMain`) — never a bare `t.Skipf`, whatever the wording. Claim a port number no other
   `*_postgres_test.go` uses (see the port-numbering note in
   `internal/db/postgres/postgres_headroom_postgres_test.go`). Prefer one shared
   instance per package via `sync.Once` + `TestMain` —
