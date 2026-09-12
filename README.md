@@ -347,6 +347,12 @@ make build-cli
 
 - [uptime-kuma](https://github.com/louislam/uptime-kuma) - Great self-hosted monitoring tool
 
+## Contributing
+
+Bug reports and pull requests are welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for local setup and PR conventions. Found a security issue? See
+[`SECURITY.md`](SECURITY.md) rather than opening a public issue.
+
 ## License
 
 AGPL-3.0 - See [LICENSE](LICENSE).
