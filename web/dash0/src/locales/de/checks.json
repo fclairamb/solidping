@@ -944,7 +944,7 @@
     "rdpCertWarningHelp": "Gelbe Warnung (kein Alarm). Muss ≥ Kritisch sein.",
     "rdpPreAuthHelp": "Nur Pre-Auth-Handshake — es werden keine Anmeldedaten gesendet. Worker benötigen Netzwerkzugriff auf den RDP-Host (in der Regel intern).",
     "script": "Skript",
-    "scriptHelp": "JavaScript-Skript, das ein Objekt mit Status (\"up\", \"down\" oder \"error\"), optionalen Metriken und optionaler Ausgabe zurückgibt.",
+    "scriptHelp": "JavaScript-Skript, das ein Objekt mit Status (\"up\", \"down\" oder \"error\") zurückgibt — niemals \"timeout\", das meldet die Laufzeitumgebung, wenn sie das Skript abbricht — plus optionalen Metriken und optionaler Ausgabe.",
     "jsEnv": "Umgebung (öffentlich)",
     "jsEnvHelp": "Klartext-Parameter, die das Skript als env.NAME liest — eine Basis-URL, ein Benutzername. Unverschlüsselt gespeichert und in Exporten enthalten.",
     "jsAddEnv": "Variable hinzufügen",
