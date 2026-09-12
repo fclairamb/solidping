@@ -115,6 +115,18 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     expect(formBox).toBeTruthy();
     expect(mcpBox).toBeTruthy();
     expect(formBox!.y).toBeLessThan(mcpBox!.y);
+
+    // Spec 2026-09-12-04: the validation message the now-always-enabled submit
+    // produces is the widest string this hero can render — it must wrap inside
+    // the phone viewport rather than push the page sideways.
+    await page.getByTestId("quick-start-submit").click();
+    await expect(page.getByTestId("quick-start-error")).toBeVisible();
+    const stillNoOverflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+    );
+    expect(stillNoOverflow).toBe(false);
   });
 
   // Spec 2026-09-12-04: the hero's three activation defects — chips that
