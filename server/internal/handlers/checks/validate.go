@@ -158,9 +158,9 @@ type requestFieldValues struct {
 	Internal *bool
 
 	// RegionSpreadPeriod is the period regionSpread is measured against —
-	// the request's own proposed period when given, else defaultCheckPeriod,
-	// exactly as CreateCheck resolves check.Period before validating
-	// regionSpread today.
+	// the request's own proposed period when given, else defaultPeriodForType
+	// (spec 2026-09-11-07), exactly as CreateCheck resolves check.Period
+	// before validating regionSpread today.
 	RegionSpreadPeriod time.Duration
 	RegionSpread       *string
 
