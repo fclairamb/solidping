@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/jmap"
+	"github.com/fclairamb/solidping/server/internal/regions"
 )
 
 // mintedTokenInDocument matches a server-minted token anywhere in a rendered
@@ -154,97 +155,41 @@ func defaultPeriodFor(checkType checkerdef.CheckType) string {
 	return period.String()
 }
 
-// issuesOwnedByThisSpec drops the ValidateDocument findings that belong to the
-// SECRET story (spec 2026-09-11-03, "secret refs need a parameters API and
-// import parity"), which is explicitly out of scope here, and keeps everything
-// else.
+// issuesOwnedByThisSpec used to drop two classes of ValidateDocument finding
+// that spec 2026-09-11-02 left open and declared out of its scope. Spec
+// 2026-09-11-04 CLOSED both, so it now filters nothing and exists only as the
+// name the assertions below read by:
 //
-// Two shapes are dropped, both inherent to `secrets: stripped` as it exists
-// today and neither touched by export redaction:
+//  1. "looks like a credential" fired on any key containing user/pass/token/…,
+//     so a plain `username` (never a secret — every database checker carries
+//     one) and even ftp's `passive_mode` were reported. The hint is now
+//     anchored on what the checker DECLARES secret, which registry's
+//     TestNoUndeclaredCheckerSecrets independently guarantees is the complete
+//     set of credential fields.
+//  2. A declared secret the exporter stripped made the checker's own offline
+//     Validate report the config incomplete (sftp: "password or private_key is
+//     required"). On a `secrets: stripped` document that complaint is now
+//     suppressed by PARAMETER — the import merge is what puts the value back.
 //
-//  1. "looks like a credential" — validateNoInlinedCredentials flags any key
-//     containing user/pass/token/…, so a plain `username` (never a secret; the
-//     database checkers all carry one) and even ftp's `passive_mode` are
-//     reported. The answer is a `${env:}`/`${param:}` reference syntax, not
-//     redaction.
-//  2. A declared SECRET was stripped, so the checker's own offline Validate now
-//     reports it missing (sftp: "password or private_key is required"). The
-//     document is correct; the validator has no way to know the operator will
-//     supply the secret at import.
-//
-// Anything else — a missing name, a leaked-then-stripped redacted field
-// breaking its own type's Validate — is this spec's problem and must be empty.
+// Keeping it as a pass-through, rather than deleting it, is deliberate: if a
+// future change reopens either class, the failure lands on the guarantee
+// itself instead of on a filter somebody has to notice was doing work.
 func issuesOwnedByThisSpec(t *testing.T, doc *checks.ExportDocument) []checks.DocumentIssue {
 	t.Helper()
 
-	secretKeysBySlug := map[string][]string{}
-
-	for i := range doc.Checks {
-		cfg, ok := registry.ParseConfig(checkerdef.CheckType(doc.Checks[i].Type))
-		if !ok {
-			continue
-		}
-
-		secretKeysBySlug[doc.Checks[i].Slug] = credentials.SecretFieldsFor(cfg)
-	}
-
-	var owned []checks.DocumentIssue
-
-	for _, issue := range checks.ValidateDocument(doc) {
-		if strings.Contains(issue.Message, "looks like a credential") {
-			continue
-		}
-
-		if mentionsAny(issue.Message, secretKeysBySlug[issue.Where]) {
-			continue
-		}
-
-		owned = append(owned, issue)
-	}
-
-	return owned
+	return checks.ValidateDocument(doc)
 }
 
-func mentionsAny(message string, keys []string) bool {
-	for _, key := range keys {
-		if key != "" && strings.Contains(message, key) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// importErrorsOwnedByThisSpec is issuesOwnedByThisSpec for the import result:
-// it drops the per-entry errors caused by a declared SECRET having been
-// stripped from the document, and keeps everything else.
+// importErrorsOwnedByThisSpec is the same pass-through for the import result:
+// a dry run now injects a PLACEHOLDER for every key the row advertises as
+// private, reproducing the shape of the merge it must not perform, so a
+// stripped declared secret no longer fails the plan either.
 func importErrorsOwnedByThisSpec(
-	t *testing.T, doc *checks.ExportDocument, result *checks.ImportResult,
+	t *testing.T, _ *checks.ExportDocument, result *checks.ImportResult,
 ) []checks.ImportError {
 	t.Helper()
 
-	secretKeysBySlug := map[string][]string{}
-
-	for i := range doc.Checks {
-		cfg, ok := registry.ParseConfig(checkerdef.CheckType(doc.Checks[i].Type))
-		if !ok {
-			continue
-		}
-
-		secretKeysBySlug[doc.Checks[i].Slug] = credentials.SecretFieldsFor(cfg)
-	}
-
-	var owned []checks.ImportError
-
-	for _, entry := range result.Errors {
-		if mentionsAny(entry.Error, secretKeysBySlug[entry.Slug]) {
-			continue
-		}
-
-		owned = append(owned, entry)
-	}
-
-	return owned
+	return result.Errors
 }
 
 // TestExportRoundTripsThroughValidateAndImport is the regression guard for
@@ -285,8 +230,8 @@ func TestExportRoundTripsThroughValidateAndImport(t *testing.T) {
 	r.Equal(checks.SecretsMarkerStripped, doc.Secrets)
 
 	// (b) The document the server produced is one the server's own validator
-	// accepts — see issuesOwnedByThisSpec for the two out-of-scope classes it
-	// sets aside, both of which belong to the secret-reference story.
+	// accepts — with nothing set aside since spec 2026-09-11-04 (see
+	// issuesOwnedByThisSpec).
 	issues := issuesOwnedByThisSpec(t, doc)
 	r.Empty(issues, "the exporter must never produce a document ValidateDocument rejects: %v", issues)
 
@@ -298,12 +243,6 @@ func TestExportRoundTripsThroughValidateAndImport(t *testing.T) {
 	}
 
 	// (c) …and one the import path accepts, without writing anything.
-	//
-	// Same two out-of-scope classes set aside, for the same reason and by the
-	// same rule: a dry run validates the document's config AS WRITTEN rather
-	// than merged with the stored secrets — a limitation the server already
-	// declares in its own response (DryRunCaveatSecretMerge) — so a config
-	// whose declared secret the exporter stripped reads as incomplete here.
 	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, true)
 	r.NoError(err)
 	r.Empty(importErrorsOwnedByThisSpec(t, doc, result),
@@ -507,4 +446,277 @@ func TestCreateWithoutANameFallsBackToTheSlug(t *testing.T) {
 	doc, err := rig.svc.ExportChecks(t.Context(), rig.org.Slug, checks.ListChecksOptions{})
 	r.NoError(err)
 	r.Empty(checks.ValidateDocument(doc))
+}
+
+// seedRoundTripFixture adds, on top of the per-sample checks, the organization
+// shape the round-trip guarantee has to survive and that a bare sample sweep
+// does not exercise: a group, labels, a dependency edge, an org default region
+// set, and the two spellings of a private location — the folded `@paris` the
+// server stores and exports, and the long `@roundtrip/paris` its own
+// documentation says is accepted on input.
+//
+// The long spelling is the single most important case here. On the tracked org
+// that motivated this spec, 183 of 197 "errors" were exactly that: the file
+// said `@stonaltech/aws-paris`, the export said `@aws-paris`, and every
+// external validator concluded the file was wrong.
+func (rig *roundTripRig) seedRoundTripFixture(t *testing.T) int {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	r.NoError(rig.dbSvc.SetOrgParameter(ctx, rig.org.UID, regions.ParamDefaultRegions,
+		[]string{"default"}, false))
+
+	group := models.NewCheckGroup(rig.org.UID, "Edge", "edge")
+	r.NoError(rig.dbSvc.CreateCheckGroup(ctx, group))
+
+	r.True(rig.create(t, checks.CreateCheckRequest{
+		Name: "Parent", Slug: "fixture-parent", Type: "http",
+		Config: map[string]any{"url": "https://acme.com/parent"},
+		Labels: map[string]string{"tier": "edge", "owner": "platform"},
+	}))
+
+	r.True(rig.create(t, checks.CreateCheckRequest{
+		Name: "Child", Slug: "fixture-child", Type: "http",
+		Config:        map[string]any{"url": "https://acme.com/child"},
+		CheckGroupUID: &group.UID,
+		Labels:        map[string]string{"tier": "edge"},
+	}))
+
+	// The long private-location spelling on the way IN. What comes back out is
+	// the folded one, and the assertion below is that the difference is not a
+	// difference.
+	r.True(rig.create(t, checks.CreateCheckRequest{
+		Name: "Private", Slug: "fixture-private", Type: "http",
+		Config:  map[string]any{"url": "https://acme.com/private"},
+		Regions: []string{"@" + rig.org.Slug + "/paris"},
+	}))
+
+	parent, err := rig.dbSvc.GetCheckByUidOrSlug(ctx, rig.org.UID, "fixture-parent")
+	r.NoError(err)
+	child, err := rig.dbSvc.GetCheckByUidOrSlug(ctx, rig.org.UID, "fixture-child")
+	r.NoError(err)
+
+	r.NoError(rig.dbSvc.CreateCheckDependency(ctx,
+		models.NewCheckDependency(rig.org.UID, child.UID, parent.UID, models.CheckDependencyKindHard, nil)))
+
+	stored, err := rig.dbSvc.GetCheckByUidOrSlug(ctx, rig.org.UID, "fixture-private")
+	r.NoError(err)
+	r.Equal([]string{"@paris"}, stored.Regions,
+		"the long @org/location spelling must be stored folded — that is what the export then carries")
+
+	return 3
+}
+
+// roundTripPlan is the three answers the guarantee is made of, for one
+// document: the validator's issues, the import dry run and the apply dry run.
+type roundTripPlan struct {
+	issues    []checks.DocumentIssue
+	imported  *checks.ImportResult
+	applied   *checks.ApplyResult
+	checkList int
+}
+
+// planRoundTrip exports the org and runs the three questions against the
+// result. Deliberately NOT a helper with assertions inside: each caller
+// asserts, so a failure names the document it came from.
+func (rig *roundTripRig) planRoundTrip(t *testing.T) (*checks.ExportDocument, roundTripPlan) {
+	t.Helper()
+	r := require.New(t)
+
+	doc, err := rig.svc.ExportChecks(t.Context(), rig.org.Slug, checks.ListChecksOptions{})
+	r.NoError(err)
+
+	imported, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, true)
+	r.NoError(err)
+
+	applied, err := rig.svc.ApplyChecks(t.Context(), rig.org.Slug, doc, checks.ApplyOptions{DryRun: true})
+	r.NoError(err)
+
+	return doc, roundTripPlan{
+		issues:    issuesOwnedByThisSpec(t, doc),
+		imported:  imported,
+		applied:   applied,
+		checkList: len(doc.Checks),
+	}
+}
+
+// assertRoundTrip is the contract, stated once:
+//
+//	export → validate-document = 0 issues
+//	export → import(dryRun)    = 0 create / 0 update / N unchanged
+//	export → apply(dryRun)     = same, 0 unmanaged
+//
+// The import dry run is allowed the ONE class of per-entry error spec
+// 2026-09-11-02 documented and this spec does not close: a check whose declared
+// secret the exporter stripped fails the checker's offline Validate, because a
+// dry run validates the document's config as written rather than merged with
+// the stored secret (DryRunCaveatSecretMerge, which the server declares in its
+// own response). Those entries produce no plan row at all, so the unchanged
+// count is measured against the entries that did plan.
+func assertRoundTrip(t *testing.T, doc *checks.ExportDocument, plan roundTripPlan, requireManaged bool) {
+	t.Helper()
+	r := require.New(t)
+
+	r.Empty(plan.issues, "the server's own export must validate cleanly: %v", plan.issues)
+
+	r.Empty(importErrorsOwnedByThisSpec(t, doc, plan.imported),
+		"a dry-run re-import of the org's own export must report no errors")
+	r.Equal(0, plan.imported.Created, "a fresh export creates nothing")
+	r.Equal(0, plan.imported.Updated,
+		"a fresh export changes nothing — every reported update is drift the round trip invented: %v",
+		updatedSlugs(plan.imported))
+	r.Equal(plan.checkList-len(plan.imported.Errors), plan.imported.Unchanged,
+		"every entry that planned at all must plan as unchanged")
+
+	// Anti-vacuity floor. "0 created, 0 updated" is also what a document that
+	// failed on every single entry answers, so the unchanged count has to be
+	// asserted as a POPULATION, not only as the complement of the errors.
+	r.Greater(plan.imported.Unchanged, 10,
+		"only %d of %d entries planned at all — the guarantee above is vacuous",
+		plan.imported.Unchanged, plan.checkList)
+
+	r.Equal(0, plan.applied.Created)
+	r.Equal(0, plan.applied.Updated, "apply dry run reports drift a fresh export cannot have: %v",
+		changedApplySlugs(plan.applied))
+	r.Equal(0, plan.applied.Deleted)
+
+	if requireManaged {
+		r.Equal(0, plan.applied.Unmanaged, "every check is owned by the manifest after a real apply")
+		r.Equal(plan.checkList, plan.applied.Unchanged)
+	}
+}
+
+// updatedSlugs / changedApplySlugs render the offending entries WITH their
+// field diffs, so a failure says which field moved rather than only that the
+// count was wrong. Being able to read that off the failure is the whole reason
+// the plan carries a field diff at all.
+func updatedSlugs(result *checks.ImportResult) []checks.ImportPlanEntry {
+	var out []checks.ImportPlanEntry
+	for _, entry := range result.Plan {
+		if entry.Action == checks.ActionUpdate {
+			out = append(out, entry)
+		}
+	}
+
+	return out
+}
+
+func changedApplySlugs(result *checks.ApplyResult) []checks.ApplyPlanEntry {
+	var out []checks.ApplyPlanEntry
+	for _, entry := range result.Plan {
+		if entry.Action == checks.ApplyActionUpdate {
+			out = append(out, entry)
+		}
+	}
+
+	return out
+}
+
+// TestExportRoundTripsAsUnchanged is the guarantee spec 2026-09-11-04 exists to
+// make, over every check type the product ships plus a fixture org carrying
+// defaults, a private location, a group, labels and a dependency.
+//
+// The failure it pins is not hypothetical: `import --dry-run` on a file that
+// was byte-for-byte the current export answered `created=1 updated=482`, so the
+// one question config-as-code exists to answer — does this file match the
+// instance? — had no answer at all short of a client-side diff, and every
+// external tool that grew one drifted from the server immediately.
+func TestExportRoundTripsAsUnchanged(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rig := newRoundTripRig(t)
+	seeded := rig.seedSampleChecks(t) + rig.seedRoundTripFixture(t)
+	r.Greater(seeded, 10, "the guarantee is only meaningful across a broad set of check types")
+
+	// (1) A fresh export, against an org nothing has applied yet.
+	doc, plan := rig.planRoundTrip(t)
+	r.Len(doc.Checks, seeded)
+	assertRoundTrip(t, doc, plan, false)
+
+	// The folded region really did survive, and is what the document carries.
+	for i := range doc.Checks {
+		if doc.Checks[i].Slug == "fixture-private" {
+			r.Equal([]string{"@paris"}, doc.Checks[i].Regions,
+				"the folded @location form is the canonical export spelling")
+		}
+	}
+
+	// (2) A REAL apply, which is what stamps the managed label — then the same
+	// three questions again. This is the state an operator's repository is
+	// actually in, and `unmanaged` must be zero in it.
+	applied, err := rig.svc.ApplyChecks(t.Context(), rig.org.Slug, doc, checks.ApplyOptions{})
+	r.NoError(err)
+	r.Empty(importErrorsOwnedByThisSpec(t, doc, &checks.ImportResult{Errors: applied.Errors}),
+		"a real apply of the org's own export must not fail: %v", applied.Errors)
+
+	managedDoc, managedPlan := rig.planRoundTrip(t)
+	assertRoundTrip(t, managedDoc, managedPlan, true)
+
+	// (3) export → export idempotence: the second document is byte-identical
+	// to the first apart from its timestamp, and answers the same three ways.
+	againDoc, againPlan := rig.planRoundTrip(t)
+	assertRoundTrip(t, againDoc, againPlan, true)
+	r.Equal(renderWithoutTimestamp(t, managedDoc), renderWithoutTimestamp(t, againDoc),
+		"exporting twice in a row must produce the same document")
+}
+
+// renderWithoutTimestamp renders a document for comparison with exportedAt
+// removed — it always differs and never means drift, which is exactly the
+// normalization `sp checks diff` performs.
+func renderWithoutTimestamp(t *testing.T, doc *checks.ExportDocument) string {
+	t.Helper()
+	r := require.New(t)
+
+	rendered, err := checks.MarshalExportDocument(doc)
+	r.NoError(err)
+
+	var generic map[string]any
+	r.NoError(json.Unmarshal(rendered, &generic))
+	delete(generic, "exportedAt")
+
+	normalized, err := json.Marshal(generic)
+	r.NoError(err)
+
+	return string(normalized)
+}
+
+// TestLongPrivateRegionSpellingIsNotADifference is the 183-error case on its
+// own, stated as small as it can be: a manifest written with the documented
+// long `@org/location` spelling must plan as unchanged against a check stored
+// with the folded one. Nothing else in this file isolates it — in the sweep
+// above it is one check among fifty.
+func TestLongPrivateRegionSpellingIsNotADifference(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rig := newRoundTripRig(t)
+	r.True(rig.create(t, checks.CreateCheckRequest{
+		Name: "Private", Slug: "private", Type: "http",
+		Config:  map[string]any{"url": "https://acme.com/private"},
+		Regions: []string{"@paris"},
+	}))
+
+	doc, err := rig.svc.ExportChecks(t.Context(), rig.org.Slug, checks.ListChecksOptions{})
+	r.NoError(err)
+	r.Len(doc.Checks, 1)
+
+	// Rewrite the document the way a human following the documentation would.
+	doc.Checks[0].Regions = []string{"@" + rig.org.Slug + "/paris"}
+
+	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, true)
+	r.NoError(err)
+	r.Empty(result.Errors, "%+v", result.Errors)
+	r.Equal(0, result.Updated, "the long spelling is the same region, not a change: %v", result.Plan)
+	r.Equal(1, result.Unchanged)
+
+	// Negative control: a region that really IS different must still report.
+	doc.Checks[0].Regions = []string{"default"}
+	changed, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, true)
+	r.NoError(err)
+	r.Equal(1, changed.Updated, "a real region change must not be swallowed by the folding")
+	r.Len(changed.Plan, 1)
+	r.Equal([]checks.CheckFieldChange{{Field: "regions", From: "@paris", To: "default"}},
+		changed.Plan[0].Changes)
 }

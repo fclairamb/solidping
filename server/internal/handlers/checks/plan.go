@@ -439,6 +439,21 @@ func (s *Service) planUpdateConfig(
 	preserveAbsentRedactedFields(existing, planned)
 	planned = withInjectedConfig(planned, s.deriveRedactedFields(ctx, org.UID, existing.Type, planned))
 
+	// The stored secrets, as PLACEHOLDERS. The real update validates the merge
+	// of the document with the encrypted column; a dry run must not open that
+	// column, but it can reproduce which keys the merge would produce — which
+	// is the difference between "sftp: password or private_key is required"
+	// on a document that is exactly right, and a clean dry run of the org's
+	// own export (spec 2026-09-11-04).
+	//
+	// A key the document sets EXPLICITLY is left alone, including an explicit
+	// empty value: that clears the secret, and the resulting "required" error
+	// is a real one the operator has to see.
+	//
+	// What this does not reproduce is any rule that depends on a secret's
+	// VALUE — which is precisely what DryRunCaveatSecretMerge still says.
+	injectSecretPlaceholders(planned, parseConfigPrivateKeys(existing.ConfigPrivateKeys))
+
 	if cfgErr := s.validatePatchedConfig(
 		existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,
 		existing.ConfigPrivateKeys,

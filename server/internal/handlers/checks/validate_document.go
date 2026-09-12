@@ -9,7 +9,9 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -160,6 +162,13 @@ func ValidateDocument(doc *ExportDocument) []DocumentIssue {
 		return issues
 	}
 
+	// A `secrets: stripped` document deliberately omits every declared secret,
+	// and the import path puts them back (the merge preserves a secret key the
+	// patch does not carry). Validating it as if the operator had TYPED those
+	// keys made the server reject the very document the server produces —
+	// which is what spec 2026-09-11-04's round-trip guarantee is about.
+	stripped := doc.Secrets == SecretsMarkerStripped
+
 	knownSlugs := make(map[string]struct{}, len(doc.Checks))
 	for i := range doc.Checks {
 		if doc.Checks[i].Slug != "" {
@@ -169,7 +178,7 @@ func ValidateDocument(doc *ExportDocument) []DocumentIssue {
 
 	seenSlugs := make(map[string]struct{}, len(doc.Checks))
 	for i := range doc.Checks {
-		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs)...)
+		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs, stripped)...)
 	}
 
 	issues = append(issues, validateDependencyGraph(doc.Checks, knownSlugs)...)
@@ -218,7 +227,9 @@ func validateDocumentShape(doc *ExportDocument) []DocumentIssue {
 // validateSingleCheck validates one check's own fields (name, slug,
 // uniqueness, type, config, formats) — everything except the dependency
 // graph, which needs the whole document at once.
-func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]struct{}) []DocumentIssue {
+func validateSingleCheck(
+	check *ExportCheck, index int, seenSlugs map[string]struct{}, secretsStripped bool,
+) []DocumentIssue {
 	var issues []DocumentIssue
 
 	where := check.Slug
@@ -264,7 +275,7 @@ func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]str
 		})
 	}
 
-	issues = append(issues, validateCheckType(where, check)...)
+	issues = append(issues, validateCheckType(where, check, secretsStripped)...)
 	issues = append(issues, validateCheckFormats(where, check)...)
 
 	return issues
@@ -273,7 +284,7 @@ func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]str
 // validateCheckType validates the check's type and, via the registered
 // checker's own offline Validate, its per-type config keys — reusing the
 // exact code path the live create/update/live-validate handlers use.
-func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
+func validateCheckType(where string, check *ExportCheck, secretsStripped bool) []DocumentIssue {
 	var issues []DocumentIssue
 
 	if check.Type == "" {
@@ -322,7 +333,9 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 	}
 
 	if err := checker.Validate(&checkerdef.CheckSpec{Config: configCopy}); err != nil {
-		issues = append(issues, configIssue(where, err))
+		if !strippedSecretComplaint(err, check, secretsStripped) {
+			issues = append(issues, configIssue(where, err))
+		}
 	}
 
 	// Shared, type-agnostic config keys the per-type Validate never sees.
@@ -332,10 +345,51 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 
 	// Credential/status-field checks run on the caller's original config —
 	// never on configCopy, which a checker may have mutated.
-	issues = append(issues, validateNoInlinedCredentials(where, check.Config)...)
+	issues = append(issues, validateNoInlinedCredentials(where, check.Type, check.Config)...)
 	issues = append(issues, validateStatusFieldExclusivity(where, check.Config)...)
 
 	return issues
+}
+
+// strippedSecretComplaint reports whether a checker's Validate error is only
+// complaining about a key the EXPORTER removed and the document therefore does
+// not carry — on a document that declares `secrets: stripped`.
+//
+// Such a complaint is not a defect in the file. The exporter strips
+// SecretFields() ∪ ExportRedactedFields(); the import path puts them back
+// (mergePatchConfig preserves a secret key the patch omits, and
+// preserveAbsentRedactedFields / deriveRedactedFields restore the rest). Before
+// this, sftp answered "password or private_key is required" and sip "password
+// is required for register mode" about the server's own export — the instance
+// producing a document the instance refuses, which is the whole failure this
+// spec is named after.
+//
+// The test is on the error's PARAMETER, never on its prose: a *ConfigError
+// names the key it is about, and that key must be both stripped-by-type and
+// genuinely absent from the document. A document that DOES carry the key keeps
+// every error about it — including an explicit empty value, which clears the
+// secret and really does make the config incomplete.
+func strippedSecretComplaint(err error, check *ExportCheck, secretsStripped bool) bool {
+	if !secretsStripped {
+		return false
+	}
+
+	configErr := checkerdef.IsConfigError(err)
+	if configErr == nil || configErr.Parameter == "" {
+		return false
+	}
+
+	if _, present := check.Config[configErr.Parameter]; present {
+		return false
+	}
+
+	for _, key := range exportStrippedKeys(check.Type) {
+		if key == configErr.Parameter {
+			return true
+		}
+	}
+
+	return false
 }
 
 // configIssue renders a config-level validator error as an issue, preferring
@@ -374,11 +428,50 @@ func deepCopyConfig(config map[string]any) (map[string]any, error) {
 	return out, nil
 }
 
-// validateNoInlinedCredentials flags config keys that look like a literal
+// exportStrippedKeys is the set of config keys the exporter removes for a
+// check type, by TYPE alone (no row): the declared secrets plus the
+// export-redacted fields. hiddenExportConfigKeys is the row-aware version the
+// differ uses; this one is what an offline validator can know.
+func exportStrippedKeys(checkType string) []string {
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return nil
+	}
+
+	return append(credentials.SecretFieldsFor(cfg), credentials.ExportRedactedFieldsFor(cfg)...)
+}
+
+// validateNoInlinedCredentials flags config keys that carry a literal
 // credential rather than a ${env:}/${param:} reference or SolidPing's own
 // secret store.
-func validateNoInlinedCredentials(where string, config map[string]any) []DocumentIssue {
+//
+// It used to flag any key whose NAME contained user/pass/token/…, which made
+// it fire on a plain `username` (every database checker carries one, and none
+// of them treats it as a secret) and even on ftp's `passive_mode` — 12 findings
+// on one org's own export, none of them a credential. A validator that cries
+// wolf on the server's own output is one that gets allow-listed wholesale, and
+// then it catches nothing.
+//
+// So the hint is now anchored on what the schema DECLARES. For a known check
+// type, a key is flagged only when the checker itself declares it secret (or
+// export-redacted): those are exactly the keys the exporter removes, so their
+// presence in a committed file means somebody typed a credential into it.
+// registry's own TestNoUndeclaredCheckerSecrets is what makes that safe — it
+// reflects over every checker config and fails if a credential-shaped field is
+// NOT declared in SecretFields(). For an UNKNOWN type nothing can be assumed,
+// so the name-based hint still applies.
+//
+// A value that is a ${env:}/${param:} reference is never flagged: that is the
+// exact thing the message asks the operator to do.
+func validateNoInlinedCredentials(where, checkType string, config map[string]any) []DocumentIssue {
 	var issues []DocumentIssue
+
+	declared := map[string]struct{}{}
+	_, knownType := registry.GetChecker(checkerdef.CheckType(checkType))
+
+	for _, key := range exportStrippedKeys(checkType) {
+		declared[key] = struct{}{}
+	}
 
 	keys := make([]string, 0, len(config))
 	for k := range config {
@@ -387,22 +480,46 @@ func validateNoInlinedCredentials(where string, config map[string]any) []Documen
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		lower := strings.ToLower(key)
-		for _, hint := range secretConfigHints() {
-			if strings.Contains(lower, hint) {
-				issues = append(issues, DocumentIssue{
-					Where: where, Field: fieldConfigPrefix + key, Code: CodeInlinedCredential,
-					Message: fmt.Sprintf(
-						"config.%s looks like a credential — keep it in SolidPing's own secret store, not in this file",
-						key),
-				})
-
-				break
-			}
+		if !inlinedCredentialSuspect(key, declared, knownType) {
+			continue
 		}
+
+		if value, ok := config[key].(string); ok && secretref.Pattern.MatchString(value) {
+			continue
+		}
+
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: fieldConfigPrefix + key, Code: CodeInlinedCredential,
+			Message: fmt.Sprintf(
+				"config.%s looks like a credential — keep it in SolidPing's own secret store "+
+					"or use a ${param:…} reference, not a literal value in this file",
+				key),
+		})
 	}
 
 	return issues
+}
+
+// inlinedCredentialSuspect implements the rule described on
+// validateNoInlinedCredentials: declared-secret keys on a known type, and
+// hint-matching names on a type the registry does not know.
+func inlinedCredentialSuspect(key string, declared map[string]struct{}, knownType bool) bool {
+	if _, isDeclared := declared[key]; isDeclared {
+		return true
+	}
+
+	if knownType {
+		return false
+	}
+
+	lower := strings.ToLower(key)
+	for _, hint := range secretConfigHints() {
+		if strings.Contains(lower, hint) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // validateStatusFieldExclusivity enforces that expectedStatusCodes supersedes

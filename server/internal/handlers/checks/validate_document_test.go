@@ -158,8 +158,12 @@ func TestValidateDocumentGenericRuleViolations(t *testing.T) {
 			expected: "must start with http",
 		},
 		{
-			name:     "credential inlined in config",
-			mutate:   func(doc *ExportDocument) { doc.Checks[0].Config["username"] = "solidping" },
+			// A key the checker DECLARES secret, inlined as a literal: that is
+			// what the hint is for. A plain `username` is deliberately NOT
+			// flagged any more — the http checker does not declare it secret,
+			// and firing on it made the hint useless (spec 2026-09-11-04).
+			name:     "declared secret inlined in config",
+			mutate:   func(doc *ExportDocument) { doc.Checks[0].Config["password"] = "hunter2" },
 			expected: "looks like a credential",
 		},
 		{
