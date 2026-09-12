@@ -187,6 +187,17 @@ func (s *Service) planCreateCheck(
 		effective = normalized
 	}
 
+	// Reconstruct the export-redacted fields the request omitted but that are
+	// derivable from what it did carry (spec 2026-09-11-02) — today, a
+	// send-mode SMTP check's `delivery_to` from its `delivery_check_uid`.
+	// Runs BEFORE every validator and before checker.Validate, which requires
+	// delivery_to on a send-mode check: importing a stripped export must not
+	// depend on the operator re-typing a value the document deliberately omits.
+	// Applied to the spec's config too, since that is the map checker.Validate
+	// sees.
+	derivedConfig := s.deriveRedactedFields(ctx, org.UID, req.Type, effective)
+	effective = withInjectedConfig(effective, derivedConfig)
+
 	// The shared config validators — the uniform timeout cap, the
 	// address-family rule, the tunnel reference rules and the SMTP send-mode
 	// rules. Run from the same list the dry-run validate endpoint reads.
@@ -210,11 +221,24 @@ func (s *Service) planCreateCheck(
 		Name:   req.Name,
 		Slug:   req.Slug,
 		Period: period,
-		Config: req.Config,
+		Config: withInjectedConfig(req.Config, derivedConfig),
 	}
 
 	if validateErr := checker.Validate(spec); validateErr != nil {
 		return nil, validateErr
+	}
+
+	// The name is required, non-blank, and checked HERE — after
+	// checker.Validate, which is what auto-derives a name for a request that
+	// omitted one ("SMTP: mail.acme.com", "Domain: acme.com", …). Only a
+	// request that explicitly supplied a blank/whitespace name can fail this.
+	//
+	// An empty name is not a cosmetic problem: the exporter omits an empty
+	// string, and both ValidateDocument and the exp-devops validator require
+	// `name` — so the server was producing documents the server itself refuses
+	// to consume (spec 2026-09-11-02).
+	if nameErr := validateCheckName(spec.Name); nameErr != nil {
+		return nil, nameErr
 	}
 
 	// The remaining request-level guards — regionSpread's bound, the
@@ -300,6 +324,13 @@ func (s *Service) planUpdateCheck(
 
 	if demoErr := assertDemoMayWriteCheck(ctx, existing); demoErr != nil {
 		return demoErr
+	}
+
+	// UpsertCheck always forwards the document's name to UpdateCheck, so a
+	// blank one is refused there too — checked here so a dry run says so
+	// instead of a real run being the first to mention it (spec 2026-09-11-02).
+	if nameErr := validateCheckName(req.Name); nameErr != nil {
+		return nameErr
 	}
 
 	if labelErr := models.ValidateLabels(req.Labels); labelErr != nil {

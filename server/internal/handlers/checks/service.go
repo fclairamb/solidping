@@ -31,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
@@ -1630,6 +1631,16 @@ func (s *Service) UpdateCheck(
 	if req.Slug != nil && *req.Slug != "" {
 		if errSlug := s.validateAndCheckSlugConflict(ctx, org.UID, *req.Slug, check.Slug); errSlug != nil {
 			return CheckResponse{}, errSlug
+		}
+	}
+
+	// A PATCH may not blank the name (spec 2026-09-11-02). Absent leaves it
+	// alone; a supplied value must survive trimming, because this is the path
+	// that produced the nameless check whose export the server could not
+	// re-import.
+	if req.Name != nil {
+		if nameErr := validateCheckName(*req.Name); nameErr != nil {
+			return CheckResponse{}, nameErr
 		}
 	}
 
@@ -3419,6 +3430,14 @@ func intPtr(v int) *int { return &v }
 // ConfigPrivateKeys) removed. Exports are portable across instances and
 // re-encrypting under a different KEK is out of scope, so the safe
 // default is "operator re-enters secrets after import".
+//
+// It strips SecretFields() ∪ ExportRedactedFields() — the second set being the
+// keys that are public AT REST but must never reach a committed file (the email
+// ingest token, an SMTP probe's delivery_to). Before spec 2026-09-11-02 only
+// the first set was stripped, so a document stamped `secrets: stripped` carried
+// a live 48-hex-char ingest token twice over. Redacted fields are RESTORED on
+// import/apply (preserveAbsentRedactedFields / deriveRedactedFields), so the
+// round trip loses nothing.
 func stripSecretKeysForExport(check *models.Check) map[string]any {
 	out := make(map[string]any, len(check.Config))
 	for k, v := range check.Config {
@@ -3429,6 +3448,10 @@ func stripSecretKeysForExport(check *models.Check) map[string]any {
 
 	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
 		for _, k := range credentials.SecretFieldsFor(cfg) {
+			secretSet[k] = struct{}{}
+		}
+
+		for _, k := range credentials.ExportRedactedFieldsFor(cfg) {
 			secretSet[k] = struct{}{}
 		}
 	}
@@ -4367,7 +4390,13 @@ func (s *Service) applyConfigUpdate(
 		return mergeErr
 	}
 
-	preserveHeartbeatToken(check, merged)
+	preserveAbsentRedactedFields(check, merged)
+
+	// An export-redacted field the document omitted and that preservation
+	// could not supply (a check that never had one, e.g. an SMTP send-mode
+	// check newly paired with an email check) is derived from what the
+	// document DID carry — see deriveRedactedFields.
+	merged = withInjectedConfig(merged, s.deriveRedactedFields(ctx, check.OrganizationUID, check.Type, merged))
 
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
@@ -4801,33 +4830,134 @@ func (s *Service) applyConfigPatch(
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
 }
 
-// preserveHeartbeatToken carries a heartbeat check's existing ping token across
-// a config PATCH that does not mention it.
+// preserveAbsentRedactedFields carries a check's existing export-redacted
+// config values across a config PATCH that does not mention them.
+//
+// It is the generalization of what used to be preserveHeartbeatToken (spec
+// 2026-09-11-02), with heartbeat's `token` as its first user and identical
+// behaviour for that field. The rule it encodes:
 //
 // The public side of a config PATCH is REPLACE, not merge (see
-// mergePatchConfig), and the heartbeat token is deliberately NOT a declared
-// secret — it lives in the public column because the ping URL is built from it
-// (see checkheartbeat.SecretFields). Those two facts together mean a PATCH of
-// any other key, `{"config":{"require_hmac":true}}` for instance, silently
-// destroys the check's ping URL: every existing sender starts failing, and
-// nothing in the response says why. HeartbeatChecker.Validate would mint a
-// replacement, but it runs on a deep COPY, so the new token is discarded too.
+// mergePatchConfig), and an export-redacted field is deliberately NOT a
+// declared secret — it lives in the public column because a feature queries or
+// renders it (the heartbeat ping URL, the email inbound address). Those two
+// facts together mean a PATCH of any other key,
+// `{"config":{"require_hmac":true}}` for instance, silently destroys it: every
+// existing sender starts failing, and nothing in the response says why. The
+// checker's Validate would mint a replacement, but it runs on a deep COPY, so
+// the new value is discarded too.
 //
-// The token is a server-minted credential with its own rotate endpoint
-// (RotateHeartbeatToken), which is the ONE supported way to change it. A PATCH
-// that happens not to mention it is never a request to destroy it.
-func preserveHeartbeatToken(check *models.Check, merged map[string]any) {
-	if checkerdef.CheckType(check.Type) != checkerdef.CheckTypeHeartbeat {
+// The same rule is what makes a config-as-code round trip safe now that the
+// exporter omits these fields: a document that does not carry the value is
+// never a request to destroy it. Rotation is an explicit, separate operation
+// (RotateHeartbeatToken), which is the ONE supported way to change one.
+func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	if !ok {
 		return
 	}
 
-	if token, ok := merged["token"].(string); ok && token != "" {
-		return
+	for _, field := range credentials.ExportRedactedFieldsFor(cfg) {
+		if value, present := merged[field].(string); present && value != "" {
+			continue
+		}
+
+		if stored, present := check.Config[field].(string); present && stored != "" {
+			merged[field] = stored
+		}
+	}
+}
+
+// deriveRedactedFields computes the export-redacted config values a document
+// omitted and that are DERIVABLE from what it did carry, so a re-import of a
+// stripped export reconstructs them instead of failing validation.
+//
+// Today there is exactly one: a send-mode SMTP check's `delivery_to`. It is the
+// tokenized address of the email check named by `delivery_check_uid` — which
+// stays exported precisely because it is the non-secret half of that pair — so
+// an absent `delivery_to` with a resolvable `delivery_check_uid` is
+// reconstructed from the referenced check's token and the instance's inbox
+// domain.
+//
+// It returns only the keys to inject, and it is BEST EFFORT: a uid that names
+// nothing (a document imported into a different instance, say) yields nothing
+// here and is then reported by validateSMTPDeliveryConfig, which owns that
+// error message. Silently deriving a wrong address would be far worse than
+// letting the normal validator speak.
+func (s *Service) deriveRedactedFields(
+	ctx context.Context, orgUID, checkType string, config map[string]any,
+) map[string]any {
+	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeSMTP {
+		return nil
 	}
 
-	if stored, ok := check.Config["token"].(string); ok && stored != "" {
-		merged["token"] = stored
+	if sendEmail, _ := config["send_email"].(bool); !sendEmail {
+		return nil
 	}
+
+	if deliveryTo, _ := config[smtpDeliveryToField].(string); deliveryTo != "" {
+		return nil
+	}
+
+	deliveryCheckUID, _ := config[smtpDeliveryCheckUIDField].(string)
+	if deliveryCheckUID == "" {
+		return nil
+	}
+
+	address := s.emailCheckAddress(ctx, orgUID, deliveryCheckUID)
+	if address == "" {
+		return nil
+	}
+
+	return map[string]any{smtpDeliveryToField: address}
+}
+
+// emailCheckAddress renders the inbound address of an email check in this org,
+// or "" when it cannot be resolved (not found, wrong type, no token, or no
+// email inbox configured on the instance).
+func (s *Service) emailCheckAddress(ctx context.Context, orgUID, checkUID string) string {
+	target, err := s.db.GetCheck(ctx, orgUID, checkUID)
+	if err != nil || target == nil || target.Type != string(checkerdef.CheckTypeEmail) {
+		return ""
+	}
+
+	token, _ := target.Config["token"].(string)
+	if token == "" {
+		return ""
+	}
+
+	param, err := s.db.GetSystemParameter(ctx, jmap.SystemParameterKey)
+	if err != nil || param == nil {
+		return ""
+	}
+
+	inboxCfg, err := jmap.JSONMapToConfig(param.Value)
+	if err != nil || inboxCfg.AddressDomain == "" {
+		return ""
+	}
+
+	return token + "@" + inboxCfg.AddressDomain
+}
+
+// withInjectedConfig returns config plus the given keys, without mutating the
+// caller's map — the request's own config map is shared with the caller and
+// several validators run against it, so the derived values must not appear
+// there by side effect.
+func withInjectedConfig(config, injected map[string]any) map[string]any {
+	if len(injected) == 0 {
+		return config
+	}
+
+	out := make(map[string]any, len(config)+len(injected))
+	for k, v := range config {
+		out[k] = v
+	}
+
+	for k, v := range injected {
+		out[k] = v
+	}
+
+	return out
 }
 
 // checkDisplayName is the check's name for the audit trail, falling back to

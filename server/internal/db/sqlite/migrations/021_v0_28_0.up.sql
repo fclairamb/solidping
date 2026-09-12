@@ -1,12 +1,13 @@
 -- v0.28.0 — the ONE consolidated SQLite migration for the (still unreleased)
 -- v0.28.0 release.
 --
--- There is deliberately NO postgres twin this cycle: this migration exists
--- precisely to bring SQLite onto the rule Postgres has enforced since its 001
--- baseline, so the Postgres schema is already correct and an empty migration
--- there would be noise in bun_migrations.
+-- The postgres twin (021_v0_28_0) carries ONLY the second section below. The
+-- first exists precisely to bring SQLite onto a rule Postgres has enforced
+-- since its 001 baseline, so replicating it there would be a no-op cluttering
+-- bun_migrations; the second is a data backfill and applies to both.
 --
---   SECTION: label-key-check   labels.key / labels.value CHECK parity with Postgres
+--   SECTION: label-key-check       labels.key / labels.value CHECK parity with Postgres
+--   SECTION: check-name-backfill   checks.name = slug where the name is blank
 
 -- ==========================================================================
 -- SECTION: label-key-check  (spec 2026-09-10-01)
@@ -121,3 +122,37 @@ create index labels_org_key_idx on labels (organization_uid, key) where deleted_
 --bun:split
 
 PRAGMA foreign_keys=ON;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: check-name-backfill  (spec 2026-09-11-02)
+--
+-- Give every nameless check a name, so the org's own export is a document the
+-- server can consume.
+--
+-- `name` was validated as "present" rather than "non-blank", so the API
+-- accepted `""` (and a create that never resolved one left it NULL). Neither
+-- shape is merely cosmetic: the v2 exporter omits an empty name, and both
+-- ValidateDocument and the import path require `name` — so the instance
+-- produced a config-as-code file it would itself reject with
+-- `missing required key 'name'`. One tracked org hit exactly that and had to
+-- drop the offending check out of its manifest.
+--
+-- The slug is the right fill: it is non-empty by construction, unique in the
+-- org, and already the human-facing identifier of the check everywhere a name
+-- is absent (see checkDisplayName, which has always fallen back to it). So
+-- this changes nothing anyone sees — it writes down what the UI was already
+-- displaying.
+--
+-- NULL is backfilled alongside `''` because it fails in exactly the same way:
+-- both export as an absent `name`. Going forward the write paths refuse a
+-- blank name on create and on update, so this runs once and never has work
+-- again.
+-- ==========================================================================
+
+update checks
+   set name = slug
+ where slug is not null
+   and slug <> ''
+   and (name is null or trim(name) = '');

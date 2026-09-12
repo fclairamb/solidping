@@ -288,6 +288,26 @@ func (c *SMTPConfig) Validate() error {
 			return err
 		}
 
+		// An ABSENT delivery_to paired with a delivery_check_uid is the
+		// config-as-code shape, not a mistake (spec 2026-09-11-02):
+		// delivery_to is export-redacted (it is the referenced email check's
+		// tokenized address — the same secret checkemail redacts), so a
+		// stripped export carries only the uid, and the write path re-derives
+		// the address from it before this runs
+		// (checks.deriveRedactedFields). Accepting the shape here is what
+		// lets the OFFLINE validator — which has no DB and cannot derive —
+		// green-light a document the server itself produced.
+		//
+		// It is not a hole: a uid that resolves to nothing leaves delivery_to
+		// absent, and checks.validateSMTPDeliveryConfig (which has DB access
+		// and runs on both create and PATCH) then rejects it by name. A
+		// SUPPLIED delivery_to is still validated as a real RFC 5322 address,
+		// which is what stops a CRLF-terminated SMTP command or an injected
+		// header from being smuggled into the wire protocol.
+		if c.DeliveryTo == "" && c.DeliveryCheckUID != "" {
+			return nil
+		}
+
 		if err := ValidateDeliveryTo(c.DeliveryTo); err != nil {
 			return err
 		}

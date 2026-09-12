@@ -735,6 +735,10 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Re
 				Message: msgSlugConflictOrg,
 			},
 		})
+	case errors.Is(err, errCheckNameRequired):
+		return h.WriteValidationError(writer, "Invalid name", []base.ValidationErrorField{
+			{Name: fieldName, Message: msgNameRequired},
+		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
@@ -805,6 +809,10 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 				Name:    fieldSlug,
 				Message: msgSlugConflictOrg,
 			},
+		})
+	case errors.Is(err, errCheckNameRequired):
+		return h.WriteValidationError(writer, "Invalid name", []base.ValidationErrorField{
+			{Name: fieldName, Message: msgNameRequired},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
@@ -931,6 +939,10 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Req
 				Name:    fieldSlug,
 				Message: msgSlugConflictOrg,
 			},
+		})
+	case errors.Is(err, errCheckNameRequired):
+		return h.WriteValidationError(writer, "Invalid name", []base.ValidationErrorField{
+			{Name: fieldName, Message: msgNameRequired},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{

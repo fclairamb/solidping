@@ -2,8 +2,10 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -54,6 +56,39 @@ const (
 
 // fieldPeriod is the JSON/validation field name for the check period.
 const fieldPeriod = "period"
+
+// fieldName is the JSON/validation field name for the check name.
+const fieldName = "name"
+
+// msgNameRequired is the client-facing wording for a blank name.
+const msgNameRequired = "Name is required and cannot be blank"
+
+// errCheckNameRequired is returned by create and update when the resulting
+// check name would be empty or whitespace-only (spec 2026-09-11-02).
+//
+// Why the API ever accepted one: the validation treated an empty string as
+// "present". The consequences only showed up two systems later — the exporter
+// omits an empty string, and both ValidateDocument and the import path require
+// `name`, so the instance produced a config-as-code document it would itself
+// refuse to consume. One org's export failed its validator with `missing
+// required key 'name'` and the offending check had to be excluded from the
+// tracked file.
+var errCheckNameRequired = errors.New(msgNameRequired)
+
+// validateCheckName enforces "required, min length 1 AFTER trimming".
+//
+// Trimming is the point: `" "` is exactly as unusable as `""` — it renders as
+// a blank row in the dashboard and exports as a name nobody can search for —
+// and accepting it would leave the same hole one space wide. The stored value
+// is NOT trimmed here: this validates, it does not rewrite what the caller
+// asked for.
+func validateCheckName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errCheckNameRequired
+	}
+
+	return nil
+}
 
 // Field names for the request-level guards shared by CreateCheck and
 // ValidateCheck (spec 2026-08-28-14) — mirror the JSON tags of both request
