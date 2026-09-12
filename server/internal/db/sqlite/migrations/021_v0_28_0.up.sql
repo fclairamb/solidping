@@ -8,6 +8,16 @@
 --
 --   SECTION: label-key-check       labels.key / labels.value CHECK parity with Postgres
 --   SECTION: check-name-backfill   checks.name = slug where the name is blank
+--
+-- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
+-- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
+-- alone, so appending a section to 021 does not re-run it: set
+-- `SP_DB_RESET=true` (test/demo run mode) or delete the SQLite file.
+-- **Do not run `solidping migrate repair`** — it rewrites the recorded
+-- checksum without applying anything, so the database would report 021 as
+-- applied while the check-name backfill below never ran and its nameless
+-- checks stayed nameless. A database that looks correct and is not. See
+-- wiki/conventions/database.md, "The unreleased series".
 
 -- ==========================================================================
 -- SECTION: label-key-check  (spec 2026-09-10-01)
