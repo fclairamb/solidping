@@ -118,15 +118,19 @@ func TestSystemParameterKeyValidation_RejectsMalformedKeys(t *testing.T) {
 	}
 }
 
-// assertKeyValidationError checks the shape spec 2026-09-12-03 requires:
-// h.WriteValidationError's standing response — code VALIDATION_ERROR, field
-// "key". WriteValidationError answers 422 (StatusUnprocessableEntity), the
-// status every other VALIDATION_ERROR response in this codebase carries; the
-// spec text says "400" but names h.WriteValidationError explicitly; that
-// helper's status is a repo-wide, well-established convention this change
-// does not deviate from.
+// assertKeyValidationError checks the shape spec 2026-09-12-03 requires: 400,
+// code VALIDATION_ERROR, field "key". The status is 400, not the 422 that
+// h.WriteValidationError hardcodes (base.go:227-237) — the handler writes the
+// base.ValidationError body directly at http.StatusBadRequest instead of
+// through that helper. 400 is correct because the sibling org-managed route
+// answers this exact error (a malformed parameter key) with 400: every
+// validation branch in orgparams/handler.go's handleError, including
+// errors.Is(err, paramkeys.ErrInvalidKey) at handler.go:83-86, is
+// h.WriteError(..., http.StatusBadRequest, base.ErrorCodeValidationError,
+// ...). The same malformed key must not get 400 from one parameters route and
+// 422 from the other.
 func assertKeyValidationError(r *require.Assertions, rec *httptest.ResponseRecorder) {
-	r.Equal(http.StatusUnprocessableEntity, rec.Code)
+	r.Equal(http.StatusBadRequest, rec.Code)
 
 	var body base.ValidationError
 

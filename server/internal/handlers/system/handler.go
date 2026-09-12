@@ -147,8 +147,17 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	case errors.Is(err, ErrParameterNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
 	case errors.Is(err, ErrInvalidParameterKey):
-		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
-			{Name: keyField, Message: err.Error()},
+		// Deliberately not h.WriteValidationError: that helper hardcodes 422
+		// (base.go:227-237). The org-managed parameters route
+		// (orgparams/handler.go:83-86) answers this exact error — a malformed
+		// key — with 400, and every validation branch in that handler is 400;
+		// the same key against either route must not diverge on status code.
+		return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+			Title: err.Error(),
+			Code:  string(base.ErrorCodeValidationError),
+			Fields: []base.ValidationErrorField{
+				{Name: keyField, Message: err.Error()},
+			},
 		})
 	case errors.Is(err, ErrInvalidParameter):
 		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
