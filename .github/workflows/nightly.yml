@@ -139,7 +139,7 @@ jobs:
           set -euo pipefail
           log="$RUNNER_TEMP/postgres-tests.log"
 
-          if grep -E '^\s*--- SKIP: .*([Pp]ostgres|Pg[A-Z])' "$log"; then
+          if grep -E '^[[:space:]]*--- SKIP: .*([Pp]ostgres|Pg[A-Z])' "$log"; then
             echo "::error::A Postgres test was SKIPPED. This job exists to run them; a skip here is a failure."
             exit 1
           fi

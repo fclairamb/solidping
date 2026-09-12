@@ -246,7 +246,7 @@ jobs:
           # A Postgres-named test may not skip here for ANY reason. Every skip
           # such a test can currently reach is the -short guard, and this job
           # does not pass -short; SP_TEST_REQUIRE_POSTGRES=1 covers the rest.
-          if grep -E '^\s*--- SKIP: .*([Pp]ostgres|Pg[A-Z])' "$log"; then
+          if grep -E '^[[:space:]]*--- SKIP: .*([Pp]ostgres|Pg[A-Z])' "$log"; then
             echo "::error::A Postgres test was SKIPPED. This job exists to run them; a skip here is a failure."
             exit 1
           fi
