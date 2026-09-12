@@ -76,6 +76,16 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 			}).GetConfig(),
 		},
 		{
+			// Deliberately no `Secrets` entry here: a sample with a REAL value
+			// in a map-shaped secret field is (as of this writing) the one
+			// case that trips a shape mismatch in the server's dry-run
+			// secret-placeholder injection (tracked separately — see
+			// specs/todos/2026-09-12-02-secret-placeholder-must-match-the-fields-shape.md).
+			// The script still reads `secrets.PASSWORD`, exactly like the doc
+			// example; a user fills that in via the API/CLI/config-as-code
+			// after picking this sample, which is the normal path anyway
+			// since the dashboard `js` form has no `secrets` field of its own
+			// until this sample is chosen and saved once.
 			Name:   "JS: Bearer Token Login Chain",
 			Slug:   sampleBearerChainSlug,
 			Period: time.Minute * 5,
@@ -84,9 +94,6 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 				Env: map[string]string{
 					"BASE_URL": "https://api.example.com",
 					"USERNAME": "probe",
-				},
-				Secrets: map[string]string{
-					"PASSWORD": "CHANGE_ME",
 				},
 			}).GetConfig(),
 		},
