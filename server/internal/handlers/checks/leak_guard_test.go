@@ -43,6 +43,7 @@ var leakNeedles = []string{ //nolint:gochecknoglobals // test fixture table
 	"system-value",          // apply_test.go — a SYSTEM parameter, which must never resolve at all
 	"the-org-own-value",     // secret_ref_parity_test.go — the look-alike key
 	"wrapped-dek-material",  // secret_ref_parity_test.go — the org's wrapped DEK
+	"js-fixture-password",   // js_secrets_test.go — the js check's `secrets` value
 	"instance-email.password",
 	"instance-msteams.app_secret",
 }
