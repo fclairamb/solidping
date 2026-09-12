@@ -116,23 +116,32 @@ function recordNavigations(page: import("@playwright/test").Page) {
 }
 
 /**
- * The recorded URLs that sit inside an org OTHER than the demo and are not an
- * org login/register page.
+ * The recorded URLs that sit inside an org OTHER than the demo and are neither
+ * an org login/register page nor a still-unanswered `?demo` entry point.
  *
- * Login pages are allowed through whatever org they name: they are where a
- * demo entry legitimately starts (the button is offered on every org's login
- * page) and where `/`, `/login` and `/demo` land before the hop. What must
- * never be seen is a foreign org's *dashboard* — that is a session being
- * pointed at an org it is not a member of.
+ * Two exemptions, both entry points rather than destinations:
+ *
+ *  - **Login/register pages**, whatever org they name. The demo button is
+ *    offered on every org's login page, and `/`, `/login` and `/demo` all land
+ *    on one before the hop.
+ *  - **Anything still carrying `?demo`** — e.g. the `orgs/test?demo=true` deep
+ *    link a visitor typed. That URL is the request, not the answer; the layout's
+ *    `beforeLoad` redirects out of it before rendering. Excluding it costs the
+ *    assertion nothing, because staying there would fail the `waitForURL` for
+ *    the demo org that every caller does first.
+ *
+ * What must never be seen is a foreign org's *dashboard* — that is a session
+ * being pointed at an org it is not a member of, which is what produced the
+ * "You don't have access to …" toast.
  */
 function strayOrgUrls(urls: string[], demoOrg: string): string[] {
   return urls.filter((url) => {
-    const { pathname } = new URL(url);
+    const { pathname, searchParams } = new URL(url);
     const slug = /\/orgs\/([^/?#]+)/.exec(pathname)?.[1];
+    if (!slug || slug === demoOrg) return false;
+    if (/\/orgs\/[^/]+\/(login|register)$/.test(pathname)) return false;
 
-    return Boolean(
-      slug && slug !== demoOrg && !/\/orgs\/[^/]+\/(login|register)$/.test(pathname),
-    );
+    return !searchParams.has("demo");
   });
 }
 
@@ -199,6 +208,14 @@ test.describe("Public live demo", () => {
     page.on("response", (response) => {
       if (response.status() === 403) forbiddenUrls.push(response.url());
     });
+    // …and this is spec 2026-09-12-01 §B's own regression test, independent of
+    // §A's hop: NO demo flag is involved here, so nothing in the demo entry
+    // flow runs. The login page's ordinary pickAccessibleOrg redirect makes an
+    // app-initiated cross-org navigation OUT of a login page, the org layout
+    // used to read the pending pathname next to the committed org param across
+    // it, and its non-member fallback warned about the org being left. Any
+    // returning member of another org hits the same path.
+    await recordToasts(page);
 
     await page.goto("orgs/test/login");
 
@@ -210,6 +227,7 @@ test.describe("Public live demo", () => {
       forbiddenUrls,
       "the visitor must never reach the dead-end 403 in an org they cannot use",
     ).toEqual([]);
+    await expectNoAccessToast(page);
   });
 
   test("?demo=1 signs the visitor in on load", async ({ page }) => {
@@ -396,6 +414,10 @@ test.describe("Public live demo", () => {
     await page.waitForURL((url) => !url.pathname.includes("login"), {
       timeout: 20000,
     });
+    // Let the sign-in's own follow-up navigation land before driving the page
+    // somewhere else: waitForURL resolves the instant the path stops saying
+    // "login", and a goto() issued in that window is interrupted by it.
+    await page.waitForLoadState("networkidle");
 
     // Armed only now: the ordinary sign-in above is not what this asserts, and
     // addInitScript applies from the next document load anyway.
@@ -477,6 +499,11 @@ test.describe("Public live demo", () => {
 
     await page.goto("orgs/test/login?demo=1");
     await page.waitForURL(new RegExp(`/orgs/${org}(/|$)`), { timeout: 20000 });
+    // The banner, not just the URL: since spec 2026-09-12-01 the demo org's
+    // own LOGIN page is an intermediate stop (`/orgs/<demo>/login?demo=true`),
+    // which the regex above matches while the sign-in is still in flight.
+    // Navigating away at that point aborts it and lands back on a login form.
+    await expect(page.getByTestId("demo-banner")).toBeVisible({ timeout: 20000 });
 
     const name = `e2e-demo-edit-${Date.now()}`;
 

@@ -7,7 +7,6 @@ import {
   useLocation,
   useMatches,
   useNavigate,
-  useRouterState,
 } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -87,6 +86,18 @@ function parseNotificationFrom(
     return { type, uid };
   }
   return null;
+}
+
+/**
+ * The org slug a router pathname names, or null when it names none.
+ *
+ * Used only to tell whether the router's location and this route's committed
+ * `$org` param are describing the same URL — see routerSnapshotIsTorn in
+ * OrgLayout. Not interpolated into any route matching, and deliberately
+ * tolerant of a trailing sub-path.
+ */
+function orgFromPathname(pathname: string): string | null {
+  return /\/orgs\/([^/?#]+)/.exec(pathname)?.[1] ?? null;
 }
 
 function hasOAuthTokenInURL(): boolean {
@@ -1005,36 +1016,34 @@ function OrgLayout() {
   const navigate = useNavigate();
   const auth = useAuth();
   const { t } = useTranslation("org");
-  // From the COMMITTED matches, never from `useLocation().pathname` — the two
-  // are different router stores and `org` above comes from the match one
+  // Anchored to the org-level login/register routes — see isOrgPublicRoute for
+  // why a bare `.endsWith("/register")` is wrong, and why the org param must
+  // not be interpolated into the pattern here.
+  const isLoginPage = isOrgPublicRoute(location.pathname);
+  // Whether the router is mid-flight between two DIFFERENT orgs, i.e. whether
+  // `location` and `org` above are describing the same URL at all
   // (spec 2026-09-12-01 §B).
   //
-  // `router.state.location` flips to the PENDING destination the moment a
-  // navigation starts, while `Route.useParams()` keeps the committed params
-  // until the new matches land. Mixing them commits a render that describes
-  // two different URLs at once: navigating `/orgs/test/login` → `/orgs/demo`
-  // produced `{ pathname: "/orgs/demo", org: "test", isLoginPage: false }`,
-  // reproduced under Playwright for this spec, which is enough for
-  // `needsAccessibleOrgRedirect` below to fire and warn "You don't have
-  // access to test — showing demo instead." about a navigation the app itself
-  // was already making. Reading the route ids off `useMatches()` puts both
-  // halves of that decision on the same snapshot.
+  // They are two different stores: `router.state.location` flips to the
+  // PENDING destination the moment a navigation starts, while
+  // `Route.useParams()` keeps the COMMITTED params until the new matches land.
+  // Navigating `/orgs/test/login` → `/orgs/demo` therefore commits a render
+  // describing two URLs at once — `{ pathname: "/orgs/demo", org: "test" }`,
+  // reproduced under Playwright for this spec — and that was enough for the
+  // non-member fallback below to fire and warn "You don't have access to test
+  // — showing demo instead." about a navigation the app itself was making.
+  // Entering the live demo did it every single time.
   //
-  // Route ids, not a pathname regex: they cannot be confused by a nested
-  // authenticated route that merely ends in "/register" (the hazard
-  // isOrgPublicRoute exists to avoid — it still guards `beforeLoad`, which
-  // runs before any match exists and so genuinely only has a pathname).
-  const routeMatches = useMatches();
-  const isLoginPage = routeMatches.some(
-    (match) =>
-      match.routeId === "/orgs/$org/login" ||
-      match.routeId === "/orgs/$org/register",
-  );
-  // Neither cross-org guard below may evaluate against a half-committed
-  // transition: belt and braces for the same tear, and it also covers any
-  // FUTURE read either guard grows. `status` is "pending" for the whole of an
-  // in-flight navigation and "idle" once the matches are settled.
-  const routerIsIdle = useRouterState({ select: (state) => state.status }) === "idle";
+  // Deliberately NOT fixed by moving `isLoginPage` onto the match store: it
+  // also decides what this layout RENDERS, and both cross-org guards double as
+  // the gate that keeps children from mounting (and firing org-scoped queries)
+  // against an org the session cannot use. Holding that gate open on the
+  // pathname's schedule, as it has always been, is what keeps a cross-org exit
+  // free of 403s. What the tear must suppress is only the ACTION — the toast
+  // and the corrective navigation — for a destination the router is already on
+  // its way to.
+  const pendingOrg = orgFromPathname(location.pathname);
+  const routerSnapshotIsTorn = pendingOrg !== null && pendingOrg !== org;
   const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const { data: features } = useFeatures({ enabled: !isLoginPage });
@@ -1056,7 +1065,6 @@ function OrgLayout() {
   const needsOrgSwitch =
     auth.isAuthenticated &&
     !auth.isLoading &&
-    routerIsIdle &&
     !isLoginPage &&
     auth.org !== null &&
     auth.org !== org &&
@@ -1068,6 +1076,11 @@ function OrgLayout() {
       switchingForOrgRef.current = null;
       return;
     }
+    // `org` is the org the router is LEAVING, not the one it is heading to —
+    // re-minting the session for it now would be undone a moment later, and
+    // could revert the destination org's own switch. The gate above still
+    // holds the children back; this just defers the decision by a render.
+    if (routerSnapshotIsTorn) return;
     // Already switching for, or already gave up on, this exact org.
     if (switchingForOrgRef.current === org || orgSwitchFailed === org) return;
     // A switcher UI (AppSidebar, CommandMenu, the organizations page) is
@@ -1084,7 +1097,7 @@ function OrgLayout() {
     // normal request handling rather than pinning a loader forever.
     auth.switchOrg(org).catch(() => setOrgSwitchFailed(org));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsOrgSwitch, org, orgSwitchFailed]);
+  }, [needsOrgSwitch, org, orgSwitchFailed, routerSnapshotIsTorn]);
 
   // The complementary case (spec 2026-09-08-01 §C): the URL names an org this
   // session is NOT a member of. Until now those "fell through to the normal
@@ -1117,7 +1130,6 @@ function OrgLayout() {
     // precisely so this gate covers it — the login page's twin branch gates on
     // the same flag.
     !auth.isLoading &&
-    routerIsIdle &&
     !isLoginPage &&
     // The OAuth callback does its own hard redirect below; the session it is
     // about to adopt is not the one `auth` currently describes.
@@ -1129,6 +1141,14 @@ function OrgLayout() {
       redirectingForOrgRef.current = null;
       return;
     }
+    // The app is ALREADY navigating out of this org — `org` is the one being
+    // left, and `accessibleOrg` is very often the one being entered. Toasting
+    // here tells a visitor they were refused something they never asked for;
+    // the demo's front door did it on every entry. The render gate below still
+    // holds, so nothing mounts against the stale org meanwhile, and when the
+    // matches land this re-evaluates against a snapshot that agrees with
+    // itself.
+    if (routerSnapshotIsTorn) return;
     // At most one redirect per URL org — the same loop guard the switch effect
     // above uses, and what makes a helper that disagreed with itself a bounded
     // bug rather than an infinite ping-pong.
@@ -1152,7 +1172,7 @@ function OrgLayout() {
       replace: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsAccessibleOrgRedirect, org, accessibleOrg]);
+  }, [needsAccessibleOrgRedirect, org, accessibleOrg, routerSnapshotIsTorn]);
 
   // Handle OAuth callback tokens in URL
   useEffect(() => {
