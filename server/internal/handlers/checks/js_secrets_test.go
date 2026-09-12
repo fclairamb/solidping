@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/paramkeys"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // The two-map split of spec 2026-09-11-05, proven in both directions: `env` is
@@ -28,6 +29,11 @@ import (
 // leakNeedles (leak_guard_test.go) so the package-wide grep fails any test here
 // that lets it reach a public config or a job row.
 const jsSecretNeedle = "js-fixture-password"
+
+// jsEnvRefNeedle is the value behind the `${env:}` reference fixture. Also a
+// leak needle: an env-backed secret that got resolved at WRITE time would land
+// in the public config exactly like a param-backed one.
+const jsEnvRefNeedle = "js-fixture-env-secret"
 
 // jsScript reads both maps and reports what it found, so a result proves what
 // the runtime actually received rather than what the row looks like.
@@ -259,6 +265,52 @@ func TestJSSecretsAcceptSecretReferences(t *testing.T) {
 
 	output := runJS(t, merged)
 	r.Equal(jsSecretNeedle, output["secret"])
+	r.Equal("https://acme.com", output["base"])
+}
+
+// TestJSSecretsAcceptEnvReferences is the `${env:}` half of the reference
+// grammar: unlike `${param:}` it is deliberately NOT resolved by the API (so a
+// deported agent resolves it against ITS own environment), which means the
+// stored envelope and the dispatch overlay both still carry the reference and
+// only the executing process materializes it.
+//
+// Uses t.Setenv, which is incompatible with t.Parallel.
+func TestJSSecretsAcceptEnvReferences(t *testing.T) {
+	r := require.New(t)
+	rig := newJSRig(t)
+	ctx := t.Context()
+
+	t.Setenv("SP_TEST_JS_SECRET", jsEnvRefNeedle)
+
+	period := "5m"
+	_, err := rig.svc.CreateCheck(ctx, rig.org.Slug, checks.CreateCheckRequest{
+		Name: "JS env ref", Slug: "js-env-ref", Type: "js",
+		Config: map[string]any{
+			"script":  jsScript,
+			"env":     map[string]any{"BASE_URL": "https://acme.com"},
+			"secrets": map[string]any{"PASSWORD": "${env:SP_TEST_JS_SECRET}"},
+		},
+		Period: &period,
+	})
+	r.NoError(err)
+
+	effective := rig.effectiveConfig(t, "js-env-ref")
+	stored, ok := effective["secrets"].(map[string]any)
+	r.True(ok)
+	r.Equal("${env:SP_TEST_JS_SECRET}", stored["PASSWORD"])
+
+	// The API resolver must leave it alone — that is the per-region-secret
+	// feature, not an oversight.
+	overlay, err := checkjobsvc.ParamOverlay(ctx, rig.dbSvc, rig.org.UID, effective)
+	r.NoError(err)
+	r.NotContains(overlay, "secrets", "${env:} must NOT be resolved on the API side")
+
+	// The executing process is what materializes it.
+	resolved, _, err := secretref.ResolveConfig(ctx, effective, secretref.ExecutionResolver())
+	r.NoError(err)
+
+	output := runJS(t, resolved)
+	r.Equal(jsEnvRefNeedle, output["secret"])
 	r.Equal("https://acme.com", output["base"])
 }
 
