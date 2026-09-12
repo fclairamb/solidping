@@ -416,6 +416,36 @@ return { status: "up", output: { refusedAt: refusedAt, lastError: lastError } };
 	r.Equal(int32(100), session.calls.Load(), "a refused action must not reach the session")
 }
 
+// TestUrlAndCloseAreNotCountedActions: releasing a resource must never be the
+// call that hits a limit, and url() is a single cheap read a script uses to
+// assert where it landed. Both stay outside the budget.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestUrlAndCloseAreNotCountedActions(t *testing.T) {
+	r := require.New(t)
+
+	session := &fakeSession{url: "https://acme.com/dash"}
+	installFakeBrowser(t, session)
+
+	result := runBrowserScript(t, `
+var page = browser.open();
+for (var i = 0; i < 99; i++) { page.click("#x"); }
+var seen = "";
+for (var j = 0; j < 50; j++) { seen = page.url(); }
+var last = page.click("#x");
+page.close();
+return { status: "up", output: { seen: seen, lastOk: last.ok, lastError: last.error } };
+`, 10*time.Second)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal("https://acme.com/dash", result.Output["seen"])
+	r.Equal(true, result.Output["lastOk"],
+		"fifty url() calls must leave the 100th action available")
+	r.Nil(result.Output["lastError"])
+	r.Equal(int32(150), session.calls.Load(),
+		"the fake still SAW every call — only the budget ignores url()/close()")
+}
+
 // TestBrowserBudgetIsSeparateFromTheSubCheckBudget proves the two budgets in
 // BOTH directions: 100 browser actions leave the 20-call http budget intact,
 // and a spent http budget leaves the browser usable.
