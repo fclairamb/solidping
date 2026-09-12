@@ -303,6 +303,38 @@ func planPeriod(checkType string, raw *string, configMap map[string]any) (time.D
 	return period, nil
 }
 
+// plannedUpdatePeriod resolves the period this update would store — the
+// existing one when the document proposes none — and holds a proposed one to
+// the same bounds the write path enforces.
+func plannedUpdatePeriod(existing *models.Check, req *UpsertCheckRequest) (time.Duration, error) {
+	if req.Period == nil || *req.Period == "" {
+		return time.Duration(existing.Period), nil
+	}
+
+	var duration timeutils.Duration
+	if scanErr := duration.Scan(*req.Period); scanErr != nil {
+		return 0, scanErr
+	}
+
+	period := time.Duration(duration)
+
+	// A document that also rewrites the config is held to the NEW script's
+	// floor; one that only moves the period, to the stored script's.
+	configForPeriod := existing.Config
+	if req.Config != nil {
+		configForPeriod = req.Config
+	}
+
+	if periodErr := validatePeriodForType(
+		existing.Type, period, existing.Internal,
+		parsedConfigForType(existing.Type, configForPeriod),
+	); periodErr != nil {
+		return 0, periodErr
+	}
+
+	return period, nil
+}
+
 // planUpdateCheck runs the request-level rules the update path enforces
 // against an EXISTING check, writing nothing. It is the would-update half of
 // the import dry run.
@@ -347,29 +379,9 @@ func (s *Service) planUpdateCheck(
 		return labelErr
 	}
 
-	period := time.Duration(existing.Period)
-
-	if req.Period != nil && *req.Period != "" {
-		var duration timeutils.Duration
-		if scanErr := duration.Scan(*req.Period); scanErr != nil {
-			return scanErr
-		}
-
-		period = time.Duration(duration)
-
-		// A document that also rewrites the config is held to the NEW script's
-		// floor; one that only moves the period, to the stored script's.
-		configForPeriod := existing.Config
-		if req.Config != nil {
-			configForPeriod = req.Config
-		}
-
-		if periodErr := validatePeriodForType(
-			existing.Type, period, existing.Internal,
-			parsedConfigForType(existing.Type, configForPeriod),
-		); periodErr != nil {
-			return periodErr
-		}
+	period, periodErr := plannedUpdatePeriod(existing, req)
+	if periodErr != nil {
+		return periodErr
 	}
 
 	regionsForCheck := existing.Regions

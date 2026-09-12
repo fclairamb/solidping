@@ -141,6 +141,11 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 		runtime.vm.Interrupt("timeout")
 	}()
 
+	// contextcheck: the `browser` bindings derive their per-call contexts from
+	// r.execCtx (the check's own budget), which is exactly the rule spec
+	// 2026-09-12-06 §3 requires — there is no context parameter to thread
+	// through a goja binding signature.
+	//nolint:contextcheck // bindings derive from r.execCtx by design
 	runtime.registerGlobals()
 
 	// Wrap script in a function so top-level return statements work
@@ -161,15 +166,14 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
-				Output: runtime.buildOutput(logLevelError,
-					"script timed out after "+timeout.String()),
+				Output:   runtime.buildOutput("script timed out after " + timeout.String()),
 			}, nil
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   runtime.buildOutput(logLevelError, "script error: "+err.Error()),
+			Output:   runtime.buildOutput("script error: " + err.Error()),
 		}, nil
 	}
 
@@ -177,7 +181,7 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   runtime.buildOutput(logLevelError, "script must return a result object"),
+			Output:   runtime.buildOutput("script must return a result object"),
 		}, nil
 	}
 
@@ -807,7 +811,7 @@ func (r *jsRuntime) parseResult(val goja.Value, duration time.Duration) *checker
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   r.buildOutput(logLevelError, "script must return an object"),
+			Output:   r.buildOutput("script must return an object"),
 		}
 	}
 
@@ -847,10 +851,12 @@ func (r *jsRuntime) parseStatus(obj *goja.Object) checkerdef.Status {
 	}
 }
 
-// buildOutput creates an output map with the console log and an optional error.
-func (r *jsRuntime) buildOutput(key, value string) map[string]any {
+// buildOutput creates an output map carrying an error message plus the console
+// log. The key is always `error` — every caller reports a runtime-level
+// failure, and a script's own output goes through buildOutputFromObj instead.
+func (r *jsRuntime) buildOutput(value string) map[string]any {
 	out := make(map[string]any)
-	out[key] = value
+	out[logLevelError] = value
 
 	if r.consoleBuf.Len() > 0 {
 		out["console"] = r.consoleBuf.String()
