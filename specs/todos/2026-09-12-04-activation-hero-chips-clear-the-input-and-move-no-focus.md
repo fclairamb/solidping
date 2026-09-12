@@ -97,3 +97,70 @@ four days later and were still on `/dash0/no-org`**. `notifyAdminsOfMembershipRe
 does email the org's admins, so the code path exists — whether that mail was
 delivered and simply never acted on is unverified, and worth its own look given
 operator mail is known to bounce for at least one org.
+
+## Implementation Plan
+
+All changes are in the zero-check hero
+(`web/dash0/src/components/dashboard/empty-state-onboarding.tsx`) plus one new
+pure helper module and its unit test. No backend change.
+
+### 1. Focus the input (defect 1)
+
+- `useRef<HTMLInputElement>` on the quick-create input.
+- **Chip click** focuses it unconditionally — it is the direct consequence of a
+  deliberate user action, so there is no a11y objection to moving focus there.
+- **Mount** focus is *conditional*: only when `matchMedia("(pointer: fine)")`
+  matches, and with `{ preventScroll: true }`. Auto-focusing on a touch device
+  raises the on-screen keyboard and scrolls the hero out of view before the user
+  has read it; on a pointer device a caret is free feedback and costs nothing.
+  Screen-reader users on a pointer device land on the field that is the page's
+  entire purpose in its zero-check state, which is the same bargain a login page
+  makes.
+
+### 2. Keep the typed value across a chip switch (defect 2)
+
+New `web/dash0/src/lib/quick-check-target.ts`, pure and unit-tested:
+
+- `targetAppliesTo(type, raw)` — a bare hostname applies to **all three** types,
+  so the common case survives every chip switch. A value carrying a scheme, a
+  path, a query, a fragment or whitespace cannot be a `host`/`domain`, so it does
+  **not** apply to `icmp`/`ssl` (the spec's `https://…` → Ping case). Everything
+  applies to `http`.
+- `normalizeTarget(type, raw)` — for `http`, a scheme-less value gets `https://`
+  so the hostname the user typed reaches a backend that requires the scheme
+  (`checkhttp.Validate`: "must start with http:// or https://").
+- `validateTarget(type, raw)` — `"empty" | "invalid" | null`, driving the message.
+
+The chip handler becomes `setValue(v => targetAppliesTo(quick, v) ? v : "")`.
+
+### 3. No dead disabled button (defect 3)
+
+- The submit is enabled whenever a create is not in flight; the only disabled
+  state left is "creating…", which explains itself.
+- Submitting an empty or inapplicable value renders the localized message in the
+  existing `<Alert variant="destructive">` (which already carries `role="alert"`,
+  so it is announced), wires `aria-invalid` + `aria-describedby` on the input per
+  the design reference's inline-error pattern, and returns focus to the input.
+- The input drops `type="url"` / `required`: native constraint validation shows
+  an unlocalized, unannounced browser bubble and silently blocks submit — the
+  design reference already flags that trap on the image-URL field. `inputMode`
+  keeps the right mobile keyboard.
+- New keys `welcome.validation.empty.{http,icmp,ssl}` and
+  `welcome.validation.invalid.{http,icmp,ssl}` in all four locales.
+
+### 4. Incidental, and load-bearing for defect 3: the SSL chip could never create
+
+`QUICK_DEFS.ssl` posts `config: { domain: … }`, but `checkssl.SSLConfig.FromMap`
+reads only `host` and `Validate` then fails `host is required`. One of the three
+chips therefore ends in a 400 for everyone who uses it. Fixed to `host`, and
+covered by an e2e that actually creates an SSL check — otherwise "surface the
+validation message on submit" would just be surfacing a server error nobody can
+act on.
+
+### Tests
+
+- `src/lib/quick-check-target.test.ts` — the matrix, including the negative case.
+- `e2e/empty-state-onboarding.spec.ts` — focus on mount and on chip click; a
+  hostname surviving both chip switches; `https://acme.com/health` being cleared
+  by the Ping chip; the enabled submit producing an announced message; an SSL
+  check created end to end on a fresh org.
