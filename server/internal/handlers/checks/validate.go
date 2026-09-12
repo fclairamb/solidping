@@ -60,7 +60,9 @@ const fieldPeriod = "period"
 // fieldName is the JSON/validation field name for the check name.
 const fieldName = "name"
 
-// msgNameRequired is the client-facing wording for a blank name.
+// msgNameRequired is the client-facing wording for a blank name. Capitalized
+// because it is rendered verbatim as a field message in the dashboard, next to
+// the other field messages in handler.go.
 const msgNameRequired = "Name is required and cannot be blank"
 
 // errCheckNameRequired is returned by create and update when the resulting
@@ -73,7 +75,7 @@ const msgNameRequired = "Name is required and cannot be blank"
 // refuse to consume. One org's export failed its validator with `missing
 // required key 'name'` and the offending check had to be excluded from the
 // tracked file.
-var errCheckNameRequired = errors.New(msgNameRequired)
+var errCheckNameRequired = errors.New("name is required and cannot be blank")
 
 // validateCheckName enforces "required, min length 1 AFTER trimming".
 //

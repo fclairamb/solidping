@@ -25,8 +25,6 @@ import (
 // from one. Used on the SERIALIZED document rather than on the config maps, so
 // a token that leaked through some field other than the one it was declared on
 // is caught too.
-//
-//nolint:gochecknoglobals // test lookup table
 var mintedTokenInDocument = regexp.MustCompile(`[0-9a-f]{32,}`)
 
 // roundTripRig is a checks service over one fresh in-memory database, with the
@@ -281,7 +279,7 @@ func TestExportRoundTripsThroughValidateAndImport(t *testing.T) {
 
 	// (a) Nothing shaped like a minted token survived the exporter. Asserted
 	// on the rendered bytes: the document is what gets committed to git, and
-	// that is the artifact the leak actually travelled in.
+	// that is the artifact the leak actually traveled in.
 	r.NotRegexp(mintedTokenInDocument, string(rendered),
 		"a `secrets: stripped` export must not carry a server-minted token")
 	r.Equal(checks.SecretsMarkerStripped, doc.Secrets)
@@ -425,9 +423,9 @@ func TestCreateAndUpdateRejectBlankNames(t *testing.T) {
 
 	for _, blank := range []string{"", "   "} {
 		name := blank
-		_, err := rig.svc.UpdateCheck(t.Context(), rig.org.Slug, "derived-name",
+		_, updateErr := rig.svc.UpdateCheck(t.Context(), rig.org.Slug, "derived-name",
 			&checks.UpdateCheckRequest{Name: &name})
-		r.Errorf(err, "update must refuse the blank name %q", blank)
+		r.Errorf(updateErr, "update must refuse the blank name %q", blank)
 	}
 
 	// And the check kept the name it had.

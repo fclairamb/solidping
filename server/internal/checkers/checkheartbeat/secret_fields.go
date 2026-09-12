@@ -28,7 +28,7 @@ func (c *HeartbeatConfig) SecretFields() []string {
 // can read it can post a heartbeat and keep the check green. Storage is
 // unchanged — the ping handler still reads it from the public column — and an
 // import/apply that omits it preserves the stored value, which is the exact
-// behaviour preserveHeartbeatToken gave this field before spec 2026-09-11-02
+// behavior preserveHeartbeatToken gave this field before spec 2026-09-11-02
 // generalized it (checks.preserveAbsentRedactedFields).
 func (c *HeartbeatConfig) ExportRedactedFields() []string {
 	return []string{"token"}

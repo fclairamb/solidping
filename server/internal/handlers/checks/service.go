@@ -4858,7 +4858,7 @@ func (s *Service) applyConfigPatch(
 //
 // It is the generalization of what used to be preserveHeartbeatToken (spec
 // 2026-09-11-02), with heartbeat's `token` as its first user and identical
-// behaviour for that field. The rule it encodes:
+// behavior for that field. The rule it encodes:
 //
 // The public side of a config PATCH is REPLACE, not merge (see
 // mergePatchConfig), and an export-redacted field is deliberately NOT a
