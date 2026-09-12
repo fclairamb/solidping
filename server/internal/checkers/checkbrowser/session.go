@@ -140,9 +140,11 @@ func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
 		// about the target.
 		if err := probeCDP(probeCtx, current.CDPURL); err != nil {
 			release()
-			MarkUnavailable()
 
-			return nil, &infraError{msg: cdpUnreachableMessage(current.CDPURL, err)}
+			failure := &infraError{msg: cdpUnreachableMessage(current.CDPURL, err)}
+			recordOpenOutcome(failure)
+
+			return nil, failure
 		}
 	}
 
@@ -156,20 +158,40 @@ func openSession(sessionCtx, probeCtx context.Context) (*Session, error) {
 		browserCancel()
 		allocCancel()
 		release()
-		MarkUnavailable()
 
-		return nil, &infraError{msg: openFailureMessage(current, err)}
+		failure := &infraError{msg: openFailureMessage(current, err)}
+		recordOpenOutcome(failure)
+
+		return nil, failure
 	}
 
-	// A real allocation is stronger evidence than the probe — same rule
-	// recordOutcome applies to a finished execution.
-	MarkAvailable()
+	recordOpenOutcome(nil)
 
 	return &Session{
 		browserCtx: browserCtx,
 		cancels:    []context.CancelFunc{browserCancel, allocCancel},
 		release:    release,
 	}, nil
+}
+
+// recordOpenOutcome feeds an attempted open back into the capability cache,
+// the same event-driven correction recordOutcome applies to a finished
+// execution:
+//
+//   - a successful open really allocated a browser, which is stronger evidence
+//     than the probe and makes RECOVERY prompt;
+//   - an infrastructure failure drops the capability at once rather than up to
+//     one TTL later;
+//   - a slot timeout says NOTHING either way — the browser is fine, this
+//     worker is merely full — and must leave the verdict alone.
+func recordOpenOutcome(err error) {
+	switch {
+	case err == nil:
+		MarkAvailable()
+	case errors.Is(err, ErrSlotTimeout):
+	default:
+		MarkUnavailable()
+	}
 }
 
 // cdpUnreachableMessage is the pre-flight failure, worded so an operator reads

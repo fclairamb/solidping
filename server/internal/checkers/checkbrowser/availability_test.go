@@ -222,3 +222,92 @@ func TestVersionURLNormalizesEveryAcceptedForm(t *testing.T) {
 		r.Equalf(want, versionURL(in), "versionURL(%q)", in)
 	}
 }
+
+// TestOpenOutcomeDrivesTheCapabilityCache pins what an ATTEMPTED open records,
+// which is the JS runtime's only path into this cache: a script that opens a
+// browser must move the capability exactly as a browser check does.
+//
+//nolint:paralleltest // mutates the process-wide availability cache
+func TestOpenOutcomeDrivesTheCapabilityCache(t *testing.T) {
+	r := require.New(t)
+
+	previous := CurrentSettings()
+	t.Cleanup(func() { Configure(previous) })
+
+	// A backend whose probe would say "yes" if it ever ran, so the assertions
+	// below are about the recorded outcome and not about the probe.
+	server := fakeCDPServer(t)
+	Configure(Settings{CDPURL: server.URL})
+
+	recordOpenOutcome(&infraError{msg: "cannot reach the remote Chrome (CDP) endpoint"})
+	r.False(Available(t.Context()), "an infra failure to open must drop the capability at once")
+
+	recordOpenOutcome(nil)
+	r.True(Available(t.Context()), "a successful open must restore it at once")
+
+	// A full worker says nothing about whether a browser could have been
+	// driven, so the verdict must be left exactly as it was — in BOTH
+	// directions, which is what makes this more than "it did not crash".
+	recordOpenOutcome(ErrSlotTimeout)
+	r.True(Available(t.Context()), "a slot timeout must not touch a positive verdict")
+
+	recordOpenOutcome(&infraError{msg: "lost the remote Chrome (CDP) connection"})
+	r.False(Available(t.Context()))
+
+	recordOpenOutcome(ErrSlotTimeout)
+	r.False(Available(t.Context()), "nor a negative one")
+}
+
+// TestOpenAgainstAnUnreachableEndpointMarksUnavailable is the same rule
+// end-to-end through the REAL Open, so the helper above cannot pass while Open
+// forgets to call it.
+//
+//nolint:paralleltest // mutates the process-wide settings and availability cache
+func TestOpenAgainstAnUnreachableEndpointMarksUnavailable(t *testing.T) {
+	r := require.New(t)
+
+	withSettings(t, Settings{CDPURL: closedPortURL(t)})
+
+	// Start from a positive verdict so the drop below is observable.
+	MarkAvailable()
+	r.True(Available(t.Context()))
+
+	session, err := Open(t.Context())
+
+	r.Error(err)
+	r.Nil(session)
+	r.True(Infra(err), "a failure to open is infrastructure by construction")
+	r.Contains(err.Error(), "SP_CHECKERS_BROWSER_CDP_URL")
+	r.False(Available(t.Context()), "the failed open must have dropped the capability")
+}
+
+// TestOpenAgainstARealBrowserMarksAvailable is the positive half, and needs a
+// real browser: it runs only when SP_CHECKERS_BROWSER_CDP_URL points at a
+// reachable endpoint, and says so out loud otherwise. CI's backend job has no
+// Chrome, so this is skipped there by design.
+//
+//nolint:paralleltest // mutates the process-wide settings and availability cache
+func TestOpenAgainstARealBrowserMarksAvailable(t *testing.T) {
+	cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL")
+	if cdpURL == "" {
+		t.Skip("SP_CHECKERS_BROWSER_CDP_URL is not set: no real browser to open")
+	}
+
+	r := require.New(t)
+
+	withSettings(t, Settings{CDPURL: cdpURL})
+
+	MarkUnavailable()
+	r.False(Available(t.Context()))
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	session, err := Open(ctx)
+	r.NoError(err)
+	r.NotNil(session)
+
+	defer session.Close()
+
+	r.True(Available(t.Context()), "a real open must restore the capability at once")
+}
