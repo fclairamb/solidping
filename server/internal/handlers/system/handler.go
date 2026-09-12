@@ -14,8 +14,14 @@ import (
 )
 
 // paramValueField is the field name reported in a validation error for the
-// request body's "value" field.
-const paramValueField = "value"
+// request body's "value" field. keyField is the equivalent for a malformed
+// key taken from the URL — kept as a separate constant rather than reused,
+// since the two errors (ErrInvalidParameter, ErrInvalidParameterKey) must
+// attribute to different fields.
+const (
+	paramValueField = "value"
+	keyField        = "key"
+)
 
 // invalidJSONMessage is the validation message every malformed-body branch in
 // this package returns, and bodyField the field it is attributed to.
@@ -140,6 +146,10 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	switch {
 	case errors.Is(err, ErrParameterNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
+	case errors.Is(err, ErrInvalidParameterKey):
+		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
+			{Name: keyField, Message: err.Error()},
+		})
 	case errors.Is(err, ErrInvalidParameter):
 		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
 			{Name: paramValueField, Message: err.Error()},
