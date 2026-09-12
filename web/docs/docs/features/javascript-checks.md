@@ -92,11 +92,11 @@ The script's `return` value is an object with up to three fields:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `status` | string | `"up"`, `"down"`, or `"error"` — see below. **Any other value, including `"timeout"`, is treated as `"error"`.** |
+| `status` | string | `"up"`, `"down"`, or `"error"` — see below. Any other **unrecognized** value is treated as `"error"`. |
 | `metrics` | object of numbers | Shown as the check's metrics, same as any other check type |
 | `output` | object | Shown on the result's detail page; merged with `console.*` output under `output.console` |
 
-**`status` must be `"up"`, `"down"`, or `"error"` — never `"timeout"`.**
+**A script must return `"up"`, `"down"`, or `"error"` — never `"timeout"`.**
 `timeout` is reserved for the runtime: it is what the check reports when the
 engine cuts the script off after its own `timeout` elapses, not something a
 script decides to return. If a script could return `"timeout"` for, say, a
@@ -105,6 +105,13 @@ in the same check's history — "the runtime gave up on this script" and "the
 script measured something slow" — and the one thing `timeout` is genuinely
 useful for (telling those two apart) would be lost. Report a slow-but-answered
 upstream as `"down"` and let its `metrics` carry the latency.
+
+This is a contract on **what a script should do**, not (yet) a rule the engine
+enforces: today, a script that explicitly `return`s `{ status: "timeout" }` is
+still accepted and reported as the timeout status, the same as if the runtime
+had cut it off — the engine does not currently tell the two apart. Treat this
+as reserved rather than relying on it; a future release may tighten the engine
+to reject a script-returned `"timeout"` as `"error"` instead.
 
 A missing or unrecognized `status`, a script that throws, or a script that
 never calls `return` an object at all are every one of them reported as
