@@ -1621,32 +1621,35 @@ paths:
         "is this file valid?" must not need a token that can delete checks. A
         single check keeps the write floor (role `user` or above). /import and
         /apply remain admin-only.
-
-
-        QUERY FLAG `?plan=true` (document bodies, org admin only): also return
-        the reconcile plan — what applying this document would create, update,
-        leave unchanged, delete or refuse to adopt. It is deliberately not
-        declared as an OpenAPI parameter: declaring one would add a params
-        argument to every generated ValidateCheck call site, for a flag only
-        the document form understands (see
-        wiki/conventions/generated-client.md).
       operationId: validateCheck
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/OrgPath"
+        - name: plan
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: >-
+            Document bodies only, and org admin only: also return the reconcile
+            plan — what applying this document would create, update, leave
+            unchanged, delete or refuse to adopt. Ignored for a single check.
       requestBody:
         required: true
         description: >-
-          A single check definition (the schema below), or a whole
-          export/manifest document — `{version, organization, secrets,
-          defaults, checks[]}` — as JSON or YAML. The document form is
-          detected from a top-level `checks` list and answers with
-          ValidateDocumentResponse instead.
+          A single check definition, or a whole export/manifest document
+          (`{version, organization, secrets, defaults, checks[]}`) as JSON or
+          YAML. The document form is detected from a top-level `checks` list.
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidateCheckRequest"
+              oneOf:
+                - $ref: "#/components/schemas/ValidateCheckRequest"
+                - $ref: "#/components/schemas/ValidateDocumentRequest"
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/ValidateDocumentRequest"
       responses:
         "200":
           description: >-
@@ -1656,7 +1659,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidateCheckResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/ValidateCheckResponse"
+                  - $ref: "#/components/schemas/ValidateDocumentResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -10296,6 +10301,37 @@ components:
             unchanged; pass `[]` to clear.
           items:
             $ref: "#/components/schemas/ExportedDependency"
+
+    ValidateDocumentRequest:
+      type: object
+      required: [checks]
+      description: >-
+        A whole config-as-code document — the export document shape. Only
+        `checks` is load-bearing for detection: a body carrying a top-level
+        `checks` list takes the document path.
+      properties:
+        version:
+          type: integer
+          description: 1 or 2.
+        organization:
+          type: string
+        secrets:
+          type: string
+          description: >-
+            "stripped" on every export. It tells the validator that the
+            document deliberately omits declared secrets, so a checker
+            complaining that one is missing is suppressed — but only for a
+            check that already exists, where the import merge really does
+            restore it.
+        defaults:
+          type: object
+          additionalProperties: true
+          description: Document-wide defaults each check may override (v2).
+        checks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
 
     DocumentIssue:
       type: object

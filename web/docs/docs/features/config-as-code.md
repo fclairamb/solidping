@@ -50,6 +50,20 @@ Secret values, and any value containing a `${param:…}` / `${env:…}` referenc
 are masked as `***` — a plan gets pasted into tickets and CI logs, and must
 never be the thing that publishes a credential.
 
+### Two things a plan will tell you about
+
+**`unmanaged` is drift, not agreement.** It means the check exists but no
+manifest owns it yet. For an organization that has never run `sp apply`, *every*
+check is unmanaged — so an unmanaged entry carries its field diff like any
+other, and `sp checks diff` exits non-zero for a file that does not match, no
+matter who owns the checks.
+
+**`escalationThreshold` is reported but cannot be applied.** The export carries
+it, but no write request does, so editing it in the tracked file changes nothing
+on the instance. The plan reports the difference and warns, naming the field and
+the checks — rather than answering `unchanged` for a file that genuinely
+differs. Everything else in the document applies normally.
+
 ## Canonical spellings
 
 A file and a server can write the same thing two ways. Where that is possible,
@@ -129,6 +143,13 @@ sp checks validate config.yaml
 This runs the server's own rules, shipped in the same binary — which is the
 point. A validator that re-implements the rules falls behind the day a check
 type is added, and then reports the server's own export as broken.
+
+Two rules need your organization and so are answered only by the endpoint: does
+a `${param:…}` reference resolve, and does the check already exist. The second
+matters because a `secrets: stripped` document legitimately omits a declared
+secret for a check that exists (the import restores it) and illegitimately for
+one that does not. Offline, `sp checks validate` assumes the check exists; post
+the file to the endpoint when you want the answer the write path will give.
 
 Get `sp` into a pipeline from the release assets or the image — see
 [the CLI page](../cli.md#installing).

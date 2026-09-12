@@ -190,7 +190,11 @@ provider is a follow-up spec once these exist.
     prove equality against an encrypted column;
   - regions/group: only compared when the document names them (the upsert
     leaves them alone otherwise);
-  - `escalationThreshold` is excluded — `UpsertCheckRequest` does not carry it;
+  - `escalationThreshold` IS diffed even though no write path carries it, with
+    a `warnings[]` entry naming the field and the slugs. The exporter emits it,
+    so excluding it answered `unchanged` for a file that genuinely differed —
+    the same false no-op this spec removes, pointing the other way. Making the
+    field writable is its own spec;
   - `dependsOn` is additive (pass 2 merges), so only *missing* edges count;
   - `solidping-managed` is excluded from the label diff (apply stamps it).
 - `ImportResult` gains `Unchanged`, `Deleted`, `Unmanaged` and a
@@ -202,6 +206,13 @@ provider is a follow-up spec once these exist.
   the apply dry run, prints the per-check actions and field changes, and keeps
   the 0/1/≥2 exit contract; the old text diff stays as the fallback when the
   caller cannot plan (non-admin) and behind `--text`.
+- **`unmanaged` counts as drift**, and unmanaged entries are diffed like any
+  other. It answers "who owns this?", never "does it match?" — and for a
+  first-time org every check is unmanaged, so treating it as agreement printed
+  "No drift" for a file that disagreed with everything.
+- Create-vs-update is decided by what the upsert ACTUALLY did, never by the
+  slug-keyed snapshot: an entry naming a UID matches a row the snapshot never
+  indexed, and counting that as a create would be the same lie one layer down.
 
 ### 3. Round-trip guarantee, as a test
 
@@ -216,11 +227,27 @@ export → apply(dryRun)     = same, 0 unmanaged
 export → export            = the same three, byte-identical minus exportedAt
 ```
 
-The two filters `-02` installed are re-examined: the `INLINED_CREDENTIAL` hint
-filter must stay (it is a *hint* on any key containing `user`/`pass`/…, and a
-plain `username` is not a credential), the stripped-declared-secret filter must
-stay (the checker's offline `Validate` cannot know the operator supplies it at
-import). Both are reported as such rather than silently kept.
+The two filters `-02` installed are re-examined — and **both are removed**,
+because both underlying classes turned out to be closable rather than inherent
+(this replaces the earlier plan, which assumed they had to stay):
+
+- `INLINED_CREDENTIAL` fired on any key whose NAME contained `user`/`pass`/…,
+  so a plain `username` and even ftp's `passive_mode` were reported. It is now
+  anchored on what the checker DECLARES secret, which registry's
+  `TestNoUndeclaredCheckerSecrets` independently guarantees is the complete set
+  of credential fields.
+- A declared secret the exporter stripped made the checker's offline `Validate`
+  report the config incomplete. On a `secrets: stripped` document that
+  complaint is now suppressed by `ConfigError.Parameter` — never by prose — and
+  the import dry run injects a placeholder for every key the row advertises as
+  private, reproducing the SHAPE of the merge it must not perform.
+  `DryRunCaveatSecretMerge` still stands for a rule depending on a secret's
+  VALUE.
+
+The suppression is **slug-aware on the org-aware endpoint**: it applies only
+where the merge it stands in for will happen (an existing check). A stripped
+document whose checks are new is a create with nothing to merge, and is
+reported exactly as `/import` reports it.
 
 ### 4. Ship the CLI
 
@@ -230,6 +257,12 @@ import). Both are reported as such rather than silently kept.
   builds/pushes `ghcr.io/<repo>/sp` from a small `Dockerfile.sp`.
 - **No release is run and no tag is pushed.** Verified by building all four
   binaries locally and by a YAML parse of the workflow.
+- The document surface is declared in `openapi.yaml` (the `plan` parameter, a
+  `oneOf` request and response). The single hand-written caller moves off the
+  generated operation onto a `SolidPingClient.ValidateChecks` helper, so no
+  generated signature constrains the spec — verified by regenerating the client,
+  building and testing, then reverting it per
+  `wiki/conventions/generated-client.md`.
 - `sp checks validate config.yaml` documented as *the* validator.
 
 ### 5. Canonical spellings

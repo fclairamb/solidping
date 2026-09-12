@@ -547,13 +547,18 @@ func (rig *roundTripRig) planRoundTrip(t *testing.T) (*checks.ExportDocument, ro
 //	export → import(dryRun)    = 0 create / 0 update / N unchanged
 //	export → apply(dryRun)     = same, 0 unmanaged
 //
-// The import dry run is allowed the ONE class of per-entry error spec
-// 2026-09-11-02 documented and this spec does not close: a check whose declared
-// secret the exporter stripped fails the checker's offline Validate, because a
-// dry run validates the document's config as written rather than merged with
-// the stored secret (DryRunCaveatSecretMerge, which the server declares in its
-// own response). Those entries produce no plan row at all, so the unchanged
-// count is measured against the entries that did plan.
+// NOTHING is set aside. Spec 2026-09-11-02 had to tolerate one class of
+// per-entry error — a check whose declared secret the exporter stripped failed
+// the checker's offline Validate, because a dry run validates the document's
+// config as written rather than merged with the stored secret — and this spec
+// closed it: the dry run now injects a placeholder for every key the row
+// advertises as private, reproducing the SHAPE of the merge without opening the
+// encrypted column. DryRunCaveatSecretMerge still stands for a rule that
+// depends on a secret's VALUE.
+//
+// The error-count subtraction below is therefore expected to subtract zero. It
+// stays because the assertion it guards must fail LOUDLY if that stops being
+// true, rather than quietly comparing a smaller population.
 func assertRoundTrip(t *testing.T, doc *checks.ExportDocument, plan roundTripPlan, requireManaged bool) {
 	t.Helper()
 	r := require.New(t)

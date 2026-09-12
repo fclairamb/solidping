@@ -161,11 +161,25 @@ func diffExitCode(outcome diffOutcome, err error) int {
 }
 
 // planDrift reports whether a reconcile plan says the file and the instance
-// disagree. `unmanaged` is deliberately NOT drift: the slug exists and the
-// manifest describes it, it simply is not owned by this manifest yet — it is
-// surfaced in the table, never in the exit code.
+// disagree.
+//
+// `unmanaged` counts. It answers "who owns this check?", never "does it
+// match?", and treating it as agreement produced the worst possible output:
+// for a first-time organization EVERY existing check is unmanaged, so a
+// config.yaml whose URLs, periods and labels all differed printed
+// "No drift: … matches SolidPing" and exited 0. An operator reads that as "the
+// file is what is deployed". A command whose whole purpose is to answer that
+// question must never answer it wrongly in the reassuring direction — so an
+// unowned slug is drift, and the table says which fields differ.
 func planDrift(res *applyResult) bool {
-	return res.Created+res.Updated+res.Deleted > 0
+	return res.Created+res.Updated+res.Deleted+res.Unmanaged > 0
+}
+
+// planDiffExitCode maps a plan onto the CI contract `sp checks diff` has always
+// had — 0 no drift, 1 drift — through the same helper the textual path uses, so
+// the two renderings cannot disagree about what an exit code means.
+func planDiffExitCode(res *applyResult) int {
+	return diffExitCode(diffOutcome{Drift: planDrift(res)}, nil)
 }
 
 // reportDiffPlan renders a server-computed reconcile plan as the answer to
@@ -180,7 +194,7 @@ func reportDiffPlan(cliCtx *Context, file string, res *applyResult) error {
 	printApplyPlan(res)
 	printApplySummary(res)
 
-	if !planDrift(res) {
+	if planDiffExitCode(res) == 0 {
 		output.PrintSuccess(os.Stdout, fmt.Sprintf(
 			"No drift: %s matches SolidPing (%d unchanged)", file, res.Unchanged))
 
@@ -189,7 +203,13 @@ func reportDiffPlan(cliCtx *Context, file string, res *applyResult) error {
 
 	output.PrintError(os.Stdout, fmt.Sprintf("Drift: %s does not match SolidPing", file))
 
-	return cli.Exit("", 1)
+	if res.Unmanaged > 0 {
+		output.PrintMessage(os.Stdout, fmt.Sprintf(
+			"  %d check(s) exist but are not managed by this manifest — `sp apply` would adopt them. "+
+				"Any field differences are listed above.", res.Unmanaged))
+	}
+
+	return cli.Exit("", planDiffExitCode(res))
 }
 
 // checksDiffAction implements `sp checks diff <file>`.

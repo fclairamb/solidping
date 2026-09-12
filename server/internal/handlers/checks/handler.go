@@ -179,21 +179,26 @@ func (h *Handler) validateDocument(
 }
 
 // orgRoleAtLeast reports whether the authenticated caller holds at least
-// minRole in the request's organization — the same hierarchical test
-// AuthMiddleware.requireOrgRole makes, done inline for the one route that
-// carries two different floors on two different bodies.
+// minRole in the request's organization — the same hierarchical, membership-row
+// test AuthMiddleware.requireOrgRole makes, done inline for the one route that
+// carries two different floors on two different bodies. Reading the MEMBERSHIP
+// ROW rather than claims.Role is what makes a demotion take effect on the next
+// request instead of the next token refresh.
 //
-// Two passes-through mirror the middleware exactly: a super admin always
-// qualifies, and a trusted service request (which resolves no user and has no
-// membership row) is let past, as RequireOrgAccess and RequireOrgWrite both
-// let it past. The role is read from the MEMBERSHIP ROW, never from claims, so
-// a demotion takes effect on the next request rather than the next token.
+// The no-user case is where it deliberately does NOT behave like a single
+// middleware, because the middlewares themselves do not agree there. A trusted
+// service request resolves no user and has no membership row: RequireOrgWrite
+// lets it past (`isServiceAuthorized`), while RequireOrgAdmin has no such
+// bypass and refuses. This mirrors that split per floor rather than picking
+// one — a service credential keeps the write-level access it already has on
+// every other org route, and does not gain an admin-only surface (`?plan=true`)
+// that RequireOrgAdmin would refuse it.
 func (h *Handler) orgRoleAtLeast(req *http.Request, minRole models.MemberRole) bool {
 	ctx := req.Context()
 
 	user, ok := mw.GetUserFromContext(ctx)
 	if !ok {
-		return true
+		return !minRole.AtLeast(models.MemberRoleAdmin)
 	}
 
 	if user.SuperAdmin {

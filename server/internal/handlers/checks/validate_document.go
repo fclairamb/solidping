@@ -54,9 +54,11 @@ const (
 	// Distinct from CodeUnsupportedType (the single-check endpoint's code) so
 	// the two surfaces can be told apart in a log.
 	CodeUnknownType = "UNKNOWN_TYPE"
-	// CodeInlinedCredential flags a config key whose NAME suggests a literal
-	// credential. A hint, not a proof: `username` and ftp's `passive_mode`
-	// both trip it.
+	// CodeInlinedCredential flags a config key carrying a literal credential:
+	// one the checker DECLARES secret (or export-redacted), or — for a check
+	// type this build does not know — one whose name matches a credential hint.
+	// See validateNoInlinedCredentials for why it is no longer name-based on a
+	// known type.
 	CodeInlinedCredential = "INLINED_CREDENTIAL"
 	// CodeStatusFieldConflict is expectedStatus and expectedStatusCodes set on
 	// the same config.
@@ -157,16 +159,30 @@ func expectedStatusFieldKeys() ([]string, []string) {
 // design; they belong to the workflow that owns those conventions, not to the
 // document format.
 func ValidateDocument(doc *ExportDocument) []DocumentIssue {
+	// Offline, nothing is known about the target organization, so every check
+	// is assumed to already exist — which is the assumption that lets a
+	// `secrets: stripped` export validate at all. ValidateDocumentForOrg knows
+	// better and passes the real predicate.
+	return validateDocumentAgainst(doc, func(string) bool { return true })
+}
+
+// validateDocumentAgainst is ValidateDocument with one piece of knowledge it
+// cannot have offline: whether a slug already exists in the target
+// organization.
+//
+// That only matters for the `secrets: stripped` suppression. A stripped
+// document omits every declared secret, and on an UPDATE the import merge puts
+// the stored value back — so complaining that the key is missing would reject
+// the very document the server produces. On a CREATE there is nothing to merge:
+// the secret really is absent, and /import really will refuse it. Suppressing
+// the complaint there would make this endpoint promise something the write path
+// does not honor, which is worse than no validator at all.
+func validateDocumentAgainst(doc *ExportDocument, exists func(slug string) bool) []DocumentIssue {
 	issues := validateDocumentShape(doc)
 	if len(doc.Checks) == 0 {
 		return issues
 	}
 
-	// A `secrets: stripped` document deliberately omits every declared secret,
-	// and the import path puts them back (the merge preserves a secret key the
-	// patch does not carry). Validating it as if the operator had TYPED those
-	// keys made the server reject the very document the server produces —
-	// which is what spec 2026-09-11-04's round-trip guarantee is about.
 	stripped := doc.Secrets == SecretsMarkerStripped
 
 	knownSlugs := make(map[string]struct{}, len(doc.Checks))
@@ -178,7 +194,10 @@ func ValidateDocument(doc *ExportDocument) []DocumentIssue {
 
 	seenSlugs := make(map[string]struct{}, len(doc.Checks))
 	for i := range doc.Checks {
-		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs, stripped)...)
+		// The suppression applies only where the merge it stands in for will
+		// actually happen: on a check that already exists.
+		mergeable := stripped && exists(doc.Checks[i].Slug)
+		issues = append(issues, validateSingleCheck(&doc.Checks[i], i, seenSlugs, mergeable)...)
 	}
 
 	issues = append(issues, validateDependencyGraph(doc.Checks, knownSlugs)...)

@@ -2,6 +2,7 @@ package checks_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/httpx"
@@ -41,10 +43,33 @@ func newValidateRouter(t *testing.T) (*httpx.Router, *checks.Service, db.Service
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 	handler := checks.NewHandler(svc, &config.Config{})
 
+	// The route's own authorization is proven against the REAL route table in
+	// internal/app. Here we only need a PRINCIPAL, because the handler reads
+	// one to decide the two inline floors — and since spec 2026-09-11-04's
+	// audit, a request with no resolved user is refused on the admin floor
+	// rather than waved through. A super admin is the simplest stand-in.
 	router := httpx.New()
-	router.NewGroup("/api/v1/orgs/:org/checks").POST("/validate", handler.ValidateCheck)
+	router.NewGroup("/api/v1/orgs/:org/checks").
+		Use(asSuperAdmin(org)).
+		POST("/validate", handler.ValidateCheck)
 
 	return router, svc, dbSvc, org
+}
+
+// asSuperAdmin injects the user and organization RequireAuth/RequireOrgAccess
+// would have resolved.
+func asSuperAdmin(org *models.Organization) func(httpx.HandlerFunc) httpx.HandlerFunc {
+	user := models.NewUser("root@acme.com")
+	user.SuperAdmin = true
+
+	return func(next httpx.HandlerFunc) httpx.HandlerFunc {
+		return func(writer http.ResponseWriter, req *http.Request) error {
+			ctx := context.WithValue(req.Context(), base.ContextKeyUser, user)
+			ctx = context.WithValue(ctx, base.ContextKeyOrganization, org)
+
+			return next(writer, req.WithContext(ctx))
+		}
+	}
 }
 
 func postValidateBody(
@@ -329,4 +354,110 @@ func mustParse(t *testing.T, body []byte) *checks.ExportDocument {
 	require.NoError(t, err)
 
 	return doc
+}
+
+// TestStrippedSecretSuppressionIsSlugAware closes the gap between what this
+// endpoint calls valid and what /import accepts.
+//
+// A `secrets: stripped` document omits every declared secret. On an UPDATE that
+// is correct and the import merge restores the stored value, so the checker's
+// "password is required" must be suppressed — without that, the server rejects
+// its own export. On a CREATE there is nothing to merge: the secret really is
+// absent and /import really does refuse it. Suppressing there would make the
+// endpoint promise something the write path does not honor, which is worse
+// than having no validator: a green CI gate followed by a red deploy.
+//
+// The offline `sp checks validate` cannot make this distinction and does not
+// try — it assumes the check exists, which is the only assumption that lets an
+// export validate with no network. This endpoint knows the org, so it tells.
+func TestStrippedSecretSuppressionIsSlugAware(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	router, svc, _, org := newValidateRouter(t)
+
+	// sftp declares both `password` and `private_key` secret, and its Validate
+	// requires one of them — so a stripped document carries neither.
+	const doc = `version: 2
+organization: validate-doc
+secrets: stripped
+checks:
+  - name: Files
+    slug: files
+    type: sftp
+    period: 5m
+    config:
+      host: sftp.acme.com
+      username: probe
+`
+
+	// (1) The check does NOT exist yet. The document would be a create, the
+	// secret really is missing, and the endpoint must say so.
+	rec := postValidateBody(t, router, org.Slug, "", "application/yaml", []byte(doc))
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp checks.ValidateDocumentResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.Falsef(resp.Valid, "a stripped secret on a CREATE is a real problem: %+v", resp.Issues)
+
+	var complained bool
+	for _, issue := range resp.Issues {
+		if issue.Code == checks.CodeInvalidConfig && issue.Where == "files" {
+			complained = true
+		}
+	}
+	r.True(complained, "the missing declared secret must be reported: %+v", resp.Issues)
+
+	// …and the write path agrees, which is the property that matters: the
+	// endpoint's answer and /import's answer are the same answer.
+	imported, err := svc.ImportChecks(t.Context(), org.Slug, mustParse(t, []byte(doc)), true)
+	r.NoError(err)
+	r.NotEmpty(imported.Errors, "a create missing its declared secret must fail the dry run too")
+
+	// (2) Now the check exists, carrying its secret. The SAME document is now
+	// an update, the merge restores the value, and the complaint is suppressed.
+	_, err = svc.CreateCheck(t.Context(), org.Slug, checks.CreateCheckRequest{
+		Name: "Files", Slug: "files", Type: "sftp", Period: strPtr("5m"),
+		Config: map[string]any{
+			"host": "sftp.acme.com", "username": "probe", "password": "hunter2",
+		},
+	})
+	r.NoError(err)
+
+	rec = postValidateBody(t, router, org.Slug, "", "application/yaml", []byte(doc))
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.Truef(resp.Valid, "a stripped secret on an UPDATE is what every export looks like: %+v", resp.Issues)
+
+	// And again, the write path agrees.
+	imported, err = svc.ImportChecks(t.Context(), org.Slug, mustParse(t, []byte(doc)), true)
+	r.NoError(err)
+	r.Empty(imported.Errors, "%+v", imported.Errors)
+}
+
+// TestValidateRejectsASingleCheckCarryingAChecksArray pins the content
+// negotiation's one ambiguous input: a single-check body that happens to carry
+// a top-level `checks` key is read as a document, not as a check. There is no
+// privilege gain (the document path is the LOWER floor), only a confusing
+// answer, so what is pinned is that the answer is the document one.
+func TestValidateRejectsASingleCheckCarryingAChecksArray(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	router, _, _, org := newValidateRouter(t)
+
+	rec := postValidateBody(t, router, org.Slug, "", "application/json",
+		[]byte(`{"type":"http","config":{"url":"https://acme.com/x"},"checks":[]}`))
+	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp checks.ValidateDocumentResponse
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.False(resp.Valid)
+
+	codes := map[string]bool{}
+	for _, issue := range resp.Issues {
+		codes[issue.Code] = true
+	}
+	r.Truef(codes[checks.CodeEmptyChecks],
+		"a body carrying `checks` takes the document path and is judged as one: %+v", resp.Issues)
 }

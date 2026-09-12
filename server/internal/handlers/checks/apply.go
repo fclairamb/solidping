@@ -187,10 +187,18 @@ func (s *Service) computeApplyPlan(
 			// Slug exists but is NOT managed by this manifest: report, never
 			// auto-adopt. The apply will (re)stamp the managed label so a future
 			// apply treats it as owned, but it is surfaced here for visibility.
+			//
+			// It is diffed all the same. `unmanaged` answers "who owns this?",
+			// not "does it match?", and conflating the two made
+			// `sp checks diff` print "No drift" for a first-time organization
+			// where EVERY check is unmanaged and the file disagreed with all of
+			// them — the exact false all-clear this spec exists to remove.
+			_, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
 			plan = append(plan, ApplyPlanEntry{
-				Slug:   entry.Slug,
-				Action: ApplyActionUnmanaged,
-				Reason: "slug exists without the managed label for this manifest",
+				Slug:    entry.Slug,
+				Action:  ApplyActionUnmanaged,
+				Reason:  "slug exists without the managed label for this manifest",
+				Changes: changes,
 			})
 		}
 	}
@@ -374,6 +382,12 @@ func (s *Service) ApplyChecks(
 
 	plan := s.computeApplyPlan(ctx, org, snapshot, doc, manifest)
 	result.Plan = plan
+
+	changedSlugs := map[string][]string{}
+	for i := range plan {
+		collectUnappliable(changedSlugs, plan[i].Slug, plan[i].Changes)
+	}
+	result.Warnings = append(result.Warnings, unappliableWarnings(changedSlugs)...)
 
 	for i := range plan {
 		switch plan[i].Action {

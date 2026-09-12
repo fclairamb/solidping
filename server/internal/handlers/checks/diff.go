@@ -35,6 +35,69 @@ const (
 	ActionUnmanaged = ApplyActionUnmanaged
 )
 
+// fieldEscalationThreshold is the document field the exporter EMITS and no
+// write path can apply — see unappliableChangeFields.
+const fieldEscalationThreshold = "escalationThreshold"
+
+// unappliableChangeFields are document fields a plan can DETECT but that no
+// write path can act on, because the exporter emits them and no request struct
+// carries them.
+//
+// Today that is `escalationThreshold` alone. It is emitted by the v2 exporter
+// (and resolved from the defaults block on the way back in), but
+// UpsertCheckRequest — like CreateCheckRequest and UpdateCheckRequest — has no
+// such field, so editing it in a tracked file changes nothing anywhere.
+//
+// Reporting it as an ordinary change, plus a warning naming it, is the least
+// dishonest option available here. Silence was worse than a false update: the
+// plan said `unchanged`, apply wrote nothing, and the instance quietly did not
+// match the file — a false no-op is exactly the failure this spec exists to
+// remove, pointing the other way. Making the field writable is a real feature
+// (create, update, bounds, dashboard, OpenAPI) and belongs to its own spec.
+func unappliableChangeFields() []string {
+	return []string{fieldEscalationThreshold}
+}
+
+// unappliableWarnings returns one advisory per unappliable field a plan
+// actually changes, naming the slugs so the operator can act on it.
+func unappliableWarnings(changedSlugs map[string][]string) []string {
+	warnings := make([]string, 0, len(changedSlugs))
+
+	for _, field := range unappliableChangeFields() {
+		slugs := changedSlugs[field]
+		if len(slugs) == 0 {
+			continue
+		}
+
+		sort.Strings(slugs)
+
+		warnings = append(warnings, fmt.Sprintf(
+			"%s differs from the instance on %s, and no write path can apply it: the exporter emits the "+
+				"stored value but no request carries the field. The plan reports the difference rather than "+
+				"calling it unchanged — the instance keeps its current value until the field becomes writable.",
+			field, strings.Join(slugs, ", ")))
+	}
+
+	if len(warnings) == 0 {
+		return nil
+	}
+
+	return warnings
+}
+
+// collectUnappliable records the unappliable fields one plan entry changes.
+func collectUnappliable(changedSlugs map[string][]string, slug string, changes []CheckFieldChange) {
+	for _, field := range unappliableChangeFields() {
+		for i := range changes {
+			if changes[i].Field == field {
+				changedSlugs[field] = append(changedSlugs[field], slug)
+
+				break
+			}
+		}
+	}
+}
+
 // maskedValue is what a field diff prints instead of a secret or a
 // reference-derived value. A plan is printed in CI logs and pasted into
 // tickets; it must never be the thing that publishes a credential.
@@ -127,8 +190,8 @@ func (s *Service) loadOrgCheckSnapshot(ctx context.Context, orgUID string) (*org
 //
 //   - regions and group are compared only when the document names them — the
 //     upsert leaves both alone otherwise;
-//   - `escalationThreshold` is never compared: UpsertCheckRequest does not
-//     carry it, so an import cannot change it;
+//   - `escalationThreshold` IS compared even though no write path applies it,
+//     and the plan carries a warning saying so (unappliableChangeFields);
 //   - dependsOn is additive (import pass 2 merges), so only an edge the
 //     document adds or re-kinds counts;
 //   - a nil alerting pointer means "no opinion", never "reset to zero".
@@ -174,6 +237,9 @@ func (s *Service) diffCheck(
 		name            string
 		current, wanted *int
 	}{
+		// escalationThreshold is diffed even though no write path applies it —
+		// see unappliableChangeFields for why reporting it beats silence.
+		{fieldEscalationThreshold, current.EscalationThreshold, desired.EscalationThreshold},
 		{fieldConfirmationPeriodSeconds, current.ConfirmationPeriodSeconds, desired.ConfirmationPeriodSeconds},
 		{fieldRecoveryPeriodSeconds, current.RecoveryPeriodSeconds, desired.RecoveryPeriodSeconds},
 		{"reopenCooldownMultiplier", current.ReopenCooldownMultiplier, desired.ReopenCooldownMultiplier},

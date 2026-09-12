@@ -306,7 +306,19 @@ Everything but the last is decidable offline, which is exactly what
 `sp checks validate config.yaml` runs with no token and no network.
 `UNRESOLVED_SECRET_REF` needs the organization's parameters, so only this
 endpoint reports it — and it is the same rule `/import` and `/apply` answer
-`400` on, so a document this endpoint calls valid is one they accept.
+`400` on.
+
+Two things follow from the endpoint knowing the organization, and together they
+are what makes "a document this endpoint calls valid is one `/import` and
+`/apply` accept" true rather than aspirational:
+
+- a `${param:…}` reference is resolved against the org's real parameters;
+- the `secrets: stripped` suppression is applied only where the import merge it
+  stands in for will actually happen — on a check that **already exists**. A
+  stripped document whose checks are new is a create with nothing to merge, so
+  the missing declared secret is reported here exactly as `/import` reports it.
+  The offline validator cannot tell and assumes the check exists, which is the
+  only assumption under which an export validates with no network.
 
 With `?plan=true` (admin) the response also carries `plan`: the
 [apply dry run](#post-apiv1orgsorgchecksapply), so one call answers both *"is it
@@ -440,7 +452,21 @@ Two things a diff deliberately cannot claim, both reported as **masked**
   field) that the document nonetheless supplies — the stored value lives in an
   encrypted column a dry run must not open;
 - any value containing a `${env:}`/`${param:}` reference, so a plan pasted into
-  a ticket never publishes one.
+  a ticket never publishes one. Only the reference itself is masked; the
+  surrounding value is shown, because that is what names the field that moved.
+
+And one field the plan reports but cannot apply: **`escalationThreshold`**. The
+exporter emits it, but no request struct carries it — not `UpsertCheckRequest`,
+not `POST /checks`, not `PATCH /checks/:uid` — so editing it in a tracked file
+changes nothing anywhere. It is diffed all the same, and the response carries a
+`warnings[]` entry naming the field and the affected slugs. Reporting a
+difference nobody can apply is unpleasant; reporting `unchanged` for a file that
+differs would be the same false no-op this endpoint exists to remove. Making the
+field writable is its own spec.
+
+`unmanaged` answers *who owns this check*, never *does it match*: an unmanaged
+entry carries its `changes[]` too, so a first-time organization (where every
+check is unmanaged) still gets a real answer rather than an empty one.
 
 **Secret references.** Config string values may contain `${env:NAME}` and
 `${param:KEY}` references. Since spec 2026-09-11-03 the **reference is what is
@@ -521,6 +547,14 @@ Each converted document is applied under a per-source managed manifest
 the same source updates in place and stays idempotent. `prune` is never enabled
 for a conversion — a foreign export is a partial view of the org.
 
+Re-converting an unchanged source answers `created=0 updated=0` with the whole
+set in `unchanged` (spec 2026-09-11-04), which is how "nothing to do" is told
+apart from "everything rewritten". The one exception is a source that inlines a
+credential (a Better Stack basic-auth monitor, an UptimeRobot custom header):
+the stored value lives in an encrypted column a dry run must not open, so that
+entry is reported as an `update` whose `changes[]` are **masked** rather than
+claimed equal.
+
 **Response** (the apply/dry-run shape, plus conversion metadata):
 ```json
 {
@@ -528,7 +562,7 @@ for a conversion — a foreign export is a partial view of the org.
   "converted": 12,
   "manifest": "gatus",
   "dryRun": true,
-  "created": 12, "updated": 0, "unmanaged": 0,
+  "created": 12, "updated": 0, "unchanged": 0, "unmanaged": 0,
   "plan": [{"slug": "back-end", "action": "create"}],
   "errors": [],
   "warnings": [

@@ -79,8 +79,15 @@ sp checks validate config.yaml
 
 That is **the** validator. It runs the server's own `ValidateDocument` — the
 same function `/import`, `/apply` and the endpoint above run — so it cannot
-drift from the server the way a re-implementation must. Everything except
-`UNRESOLVED_SECRET_REF` (which needs the org's parameters) is decidable offline.
+drift from the server the way a re-implementation must.
+
+Two things need the organization and so are answered only by the endpoint, never
+offline: whether a `${param:…}` reference resolves, and whether a check the
+document describes already exists (which is what decides if an omitted declared
+secret is a legitimate `secrets: stripped` omission or a create that `/import`
+will refuse). The offline validator assumes the check exists — the only
+assumption under which an export validates with no network — so post the file to
+`/checks/validate` when you want the gate to match what the write path will do.
 
 An org-specific convention — stack roots, per-environment symmetry, naming
 policy — is genuinely not the server's business and belongs in whatever tooling
@@ -122,11 +129,26 @@ prints one row per check — `create`, `update` with the fields that move,
 ≥2 (error). `--text` renders the old textual diff instead, which is also the
 automatic fallback when the caller cannot plan (plans are admin-only).
 
-`created=0 updated=0 deleted=0` is the answer: the file matches the instance.
-Before spec 2026-09-11-04 it could not be obtained from the server at all —
-`import --dry-run` counted every matched slug as an update, so re-importing a
-byte-for-byte copy of the current export reported `updated=482` — and every
-tool that needed the answer built its own normalizer and drifted.
+`created=0 updated=0 deleted=0 unmanaged=0` is the answer: the file matches the
+instance. Before spec 2026-09-11-04 it could not be obtained from the server at
+all — `import --dry-run` counted every matched slug as an update, so
+re-importing a byte-for-byte copy of the current export reported `updated=482`
+— and every tool that needed the answer built its own normalizer and drifted.
+
+**`unmanaged` counts as drift.** It answers "who owns this check?", never "does
+it match?", and for an organization that has never run `apply` *every* check is
+unmanaged — so treating it as agreement made `sp checks diff` print "No drift"
+for a file that disagreed with all of them. Unmanaged entries carry their field
+diff like any other, and the command says how many there are.
+
+### The one field a plan cannot apply
+
+`escalationThreshold` is exported but is not carried by any write request, so
+editing it in a tracked file changes nothing. The plan reports the difference
+and adds a warning naming the field and the slugs; it will keep reporting it
+until the field becomes writable. That is deliberate — the alternative is
+answering `unchanged` for a file that differs, which is the failure mode this
+whole page exists to remove.
 
 ## The managed scope
 

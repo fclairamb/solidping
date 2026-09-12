@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // ValidateDocumentResponse is what POST /api/v1/orgs/:org/checks/validate
@@ -64,12 +66,20 @@ func IsDocumentBody(body []byte) bool {
 func (s *Service) ValidateDocumentForOrg(
 	ctx context.Context, orgSlug string, doc *ExportDocument, withPlan bool,
 ) (ValidateDocumentResponse, error) {
-	issues := ValidateDocument(doc)
-
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return ValidateDocumentResponse{}, ErrOrganizationNotFound
 	}
+
+	// Knowing which slugs already exist is what keeps this endpoint's answer
+	// and the write path's answer the same. A `secrets: stripped` document
+	// legitimately omits a declared secret for a check that EXISTS (the import
+	// merge restores it) and illegitimately for one that does not (a create has
+	// nothing to merge, and /import refuses it). Offline, ValidateDocument has
+	// to assume the former; here we can tell.
+	exists := s.existingSlugPredicate(ctx, org.UID)
+
+	issues := validateDocumentAgainst(doc, exists)
 
 	issues = append(issues, s.secretRefIssues(ctx, org.UID, doc)...)
 
@@ -89,6 +99,33 @@ func (s *Service) ValidateDocumentForOrg(
 	}
 
 	return resp, nil
+}
+
+// existingSlugPredicate returns "does this slug already exist in the org?",
+// backed by one query rather than one per check.
+//
+// A failed lookup answers FALSE for everything, which is the conservative
+// direction: the validator then reports the stripped-secret complaints rather
+// than suppressing them, so a transient database problem can produce noise but
+// never a false all-clear.
+func (s *Service) existingSlugPredicate(ctx context.Context, orgUID string) func(string) bool {
+	rows, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
+	if err != nil {
+		return func(string) bool { return false }
+	}
+
+	slugs := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if row.Slug != nil && *row.Slug != "" {
+			slugs[*row.Slug] = struct{}{}
+		}
+	}
+
+	return func(slug string) bool {
+		_, ok := slugs[slug]
+
+		return ok
+	}
 }
 
 // secretRefIssues reports one issue per check whose config carries a reference

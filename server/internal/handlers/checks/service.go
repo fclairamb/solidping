@@ -3662,6 +3662,8 @@ func (s *Service) importChecks(
 		result.record(doc.Checks[i].Slug, action, changes)
 	}
 
+	result.Warnings = append(result.Warnings, unappliableWarnings(unappliableFromImportPlan(result.Plan))...)
+
 	// Pass 2: apply dependsOn after every check has been upserted, so a
 	// payload can declare both endpoints of an edge for the first time.
 	// Skipped on dry-run since pass 1 only simulated the upserts.
@@ -3675,6 +3677,18 @@ func (s *Service) importChecks(
 	result.Caveats = caveats.list()
 
 	return result, nil
+}
+
+// unappliableFromImportPlan indexes an import plan by the unappliable fields it
+// changes. Separate from the apply adapter only because the two plan entry
+// types differ; both feed the same unappliableWarnings.
+func unappliableFromImportPlan(plan []ImportPlanEntry) map[string][]string {
+	changedSlugs := map[string][]string{}
+	for i := range plan {
+		collectUnappliable(changedSlugs, plan[i].Slug, plan[i].Changes)
+	}
+
+	return changedSlugs
 }
 
 // record files one decided entry: the plan row plus the counter it belongs to.
@@ -4010,6 +4024,7 @@ func (s *Service) importSingleCheck(
 
 	// Computed from the PRE-write snapshot, so a real run reports the same
 	// decision its dry run did rather than "everything I just wrote changed".
+	// It never decides create-vs-update on its own — see resolveImportAction.
 	action, changes := s.planImportAction(ctx, org, item)
 
 	if dryRun {
@@ -4019,11 +4034,9 @@ func (s *Service) importSingleCheck(
 			return "", nil, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
 		}
 
-		if created {
-			return ActionCreate, nil, nil
-		}
+		resolved, resolvedChanges := resolveImportAction(created, action, changes)
 
-		return action, changes, nil
+		return resolved, resolvedChanges, nil
 	}
 
 	_, created, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
@@ -4041,11 +4054,38 @@ func (s *Service) importSingleCheck(
 		return "", nil, importErr
 	}
 
+	resolved, resolvedChanges := resolveImportAction(created, action, changes)
+
+	return resolved, resolvedChanges, nil
+}
+
+// resolveImportAction is the ONE place create-vs-update is decided, and it
+// defers to what the upsert actually did rather than to what the planner could
+// see.
+//
+// The distinction is not academic. The snapshot is keyed by SLUG, while the
+// upsert resolves uid-or-slug (GetCheckByUidOrSlug) and nothing constrains a
+// document entry's `slug` to be a slug — so an entry naming a UID matches a row
+// the snapshot never indexed. Letting the planner's "I don't know this slug"
+// stand would then count an UPDATE as a create, which is the counting lie this
+// whole spec exists to remove, reintroduced one layer down.
+//
+// So: `created` from the write (or from PlanUpsert's identical lookup) decides.
+// A planner that saw nothing for a row the upsert did find yields `update` with
+// no field list — an equality that cannot be proven is never reported as
+// equality.
+func resolveImportAction(
+	created bool, planned string, changes []CheckFieldChange,
+) (string, []CheckFieldChange) {
 	if created {
-		return ActionCreate, nil, nil
+		return ActionCreate, nil
 	}
 
-	return action, changes, nil
+	if planned == "" {
+		return ActionUpdate, nil
+	}
+
+	return planned, changes
 }
 
 // importItem carries one document entry plus everything the planner and the
@@ -4064,20 +4104,16 @@ type importItem struct {
 	diffOpts       diffOptions
 }
 
-// planImportAction decides create/update/unchanged for one entry against the
-// pre-write snapshot. A slug the snapshot does not know is a create; one it
-// knows is an update only when at least one field actually moves.
-//
-// The snapshot is keyed by SLUG while the upsert resolves uid-or-slug, so a
-// document entry naming a UID can match a row the snapshot did not index. That
-// falls through to `update` with no field list rather than to a false
-// `unchanged` — an unprovable equality is never reported as equality.
+// planImportAction decides update-vs-unchanged for one entry against the
+// pre-write snapshot, and ONLY that: an entry the snapshot does not know
+// answers "" — "no opinion" — because whether that is a create is the upsert's
+// answer to give, not the planner's (see resolveImportAction).
 func (s *Service) planImportAction(
 	ctx context.Context, org *models.Organization, item *importItem,
 ) (string, []CheckFieldChange) {
 	current, existing := item.snapshot.lookup(item.entry.Slug)
 	if current == nil || existing == nil {
-		return ActionCreate, nil
+		return "", nil
 	}
 
 	changes := s.diffCheck(ctx, org, existing, current, item.entry, item.diffOpts)
