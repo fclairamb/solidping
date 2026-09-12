@@ -49,10 +49,10 @@ func TestEntryNamingAUidIsCountedAsTheUpdateItIs(t *testing.T) {
 	dry, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, byUID, true)
 	r.NoError(err)
 	r.Empty(dry.Errors, "%+v", dry.Errors)
-	r.Equalf(0, dry.Created, "an entry naming an existing check's UID updates it, it does not create: %+v", dry.Plan)
-	r.Equal(1, dry.Updated)
-	r.Equal(0, dry.Unchanged,
-		"an equality the planner could not compute must never be reported as equality")
+	r.Equalf(0, dry.Created,
+		"an entry naming an existing check's UID updates it, it does not create: %+v", dry.Plan)
+	r.Equal(0, dry.Updated)
+	r.Equal(1, dry.Unchanged, "the identifier resolves uid-or-slug, so the diff is real: %+v", dry.Plan)
 
 	// The real run agrees with its own dry run, and really did not create a
 	// second row — the count and the database say the same thing.
@@ -60,11 +60,77 @@ func TestEntryNamingAUidIsCountedAsTheUpdateItIs(t *testing.T) {
 	r.NoError(err)
 	r.Empty(applied.Errors, "%+v", applied.Errors)
 	r.Equal(0, applied.Created)
-	r.Equal(1, applied.Updated)
+	r.Equal(1, applied.Unchanged)
 
 	all, _, err := rig.dbSvc.ListChecks(t.Context(), rig.org.UID, nil)
 	r.NoError(err)
 	r.Len(all, 1, "the import must not have created a second check")
+
+	// A UID-named entry that really does differ is an update naming the field
+	// — the resolution is not a blanket "call everything unchanged".
+	byUID.Checks[0].Config = map[string]any{"url": "https://acme.com/moved"}
+
+	moved, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, byUID, true)
+	r.NoError(err)
+	r.Equal(0, moved.Created)
+	r.Equal(1, moved.Updated)
+	r.Equal("config.url", moved.Plan[0].Changes[0].Field)
+}
+
+// TestApplyDryRunResolvesTheSameIdentifierTheApplyDoes closes the second
+// decision point.
+//
+// The apply DRY RUN computes its own plan, while the real apply routes through
+// importChecks and therefore through resolveImportAction. Those two deciding
+// create-vs-update differently is precisely the class of defect this spec
+// exists to remove — a dry run that says one thing and a write that does
+// another — so the plan resolves the identifier the way the upsert does, and
+// this pins that the two answers match.
+func TestApplyDryRunResolvesTheSameIdentifierTheApplyDoes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	rig := newRoundTripRig(t)
+
+	// Applied (not merely created) so the check carries the managed label and
+	// the plan can speak about ownership as well as content.
+	seed := importOne(rig.org.Slug, checks.ExportCheck{
+		Name: "Live", Slug: "live", Type: "http", Enabled: true,
+		Config: map[string]any{"url": "https://acme.com/live"},
+	})
+	_, err := rig.svc.ApplyChecks(t.Context(), rig.org.Slug, seed, checks.ApplyOptions{})
+	r.NoError(err)
+
+	stored, err := rig.dbSvc.GetCheckByUidOrSlug(t.Context(), rig.org.UID, "live")
+	r.NoError(err)
+
+	byUID := importOne(rig.org.Slug, checks.ExportCheck{
+		Name: "Live", Slug: stored.UID, Type: "http", Enabled: true,
+		Config: map[string]any{"url": "https://acme.com/live"},
+	})
+
+	dry, err := rig.svc.ApplyChecks(t.Context(), rig.org.Slug, byUID, checks.ApplyOptions{DryRun: true})
+	r.NoError(err)
+	r.Equalf(0, dry.Created, "the dry run must not plan a create for a row the apply will update: %+v", dry.Plan)
+	r.Equal(1, dry.Unchanged)
+
+	real1, err := rig.svc.ApplyChecks(t.Context(), rig.org.Slug, byUID, checks.ApplyOptions{})
+	r.NoError(err)
+	r.Empty(real1.Errors, "%+v", real1.Errors)
+	r.Equalf(dry.Created, real1.Created, "the apply must agree with its own dry run")
+	r.Equal(dry.Unchanged, real1.Unchanged)
+
+	all, _, err := rig.dbSvc.ListChecks(t.Context(), rig.org.UID, nil)
+	r.NoError(err)
+	r.Len(all, 1)
+
+	// And prune does not delete the check the manifest describes under its
+	// UID: ownership is keyed on the ROW's slug, not on what the file called
+	// it. Without that, the managed `live` would read as absent from the file.
+	pruned, err := rig.svc.ApplyChecks(t.Context(), rig.org.Slug, byUID,
+		checks.ApplyOptions{DryRun: true, Prune: true})
+	r.NoError(err)
+	r.Equalf(0, pruned.Deleted, "a check named by UID is present in the file: %+v", pruned.Plan)
 }
 
 // TestReferenceDerivedValuesAreMaskedInTheDiff covers the second class the spec

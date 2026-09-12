@@ -132,16 +132,45 @@ type diffOptions struct {
 type orgCheckSnapshot struct {
 	current map[string]*ExportCheck
 	rows    map[string]*models.Check
+	byUID   map[string]*models.Check
 	labels  map[string][]*models.Label
 }
 
-// lookup returns the projection and row for a slug, or (nil, nil).
-func (snap *orgCheckSnapshot) lookup(slug string) (*ExportCheck, *models.Check) {
+// lookup resolves a document entry's identifier the way the WRITE path
+// resolves it — uid-or-slug, as GetCheckByUidOrSlug does — and returns the
+// projection and the row, or (nil, nil).
+//
+// Resolving both is what keeps the plan and the apply from disagreeing about
+// whether a row exists. Nothing constrains a document entry's `slug` to be a
+// slug, so an entry naming a UID is a row the upsert finds and a slug-only
+// index does not; a planner that indexed only slugs called that a `create` for
+// a check it was about to UPDATE.
+func (snap *orgCheckSnapshot) lookup(identifier string) (*ExportCheck, *models.Check) {
 	if snap == nil {
 		return nil, nil
 	}
 
-	return snap.current[slug], snap.rows[slug]
+	if row, ok := snap.rows[identifier]; ok {
+		return snap.current[identifier], row
+	}
+
+	row, ok := snap.byUID[identifier]
+	if !ok || row.Slug == nil {
+		return nil, nil
+	}
+
+	return snap.current[*row.Slug], row
+}
+
+// ownedSlug is the SLUG of the row an identifier resolves to — which is not the
+// identifier itself when the document named a UID.
+func (snap *orgCheckSnapshot) ownedSlug(identifier string) string {
+	_, row := snap.lookup(identifier)
+	if row == nil || row.Slug == nil {
+		return identifier
+	}
+
+	return *row.Slug
 }
 
 // loadOrgCheckSnapshot reads the org's whole check set — rows, labels, group
@@ -163,6 +192,7 @@ func (s *Service) loadOrgCheckSnapshot(ctx context.Context, orgUID string) (*org
 	snap := &orgCheckSnapshot{
 		current: make(map[string]*ExportCheck, len(projected)),
 		rows:    make(map[string]*models.Check, len(rows)),
+		byUID:   make(map[string]*models.Check, len(rows)),
 		labels:  labelsMap,
 	}
 
@@ -173,6 +203,8 @@ func (s *Service) loadOrgCheckSnapshot(ctx context.Context, orgUID string) (*org
 	}
 
 	for _, row := range rows {
+		snap.byUID[row.UID] = row
+
 		if row.Slug != nil && *row.Slug != "" {
 			snap.rows[*row.Slug] = row
 		}

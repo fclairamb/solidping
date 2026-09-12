@@ -173,34 +173,53 @@ func (s *Service) computeApplyPlan(
 			continue
 		}
 
-		switch {
-		case !existingSlugs[entry.Slug]:
+		// Resolved uid-or-slug, exactly as the upsert resolves it. The apply
+		// itself goes through importChecks → resolveImportAction, so deciding
+		// create-vs-update differently here would put a SECOND decision point
+		// next to the one spec 2026-09-11-04 reduced them to — and it would
+		// disagree: an entry naming a UID would dry-run as `create` and then
+		// apply as `update`.
+		_, existingRow := snapshot.lookup(entry.Slug)
+		if existingRow == nil {
 			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: ApplyActionCreate})
-		case managedSlugs[entry.Slug]:
+
+			continue
+		}
+
+		// Ownership and delete-by-absence are keyed on the row's own SLUG,
+		// which is not the identifier when the document named a UID. Marking
+		// it present is what stops prune from deleting a managed check the
+		// manifest does describe, under a name the file spells differently.
+		owned := snapshot.ownedSlug(entry.Slug)
+		fileSlugs[owned] = true
+
+		if managedSlugs[owned] {
 			// The heart of the round trip: a managed slug whose normalized
 			// effective state already matches the manifest is `unchanged`, not
 			// `update`. Computed against the snapshot the exporter itself
 			// produces, so re-applying a fresh export is provably a no-op.
 			action, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
 			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: action, Changes: changes})
-		default:
-			// Slug exists but is NOT managed by this manifest: report, never
-			// auto-adopt. The apply will (re)stamp the managed label so a future
-			// apply treats it as owned, but it is surfaced here for visibility.
-			//
-			// It is diffed all the same. `unmanaged` answers "who owns this?",
-			// not "does it match?", and conflating the two made
-			// `sp checks diff` print "No drift" for a first-time organization
-			// where EVERY check is unmanaged and the file disagreed with all of
-			// them — the exact false all-clear this spec exists to remove.
-			_, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
-			plan = append(plan, ApplyPlanEntry{
-				Slug:    entry.Slug,
-				Action:  ApplyActionUnmanaged,
-				Reason:  "slug exists without the managed label for this manifest",
-				Changes: changes,
-			})
+
+			continue
 		}
+
+		// Slug exists but is NOT managed by this manifest: report, never
+		// auto-adopt. The apply will (re)stamp the managed label so a future
+		// apply treats it as owned, but it is surfaced here for visibility.
+		//
+		// It is diffed all the same. `unmanaged` answers "who owns this?",
+		// not "does it match?", and conflating the two made `sp checks diff`
+		// print "No drift" for a first-time organization where EVERY check is
+		// unmanaged and the file disagreed with all of them — the exact false
+		// all-clear this spec exists to remove.
+		_, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
+		plan = append(plan, ApplyPlanEntry{
+			Slug:    entry.Slug,
+			Action:  ApplyActionUnmanaged,
+			Reason:  "slug exists without the managed label for this manifest",
+			Changes: changes,
+		})
 	}
 
 	// Delete-by-absence: managed checks no longer present in the file.

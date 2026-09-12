@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -121,24 +122,91 @@ func TestCLICoverage_ValidateCheck(t *testing.T) {
 
 	apiClient := cliCovAuthedClient(ctx, t, ts)
 
-	validResp, err := apiClient.ValidateCheckWithResponse(ctx, TestOrgSlug, client.ValidateCheckJSONRequestBody{
-		Type:   "http",
-		Config: map[string]interface{}{"url": "https://example.com"},
-	})
-	r.NoError(err)
-	r.Equal(200, validResp.StatusCode())
-	r.NotNil(validResp.JSON200)
-	r.True(validResp.JSON200.Valid)
+	valid := cliCovValidate(ctx, t, apiClient,
+		`{"type":"http","config":{"url":"https://example.com"}}`)
+	r.True(valid.Valid)
 
-	invalidResp, err := apiClient.ValidateCheckWithResponse(ctx, TestOrgSlug, client.ValidateCheckJSONRequestBody{
-		Type:   "not-a-real-type",
-		Config: map[string]interface{}{},
-	})
-	r.NoError(err)
-	r.Equal(200, invalidResp.StatusCode())
-	r.NotNil(invalidResp.JSON200)
-	r.False(invalidResp.JSON200.Valid)
-	r.NotNil(invalidResp.JSON200.Fields)
+	invalid := cliCovValidate(ctx, t, apiClient,
+		`{"type":"not-a-real-type","config":{}}`)
+	r.False(invalid.Valid)
+	r.NotEmpty(invalid.Fields)
+
+	// The SAME route, given a whole config-as-code document, answers in the
+	// other shape (spec 2026-09-11-04). Covered here because the two forms
+	// share one operation, and a regression in the content negotiation would
+	// otherwise only show up as a validator that silently stopped validating.
+	doc := cliCovValidateDocument(ctx, t, apiClient, `version: 2
+organization: `+TestOrgSlug+`
+secrets: stripped
+checks:
+  - name: Bad Region
+    slug: bad-region
+    type: http
+    regions: ["Paris!"]
+    config:
+      url: https://acme.com/bad
+`)
+	r.False(doc.Valid)
+	r.NotEmpty(doc.Issues)
+	r.Equal("REGION_FORMAT", doc.Issues[0].Code, "%+v", doc.Issues)
+}
+
+// cliCovValidateResult mirrors the single-check half of POST /checks/validate.
+type cliCovValidateResult struct {
+	Valid  bool `json:"valid"`
+	Fields []struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	} `json:"fields"`
+}
+
+// cliCovValidateDocumentResult mirrors the document half of the same route.
+type cliCovValidateDocumentResult struct {
+	Valid  bool `json:"valid"`
+	Issues []struct {
+		Slug    string `json:"slug"`
+		Field   string `json:"field"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"issues"`
+}
+
+// cliCovValidate posts a single check definition.
+//
+// It goes through SolidPingClient.ValidateChecks rather than the generated
+// operation on purpose: /checks/validate is content-negotiated, so one
+// operation carries two request shapes, two response shapes and a `plan` query
+// flag only the document form understands. The generated signature cannot
+// express that, and pinning these tests to it is what would make the OpenAPI
+// spec unable to describe its own endpoint.
+func cliCovValidate(
+	ctx context.Context, t *testing.T, apiClient *client.SolidPingClient, body string,
+) cliCovValidateResult {
+	t.Helper()
+
+	raw, err := apiClient.ValidateChecks(ctx, TestOrgSlug, []byte(body), "application/json", false)
+	require.NoError(t, err)
+
+	var out cliCovValidateResult
+	require.NoError(t, json.Unmarshal(raw, &out))
+
+	return out
+}
+
+// cliCovValidateDocument posts a whole export/manifest document, as YAML.
+func cliCovValidateDocument(
+	ctx context.Context, t *testing.T, apiClient *client.SolidPingClient, body string,
+) cliCovValidateDocumentResult {
+	t.Helper()
+
+	raw, err := apiClient.ValidateChecks(ctx, TestOrgSlug, []byte(body), "application/yaml", false)
+	require.NoError(t, err)
+
+	var out cliCovValidateDocumentResult
+	require.NoError(t, json.Unmarshal(raw, &out))
+
+	return out
 }
 
 // TestCLICoverage_CloneCheck covers the cloneCheck operation.
