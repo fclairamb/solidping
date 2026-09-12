@@ -1288,6 +1288,10 @@ func (m *mockDBService) ListOrgParametersByKey(_ context.Context, _ string) ([]*
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListOrgParameters(_ context.Context, _ string) ([]*models.Parameter, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetOrgParameter(_ context.Context, _, _ string) (*models.Parameter, error) {
 	panic("not implemented")
 }
