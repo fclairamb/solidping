@@ -1,0 +1,57 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SolidPing version
+      description: From `/api/mgmt/version` or the dashboard sidebar
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Self-hosted (Docker)
+        - Self-hosted (binary)
+        - SaaS (solidping.io)
+        - Agent only (sp agent)
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - PostgreSQL
+        - SQLite
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: check-type
+    attributes:
+      label: Check type involved (if any)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        `logs/backend.log` in dev, or your container logs. Please redact
+        tokens and real hostnames first.
+      render: shell
