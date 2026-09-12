@@ -306,3 +306,32 @@ func TestFormatPeriodBound(t *testing.T) {
 	r.Equal("6h", formatPeriodBound(6*time.Hour))
 	r.Equal("90m", formatPeriodBound(90*time.Minute))
 }
+
+// TestSecretPlaceholderShapeFor is the unit test on the shape resolver
+// itself: a map-shaped secret field must get an empty map (not a string, or
+// FromMap rejects it outright), a string-shaped field keeps the string
+// placeholder, and anything the resolver can't place a field for — an
+// unknown key, an unknown check type — falls back to the string placeholder
+// rather than erroring, because the injector only widens what a throwaway
+// Validate call sees.
+func TestSecretPlaceholderShapeFor(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal(map[string]any{}, secretPlaceholderShapeFor("http", "secretHeaders"),
+		"a map[string]string config field must get an empty map, not a string")
+	r.Equal(map[string]any{}, secretPlaceholderShapeFor("grpc", "secretMetadata"))
+	r.Equal(map[string]any{}, secretPlaceholderShapeFor("js", "secrets"))
+
+	r.Equal(placeholderSecretValue, secretPlaceholderShapeFor("http", "password"),
+		"a string config field keeps the plain string placeholder")
+	r.Equal(placeholderSecretValue, secretPlaceholderShapeFor("sftp", "password"))
+
+	r.Equal(placeholderPrivateKeyPEM, secretPlaceholderShapeFor("sftp", "private_key"),
+		"private_key keeps its dedicated PEM value regardless of check type")
+
+	r.Equal(placeholderSecretValue, secretPlaceholderShapeFor("http", "notAKnownField"),
+		"a key with no matching struct field falls back to the string placeholder")
+	r.Equal(placeholderSecretValue, secretPlaceholderShapeFor("not-a-real-check-type", "secretHeaders"),
+		"an unknown check type falls back to the string placeholder rather than erroring")
+}
