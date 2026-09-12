@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -93,11 +92,16 @@ func (rig *roundTripRig) seedSampleChecks(t *testing.T) int {
 	for _, checkType := range checkerdef.ListCheckTypes(nil) {
 		for i, sample := range registry.GetAllSampleConfigs(nil)[checkType] {
 			slug := fmt.Sprintf("sample-%s-%d", strings.ReplaceAll(string(checkType), "_", "-"), i)
-			period := defaultPeriodFor(checkType)
 
+			// Deliberately NO period: CreateCheck must now resolve the
+			// type's own default (spec 2026-09-11-07) rather than the flat
+			// 1-minute constant that used to land below the floor for
+			// ssl/domain/dnsbl and export a document their own import
+			// refused. Letting every sample go through with no period is
+			// what makes this round trip cover that bug — see
+			// TestExportRoundTripsThroughValidateAndImport below.
 			if rig.create(t, checks.CreateCheckRequest{
-				Name: "Sample " + slug, Slug: slug, Type: string(checkType),
-				Config: sample.Config, Period: &period,
+				Name: "Sample " + slug, Slug: slug, Type: string(checkType), Config: sample.Config,
 			}) {
 				created++
 			}
@@ -135,24 +139,6 @@ func (rig *roundTripRig) seedSampleChecks(t *testing.T) int {
 	created++
 
 	return created
-}
-
-// defaultPeriodFor is the check type's own default period, as a duration
-// string.
-//
-// Creating each sample WITH it sidesteps an unrelated defect: a check created
-// with no period at all gets models.NewCheck's flat 1m, even for a type whose
-// floor is higher (ssl 1h, dnsbl 15m, domain 6h) — and THAT check exports a
-// period its own import refuses. Real and worth fixing, but it is a period
-// bug, not an export-redaction one, and letting it fail here would bury what
-// this test exists to watch.
-func defaultPeriodFor(checkType checkerdef.CheckType) string {
-	period := time.Minute
-	if meta := checkerdef.GetCheckTypeMeta(checkType); meta != nil && meta.DefaultPeriod > 0 {
-		period = meta.DefaultPeriod
-	}
-
-	return period.String()
 }
 
 // issuesOwnedByThisSpec used to drop two classes of ValidateDocument finding
