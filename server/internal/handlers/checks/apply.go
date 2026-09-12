@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // applyCountCreated names the config.applied payload's created counter. A
@@ -60,14 +59,18 @@ var (
 	// more managed checks than the configured cap allows (without force).
 	ErrDeletionCapExceeded = errors.New("deletion cap exceeded")
 	// ErrUnresolvedSecretRef is returned when a ${env:…}/${param:…} reference
-	// cannot be resolved at apply time.
-	ErrUnresolvedSecretRef = errors.New("unresolved secret reference")
+	// cannot be resolved. It is secretref.ErrUnresolved under its historical
+	// name, kept so the handler's 400 mapping and every errors.Is in the test
+	// suite keep naming the thing they already named.
+	ErrUnresolvedSecretRef = secretref.ErrUnresolved
 )
 
-// secretRefPattern matches ${env:NAME} and ${param:KEY} references inside
-// config string values. The scheme is env|param; the name is everything up to
-// the closing brace.
-var secretRefPattern = regexp.MustCompile(`\$\{(env|param):([^}]+)\}`)
+// secretRefPattern is the reference grammar, which now lives in
+// internal/secretref so the write path, the dispatch path and the executing
+// process cannot drift apart on what a reference looks like.
+//
+//nolint:gochecknoglobals // alias onto the one compiled pattern
+var secretRefPattern = secretref.Pattern
 
 // ApplyOptions controls a single apply run.
 type ApplyOptions struct {
@@ -217,141 +220,62 @@ func (s *Service) computeApplyPlan(
 	return plan, nil
 }
 
-// resolveSecretRefs walks every check's config, replacing ${env:NAME} and
-// ${param:KEY} references with their resolved plaintext values. The resolved
-// config is what feeds the existing upsert path, which envelopes secret fields
-// into config_private. A missing reference is a hard error. When the
-// credentials service is disabled (no master key) a resolved reference appends
-// a warning (the secret will land in plaintext config). Mutates doc in place.
-func (s *Service) resolveSecretRefs(
+// validateSecretRefs walks every check's config and proves that every
+// ${env:…}/${param:…} reference it carries RESOLVES — without storing what it
+// resolved. It is the shared write-path gate: /import, /apply and a dry run of
+// either all call it, so a document that one endpoint accepts is a document the
+// other accepts, and a missing reference fails before any mutation.
+//
+// It deliberately does not mutate the document (spec 2026-09-11-03). Until that
+// spec this function did `cfg[key] = resolved`, which put the resolved
+// plaintext into whatever key held the reference — and only SecretFields() are
+// split out into config_private, so a password resolved into an HTTP check's
+// `body` was stored in the public `config` column and handed back by
+// GET /checks/:uid and /checks/export. The reference is now what is stored; the
+// value is materialized at execution (see secretref.APIResolver /
+// secretref.ExecutionResolver).
+func (s *Service) validateSecretRefs(
 	ctx context.Context, orgUID string, doc *ExportDocument,
 ) ([]string, error) {
-	var warnings []string
+	resolve := secretref.DocumentResolver(s.db, orgUID)
 
-	resolvedAnySecret := false
+	sawEnvRef := false
 
 	for idx := range doc.Checks {
 		cfg := doc.Checks[idx].Config
+
 		for key, val := range cfg {
 			strVal, ok := val.(string)
-			if !ok {
+			if !ok || !secretref.Contains(strVal) {
 				continue
 			}
 
-			if !secretRefPattern.MatchString(strVal) {
-				continue
+			for _, match := range secretref.Pattern.FindAllStringSubmatch(strVal, -1) {
+				if match[1] == secretref.SchemeEnv {
+					sawEnvRef = true
+				}
 			}
 
-			resolved, didResolve, err := s.resolveRefString(ctx, orgUID, strVal)
-			if err != nil {
+			if _, _, err := secretref.ResolveString(ctx, strVal, resolve); err != nil {
 				return nil, fmt.Errorf("check %q config %q: %w", doc.Checks[idx].Slug, key, err)
 			}
-
-			cfg[key] = resolved
-			if didResolve {
-				resolvedAnySecret = true
-			}
 		}
 	}
 
-	if resolvedAnySecret && !s.creds.Enabled() {
-		warnings = append(warnings,
-			"SP_ENCRYPTION_MASTER_KEY is unset: resolved secret references are stored in plaintext config")
+	if !sawEnvRef {
+		return nil, nil
 	}
 
-	return warnings, nil
-}
-
-// resolveRefString replaces every ${env:…}/${param:…} reference in a single
-// string. Returns (resolved, anyResolved, error). A reference that can't be
-// resolved is a hard error.
-func (s *Service) resolveRefString(
-	ctx context.Context, orgUID, input string,
-) (string, bool, error) {
-	var resolveErr error
-
-	resolvedAny := false
-
-	out := secretRefPattern.ReplaceAllStringFunc(input, func(match string) string {
-		if resolveErr != nil {
-			return match
-		}
-
-		groups := secretRefPattern.FindStringSubmatch(match)
-		scheme, name := groups[1], groups[2]
-
-		value, err := s.resolveRef(ctx, orgUID, scheme, name)
-		if err != nil {
-			resolveErr = err
-
-			return match
-		}
-
-		resolvedAny = true
-
-		return value
-	})
-
-	if resolveErr != nil {
-		return "", false, resolveErr
-	}
-
-	return out, resolvedAny, nil
-}
-
-// resolveRef resolves a single env|param reference to its plaintext value.
-func (s *Service) resolveRef(ctx context.Context, orgUID, scheme, name string) (string, error) {
-	switch scheme {
-	case "env":
-		val, ok := os.LookupEnv(name)
-		if !ok {
-			return "", fmt.Errorf("%w: env:%s is not set", ErrUnresolvedSecretRef, name)
-		}
-
-		return val, nil
-	case "param":
-		return s.resolveParamRef(ctx, orgUID, name)
-	default:
-		return "", fmt.Errorf("%w: unknown scheme %q", ErrUnresolvedSecretRef, scheme)
-	}
-}
-
-// resolveParamRef resolves a ${param:KEY} reference. Org-scoped parameters take
-// precedence over system-wide ones. Parameter values are stored as
-// {"value": <v>} JSONB; the secret flag only masks API responses, so the
-// plaintext value is read directly here.
-func (s *Service) resolveParamRef(ctx context.Context, orgUID, key string) (string, error) {
-	if orgParam, err := s.db.GetOrgParameter(ctx, orgUID, key); err == nil && orgParam != nil {
-		if v, ok := paramStringValue(orgParam); ok {
-			return v, nil
-		}
-	}
-
-	if sysParam, err := s.db.GetSystemParameter(ctx, key); err == nil && sysParam != nil {
-		if v, ok := paramStringValue(sysParam); ok {
-			return v, nil
-		}
-	}
-
-	return "", fmt.Errorf("%w: param:%s not found", ErrUnresolvedSecretRef, key)
-}
-
-// paramStringValue extracts the stringified value from a parameter's
-// {"value": …} envelope.
-func paramStringValue(param *models.Parameter) (string, bool) {
-	raw, ok := param.Value["value"]
-	if !ok {
-		return "", false
-	}
-
-	switch val := raw.(type) {
-	case string:
-		return val, true
-	case fmt.Stringer:
-		return val.String(), true
-	default:
-		return fmt.Sprintf("%v", val), true
-	}
+	// ${env:} is the self-hosted form: it resolves against the environment of
+	// whichever process ends up executing the check, which means an operator
+	// deploy to change it and, for a check running on a deported agent, THAT
+	// agent's environment rather than the API's. Both are features; neither is
+	// obvious from the manifest, so say so once per document.
+	return []string{
+		"${env:…} resolves on the process that executes the check (a deported agent uses its own " +
+			"environment, and changing the value needs a restart) — use ${param:…} for an " +
+			"organization-managed value you can rotate over the API",
+	}, nil
 }
 
 // ApplyChecks reconciles the manifest against the managed scope. With DryRun it
@@ -388,9 +312,9 @@ func (s *Service) ApplyChecks(
 		Plan:     []ApplyPlanEntry{},
 	}
 
-	// Resolve secret references first so the plan reflects the real config and a
-	// missing reference fails before any mutation.
-	warnings, err := s.resolveSecretRefs(ctx, org.UID, doc)
+	// Prove every secret reference resolves first, so a missing one fails
+	// before any mutation. The reference itself is what gets stored.
+	warnings, err := s.validateSecretRefs(ctx, org.UID, doc)
 	if err != nil {
 		return nil, err
 	}

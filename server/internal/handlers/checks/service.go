@@ -3249,6 +3249,10 @@ type ImportResult struct {
 	// caveats travel in the response rather than in the documentation.
 	DryRun  bool           `json:"dryRun"`
 	Caveats []DryRunCaveat `json:"caveats,omitempty"`
+	// Warnings carries the same advisory notes /apply returns — today, the one
+	// about ${env:} resolving on the executing process. Import and apply take
+	// the same document; they answer the same way about it.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // ImportError represents an error for a specific check during import.
@@ -3577,9 +3581,22 @@ func (s *Service) ImportChecks(
 		groupByName[strings.ToLower(g.Name)] = g
 	}
 
+	// Import and apply take the SAME document, so they must treat secret
+	// references the same way (spec 2026-09-11-03). Before that spec only
+	// ApplyChecks validated them: a manifest that /apply handled correctly was
+	// stored LITERALLY by /import, and the probe then sent the string
+	// "${env:SP_SSO_AUTHTEST_PASSWORD}" to the target. Validation is shared now
+	// — the reference is stored either way, and an unresolvable one is a hard
+	// 400 from both endpoints, dry run included.
+	refWarnings, refErr := s.validateSecretRefs(ctx, org.UID, doc)
+	if refErr != nil {
+		return nil, refErr
+	}
+
 	result := &ImportResult{
-		Errors: []ImportError{},
-		DryRun: dryRun,
+		Errors:   []ImportError{},
+		DryRun:   dryRun,
+		Warnings: refWarnings,
 	}
 
 	// A dry run reports what it could not fully reproduce. The slug race is

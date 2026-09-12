@@ -598,6 +598,11 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) er
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
 				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case errors.Is(err, ErrUnresolvedSecretRef):
+			// Same 400 /apply answers with — the two endpoints take the same
+			// document and now judge its references identically.
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		default:
 			return h.WriteErrorErr(
 				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
