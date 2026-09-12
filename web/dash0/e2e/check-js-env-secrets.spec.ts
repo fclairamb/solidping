@@ -18,11 +18,17 @@ const BASE_URL_VALUE = "https://acme.dev";
 
 // One line on purpose: the script goes into a CodeMirror editor, and a
 // single-line insert avoids auto-indent/auto-close mangling multi-line text.
-// It compares BOTH values and reports only whether they matched — the secret
-// itself never goes into the result output.
+//
+// It echoes the secret REVERSED rather than comparing it to a literal. That is
+// not squeamishness: a literal would put the fixture secret into the `script`
+// key — which is public config — and defeat the "the value appears nowhere in
+// the response" assertion below. Reversing still determines the exact value, so
+// the test proves the script read it rather than merely received something.
 const SCRIPT =
-  `return { status: (secrets.PASSWORD === "${SECRET_VALUE}" && env.BASE_URL === "${BASE_URL_VALUE}") ? "up" : "down", ` +
-  `output: { match: (secrets.PASSWORD === "${SECRET_VALUE}" && env.BASE_URL === "${BASE_URL_VALUE}") ? "yes" : "no", base: env.BASE_URL } };`;
+  `var p = secrets.PASSWORD || ""; var rev = p.split("").reverse().join(""); ` +
+  `return { status: (p && env.BASE_URL) ? "up" : "down", output: { rev: rev, base: env.BASE_URL } };`;
+
+const SECRET_REVERSED = [...SECRET_VALUE].reverse().join("");
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -108,7 +114,28 @@ test.describe("JS check — public env vs encrypted secrets", () => {
     ).toContain("secrets");
 
     // ── And the check still WORKS: run it and read what the script saw ──
-    // Speed the schedule up to the type's floor so a result lands promptly.
+    //
+    // `configPrivateKeys` alone is NOT proof: a form that submits `secrets: {}`
+    // wipes the values while the key list stays exactly the same. Only a run
+    // that happened AFTER this save can tell the two apart.
+    //
+    // Freshness is decided by result UID, not by a timestamp: a check runs once
+    // immediately on creation, and this test is fast enough that a wall-clock
+    // window wide enough for skew also lets that creation-time result through —
+    // which is precisely the result that would hide the wipe.
+    type ResultRow = { uid: string; output?: Record<string, unknown> };
+
+    const listResults = async (): Promise<ResultRow[]> => {
+      const resp = await page.request.get(
+        `${API_BASE}/api/v1/orgs/test/results?checkUid=${uid}&with=output&limit=20`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      return (await resp.json()).data ?? [];
+    };
+
+    const alreadySeen = new Set((await listResults()).map((row) => row.uid));
+
+    // Speed the schedule up to the type's floor so the next run lands promptly.
     // Period-only PATCH: the config is untouched by this request.
     const patched = await page.request.patch(
       `${API_BASE}/api/v1/orgs/test/checks/${uid}`,
@@ -119,40 +146,33 @@ test.describe("JS check — public env vs encrypted secrets", () => {
     );
     expect(patched.status()).toBe(200);
 
+    const freshOutput = async (): Promise<Record<string, unknown> | null> => {
+      const rows = await listResults();
+      const fresh = rows.find(
+        (row) => !alreadySeen.has(row.uid) && row.output?.rev !== undefined,
+      );
+      return fresh?.output ?? null;
+    };
+
     await expect
-      .poll(
-        async () => {
-          const resp = await page.request.get(
-            `${API_BASE}/api/v1/orgs/test/results?checkUid=${uid}&with=output&limit=10`,
-            { headers: { Authorization: `Bearer ${token}` } },
-          );
-          const body = await resp.json();
-          const rows: { output?: Record<string, unknown> }[] = body.data ?? [];
-          const withOutput = rows.find((row) => row.output?.match !== undefined);
-          return withOutput?.output ?? null;
-        },
-        {
-          timeout: 150_000,
-          intervals: [2000],
-          message:
-            "no result from the js check — the script never ran, or it could not read its config",
-        },
-      )
+      .poll(freshOutput, {
+        timeout: 150_000,
+        intervals: [2000],
+        message:
+          "no new result from the js check — the script never ran again, or it could not read its config",
+      })
       .not.toBeNull();
 
-    const resp = await page.request.get(
-      `${API_BASE}/api/v1/orgs/test/results?checkUid=${uid}&with=output&limit=10`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    const rows: { output?: Record<string, unknown> }[] =
-      (await resp.json()).data ?? [];
-    const output = rows.find((row) => row.output?.match !== undefined)!.output!;
+    const output = (await freshOutput())!;
 
     expect(
-      output.match,
-      "after an untouched save the script no longer reads both secrets.PASSWORD and env.BASE_URL",
-    ).toBe("yes");
-    expect(output.base).toBe(BASE_URL_VALUE);
+      output.rev,
+      "after an untouched save the script no longer reads secrets.PASSWORD",
+    ).toBe(SECRET_REVERSED);
+    expect(
+      output.base,
+      "after an untouched save the script no longer reads env.BASE_URL",
+    ).toBe(BASE_URL_VALUE);
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
       headers: { Authorization: `Bearer ${token}` },
