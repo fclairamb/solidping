@@ -4,6 +4,7 @@ package checkjs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,6 +63,16 @@ const (
 	maxSubChecks     = 20
 	maxConsoleOutput = 16 * 1024   // 16KB
 	maxHTTPBody      = 1024 * 1024 // 1MB
+	// maxRedirectsCap is both the default and the ceiling for a request's
+	// `maxRedirects` option — the same 10 Go's own client defaults to.
+	maxRedirectsCap = 10
+)
+
+// Errors a script can provoke through the http helper's option map.
+var (
+	errInvalidTimeoutOption = errors.New(
+		"invalid timeout: expected a duration string (\"2s\") or a number of milliseconds")
+	errTooManyRedirects = errors.New("stopped after too many redirects")
 )
 
 // JSChecker implements the Checker interface for JavaScript checks.
@@ -169,6 +180,7 @@ func newJSRuntime(ctx context.Context, cfg *JSConfig) *jsRuntime {
 // registerGlobals sets up the global objects available to the script.
 func (r *jsRuntime) registerGlobals() {
 	r.registerEnv()
+	r.registerSecrets()
 	r.registerConsole()
 	r.registerSleep()
 	r.registerSolidping()
@@ -184,6 +196,24 @@ func (r *jsRuntime) registerEnv() {
 	}
 
 	_ = r.vm.Set("env", envObj)
+}
+
+// registerSecrets exposes config.Secrets as a read-only "secrets" object.
+//
+// Deliberately a mirror of registerEnv rather than a merge into it: the call
+// site is meant to read what the value IS — `secrets.PASSWORD` next to
+// `env.BASE_URL` — and the two maps are stored in different columns (public
+// `config` vs the encrypted envelope). By the time Execute reaches here the
+// effective config is already public ∪ decrypted-private, so both maps are
+// simply present.
+func (r *jsRuntime) registerSecrets() {
+	secretsObj := r.vm.NewObject()
+
+	for key, val := range r.config.Secrets {
+		_ = secretsObj.Set(key, val)
+	}
+
+	_ = r.vm.Set("secrets", secretsObj)
 }
 
 // registerConsole exposes console.log/warn/error/info.
@@ -367,13 +397,34 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	}
 }
 
-// registerHTTP exposes http.get/post/put/patch/delete/head functions.
+// registerHTTP exposes http.get/post/put/patch/delete/head plus http.session().
+//
+// The bare http.* functions stay STATELESS (no cookie jar), exactly as they
+// have always been: an existing script must not start carrying cookies between
+// calls because this feature shipped. State is opt-in, through a session.
 func (r *jsRuntime) registerHTTP() {
 	httpObj := r.vm.NewObject()
 
+	r.setRequestMethods(httpObj, nil)
+
+	_ = httpObj.Set("session", func(_ goja.FunctionCall) goja.Value {
+		session, err := r.newHTTPSession()
+		if err != nil {
+			panic(r.vm.NewGoError(err))
+		}
+
+		return session
+	})
+
+	_ = r.vm.Set("http", httpObj)
+}
+
+// setRequestMethods attaches the six verbs to obj, all bound to the same jar
+// (nil for the stateless http.* object).
+func (r *jsRuntime) setRequestMethods(obj *goja.Object, jar *boundedJar) {
 	for _, methodName := range []string{"get", "post", "put", "patch", "delete", "head"} {
 		method := strings.ToUpper(methodName)
-		_ = httpObj.Set(methodName, func(call goja.FunctionCall) goja.Value {
+		_ = obj.Set(methodName, func(call goja.FunctionCall) goja.Value {
 			urlStr := call.Argument(0).String()
 
 			var opts map[string]any
@@ -381,17 +432,155 @@ func (r *jsRuntime) registerHTTP() {
 				opts, _ = call.Argument(1).Export().(map[string]any)
 			}
 
-			result := r.httpRequest(method, urlStr, opts)
+			result := r.httpRequest(jar, method, urlStr, opts)
 
 			return r.vm.ToValue(result)
 		})
 	}
-
-	_ = r.vm.Set("http", httpObj)
 }
 
-// httpRequest performs an HTTP request and returns the result as a map.
-func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) map[string]any {
+// newHTTPSession builds the object http.session() returns: the same six verbs,
+// backed by one bounded cookie jar, plus cookies(url) so a script can assert on
+// what the flow actually set.
+func (r *jsRuntime) newHTTPSession() (*goja.Object, error) {
+	jar, err := newBoundedJar()
+	if err != nil {
+		return nil, err
+	}
+
+	obj := r.vm.NewObject()
+
+	r.setRequestMethods(obj, jar)
+
+	_ = obj.Set("cookies", func(call goja.FunctionCall) goja.Value {
+		return r.vm.ToValue(jar.snapshot(call.Argument(0).String()))
+	})
+
+	return obj, nil
+}
+
+// httpOptions is the parsed form of a request's option map.
+type httpOptions struct {
+	body            string
+	hasBody         bool
+	headers         map[string]string
+	followRedirects bool
+	maxRedirects    int
+	timeout         time.Duration
+}
+
+// parseHTTPOptions reads the option map, applying the same defaults the http
+// check type uses: redirects are followed, at most maxRedirectsCap of them, and
+// the request may not outlive the check's own timeout.
+func (r *jsRuntime) parseHTTPOptions(opts map[string]any) (httpOptions, error) {
+	checkTimeout := r.config.Timeout
+	if checkTimeout <= 0 {
+		checkTimeout = defaultTimeout
+	}
+
+	parsed := httpOptions{
+		followRedirects: true,
+		maxRedirects:    maxRedirectsCap,
+		timeout:         checkTimeout,
+	}
+
+	if opts == nil {
+		return parsed, nil
+	}
+
+	if body, ok := opts["body"].(string); ok {
+		parsed.body, parsed.hasBody = body, true
+	}
+
+	if headers, ok := opts["headers"].(map[string]any); ok {
+		parsed.headers = make(map[string]string, len(headers))
+
+		for name, val := range headers {
+			if strVal, ok := val.(string); ok {
+				parsed.headers[name] = strVal
+			}
+		}
+	}
+
+	if follow, ok := opts["followRedirects"].(bool); ok {
+		parsed.followRedirects = follow
+	}
+
+	if maxRedirects, ok := numericOption(opts["maxRedirects"]); ok {
+		parsed.maxRedirects = clampRedirects(int(maxRedirects))
+	}
+
+	timeout, err := optionTimeout(opts["timeout"])
+	if err != nil {
+		return parsed, err
+	}
+
+	// Clamped, never widened: the check's timeout is the budget the scheduler
+	// allocated, and a script must not be able to hold a job open past it.
+	if timeout > 0 && timeout < parsed.timeout {
+		parsed.timeout = timeout
+	}
+
+	return parsed, nil
+}
+
+// clampRedirects keeps maxRedirects inside [0, maxRedirectsCap].
+func clampRedirects(value int) int {
+	if value < 0 {
+		return 0
+	}
+
+	if value > maxRedirectsCap {
+		return maxRedirectsCap
+	}
+
+	return value
+}
+
+// numericOption reads a JS number option, which goja exports as float64 or
+// int64 depending on how it was written.
+func numericOption(raw any) (float64, bool) {
+	switch typed := raw.(type) {
+	case float64:
+		return typed, true
+	case int64:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	default:
+		return 0, false
+	}
+}
+
+// optionTimeout reads the `timeout` option: a duration string ("2s") or a
+// number of milliseconds. Anything else is a script bug worth reporting rather
+// than silently ignoring.
+func optionTimeout(raw any) (time.Duration, error) {
+	if raw == nil {
+		return 0, nil
+	}
+
+	if str, ok := raw.(string); ok {
+		parsed, err := time.ParseDuration(str)
+		if err != nil {
+			return 0, fmt.Errorf("invalid timeout %q: %w", str, err)
+		}
+
+		return parsed, nil
+	}
+
+	if millis, ok := numericOption(raw); ok {
+		return time.Duration(millis) * time.Millisecond, nil
+	}
+
+	return 0, errInvalidTimeoutOption
+}
+
+// httpRequest performs an HTTP request and returns the result as a map. A nil
+// jar means the stateless bare http.* behavior.
+func (r *jsRuntime) httpRequest(
+	jar *boundedJar, method, requestURL string, rawOpts map[string]any,
+) map[string]any {
 	// Count against sub-check limit
 	if r.subCheckCount.Add(1) > int32(maxSubChecks) {
 		return map[string]any{
@@ -399,11 +588,14 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 		}
 	}
 
+	opts, err := r.parseHTTPOptions(rawOpts)
+	if err != nil {
+		return map[string]any{checkerdef.OutputKeyError: err.Error()}
+	}
+
 	var bodyReader io.Reader
-	if opts != nil {
-		if body, ok := opts["body"].(string); ok {
-			bodyReader = strings.NewReader(body)
-		}
+	if opts.hasBody {
+		bodyReader = strings.NewReader(opts.body)
 	}
 
 	req, err := http.NewRequestWithContext(r.execCtx, method, requestURL, bodyReader)
@@ -411,20 +603,25 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 		return map[string]any{checkerdef.OutputKeyError: "failed to create request: " + err.Error()}
 	}
 
-	// Set headers from opts
-	if opts != nil {
-		if headers, ok := opts["headers"].(map[string]any); ok {
-			for headerName, headerVal := range headers {
-				if strVal, ok := headerVal.(string); ok {
-					req.Header.Set(headerName, strVal)
-				}
-			}
-		}
+	for headerName, headerVal := range opts.headers {
+		req.Header.Set(headerName, headerVal)
+	}
+
+	// Recorded from inside CheckRedirect, which is called on the goroutine
+	// running this request — the JS runtime is single-threaded and blocked in
+	// client.Do while that happens, so a plain slice is safe here.
+	redirects := make([]map[string]any, 0)
+
+	client := &http.Client{
+		Timeout:       opts.timeout,
+		CheckRedirect: redirectPolicy(&opts, &redirects),
+	}
+
+	if jar != nil {
+		client.Jar = jar
 	}
 
 	start := time.Now()
-
-	client := &http.Client{}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -445,22 +642,72 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 		}
 	}
 
-	// Convert response headers to map
-	respHeaders := make(map[string]any, len(resp.Header))
-	for headerName, headerValues := range resp.Header {
-		if len(headerValues) == 1 {
-			respHeaders[headerName] = headerValues[0]
-		} else {
-			respHeaders[headerName] = headerValues
-		}
-	}
-
 	return map[string]any{
 		"statusCode":  resp.StatusCode,
 		"body":        string(body),
-		"headers":     respHeaders,
+		"headers":     responseHeaders(resp),
+		"url":         finalURL(resp, requestURL),
+		"redirects":   redirects,
 		jsKeyDuration: duration.Milliseconds(),
 	}
+}
+
+// redirectPolicy builds the client's CheckRedirect: it records the chain and
+// enforces followRedirects / maxRedirects.
+//
+// With following disabled it returns http.ErrUseLastResponse, which hands the
+// 3xx itself back to the caller — Location intact — instead of an error. That
+// is the OAuth case the spec is about: the 302 carrying `code=` IS the success
+// signal, so it must be observable, and the chain stays empty because nothing
+// was followed.
+func redirectPolicy(opts *httpOptions, redirects *[]map[string]any) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if !opts.followRedirects {
+			return http.ErrUseLastResponse
+		}
+
+		if len(via) >= opts.maxRedirects {
+			return fmt.Errorf("%w: %d", errTooManyRedirects, opts.maxRedirects)
+		}
+
+		if req.Response != nil {
+			*redirects = append(*redirects, map[string]any{
+				"statusCode": req.Response.StatusCode,
+				"location":   req.Response.Header.Get("Location"),
+			})
+		}
+
+		return nil
+	}
+}
+
+// responseHeaders converts response headers to a JS-friendly map: canonical
+// (Go-canonicalized) keys, a bare string for a single value and an array for a
+// repeated one.
+func responseHeaders(resp *http.Response) map[string]any {
+	out := make(map[string]any, len(resp.Header))
+
+	for headerName, headerValues := range resp.Header {
+		if len(headerValues) == 1 {
+			out[headerName] = headerValues[0]
+
+			continue
+		}
+
+		out[headerName] = headerValues
+	}
+
+	return out
+}
+
+// finalURL reports the URL the response actually came from — the last hop of a
+// followed redirect chain, or the requested URL when nothing moved.
+func finalURL(resp *http.Response, requestURL string) string {
+	if resp.Request != nil && resp.Request.URL != nil {
+		return resp.Request.URL.String()
+	}
+
+	return requestURL
 }
 
 // parseResult extracts status, metrics, and output from the JS return value.

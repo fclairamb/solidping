@@ -15,7 +15,9 @@ const (
 	maxTimeout     = 30 * time.Second
 	maxEnvEntries  = 50
 
-	fieldScript = "script"
+	fieldScript  = "script"
+	fieldEnv     = "env"
+	fieldSecrets = "secrets"
 )
 
 // JSConfig holds the configuration for JavaScript checks.
@@ -23,6 +25,51 @@ type JSConfig struct {
 	Script  string            `json:"script"`
 	Timeout time.Duration     `json:"timeout,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+	// Secrets is the ENCRYPTED sibling of Env: same shape, same engine
+	// treatment (exposed as the `secrets` global), but declared in
+	// SecretFields() so credentials.SplitConfig moves the whole map into the
+	// encrypted envelope.
+	//
+	// It is a second map rather than a flag on Env because SecretFields() is
+	// per-top-level-key: making `env` secret would encrypt every plaintext
+	// parameter with it — no more diffable base URL next to a password — and
+	// would silently drop `env:` from every existing export and config-as-code
+	// document. See spec 2026-09-11-05.
+	Secrets map[string]string `json:"secrets,omitempty"`
+}
+
+// stringMapFromConfig reads an optional map[string]string config key,
+// tolerating both the already-typed map (an in-process caller) and the
+// map[string]any a JSON decode produces. Shared by `env` and `secrets` so the
+// two cannot drift in what they accept.
+func stringMapFromConfig(configMap map[string]any, key string) (map[string]string, error) {
+	raw, present := configMap[key]
+	if !present || raw == nil {
+		return nil, nil
+	}
+
+	if typed, ok := raw.(map[string]string); ok {
+		return typed, nil
+	}
+
+	anyMap, ok := raw.(map[string]any)
+	if !ok {
+		return nil, checkerdef.NewConfigError(key, "must be a map of string key-value pairs")
+	}
+
+	out := make(map[string]string, len(anyMap))
+
+	for mapKey, mapVal := range anyMap {
+		strVal, ok := mapVal.(string)
+		if !ok {
+			return nil, checkerdef.NewConfigError(key,
+				fmt.Sprintf("value for key %q must be a string", mapKey))
+		}
+
+		out[mapKey] = strVal
+	}
+
+	return out, nil
 }
 
 // FromMap populates the configuration from a map.
@@ -46,25 +93,19 @@ func (c *JSConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("timeout", "must be a string")
 	}
 
-	// Extract Env (optional, map[string]string)
-	if envRaw, ok := configMap["env"]; ok && envRaw != nil {
-		envMap, ok := envRaw.(map[string]any)
-		if !ok {
-			return checkerdef.NewConfigError("env", "must be a map of string key-value pairs")
-		}
-
-		c.Env = make(map[string]string, len(envMap))
-
-		for envKey, envVal := range envMap {
-			strVal, ok := envVal.(string)
-			if !ok {
-				return checkerdef.NewConfigError("env",
-					fmt.Sprintf("value for key %q must be a string", envKey))
-			}
-
-			c.Env[envKey] = strVal
-		}
+	env, err := stringMapFromConfig(configMap, fieldEnv)
+	if err != nil {
+		return err
 	}
+
+	c.Env = env
+
+	secrets, err := stringMapFromConfig(configMap, fieldSecrets)
+	if err != nil {
+		return err
+	}
+
+	c.Secrets = secrets
 
 	return nil
 }
@@ -80,15 +121,39 @@ func (c *JSConfig) GetConfig() map[string]any {
 	}
 
 	if len(c.Env) > 0 {
-		env := make(map[string]any, len(c.Env))
-		for k, v := range c.Env {
-			env[k] = v
-		}
+		cfg[fieldEnv] = stringMapToAny(c.Env)
+	}
 
-		cfg["env"] = env
+	if len(c.Secrets) > 0 {
+		cfg[fieldSecrets] = stringMapToAny(c.Secrets)
 	}
 
 	return cfg
+}
+
+// stringMapToAny widens a string map for the config map, which is JSON-shaped.
+func stringMapToAny(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
+	for key, val := range in {
+		out[key] = val
+	}
+
+	return out
+}
+
+// SecretFields declares which top-level config keys carry secrets and must be
+// encrypted at rest. Implements credentials.SecretFielder.
+//
+// Only `secrets`. `env` stays deliberately public: it is the plaintext,
+// diffable half of the split (a base URL, a username), and encrypting it would
+// remove every non-secret script parameter from exports and from the config
+// column — see JSConfig.Secrets.
+//
+// No ExportRedactedFields() twin is needed: the exporter strips
+// SecretFields() ∪ ExportRedactedFields(), so a declared secret field is
+// already absent from every rendered document (spec 2026-09-11-02).
+func (c *JSConfig) SecretFields() []string {
+	return []string{fieldSecrets}
 }
 
 // Validate checks that the configuration fields are within acceptable bounds.
@@ -108,8 +173,13 @@ func (c *JSConfig) Validate() error {
 	}
 
 	if len(c.Env) > maxEnvEntries {
-		return checkerdef.NewConfigErrorf("env",
+		return checkerdef.NewConfigErrorf(fieldEnv,
 			"must have at most %d entries, got %d", maxEnvEntries, len(c.Env))
+	}
+
+	if len(c.Secrets) > maxEnvEntries {
+		return checkerdef.NewConfigErrorf(fieldSecrets,
+			"must have at most %d entries, got %d", maxEnvEntries, len(c.Secrets))
 	}
 
 	// Check for JavaScript syntax errors via Goja compilation
