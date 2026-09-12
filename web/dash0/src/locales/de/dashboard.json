@@ -28,6 +28,18 @@
       "http": "URL zur Überwachung",
       "icmp": "Host für Ping",
       "ssl": "Domain für SSL-Prüfung"
+    },
+    "validation": {
+      "empty": {
+        "http": "Geben Sie die URL oder den Hostnamen an, die überwacht werden soll.",
+        "icmp": "Geben Sie den Host an, der gepingt werden soll.",
+        "ssl": "Geben Sie die Domain an, deren SSL-Zertifikat geprüft werden soll."
+      },
+      "invalid": {
+        "http": "Das sieht nicht nach einer URL aus. Versuchen Sie example.com oder https://example.com.",
+        "icmp": "Geben Sie nur einen Hostnamen oder eine IP-Adresse an — ohne http:// und ohne Pfad.",
+        "ssl": "Geben Sie nur einen Domainnamen an — ohne http:// und ohne Pfad."
+      }
     }
   },
   "onboarding": {

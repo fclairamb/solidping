@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -11,6 +11,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useCreateCheck } from "@/api/hooks";
 import { ApiError } from "@/api/client";
 import { DASH_BASE } from "@/lib/base-path";
+import {
+  normalizeTarget,
+  targetAppliesTo,
+  validateTarget,
+} from "@/lib/quick-check-target";
 
 type QuickType = "http" | "icmp" | "ssl";
 
@@ -34,31 +39,30 @@ const QUICK_DEFS: Record<
   QuickType,
   {
     icon: typeof Globe;
-    inputType: "url" | "text";
     placeholder: string;
-    field: "url" | "host" | "domain";
+    field: "url" | "host";
     namePrefix: string;
   }
 > = {
   http: {
     icon: Globe,
-    inputType: "url",
     placeholder: "https://example.com",
     field: "url",
     namePrefix: "HTTP",
   },
   icmp: {
     icon: Network,
-    inputType: "text",
     placeholder: "example.com",
     field: "host",
     namePrefix: "Ping",
   },
   ssl: {
     icon: Shield,
-    inputType: "text",
     placeholder: "example.com",
-    field: "domain",
+    // `host`, NOT `domain`: checkssl.SSLConfig.FromMap reads only `host`
+    // (server/internal/checkers/checkssl/config.go), so a `domain` key was
+    // silently dropped and every SSL quick-create died on "host is required".
+    field: "host",
     namePrefix: "SSL",
   },
 };
@@ -77,22 +81,59 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const createCheck = useCreateCheck(org);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const def = QUICK_DEFS[tab];
   const Icon = def.icon;
+
+  // Spec 2026-09-12-04, defect 1: the chips were the most prominent thing on
+  // the screen and clicking them produced no visible consequence. A caret in
+  // the one field that matters is the cheapest possible feedback.
+  //
+  // Mount focus is deliberately CONDITIONAL on a fine pointer. On a touch
+  // device, focusing an input on mount raises the on-screen keyboard and
+  // scrolls the hero — including its heading — out of view before the user has
+  // read a word of it, which is exactly the disorientation auto-focus is warned
+  // about. With a mouse or trackpad there is no keyboard to raise, the viewport
+  // does not move (`preventScroll`), and the zero-check dashboard has no other
+  // purpose than this form. Focus on CHIP CLICK below is unconditional: it is
+  // the direct result of a deliberate user action, which is never surprising.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    inputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  function failValidation(problem: "empty" | "invalid") {
+    setError(t(`welcome.validation.${problem}.${tab}`));
+    inputRef.current?.focus();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    const trimmed = value.trim();
-    if (!trimmed) return;
+    // Spec 2026-09-12-04, defect 3: the submit used to be `disabled` until the
+    // input was non-empty, so the screen's primary action was a control that
+    // could not be clicked and could not explain why. It is enabled now, and
+    // submitting something unusable says so — in the locale's own words, in an
+    // `Alert` (role="alert", so it is announced), with focus handed back to the
+    // field to fix.
+    const problem = validateTarget(tab, value);
+    if (problem) {
+      failValidation(problem);
+      return;
+    }
+
+    const target = normalizeTarget(tab, value);
 
     try {
       const created = await createCheck.mutateAsync({
-        name: `${def.namePrefix} — ${displayHostFor(def.field, trimmed)}`,
+        name: `${def.namePrefix} — ${displayHostFor(def.field, target)}`,
         type: tab,
-        config: { [def.field]: trimmed },
+        config: { [def.field]: target },
       });
       setValue("");
       // Refresh checks so the list (and this hero, once the user navigates
@@ -134,8 +175,16 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
                 size="sm"
                 onClick={() => {
                   setTab(quick);
-                  setValue("");
+                  // Spec 2026-09-12-04, defect 2: this used to be an
+                  // unconditional `setValue("")`, so reconsidering HTTP vs SSL
+                  // threw away a hostname that was valid for both. Keep what
+                  // still applies; clear only what cannot (an `https://…` URL
+                  // moving to Ping).
+                  setValue((current) =>
+                    targetAppliesTo(quick, current) ? current : "",
+                  );
                   setError(null);
+                  inputRef.current?.focus();
                 }}
                 data-testid={`quick-start-${quick}`}
               >
@@ -154,29 +203,45 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
             </Label>
             <Input
               id="quick-input"
-              type={def.inputType}
-              required
+              ref={inputRef}
+              // Deliberately NOT type="url" + required: native constraint
+              // validation shows an unlocalized browser bubble that assistive
+              // tech does not announce, and it blocks the submit handler from
+              // running at all — the same trap the design reference flags on the
+              // image-URL field. `validateTarget` does this job instead, and it
+              // also lets a bare hostname through for HTTP (normalized to
+              // https:// on submit).
+              type="text"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
               placeholder={def.placeholder}
               value={value}
               onChange={(e) => {
                 setValue(e.target.value);
                 setError(null);
               }}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? "quick-input-error" : undefined}
               disabled={createCheck.isPending}
               data-testid="quick-start-input"
             />
           </div>
 
           {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+            <Alert variant="destructive" id="quick-input-error">
+              <AlertDescription data-testid="quick-start-error">
+                {error}
+              </AlertDescription>
             </Alert>
           )}
 
           <Button
             type="submit"
             className="w-full"
-            disabled={createCheck.isPending || !value.trim()}
+            // The only disabled state left is "a create is already in
+            // flight", which the spinner and label explain on their own.
+            disabled={createCheck.isPending}
             data-testid="quick-start-submit"
           >
             {createCheck.isPending ? (

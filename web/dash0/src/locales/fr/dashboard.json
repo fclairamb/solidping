@@ -28,6 +28,18 @@
       "http": "URL à surveiller",
       "icmp": "Hôte à pinger",
       "ssl": "Domaine pour la vérification SSL"
+    },
+    "validation": {
+      "empty": {
+        "http": "Saisissez l'URL ou le nom d'hôte à surveiller.",
+        "icmp": "Saisissez l'hôte à pinger.",
+        "ssl": "Saisissez le domaine dont vous voulez vérifier le certificat SSL."
+      },
+      "invalid": {
+        "http": "Cela ne ressemble pas à une URL. Essayez example.com ou https://example.com.",
+        "icmp": "Saisissez uniquement un nom d'hôte ou une adresse IP — sans http:// ni chemin.",
+        "ssl": "Saisissez uniquement un nom de domaine — sans http:// ni chemin."
+      }
     }
   },
   "onboarding": {
