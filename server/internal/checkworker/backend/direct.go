@@ -132,6 +132,18 @@ func (b *DirectBackend) mergeClaimedSecrets(
 	for _, job := range jobs {
 		outcome, err := checkjobsvc.MergeJobSecrets(ctx, b.creds, job)
 		if outcome == checkjobsvc.SecretMergeNoop || outcome == checkjobsvc.SecretMergeMerged {
+			// The secrets are merged; now materialize the ${param:…} half of
+			// the effective config (spec 2026-09-11-03). The stored config
+			// holds the REFERENCE — this is the only place the value appears,
+			// in memory, on its way to the checker. An unresolvable one is an
+			// explicit error result for the same reason an unopenable envelope
+			// is: a check must never send "${param:x}" to the target.
+			if refErr := b.resolveParamRefs(ctx, job); refErr != nil {
+				b.submitSecretsError(ctx, job, workerUID, refErr)
+
+				continue
+			}
+
 			out = append(out, job)
 
 			continue
@@ -147,6 +159,22 @@ func (b *DirectBackend) mergeClaimedSecrets(
 	}
 
 	return out
+}
+
+// resolveParamRefs materializes the ${param:…} references in a claimed job's
+// config, in memory. The job row is never written back, so the resolved value
+// exists only for the duration of this execution.
+func (b *DirectBackend) resolveParamRefs(ctx context.Context, job *models.CheckJob) error {
+	overlay, err := checkjobsvc.ParamOverlay(ctx, b.dbService, job.OrganizationUID, job.Config)
+	if err != nil {
+		return err
+	}
+
+	for key, value := range overlay {
+		job.Config[key] = value
+	}
+
+	return nil
 }
 
 // submitSecretsError reports an unopenable envelope as an error result so the

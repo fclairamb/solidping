@@ -44,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 	"github.com/fclairamb/solidping/server/internal/stats"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -848,6 +849,28 @@ func (r *CheckWorker) redactedConfig(checkType string, cfg models.JSONMap) map[s
 	return out
 }
 
+// materializeConfig resolves the secret references left in a claimed job's
+// config against THIS process's environment, replacing the job's config map
+// with the resolved copy. The job row is never written back, so nothing
+// persisted or served ever carries the resolved value.
+//
+// A job with no references is untouched (and pays one regexp scan per string).
+func (r *CheckWorker) materializeConfig(checkJob *models.CheckJob) error {
+	if !secretref.ContainsInConfig(checkJob.Config) {
+		return nil
+	}
+
+	resolved, _, err := secretref.ResolveConfig(
+		context.Background(), checkJob.Config, secretref.ExecutionResolver())
+	if err != nil {
+		return err
+	}
+
+	checkJob.Config = models.JSONMap(resolved)
+
+	return nil
+}
+
 // executeJob executes a single check job.
 //
 //nolint:funlen,cyclop // Slightly over limits due to OTel tracing
@@ -927,6 +950,22 @@ func (r *CheckWorker) executeJob(
 	// worker just inspects whether a recent inbound signal arrived in time.
 	if isPassiveCheckType(checkerdef.CheckType(checkType)) {
 		return r.executePassiveJob(ctx, logger, checkJob)
+	}
+
+	// Materialize the effective config (spec 2026-09-11-03). A config string
+	// may hold `${env:NAME}` / `${param:KEY}`; the REFERENCE is what is stored,
+	// so the value only ever exists from here down, in memory.
+	//
+	// `${param:}` was already resolved server-side, at the claim/dispatch
+	// boundary (checkjobsvc.ParamOverlay), because it reads the API's database.
+	// `${env:}` resolves HERE, on whichever process is executing — which for a
+	// deported agent is the agent's own environment, and that is the feature.
+	// Anything still unresolved at this point is a hard error result: sending
+	// the literal "${param:x}" to the target would silently probe the wrong
+	// thing and, against an endpoint that does not enforce the credential,
+	// would look green.
+	if refErr := r.materializeConfig(checkJob); refErr != nil {
+		return r.saveErrorResult(ctx, checkJob, refErr)
 	}
 
 	// 2. Parse check configuration

@@ -154,7 +154,10 @@ func ResolveConfig(
 	for key, value := range config {
 		resolved, replaced, err := resolveValue(ctx, value, resolve)
 		if err != nil {
-			return nil, false, fmt.Errorf("config %q: %w", key, err)
+			// The sentinel's own wording leads, so the message a check result
+			// shows starts with "unresolved secret reference: param:…" and the
+			// config key that carried it follows as context.
+			return nil, false, fmt.Errorf("%w (config %q)", err, key)
 		}
 
 		if replaced {
