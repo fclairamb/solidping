@@ -37,8 +37,8 @@
       },
       "invalid": {
         "http": "Das sieht nicht nach einer URL aus. Versuchen Sie example.com oder https://example.com.",
-        "icmp": "Geben Sie nur einen Hostnamen oder eine IP-Adresse an — ohne http:// und ohne Pfad.",
-        "ssl": "Geben Sie nur einen Domainnamen an — ohne http:// und ohne Pfad."
+        "icmp": "Geben Sie nur einen Hostnamen oder eine IP-Adresse an — ohne http://, ohne Port, ohne Pfad.",
+        "ssl": "Geben Sie nur einen Domainnamen an — ohne http://, ohne Port, ohne Pfad."
       }
     }
   },

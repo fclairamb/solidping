@@ -37,8 +37,8 @@
       },
       "invalid": {
         "http": "That does not look like a URL. Try example.com or https://example.com.",
-        "icmp": "Enter a hostname or IP address only — no http:// and no path.",
-        "ssl": "Enter a domain name only — no http:// and no path."
+        "icmp": "Enter a hostname or IP address only — no http://, no port, no path.",
+        "ssl": "Enter a domain name only — no http://, no port, no path."
       }
     }
   },

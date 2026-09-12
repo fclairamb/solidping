@@ -37,8 +37,8 @@
       },
       "invalid": {
         "http": "Esto no parece una URL. Prueba example.com o https://example.com.",
-        "icmp": "Indica solo un nombre de host o una dirección IP — sin http:// ni ruta.",
-        "ssl": "Indica solo un nombre de dominio — sin http:// ni ruta."
+        "icmp": "Indica solo un nombre de host o una dirección IP — sin http://, sin puerto y sin ruta.",
+        "ssl": "Indica solo un nombre de dominio — sin http://, sin puerto y sin ruta."
       }
     }
   },

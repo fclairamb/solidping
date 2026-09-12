@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  carryOverTarget,
   normalizeTarget,
   targetAppliesTo,
   validateTarget,
@@ -47,21 +48,84 @@ describe("targetAppliesTo", () => {
     expect(targetAppliesTo(type, "example.com#frag")).toBe(false);
   });
 
+  it.each(["icmp", "ssl"] as const)(
+    "a bare trailing slash is not a path the value cannot recover from (%s)",
+    (type) => {
+      // `targetAppliesTo` answers about the literal string, so a trailing
+      // slash is still "not a bare host" here — carryOverTarget is what strips
+      // it instead of discarding the value. See its own tests below.
+      expect(targetAppliesTo(type, "example.com/")).toBe(false);
+      expect(carryOverTarget(type, "example.com/")).toBe("example.com");
+    },
+  );
+
   it.each(["icmp", "ssl"] as const)("clears a value with spaces for %s", (type) => {
     expect(targetAppliesTo(type, "two words")).toBe(false);
   });
 
-  it.each(["icmp", "ssl"] as const)(
-    "keeps a host:port pair and an IPv6 literal for %s (a colon is not a scheme)",
-    (type) => {
-      expect(targetAppliesTo(type, "example.com:8443")).toBe(true);
-      expect(targetAppliesTo(type, "2001:db8::1")).toBe(true);
-    },
-  );
+  // ICMP has no ports, and the SSL checker takes its port in a SEPARATE
+  // `port` config field — so `example.com:8443` in the host field is never
+  // usable. Neither backend validates the host's shape (checkicmp has no rule
+  // at all, checkssl only rejects an empty host), so letting it through would
+  // create a check that is accepted, stored, and fails on its first run.
+  it.each(["icmp", "ssl"] as const)("clears a host:port pair for %s", (type) => {
+    expect(targetAppliesTo(type, "example.com:8443")).toBe(false);
+    expect(targetAppliesTo(type, "example.com:80")).toBe(false);
+    expect(targetAppliesTo(type, "[2001:db8::1]:443")).toBe(false);
+  });
+
+  it("keeps a host:port pair for http, where a port is a normal target", () => {
+    expect(targetAppliesTo("http", "example.com:8443")).toBe(true);
+  });
+
+  // The colon rule must not swallow IPv6: an address has two or more colons,
+  // a host:port pair has exactly one. `2001:db8::1` is a legitimate ping
+  // target and SSL host.
+  it.each(["icmp", "ssl"] as const)("keeps an IPv6 literal for %s", (type) => {
+    expect(targetAppliesTo(type, "2001:db8::1")).toBe(true);
+    expect(targetAppliesTo(type, "::1")).toBe(true);
+    expect(targetAppliesTo(type, "fe80::1%eth0")).toBe(true);
+    expect(targetAppliesTo(type, "[2001:db8::1]")).toBe(true);
+  });
 
   it("ignores surrounding whitespace when deciding", () => {
     expect(targetAppliesTo("ssl", "  example.com  ")).toBe(true);
     expect(targetAppliesTo("ssl", "  https://example.com  ")).toBe(false);
+  });
+});
+
+describe("carryOverTarget", () => {
+  it("keeps a hostname on every chip switch", () => {
+    expect(carryOverTarget("ssl", "example.com")).toBe("example.com");
+    expect(carryOverTarget("icmp", "example.com")).toBe("example.com");
+    expect(carryOverTarget("http", "example.com")).toBe("example.com");
+  });
+
+  it("keeps the user's own text untouched when nothing needs tidying", () => {
+    // Not even whitespace is rewritten under them while they are still typing.
+    expect(carryOverTarget("ssl", "  example.com  ")).toBe("  example.com  ");
+  });
+
+  it("trims a recoverable trailing slash rather than discarding the value", () => {
+    expect(carryOverTarget("icmp", "example.com/")).toBe("example.com");
+    expect(carryOverTarget("ssl", "example.com///")).toBe("example.com");
+  });
+
+  it("clears a value that cannot be a host", () => {
+    expect(carryOverTarget("icmp", "https://example.com")).toBe("");
+    expect(carryOverTarget("ssl", "example.com/health")).toBe("");
+    expect(carryOverTarget("icmp", "example.com:8443")).toBe("");
+  });
+
+  it("never clears anything for http", () => {
+    expect(carryOverTarget("http", "https://example.com/health")).toBe(
+      "https://example.com/health",
+    );
+    expect(carryOverTarget("http", "example.com:8443")).toBe("example.com:8443");
+  });
+
+  it("leaves an empty field empty", () => {
+    expect(carryOverTarget("ssl", "")).toBe("");
   });
 });
 
@@ -85,6 +149,24 @@ describe("normalizeTarget", () => {
   it.each(["icmp", "ssl"] as const)("never adds a scheme for %s", (type) => {
     expect(normalizeTarget(type, "example.com")).toBe("example.com");
     expect(normalizeTarget(type, "  example.com  ")).toBe("example.com");
+  });
+
+  it.each(["icmp", "ssl"] as const)(
+    "drops a trailing slash before sending for %s",
+    (type) => {
+      expect(normalizeTarget(type, "example.com/")).toBe("example.com");
+    },
+  );
+
+  it("keeps an explicit port on an http target and still adds https", () => {
+    // Decided: the scheme is NOT guessed from the port (`:80` → http) — that
+    // is a second heuristic that gets `:8080` wrong just as easily.
+    expect(normalizeTarget("http", "example.com:8443")).toBe(
+      "https://example.com:8443",
+    );
+    expect(normalizeTarget("http", "http://example.com:8080")).toBe(
+      "http://example.com:8080",
+    );
   });
 
   it("leaves an empty value empty", () => {
@@ -116,6 +198,30 @@ describe("validateTarget", () => {
   it.each(["icmp", "ssl"] as const)("rejects a URL for %s", (type) => {
     expect(validateTarget(type, "https://example.com")).toBe("invalid");
   });
+
+  it.each(["icmp", "ssl"] as const)(
+    "rejects a host:port pair for %s, which no backend would catch",
+    (type) => {
+      expect(validateTarget(type, "example.com:8443")).toBe("invalid");
+      expect(validateTarget(type, "[2001:db8::1]:443")).toBe("invalid");
+    },
+  );
+
+  it.each(["icmp", "ssl"] as const)("accepts an IPv6 literal for %s", (type) => {
+    expect(validateTarget(type, "2001:db8::1")).toBeNull();
+    expect(validateTarget(type, "::1")).toBeNull();
+  });
+
+  it("accepts a host:port pair for http", () => {
+    expect(validateTarget("http", "example.com:8443")).toBeNull();
+  });
+
+  it.each(["icmp", "ssl"] as const)(
+    "accepts a trailing slash for %s (it is stripped, not rejected)",
+    (type) => {
+      expect(validateTarget(type, "example.com/")).toBeNull();
+    },
+  );
 
   it.each(["icmp", "ssl"] as const)("rejects a dotted edge case for %s", (type) => {
     expect(validateTarget(type, ".")).toBe("invalid");

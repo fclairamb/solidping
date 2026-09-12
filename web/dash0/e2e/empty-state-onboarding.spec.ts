@@ -185,6 +185,31 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     await input.fill("https://acme.com/health");
     await page.getByTestId("quick-start-icmp").click();
     await expect(input).toHaveValue("");
+
+    // A host:port pair is a fine HTTP target and can never be an ICMP or SSL
+    // host (ICMP has no ports; the SSL checker takes its port in a separate
+    // field), and NEITHER backend validates the host's shape — so carrying it
+    // over would create a check that is accepted and then fails on its first
+    // run.
+    await page.getByTestId("quick-start-http").click();
+    await input.fill("acme.com:8443");
+    await page.getByTestId("quick-start-ssl").click();
+    await expect(input).toHaveValue("");
+
+    await page.getByTestId("quick-start-http").click();
+    await input.fill("acme.com:8443");
+    await expect(input).toHaveValue("acme.com:8443");
+
+    // ...but the colon rule must not swallow IPv6, which is a real ping target.
+    await input.fill("2001:db8::1");
+    await page.getByTestId("quick-start-icmp").click();
+    await expect(input).toHaveValue("2001:db8::1");
+
+    // A pasted trailing slash is address-bar residue, not a path: the spec says
+    // clear ONLY what cannot apply, so this is tidied rather than discarded.
+    await input.fill("acme.com/");
+    await page.getByTestId("quick-start-ssl").click();
+    await expect(input).toHaveValue("acme.com");
   });
 
   test("the submit is never a dead disabled button: it explains what is missing", async ({
@@ -218,6 +243,12 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     await input.fill("https://acme.com/health");
     await submit.click();
     await expect(error).toContainText(/no http:\/\//i);
+
+    // A host:port pair gets the same treatment on submit — it would otherwise
+    // sail past both the form and the backend into a check that never works.
+    await input.fill("acme.com:8443");
+    await submit.click();
+    await expect(error).toContainText(/no port/i);
 
     // Typing clears the message again.
     await input.fill("acme.com");

@@ -12,10 +12,11 @@ import { useCreateCheck } from "@/api/hooks";
 import { ApiError } from "@/api/client";
 import { DASH_BASE } from "@/lib/base-path";
 import {
+  carryOverTarget,
   normalizeTarget,
-  targetAppliesTo,
   validateTarget,
 } from "@/lib/quick-check-target";
+import { shouldFocusOnMount } from "@/lib/mount-focus";
 
 type QuickType = "http" | "icmp" | "ssl";
 
@@ -90,19 +91,16 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
   // the screen and clicking them produced no visible consequence. A caret in
   // the one field that matters is the cheapest possible feedback.
   //
-  // Mount focus is deliberately CONDITIONAL on a fine pointer. On a touch
-  // device, focusing an input on mount raises the on-screen keyboard and
-  // scrolls the hero — including its heading — out of view before the user has
-  // read a word of it, which is exactly the disorientation auto-focus is warned
-  // about. With a mouse or trackpad there is no keyboard to raise, the viewport
-  // does not move (`preventScroll`), and the zero-check dashboard has no other
-  // purpose than this form. Focus on CHIP CLICK below is unconditional: it is
-  // the direct result of a deliberate user action, which is never surprising.
+  // Mount focus is deliberately CONDITIONAL on a fine pointer — the decision
+  // itself lives in `shouldFocusOnMount` (lib/mount-focus.ts) with its
+  // reasoning and unit tests for BOTH branches, because Playwright's viewport
+  // resize does not emulate a coarse pointer and so cannot reach the touch
+  // case. Focus on CHIP CLICK below is unconditional: it is the direct result
+  // of a deliberate user action, which is never surprising.
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const mm =
+      typeof window === "undefined" ? undefined : window.matchMedia?.bind(window);
+    if (!shouldFocusOnMount(mm)) return;
     inputRef.current?.focus({ preventScroll: true });
   }, []);
 
@@ -178,11 +176,11 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
                   // Spec 2026-09-12-04, defect 2: this used to be an
                   // unconditional `setValue("")`, so reconsidering HTTP vs SSL
                   // threw away a hostname that was valid for both. Keep what
-                  // still applies; clear only what cannot (an `https://…` URL
-                  // moving to Ping).
-                  setValue((current) =>
-                    targetAppliesTo(quick, current) ? current : "",
-                  );
+                  // still applies (tidying a pasted trailing slash rather than
+                  // discarding the value over it); clear only what cannot be a
+                  // host — an `https://…` URL, or a `host:port` pair, moving to
+                  // Ping or SSL.
+                  setValue((current) => carryOverTarget(quick, current));
                   setError(null);
                   inputRef.current?.focus();
                 }}
