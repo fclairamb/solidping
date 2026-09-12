@@ -455,7 +455,7 @@ func (s *Service) planUpdateConfig(
 	//
 	// What this does not reproduce is any rule that depends on a secret's
 	// VALUE — which is precisely what DryRunCaveatSecretMerge still says.
-	injectSecretPlaceholders(planned, parseConfigPrivateKeys(existing.ConfigPrivateKeys))
+	injectSecretPlaceholders(existing.Type, planned, parseConfigPrivateKeys(existing.ConfigPrivateKeys))
 
 	if cfgErr := s.validatePatchedConfig(
 		existing.Type, planned, existing.ConfigSealed != nil && existing.ConfigPrivate == nil,

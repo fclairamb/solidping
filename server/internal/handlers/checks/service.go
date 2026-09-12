@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -4738,7 +4739,7 @@ func (s *Service) validatePatchedConfig(
 	}
 
 	if wasSealedOnly {
-		injectSecretPlaceholders(configCopy, parseConfigPrivateKeys(oldPrivateKeys))
+		injectSecretPlaceholders(checkType, configCopy, parseConfigPrivateKeys(oldPrivateKeys))
 	}
 
 	return checker.Validate(&checkerdef.CheckSpec{Config: configCopy})
@@ -4763,20 +4764,76 @@ func parseConfigPrivateKeys(configPrivateKeys *string) []string {
 
 // injectSecretPlaceholders fills in a placeholder value, in place, for every
 // key that's absent from config — see validatePatchedConfig for when this is
-// safe to call.
-func injectSecretPlaceholders(config map[string]any, keys []string) {
+// safe to call. checkType resolves each key's placeholder to the shape the
+// checker's own config struct declares for it — see
+// secretPlaceholderShapeFor.
+func injectSecretPlaceholders(checkType string, config map[string]any, keys []string) {
 	for _, key := range keys {
 		if _, present := config[key]; present {
 			continue
 		}
 
-		if key == "private_key" {
-			config[key] = placeholderPrivateKeyPEM
+		config[key] = secretPlaceholderShapeFor(checkType, key)
+	}
+}
+
+// secretPlaceholderShapeFor resolves the placeholder value for a single
+// secret config key, shaped to match what checkType's config struct declares
+// for that key rather than always the plain string placeholder.
+//
+// `private_key` keeps its dedicated PEM-shaped value (placeholderPrivateKeyPEM)
+// — that is a VALUE rule (checksftp/checkssh PEM-decode it), not a shape rule,
+// and reflection cannot derive it.
+//
+// Otherwise, look up the checker's own config struct via
+// registry.ParseConfig, find the field whose `json` tag matches key, and
+// pick the placeholder from the field's reflect.Kind:
+//   - Map (e.g. secretHeaders, secretMetadata, secrets — all
+//     map[string]string) → an EMPTY map[string]any{}. Every map-shaped secret
+//     field is optional and none requires a non-empty map, so an empty map
+//     passes both decode and validation; a populated map risks tripping a
+//     checker's own key-name validation (checkgrpc's metadata name rules,
+//     checkhttp's empty-header-name rejection).
+//   - anything else — including no matching field, or an unknown check
+//     type — falls back to placeholderSecretValue, i.e. today's behavior.
+//     This must never be a hard error: the injector only widens or narrows
+//     what a throwaway Validate call sees, it is not a source of truth.
+func secretPlaceholderShapeFor(checkType, key string) any {
+	if key == "private_key" {
+		return placeholderPrivateKeyPEM
+	}
+
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return placeholderSecretValue
+	}
+
+	val := reflect.ValueOf(cfg)
+	for val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return placeholderSecretValue
+	}
+
+	typ := val.Type()
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+
+		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if jsonTag == "" || jsonTag != key {
 			continue
 		}
 
-		config[key] = placeholderSecretValue
+		if field.Type.Kind() == reflect.Map {
+			return map[string]any{}
+		}
+
+		break
 	}
+
+	return placeholderSecretValue
 }
 
 // applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check
