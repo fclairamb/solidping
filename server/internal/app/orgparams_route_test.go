@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // readBody drains a response body and returns it as a string.
@@ -93,15 +95,43 @@ func TestOrgParametersRoutesAreAdminOnlyAndNeverReturnASecret(t *testing.T) {
 	r.Contains(body, "region-label")
 	r.NotContains(body, "hunter2", "the list must never return a secret parameter's value")
 
-	// --- The reserved namespace is refused: an org must not be able to write
-	// the key its own encryption DEK lives under, nor claim the sp. prefix. ---
-	for _, key := range []string{"sp.anything", "encryption.dek", "auth.session.max_duration"} {
+	// --- The reserved SolidPing namespace is refused. ---
+	for _, key := range []string{"sp.anything", "sp.deeply.nested"} {
 		resp = put(models.MemberRoleAdmin, key, map[string]any{"value": "x", "secret": true})
 		body = readBody(t, resp)
 		_ = resp.Body.Close()
 		r.Equalf(http.StatusBadRequest, resp.StatusCode, "reserved key %q must be refused: %s", key, body)
 		r.Contains(body, `"code"`, "the refusal uses the standard error shape")
 	}
+
+	// --- A key NAMED like platform material is accepted, and lands nowhere
+	// near it. This is the property that replaced a denylist: the protection is
+	// the storage namespace, so there is no name to forbid and no list to keep
+	// in sync (the previous denylist was missing four instance credentials on
+	// the day it was written).
+	//
+	// Asserted against the database, not the API: the API cannot show where a
+	// row lives, and "somewhere else" is the entire claim. ---
+	ctx := context.Background()
+	platformValue := "the-real-wrapped-dek"
+	r.NoError(env.server.dbService.SetOrgParameter(ctx, env.orgUID, "encryption.dek", platformValue, true))
+
+	resp = put(models.MemberRoleAdmin, "encryption.dek", map[string]any{"value": "org-supplied", "secret": true})
+	body = readBody(t, resp)
+	_ = resp.Body.Close()
+	r.Equalf(http.StatusOK, resp.StatusCode, "a look-alike key is ordinary org data: %s", body)
+
+	platformRow, err := env.server.dbService.GetOrgParameter(ctx, env.orgUID, "encryption.dek")
+	r.NoError(err)
+	r.NotNil(platformRow, "the platform row must still exist")
+	r.Equal(platformValue, platformRow.Value[models.ParameterValueKey],
+		"an org admin must not be able to overwrite the key its own DEK lives under")
+
+	orgRow, err := env.server.dbService.GetOrgParameter(
+		ctx, env.orgUID, paramkeys.StorageKey("encryption.dek"))
+	r.NoError(err)
+	r.NotNil(orgRow, "the org's own value lives in the org namespace")
+	r.Equal("org-supplied", orgRow.Value[models.ParameterValueKey])
 
 	// A malformed key is a 400 too — uppercase is not in the pattern.
 	resp = put(models.MemberRoleAdmin, "NotLowercase", map[string]any{"value": "x"})
