@@ -15,11 +15,101 @@ import (
 
 // DocumentIssue is one generic-format problem found in an export/manifest
 // document by ValidateDocument. Where is the check slug (or docWhere for
-// document-level problems); Message is human-readable.
+// document-level problems); Field names the offending property; Code is the
+// STABLE machine code a CI job may allow-list; Message is human-readable prose
+// and may be reworded at any time.
+//
+// The JSON spelling is `{slug, field, code, message}` — the shape spec
+// 2026-09-11-04 pins for POST /checks/validate on a whole document. `Where` is
+// kept as the Go field name because it is `document` for document-level
+// problems, which is not a slug.
 type DocumentIssue struct {
-	Where   string
-	Message string
+	Where   string `json:"slug"`
+	Field   string `json:"field,omitempty"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
+
+// Stable machine codes for DocumentIssue. A CI job branches on these; the
+// prose in Message is not part of the contract. Every code this package can
+// emit is listed here, and DocumentIssueCodes() returns the closed set so the
+// documentation and the tests read it from the code rather than restating it.
+const (
+	// CodeUnsupportedVersion is a document `version` this build cannot read.
+	CodeUnsupportedVersion = "UNSUPPORTED_VERSION"
+	// CodeMissingOrganization is an absent document `organization`.
+	CodeMissingOrganization = "MISSING_ORGANIZATION"
+	// CodeInvalidSecretsMarker is a `secrets` marker other than "stripped".
+	CodeInvalidSecretsMarker = "INVALID_SECRETS_MARKER"
+	// CodeEmptyChecks is a document whose `checks` list is empty or absent.
+	CodeEmptyChecks = "EMPTY_CHECKS"
+	// CodeMissingField is a required per-check field (name, slug, type,
+	// config) that the document does not carry.
+	CodeMissingField = "MISSING_FIELD"
+	// CodeDuplicateSlug is a slug used by more than one check in the document.
+	CodeDuplicateSlug = "DUPLICATE_SLUG"
+	// CodeUnknownType is a check type no checker in this build implements.
+	// Distinct from CodeUnsupportedType (the single-check endpoint's code) so
+	// the two surfaces can be told apart in a log.
+	CodeUnknownType = "UNKNOWN_TYPE"
+	// CodeInlinedCredential flags a config key whose NAME suggests a literal
+	// credential. A hint, not a proof: `username` and ftp's `passive_mode`
+	// both trip it.
+	CodeInlinedCredential = "INLINED_CREDENTIAL"
+	// CodeStatusFieldConflict is expectedStatus and expectedStatusCodes set on
+	// the same config.
+	CodeStatusFieldConflict = "STATUS_FIELD_CONFLICT"
+	// CodeInvalidLabel is a label key or value the database would refuse.
+	CodeInvalidLabel = "INVALID_LABEL"
+	// CodeRegionFormat is a region that is neither a slug nor "@location".
+	CodeRegionFormat = "REGION_FORMAT"
+	// CodeDependencyCycle is a cycle in the dependsOn graph.
+	CodeDependencyCycle = "DEPENDENCY_CYCLE"
+	// CodeUnresolvedSecretRef is a ${env:}/${param:} reference that does not
+	// resolve for this organization. Only the ORG-AWARE endpoint emits it:
+	// ValidateDocument performs no I/O and cannot know.
+	CodeUnresolvedSecretRef = "UNRESOLVED_SECRET_REF"
+)
+
+// DocumentIssueCodes returns every code a document validation can report, in a
+// stable order. It is what the API documentation and the CLI's --help print,
+// so the published allow-list can never drift from the emitted one.
+func DocumentIssueCodes() []string {
+	return []string{
+		CodeUnsupportedVersion,
+		CodeMissingOrganization,
+		CodeInvalidSecretsMarker,
+		CodeEmptyChecks,
+		CodeMissingField,
+		CodeInvalidSlug,
+		CodeDuplicateSlug,
+		CodeInternalNotWritable,
+		CodeUnknownType,
+		CodeInvalidConfig,
+		CodeInlinedCredential,
+		CodeStatusFieldConflict,
+		CodeInvalidPeriod,
+		CodeInvalidLabel,
+		CodeRegionFormat,
+		CodeInvalidDependsOn,
+		CodeDependencyCycle,
+		CodeUnresolvedSecretRef,
+	}
+}
+
+// Field names used by DocumentIssue.Field, mirroring the document's own JSON
+// property names.
+const (
+	fieldDocVersion      = "version"
+	fieldDocOrganization = "organization"
+	fieldDocSecrets      = "secrets"
+	fieldDocChecks       = "checks"
+	fieldConfig          = "config"
+	fieldRegions         = "regions"
+	fieldDependsOn       = "dependsOn"
+	fieldLabelsPrefix    = "labels."
+	fieldConfigPrefix    = "config."
+)
 
 // docWhere is the DocumentIssue.Where value used for document-level (not
 // per-check) problems.
@@ -94,17 +184,21 @@ func validateDocumentShape(doc *ExportDocument) []DocumentIssue {
 
 	if !isSupportedExportVersion(doc.Version) {
 		issues = append(issues, DocumentIssue{
-			Where: docWhere, Message: fmt.Sprintf("version must be 1 or 2, got %d", doc.Version),
+			Where: docWhere, Field: fieldDocVersion, Code: CodeUnsupportedVersion,
+			Message: fmt.Sprintf("version must be 1 or 2, got %d", doc.Version),
 		})
 	}
 
 	if doc.Organization == "" {
-		issues = append(issues, DocumentIssue{Where: docWhere, Message: "organization is missing"})
+		issues = append(issues, DocumentIssue{
+			Where: docWhere, Field: fieldDocOrganization, Code: CodeMissingOrganization,
+			Message: "organization is missing",
+		})
 	}
 
 	if doc.Secrets != "" && doc.Secrets != SecretsMarkerStripped {
 		issues = append(issues, DocumentIssue{
-			Where: docWhere,
+			Where: docWhere, Field: fieldDocSecrets, Code: CodeInvalidSecretsMarker,
 			Message: fmt.Sprintf(
 				"secrets must stay %q, got %q — never commit a raw export that still carries credentials",
 				SecretsMarkerStripped, doc.Secrets),
@@ -112,7 +206,10 @@ func validateDocumentShape(doc *ExportDocument) []DocumentIssue {
 	}
 
 	if len(doc.Checks) == 0 {
-		issues = append(issues, DocumentIssue{Where: docWhere, Message: "checks must be a non-empty list"})
+		issues = append(issues, DocumentIssue{
+			Where: docWhere, Field: fieldDocChecks, Code: CodeEmptyChecks,
+			Message: "checks must be a non-empty list",
+		})
 	}
 
 	return issues
@@ -130,18 +227,28 @@ func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]str
 	}
 
 	if check.Name == "" {
-		issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"name\""})
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: fieldName, Code: CodeMissingField,
+			Message: "missing required field \"name\"",
+		})
 	}
 
 	if check.Slug == "" {
-		issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"slug\""})
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: fieldSlug, Code: CodeMissingField,
+			Message: "missing required field \"slug\"",
+		})
 	} else if err := validateSlug(check.Slug); err != nil {
-		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: fieldSlug, Code: CodeInvalidSlug, Message: err.Error(),
+		})
 	}
 
 	if check.Slug != "" {
 		if _, dup := seenSlugs[check.Slug]; dup {
-			issues = append(issues, DocumentIssue{Where: where, Message: issueDuplicateSlug})
+			issues = append(issues, DocumentIssue{
+				Where: where, Field: fieldSlug, Code: CodeDuplicateSlug, Message: issueDuplicateSlug,
+			})
 		}
 		seenSlugs[check.Slug] = struct{}{}
 	}
@@ -152,7 +259,7 @@ func validateSingleCheck(check *ExportCheck, index int, seenSlugs map[string]str
 	// reject is worse than no validator.
 	if check.Internal {
 		issues = append(issues, DocumentIssue{
-			Where:   where,
+			Where: where, Field: fieldInternal, Code: CodeInternalNotWritable,
 			Message: "internal: " + ErrInternalFieldNotWritable.Error(),
 		})
 	}
@@ -170,21 +277,28 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 	var issues []DocumentIssue
 
 	if check.Type == "" {
-		issues = append(issues, DocumentIssue{Where: where, Message: "missing required field \"type\""})
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: fieldType, Code: CodeMissingField,
+			Message: "missing required field \"type\"",
+		})
 
 		return issues
 	}
 
 	checker, ok := registry.GetChecker(checkerdef.CheckType(check.Type))
 	if !ok {
-		issues = append(issues, DocumentIssue{Where: where, Message: fmt.Sprintf("unsupported check type %q", check.Type)})
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: fieldType, Code: CodeUnknownType,
+			Message: fmt.Sprintf("unsupported check type %q", check.Type),
+		})
 
 		return issues
 	}
 
 	if check.Config == nil {
 		issues = append(issues, DocumentIssue{
-			Where: where, Message: "config is missing or null — use \"config: {}\" when there is nothing to set",
+			Where: where, Field: fieldConfig, Code: CodeMissingField,
+			Message: "config is missing or null — use \"config: {}\" when there is nothing to set",
 		})
 
 		return issues
@@ -200,19 +314,20 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 	configCopy, copyErr := deepCopyConfig(check.Config)
 	if copyErr != nil {
 		issues = append(issues, DocumentIssue{
-			Where: where, Message: fmt.Sprintf("config is not representable as JSON: %v", copyErr),
+			Where: where, Field: fieldConfig, Code: CodeInvalidConfig,
+			Message: fmt.Sprintf("config is not representable as JSON: %v", copyErr),
 		})
 
 		return issues
 	}
 
 	if err := checker.Validate(&checkerdef.CheckSpec{Config: configCopy}); err != nil {
-		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+		issues = append(issues, configIssue(where, err))
 	}
 
 	// Shared, type-agnostic config keys the per-type Validate never sees.
 	if err := validateIPVersionConfig(check.Type, check.Config); err != nil {
-		issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+		issues = append(issues, configIssue(where, err))
 	}
 
 	// Credential/status-field checks run on the caller's original config —
@@ -221,6 +336,19 @@ func validateCheckType(where string, check *ExportCheck) []DocumentIssue {
 	issues = append(issues, validateStatusFieldExclusivity(where, check.Config)...)
 
 	return issues
+}
+
+// configIssue renders a config-level validator error as an issue, preferring
+// the exact parameter a *ConfigError names over the generic "config" field —
+// the same precedence validateFindings.addErrorFrom uses on the single-check
+// endpoint, so the two surfaces point at the same property.
+func configIssue(where string, err error) DocumentIssue {
+	field := fieldConfig
+	if configErr := checkerdef.IsConfigError(err); configErr != nil && configErr.Parameter != "" {
+		field = fieldConfigPrefix + configErr.Parameter
+	}
+
+	return DocumentIssue{Where: where, Field: field, Code: CodeInvalidConfig, Message: err.Error()}
 }
 
 // deepCopyConfig returns an independent copy of a check config map so it can
@@ -263,7 +391,7 @@ func validateNoInlinedCredentials(where string, config map[string]any) []Documen
 		for _, hint := range secretConfigHints() {
 			if strings.Contains(lower, hint) {
 				issues = append(issues, DocumentIssue{
-					Where: where,
+					Where: where, Field: fieldConfigPrefix + key, Code: CodeInlinedCredential,
 					Message: fmt.Sprintf(
 						"config.%s looks like a credential — keep it in SolidPing's own secret store, not in this file",
 						key),
@@ -293,7 +421,7 @@ func validateStatusFieldExclusivity(where string, config map[string]any) []Docum
 	statusKeys, statusCodesKeys := expectedStatusFieldKeys()
 	if hasAny(statusKeys) && hasAny(statusCodesKeys) {
 		return []DocumentIssue{{
-			Where: where,
+			Where: where, Field: "config.expectedStatusCodes", Code: CodeStatusFieldConflict,
 			Message: "config sets both expectedStatus and expectedStatusCodes — the latter supersedes " +
 				"the former, so drop expectedStatus rather than leaving it as dead config",
 		}}
@@ -312,7 +440,8 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 		var d timeutils.Duration
 		if err := d.Scan(check.Period); err != nil {
 			issues = append(issues, DocumentIssue{
-				Where: where, Message: fmt.Sprintf("period %q is not a duration like \"30s\", \"15m\" or \"12h\"", check.Period),
+				Where: where, Field: fieldPeriod, Code: CodeInvalidPeriod,
+				Message: fmt.Sprintf("period %q is not a duration like \"30s\", \"15m\" or \"12h\"", check.Period),
 			})
 		}
 	}
@@ -331,17 +460,22 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 
 	for _, key := range labelKeys {
 		if err := models.ValidateLabelKey(key); err != nil {
-			issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+			issues = append(issues, DocumentIssue{
+				Where: where, Field: fieldLabelsPrefix + key, Code: CodeInvalidLabel, Message: err.Error(),
+			})
 		}
 		if err := models.ValidateLabelValue(key, check.Labels[key]); err != nil {
-			issues = append(issues, DocumentIssue{Where: where, Message: err.Error()})
+			issues = append(issues, DocumentIssue{
+				Where: where, Field: fieldLabelsPrefix + key, Code: CodeInvalidLabel, Message: err.Error(),
+			})
 		}
 	}
 
 	for _, region := range check.Regions {
 		if !regionRegex.MatchString(region) {
 			issues = append(issues, DocumentIssue{
-				Where: where, Message: fmt.Sprintf("region %q must be a slug or \"@private-location\"", region),
+				Where: where, Field: fieldRegions, Code: CodeRegionFormat,
+				Message: fmt.Sprintf("region %q must be a slug or \"@private-location\"", region),
 			})
 		}
 	}
@@ -371,7 +505,7 @@ func validateDependencyGraph(checks []ExportCheck, knownSlugs map[string]struct{
 			dep := &check.DependsOn[depIdx]
 			if !models.CheckDependencyKind(dep.Kind).IsValid() {
 				issues = append(issues, DocumentIssue{
-					Where: where,
+					Where: where, Field: fieldDependsOn, Code: CodeInvalidDependsOn,
 					Message: fmt.Sprintf(
 						"dependsOn %q has kind %q, expected \"hard\" or \"soft\"", dep.ParentSlug, dep.Kind),
 				})
@@ -379,20 +513,28 @@ func validateDependencyGraph(checks []ExportCheck, knownSlugs map[string]struct{
 
 			switch dep.ParentSlug {
 			case "":
-				issues = append(issues, DocumentIssue{Where: where, Message: "dependsOn entry is missing parentSlug"})
+				issues = append(issues, DocumentIssue{
+					Where: where, Field: fieldDependsOn, Code: CodeInvalidDependsOn,
+					Message: "dependsOn entry is missing parentSlug",
+				})
 			case check.Slug:
-				issues = append(issues, DocumentIssue{Where: where, Message: "check depends on itself"})
+				issues = append(issues, DocumentIssue{
+					Where: where, Field: fieldDependsOn, Code: CodeInvalidDependsOn,
+					Message: "check depends on itself",
+				})
 			default:
 				if _, ok := knownSlugs[dep.ParentSlug]; !ok {
 					issues = append(issues, DocumentIssue{
-						Where: where, Message: fmt.Sprintf("dependsOn parentSlug %q does not match any check", dep.ParentSlug),
+						Where: where, Field: fieldDependsOn, Code: CodeInvalidDependsOn,
+						Message: fmt.Sprintf("dependsOn parentSlug %q does not match any check", dep.ParentSlug),
 					})
 
 					continue
 				}
 				if _, dup := seenParents[dep.ParentSlug]; dup {
 					issues = append(issues, DocumentIssue{
-						Where: where, Message: fmt.Sprintf("dependsOn lists %q twice", dep.ParentSlug),
+						Where: where, Field: fieldDependsOn, Code: CodeInvalidDependsOn,
+						Message: fmt.Sprintf("dependsOn lists %q twice", dep.ParentSlug),
 					})
 
 					continue
@@ -445,7 +587,8 @@ func findDependencyCycles(edges map[string][]string) []DocumentIssue {
 				if _, ok := seenCycles[key]; !ok {
 					seenCycles[key] = struct{}{}
 					issues = append(issues, DocumentIssue{
-						Where: node, Message: "dependency cycle: " + strings.Join(cycle, " -> "),
+						Where: node, Field: fieldDependsOn, Code: CodeDependencyCycle,
+						Message: "dependency cycle: " + strings.Join(cycle, " -> "),
 					})
 				}
 			case colorWhite:

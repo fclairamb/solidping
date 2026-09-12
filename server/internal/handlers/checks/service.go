@@ -3294,7 +3294,52 @@ func (s *Service) ExportChecks(
 		return nil, err
 	}
 
-	// Fetch labels for all checks
+	labelsMap, groupMap, depsByChild, err := s.loadExportSidecars(ctx, org.UID, checks)
+	if err != nil {
+		return nil, err
+	}
+
+	exportChecks := projectChecksToExport(checks, labelsMap, groupMap, depsByChild)
+
+	// Deterministic ordering: group (empty group last), then slug. Keeps
+	// git-committed exports diff-clean and groups related checks together.
+	sort.SliceStable(exportChecks, func(i, j int) bool {
+		groupI, groupJ := exportChecks[i].Group, exportChecks[j].Group
+		if groupI != groupJ {
+			switch {
+			case groupI == "":
+				return false
+			case groupJ == "":
+				return true
+			default:
+				return groupI < groupJ
+			}
+		}
+
+		return exportChecks[i].Slug < exportChecks[j].Slug
+	})
+
+	return &ExportDocument{
+		Version:      ExportVersionV2,
+		ExportedAt:   time.Now().UTC().Format(time.RFC3339),
+		Organization: orgSlug,
+		Checks:       exportChecks,
+		Secrets:      SecretsMarkerStripped,
+	}, nil
+}
+
+// loadExportSidecars reads everything a check projection needs besides the
+// rows themselves: the labels, the group UID → name map, and the dependency
+// edges keyed by child UID and rendered slug-first (export documents are
+// portable across instances where UIDs differ).
+//
+// Factored out of ExportChecks so the import/apply planner can project the
+// org's CURRENT state through the very same code the exporter uses — which is
+// what makes "a fresh export plans as unchanged" a property of the code rather
+// than a coincidence between two implementations (spec 2026-09-11-04).
+func (s *Service) loadExportSidecars(
+	ctx context.Context, orgUID string, checks []*models.Check,
+) (map[string][]*models.Label, map[string]string, map[string][]ExportedDependency, error) {
 	checkUIDs := make([]string, len(checks))
 	for i, c := range checks {
 		checkUIDs[i] = c.UID
@@ -3302,13 +3347,12 @@ func (s *Service) ExportChecks(
 
 	labelsMap, err := s.db.GetLabelsForChecks(ctx, checkUIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	// Fetch check groups for group name resolution
-	groups, err := s.db.ListCheckGroups(ctx, org.UID)
+	groups, err := s.db.ListCheckGroups(ctx, orgUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	groupMap := make(map[string]string, len(groups))
@@ -3316,11 +3360,9 @@ func (s *Service) ExportChecks(
 		groupMap[g.UID] = g.Name
 	}
 
-	// Fetch all dependencies in this org and group by child UID. Slug-keyed
-	// at write time below so the export doc is portable.
-	allDeps, err := s.db.ListCheckDependenciesByOrg(ctx, org.UID)
+	allDeps, err := s.db.ListCheckDependenciesByOrg(ctx, orgUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	slugByUID := make(map[string]string, len(checks))
@@ -3333,9 +3375,9 @@ func (s *Service) ExportChecks(
 	depsByChild := make(map[string][]ExportedDependency, len(checks))
 	for _, dep := range allDeps {
 		parentSlug, ok := slugByUID[dep.ParentCheckUID]
-		// Skip edges whose parent isn't in the exported set (filtered out by
-		// the caller's labels/group filter, or otherwise unreachable). The
-		// dep is left intact in the DB; the export simply can't represent it.
+		// Skip edges whose parent isn't in the projected set (filtered out by
+		// the caller's labels/group filter, or otherwise unreachable). The dep
+		// is left intact in the DB; the document simply can't represent it.
 		if !ok || parentSlug == "" {
 			continue
 		}
@@ -3354,8 +3396,20 @@ func (s *Service) ExportChecks(
 		})
 	}
 
-	// Build export checks
+	return labelsMap, groupMap, depsByChild, nil
+}
+
+// projectChecksToExport turns stored rows into the canonical ExportCheck shape
+// — the ONE place that mapping lives. The exporter renders the result; the
+// import/apply planner diffs a document against it.
+func projectChecksToExport(
+	checks []*models.Check,
+	labelsMap map[string][]*models.Label,
+	groupMap map[string]string,
+	depsByChild map[string][]ExportedDependency,
+) []ExportCheck {
 	exportChecks := make([]ExportCheck, 0, len(checks))
+
 	for _, check := range checks {
 		periodValue, _ := check.Period.Value()
 		periodStr, _ := periodValue.(string)
@@ -3387,14 +3441,12 @@ func (s *Service) ExportChecks(
 			exported.Description = *check.Description
 		}
 
-		// Resolve group name
 		if check.CheckGroupUID != nil {
 			if name, ok := groupMap[*check.CheckGroupUID]; ok {
 				exported.Group = name
 			}
 		}
 
-		// Attach labels
 		if labels, ok := labelsMap[check.UID]; ok && len(labels) > 0 {
 			exported.Labels = make(map[string]string, len(labels))
 			for _, label := range labels {
@@ -3409,31 +3461,7 @@ func (s *Service) ExportChecks(
 		exportChecks = append(exportChecks, exported)
 	}
 
-	// Deterministic ordering: group (empty group last), then slug. Keeps
-	// git-committed exports diff-clean and groups related checks together.
-	sort.SliceStable(exportChecks, func(i, j int) bool {
-		groupI, groupJ := exportChecks[i].Group, exportChecks[j].Group
-		if groupI != groupJ {
-			switch {
-			case groupI == "":
-				return false
-			case groupJ == "":
-				return true
-			default:
-				return groupI < groupJ
-			}
-		}
-
-		return exportChecks[i].Slug < exportChecks[j].Slug
-	})
-
-	return &ExportDocument{
-		Version:      ExportVersionV2,
-		ExportedAt:   time.Now().UTC().Format(time.RFC3339),
-		Organization: orgSlug,
-		Checks:       exportChecks,
-		Secrets:      SecretsMarkerStripped,
-	}, nil
+	return exportChecks
 }
 
 // intPtr returns a pointer to v. Used by the exporter to populate the
@@ -3471,28 +3499,9 @@ func stripSecretKeysForExport(check *models.Check) map[string]any {
 		out[k] = v
 	}
 
-	secretSet := map[string]struct{}{}
-
-	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
-		for _, k := range credentials.SecretFieldsFor(cfg) {
-			secretSet[k] = struct{}{}
-		}
-
-		for _, k := range credentials.ExportRedactedFieldsFor(cfg) {
-			secretSet[k] = struct{}{}
-		}
-	}
-
-	if check.ConfigPrivateKeys != nil && *check.ConfigPrivateKeys != "" {
-		var privateKeys []string
-		if err := json.Unmarshal([]byte(*check.ConfigPrivateKeys), &privateKeys); err == nil {
-			for _, k := range privateKeys {
-				secretSet[k] = struct{}{}
-			}
-		}
-	}
-
-	for k := range secretSet {
+	// The stripped set lives in hiddenExportConfigKeys so the import/apply
+	// differ compares the two sides on exactly the keys the exporter keeps.
+	for k := range hiddenExportConfigKeys(check.Type, check.ConfigPrivateKeys) {
 		delete(out, k)
 	}
 
