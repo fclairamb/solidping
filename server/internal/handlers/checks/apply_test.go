@@ -2,6 +2,7 @@ package checks_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -246,10 +247,18 @@ func TestApplyDeletionCapRefusesOversizedPrune(t *testing.T) {
 	r.Equal(3, res.Deleted)
 }
 
-// TestApplyResolvesEnvSecretRef verifies ${env:NAME} resolution feeds the value
-// into the encrypted envelope (config_private), keeping the public config clean.
+// TestApplyStoresEnvSecretRefAsAReference verifies ${env:NAME} in a secret
+// field is STORED AS THE REFERENCE — enveloped like any other secret value,
+// with nothing resolved at rest (spec 2026-09-11-03). The value is materialized
+// at execution, on the process that runs the check.
+//
+// Until that spec this test asserted the opposite (the resolved value fed into
+// config_private). That was correct only for keys inside SecretFields(); a
+// reference in `body` was resolved into the PUBLIC config and served straight
+// back by GET /checks/:uid.
+//
 // Uses t.Setenv, which is incompatible with t.Parallel.
-func TestApplyResolvesEnvSecretRef(t *testing.T) {
+func TestApplyStoresEnvSecretRefAsAReference(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
@@ -269,7 +278,8 @@ func TestApplyResolvesEnvSecretRef(t *testing.T) {
 	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
 	r.NoError(err)
 	r.Equal(1, res.Created)
-	r.Empty(res.Warnings, "master key set: no plaintext warning expected")
+	r.Len(res.Warnings, 1, "an ${env:} reference is advised about once per document")
+	r.Contains(res.Warnings[0], "${env:")
 
 	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "secured")
 	r.NoError(err)
@@ -360,22 +370,45 @@ func TestApplyMissingSecretRefIsHardError(t *testing.T) {
 	r.Empty(list, "a missing secret ref must fail closed before mutation")
 }
 
-// TestApplySecretRefPlaintextFallbackWarns verifies that when the master key is
-// unset, resolving a secret ref emits a warning (not a refusal).
+// TestApplySecretRefLeaksNothingWithoutAMasterKey is the successor to the old
+// TestApplySecretRefPlaintextFallbackWarns.
+//
+// That test asserted a warning saying "resolved secret references are stored in
+// plaintext config", which was an honest description of a real leak: with no
+// master key the resolved value went into the public config. Spec 2026-09-11-03
+// removed the leak rather than the warning — the REFERENCE is stored, so there
+// is no plaintext value to warn about, with or without a key. What is asserted
+// now is the negative the warning used to apologize for.
+//
 // Uses t.Setenv, which is incompatible with t.Parallel.
-func TestApplySecretRefPlaintextFallbackWarns(t *testing.T) {
+func TestApplySecretRefLeaksNothingWithoutAMasterKey(t *testing.T) {
 	r := require.New(t)
-	svc, _, org := setupApplyService(t, false) // no master key → plaintext fallback
+	svc, dbSvc, org := setupApplyService(t, false) // no master key → plaintext envelope
 	ctx := t.Context()
 
 	t.Setenv("SP_TEST_PLAINTEXT_TOKEN", "exposed")
 
 	c := manifestCheck("warned")
-	c.Config = map[string]any{"url": "https://example.com", "password": "${env:SP_TEST_PLAINTEXT_TOKEN}"}
+	c.Config = map[string]any{
+		"url":      "https://example.com",
+		"body":     "password=${env:SP_TEST_PLAINTEXT_TOKEN}",
+		"password": "${env:SP_TEST_PLAINTEXT_TOKEN}",
+	}
 
 	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
 	r.NoError(err)
-	r.NotEmpty(res.Warnings, "plaintext fallback must warn when a secret ref is resolved")
+	r.Len(res.Warnings, 1, "the ${env:} advisory still fires")
+
+	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "warned")
+	r.NoError(err)
+
+	// `body` is NOT a secret field, so it stays in the public config — holding
+	// the reference, never the value. This is the exact leak the spec names.
+	r.Equal("password=${env:SP_TEST_PLAINTEXT_TOKEN}", row.Config["body"])
+
+	blob, marshalErr := json.Marshal(row.Config)
+	r.NoError(marshalErr)
+	r.NotContains(string(blob), "exposed", "no resolved value may reach the public config")
 }
 
 // TestApplyExportRoundTripIsIdempotent verifies that applying an exported
