@@ -176,20 +176,30 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 func (r *jsRuntime) resultFor(
 	val goja.Value, err error, duration, timeout time.Duration,
 ) *checkerdef.Result {
-	if err != nil {
-		// The check's OWN deadline expiring is a `timeout`, not an `error`:
-		// the runtime cut the script off, which is exactly what the status is
-		// for and what the result contract already promises
-		// (web/docs/docs/features/javascript-checks.md#result-contract). A
-		// cancellation (worker shutdown) is not a timeout and stays `error`.
-		if errors.Is(r.execCtx.Err(), context.DeadlineExceeded) {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusTimeout,
-				Duration: duration,
-				Output:   r.buildOutput("script timed out after " + timeout.String()),
-			}
+	// The check's OWN deadline expiring is a `timeout`, not an `error`: the
+	// runtime cut the script off, which is exactly what the status is for and
+	// what the result contract already promises
+	// (web/docs/docs/features/javascript-checks.md#result-contract). A
+	// cancellation (worker shutdown) is not a timeout and stays `error`.
+	//
+	// Checked BEFORE the returned value, and that ordering is load-bearing
+	// rather than tidy. goja's Interrupt only lands when control returns to
+	// JavaScript AND the VM reaches a point that checks the flag: a script
+	// whose last binding returns after the deadline can race past a couple of
+	// statements and `return { status: "up" }` before the interrupt is
+	// observed. Trusting the interrupt alone therefore makes the SAME run
+	// report `timeout` or `up` depending on scheduling — the exact
+	// nondeterminism spec 2026-09-12-06 §3 rules out ("the result is
+	// timeout"). The budget is spent either way, so the budget decides.
+	if errors.Is(r.execCtx.Err(), context.DeadlineExceeded) {
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusTimeout,
+			Duration: duration,
+			Output:   r.buildOutput("script timed out after " + timeout.String()),
 		}
+	}
 
+	if err != nil {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,

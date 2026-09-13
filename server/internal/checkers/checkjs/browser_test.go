@@ -786,8 +786,39 @@ return { status: "up" };
 `, checkTimeout)
 	elapsed := time.Since(start)
 
-	r.Equal("timeout", wide.Status.String())
+	r.Equal("timeout", wide.Status.String(),
+		"a run whose budget is spent reports timeout deterministically, "+
+			"whether or not goja's interrupt beat the script's last statement")
+	r.GreaterOrEqual(elapsed, checkTimeout)
 	r.Less(elapsed, 5*time.Second, "a per-call timeout must never outlive the check's own")
+}
+
+// TestASpentBudgetReportsTimeoutEvenIfTheScriptFinishes is the regression
+// guard for a race this suite caught intermittently: a binding that returns
+// AFTER the deadline leaves the script a couple of statements it can run
+// before goja's interrupt is observed, so the same run reported `timeout` or
+// `up` depending on scheduling. The budget is spent either way.
+//
+// -count is what makes this meaningful; a single pass proved nothing when the
+// implementation was racy, which is why the assertion is repeated here rather
+// than left to the two waitFor tests.
+//
+//nolint:paralleltest // mutates the package-level OpenBrowser seam
+func TestASpentBudgetReportsTimeoutEvenIfTheScriptFinishes(t *testing.T) {
+	r := require.New(t)
+
+	for range 20 {
+		installFakeBrowser(t, &fakeSession{waitBlock: true})
+
+		result := runBrowserScript(t, `
+var page = browser.open();
+page.waitFor("#never", { timeout: "60s" });
+return { status: "up" };
+`, 50*time.Millisecond)
+
+		r.Equal("timeout", result.Status.String(),
+			"a run past its deadline must never report the status the script squeezed in")
+	}
 }
 
 // TestBrowserGlobalIsAlwaysPresent: the global exists whether or not a browser
