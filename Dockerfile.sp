@@ -11,7 +11,13 @@
 #
 #   docker run --rm -v "$PWD:/w" -w /w ghcr.io/fclairamb/solidping/sp \
 #     checks validate config.yaml
-FROM golang:1.27.1-trixie AS builder
+# --platform=$BUILDPLATFORM pins the builder stage to the machine doing the
+# building, NOT to each target. Without it a linux/arm64 target runs this whole
+# stage — go mod download and the compile — under QEMU emulation on an amd64
+# runner, which is both minutes slower and needs a QEMU setup step in CI. The
+# stage already cross-compiles properly via TARGETOS/TARGETARCH below, so
+# emulating it buys nothing.
+FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
