@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -97,14 +97,14 @@ func (c *DockerChecker) Execute(
 
 	defer func() { _ = cli.Close() }()
 
-	info, err := cli.ContainerInspect(ctx, cfg.resolveContainerRef())
+	inspected, err := cli.ContainerInspect(ctx, cfg.resolveContainerRef(), client.ContainerInspectOptions{})
 	if err != nil {
 		return handleInspectError(ctx, err, start, metrics), nil
 	}
 
 	metrics["inspect_time_ms"] = durationMs(time.Since(start))
 
-	return buildResult(cfg, info, start, metrics, output), nil
+	return buildResult(cfg, inspected.Container, start, metrics, output), nil
 }
 
 func createClient(cfg *DockerConfig) (*client.Client, error) {

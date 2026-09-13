@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 // defaultContainerListTimeout is the per-endpoint timeout applied when the job
@@ -60,10 +60,12 @@ func ListContainers(ctx context.Context, endpoint string, timeout time.Duration)
 
 	// All:false → running containers only; the suggestion set stays scoped to
 	// things currently worth monitoring (decision 3 in the spec).
-	summaries, err := cli.ContainerList(ctx, container.ListOptions{All: false})
+	listed, err := cli.ContainerList(ctx, client.ContainerListOptions{All: false})
 	if err != nil {
 		return nil, fmt.Errorf("list containers on %q: %w", endpoint, err)
 	}
+
+	summaries := listed.Items
 
 	out := make([]DiscoveredContainer, 0, len(summaries))
 	for i := range summaries {
@@ -88,7 +90,7 @@ func mapSummary(summary *container.Summary) DiscoveredContainer {
 		ID:           summary.ID,
 		Name:         containerName(summary.Names),
 		Image:        summary.Image,
-		State:        summary.State,
+		State:        string(summary.State),
 		Status:       summary.Status,
 		HealthStatus: parseHealthStatus(summary.Status),
 		Ports:        ports,

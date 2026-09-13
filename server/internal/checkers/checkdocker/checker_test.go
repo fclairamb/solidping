@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -27,17 +27,15 @@ func makeInspect(o inspectOpts) container.InspectResponse {
 	}
 
 	if o.healthStatus != "" {
-		state.Health = &container.Health{Status: o.healthStatus}
+		state.Health = &container.Health{Status: container.HealthStatus(o.healthStatus)}
 	}
 
 	return container.InspectResponse{
-		ContainerJSONBase: &container.ContainerJSONBase{
-			ID:           "abc123",
-			Name:         "/test-container",
-			State:        state,
-			RestartCount: o.restartCount,
-		},
-		Config: &container.Config{Image: "test:latest"},
+		ID:           "abc123",
+		Name:         "/test-container",
+		State:        state,
+		RestartCount: o.restartCount,
+		Config:       &container.Config{Image: "test:latest"},
 	}
 }
 

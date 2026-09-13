@@ -18,17 +18,17 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
 	"github.com/miekg/dns"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 // Pebble (https://github.com/letsencrypt/pebble) is Let's Encrypt's test ACME
@@ -78,7 +78,7 @@ type pebbleCA struct {
 func (c *pebbleCA) Logs(ctx context.Context, t *testing.T) string {
 	t.Helper()
 
-	reader, err := c.cli.ContainerLogs(ctx, c.containerID, container.LogsOptions{
+	reader, err := c.cli.ContainerLogs(ctx, c.containerID, client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 	})
@@ -113,8 +113,10 @@ func startPebble(ctx context.Context, t *testing.T, resolver *testDNS, httpPort,
 		t.Skipf("cannot reserve a host port: %v", err)
 	}
 
-	created, err := cli.ContainerCreate(ctx,
-		&container.Config{
+	dirPort := network.MustParsePort(pebbleDirPort)
+
+	created, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config: &container.Config{
 			Image: pebbleImage,
 			// Skip only the artificial validation delay, so a test issuance takes
 			// milliseconds instead of tens of seconds. PEBBLE_VA_ALWAYS_VALID is
@@ -123,18 +125,19 @@ func startPebble(ctx context.Context, t *testing.T, resolver *testDNS, httpPort,
 			// Resolve every name through the in-process DNS server, so the
 			// validator comes back to this test's listeners.
 			Cmd:          []string{"-dnsserver", pebbleHostAlias + ":" + resolver.Port()},
-			ExposedPorts: nat.PortSet{pebbleDirPort: struct{}{}},
+			ExposedPorts: network.PortSet{dirPort: struct{}{}},
 			Tty:          true,
 		},
-		&container.HostConfig{
-			PortBindings: nat.PortMap{
-				pebbleDirPort: []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: hostPort}},
+		HostConfig: &container.HostConfig{
+			PortBindings: network.PortMap{
+				dirPort: []network.PortBinding{{HostIP: netip.AddrFrom4([4]byte{127, 0, 0, 1}), HostPort: hostPort}},
 			},
 			// host-gateway makes host.docker.internal resolvable inside the
 			// container on Linux too, not only on Docker Desktop.
 			ExtraHosts: []string{pebbleHostAlias + ":host-gateway"},
 			AutoRemove: true,
-		}, nil, nil, "")
+		},
+	})
 	if err != nil {
 		t.Skipf("cannot create pebble container: %v", err)
 	}
@@ -144,14 +147,14 @@ func startPebble(ctx context.Context, t *testing.T, resolver *testDNS, httpPort,
 	t.Cleanup(func() { //nolint:contextcheck
 		removeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_ = cli.ContainerRemove(removeCtx, created.ID, container.RemoveOptions{Force: true})
+		_, _ = cli.ContainerRemove(removeCtx, created.ID, client.ContainerRemoveOptions{Force: true})
 	})
 
 	if cfgErr := pointPebbleAtChallengePorts(ctx, cli, created.ID, httpPort, tlsPort); cfgErr != nil {
 		t.Skipf("cannot rewrite the pebble config: %v", cfgErr)
 	}
 
-	if startErr := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); startErr != nil {
+	if _, startErr := cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); startErr != nil {
 		t.Skipf("cannot start pebble container: %v", startErr)
 	}
 
@@ -190,11 +193,11 @@ func dockerClient(ctx context.Context, t *testing.T) *client.Client {
 
 	t.Cleanup(func() { _ = cli.Close() })
 
-	if _, pingErr := cli.Ping(ctx); pingErr != nil {
+	if _, pingErr := cli.Ping(ctx, client.PingOptions{}); pingErr != nil {
 		t.Skipf("docker daemon unavailable: %v", pingErr)
 	}
 
-	pullReader, err := cli.ImagePull(ctx, pebbleImage, image.PullOptions{})
+	pullReader, err := cli.ImagePull(ctx, pebbleImage, client.ImagePullOptions{})
 	if err != nil {
 		t.Skipf("cannot pull %s: %v", pebbleImage, err)
 	}
@@ -250,8 +253,10 @@ func pointPebbleAtChallengePorts(
 		return err
 	}
 
-	if copyErr := cli.CopyToContainer(ctx, containerID, "/", bytes.NewReader(archive),
-		container.CopyToContainerOptions{}); copyErr != nil {
+	if _, copyErr := cli.CopyToContainer(ctx, containerID, client.CopyToContainerOptions{
+		DestinationPath: "/",
+		Content:         bytes.NewReader(archive),
+	}); copyErr != nil {
 		return fmt.Errorf("write pebble config: %w", copyErr)
 	}
 
@@ -270,14 +275,14 @@ func containerHostAddress(ctx context.Context, cli *client.Client, containerID s
 		}
 	}
 
-	inspected, err := cli.ContainerInspect(ctx, containerID)
+	inspected, err := cli.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("inspect container: %w", err)
 	}
 
-	for _, network := range inspected.NetworkSettings.Networks {
-		if ip := net.ParseIP(network.Gateway); ip != nil {
-			return ip, nil
+	for _, endpoint := range inspected.Container.NetworkSettings.Networks {
+		if endpoint.Gateway.IsValid() {
+			return net.IP(endpoint.Gateway.AsSlice()), nil
 		}
 	}
 
@@ -432,14 +437,14 @@ var errPebbleRootMissing = errors.New("pebble root certificate not found in cont
 
 // copyFileFromContainer reads a single regular file out of a container.
 func copyFileFromContainer(ctx context.Context, cli *client.Client, containerID, path string) ([]byte, error) {
-	reader, _, err := cli.CopyFromContainer(ctx, containerID, path)
+	copied, err := cli.CopyFromContainer(ctx, containerID, client.CopyFromContainerOptions{SourcePath: path})
 	if err != nil {
 		return nil, fmt.Errorf("copy %s: %w", path, err)
 	}
 
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = copied.Content.Close() }()
 
-	tarReader := tar.NewReader(reader)
+	tarReader := tar.NewReader(copied.Content)
 
 	for {
 		header, nextErr := tarReader.Next()
