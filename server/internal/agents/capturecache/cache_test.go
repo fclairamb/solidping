@@ -30,12 +30,13 @@ func TestPutTakeRoundTrip(t *testing.T) {
 
 	want := blob(1024, 'a')
 
-	id := cache.Put(want)
+	id := cache.Put(want, "image/webp")
 	r.NotEmpty(id, "a capture inside the budget must be stored")
 
-	got, ok := cache.Take(id)
+	got, mimeType, ok := cache.Take(id)
 	r.True(ok)
 	r.Equal(want, got)
+	r.Equal("image/webp", mimeType, "the media type must survive the round trip")
 }
 
 // TestTakeIsOneShot pins the "never retried forever" property at its source:
@@ -47,13 +48,13 @@ func TestTakeIsOneShot(t *testing.T) {
 	r := require.New(t)
 	cache := capturecache.NewDefault()
 
-	id := cache.Put(blob(64, 'a'))
+	id := cache.Put(blob(64, 'a'), "image/webp")
 	r.NotEmpty(id)
 
-	_, ok := cache.Take(id)
+	_, _, ok := cache.Take(id)
 	r.True(ok)
 
-	_, ok = cache.Take(id)
+	_, _, ok = cache.Take(id)
 	r.False(ok, "a capture must be served at most once")
 	r.Zero(cache.Len())
 	r.Zero(cache.Bytes())
@@ -67,10 +68,10 @@ func TestTakeUnknownIDMisses(t *testing.T) {
 	r := require.New(t)
 	cache := capturecache.NewDefault()
 
-	_, ok := cache.Take("no-such-capture")
+	_, _, ok := cache.Take("no-such-capture")
 	r.False(ok)
 
-	_, ok = cache.Take("")
+	_, _, ok = cache.Take("")
 	r.False(ok)
 }
 
@@ -85,7 +86,7 @@ func TestBoundedByEntryCount(t *testing.T) {
 
 	ids := make([]string, 0, 5)
 	for i := range 5 {
-		id := cache.Put(blob(16, byte('a'+i)))
+		id := cache.Put(blob(16, byte('a'+i)), "image/webp")
 		r.NotEmpty(id)
 
 		ids = append(ids, id)
@@ -94,12 +95,12 @@ func TestBoundedByEntryCount(t *testing.T) {
 	r.Equal(3, cache.Len(), "the count bound must hold")
 
 	for _, gone := range ids[:2] {
-		_, ok := cache.Take(gone)
+		_, _, ok := cache.Take(gone)
 		r.False(ok, "the oldest captures must be the evicted ones")
 	}
 
 	for _, kept := range ids[2:] {
-		_, ok := cache.Take(kept)
+		_, _, ok := cache.Take(kept)
 		r.True(ok, "the newest captures must survive")
 	}
 }
@@ -113,18 +114,18 @@ func TestBoundedByBytes(t *testing.T) {
 	r := require.New(t)
 	cache := capturecache.New(10, 300, time.Minute)
 
-	first := cache.Put(blob(200, 'a'))
-	second := cache.Put(blob(200, 'b'))
+	first := cache.Put(blob(200, 'a'), "image/webp")
+	second := cache.Put(blob(200, 'b'), "image/webp")
 	r.NotEmpty(first)
 	r.NotEmpty(second)
 
 	r.Equal(1, cache.Len(), "the byte budget must have evicted the first capture")
 	r.Equal(200, cache.Bytes())
 
-	_, ok := cache.Take(first)
+	_, _, ok := cache.Take(first)
 	r.False(ok, "the OLDEST capture is the one the byte budget drops")
 
-	_, ok = cache.Take(second)
+	_, _, ok = cache.Take(second)
 	r.True(ok)
 }
 
@@ -139,15 +140,15 @@ func TestPutRefusesOversizedCapture(t *testing.T) {
 	r := require.New(t)
 	cache := capturecache.New(4, 1000, time.Minute)
 
-	kept := cache.Put(blob(100, 'a'))
+	kept := cache.Put(blob(100, 'a'), "image/webp")
 	r.NotEmpty(kept)
 
-	r.Empty(cache.Put(blob(1001, 'b')), "a capture past the whole budget must be refused")
-	r.Empty(cache.Put(nil), "an empty capture must be refused")
+	r.Empty(cache.Put(blob(1001, 'b'), "image/webp"), "a capture past the whole budget must be refused")
+	r.Empty(cache.Put(nil, "image/webp"), "an empty capture must be refused")
 
 	r.Equal(1, cache.Len())
 
-	_, ok := cache.Take(kept)
+	_, _, ok := cache.Take(kept)
 	r.True(ok, "the refused oversized capture must not have evicted the held one")
 }
 
@@ -177,22 +178,22 @@ func TestTTLExpiry(t *testing.T) {
 		now = now.Add(d)
 	}
 
-	old := cache.Put(blob(64, 'a'))
+	old := cache.Put(blob(64, 'a'), "image/webp")
 	r.NotEmpty(old)
 
 	advance(30 * time.Second)
 
-	fresh := cache.Put(blob(64, 'b'))
+	fresh := cache.Put(blob(64, 'b'), "image/webp")
 	r.NotEmpty(fresh)
 	r.Equal(2, cache.Len())
 
 	// 61s after the first Put, 31s after the second: only the first is stale.
 	advance(31 * time.Second)
 
-	_, ok := cache.Take(old)
+	_, _, ok := cache.Take(old)
 	r.False(ok, "a capture past its TTL must be gone")
 
-	_, ok = cache.Take(fresh)
+	_, _, ok = cache.Take(fresh)
 	r.True(ok, "a capture inside its TTL must survive")
 }
 
@@ -212,7 +213,7 @@ func TestConcurrentPutTake(t *testing.T) {
 			defer wg.Done()
 
 			for range 20 {
-				if id := cache.Put(blob(128, 'x')); id != "" {
+				if id := cache.Put(blob(128, 'x'), "image/webp"); id != "" {
 					cache.Take(id)
 				}
 

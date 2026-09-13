@@ -764,7 +764,13 @@ func TestDocExampleBrowserLoginRunsAgainstARealBrowser(t *testing.T) {
 	r.Equal("login", wrong.Output["step"])
 	r.NotNil(wrong.Diagnostics)
 	r.NotNil(wrong.Diagnostics.Screenshot, "the failing branch's capture must be kept on a down verdict")
-	r.NotEmpty(wrong.Diagnostics.Screenshot.PNG)
+	r.NotEmpty(wrong.Diagnostics.Screenshot.Image)
+	// The JS check's page.screenshot() goes through the SAME capture path as
+	// the browser check, so it must produce the same real format — asserted on
+	// the bytes, not on the constant that asked for them (spec 2026-09-13-01).
+	r.Equal(checkerdef.ImageFormatWebP, wrong.Diagnostics.Screenshot.Format)
+	r.Equal("RIFF", string(wrong.Diagnostics.Screenshot.Image[:4]))
+	r.Equal("WEBP", string(wrong.Diagnostics.Screenshot.Image[8:12]))
 }
 
 // liveBrowserSettings picks the browser backend this test should drive: a

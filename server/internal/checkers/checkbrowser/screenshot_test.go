@@ -23,18 +23,19 @@ const (
 // errRendererGone stands in for a capture that failed inside chromedp.
 var errRendererGone = errors.New("renderer gone")
 
-// fakePNG is a recognizable byte blob standing in for a real capture. Nothing
-// in the capture path parses the image, so its content only has to be unique
-// enough to assert on.
-func fakePNG() []byte {
-	return []byte("\x89PNG\r\n\x1a\nfake-screenshot-bytes")
+// fakeCapture is a recognizable blob standing in for a real capture, stamped
+// with the format the production path uses. Nothing in the capture path parses
+// the image, so its content only has to be unique enough to assert on — but the
+// FORMAT is asserted, because carrying it is the point of spec 2026-09-13-01.
+func fakeCapture() Capture {
+	return Capture{Image: []byte("RIFF\x00\x00\x00\x00WEBPfake-screenshot-bytes"), Format: ScreenshotFormat}
 }
 
 // screenshotChecker builds a checker whose session returns `status` and whose
 // capture seam returns whatever `capture` says. Both seams are needed: one
 // decides the verdict, the other decides what the capture does.
 func screenshotChecker(
-	status checkerdef.Status, capture func(ctx context.Context) ([]byte, error),
+	status checkerdef.Status, capture func(ctx context.Context) (Capture, error),
 ) *BrowserChecker {
 	return &BrowserChecker{
 		session: func(
@@ -79,10 +80,10 @@ func TestScreenshotCapturedOnlyOnOptedInFailure(t *testing.T) {
 			r := require.New(t)
 
 			calls := 0
-			checker := screenshotChecker(tc.status, func(context.Context) ([]byte, error) {
+			checker := screenshotChecker(tc.status, func(context.Context) (Capture, error) {
 				calls++
 
-				return fakePNG(), nil
+				return fakeCapture(), nil
 			})
 
 			result, err := checker.Execute(t.Context(), screenshotSpec(tc.enabled))
@@ -101,7 +102,9 @@ func TestScreenshotCapturedOnlyOnOptedInFailure(t *testing.T) {
 			r.Equal(1, calls)
 			r.NotNil(result.Diagnostics)
 			r.NotNil(result.Diagnostics.Screenshot)
-			r.Equal(fakePNG(), result.Diagnostics.Screenshot.PNG)
+			r.Equal(fakeCapture().Image, result.Diagnostics.Screenshot.Image)
+			r.Equal(ScreenshotFormat, result.Diagnostics.Screenshot.Format,
+				"the capture's format must travel onto the diagnostics")
 			r.False(result.Diagnostics.Screenshot.CapturedAt.IsZero())
 		})
 	}
@@ -118,16 +121,16 @@ func TestScreenshotFailureNeverChangesOutcome(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		capture func(ctx context.Context) ([]byte, error)
+		capture func(ctx context.Context) (Capture, error)
 	}{
-		{"capture errors", func(context.Context) ([]byte, error) {
-			return nil, errRendererGone
+		{"capture errors", func(context.Context) (Capture, error) {
+			return Capture{}, errRendererGone
 		}},
-		{"capture returns nothing", func(context.Context) ([]byte, error) {
-			return nil, nil
+		{"capture returns nothing", func(context.Context) (Capture, error) {
+			return Capture{}, nil
 		}},
-		{"capture is over the cap", func(context.Context) ([]byte, error) {
-			return make([]byte, MaxScreenshotBytes+1), nil
+		{"capture is over the cap", func(context.Context) (Capture, error) {
+			return Capture{Image: make([]byte, MaxScreenshotBytes+1), Format: ScreenshotFormat}, nil
 		}},
 	}
 
@@ -156,15 +159,15 @@ func TestScreenshotFailureNeverChangesOutcome(t *testing.T) {
 	t.Run("positive control", func(t *testing.T) {
 		r := require.New(t)
 
-		checker := screenshotChecker(checkerdef.StatusDown, func(context.Context) ([]byte, error) {
-			return make([]byte, MaxScreenshotBytes), nil
+		checker := screenshotChecker(checkerdef.StatusDown, func(context.Context) (Capture, error) {
+			return Capture{Image: make([]byte, MaxScreenshotBytes), Format: ScreenshotFormat}, nil
 		})
 
 		result, err := checker.Execute(t.Context(), screenshotSpec(true))
 		r.NoError(err)
 		r.NotNil(result.Diagnostics)
 		r.NotNil(result.Diagnostics.Screenshot)
-		r.Len(result.Diagnostics.Screenshot.PNG, MaxScreenshotBytes,
+		r.Len(result.Diagnostics.Screenshot.Image, MaxScreenshotBytes,
 			"exactly at the cap is accepted; only past it is dropped")
 	})
 }
@@ -202,14 +205,14 @@ func TestScreenshotCaptureSurvivesAnExpiredCheckContext(t *testing.T) {
 				Metrics: metrics, Output: output,
 			}
 		},
-		screenshot: func(ctx context.Context) ([]byte, error) {
+		screenshot: func(ctx context.Context) (Capture, error) {
 			if err := ctx.Err(); err != nil {
-				return nil, err
+				return Capture{}, err
 			}
 
 			_, sawDeadline = ctx.Deadline()
 
-			return fakePNG(), nil
+			return fakeCapture(), nil
 		},
 	}
 
@@ -237,7 +240,7 @@ func TestScreenshotBytesNeverCrossTheAgentControlChannel(t *testing.T) {
 
 	const bodyMarker = "acme-origin-error-page"
 
-	pngMarker := []byte("SCREENSHOT-BYTES-MUST-NOT-APPEAR")
+	imageMarker := []byte("SCREENSHOT-BYTES-MUST-NOT-APPEAR")
 
 	frame := agents.ClientFrame{
 		Type:   agents.MsgTypeResult,
@@ -248,7 +251,8 @@ func TestScreenshotBytesNeverCrossTheAgentControlChannel(t *testing.T) {
 				Body:       "<html>" + bodyMarker + "</html>",
 			},
 			Screenshot: &checkerdef.Screenshot{
-				PNG:        pngMarker,
+				Image:      imageMarker,
+				Format:     ScreenshotFormat,
 				CapturedAt: time.Now(),
 				Available:  true,
 				CaptureID:  "cap-42",
@@ -265,13 +269,16 @@ func TestScreenshotBytesNeverCrossTheAgentControlChannel(t *testing.T) {
 		"FailureResponse still serializes — that is what makes the absence below meaningful")
 
 	// The marker bytes, and any base64 encoding of them, must be absent.
-	r.NotContains(string(raw), string(pngMarker))
-	r.NotContains(string(raw), `"png"`)
-	r.NotContains(string(raw), `"PNG"`)
+	r.NotContains(string(raw), string(imageMarker))
+	r.NotContains(string(raw), `"image"`)
+	r.NotContains(string(raw), `"Image"`)
 
-	// The MARKER fields the agent path does need are still there.
+	// The MARKER fields the agent path does need are still there — including
+	// the FORMAT, which is the one thing about the capture that must cross the
+	// wire so the server knows what the upload it asks for will contain.
 	r.Contains(string(raw), "cap-42")
 	r.Contains(string(raw), `"available":true`)
+	r.Contains(string(raw), `"format":"webp"`)
 }
 
 // TestScreenshotConfigRoundTrip pins the opt-in flag through FromMap/GetConfig,
@@ -332,10 +339,10 @@ func TestScreenshotStaysBoundToCallerCancellation(t *testing.T) {
 				Metrics: metrics, Output: output,
 			}
 		},
-		screenshot: func(shotCtx context.Context) ([]byte, error) {
+		screenshot: func(shotCtx context.Context) (Capture, error) {
 			captureErr = shotCtx.Err()
 
-			return fakePNG(), captureErr
+			return fakeCapture(), captureErr
 		},
 	}
 
@@ -389,7 +396,7 @@ func TestBrowserWasAllocatedGatesTheCapture(t *testing.T) {
 	// delegates to it, so guarding it here guards both callers.
 	session := &Session{browserCtx: browserCtx}
 
-	png, err := session.Screenshot(t.Context())
+	shot, err := session.Screenshot(t.Context())
 	r.ErrorIs(err, errNoBrowserAllocated)
-	r.Nil(png)
+	r.True(shot.Empty())
 }

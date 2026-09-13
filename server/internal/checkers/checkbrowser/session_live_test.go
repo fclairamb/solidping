@@ -211,16 +211,21 @@ func TestSessionDrivesARealPage(t *testing.T) {
 
 	r.True(found, "the browser-established session cookie must be readable, got %#v", cookies)
 
-	// Deliberately asserted as "a real image", not "a PNG": chromedp's
-	// FullScreenshot emits JPEG for any quality below 100, and
-	// screenshotQuality is 90 — so what the browser check has always captured
-	// (and stored in the field named PNG) is a JPEG. That mismatch predates
-	// this session type and is left exactly as it was; asserting PNG here
-	// would be asserting a behavior the product does not have.
+	// THE FORMAT IS ASSERTED ON THE BYTES, not taken from the constant that
+	// asked for it (spec 2026-09-13-01). This assertion exists because the
+	// previous one did not: the capture was JPEG while the whole chain called
+	// it PNG, and nothing in the suite could tell. A silent format change —
+	// chromedp picking a different encoder, an option dropped, WithFormat
+	// ignored — must fail HERE, on a real browser's output.
 	shot, err := session.Screenshot(ctx)
 	r.NoError(err)
-	r.NotEmpty(shot)
-	r.Greater(len(shot), 1024, "a full-page capture of a real page is not a handful of bytes")
+	r.False(shot.Empty())
+	r.Greater(len(shot.Image), 1024, "a full-page capture of a real page is not a handful of bytes")
+	r.Equal(ScreenshotFormat, shot.Format, "the capture must report the format it was taken in")
+	r.Equal(checkerdef.ImageFormatWebP, shot.Format)
+	r.True(len(shot.Image) >= 12 &&
+		string(shot.Image[:4]) == "RIFF" && string(shot.Image[8:12]) == "WEBP",
+		"a real WebP starts RIFF....WEBP, got % x", shot.Image[:min(16, len(shot.Image))])
 
 	// A selector that never appears is a TARGET failure, and it must end at
 	// the caller's deadline rather than hanging.
@@ -285,9 +290,13 @@ func TestBrowserCheckCapturesARealScreenshot(t *testing.T) {
 	r.Equal(checkerdef.StatusDown, failing.Status, "output: %#v", failing.Output)
 	r.NotNil(failing.Diagnostics, "an opted-in failing check must carry a capture")
 	r.NotNil(failing.Diagnostics.Screenshot)
-	r.Greater(len(failing.Diagnostics.Screenshot.PNG), 1024,
+	r.Greater(len(failing.Diagnostics.Screenshot.Image), 1024,
 		"the real capture path must produce a real image")
-	r.LessOrEqual(len(failing.Diagnostics.Screenshot.PNG), MaxScreenshotBytes)
+	r.LessOrEqual(len(failing.Diagnostics.Screenshot.Image), MaxScreenshotBytes)
+	r.Equal(checkerdef.ImageFormatWebP, failing.Diagnostics.Screenshot.Format,
+		"the diagnostics must name the format the bytes are actually in")
+	r.Equal("RIFF", string(failing.Diagnostics.Screenshot.Image[:4]))
+	r.Equal("WEBP", string(failing.Diagnostics.Screenshot.Image[8:12]))
 
 	// The same check, passing: no capture, because no verdict earns one.
 	passing, err := checker.Execute(t.Context(), &BrowserConfig{

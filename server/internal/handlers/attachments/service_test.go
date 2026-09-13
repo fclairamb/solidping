@@ -204,18 +204,18 @@ func TestPutRejectsBadBodies(t *testing.T) {
 
 	topic := IncidentScreenshotTopic(uuid.New().String())
 
-	_, err := svc.Put(ctx, org.UID, topic, "x.png", nil, nil)
+	_, err := svc.Put(ctx, org.UID, topic, "x", nil, nil)
 	r.ErrorIs(err, ErrEmptyAttachment)
 
-	_, err = svc.Put(ctx, org.UID, topic, "x.png", []byte("GIF89a-not-a-png"), nil)
+	_, err = svc.Put(ctx, org.UID, topic, "x", []byte("GIF89a-not-a-png"), nil)
 	r.ErrorIs(err, ErrUnsupportedMediaType)
 
 	oversize := append(pngBytes(""), make([]byte, MaxAttachmentBytes)...)
-	_, err = svc.Put(ctx, org.UID, topic, "x.png", oversize, nil)
+	_, err = svc.Put(ctx, org.UID, topic, "x", oversize, nil)
 	r.ErrorIs(err, ErrAttachmentTooLarge)
 
 	// Positive control.
-	uid, err := svc.Put(ctx, org.UID, topic, "x.png", pngBytes("ok"), nil)
+	uid, err := svc.Put(ctx, org.UID, topic, "x", pngBytes("ok"), nil)
 	r.NoError(err)
 	r.NotEmpty(uid)
 }

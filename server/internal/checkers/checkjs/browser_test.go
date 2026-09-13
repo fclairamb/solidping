@@ -42,8 +42,8 @@ type fakeSession struct {
 	urlErr    error
 	cookies   []checkbrowser.Cookie
 	cookieErr error
-	png       []byte
-	pngErr    error
+	shot      []byte
+	shotErr   error
 
 	calls   atomic.Int32
 	closes  atomic.Int32
@@ -130,10 +130,10 @@ func (f *fakeSession) Cookies(_ context.Context) ([]checkbrowser.Cookie, error) 
 	return f.cookies, f.cookieErr
 }
 
-func (f *fakeSession) Screenshot(_ context.Context) ([]byte, error) {
+func (f *fakeSession) Screenshot(_ context.Context) (checkbrowser.Capture, error) {
 	f.calls.Add(1)
 
-	return f.png, f.pngErr
+	return checkbrowser.Capture{Image: f.shot, Format: checkbrowser.ScreenshotFormat}, f.shotErr
 }
 
 func (f *fakeSession) Close() { f.closes.Add(1) }
@@ -194,7 +194,7 @@ func TestBrowserBindingsReturnShapes(t *testing.T) {
 		cookies: []checkbrowser.Cookie{
 			{Name: "session", Value: "s1", Domain: "acme.com", Path: "/", Secure: true, HTTPOnly: true},
 		},
-		png: []byte("\x89PNGfake"),
+		shot: []byte("RIFF\x00\x00\x00\x00WEBPfake"),
 	}
 	installFakeBrowser(t, session)
 
@@ -582,7 +582,7 @@ func TestScreenshotKeptOnDownDroppedOnUp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := require.New(t)
 
-			installFakeBrowser(t, &fakeSession{png: []byte("\x89PNGshot")})
+			installFakeBrowser(t, &fakeSession{shot: []byte("RIFF\x00\x00\x00\x00WEBPshot")})
 
 			checker := &JSChecker{}
 			result, err := checker.Execute(t.Context(), &JSConfig{
@@ -603,7 +603,9 @@ func TestScreenshotKeptOnDownDroppedOnUp(t *testing.T) {
 
 			r.NotNil(result.Diagnostics)
 			r.NotNil(result.Diagnostics.Screenshot)
-			r.Equal([]byte("\x89PNGshot"), result.Diagnostics.Screenshot.PNG)
+			r.Equal([]byte("RIFF\x00\x00\x00\x00WEBPshot"), result.Diagnostics.Screenshot.Image)
+			r.Equal(checkbrowser.ScreenshotFormat, result.Diagnostics.Screenshot.Format,
+				"page.screenshot() must carry the shared capture path's format")
 			r.False(result.Diagnostics.Screenshot.CapturedAt.IsZero())
 		})
 	}
@@ -638,7 +640,7 @@ return { status: "down" };
 	r.NoError(err)
 	r.NotNil(result.Diagnostics)
 	r.NotNil(result.Diagnostics.Screenshot)
-	r.Equal([]byte("after"), result.Diagnostics.Screenshot.PNG,
+	r.Equal([]byte("after"), result.Diagnostics.Screenshot.Image,
 		"the LAST successful capture must be the one kept")
 	r.Equal(2, swapping.shots)
 }
@@ -651,13 +653,13 @@ type swappingSession struct {
 	shots int
 }
 
-func (s *swappingSession) Screenshot(_ context.Context) ([]byte, error) {
+func (s *swappingSession) Screenshot(_ context.Context) (checkbrowser.Capture, error) {
 	s.shots++
 	if s.shots == 1 {
-		return []byte("before"), nil
+		return checkbrowser.Capture{Image: []byte("before"), Format: checkbrowser.ScreenshotFormat}, nil
 	}
 
-	return []byte("after"), nil
+	return checkbrowser.Capture{Image: []byte("after"), Format: checkbrowser.ScreenshotFormat}, nil
 }
 
 // TestWaitForWithNoTimeoutEndsAtTheChecksTimeout is the CANCELLATION PROOF
@@ -708,7 +710,7 @@ return { status: "up" };
 func TestScreenshotSurvivesAnInterrupt(t *testing.T) {
 	r := require.New(t)
 
-	session := &fakeSession{waitBlock: true, png: []byte("\x89PNGhung-login")}
+	session := &fakeSession{waitBlock: true, shot: []byte("RIFF\x00\x00\x00\x00WEBPhung-login")}
 	installFakeBrowser(t, session)
 
 	const checkTimeout = 300 * time.Millisecond
@@ -725,7 +727,7 @@ return { status: "up" };
 	r.NotNil(result.Diagnostics,
 		"a capture the script already took must survive the interrupt")
 	r.NotNil(result.Diagnostics.Screenshot)
-	r.Equal([]byte("\x89PNGhung-login"), result.Diagnostics.Screenshot.PNG)
+	r.Equal([]byte("RIFF\x00\x00\x00\x00WEBPhung-login"), result.Diagnostics.Screenshot.Image)
 	r.False(result.Diagnostics.Screenshot.CapturedAt.IsZero())
 	r.Positive(session.closes.Load(), "and the session is still disposed")
 }
@@ -738,7 +740,7 @@ return { status: "up" };
 func TestNoScreenshotMeansNoDiagnosticsOnAnInterrupt(t *testing.T) {
 	r := require.New(t)
 
-	installFakeBrowser(t, &fakeSession{waitBlock: true, png: []byte("never-taken")})
+	installFakeBrowser(t, &fakeSession{waitBlock: true, shot: []byte("never-taken")})
 
 	result := runBrowserScript(t, `
 var page = browser.open();

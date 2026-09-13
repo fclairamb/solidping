@@ -445,7 +445,7 @@ func TestAgentUploadReplaceIsScopedToTheExactTopic(t *testing.T) {
 	// A sibling artifact on the same incident: the path capture (spec
 	// 2026-08-21-10), which is a real second kind rather than a hypothetical.
 	sibling := IncidentTracerouteTopic(f.incident.UID)
-	siblingUID, err := f.svc.Put(f.ctx(), f.org.UID, sibling, "trace.json", tracerouteBytes(t), nil)
+	siblingUID, err := f.svc.Put(f.ctx(), f.org.UID, sibling, "trace", tracerouteBytes(t), nil)
 	r.NoError(err)
 
 	agent := enrollAgent(f.ctx(), t, f.db, f.org.UID, "eu-west")
