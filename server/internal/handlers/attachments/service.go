@@ -32,19 +32,74 @@ const MaxAttachmentBytes int64 = 4 * 1024 * 1024
 // copied link keeps working outside the session that produced it.
 const DownloadURLTTL = time.Hour
 
-// Attachment content types. PNG for a screenshot, JSON for a path capture —
-// and each is accepted ONLY under the topic kind that owns it (see sniffMime).
+// Attachment content types. Three raster formats for a screenshot, JSON for a
+// path capture — and each is accepted ONLY under the topic kind that owns it
+// (see sniffMime).
 const (
 	mimePNG  = "image/png"
+	mimeJPEG = "image/jpeg"
+	mimeWebP = "image/webp"
 	mimeJSON = "application/json"
 )
 
-// pngMagic is the 8-byte PNG signature. Content types are sniffed, not
-// believed: a declared type is caller-controlled and the storage backend serves
-// what it was given.
+// Magic-byte signatures. Content types are sniffed, not believed: a declared
+// type is caller-controlled and the storage backend serves what it was given.
 //
-//nolint:gochecknoglobals // immutable byte constant
-var pngMagic = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+//nolint:gochecknoglobals // immutable byte constants
+var (
+	pngMagic  = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+	jpegMagic = []byte{0xFF, 0xD8, 0xFF}
+	riffMagic = []byte("RIFF")
+	webpMagic = []byte("WEBP")
+)
+
+// webpHeaderBytes is how much of a RIFF container has to be present before the
+// "WEBP" form type can be read: 4 bytes of "RIFF", 4 of chunk size, 4 of form.
+const webpHeaderBytes = 12
+
+// screenshotSignatures is the allowlist for KindScreenshot, in the order it is
+// tried. THREE formats, deliberately (spec 2026-09-13-01): the capture path
+// used to emit JPEG while this table knew only PNG, so every browser-check
+// screenshot ever taken was refused here and silently lost.
+//
+// Anything not on this table is still refused — the sniff fails closed, which
+// is what lets files.safeInlineMIME serve the result inline under `nosniff`.
+// A format added here MUST also be on that allowlist, or the browser will
+// refuse to decode what we stored.
+//
+//nolint:gochecknoglobals // immutable lookup table
+var screenshotSignatures = []struct {
+	mimeType string
+	match    func(body []byte) bool
+}{
+	{mimePNG, func(body []byte) bool { return bytes.HasPrefix(body, pngMagic) }},
+	{mimeJPEG, func(body []byte) bool { return bytes.HasPrefix(body, jpegMagic) }},
+	{mimeWebP, func(body []byte) bool {
+		return len(body) >= webpHeaderBytes &&
+			bytes.Equal(body[:4], riffMagic) && bytes.Equal(body[8:webpHeaderBytes], webpMagic)
+	}},
+}
+
+// extensionFor is the filename suffix for a SNIFFED media type.
+//
+// It is keyed on the sniff rather than on the caller's intent so a downloaded
+// attachment always opens: a WebP saved as `.png` is a file the operating
+// system refuses to preview, which is the download-side twin of the
+// broken-image icon this spec removed from the incident card.
+func extensionFor(mimeType string) string {
+	switch mimeType {
+	case mimePNG:
+		return ".png"
+	case mimeJPEG:
+		return ".jpg"
+	case mimeWebP:
+		return ".webp"
+	case mimeJSON:
+		return ".json"
+	default:
+		return ""
+	}
+}
 
 // Details keys written on an attachment's metadata bag. camelCase, matching
 // the JSON they are served as.
@@ -131,22 +186,26 @@ func (s *Service) PutIncidentTraceroute(
 	return s.Put(
 		ctx, orgUID,
 		IncidentTracerouteTopic(incidentUID),
-		"incident-"+incidentUID+"-traceroute.json",
+		"incident-"+incidentUID+"-traceroute",
 		capture, details,
 	)
 }
 
-// PutIncidentScreenshot writes a PNG as the incident's screenshot attachment.
-// It REPLACES any previous one (see Put): the caller's contract is "this is the
-// evidence for the current onset", so the prior capture is retired first.
+// PutIncidentScreenshot writes an image as the incident's screenshot
+// attachment. It REPLACES any previous one (see Put): the caller's contract is
+// "this is the evidence for the current onset", so the prior capture is retired
+// first.
+//
+// The extension is NOT the caller's to choose — Put appends the one matching
+// the sniffed type (spec 2026-09-13-01).
 func (s *Service) PutIncidentScreenshot(
-	ctx context.Context, orgUID, incidentUID string, png []byte, details models.JSONMap,
+	ctx context.Context, orgUID, incidentUID string, image []byte, details models.JSONMap,
 ) (string, error) {
 	return s.Put(
 		ctx, orgUID,
 		IncidentScreenshotTopic(incidentUID),
-		"incident-"+incidentUID+"-screenshot.png",
-		png, details,
+		"incident-"+incidentUID+"-screenshot",
+		image, details,
 	)
 }
 
@@ -206,18 +265,22 @@ func (s *Service) ListIncidentAttachments(
 // Scoped to the EXACT topic, never the entity prefix: a future `har` or `pcap`
 // attachment on the same incident is a different artifact and must not be
 // collateral damage of a screenshot upload.
+//
+// baseName carries NO extension: the stored filename gets the one matching the
+// SNIFFED media type, so the name a user downloads can never disagree with the
+// bytes inside it.
 func (s *Service) Put(
-	ctx context.Context, orgUID, topic, name string, body []byte, details models.JSONMap,
+	ctx context.Context, orgUID, topic, baseName string, body []byte, details models.JSONMap,
 ) (string, error) {
 	if _, err := s.files.DeleteAttachmentsByTopic(ctx, orgUID, topic); err != nil {
 		return "", err
 	}
 
-	return s.put(ctx, orgUID, topic, name, body, details)
+	return s.put(ctx, orgUID, topic, baseName, body, details)
 }
 
 func (s *Service) put(
-	ctx context.Context, orgUID, topic, name string, body []byte, details models.JSONMap,
+	ctx context.Context, orgUID, topic, baseName string, body []byte, details models.JSONMap,
 ) (string, error) {
 	if len(body) == 0 {
 		return "", ErrEmptyAttachment
@@ -239,7 +302,7 @@ func (s *Service) put(
 
 	file, err := s.files.CreateFile(
 		ctx, parsedOrg, filestorage.GroupTypeScreenshots,
-		name, mimeType, nil, bytes.NewReader(body), int64(len(body)),
+		baseName+extensionFor(mimeType), mimeType, nil, bytes.NewReader(body), int64(len(body)),
 		files.WithTopic(topic), files.WithDetails(details),
 	)
 	if err != nil {
@@ -264,11 +327,14 @@ func sniffMime(topic string, body []byte) (string, error) {
 
 	switch parsed.Kind {
 	case KindScreenshot:
-		if len(body) >= len(pngMagic) && bytes.Equal(body[:len(pngMagic)], pngMagic) {
-			return mimePNG, nil
+		for _, signature := range screenshotSignatures {
+			if signature.match(body) {
+				return signature.mimeType, nil
+			}
 		}
 
-		return "", fmt.Errorf("%w: %s attachments must be %s", ErrUnsupportedMediaType, KindScreenshot, mimePNG)
+		return "", fmt.Errorf("%w: %s attachments must be %s, %s or %s",
+			ErrUnsupportedMediaType, KindScreenshot, mimePNG, mimeJPEG, mimeWebP)
 
 	case KindTraceroute:
 		// Not "is it JSON" but "is it a CAPTURE": the bytes come off the wire

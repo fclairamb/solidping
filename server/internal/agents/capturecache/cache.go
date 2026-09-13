@@ -1,12 +1,18 @@
 // Package capturecache is the deported agent's short-lived, bounded holding
-// area for binary probe captures (today: the PNG a failing browser check took).
+// area for binary probe captures (today: the image a failing browser check
+// took).
 //
 // It exists because of a hard protocol constraint: the agent WebSocket is a
-// JSON control channel, so a megabyte PNG cannot ride the result frame — see
+// JSON control channel, so a megabyte image cannot ride the result frame — see
 // checkerdef.Screenshot. The agent therefore keeps the bytes HERE and sends
 // only a marker naming this cache's slot; if (and only if) that result opens or
 // reopens an incident, the server asks for the upload and the agent POSTs the
 // bytes out-of-band.
+//
+// A held capture carries its CONTENT TYPE, not just its bytes: the upload has
+// to declare what it is sending, and a cache that remembered only the blob is
+// how "the capture is a PNG" became folklore in the first place
+// (spec 2026-09-13-01).
 //
 // Everything about it is deliberately small and lossy. The bytes are worth
 // keeping for the second or two between "I submitted a failing result" and "the
@@ -44,10 +50,12 @@ const (
 // verbatim), but it must not collide between concurrent captures.
 const captureIDBytes = 12
 
-// entry is one held capture.
+// entry is one held capture: the bytes, the media type describing them, and
+// when they were stored.
 type entry struct {
 	id       string
-	png      []byte
+	blob     []byte
+	mimeType string
 	storedAt time.Time
 }
 
@@ -123,9 +131,13 @@ func NewDefault() *Cache {
 // refusal degrades to "this run produced no capture" — which is exactly what
 // the marker fields already mean.
 //
-// The caller must not mutate png afterwards; ownership moves here.
-func (c *Cache) Put(png []byte) string {
-	if len(png) == 0 || len(png) > c.maxBytes {
+// mimeType is the content type the upload will declare. It is stored with the
+// bytes rather than assumed by the reader, so a capture in a format this cache
+// knows nothing about still uploads with the truth on its Content-Type header.
+//
+// The caller must not mutate blob afterwards; ownership moves here.
+func (c *Cache) Put(blob []byte, mimeType string) string {
+	if len(blob) == 0 || len(blob) > c.maxBytes {
 		return ""
 	}
 
@@ -140,21 +152,22 @@ func (c *Cache) Put(png []byte) string {
 	now := c.now()
 	c.expireLocked(now)
 
-	item := &entry{id: id, png: png, storedAt: now}
+	item := &entry{id: id, blob: blob, mimeType: mimeType, storedAt: now}
 	c.byID[id] = item
 	c.order = append(c.order, item)
-	c.bytes += len(png)
+	c.bytes += len(blob)
 
 	c.evictLocked()
 
 	return id
 }
 
-// Take returns a capture and REMOVES it. The second call for the same id
-// always misses — a capture is uploadable exactly once.
-func (c *Cache) Take(id string) ([]byte, bool) {
+// Take returns a capture with the media type it was stored under, and REMOVES
+// it. The second call for the same id always misses — a capture is uploadable
+// exactly once.
+func (c *Cache) Take(id string) ([]byte, string, bool) {
 	if id == "" {
-		return nil, false
+		return nil, "", false
 	}
 
 	c.mu.Lock()
@@ -164,12 +177,12 @@ func (c *Cache) Take(id string) ([]byte, bool) {
 
 	item, ok := c.byID[id]
 	if !ok {
-		return nil, false
+		return nil, "", false
 	}
 
 	c.removeLocked(item)
 
-	return item.png, true
+	return item.blob, item.mimeType, true
 }
 
 // Len reports how many captures are held (expired ones excluded).
@@ -219,7 +232,7 @@ func (c *Cache) removeLocked(item *entry) {
 		}
 	}
 
-	c.bytes -= len(item.png)
+	c.bytes -= len(item.blob)
 }
 
 // newCaptureID mints a random, collision-free capture id.

@@ -20,7 +20,7 @@ type BrowserConfig struct {
 	Keyword       string        `json:"keyword,omitempty"`
 	InvertKeyword bool          `json:"invertKeyword,omitempty"`
 	Timeout       time.Duration `json:"timeout,omitempty"`
-	// Screenshot opts this check into capturing a PNG of the page when the
+	// Screenshot opts this check into capturing an image of the page when the
 	// execution FAILS (spec 2026-08-21-01). Default false, and deliberately so:
 	// a capture costs a CDP round-trip and up to a few MiB of memory on the
 	// most expensive check type there is, and most operators never need it.

@@ -35,8 +35,6 @@ const (
 	attachmentsPath = "/api/v1/agent/attachments"
 	// uploadTimeout bounds one upload attempt. There is exactly one attempt.
 	uploadTimeout = 30 * time.Second
-	// mimePNG is the only capture kind today.
-	mimePNG = "image/png"
 )
 
 // ErrUploadRejected is returned when the server refuses an attachment upload.
@@ -48,23 +46,25 @@ var ErrUploadRejected = errors.New("attachment upload rejected")
 //
 // It returns a COPY: the caller's checkerdef.Result is the checker's own
 // output, and mutating it here would make "what the agent kept" depend on who
-// happens to hold a reference. The PNG field is cleared on the copy even though
-// it is `json:"-"` and could never serialize anyway — the invariant "the frame
-// holds no bytes" should be structural, not a property of one struct tag.
+// happens to hold a reference. The Image field is cleared on the copy even
+// though it is `json:"-"` and could never serialize anyway — the invariant "the
+// frame holds no bytes" should be structural, not a property of one struct tag.
+// Format, by contrast, DOES cross the wire: the marker has to tell the server
+// what the upload it is about to ask for will contain.
 //
 // A capture the cache refuses (too large for the whole budget) advertises
 // NOTHING: an unfulfillable marker would make the server ask for an upload that
 // can never arrive.
 func (b *WSBackend) stashCapture(diagnostics *checkerdef.Diagnostics) *checkerdef.Diagnostics {
-	if diagnostics == nil || diagnostics.Screenshot == nil || len(diagnostics.Screenshot.PNG) == 0 {
+	if diagnostics == nil || diagnostics.Screenshot == nil || len(diagnostics.Screenshot.Image) == 0 {
 		return diagnostics
 	}
 
 	out := *diagnostics
 	shot := *diagnostics.Screenshot
 
-	captureID := b.captures.Put(shot.PNG)
-	shot.PNG = nil
+	captureID := b.captures.Put(shot.Image, shot.Format.MIME())
+	shot.Image = nil
 
 	if captureID == "" {
 		out.Screenshot = nil
@@ -82,7 +82,7 @@ func (b *WSBackend) stashCapture(diagnostics *checkerdef.Diagnostics) *checkerde
 // handleUploadRequest serves one server->agent upload request. Runs off the read
 // pump's goroutine so a slow upload cannot stall frame dispatch.
 func (b *WSBackend) handleUploadRequest(ctx context.Context, frame *agents.ServerFrame) {
-	png, ok := b.captures.Take(frame.CaptureID)
+	blob, mimeType, ok := b.captures.Take(frame.CaptureID)
 	if !ok {
 		// Evicted, expired, already served, or simply never held by this
 		// process (the agent restarted between the result and the request).
@@ -96,16 +96,16 @@ func (b *WSBackend) handleUploadRequest(ctx context.Context, frame *agents.Serve
 	uploadCtx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	defer cancel()
 
-	if err := b.uploadAttachment(uploadCtx, frame.Topic, mimePNG, png); err != nil {
+	if err := b.uploadAttachment(uploadCtx, frame.Topic, mimeType, blob); err != nil {
 		// ONE attempt. The bytes are already out of the cache, so there is
 		// nothing to retry with even if we wanted to — see capturecache.Take.
 		b.logger.WarnContext(ctx, "capture upload failed",
-			"topic", frame.Topic, "bytes", len(png), "error", err)
+			"topic", frame.Topic, "bytes", len(blob), "error", err)
 
 		return
 	}
 
-	b.logger.DebugContext(ctx, "capture uploaded", "topic", frame.Topic, "bytes", len(png))
+	b.logger.DebugContext(ctx, "capture uploaded", "topic", frame.Topic, "bytes", len(blob))
 }
 
 // uploadAttachment POSTs a capture to the agent attachment endpoint with the
@@ -115,7 +115,9 @@ func (b *WSBackend) handleUploadRequest(ctx context.Context, frame *agents.Serve
 // type is a parameter rather than a constant because the SERVER sniffs the
 // bytes anyway and refuses anything that does not match the topic's kind — this
 // header is a courtesy, and a per-kind copy of the whole signing dance would be
-// a second place for the signature scheme to drift.
+// a second place for the signature scheme to drift. An empty contentType is
+// simply not declared: saying nothing beats saying something false, and the
+// sniff decides regardless.
 func (b *WSBackend) uploadAttachment(ctx context.Context, topic, contentType string, body []byte) error {
 	b.mu.Lock()
 	identity := *b.identity
@@ -144,7 +146,9 @@ func (b *WSBackend) uploadAttachment(ctx context.Context, topic, contentType str
 		return fmt.Errorf("build attachment upload: %w", err)
 	}
 
-	req.Header.Set("Content-Type", contentType)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	req.Header.Set("X-Sp-Agent-Uid", identity.AgentUID)
 	req.Header.Set("X-Sp-Timestamp", timestamp)
 	req.Header.Set("X-Sp-Nonce", nonce)

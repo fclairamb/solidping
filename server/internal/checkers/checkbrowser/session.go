@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/page"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
@@ -458,19 +459,79 @@ func (s *Session) Cookies(ctx context.Context) ([]Cookie, error) {
 	return cookies, nil
 }
 
-// Screenshot captures a full-page PNG of the current tab, time-boxed by the
-// same screenshotTimeout the browser check's capture uses.
-func (s *Session) Screenshot(ctx context.Context) ([]byte, error) {
+// Capture is an encoded image and the format it is encoded in.
+//
+// The pair is the point (spec 2026-09-13-01): the format used to be implied by
+// a constant nobody re-read, which is how a JPEG ended up in a field named
+// PNG. Carrying it as a value means the attachment upload can declare the
+// truth and the store's sniff can agree with it.
+type Capture struct {
+	// Image is the encoded image bytes.
+	Image []byte
+	// Format is the encoding Image is in.
+	Format checkerdef.ImageFormat
+}
+
+// Empty reports whether the capture holds no bytes.
+func (c Capture) Empty() bool { return len(c.Image) == 0 }
+
+// cdpScreenshotFormat maps a checkerdef format onto the CDP enum. Unknown
+// formats fall back to PNG: an unrecognised value must not silently become the
+// encoder's own default, because that default is what this spec exists to fix.
+func cdpScreenshotFormat(format checkerdef.ImageFormat) page.CaptureScreenshotFormat {
+	switch format {
+	case checkerdef.ImageFormatJPEG:
+		return page.CaptureScreenshotFormatJpeg
+	case checkerdef.ImageFormatWebP:
+		return page.CaptureScreenshotFormatWebp
+	case checkerdef.ImageFormatPNG:
+		return page.CaptureScreenshotFormatPng
+	default:
+		return page.CaptureScreenshotFormatPng
+	}
+}
+
+// Screenshot captures the full page of the current tab in ScreenshotFormat,
+// time-boxed by the same screenshotTimeout the browser check's capture uses.
+//
+// It drives page.CaptureScreenshot directly rather than going through
+// chromedp.FullScreenshot, which is NOT a style preference:
+// chromedp.FullScreenshot picks PNG when its quality argument is exactly 100
+// and JPEG for every other value, so WebP is unreachable through it. The
+// options below are the ones FullScreenshot sets internally
+// (CaptureBeyondViewport for the full page, FromSurface so an offscreen tab
+// still renders), plus the format this process actually wants.
+//
+// This is the ONE capture call in the process: the browser check and the JS
+// runtime's page.screenshot() both land here, so the format cannot drift
+// between them.
+func (s *Session) Screenshot(ctx context.Context) (Capture, error) {
 	shotCtx, cancel := context.WithTimeout(ctx, screenshotTimeout)
 	defer cancel()
 
 	var buf []byte
 
-	if err := s.run(shotCtx, chromedp.FullScreenshot(&buf, screenshotQuality)); err != nil {
-		return nil, err
+	action := chromedp.ActionFunc(func(actionCtx context.Context) error {
+		data, err := page.CaptureScreenshot().
+			WithCaptureBeyondViewport(true).
+			WithFromSurface(true).
+			WithFormat(cdpScreenshotFormat(ScreenshotFormat)).
+			WithQuality(screenshotQuality).
+			Do(actionCtx)
+		if err != nil {
+			return err
+		}
+
+		buf = data
+
+		return nil
+	})
+
+	if err := s.run(shotCtx, action); err != nil {
+		return Capture{}, err
 	}
 
-	return buf, nil
+	return Capture{Image: buf, Format: ScreenshotFormat}, nil
 }
 
 // Close disposes the isolated context and its tab and returns the concurrency

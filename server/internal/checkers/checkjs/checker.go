@@ -15,6 +15,7 @@ import (
 
 	"github.com/dop251/goja"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -235,10 +236,11 @@ type jsRuntime struct {
 	// subCheckCount — see maxBrowserActions.
 	browserActions atomic.Int32
 
-	// screenshotPNG is the last successful page.screenshot() capture, kept
-	// only if the final verdict earns it (see attachScreenshot).
-	screenshotPNG []byte
-	screenshotAt  time.Time
+	// screenshot is the last successful page.screenshot() capture — bytes and
+	// the format they are encoded in — kept only if the final verdict earns it
+	// (see attachScreenshot).
+	screenshot   checkbrowser.Capture
+	screenshotAt time.Time
 }
 
 // newJSRuntime creates a new jsRuntime with the given context and config.

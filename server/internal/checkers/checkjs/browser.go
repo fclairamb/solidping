@@ -63,7 +63,7 @@ type BrowserSession interface {
 	Evaluate(ctx context.Context, expr string) (any, error)
 	URL(ctx context.Context) (string, error)
 	Cookies(ctx context.Context) ([]checkbrowser.Cookie, error)
-	Screenshot(ctx context.Context) ([]byte, error)
+	Screenshot(ctx context.Context) (checkbrowser.Capture, error)
 	Close()
 }
 
@@ -248,12 +248,12 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 
 	_ = page.Set("screenshot", func(_ goja.FunctionCall) goja.Value {
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
-			png, err := session.Screenshot(r.execCtx)
+			shot, err := session.Screenshot(r.execCtx)
 			if err != nil {
 				return nil, err
 			}
 
-			r.recordScreenshot(png)
+			r.recordScreenshot(shot)
 
 			// No payload beyond `ok`.
 			return nil, nil
@@ -421,19 +421,19 @@ func (r *jsRuntime) pageCallContext(opts map[string]any) (context.Context, conte
 // takes at the moment it decides the target is down. Whether the capture is
 // KEPT is decided after the script returns — see Execute — so a shot on an
 // `up` run costs a CDP round-trip and nothing else.
-func (r *jsRuntime) recordScreenshot(png []byte) {
-	if len(png) == 0 || len(png) > checkbrowser.MaxScreenshotBytes {
+func (r *jsRuntime) recordScreenshot(shot checkbrowser.Capture) {
+	if shot.Empty() || len(shot.Image) > checkbrowser.MaxScreenshotBytes {
 		return
 	}
 
-	r.screenshotPNG = png
+	r.screenshot = shot
 	r.screenshotAt = time.Now()
 }
 
 // attachScreenshot hangs the recorded capture on a finished result, but only
 // for the verdicts the browser check itself would have kept one for.
 func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
-	if result == nil || r.screenshotPNG == nil {
+	if result == nil || r.screenshot.Empty() {
 		return
 	}
 
@@ -446,7 +446,8 @@ func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 	}
 
 	result.Diagnostics.Screenshot = &checkerdef.Screenshot{
-		PNG:        r.screenshotPNG,
+		Image:      r.screenshot.Image,
+		Format:     r.screenshot.Format,
 		CapturedAt: r.screenshotAt,
 	}
 }

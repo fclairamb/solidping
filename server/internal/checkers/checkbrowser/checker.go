@@ -15,14 +15,15 @@ import (
 
 const microsecondsPerMilli = 1000.0
 
-// MaxScreenshotBytes caps a single captured PNG (spec 2026-08-21-01).
+// MaxScreenshotBytes caps a single capture (spec 2026-08-21-01).
 //
-// Deliberately far below files.MaxFileSize (25 MB): a full-page PNG of a real
-// site is tens to a few hundred KB, so anything past 4 MiB is a pathological
-// page (an enormous infinite-scroll canvas, a print-stylesheet poster) whose
-// capture is worth less than the storage and transfer it costs. An over-cap
-// capture is DROPPED, never truncated — a half-written PNG is not an image,
-// it is a corrupt file that renders as a broken icon three days later.
+// Deliberately far below files.MaxFileSize (25 MB): a full-page WebP of a real
+// site is tens to a couple of hundred KB, so anything past 4 MiB is a
+// pathological page (an enormous infinite-scroll canvas, a print-stylesheet
+// poster) whose capture is worth less than the storage and transfer it costs.
+// An over-cap capture is DROPPED, never truncated — a half-written image is
+// not an image, it is a corrupt file that renders as a broken icon three days
+// later.
 const MaxScreenshotBytes = 4 * 1024 * 1024
 
 // screenshotTimeout time-boxes the capture. The capture runs AFTER the verdict
@@ -30,10 +31,35 @@ const MaxScreenshotBytes = 4 * 1024 * 1024
 // exists so a wedged renderer cannot hold a browser slot open indefinitely.
 const screenshotTimeout = 5 * time.Second
 
-// screenshotQuality is chromedp.FullScreenshot's quality argument. It is
-// ignored for PNG (lossless) and only matters if this ever switches to JPEG;
-// 90 is the conventional value to pass.
-const screenshotQuality = 90
+// ScreenshotFormat is the encoding EVERY capture in this process is taken in,
+// and the value stamped on checkerdef.Screenshot.Format so the rest of the
+// chain never has to guess (spec 2026-09-13-01).
+//
+// WebP, deliberately, and written down here because the previous format was
+// folklore — the code said PNG, chromedp emitted JPEG, and the attachment
+// store refused the result:
+//
+//   - 25-35% smaller than JPEG at equal visual quality, which keeps
+//     MaxScreenshotBytes comfortable on the busy full-page captures the cap
+//     exists for. A full-page PNG of a real site is several times larger and
+//     would start hitting the cap on exactly those pages.
+//   - Decoded by every browser that can open the dashboard, which is the only
+//     consumer: the incident card's <img> and the signed download URL.
+//   - It is on files.safeInlineMIME's allowlist, so it is served inline rather
+//     than downloaded.
+//
+// It is a CONSTANT on purpose (resolved open question 1): a per-check
+// `screenshotFormat` field would be a migration plus a form field plus an
+// import/export round-trip for rope nobody asked for. The plumbing carries the
+// format as a value all the same, so promoting this to a system parameter is a
+// one-line follow-up.
+const ScreenshotFormat = checkerdef.ImageFormatWebP
+
+// screenshotQuality is the lossy-encoder quality Page.captureScreenshot is
+// driven with. Ignored by Chrome for PNG (lossless); 85 is the usual
+// sweet spot for WebP, where the artifacts are invisible at the size an
+// operator actually looks at a page screenshot.
+const screenshotQuality = 85
 
 // MaxConcurrentBrowsers caps simultaneous browser executions per worker
 // process, on BOTH the remote and the exec path.
@@ -70,7 +96,7 @@ type BrowserChecker struct {
 	// test needs to drive the capture decision (opted in? failing? over cap?
 	// errored?) without also having to fake a browser session that produces
 	// the right verdict.
-	screenshot func(ctx context.Context) ([]byte, error)
+	screenshot func(ctx context.Context) (Capture, error)
 }
 
 // acquireSlot waits for one of the MaxConcurrentBrowsers slots, giving up when
@@ -249,7 +275,7 @@ func (c *BrowserChecker) runBrowser(
 	return result
 }
 
-// captureScreenshot hangs a PNG of the failing page on the result, when the
+// captureScreenshot hangs an image of the failing page on the result, when the
 // check opted in. Best-effort by construction: it runs AFTER the verdict is
 // decided and mutates only Diagnostics, so no outcome of this function — a
 // capture error, an over-cap image, a dead browser — can change whether the
@@ -287,7 +313,7 @@ func (c *BrowserChecker) captureScreenshot(
 	shotCtx, cancel := context.WithTimeout(ctx, screenshotTimeout)
 	defer cancel()
 
-	png, err := capture(shotCtx)
+	shot, err := capture(shotCtx)
 	if err != nil {
 		slog.WarnContext(ctx, "browser check: screenshot capture failed",
 			"url", cfg.URL, "error", err)
@@ -295,13 +321,13 @@ func (c *BrowserChecker) captureScreenshot(
 		return
 	}
 
-	if len(png) == 0 {
+	if shot.Empty() {
 		return
 	}
 
-	if len(png) > MaxScreenshotBytes {
+	if len(shot.Image) > MaxScreenshotBytes {
 		slog.WarnContext(ctx, "browser check: screenshot dropped, over cap",
-			"url", cfg.URL, "bytes", len(png), "cap", MaxScreenshotBytes)
+			"url", cfg.URL, "bytes", len(shot.Image), "cap", MaxScreenshotBytes)
 
 		return
 	}
@@ -311,7 +337,8 @@ func (c *BrowserChecker) captureScreenshot(
 	}
 
 	result.Diagnostics.Screenshot = &checkerdef.Screenshot{
-		PNG:        png,
+		Image:      shot.Image,
+		Format:     shot.Format,
 		CapturedAt: time.Now(),
 	}
 }
