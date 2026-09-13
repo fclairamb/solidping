@@ -777,9 +777,21 @@ func TestDocExampleBrowserLoginRunsAgainstARealBrowser(t *testing.T) {
 // configured CDP endpoint first, else a Chrome installed on this machine,
 // found with checkbrowser's OWN lookup so "the test ran" and "the checker
 // would have worked" cannot disagree.
+//
+// The exec fallback is skipped under CI, for the reason spelled out in full on
+// checkbrowser's copy of this helper: a GitHub runner ships a Chrome that
+// cannot start ("No usable sandbox!"), --no-sandbox is refused because the exec
+// path is production code that browses arbitrary customer URLs, and turning the
+// launch error into a skip is the "green while proving nothing" pattern spec
+// 2026-09-12-05 exists to kill. Set SP_CHECKERS_BROWSER_CDP_URL to run this for
+// real on CI.
 func liveBrowserSettings() (checkbrowser.Settings, bool) {
 	if cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL"); cdpURL != "" {
 		return checkbrowser.Settings{CDPURL: cdpURL}, true
+	}
+
+	if os.Getenv("CI") != "" {
+		return checkbrowser.Settings{}, false
 	}
 
 	if path := checkbrowser.FindChromeBinary(""); path != "" {

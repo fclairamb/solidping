@@ -22,11 +22,32 @@ import (
 // configured CDP endpoint, else a Chrome installed on this machine — found
 // with the SAME lookup the exec path uses, so "the test ran" and "the checker
 // would have worked" cannot disagree. Neither present is a SKIP with a visible
-// reason, never a silent pass: CI's backend job has no Chrome, and a developer
-// running `make test` should be told why the live coverage did not run.
+// reason, never a silent pass.
+//
+// The exec fallback is deliberately NOT taken under CI. A GitHub runner does
+// ship a Chrome, and an earlier version of this helper happily found it — then
+// every live test failed with:
+//
+//	chrome failed to start: ... FATAL ... No usable sandbox!
+//
+// because the runners restrict unprivileged user namespaces. The tempting fix,
+// launching with --no-sandbox, is refused on purpose: the exec path is
+// PRODUCTION code, and a browser check navigates to arbitrary customer URLs, so
+// dropping the sandbox there trades a real security boundary for a green test.
+// Swallowing the launch error into a skip is refused too — that is exactly the
+// "green while proving nothing" pattern spec 2026-09-12-05 exists to kill.
+//
+// So CI states its browser explicitly or gets an honest skip. Point
+// SP_CHECKERS_BROWSER_CDP_URL at a headless-shell service and these tests run
+// there for real; until then they are skipped with the reason below, which is
+// what they did before the exec fallback was added.
 func liveBrowserSettings() (Settings, bool) {
 	if cdpURL := os.Getenv("SP_CHECKERS_BROWSER_CDP_URL"); cdpURL != "" {
 		return Settings{CDPURL: cdpURL}, true
+	}
+
+	if os.Getenv("CI") != "" {
+		return Settings{}, false
 	}
 
 	if path := FindChromeBinary(""); path != "" {
@@ -38,7 +59,7 @@ func liveBrowserSettings() (Settings, bool) {
 
 // liveBrowserSkipReason is the one sentence every skipped live test prints.
 const liveBrowserSkipReason = "no browser available: set SP_CHECKERS_BROWSER_CDP_URL " +
-	"or install a local Chrome/Chromium"
+	"(required under CI, whose Chrome cannot sandbox) or install a local Chrome/Chromium"
 
 // browserReachableURL rewrites a local httptest URL into one BOTH the test
 // process and the BROWSER can reach.

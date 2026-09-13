@@ -177,10 +177,18 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
-    # Measured 10m19s for internal/db/postgres alone on a warm laptop; the rest
-    # of the tree adds a couple of minutes. 20 gives headroom for a cold
-    # embedded-Postgres download without letting a hung suite burn an hour.
-    timeout-minutes: 20
+    # 20 was extrapolated from a warm laptop (10m19s for internal/db/postgres
+    # alone) and proved far too tight: the first real run was KILLED at 20m
+    # having reached only ~122 of 232 packages, with internal/db/postgres alone
+    # taking 325s. A CI runner is slower than the laptop the estimate came
+    # from, and -p 1 removes the parallelism that hid it.
+    #
+    # 45 is deliberately generous rather than fitted: the run it must
+    # accommodate has never completed, so there is no honest number to fit to
+    # yet. Tighten it once a green run reports a real duration — and if that
+    # duration makes a per-PR job too expensive, the decision to revisit is
+    # "move this layer to the nightly", not "raise the timeout again".
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: server
