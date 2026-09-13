@@ -19,7 +19,7 @@ type inspectOpts struct {
 	healthStatus string // "" → no Health block
 }
 
-func makeInspect(o inspectOpts) container.InspectResponse {
+func makeInspect(o inspectOpts) *container.InspectResponse {
 	state := &container.State{
 		Status:    o.state,
 		Running:   o.running,
@@ -30,7 +30,7 @@ func makeInspect(o inspectOpts) container.InspectResponse {
 		state.Health = &container.Health{Status: container.HealthStatus(o.healthStatus)}
 	}
 
-	return container.InspectResponse{
+	return &container.InspectResponse{
 		ID:           "abc123",
 		Name:         "/test-container",
 		State:        state,

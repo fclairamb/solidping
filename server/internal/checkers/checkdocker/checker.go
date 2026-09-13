@@ -104,14 +104,14 @@ func (c *DockerChecker) Execute(
 
 	metrics["inspect_time_ms"] = durationMs(time.Since(start))
 
-	return buildResult(cfg, inspected.Container, start, metrics, output), nil
+	return buildResult(cfg, &inspected.Container, start, metrics, output), nil
 }
 
 func createClient(cfg *DockerConfig) (*client.Client, error) {
-	return client.NewClientWithOpts(
-		client.WithHost(cfg.resolveHost()),
-		client.WithAPIVersionNegotiation(),
-	)
+	// API-version negotiation is on by default in this client, so the endpoint
+	// host is the only thing worth configuring: an older daemon (or Podman's
+	// Docker-compatible socket) is negotiated down on the first request.
+	return client.New(client.WithHost(cfg.resolveHost()))
 }
 
 func handleInspectError(
@@ -139,7 +139,7 @@ func handleInspectError(
 
 func buildResult(
 	cfg *DockerConfig,
-	info container.InspectResponse,
+	info *container.InspectResponse,
 	start time.Time,
 	metrics map[string]any,
 	output map[string]any,
@@ -199,7 +199,7 @@ func buildResult(
 
 func detectRestartLoop(
 	cfg *DockerConfig,
-	info container.InspectResponse,
+	info *container.InspectResponse,
 	start time.Time,
 	metrics map[string]any,
 	output map[string]any,

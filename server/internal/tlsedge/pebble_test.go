@@ -186,7 +186,7 @@ func startPebble(ctx context.Context, t *testing.T, resolver *testDNS, httpPort,
 func dockerClient(ctx context.Context, t *testing.T) *client.Client {
 	t.Helper()
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Skipf("docker unavailable: %v", err)
 	}

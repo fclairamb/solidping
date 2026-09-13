@@ -48,10 +48,10 @@ func ListContainers(ctx context.Context, endpoint string, timeout time.Duration)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cli, err := client.NewClientWithOpts(
-		client.WithHost(endpoint),
-		client.WithAPIVersionNegotiation(),
-	)
+	// API-version negotiation is on by default in this client, so the endpoint
+	// host is the only thing worth configuring — same wiring as the docker
+	// checker, so Docker sockets, Podman sockets and tcp:// all work unchanged.
+	cli, err := client.New(client.WithHost(endpoint))
 	if err != nil {
 		return nil, fmt.Errorf("create docker client for %q: %w", endpoint, err)
 	}
