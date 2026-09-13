@@ -5,25 +5,39 @@ import { test, expect, type Page } from "./fixtures";
  * (authenticated) state. Mirrors live-updates.spec.ts's waitForLiveSubscribed
  * but stops at `hello` rather than `subscribed` — this file cares about
  * re-authentication after a 4401, not the subscribe/hint pipeline. */
-async function waitForLiveSocketHello(page: Page): Promise<WebSocket> {
-  const ws = await page.waitForEvent("websocket", {
-    predicate: (socket) => socket.url().includes("/events/ws"),
-    timeout: 15000,
-  });
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("timed out waiting for a hello frame")),
-      15000
-    );
-    ws.on("framereceived", (frame) => {
-      const text = typeof frame.payload === "string" ? frame.payload : "";
-      if (text.includes('"type":"hello"')) {
+function waitForLiveSocketHello(page: Page): Promise<WebSocket> {
+  // Listens on the page rather than on one socket, and attaches
+  // `framereceived` synchronously inside the handler. Awaiting
+  // `page.waitForEvent("websocket")` first and only then attaching binds the
+  // wait to whichever socket happened to appear first, and strands it there:
+  // if that socket dies (a navigation tears it down, or a reconnect attempt
+  // fails before it authenticates), the `hello` lands on the NEXT socket and
+  // the wait times out having watched a corpse. That is a real, measured
+  // failure mode — it was producing an intermittent red in
+  // live-updates.spec.ts, whose helper this one mirrors.
+  //
+  // "Next socket" semantics are preserved exactly: `hello` is sent once per
+  // socket at connect, and page.on("websocket") only fires for sockets created
+  // after this call, so any socket already open has long since sent its own.
+  return new Promise<WebSocket>((resolve, reject) => {
+    const onSocket = (socket: WebSocket) => {
+      if (!socket.url().includes("/events/ws")) return;
+      socket.on("framereceived", (frame) => {
+        const text = typeof frame.payload === "string" ? frame.payload : "";
+        if (!text.includes('"type":"hello"')) return;
         clearTimeout(timer);
-        resolve();
-      }
-    });
+        page.off("websocket", onSocket);
+        resolve(socket);
+      });
+    };
+
+    const timer = setTimeout(() => {
+      page.off("websocket", onSocket);
+      reject(new Error("timed out waiting for a hello frame"));
+    }, 15000);
+
+    page.on("websocket", onSocket);
   });
-  return ws;
 }
 
 // Requires a server started with a short SP_AUTH_ACCESS_TOKEN_EXPIRY (e.g.
