@@ -1276,7 +1276,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
 
 	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
-	// cannot put a PNG on the JSON socket, so a result that opens or reopens an
+	// cannot put image bytes on the JSON socket, so a result that opens or reopens an
 	// incident makes the pipeline ask that agent's live connection to upload the
 	// capture it advertised. Wired only on the agent-path incident service —
 	// the in-process worker already has the bytes in memory.
