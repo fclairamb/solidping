@@ -96,5 +96,5 @@ These are reported as warnings on the import preview; the check is still importe
 
 ## After the import
 
-Checks created this way carry the label `solidping.io/managed=gatus`, so you can
+Checks created this way carry the label `solidping-managed=gatus`, so you can
 filter on them and re-run the import as your Gatus config evolves.

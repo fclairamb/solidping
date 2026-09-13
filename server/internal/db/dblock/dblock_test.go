@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/dblock"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portDBLock is distinct from every other embedded-Postgres port in this repo
@@ -78,13 +79,13 @@ func TestAdvisoryLockAdmitsOneHolderAndFailsOver(t *testing.T) {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	const retry = 200 * time.Millisecond
@@ -186,13 +187,13 @@ func TestAdvisoryLockIsReleasedOnShutdown(t *testing.T) {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	holderCtx, stopHolder := context.WithCancel(ctx)
@@ -262,13 +263,13 @@ func TestAdvisoryLockFailsOverWhenTheHolderConnectionDies(t *testing.T) {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	const retry = 200 * time.Millisecond

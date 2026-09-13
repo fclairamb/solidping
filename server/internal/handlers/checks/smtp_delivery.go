@@ -81,6 +81,24 @@ func (s *Service) validateSMTPDeliveryConfig(
 	}
 
 	deliveryTo, _ := effective[smtpDeliveryToField].(string)
+	deliveryCheckUID, _ := effective[smtpDeliveryCheckUIDField].(string)
+
+	// An ABSENT delivery_to with a delivery_check_uid is the config-as-code
+	// shape (spec 2026-09-11-02): delivery_to is export-redacted, so a
+	// stripped document carries only the uid and deriveRedactedFields fills
+	// the address in before this runs. Reaching here with it still empty means
+	// the derivation failed, so report the reference that failed rather than
+	// the field the document deliberately omitted.
+	if deliveryTo == "" && deliveryCheckUID != "" {
+		if refErr := s.validateDeliveryCheckReference(ctx, orgUID, deliveryCheckUID); refErr != nil {
+			return refErr
+		}
+
+		return checkerdef.NewConfigErrorf(smtpDeliveryToField,
+			"could not be derived from %s: this instance has no email inbox configured",
+			smtpDeliveryCheckUIDField)
+	}
+
 	if err := checksmtp.ValidateDeliveryTo(deliveryTo); err != nil {
 		return err
 	}
@@ -103,7 +121,14 @@ func (s *Service) validateSMTPDeliveryConfig(
 
 	// delivery_check_uid is optional bonus metadata now — validated only when
 	// supplied, and never required.
-	deliveryCheckUID, _ := effective[smtpDeliveryCheckUIDField].(string)
+	return s.validateDeliveryCheckReference(ctx, orgUID, deliveryCheckUID)
+}
+
+// validateDeliveryCheckReference enforces the delivery_check_uid rules: when
+// supplied it must name a check that exists in the SAME org (the lookup is
+// org-scoped, so a cross-org uid simply reads as "not found") and is a
+// CheckTypeEmail check. An empty uid passes — the field is optional.
+func (s *Service) validateDeliveryCheckReference(ctx context.Context, orgUID, deliveryCheckUID string) error {
 	if deliveryCheckUID == "" {
 		return nil
 	}

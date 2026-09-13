@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
@@ -77,8 +79,8 @@ type ValidateCheckRequest struct {
 	Internal *bool `json:"internal,omitempty"`
 	// RegionSpread is the proposed inter-region scheduling offset (spec
 	// 2026-07-20-05). Checked against 0 <= regionSpread < period, using the
-	// proposed Period above when given, else the same 1-minute default
-	// CreateCheck falls back to.
+	// proposed Period above when given, else the same type-aware default
+	// CreateCheck falls back to (defaultPeriodForType, spec 2026-09-11-07).
 	RegionSpread *string `json:"regionSpread,omitempty"`
 	// ConfirmationPeriodSeconds / RecoveryPeriodSeconds are the wall-clock
 	// incident-tracking periods (spec 2026-05-08-02), checked against
@@ -275,6 +277,11 @@ type periodBoundError struct {
 	CheckType string
 	Bound     time.Duration
 	TooLong   bool
+	// Reason names WHY the floor is higher than the type's own, when a
+	// config-derived hint raised it (spec 2026-09-12-06 §7). Empty for the
+	// plain per-type bound, so every existing message is byte-for-byte
+	// unchanged.
+	Reason string
 }
 
 func (e *periodBoundError) Error() string {
@@ -283,8 +290,41 @@ func (e *periodBoundError) Error() string {
 		direction = "at most"
 	}
 
-	return fmt.Sprintf("period for %s checks must be %s %s", e.CheckType, direction, formatPeriodBound(e.Bound))
+	msg := fmt.Sprintf("period for %s checks must be %s %s", e.CheckType, direction, formatPeriodBound(e.Bound))
+	if e.Reason != "" {
+		msg += ": " + e.Reason
+	}
+
+	return msg
 }
+
+// parsedConfigForType parses a raw config map into its per-type Config so a
+// validator can ask it questions the map cannot answer. Returns nil for an
+// unknown type or a config the type refuses — a period check must never fail
+// because the CONFIG is malformed; the config validators report that, with a
+// message about the config.
+func parsedConfigForType(checkType string, configMap map[string]any) checkerdef.Config {
+	if configMap == nil {
+		return nil
+	}
+
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return nil
+	}
+
+	if err := cfg.FromMap(configMap); err != nil {
+		return nil
+	}
+
+	return cfg
+}
+
+// browserFloorReason is the explanation attached to a `js` check refused for
+// the browser floor. It has to say what the user can DO about it — either
+// raise the period or stop opening a browser — because the type's own
+// documented floor is 30s and the error would otherwise read as a bug.
+const browserFloorReason = "scripts that open a browser have the browser check's 1m floor"
 
 // formatPeriodBound renders a period bound compactly, the way users write
 // periods: whole hours as "6h", whole minutes at or above ten minutes as
@@ -309,7 +349,14 @@ func formatPeriodBound(bound time.Duration) string {
 // is the load-harness dial (spec 2026-07-01-01) and must stay free to express
 // pathological mixes. Existing rows are grandfathered: this runs only on
 // create/update writes, never via migration.
-func validatePeriodForType(checkType string, period time.Duration, internal bool) error {
+//
+// `config` is the check's PARSED config, or nil when the caller has none. It
+// is consulted for a checkerdef.MinPeriodHint — a floor the config's CONTENT
+// raises above the type's own, today only "this script opens a browser"
+// (spec 2026-09-12-06 §7).
+func validatePeriodForType(
+	checkType string, period time.Duration, internal bool, config checkerdef.Config,
+) error {
 	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
 		return nil
 	}
@@ -326,8 +373,18 @@ func validatePeriodForType(checkType string, period time.Duration, internal bool
 		maxPeriod = meta.MaxPeriod
 	}
 
+	// max(type floor, config-derived floor).
+	var reason string
+
+	if hinter, ok := config.(checkerdef.MinPeriodHint); ok && config != nil {
+		if hint := hinter.MinPeriodHint(); hint > minPeriod {
+			minPeriod = hint
+			reason = browserFloorReason
+		}
+	}
+
 	if period < minPeriod {
-		return &periodBoundError{CheckType: checkType, Bound: minPeriod}
+		return &periodBoundError{CheckType: checkType, Bound: minPeriod, Reason: reason}
 	}
 
 	if maxPeriod > 0 && period > maxPeriod {
@@ -1267,119 +1324,18 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, ErrOrganizationNotFound
 	}
 
-	// `internal` is never writable from a request (spec 2026-08-27-01): it is
-	// what exempts a check from the quota below, so accepting it here would
-	// hand every caller a quota bypass. Routed through the shared
-	// requestFieldFindings (spec 2026-08-28-14) — same function ValidateCheck
-	// uses — so this and the dry-run endpoint can never disagree about it.
-	if findings := requestFieldFindings(requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
-		return CheckResponse{}, findings[0].Err
-	}
-
-	// Enforce the MaxChecks quota before doing any work. Nothing reaching this
-	// path can be internal (rejected above), so the quota always applies —
-	// server-created internal checks are written through db.CreateCheck and
-	// never pass here.
-	if s.entitlements != nil {
-		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
-			return CheckResponse{}, quotaErr
-		}
-	}
-
-	// Get the checker to validate the configuration
-	checker, ok := registry.GetChecker(checkerdef.CheckType(req.Type))
-	if !ok {
-		return CheckResponse{}, ErrInvalidCheckType
-	}
-
-	// Parse the period if provided
-	var period time.Duration
-	if req.Period != nil && *req.Period != "" {
-		var duration timeutils.Duration
-		if scanErr := duration.Scan(*req.Period); scanErr != nil {
-			return CheckResponse{}, scanErr
-		}
-		period = time.Duration(duration)
-	}
-
-	// Enforce per-type period bounds (spec 2026-07-01-04 D1). Internal
-	// checks and the synthetic sleep type are exempt; an absent period
-	// falls back to the default and needs no validation. Nothing created
-	// here is internal any more (spec 2026-08-27-01), hence the constant.
-	if periodErr := validatePeriodForType(req.Type, period, false); periodErr != nil {
-		return CheckResponse{}, periodErr
-	}
-
-	// Track if slug was user-provided
-	userProvidedSlug := req.Slug != ""
-
-	// Validate slug format if provided by user
-	if userProvidedSlug {
-		if slugErr := validateSlug(req.Slug); slugErr != nil {
-			return CheckResponse{}, slugErr
-		}
-	}
-
-	// Resolve regions BEFORE any config work: credential sealing (spec
-	// 2026-07-16-02) keys off the check's private regions, and the tunnel
-	// region rules (spec 2026-07-18-07) are validated against the resolved
-	// set, not the raw request.
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	// EVERY request-level rule this path enforces lives in planCreateCheck,
+	// which writes nothing and hands back the resolved values used below. The
+	// import dry run calls the same function, which is what makes a dry run
+	// that says "all good" mean the real run will succeed (spec
+	// 2026-09-10-01) — the two cannot drift because there is only one copy.
+	plan, err := s.planCreateCheck(ctx, org, req, 0)
 	if err != nil {
-		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", err)
-	}
-
-	// Demo-session payload rules (spec 2026-09-06-02): the type allowlist, the
-	// period floor and public regions only. Deliberately AFTER
-	// ResolveRegionsForCheck so the region rule is applied to the resolved,
-	// about-to-be-stored set rather than to the raw request — an alias or an
-	// org default cannot smuggle a private region past it.
-	if demoErr := assertDemoCheckShape(ctx, req.Type, period, resolvedRegions); demoErr != nil {
-		return CheckResponse{}, demoErr
-	}
-
-	// Normalize the config into its canonical stored shape (e.g. HTTP's
-	// username/password → basicAuth fold) before validating it, so the rules
-	// below see exactly what will be persisted.
-	effective := req.Config
-
-	if req.Config != nil {
-		normalized, normErr := normalizeCheckConfig(req.Type, req.Config)
-		if normErr != nil {
-			return CheckResponse{}, normErr
-		}
-
-		effective = normalized
-	}
-
-	// The shared config validators — the uniform timeout cap, the
-	// address-family rule, the tunnel reference rules and the SMTP send-mode
-	// rules. Run from the same list the dry-run validate endpoint reads, so
-	// the form's preview and this enforcement cannot drift.
-	if cfgErr := s.firstConfigValidationError(
-		ctx, org.UID, req.Type, effective, resolvedRegions,
-	); cfgErr != nil {
-		return CheckResponse{}, cfgErr
-	}
-
-	// Send-mode SMTP checks need a period floor so the paired inbox can't be
-	// flooded (spec 2026-08-19-04).
-	if intervalErr := validateSMTPSendInterval(req.Type, effective, period); intervalErr != nil {
-		return CheckResponse{}, intervalErr
-	}
-
-	// Create CheckSpec for validation
-	spec := &checkerdef.CheckSpec{
-		Name:   req.Name,
-		Slug:   req.Slug,
-		Period: period,
-		Config: req.Config,
-	}
-
-	// Validate the spec - this may modify Name and Slug
-	if err := checker.Validate(spec); err != nil { //nolint:govet // Intentional shadowing for scoped error
 		return CheckResponse{}, err
 	}
+
+	spec := plan.spec
+	userProvidedSlug, resolvedRegions, effective := plan.userProvidedSlug, plan.regions, plan.effective
 
 	// Handle slug conflicts
 	finalSlug, err := s.ensureUniqueSlug(ctx, org.UID, spec.Slug, userProvidedSlug)
@@ -1402,10 +1358,21 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.CheckGroupUID = req.CheckGroupUID
 	}
 
-	// Set name from validated spec
-	if spec.Name != "" {
-		check.Name = &spec.Name
+	// Set the name from the validated spec, falling back to the resolved slug.
+	//
+	// The fallback is what keeps the "a check always has a non-blank name"
+	// invariant true for the check types whose Validate derives no name at all
+	// (tcp, udp, icmp, …). Before spec 2026-09-11-02 those checks were stored
+	// with a NULL name, which exports as an absent `name` key — a document
+	// ValidateDocument and the import path both reject. The slug is the same
+	// answer the backfill migration gives existing rows, and the one
+	// checkDisplayName has always rendered for them.
+	resolvedName := spec.Name
+	if strings.TrimSpace(resolvedName) == "" {
+		resolvedName = finalSlug
 	}
+
+	check.Name = &resolvedName
 
 	// Set description
 	if req.Description != "" {
@@ -1435,33 +1402,29 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// of this function (spec 2026-08-27-01), so every check created here is a
 	// normal, fully metered customer check.
 
-	// Set period (default is 1 minute from NewCheck)
+	// Set period: the request's own value when it proposed one (already
+	// parsed and bounds-checked against the type by planCreateCheck via
+	// planPeriod, above); otherwise the type's own default via
+	// defaultPeriodForType (spec 2026-09-11-07), replacing NewCheck's flat
+	// one-minute constant — a type with a MinPeriod above one minute (ssl,
+	// domain, dnsbl, js, browser) must not silently start out below its own
+	// floor. See NewCheck's own comment for why NewCheck keeps that flat
+	// constant instead of resolving it there.
 	if req.Period != nil && *req.Period != "" {
 		var duration timeutils.Duration
 		if err := duration.Scan(*req.Period); err != nil { //nolint:govet
 			return CheckResponse{}, err
 		}
 		check.Period = duration
+	} else {
+		check.Period = timeutils.Duration(defaultPeriodForType(req.Type))
 	}
 
 	// The remaining request-level guards — regionSpread's bound, the
 	// tracerouteOnFailure enum, the flapping knobs' floors, and the incident
-	// periods' bound — run through the same shared requestFieldFindings
-	// ValidateCheck uses (spec 2026-08-28-14), in the order they've always
-	// been checked in. Only the first finding is used here; the field is then
-	// set from the (now known-valid) request below.
-	if findings := requestFieldFindings(requestFieldValues{
-		RegionSpreadPeriod:        time.Duration(check.Period),
-		RegionSpread:              req.RegionSpread,
-		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
-		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
-		TracerouteOnFailure:       req.TracerouteOnFailure,
-		FlappingWindowSeconds:     req.FlappingWindowSeconds,
-		FlapBackoffFactor:         req.FlapBackoffFactor,
-		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
-	}); len(findings) > 0 {
-		return CheckResponse{}, findings[0].Err
-	}
+	// periods' bound — already ran inside planCreateCheck, against the same
+	// effective period computed there. The fields are set from the (now
+	// known-valid) request below.
 
 	// Set the optional inter-region spread override (spec 2026-07-20-05).
 	// Empty string = default. Bound already checked above.
@@ -1513,19 +1476,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		return CheckResponse{}, errCreate
 	}
 
-	// Handle labels if provided
+	// Handle labels if provided. Keys and values were validated at the top of
+	// this function, so anything failing here is infrastructure (DB down
+	// mid-item, a unique race) — and the check row is ALREADY written. It must
+	// not survive: see compensateFailedCreate (spec 2026-09-10-01).
 	if len(req.Labels) > 0 {
-		labelUIDs := make([]string, 0, len(req.Labels))
-		for key, value := range req.Labels {
-			label, err := s.db.GetOrCreateLabel(ctx, org.UID, key, value) //nolint:govet
-			if err != nil {
-				return CheckResponse{}, fmt.Errorf("failed to create label: %w", err)
-			}
-			labelUIDs = append(labelUIDs, label.UID)
-		}
-		//nolint:govet // Intentional shadowing for scoped error
-		if err := s.db.SetCheckLabels(ctx, check.UID, labelUIDs); err != nil {
-			return CheckResponse{}, fmt.Errorf("failed to set check labels: %w", err)
+		if labelErr := s.attachLabels(ctx, org.UID, check.UID, req.Labels); labelErr != nil {
+			return CheckResponse{}, s.compensateFailedCreate(ctx, check, labelErr)
 		}
 	}
 
@@ -1753,6 +1710,26 @@ func (s *Service) UpdateCheck(
 		}
 	}
 
+	// A PATCH may not blank the name (spec 2026-09-11-02). Absent leaves it
+	// alone; a supplied value must survive trimming, because this is the path
+	// that produced the nameless check whose export the server could not
+	// re-import.
+	if req.Name != nil {
+		if nameErr := validateCheckName(*req.Name); nameErr != nil {
+			return CheckResponse{}, nameErr
+		}
+	}
+
+	// Labels are validated before ANY write, for the same reason as on create
+	// (spec 2026-09-10-01): the label loop runs at the very end of this
+	// function, so a bad key used to be discovered only after the check row,
+	// its jobs and its schedule had already been updated.
+	if req.Labels != nil {
+		if labelErr := models.ValidateLabels(*req.Labels); labelErr != nil {
+			return CheckResponse{}, labelErr
+		}
+	}
+
 	// Build update object
 	update := models.CheckUpdate{}
 	if req.CheckGroupUID != nil {
@@ -1822,7 +1799,14 @@ func (s *Service) UpdateCheck(
 		// next write to the period. The internal flag comes from the stored
 		// row: a PATCH can no longer toggle it (spec 2026-08-27-01), and the
 		// type cannot change on PATCH either.
-		if periodErr := validatePeriodForType(check.Type, time.Duration(duration), check.Internal); periodErr != nil {
+		// check.Config is the POST-merge config when this PATCH also changed
+		// it (applyConfigUpdate ran above), and the stored one otherwise — so
+		// a period-only PATCH is held to the stored script's floor, and a
+		// script+period PATCH to the new script's.
+		if periodErr := validatePeriodForType(
+			check.Type, time.Duration(duration), check.Internal,
+			parsedConfigForType(check.Type, check.Config),
+		); periodErr != nil {
 			return CheckResponse{}, periodErr
 		}
 		update.Period = &duration
@@ -1926,18 +1910,11 @@ func (s *Service) UpdateCheck(
 		}
 	}
 
-	// Handle labels if provided (nil means no change, empty map means clear all)
+	// Handle labels if provided (nil means no change, empty map means clear all).
+	// Keys/values were validated before the update above.
 	if req.Labels != nil {
-		labelUIDs := make([]string, 0, len(*req.Labels))
-		for key, value := range *req.Labels {
-			label, labelErr := s.db.GetOrCreateLabel(ctx, org.UID, key, value)
-			if labelErr != nil {
-				return CheckResponse{}, fmt.Errorf("failed to create label: %w", labelErr)
-			}
-			labelUIDs = append(labelUIDs, label.UID)
-		}
-		if setLabelsErr := s.db.SetCheckLabels(ctx, check.UID, labelUIDs); setLabelsErr != nil {
-			return CheckResponse{}, fmt.Errorf("failed to set check labels: %w", setLabelsErr)
+		if labelErr := s.attachLabels(ctx, org.UID, check.UID, *req.Labels); labelErr != nil {
+			return CheckResponse{}, labelErr
 		}
 	}
 
@@ -2083,27 +2060,10 @@ func (s *Service) UpsertCheck(
 		return updatedCheck, false, nil
 	}
 
-	// Check doesn't exist - create it
-	createReq := CreateCheckRequest{
-		Name:          req.Name,
-		Slug:          slug,
-		Description:   req.Description,
-		CheckGroupUID: req.CheckGroupUID,
-		Type:          req.Type,
-		Config:        req.Config,
-		Regions:       req.Regions,
-		Enabled:       req.Enabled,
-		// Internal is deliberately NOT forwarded (spec 2026-08-27-01).
-		Period:                    req.Period,
-		Labels:                    req.Labels,
-		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
-		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
-		TracerouteOnFailure:       req.TracerouteOnFailure,
-		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
-		FlappingWindowSeconds:     req.FlappingWindowSeconds,
-		FlapBackoffFactor:         req.FlapBackoffFactor,
-		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
-	}
+	// Check doesn't exist - create it. Built through the same helper the
+	// dry-run planner uses, so the plan is made from exactly the request that
+	// will be written.
+	createReq := upsertToCreateRequest(slug, req)
 
 	check, err := s.CreateCheck(ctx, orgSlug, createReq)
 	if err != nil {
@@ -3342,12 +3302,59 @@ type ExportedDependency struct {
 	Description string `json:"description,omitempty"`
 }
 
+// ImportPlanEntry is one reconcile decision for a single document entry: what
+// the import would do to that slug and, for an update, exactly which fields
+// move. It is the per-check half of the counts below — a caller that needs to
+// know WHY a file does not match reads this rather than diffing client-side.
+type ImportPlanEntry struct {
+	Slug   string `json:"slug"`
+	Action string `json:"action"`
+	// Changes is populated for `update` only. Secret-bearing and
+	// reference-derived values are masked (see CheckFieldChange).
+	Changes []CheckFieldChange `json:"changes,omitempty"`
+}
+
 // ImportResult represents the result of an import operation.
 type ImportResult struct {
-	Created int           `json:"created"`
-	Updated int           `json:"updated"`
+	Created int `json:"created"`
+	// Updated counts the entries that would change at least one field.
+	// Before spec 2026-09-11-04 it counted every MATCHED slug, changed or
+	// not: re-importing a file that was byte-for-byte the current export
+	// answered `created=1 updated=482`, so the one question config-as-code
+	// exists to answer — does this file match the instance? — had no answer
+	// short of a client-side diff.
+	Updated int `json:"updated"`
+	// Unchanged counts the matched entries whose NORMALIZED EFFECTIVE state
+	// is already what the document asks for. `created=0 updated=0 deleted=0`
+	// with a non-zero Unchanged is the machine-readable "the file matches".
+	Unchanged int `json:"unchanged"`
+	// Deleted and Unmanaged are structurally zero for /import — it has no
+	// managed scope and never deletes by absence. They are reported anyway so
+	// /import and /apply answer with the same five counters and a CI job can
+	// read one shape (see ApplyResult for the endpoint that moves them).
+	Deleted   int `json:"deleted"`
+	Unmanaged int `json:"unmanaged"`
+	// Plan is the per-entry decision, in document order.
+	Plan []ImportPlanEntry `json:"plan"`
+	// Skipped counts the document entries whose dependsOn edges were NOT
+	// applied: on a real run, those whose own upsert failed in pass 1; on a
+	// dry run, every entry carrying dependsOn, since pass 2 cannot resolve
+	// edges against state the dry run did not write. It was declared and never
+	// incremented until spec 2026-09-10-01 — a field that always reads 0
+	// implies a semantics the endpoint does not have.
 	Skipped int           `json:"skipped"`
 	Errors  []ImportError `json:"errors"`
+	// DryRun echoes whether this was a dry run, and Caveats names the
+	// validations THIS dry run could not perform without writing (see
+	// DryRunCaveat). A dry run reports the same created/updated/errors a real
+	// run would, EXCEPT where a caveat says otherwise — which is why the
+	// caveats travel in the response rather than in the documentation.
+	DryRun  bool           `json:"dryRun"`
+	Caveats []DryRunCaveat `json:"caveats,omitempty"`
+	// Warnings carries the same advisory notes /apply returns — today, the one
+	// about ${env:} resolving on the executing process. Import and apply take
+	// the same document; they answer the same way about it.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // ImportError represents an error for a specific check during import.
@@ -3355,11 +3362,20 @@ type ImportError struct {
 	Index int    `json:"index"`
 	Slug  string `json:"slug"`
 	Error string `json:"error"`
+	// State is set only in the one outcome where an item failed AND left
+	// something behind: "created-incomplete" means the check row was inserted,
+	// finishing it failed, and the compensating delete failed too — so the row
+	// really is on disk. Absent means nothing was written for this item.
+	State string `json:"state,omitempty"`
 }
+
+// ImportStateCreatedIncomplete is the ImportError.State value for a check that
+// exists but is not fully configured. Named because callers key on it.
+const ImportStateCreatedIncomplete = "created-incomplete"
 
 // ExportChecks exports checks for an organization in the portable JSON format.
 //
-//nolint:cyclop,funlen,gocritic,gocognit // group/label/dep resolution in one pass
+//nolint:gocritic // group/label/dep resolution in one pass
 func (s *Service) ExportChecks(
 	ctx context.Context, orgSlug string, opts ListChecksOptions,
 ) (*ExportDocument, error) {
@@ -3380,7 +3396,52 @@ func (s *Service) ExportChecks(
 		return nil, err
 	}
 
-	// Fetch labels for all checks
+	labelsMap, groupMap, depsByChild, err := s.loadExportSidecars(ctx, org.UID, checks)
+	if err != nil {
+		return nil, err
+	}
+
+	exportChecks := projectChecksToExport(checks, labelsMap, groupMap, depsByChild)
+
+	// Deterministic ordering: group (empty group last), then slug. Keeps
+	// git-committed exports diff-clean and groups related checks together.
+	sort.SliceStable(exportChecks, func(i, j int) bool {
+		groupI, groupJ := exportChecks[i].Group, exportChecks[j].Group
+		if groupI != groupJ {
+			switch {
+			case groupI == "":
+				return false
+			case groupJ == "":
+				return true
+			default:
+				return groupI < groupJ
+			}
+		}
+
+		return exportChecks[i].Slug < exportChecks[j].Slug
+	})
+
+	return &ExportDocument{
+		Version:      ExportVersionV2,
+		ExportedAt:   time.Now().UTC().Format(time.RFC3339),
+		Organization: orgSlug,
+		Checks:       exportChecks,
+		Secrets:      SecretsMarkerStripped,
+	}, nil
+}
+
+// loadExportSidecars reads everything a check projection needs besides the
+// rows themselves: the labels, the group UID → name map, and the dependency
+// edges keyed by child UID and rendered slug-first (export documents are
+// portable across instances where UIDs differ).
+//
+// Factored out of ExportChecks so the import/apply planner can project the
+// org's CURRENT state through the very same code the exporter uses — which is
+// what makes "a fresh export plans as unchanged" a property of the code rather
+// than a coincidence between two implementations (spec 2026-09-11-04).
+func (s *Service) loadExportSidecars(
+	ctx context.Context, orgUID string, checks []*models.Check,
+) (map[string][]*models.Label, map[string]string, map[string][]ExportedDependency, error) {
 	checkUIDs := make([]string, len(checks))
 	for i, c := range checks {
 		checkUIDs[i] = c.UID
@@ -3388,13 +3449,12 @@ func (s *Service) ExportChecks(
 
 	labelsMap, err := s.db.GetLabelsForChecks(ctx, checkUIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	// Fetch check groups for group name resolution
-	groups, err := s.db.ListCheckGroups(ctx, org.UID)
+	groups, err := s.db.ListCheckGroups(ctx, orgUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	groupMap := make(map[string]string, len(groups))
@@ -3402,11 +3462,9 @@ func (s *Service) ExportChecks(
 		groupMap[g.UID] = g.Name
 	}
 
-	// Fetch all dependencies in this org and group by child UID. Slug-keyed
-	// at write time below so the export doc is portable.
-	allDeps, err := s.db.ListCheckDependenciesByOrg(ctx, org.UID)
+	allDeps, err := s.db.ListCheckDependenciesByOrg(ctx, orgUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	slugByUID := make(map[string]string, len(checks))
@@ -3419,9 +3477,9 @@ func (s *Service) ExportChecks(
 	depsByChild := make(map[string][]ExportedDependency, len(checks))
 	for _, dep := range allDeps {
 		parentSlug, ok := slugByUID[dep.ParentCheckUID]
-		// Skip edges whose parent isn't in the exported set (filtered out by
-		// the caller's labels/group filter, or otherwise unreachable). The
-		// dep is left intact in the DB; the export simply can't represent it.
+		// Skip edges whose parent isn't in the projected set (filtered out by
+		// the caller's labels/group filter, or otherwise unreachable). The dep
+		// is left intact in the DB; the document simply can't represent it.
 		if !ok || parentSlug == "" {
 			continue
 		}
@@ -3440,8 +3498,20 @@ func (s *Service) ExportChecks(
 		})
 	}
 
-	// Build export checks
+	return labelsMap, groupMap, depsByChild, nil
+}
+
+// projectChecksToExport turns stored rows into the canonical ExportCheck shape
+// — the ONE place that mapping lives. The exporter renders the result; the
+// import/apply planner diffs a document against it.
+func projectChecksToExport(
+	checks []*models.Check,
+	labelsMap map[string][]*models.Label,
+	groupMap map[string]string,
+	depsByChild map[string][]ExportedDependency,
+) []ExportCheck {
 	exportChecks := make([]ExportCheck, 0, len(checks))
+
 	for _, check := range checks {
 		periodValue, _ := check.Period.Value()
 		periodStr, _ := periodValue.(string)
@@ -3473,14 +3543,12 @@ func (s *Service) ExportChecks(
 			exported.Description = *check.Description
 		}
 
-		// Resolve group name
 		if check.CheckGroupUID != nil {
 			if name, ok := groupMap[*check.CheckGroupUID]; ok {
 				exported.Group = name
 			}
 		}
 
-		// Attach labels
 		if labels, ok := labelsMap[check.UID]; ok && len(labels) > 0 {
 			exported.Labels = make(map[string]string, len(labels))
 			for _, label := range labels {
@@ -3495,66 +3563,47 @@ func (s *Service) ExportChecks(
 		exportChecks = append(exportChecks, exported)
 	}
 
-	// Deterministic ordering: group (empty group last), then slug. Keeps
-	// git-committed exports diff-clean and groups related checks together.
-	sort.SliceStable(exportChecks, func(i, j int) bool {
-		groupI, groupJ := exportChecks[i].Group, exportChecks[j].Group
-		if groupI != groupJ {
-			switch {
-			case groupI == "":
-				return false
-			case groupJ == "":
-				return true
-			default:
-				return groupI < groupJ
-			}
-		}
-
-		return exportChecks[i].Slug < exportChecks[j].Slug
-	})
-
-	return &ExportDocument{
-		Version:      ExportVersionV2,
-		ExportedAt:   time.Now().UTC().Format(time.RFC3339),
-		Organization: orgSlug,
-		Checks:       exportChecks,
-		Secrets:      SecretsMarkerStripped,
-	}, nil
+	return exportChecks
 }
 
 // intPtr returns a pointer to v. Used by the exporter to populate the
 // pointer-typed ExportCheck alerting fields from concrete model values.
 func intPtr(v int) *int { return &v }
 
+// ExportedConfigFor returns the config a check would carry in an export
+// document: its stored config minus every key the exporter strips.
+//
+// Exported for the cross-checker export-leak tripwire in checkers/registry
+// (TestExportNeverCarriesAMintedToken), which has to run the REAL exporter —
+// a test that re-implemented the stripping rule would stay green against an
+// exporter that stopped applying it, which is exactly the regression that let
+// a live ingest token reach a customer's git history.
+func ExportedConfigFor(check *models.Check) map[string]any {
+	return stripSecretKeysForExport(check)
+}
+
 // stripSecretKeysForExport returns the check's Config with every key
 // declared as secret by the checker (and every key already in
 // ConfigPrivateKeys) removed. Exports are portable across instances and
 // re-encrypting under a different KEK is out of scope, so the safe
 // default is "operator re-enters secrets after import".
+//
+// It strips SecretFields() ∪ ExportRedactedFields() — the second set being the
+// keys that are public AT REST but must never reach a committed file (the email
+// ingest token, an SMTP probe's delivery_to). Before spec 2026-09-11-02 only
+// the first set was stripped, so a document stamped `secrets: stripped` carried
+// a live 48-hex-char ingest token twice over. Redacted fields are RESTORED on
+// import/apply (preserveAbsentRedactedFields / deriveRedactedFields), so the
+// round trip loses nothing.
 func stripSecretKeysForExport(check *models.Check) map[string]any {
 	out := make(map[string]any, len(check.Config))
 	for k, v := range check.Config {
 		out[k] = v
 	}
 
-	secretSet := map[string]struct{}{}
-
-	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
-		for _, k := range credentials.SecretFieldsFor(cfg) {
-			secretSet[k] = struct{}{}
-		}
-	}
-
-	if check.ConfigPrivateKeys != nil && *check.ConfigPrivateKeys != "" {
-		var privateKeys []string
-		if err := json.Unmarshal([]byte(*check.ConfigPrivateKeys), &privateKeys); err == nil {
-			for _, k := range privateKeys {
-				secretSet[k] = struct{}{}
-			}
-		}
-	}
-
-	for k := range secretSet {
+	// The stripped set lives in hiddenExportConfigKeys so the import/apply
+	// differ compares the two sides on exactly the keys the exporter keeps.
+	for k := range hiddenExportConfigKeys(check.Type, check.ConfigPrivateKeys) {
 		delete(out, k)
 	}
 
@@ -3619,6 +3668,16 @@ func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]a
 func (s *Service) ImportChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool,
 ) (*ImportResult, error) {
+	// A plain import stamps no managed label, so the label is ordinary user
+	// data here and a document that drops it really would drop it.
+	return s.importChecks(ctx, orgSlug, doc, dryRun, diffOptions{})
+}
+
+// importChecks is ImportChecks with the comparison options /apply needs (it
+// stamps the managed label itself, after the plan is computed).
+func (s *Service) importChecks(
+	ctx context.Context, orgSlug string, doc *ExportDocument, dryRun bool, diffOpts diffOptions,
+) (*ImportResult, error) {
 	if !isSupportedExportVersion(doc.Version) {
 		return nil, ErrUnsupportedExportVersion
 	}
@@ -3643,14 +3702,28 @@ func (s *Service) ImportChecks(
 		groupByName[strings.ToLower(g.Name)] = g
 	}
 
-	result := &ImportResult{
-		Errors: []ImportError{},
+	result, snapshot, caveats, prepErr := s.prepareImport(ctx, org, doc, dryRun)
+	if prepErr != nil {
+		return nil, prepErr
 	}
 
 	pass1Failed := make(map[string]struct{}, 0)
 
 	for i := range doc.Checks {
-		created, importErr := s.importSingleCheck(ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName)
+		// pendingCreates only matters on a dry run: it is how many creations
+		// this document has already decided on but not written, which is what
+		// lets the quota gate see the document as a whole. On a real run the
+		// creations are on disk and the gate counts them itself.
+		pendingCreates := 0
+		if dryRun {
+			pendingCreates = result.Created
+		}
+
+		action, changes, importErr := s.importSingleCheck(ctx, &importItem{
+			org: org, orgSlug: orgSlug, entry: &doc.Checks[i], index: i, dryRun: dryRun,
+			groupByName: groupByName, pendingCreates: pendingCreates, caveats: caveats,
+			snapshot: snapshot, diffOpts: diffOpts,
+		})
 		if importErr != nil {
 			result.Errors = append(result.Errors, *importErr)
 			pass1Failed[doc.Checks[i].Slug] = struct{}{}
@@ -3658,21 +3731,120 @@ func (s *Service) ImportChecks(
 			continue
 		}
 
-		if created {
-			result.Created++
-		} else {
-			result.Updated++
-		}
+		result.record(doc.Checks[i].Slug, action, changes)
 	}
+
+	result.Warnings = append(result.Warnings, unappliableWarnings(unappliableFromImportPlan(result.Plan))...)
 
 	// Pass 2: apply dependsOn after every check has been upserted, so a
 	// payload can declare both endpoints of an edge for the first time.
 	// Skipped on dry-run since pass 1 only simulated the upserts.
 	if !dryRun {
 		s.importDependencies(ctx, org.UID, doc.Checks, pass1Failed, result)
+
+		return result, nil
 	}
 
+	countSkippedDependencies(doc.Checks, result)
+	result.Caveats = caveats.list()
+
 	return result, nil
+}
+
+// unappliableFromImportPlan indexes an import plan by the unappliable fields it
+// changes. Separate from the apply adapter only because the two plan entry
+// types differ; both feed the same unappliableWarnings.
+func unappliableFromImportPlan(plan []ImportPlanEntry) map[string][]string {
+	changedSlugs := map[string][]string{}
+	for i := range plan {
+		collectUnappliable(changedSlugs, plan[i].Slug, plan[i].Changes)
+	}
+
+	return changedSlugs
+}
+
+// record files one decided entry: the plan row plus the counter it belongs to.
+func (r *ImportResult) record(slug, action string, changes []CheckFieldChange) {
+	r.Plan = append(r.Plan, ImportPlanEntry{Slug: slug, Action: action, Changes: changes})
+
+	switch action {
+	case ActionCreate:
+		r.Created++
+	case ActionUnchanged:
+		r.Unchanged++
+	default:
+		r.Updated++
+	}
+}
+
+// countSkippedDependencies is the dry run's accounting for the pass-2 work it
+// is not doing: it cannot resolve edges against state it did not write, so it
+// counts them as skipped rather than pretending there was none.
+func countSkippedDependencies(checks []ExportCheck, result *ImportResult) {
+	for i := range checks {
+		if len(checks[i].DependsOn) > 0 {
+			result.Skipped++
+		}
+	}
+}
+
+// prepareImport does everything an import must settle BEFORE it touches a
+// single entry: prove every secret reference resolves (so a missing one fails
+// before any mutation), read the org's current state once, and seed the result
+// and the dry run's caveat collector.
+func (s *Service) prepareImport(
+	ctx context.Context, org *models.Organization, doc *ExportDocument, dryRun bool,
+) (*ImportResult, *orgCheckSnapshot, *caveatSet, error) {
+	// Import and apply take the SAME document, so they must treat secret
+	// references the same way (spec 2026-09-11-03). Before that spec only
+	// ApplyChecks validated them: a manifest that /apply handled correctly was
+	// stored LITERALLY by /import, and the probe then sent the string
+	// "${env:SP_SSO_AUTHTEST_PASSWORD}" to the target. Validation is shared now
+	// — the reference is stored either way, and an unresolvable one is a hard
+	// 400 from both endpoints, dry run included.
+	refWarnings, refErr := s.validateSecretRefs(ctx, org.UID, doc)
+	if refErr != nil {
+		return nil, nil, nil, refErr
+	}
+
+	// The org's CURRENT state, projected through the exporter's own code, is
+	// what "unchanged" is measured against. Read ONCE, before any mutation, so
+	// a real run reports the same actions its dry run did.
+	snapshot, snapErr := s.loadOrgCheckSnapshot(ctx, org.UID)
+	if snapErr != nil {
+		return nil, nil, nil, snapErr
+	}
+
+	result := &ImportResult{
+		Errors:   []ImportError{},
+		Plan:     make([]ImportPlanEntry, 0, len(doc.Checks)),
+		DryRun:   dryRun,
+		Warnings: refWarnings,
+	}
+
+	// A dry run reports what it could not fully reproduce. The slug race is
+	// unconditional (it is a property of planning ahead of writing at all);
+	// the rest are discovered per item as the document is planned.
+	var caveats *caveatSet
+
+	if dryRun {
+		caveats = newCaveatSet()
+		caveats.add(DryRunCaveatSlugRace)
+	}
+
+	return result, snapshot, caveats, nil
+}
+
+// anyDependsOn reports whether any entry in the document declares a dependency
+// — pass 2 is skipped entirely when none does.
+func anyDependsOn(checks []ExportCheck) bool {
+	for i := range checks {
+		if len(checks[i].DependsOn) > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // importDependencies applies the additive dep merge for pass 2 of import.
@@ -3686,16 +3858,7 @@ func (s *Service) importDependencies(
 	pass1Failed map[string]struct{},
 	result *ImportResult,
 ) {
-	hasAnyDeps := false
-	for i := range checks {
-		if len(checks[i].DependsOn) > 0 {
-			hasAnyDeps = true
-
-			break
-		}
-	}
-
-	if !hasAnyDeps {
+	if !anyDependsOn(checks) {
 		return
 	}
 
@@ -3722,6 +3885,7 @@ func (s *Service) importDependencies(
 		}
 
 		if _, failed := pass1Failed[entry.Slug]; failed {
+			result.Skipped++
 			result.Errors = append(result.Errors, ImportError{
 				Index: i, Slug: entry.Slug,
 				Error: "skipped dependsOn: pass-1 upsert failed for this check",
@@ -3894,52 +4058,188 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 	return nil
 }
 
-// importSingleCheck handles importing a single check.
-// Returns (wasCreated, error). wasCreated is true if a new check was created, false if updated.
+// importSingleCheck imports a single check in two phases.
+//
+// PLAN (always runs, dry run included): the per-entry contract, the
+// created-vs-updated lookup, group resolution, building the
+// UpsertCheckRequest, and then the SAME request validation the write path
+// performs — label keys/values, the checker's own Validate, regions, period
+// and alerting bounds, and the entitlement quota for a would-create item.
+// Before spec 2026-09-10-01 the dry run returned right after the slug lookup,
+// so a document that could not possibly be written dry-ran clean.
+//
+// APPLY (real run only): the group creation and the upsert itself.
+//
+// Returns (action, changes, error): the action is one of ActionCreate,
+// ActionUpdate or ActionUnchanged, and changes is populated for ActionUpdate.
 func (s *Service) importSingleCheck(
-	ctx context.Context,
-	org *models.Organization,
-	orgSlug string,
-	exportedCheck *ExportCheck,
-	index int,
-	dryRun bool,
-	groupByName map[string]*models.CheckGroup,
-) (bool, *ImportError) {
+	ctx context.Context, item *importItem,
+) (string, []CheckFieldChange, *ImportError) {
+	exportedCheck, index := item.entry, item.index
+	org, orgSlug, dryRun := item.org, item.orgSlug, item.dryRun
+
 	if validationErr := validateImportedCheck(exportedCheck, index); validationErr != nil {
-		return false, validationErr
+		return "", nil, validationErr
 	}
 
-	// Check if slug exists to determine created vs updated
-	existing, _ := s.db.GetCheckByUidOrSlug(ctx, org.UID, exportedCheck.Slug)
-	created := existing == nil
+	// Resolve the group. On a dry run an absent group is "would create" —
+	// recorded in the local map so a second entry naming the same group plans
+	// against the same decision, but never written.
+	checkGroupUID, groupErr := s.resolveImportGroup(ctx, org, exportedCheck, item.groupByName, dryRun)
+	if groupErr != nil {
+		return "", nil, &ImportError{
+			Index: index, Slug: exportedCheck.Slug, Error: "failed to create group: " + groupErr.Error(),
+		}
+	}
+
+	upsertReq := buildImportUpsertRequest(exportedCheck, checkGroupUID)
+
+	// Computed from the PRE-write snapshot, so a real run reports the same
+	// decision its dry run did rather than "everything I just wrote changed".
+	// It never decides create-vs-update on its own — see resolveImportAction.
+	action, changes := s.planImportAction(ctx, org, item)
 
 	if dryRun {
-		return created, nil
-	}
-
-	// Resolve group by name (case-insensitive), auto-create if needed
-	var checkGroupUID *string
-	if exportedCheck.Group != "" {
-		group, ok := groupByName[strings.ToLower(exportedCheck.Group)]
-		if !ok {
-			// Auto-create group
-			groupSlug := sanitizeSlug(strings.ToLower(exportedCheck.Group))
-			newGroup := models.NewCheckGroup(org.UID, exportedCheck.Group, groupSlug)
-			if createErr := s.db.CreateCheckGroup(ctx, newGroup); createErr != nil {
-				return false, &ImportError{
-					Index: index, Slug: exportedCheck.Slug,
-					Error: "failed to create group: " + createErr.Error(),
-				}
-			}
-			groupByName[strings.ToLower(exportedCheck.Group)] = newGroup
-			group = newGroup
+		created, planErr := s.PlanUpsert(
+			ctx, org, exportedCheck.Slug, &upsertReq, item.pendingCreates, item.caveats)
+		if planErr != nil {
+			return "", nil, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: planErr.Error()}
 		}
-		checkGroupUID = &group.UID
+
+		resolved, resolvedChanges := resolveImportAction(created, action, changes)
+
+		return resolved, resolvedChanges, nil
 	}
 
-	// Build upsert request. The alerting fields are already resolved
-	// (check value → document default → absent) by the time the document is
-	// decoded, so a nil pointer here means "use the system default".
+	_, created, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
+	if upsertErr != nil {
+		importErr := &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
+
+		// The one case where a failed item still left a row on disk: the
+		// check was inserted and neither completed nor removed. Reported so
+		// the caller can see exactly which slugs exist instead of trusting a
+		// created count that would be a lie (spec 2026-09-10-01).
+		if errors.Is(upsertErr, ErrCheckCreatedIncomplete) {
+			importErr.State = ImportStateCreatedIncomplete
+		}
+
+		return "", nil, importErr
+	}
+
+	resolved, resolvedChanges := resolveImportAction(created, action, changes)
+
+	return resolved, resolvedChanges, nil
+}
+
+// resolveImportAction is the ONE place create-vs-update is decided, and it
+// defers to what the upsert actually did rather than to what the planner could
+// see.
+//
+// The distinction is not academic. The snapshot is keyed by SLUG, while the
+// upsert resolves uid-or-slug (GetCheckByUidOrSlug) and nothing constrains a
+// document entry's `slug` to be a slug — so an entry naming a UID matches a row
+// the snapshot never indexed. Letting the planner's "I don't know this slug"
+// stand would then count an UPDATE as a create, which is the counting lie this
+// whole spec exists to remove, reintroduced one layer down.
+//
+// So: `created` from the write (or from PlanUpsert's identical lookup) decides.
+// A planner that saw nothing for a row the upsert did find yields `update` with
+// no field list — an equality that cannot be proven is never reported as
+// equality.
+func resolveImportAction(
+	created bool, planned string, changes []CheckFieldChange,
+) (string, []CheckFieldChange) {
+	if created {
+		return ActionCreate, nil
+	}
+
+	if planned == "" {
+		return ActionUpdate, nil
+	}
+
+	return planned, changes
+}
+
+// importItem carries one document entry plus everything the planner and the
+// writer need for it. A struct rather than nine positional parameters, which
+// is also what keeps the argument-limit linter quiet.
+type importItem struct {
+	org            *models.Organization
+	orgSlug        string
+	entry          *ExportCheck
+	index          int
+	dryRun         bool
+	groupByName    map[string]*models.CheckGroup
+	pendingCreates int
+	caveats        *caveatSet
+	snapshot       *orgCheckSnapshot
+	diffOpts       diffOptions
+}
+
+// planImportAction decides update-vs-unchanged for one entry against the
+// pre-write snapshot, and ONLY that: an entry the snapshot does not know
+// answers "" — "no opinion" — because whether that is a create is the upsert's
+// answer to give, not the planner's (see resolveImportAction).
+func (s *Service) planImportAction(
+	ctx context.Context, org *models.Organization, item *importItem,
+) (string, []CheckFieldChange) {
+	current, existing := item.snapshot.lookup(item.entry.Slug)
+	if current == nil || existing == nil {
+		return "", nil
+	}
+
+	changes := s.diffCheck(ctx, org, existing, current, item.entry, item.diffOpts)
+	if len(changes) == 0 {
+		return ActionUnchanged, nil
+	}
+
+	return ActionUpdate, changes
+}
+
+// resolveImportGroup resolves (and, on a real run, auto-creates) the check
+// group named by a document entry, returning nil when the entry names none.
+func (s *Service) resolveImportGroup(
+	ctx context.Context,
+	org *models.Organization,
+	exportedCheck *ExportCheck,
+	groupByName map[string]*models.CheckGroup,
+	dryRun bool,
+) (*string, error) {
+	if exportedCheck.Group == "" {
+		return nil, nil //nolint:nilnil // no group is a valid absence, not an error
+	}
+
+	key := strings.ToLower(exportedCheck.Group)
+
+	group, ok := groupByName[key]
+	if !ok {
+		groupSlug := sanitizeSlug(key)
+		group = models.NewCheckGroup(org.UID, exportedCheck.Group, groupSlug)
+
+		if !dryRun {
+			if createErr := s.db.CreateCheckGroup(ctx, group); createErr != nil {
+				return nil, createErr
+			}
+		}
+
+		groupByName[key] = group
+	}
+
+	// On a dry run this UID belongs to a group that does not exist. That is
+	// fine and deliberate: nothing downstream of here writes on a dry run, and
+	// the planner never dereferences the group — what matters is that the
+	// planned request has the same SHAPE the real one will.
+	return &group.UID, nil
+}
+
+// buildImportUpsertRequest turns one document entry into the upsert request
+// both the plan and the apply phase use — one construction, so a dry run can
+// never validate a different request from the one that gets written.
+//
+// The alerting fields are already resolved (check value → document default →
+// absent) by the time the document is decoded, so a nil pointer here means
+// "use the system default".
+func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string) UpsertCheckRequest {
 	upsertReq := UpsertCheckRequest{
 		Name:          exportedCheck.Name,
 		Description:   exportedCheck.Description,
@@ -3963,12 +4263,7 @@ func (s *Service) importSingleCheck(
 
 	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
 
-	_, _, upsertErr := s.UpsertCheck(ctx, orgSlug, exportedCheck.Slug, &upsertReq)
-	if upsertErr != nil {
-		return false, &ImportError{Index: index, Slug: exportedCheck.Slug, Error: upsertErr.Error()}
-	}
-
-	return created, nil
+	return upsertReq
 }
 
 // importedTraceroutePolicy resolves a document's path-trace field to something
@@ -4382,7 +4677,13 @@ func (s *Service) applyConfigUpdate(
 		return mergeErr
 	}
 
-	preserveHeartbeatToken(check, merged)
+	preserveAbsentRedactedFields(check, merged)
+
+	// An export-redacted field the document omitted and that preservation
+	// could not supply (a check that never had one, e.g. an SMTP send-mode
+	// check newly paired with an email check) is derived from what the
+	// document DID carry — see deriveRedactedFields.
+	merged = withInjectedConfig(merged, s.deriveRedactedFields(ctx, check.OrganizationUID, check.Type, merged))
 
 	// Normalize the EFFECTIVE config, after the merge and before encryption —
 	// never the raw patch, whose folded output would replace the stored map
@@ -4500,7 +4801,7 @@ func (s *Service) validatePatchedConfig(
 	}
 
 	if wasSealedOnly {
-		injectSecretPlaceholders(configCopy, parseConfigPrivateKeys(oldPrivateKeys))
+		injectSecretPlaceholders(checkType, configCopy, parseConfigPrivateKeys(oldPrivateKeys))
 	}
 
 	return checker.Validate(&checkerdef.CheckSpec{Config: configCopy})
@@ -4525,20 +4826,76 @@ func parseConfigPrivateKeys(configPrivateKeys *string) []string {
 
 // injectSecretPlaceholders fills in a placeholder value, in place, for every
 // key that's absent from config — see validatePatchedConfig for when this is
-// safe to call.
-func injectSecretPlaceholders(config map[string]any, keys []string) {
+// safe to call. checkType resolves each key's placeholder to the shape the
+// checker's own config struct declares for it — see
+// secretPlaceholderShapeFor.
+func injectSecretPlaceholders(checkType string, config map[string]any, keys []string) {
 	for _, key := range keys {
 		if _, present := config[key]; present {
 			continue
 		}
 
-		if key == "private_key" {
-			config[key] = placeholderPrivateKeyPEM
+		config[key] = secretPlaceholderShapeFor(checkType, key)
+	}
+}
+
+// secretPlaceholderShapeFor resolves the placeholder value for a single
+// secret config key, shaped to match what checkType's config struct declares
+// for that key rather than always the plain string placeholder.
+//
+// `private_key` keeps its dedicated PEM-shaped value (placeholderPrivateKeyPEM)
+// — that is a VALUE rule (checksftp/checkssh PEM-decode it), not a shape rule,
+// and reflection cannot derive it.
+//
+// Otherwise, look up the checker's own config struct via
+// registry.ParseConfig, find the field whose `json` tag matches key, and
+// pick the placeholder from the field's reflect.Kind:
+//   - Map (e.g. secretHeaders, secretMetadata, secrets — all
+//     map[string]string) → an EMPTY map[string]any{}. Every map-shaped secret
+//     field is optional and none requires a non-empty map, so an empty map
+//     passes both decode and validation; a populated map risks tripping a
+//     checker's own key-name validation (checkgrpc's metadata name rules,
+//     checkhttp's empty-header-name rejection).
+//   - anything else — including no matching field, or an unknown check
+//     type — falls back to placeholderSecretValue, i.e. today's behavior.
+//     This must never be a hard error: the injector only widens or narrows
+//     what a throwaway Validate call sees, it is not a source of truth.
+func secretPlaceholderShapeFor(checkType, key string) any {
+	if key == "private_key" {
+		return placeholderPrivateKeyPEM
+	}
+
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	if !ok {
+		return placeholderSecretValue
+	}
+
+	val := reflect.ValueOf(cfg)
+	for val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return placeholderSecretValue
+	}
+
+	typ := val.Type()
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+
+		jsonTag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if jsonTag == "" || jsonTag != key {
 			continue
 		}
 
-		config[key] = placeholderSecretValue
+		if field.Type.Kind() == reflect.Map {
+			return map[string]any{}
+		}
+
+		break
 	}
+
+	return placeholderSecretValue
 }
 
 // applyRegionSealing implements phase 2 of spec 2026-07-16-02. When the check
@@ -4816,33 +5173,134 @@ func (s *Service) applyConfigPatch(
 	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
 }
 
-// preserveHeartbeatToken carries a heartbeat check's existing ping token across
-// a config PATCH that does not mention it.
+// preserveAbsentRedactedFields carries a check's existing export-redacted
+// config values across a config PATCH that does not mention them.
+//
+// It is the generalization of what used to be preserveHeartbeatToken (spec
+// 2026-09-11-02), with heartbeat's `token` as its first user and identical
+// behavior for that field. The rule it encodes:
 //
 // The public side of a config PATCH is REPLACE, not merge (see
-// mergePatchConfig), and the heartbeat token is deliberately NOT a declared
-// secret — it lives in the public column because the ping URL is built from it
-// (see checkheartbeat.SecretFields). Those two facts together mean a PATCH of
-// any other key, `{"config":{"require_hmac":true}}` for instance, silently
-// destroys the check's ping URL: every existing sender starts failing, and
-// nothing in the response says why. HeartbeatChecker.Validate would mint a
-// replacement, but it runs on a deep COPY, so the new token is discarded too.
+// mergePatchConfig), and an export-redacted field is deliberately NOT a
+// declared secret — it lives in the public column because a feature queries or
+// renders it (the heartbeat ping URL, the email inbound address). Those two
+// facts together mean a PATCH of any other key,
+// `{"config":{"require_hmac":true}}` for instance, silently destroys it: every
+// existing sender starts failing, and nothing in the response says why. The
+// checker's Validate would mint a replacement, but it runs on a deep COPY, so
+// the new value is discarded too.
 //
-// The token is a server-minted credential with its own rotate endpoint
-// (RotateHeartbeatToken), which is the ONE supported way to change it. A PATCH
-// that happens not to mention it is never a request to destroy it.
-func preserveHeartbeatToken(check *models.Check, merged map[string]any) {
-	if checkerdef.CheckType(check.Type) != checkerdef.CheckTypeHeartbeat {
+// The same rule is what makes a config-as-code round trip safe now that the
+// exporter omits these fields: a document that does not carry the value is
+// never a request to destroy it. Rotation is an explicit, separate operation
+// (RotateHeartbeatToken), which is the ONE supported way to change one.
+func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	if !ok {
 		return
 	}
 
-	if token, ok := merged["token"].(string); ok && token != "" {
-		return
+	for _, field := range credentials.ExportRedactedFieldsFor(cfg) {
+		if value, present := merged[field].(string); present && value != "" {
+			continue
+		}
+
+		if stored, present := check.Config[field].(string); present && stored != "" {
+			merged[field] = stored
+		}
+	}
+}
+
+// deriveRedactedFields computes the export-redacted config values a document
+// omitted and that are DERIVABLE from what it did carry, so a re-import of a
+// stripped export reconstructs them instead of failing validation.
+//
+// Today there is exactly one: a send-mode SMTP check's `delivery_to`. It is the
+// tokenized address of the email check named by `delivery_check_uid` — which
+// stays exported precisely because it is the non-secret half of that pair — so
+// an absent `delivery_to` with a resolvable `delivery_check_uid` is
+// reconstructed from the referenced check's token and the instance's inbox
+// domain.
+//
+// It returns only the keys to inject, and it is BEST EFFORT: a uid that names
+// nothing (a document imported into a different instance, say) yields nothing
+// here and is then reported by validateSMTPDeliveryConfig, which owns that
+// error message. Silently deriving a wrong address would be far worse than
+// letting the normal validator speak.
+func (s *Service) deriveRedactedFields(
+	ctx context.Context, orgUID, checkType string, config map[string]any,
+) map[string]any {
+	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeSMTP {
+		return nil
 	}
 
-	if stored, ok := check.Config["token"].(string); ok && stored != "" {
-		merged["token"] = stored
+	if sendEmail, _ := config["send_email"].(bool); !sendEmail {
+		return nil
 	}
+
+	if deliveryTo, _ := config[smtpDeliveryToField].(string); deliveryTo != "" {
+		return nil
+	}
+
+	deliveryCheckUID, _ := config[smtpDeliveryCheckUIDField].(string)
+	if deliveryCheckUID == "" {
+		return nil
+	}
+
+	address := s.emailCheckAddress(ctx, orgUID, deliveryCheckUID)
+	if address == "" {
+		return nil
+	}
+
+	return map[string]any{smtpDeliveryToField: address}
+}
+
+// emailCheckAddress renders the inbound address of an email check in this org,
+// or "" when it cannot be resolved (not found, wrong type, no token, or no
+// email inbox configured on the instance).
+func (s *Service) emailCheckAddress(ctx context.Context, orgUID, checkUID string) string {
+	target, err := s.db.GetCheck(ctx, orgUID, checkUID)
+	if err != nil || target == nil || target.Type != string(checkerdef.CheckTypeEmail) {
+		return ""
+	}
+
+	token, _ := target.Config["token"].(string)
+	if token == "" {
+		return ""
+	}
+
+	param, err := s.db.GetSystemParameter(ctx, jmap.SystemParameterKey)
+	if err != nil || param == nil {
+		return ""
+	}
+
+	inboxCfg, err := jmap.JSONMapToConfig(param.Value)
+	if err != nil || inboxCfg.AddressDomain == "" {
+		return ""
+	}
+
+	return token + "@" + inboxCfg.AddressDomain
+}
+
+// withInjectedConfig returns config plus the given keys, without mutating the
+// caller's map — the request's own config map is shared with the caller and
+// several validators run against it, so the derived values must not appear
+// there by side effect.
+func withInjectedConfig(config, injected map[string]any) map[string]any {
+	if len(injected) == 0 {
+		return config
+	}
+
+	out := make(map[string]any, len(config)+len(injected))
+	for k, v := range config {
+		out[k] = v
+	}
+
+	for k, v := range injected {
+		out[k] = v
+	}
+
+	return out
 }
 
 // checkDisplayName is the check's name for the audit trail, falling back to

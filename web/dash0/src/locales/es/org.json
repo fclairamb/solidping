@@ -382,5 +382,38 @@
   },
   "accessRedirect": {
     "toast": "No tienes acceso a {{requested}}: se muestra {{shown}} en su lugar."
+  },
+  "parameters": {
+    "title": "Parámetros",
+    "subtitle": "Valores que tus checks referencian como ${param:CLAVE} en vez de confirmarlos en un archivo.",
+    "add": "Añadir parámetro",
+    "addTitle": "Añadir un parámetro",
+    "addDescription": "Elige una clave y refiérela desde cualquier cadena de configuración como ${param:CLAVE}.",
+    "rotate": "Rotar",
+    "rotateTitle": "Rotar parámetro",
+    "rotateDescription": "La clave no cambia, así que todos los checks que la referencian siguen funcionando.",
+    "created": "{{key}} creado",
+    "rotated": "{{key}} rotado",
+    "saveFailed": "No se pudo guardar el parámetro",
+    "writeOnly": "Solo escritura",
+    "keyInvalid": "Las claves van en minúsculas y empiezan por una letra: a-z, 0-9, punto, guion, guion bajo.",
+    "secretLabel": "Secreto",
+    "secretHelp": "La API nunca devuelve el valor, ni aquí ni en ningún otro sitio.",
+    "columns": {
+      "key": "Clave",
+      "value": "Valor",
+      "reference": "Referencia",
+      "updated": "Actualizado"
+    },
+    "empty": {
+      "title": "Todavía no hay parámetros",
+      "description": "Añade uno y refiérelo desde la configuración de un check como ${param:CLAVE}."
+    },
+    "delete": {
+      "title": "¿Eliminar este parámetro?",
+      "description": "Cualquier check que referencie ${param:{{key}}} fallará con una referencia de secreto sin resolver en su próxima ejecución.",
+      "deleted": "Parámetro eliminado",
+      "failed": "No se pudo eliminar el parámetro"
+    }
   }
 }

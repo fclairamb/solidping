@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import {
   fetchPublicConfig,
   type DemoPublicConfig,
@@ -124,4 +124,27 @@ export function useDemoConfig(): DemoPublicConfig {
     email: data?.demo?.email,
     password: data?.demo?.password,
   };
+}
+
+/**
+ * The demo org's slug, read **synchronously** out of the React Query cache.
+ *
+ * For the redirects that have to pick an org to send a demo visitor's login
+ * page to (`/`, `/login`, and the `/orgs/$org` layout's `beforeLoad`). They run
+ * before any component can subscribe to the public-config query, and spec
+ * 2026-09-12-01 §A is explicit that they must NOT wait on the network for it:
+ * the demo org's login page hops once more on its own if this returns
+ * undefined, so a cold deep link still works — it just takes two hops instead
+ * of one.
+ *
+ * Returns undefined unless the document is cached AND advertises a demo, so
+ * "not answered yet" and "this install has no demo" both fall back to the
+ * caller's existing choice rather than to a slug that does not exist.
+ */
+export function readCachedDemoOrgSlug(
+  queryClient: QueryClient,
+): string | undefined {
+  const data = queryClient.getQueryData<PublicConfig | null>(["publicConfig"]);
+
+  return data?.demo?.enabled ? data.demo.orgSlug : undefined;
 }

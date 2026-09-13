@@ -1,3 +1,9 @@
+//go:build slowtests
+
+// Docker plumbing for the Pebble-backed ACME end-to-end suite in
+// acme_e2e_test.go — its only consumer, and tagged `slowtests` with it.
+// See wiki/testing/test-layers.md.
+
 package tlsedge
 
 import (

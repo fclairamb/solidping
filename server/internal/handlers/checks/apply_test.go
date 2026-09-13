@@ -2,6 +2,7 @@ package checks_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // setupApplyService builds a checks service backed by an in-memory SQLite DB.
@@ -32,6 +34,12 @@ func setupApplyService(t *testing.T, withMasterKey bool) (*checks.Service, db.Se
 
 	org := models.NewOrganization("apply-org", "Apply Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// The spec-03 leak guard. Registered AFTER the Close cleanup above so that,
+	// cleanups running LIFO, it greps the database while it is still open.
+	// Every test built on this helper is audited for a resolved secret sitting
+	// in a public config — see leak_guard_test.go.
+	registerLeakGuard(t, dbSvc, org.UID)
 
 	var kek []byte
 	if withMasterKey {
@@ -83,8 +91,9 @@ func hasManagedLabel(
 }
 
 // TestApplyPlanCreateUpdateUnmanaged covers the core plan computation: create
-// (slug absent), update (slug present + managed), unmanaged (slug present
-// without the managed label).
+// (slug absent), update (slug present + managed + a field actually moves),
+// unchanged (slug present + managed + nothing moves) and unmanaged (slug
+// present without the managed label).
 func TestApplyPlanCreateUpdateUnmanaged(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
@@ -102,20 +111,43 @@ func TestApplyPlanCreateUpdateUnmanaged(t *testing.T) {
 	})
 	r.NoError(err)
 
-	// Now apply a manifest with: api (update), web (create), manual (unmanaged).
+	// Now apply a manifest with: api (update — the URL moves), same (unchanged
+	// — byte-identical to what was applied), web (create), manual (unmanaged).
+	_, err = svc.ApplyChecks(ctx, org.Slug, doc("apply-org",
+		manifestCheck("api"), manifestCheck("same")), checks.ApplyOptions{})
+	r.NoError(err)
+
+	movedAPI := manifestCheck("api")
+	movedAPI.Config = map[string]any{"url": "https://example.com/api-v2"}
+
 	plan, err := svc.ApplyChecks(ctx, org.Slug, doc("apply-org",
-		manifestCheck("api"), manifestCheck("web"), manifestCheck("manual"),
+		movedAPI, manifestCheck("same"), manifestCheck("web"), manifestCheck("manual"),
 	), checks.ApplyOptions{DryRun: true})
 	r.NoError(err)
 
 	actions := map[string]string{}
+	changes := map[string][]checks.CheckFieldChange{}
 	for _, e := range plan.Plan {
 		actions[e.Slug] = e.Action
+		changes[e.Slug] = e.Changes
 	}
 	r.Equal(checks.ApplyActionUpdate, actions["api"])
+	r.Equal(checks.ApplyActionUnchanged, actions["same"],
+		"a managed check the manifest already describes exactly must not read as an update")
 	r.Equal(checks.ApplyActionCreate, actions["web"])
 	r.Equal(checks.ApplyActionUnmanaged, actions["manual"])
 	r.Equal(1, plan.Unmanaged)
+	r.Equal(1, plan.Updated)
+	r.Equal(1, plan.Unchanged)
+
+	// The update names the field that moves, with both values — that is what
+	// makes a plan reviewable instead of a count to trust.
+	r.Equal([]checks.CheckFieldChange{{
+		Field: "config.url",
+		From:  `"https://example.com/api"`,
+		To:    `"https://example.com/api-v2"`,
+	}}, changes["api"])
+	r.Empty(changes["same"], "an unchanged entry carries no field diff")
 }
 
 // TestApplyDryRunMutatesNothing verifies a dry-run computes the plan but never
@@ -246,10 +278,18 @@ func TestApplyDeletionCapRefusesOversizedPrune(t *testing.T) {
 	r.Equal(3, res.Deleted)
 }
 
-// TestApplyResolvesEnvSecretRef verifies ${env:NAME} resolution feeds the value
-// into the encrypted envelope (config_private), keeping the public config clean.
+// TestApplyStoresEnvSecretRefAsAReference verifies ${env:NAME} in a secret
+// field is STORED AS THE REFERENCE — enveloped like any other secret value,
+// with nothing resolved at rest (spec 2026-09-11-03). The value is materialized
+// at execution, on the process that runs the check.
+//
+// Until that spec this test asserted the opposite (the resolved value fed into
+// config_private). That was correct only for keys inside SecretFields(); a
+// reference in `body` was resolved into the PUBLIC config and served straight
+// back by GET /checks/:uid.
+//
 // Uses t.Setenv, which is incompatible with t.Parallel.
-func TestApplyResolvesEnvSecretRef(t *testing.T) {
+func TestApplyStoresEnvSecretRefAsAReference(t *testing.T) {
 	r := require.New(t)
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
@@ -269,7 +309,8 @@ func TestApplyResolvesEnvSecretRef(t *testing.T) {
 	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
 	r.NoError(err)
 	r.Equal(1, res.Created)
-	r.Empty(res.Warnings, "master key set: no plaintext warning expected")
+	r.Len(res.Warnings, 1, "an ${env:} reference is advised about once per document")
+	r.Contains(res.Warnings[0], "${env:")
 
 	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "secured")
 	r.NoError(err)
@@ -281,15 +322,22 @@ func TestApplyResolvesEnvSecretRef(t *testing.T) {
 }
 
 // TestApplyResolvesParamSecretRef verifies ${param:KEY} resolution against the
-// org parameters table (org-scoped takes precedence over system-wide).
+// org's own parameters — and only those. There is no system-wide fallback; the
+// system row seeded below is there to prove it is not consulted.
 func TestApplyResolvesParamSecretRef(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	svc, dbSvc, org := setupApplyService(t, true)
 	ctx := t.Context()
 
+	// The system parameter is seeded deliberately: since the spec-03 audit,
+	// `${param:}` has NO system-wide fallback (it made every instance
+	// credential — the Teams app secret, the PostHog keys, the SMTP password —
+	// readable by any org admin who could write a check config). Seeding it here
+	// proves the org-scoped row is what resolves, and that the system row is
+	// simply not consulted.
 	r.NoError(dbSvc.SetSystemParameter(ctx, "shared_token", "system-value", true))
-	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, "shared_token", "org-value", true))
+	r.NoError(dbSvc.SetOrgParameter(ctx, org.UID, paramkeys.StorageKey("shared_token"), "org-value", true))
 
 	c := manifestCheck("param-check")
 	c.Config = map[string]any{
@@ -360,22 +408,45 @@ func TestApplyMissingSecretRefIsHardError(t *testing.T) {
 	r.Empty(list, "a missing secret ref must fail closed before mutation")
 }
 
-// TestApplySecretRefPlaintextFallbackWarns verifies that when the master key is
-// unset, resolving a secret ref emits a warning (not a refusal).
+// TestApplySecretRefLeaksNothingWithoutAMasterKey is the successor to the old
+// TestApplySecretRefPlaintextFallbackWarns.
+//
+// That test asserted a warning saying "resolved secret references are stored in
+// plaintext config", which was an honest description of a real leak: with no
+// master key the resolved value went into the public config. Spec 2026-09-11-03
+// removed the leak rather than the warning — the REFERENCE is stored, so there
+// is no plaintext value to warn about, with or without a key. What is asserted
+// now is the negative the warning used to apologize for.
+//
 // Uses t.Setenv, which is incompatible with t.Parallel.
-func TestApplySecretRefPlaintextFallbackWarns(t *testing.T) {
+func TestApplySecretRefLeaksNothingWithoutAMasterKey(t *testing.T) {
 	r := require.New(t)
-	svc, _, org := setupApplyService(t, false) // no master key → plaintext fallback
+	svc, dbSvc, org := setupApplyService(t, false) // no master key → plaintext envelope
 	ctx := t.Context()
 
-	t.Setenv("SP_TEST_PLAINTEXT_TOKEN", "exposed")
+	t.Setenv("SP_TEST_PLAINTEXT_TOKEN", "exposed-fixture-value")
 
 	c := manifestCheck("warned")
-	c.Config = map[string]any{"url": "https://example.com", "password": "${env:SP_TEST_PLAINTEXT_TOKEN}"}
+	c.Config = map[string]any{
+		"url":      "https://example.com",
+		"body":     "password=${env:SP_TEST_PLAINTEXT_TOKEN}",
+		"password": "${env:SP_TEST_PLAINTEXT_TOKEN}",
+	}
 
 	res, err := svc.ApplyChecks(ctx, org.Slug, doc("team-a", c), checks.ApplyOptions{})
 	r.NoError(err)
-	r.NotEmpty(res.Warnings, "plaintext fallback must warn when a secret ref is resolved")
+	r.Len(res.Warnings, 1, "the ${env:} advisory still fires")
+
+	row, err := dbSvc.GetCheckByUidOrSlug(ctx, org.UID, "warned")
+	r.NoError(err)
+
+	// `body` is NOT a secret field, so it stays in the public config — holding
+	// the reference, never the value. This is the exact leak the spec names.
+	r.Equal("password=${env:SP_TEST_PLAINTEXT_TOKEN}", row.Config["body"])
+
+	blob, marshalErr := json.Marshal(row.Config)
+	r.NoError(marshalErr)
+	r.NotContains(string(blob), "exposed-fixture-value", "no resolved value may reach the public config")
 }
 
 // TestApplyExportRoundTripIsIdempotent verifies that applying an exported
@@ -399,10 +470,13 @@ func TestApplyExportRoundTripIsIdempotent(t *testing.T) {
 	res, err := svc.ApplyChecks(ctx, org.Slug, exported, checks.ApplyOptions{DryRun: true})
 	r.NoError(err)
 	r.Equal(0, res.Created, "round-tripped export must not create new checks")
-	r.Equal(2, res.Updated, "round-tripped export must reconcile as updates, not creates")
+	r.Equal(0, res.Updated, "a fresh export changes nothing, so nothing is an update")
+	r.Equal(2, res.Unchanged, "round-tripped export must reconcile as unchanged")
+	r.Equal(0, res.Deleted)
 	r.Equal(0, res.Unmanaged, "round-tripped checks carry the managed label")
 	for _, e := range res.Plan {
-		r.Equal(checks.ApplyActionUpdate, e.Action, "slug %s should be an update", e.Slug)
+		r.Equal(checks.ApplyActionUnchanged, e.Action, "slug %s should be unchanged", e.Slug)
+		r.Empty(e.Changes, "slug %s should carry no field diff", e.Slug)
 	}
 }
 

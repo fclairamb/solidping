@@ -37,7 +37,7 @@ Shared rules (all sources):
   **basic** HTTP auth credential outright (see its own section below).
 - **Notification/alert bindings are never imported** (same as native import).
 - The converted document's `organization` is the source id, which becomes the
-  managed-manifest label (`solidping.io/managed=gatus|betterstack|uptime-kuma`).
+  managed-manifest label (`solidping-managed=gatus|betterstack|uptime-kuma`).
 
 ## Gatus (`config.yaml`)
 

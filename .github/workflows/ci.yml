@@ -163,6 +163,123 @@ jobs:
       - name: Run tests
         run: go test -count=1 ./... -short
 
+  # The Postgres half of the Go suite. `backend-lint` above runs `-short`, and
+  # `-short` is precisely what every *_postgres_test.go self-skips on — so
+  # before this job existed the only database CI had ever exercised was SQLite.
+  # Spec 2026-09-11-03 shipped a 500 through that gap (a parameter key pattern
+  # SQLite accepted and Postgres refused, certified clean by three review
+  # rounds), which is what spec 2026-09-12-05 and this job are for.
+  #
+  # It is a separate job rather than a step in backend-lint so a ~12-minute
+  # database run never delays the ~2-minute lint/build/short-test feedback.
+  backend-postgres:
+    name: Backend Postgres Tests
+    runs-on: ubuntu-24.04
+    needs: [changes]
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
+    # Measured 10m19s for internal/db/postgres alone on a warm laptop; the rest
+    # of the tree adds a couple of minutes. 20 gives headroom for a cold
+    # embedded-Postgres download without letting a hung suite burn an hour.
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      # embedded-postgres downloads a ~100 MB Postgres distribution on first use
+      # and unpacks it here. Caching it keeps that off the critical path of
+      # every run — and off Maven Central's rate limiter, whose 403 would
+      # otherwise be the most likely way this job fails for a reason unrelated
+      # to the code under test.
+      - name: Cache embedded PostgreSQL binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.embedded-postgres-go
+          key: embedded-postgres-${{ runner.os }}-${{ hashFiles('server/go.sum') }}
+          restore-keys: |
+            embedded-postgres-${{ runner.os }}-
+
+      - name: Create embed placeholders for tests
+        run: |
+          mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
+          mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
+          mkdir -p internal/app/status0res/embed/v1
+          echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
+          echo "placeholder" > internal/app/docsres/404.html
+          echo "placeholder" > internal/app/docsres/llms.txt
+          echo "placeholder" > internal/app/docsres/llms-full.txt
+          echo '[]' > internal/app/docsres/search-index.json
+
+      # -p 1 is not a performance choice: embedded-postgres shares one extracted
+      # directory (~/.embedded-postgres-go/extracted, pwfile included) across
+      # every instance, so two packages starting concurrently make the loser
+      # fail with "unable to remove password file".
+      #
+      # SP_TEST_REQUIRE_POSTGRES=1 turns that failure — and every other
+      # "embedded postgres unavailable" path — into a test FAILURE instead of a
+      # skip (internal/testsupport). Without it this job would report ok while
+      # proving nothing, which is the bug it exists to prevent, not catch.
+      #
+      # The live-network and Docker suites are NOT here: they sit behind the
+      # `slowtests` build tag and run nightly (.github/workflows/nightly.yml).
+      - name: Run the Postgres test layer
+        run: |
+          set -o pipefail
+          SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./... 2>&1 \
+            | tee "$RUNNER_TEMP/postgres-tests.log"
+
+      # A green exit code is not evidence: `go test` prints ok for a package
+      # whose every test skipped. This step asserts the layer actually EXECUTED.
+      - name: Assert the Postgres layer really ran
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/postgres-tests.log"
+
+          # A Postgres-named test may not skip here for ANY reason. Every skip
+          # such a test can currently reach is the -short guard, and this job
+          # does not pass -short; SP_TEST_REQUIRE_POSTGRES=1 covers the rest.
+          if grep -E '^[[:space:]]*--- SKIP: .*([Pp]ostgres|Pg[A-Z])' "$log"; then
+            echo "::error::A Postgres test was SKIPPED. This job exists to run them; a skip here is a failure."
+            exit 1
+          fi
+
+          # Belt and braces, and free of false positives: this exact wording is
+          # only ever printed by internal/testsupport's SKIP branch, so seeing
+          # it means SP_TEST_REQUIRE_POSTGRES did not reach the test binary --
+          # regardless of whether the test's name happens to say "Postgres".
+          if grep -E 'embedded postgres (unavailable|init failed):.*set SP_TEST_REQUIRE_POSTGRES=1' "$log"; then
+            echo "::error::A test skipped on an embedded-Postgres failure: SP_TEST_REQUIRE_POSTGRES did not take effect."
+            exit 1
+          fi
+
+          # Floor on the count, so a change that stops COMPILING the suites in
+          # (say) internal/db/postgres cannot quietly empty this job out. 116
+          # top-level Postgres-named tests exist as of spec 2026-09-12-05;
+          # raise this when that grows, and only lower it alongside a real
+          # deletion.
+          passed=$(grep -cE '^--- PASS: .*([Pp]ostgres|Pg[A-Z])' "$log" || true)
+          echo "Postgres-named tests passed: $passed"
+          if [[ "$passed" -lt 100 ]]; then
+            echo "::error::Only $passed Postgres tests passed (floor 100). The layer did not run."
+            exit 1
+          fi
+
+      - name: Upload the test log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-tests-log
+          path: ${{ runner.temp }}/postgres-tests.log
+          retention-days: 7
+
   dash0:
     name: Dash0 Build
     runs-on: ubuntu-24.04
@@ -598,7 +715,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-24.04
-    needs: [changes, backend-lint, dash0, status0, docs, build, e2e-tests]
+    needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures
@@ -661,6 +778,128 @@ jobs:
         with:
           context: .
           push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
+            COMMIT=${{ steps.version.outputs.GIT_HASH }}
+            GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
+
+  cli-release:
+    name: Publish the sp CLI
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      # Four archives, one per platform a SolidPing operator actually runs CI
+      # or a laptop on. Until spec 2026-09-11-04 a release published ZERO
+      # assets, so `sp checks validate config.yaml` — the validator the docs
+      # point at — could not be obtained by a GitHub Actions job at all, and
+      # third parties kept maintaining their own Python re-implementations
+      # instead. A validator nobody can download is a validator nobody uses.
+      - name: Build sp for every published platform
+        working-directory: server
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          COMMIT=$(git rev-parse --short HEAD)
+          GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+
+          mkdir -p ../dist
+
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            out="../dist/sp"
+
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -ldflags "-s -w \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Version=${VERSION}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Commit=${COMMIT}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.GitTime=${GIT_TIME}'" \
+              -o "$out" ./cmd/sp
+
+            tar -czf "../dist/sp_${VERSION}_${os}_${arch}.tar.gz" -C ../dist sp
+            rm "$out"
+          done
+
+          cd ../dist
+          sha256sum sp_*.tar.gz > "sp_${VERSION}_checksums.txt"
+          ls -l
+
+      # release-please creates the GitHub release from the same tag push that
+      # triggered this run, so the release may not exist yet. Wait for it rather
+      # than racing it — and if it never appears (a hand-pushed tag), create it,
+      # because an asset with nowhere to go is the failure this job exists to
+      # prevent.
+      - name: Attach the archives to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+
+          for _ in $(seq 1 30); do
+            if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              break
+            fi
+            echo "waiting for release $TAG_NAME to be created..."
+            sleep 10
+          done
+
+          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::warning::release $TAG_NAME was not created by release-please; creating it for the assets"
+            gh release create "$TAG_NAME" --repo "${{ github.repository }}" \
+              --title "$TAG_NAME" --notes "Automated release." --target "${GITHUB_SHA}"
+          fi
+
+          gh release upload "$TAG_NAME" dist/sp_*.tar.gz dist/sp_*_checksums.txt \
+            --repo "${{ github.repository }}" --clobber
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta (sp)
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/sp
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
+
+      - name: Set version variables
+        id: version
+        run: |
+          echo "VERSION=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+          echo "GIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Build and push the sp image
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: Dockerfile.sp
+          push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |

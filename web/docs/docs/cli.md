@@ -7,6 +7,29 @@ title: CLI Client
 
 SolidPing ships a command-line client, `sp`, for managing your monitoring from the terminal or from scripts and CI pipelines. It talks to the same REST API as the dashboard, so anything you can do in the UI you can also automate.
 
+## Installing
+
+Every release publishes a prebuilt `sp` for macOS and Linux, on both Intel and ARM, plus a checksum file:
+
+```bash
+# Pick your platform: darwin_amd64, darwin_arm64, linux_amd64, linux_arm64
+VERSION=0.28.0
+curl -sSL -o sp.tar.gz \
+  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp_${VERSION}_linux_amd64.tar.gz"
+tar -xzf sp.tar.gz
+sudo mv sp /usr/local/bin/
+sp --version
+```
+
+In CI, or anywhere you would rather not manage a binary, use the image:
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w ghcr.io/fclairamb/solidping/sp \
+  checks validate config.yaml
+```
+
+The image is `sp` alone — it does not carry the server — so it pulls in seconds.
+
 ## Authentication
 
 Log in once and the client stores your session:
@@ -76,11 +99,46 @@ sp checks import config.yaml
 sp checks export --file config.yaml
 ```
 
-`sp checks diff config.yaml` reports whether the tracked file has drifted from what SolidPing currently holds — useful as a CI check after every merge. It exits `0` when there's no drift, `1` when the file and the live org disagree, and `2`+ on errors (missing file, auth failure, ...); the `exportedAt` timestamp is ignored on both sides since it always differs.
+`sp checks validate` is **the** validator for a SolidPing config file. It runs the server's own document rules offline — no token, no network — so it cannot fall behind the server the way a re-implementation of those rules must. It reports *every* problem at once, each on a line of the form `[slug] CODE field: message`, where `CODE` is a stable identifier your pipeline can allow-list (`REGION_FORMAT`, `UNKNOWN_TYPE`, `INLINED_CREDENTIAL`, `DUPLICATE_SLUG`, …). Exit `0` when the file is valid, `1` when it is not, `2`+ when it could not be read. The one rule it cannot check offline is whether a `${param:…}` reference exists for your organization — post the file to `POST /api/v1/orgs/:org/checks/validate` for that, which any member token can do.
+
+`sp checks diff config.yaml` reports whether the tracked file has drifted from what SolidPing currently holds — useful as a CI check after every merge. It asks the server for the reconcile plan (a dry run that changes nothing) and prints one row per check: `create`, `update` with the fields that move, `unchanged`, `delete`, `unmanaged`. It exits `0` when there's no drift, `1` when the file and the live org disagree, and `2`+ on errors (missing file, auth failure, ...). `--text` prints a plain textual diff instead, which is also what happens automatically when your token cannot compute a plan; there the `exportedAt` timestamp is ignored on both sides since it always differs.
+
+`sp checks import config.yaml --dry-run` answers the same question in counts: **`0 created, 0 updated, 0 deleted` with N unchanged means the file matches the instance**. Region spellings, `expectedStatus` vs `expectedStatusCodes` and document defaults are normalized before the comparison, so a difference in the plan is a real difference.
 
 **Import never deletes.** `sp checks import` is an idempotent upsert keyed on each check's `slug`: a check present in SolidPing but absent from the file is left untouched. If a check was removed from the file on purpose, delete it explicitly with `sp checks remove`, or use `sp apply --prune` (a separate, declarative-reconcile command) for delete-by-absence semantics. Always start from a fresh `sp checks export` before hand-editing so the file reflects live state.
 
 `sp checks export` picks its output format from `--format yaml|json`, defaulting to the `--file` extension (`.yaml`/`.yml` → YAML, everything else including stdout → JSON). YAML output preserves the document's field order — two exports of unchanged live state produce byte-identical files, so diffs in version control only ever show real changes.
+
+## Secrets: parameters and references
+
+A tracked config file must not carry passwords. Anywhere a check config takes a string, write a reference instead — `${param:KEY}` for a value SolidPing stores for your organization, `${env:NAME}` for one the machine running the check holds in its environment:
+
+```yaml
+checks:
+  - slug: sso-login
+    name: SSO login
+    type: http
+    config:
+      url: https://sso.acme.com/token
+      method: POST
+      body: "grant_type=password&username=probe&password=${param:sso-authtest-password}"
+```
+
+Manage the parameters the file references with `sp params`:
+
+```bash
+sp params set sso-authtest-password 'hunter2'   # secret by default
+sp params set region-label paris --public       # a plain, readable setting
+sp params list                                  # secret values are never shown
+sp params get sso-authtest-password             # key, flag and timestamp — no value
+sp params delete sso-authtest-password
+```
+
+A secret parameter is **write-only**: nothing reads the value back, so rotating one is simply setting it again under the same key — every check referencing it keeps working with no file change. The value is resolved when the check runs, never stored in the check: `sp checks export` gives you back the reference you wrote, so the loop above round-trips unchanged.
+
+If a reference cannot be resolved, `sp checks import` and `sp apply` refuse the whole file (including on `--dry-run`) rather than storing it, and a parameter deleted later turns the check red with `unresolved secret reference: param:…` instead of quietly probing with the literal text.
+
+`${env:}` resolves on whichever process executes the check — for a check pinned to a private location, that is the agent's own environment, not the server's. That is useful for per-region credentials, and worth remembering when a value seems to be missing.
 
 ## Output Formats
 

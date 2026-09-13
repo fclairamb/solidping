@@ -73,6 +73,14 @@ type CheckJob struct {
 	// fast_lane_reserved slots on a worker. Added by migration 009.
 	Lane uint8 `bun:"lane,notnull"`
 
+	// ParamOverlay carries the ${param:…} values resolved at the claim /
+	// dispatch boundary (checkjobsvc.ParamOverlay). Transient: never persisted
+	// (bun:"-"), and deliberately kept OUT of Config until the worker is about
+	// to hand the config to the checker — the job's own "Executing check job"
+	// log line prints Config, so leaving the reference there is what keeps a
+	// referenced password out of the worker's logs.
+	ParamOverlay map[string]any `bun:"-"`
+
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
 	// per-result GetCheck round-trip. Transient: never persisted (bun:"-").

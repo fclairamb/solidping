@@ -1,0 +1,32 @@
+name: New check type or integration
+description: Request a new protocol/service to probe, or a new notification channel
+labels: ["enhancement", "integration"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Protocol / service name
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Is this for checks (probing) or notifications (delivery)?
+      options:
+        - Check (probing something)
+        - Notification (delivering an alert)
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: api-docs
+    attributes:
+      label: Link to its API / protocol documentation
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is this useful?
+    validations:
+      required: true

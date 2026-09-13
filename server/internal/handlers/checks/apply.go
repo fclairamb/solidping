@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 // applyCountCreated names the config.applied payload's created counter. A
@@ -26,7 +25,20 @@ const applyCountCreated = "created"
 // org slug). Reconcile (delete-by-absence) only ever touches checks carrying
 // this label with the matching value — hand-created checks are never adopted
 // or deleted.
-const ManagedLabelKey = "solidping.io/managed"
+//
+// It was `solidping.io/managed` until spec 2026-09-10-01. That spelling
+// carries a dot and a slash, which the Postgres `labels_key_check` CHECK has
+// refused since day one — so /apply and every importer that stamps it were
+// broken on Postgres and only ever appeared to work against the laxer SQLite
+// backend the test suites use. The key now obeys the one canonical rule
+// (models.LabelKeyPattern); SQLite rows carrying the old spelling are renamed
+// by migration 021.
+const ManagedLabelKey = "solidping-managed"
+
+// LegacyManagedLabelKey is the pre-2026-09-10 spelling of ManagedLabelKey,
+// kept only so the SQLite migration and its test can name the same string the
+// application used to write.
+const LegacyManagedLabelKey = "solidping.io/managed"
 
 // DefaultDeletionCap is the maximum number of managed checks a single apply
 // will delete-by-absence without an explicit force opt-in. A bad manifest
@@ -35,8 +47,12 @@ const DefaultDeletionCap = 10
 
 // Apply plan actions.
 const (
-	ApplyActionCreate    = "create"
-	ApplyActionUpdate    = "update"
+	ApplyActionCreate = "create"
+	ApplyActionUpdate = "update"
+	// ApplyActionUnchanged is the action spec 2026-09-11-04 adds: the slug is
+	// managed, present in both, and the normalized effective state already
+	// matches — writing it would change nothing.
+	ApplyActionUnchanged = ActionUnchanged
 	ApplyActionRename    = "rename"
 	ApplyActionDelete    = "delete"
 	ApplyActionUnmanaged = "unmanaged"
@@ -47,14 +63,18 @@ var (
 	// more managed checks than the configured cap allows (without force).
 	ErrDeletionCapExceeded = errors.New("deletion cap exceeded")
 	// ErrUnresolvedSecretRef is returned when a ${env:…}/${param:…} reference
-	// cannot be resolved at apply time.
-	ErrUnresolvedSecretRef = errors.New("unresolved secret reference")
+	// cannot be resolved. It is secretref.ErrUnresolved under its historical
+	// name, kept so the handler's 400 mapping and every errors.Is in the test
+	// suite keep naming the thing they already named.
+	ErrUnresolvedSecretRef = secretref.ErrUnresolved
 )
 
-// secretRefPattern matches ${env:NAME} and ${param:KEY} references inside
-// config string values. The scheme is env|param; the name is everything up to
-// the closing brace.
-var secretRefPattern = regexp.MustCompile(`\$\{(env|param):([^}]+)\}`)
+// secretRefPattern is the reference grammar, which now lives in
+// internal/secretref so the write path, the dispatch path and the executing
+// process cannot drift apart on what a reference looks like.
+//
+//nolint:gochecknoglobals // alias onto the one compiled pattern
+var secretRefPattern = secretref.Pattern
 
 // ApplyOptions controls a single apply run.
 type ApplyOptions struct {
@@ -75,16 +95,23 @@ type ApplyPlanEntry struct {
 	PreviousSlug string `json:"previousSlug,omitempty"`
 	Action       string `json:"action"`
 	Reason       string `json:"reason,omitempty"`
+	// Changes is the field-level diff behind an `update`, with secret-bearing
+	// and reference-derived values masked. Absent for every other action.
+	Changes []CheckFieldChange `json:"changes,omitempty"`
 }
 
 // ApplyResult is the extended import result returned by apply. It reports the
 // full plan plus the create/update/delete/unmanaged counts and any warnings.
 type ApplyResult struct {
-	Manifest  string           `json:"manifest"`
-	DryRun    bool             `json:"dryRun"`
-	Pruned    bool             `json:"pruned"`
-	Created   int              `json:"created"`
-	Updated   int              `json:"updated"`
+	Manifest string `json:"manifest"`
+	DryRun   bool   `json:"dryRun"`
+	Pruned   bool   `json:"pruned"`
+	Created  int    `json:"created"`
+	Updated  int    `json:"updated"`
+	// Unchanged counts the managed checks the manifest already describes
+	// exactly. `created=0 updated=0 deleted=0` with a non-zero Unchanged is
+	// the machine-readable "the file matches the instance".
+	Unchanged int              `json:"unchanged"`
 	Deleted   int              `json:"deleted"`
 	Unmanaged int              `json:"unmanaged"`
 	Plan      []ApplyPlanEntry `json:"plan"`
@@ -107,38 +134,16 @@ func manifestName(doc *ExportDocument, orgSlug string) string {
 // ordered plan. Pure with respect to the DB: it only reads. Matching is on
 // slug within the managed-label scope; an explicit previousSlug (or uid) on a
 // file check reconciles a rename in place.
-//
-//nolint:cyclop,funlen // single-pass reconcile over file + managed set
 func (s *Service) computeApplyPlan(
-	ctx context.Context, org *models.Organization, doc *ExportDocument, manifest string,
-) ([]ApplyPlanEntry, error) {
-	// Existing checks in the org, with their labels, so we can tell managed
-	// from unmanaged and detect delete-by-absence.
-	existing, _, err := s.db.ListChecks(ctx, org.UID, &models.ListChecksFilter{})
-	if err != nil {
-		return nil, fmt.Errorf("list checks for plan: %w", err)
-	}
-
-	uids := make([]string, 0, len(existing))
-	slugByUID := make(map[string]string, len(existing))
-	for _, c := range existing {
-		uids = append(uids, c.UID)
-		if c.Slug != nil {
-			slugByUID[c.UID] = *c.Slug
-		}
-	}
-
-	labelsByUID, err := s.db.GetLabelsForChecks(ctx, uids)
-	if err != nil {
-		return nil, fmt.Errorf("load labels for plan: %w", err)
-	}
-
+	ctx context.Context, org *models.Organization, snapshot *orgCheckSnapshot,
+	doc *ExportDocument, manifest string,
+) []ApplyPlanEntry {
 	// managedSlugs: slug -> true for checks carrying our managed label.
 	managedSlugs := make(map[string]bool)
-	existingSlugs := make(map[string]bool, len(existing))
-	for uid, slug := range slugByUID {
+	existingSlugs := make(map[string]bool, len(snapshot.rows))
+	for slug, row := range snapshot.rows {
 		existingSlugs[slug] = true
-		for _, lbl := range labelsByUID[uid] {
+		for _, lbl := range snapshot.labels[row.UID] {
 			if lbl.Key == ManagedLabelKey && lbl.Value == manifest {
 				managedSlugs[slug] = true
 			}
@@ -168,21 +173,53 @@ func (s *Service) computeApplyPlan(
 			continue
 		}
 
-		switch {
-		case !existingSlugs[entry.Slug]:
+		// Resolved uid-or-slug, exactly as the upsert resolves it. The apply
+		// itself goes through importChecks → resolveImportAction, so deciding
+		// create-vs-update differently here would put a SECOND decision point
+		// next to the one spec 2026-09-11-04 reduced them to — and it would
+		// disagree: an entry naming a UID would dry-run as `create` and then
+		// apply as `update`.
+		_, existingRow := snapshot.lookup(entry.Slug)
+		if existingRow == nil {
 			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: ApplyActionCreate})
-		case managedSlugs[entry.Slug]:
-			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: ApplyActionUpdate})
-		default:
-			// Slug exists but is NOT managed by this manifest: report, never
-			// auto-adopt. The apply will (re)stamp the managed label so a future
-			// apply treats it as owned, but it is surfaced here for visibility.
-			plan = append(plan, ApplyPlanEntry{
-				Slug:   entry.Slug,
-				Action: ApplyActionUnmanaged,
-				Reason: "slug exists without the managed label for this manifest",
-			})
+
+			continue
 		}
+
+		// Ownership and delete-by-absence are keyed on the row's own SLUG,
+		// which is not the identifier when the document named a UID. Marking
+		// it present is what stops prune from deleting a managed check the
+		// manifest does describe, under a name the file spells differently.
+		owned := snapshot.ownedSlug(entry.Slug)
+		fileSlugs[owned] = true
+
+		if managedSlugs[owned] {
+			// The heart of the round trip: a managed slug whose normalized
+			// effective state already matches the manifest is `unchanged`, not
+			// `update`. Computed against the snapshot the exporter itself
+			// produces, so re-applying a fresh export is provably a no-op.
+			action, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
+			plan = append(plan, ApplyPlanEntry{Slug: entry.Slug, Action: action, Changes: changes})
+
+			continue
+		}
+
+		// Slug exists but is NOT managed by this manifest: report, never
+		// auto-adopt. The apply will (re)stamp the managed label so a future
+		// apply treats it as owned, but it is surfaced here for visibility.
+		//
+		// It is diffed all the same. `unmanaged` answers "who owns this?",
+		// not "does it match?", and conflating the two made `sp checks diff`
+		// print "No drift" for a first-time organization where EVERY check is
+		// unmanaged and the file disagreed with all of them — the exact false
+		// all-clear this spec exists to remove.
+		_, changes := s.planApplyUpdate(ctx, org, snapshot, entry)
+		plan = append(plan, ApplyPlanEntry{
+			Slug:    entry.Slug,
+			Action:  ApplyActionUnmanaged,
+			Reason:  "slug exists without the managed label for this manifest",
+			Changes: changes,
+		})
 	}
 
 	// Delete-by-absence: managed checks no longer present in the file.
@@ -201,144 +238,118 @@ func (s *Service) computeApplyPlan(
 		})
 	}
 
-	return plan, nil
+	return plan
 }
 
-// resolveSecretRefs walks every check's config, replacing ${env:NAME} and
-// ${param:KEY} references with their resolved plaintext values. The resolved
-// config is what feeds the existing upsert path, which envelopes secret fields
-// into config_private. A missing reference is a hard error. When the
-// credentials service is disabled (no master key) a resolved reference appends
-// a warning (the secret will land in plaintext config). Mutates doc in place.
-func (s *Service) resolveSecretRefs(
+// planApplyUpdate decides update-vs-unchanged for one managed slug. Apply
+// stamps the managed label AFTER this runs, so that label is excluded from the
+// comparison — otherwise every managed check would report a label change that
+// the very same apply immediately makes true.
+func (s *Service) planApplyUpdate(
+	ctx context.Context, org *models.Organization, snapshot *orgCheckSnapshot, entry *ExportCheck,
+) (string, []CheckFieldChange) {
+	current, existing := snapshot.lookup(entry.Slug)
+	if current == nil || existing == nil {
+		return ApplyActionUpdate, nil
+	}
+
+	changes := s.diffCheck(ctx, org, existing, current, entry, diffOptions{IgnoreManagedLabel: true})
+	if len(changes) == 0 {
+		return ApplyActionUnchanged, nil
+	}
+
+	return ApplyActionUpdate, changes
+}
+
+// validateSecretRefs walks every check's config and proves that every
+// ${env:…}/${param:…} reference it carries RESOLVES — without storing what it
+// resolved. It is the shared write-path gate: /import, /apply and a dry run of
+// either all call it, so a document that one endpoint accepts is a document the
+// other accepts, and a missing reference fails before any mutation.
+//
+// It deliberately does not mutate the document (spec 2026-09-11-03). Until that
+// spec this function did `cfg[key] = resolved`, which put the resolved
+// plaintext into whatever key held the reference — and only SecretFields() are
+// split out into config_private, so a password resolved into an HTTP check's
+// `body` was stored in the public `config` column and handed back by
+// GET /checks/:uid and /checks/export. The reference is now what is stored; the
+// value is materialized at execution (see secretref.APIResolver /
+// secretref.ExecutionResolver).
+func (s *Service) validateSecretRefs(
 	ctx context.Context, orgUID string, doc *ExportDocument,
 ) ([]string, error) {
-	var warnings []string
+	findings, sawEnvRef := s.secretRefFindings(ctx, orgUID, doc)
 
-	resolvedAnySecret := false
+	// The write path's contract is a single 400, so it reports the first
+	// finding — but it reads the SAME list the document-validate endpoint
+	// turns into one issue per check, so the two can never disagree about
+	// which references resolve.
+	if len(findings) > 0 {
+		return nil, fmt.Errorf("check %q: %w", findings[0].where, findings[0].err)
+	}
+
+	if !sawEnvRef {
+		return nil, nil
+	}
+
+	// ${env:} is the self-hosted form: it resolves against the environment of
+	// whichever process ends up executing the check, which means an operator
+	// deploy to change it and, for a check running on a deported agent, THAT
+	// agent's environment rather than the API's. Both are features; neither is
+	// obvious from the manifest, so say so once per document.
+	return []string{
+		"${env:…} resolves on the process that executes the check (a deported agent uses its own " +
+			"environment, and changing the value needs a restart) — use ${param:…} for an " +
+			"organization-managed value you can rotate over the API",
+	}, nil
+}
+
+// secretRefFinding is one check whose config carries a reference that does not
+// resolve, plus whether any ${env:} reference was seen at all (which is a
+// warning, not a failure).
+type secretRefFinding struct {
+	where string
+	err   error
+}
+
+// secretRefFindings walks every check's config and reports EVERY unresolvable
+// reference, in document order. The single source of truth for both callers:
+// validateSecretRefs (the write path, first error only) and secretRefIssues
+// (the document-validate endpoint, all of them).
+func (s *Service) secretRefFindings(
+	ctx context.Context, orgUID string, doc *ExportDocument,
+) ([]secretRefFinding, bool) {
+	resolve := secretref.DocumentResolver(s.db, orgUID)
+
+	var (
+		findings  []secretRefFinding
+		sawEnvRef bool
+	)
 
 	for idx := range doc.Checks {
 		cfg := doc.Checks[idx].Config
-		for key, val := range cfg {
-			strVal, ok := val.(string)
-			if !ok {
-				continue
+
+		secretref.VisitStrings(cfg, func(_ string, value string) {
+			for _, match := range secretref.Pattern.FindAllStringSubmatch(value, -1) {
+				if match[1] == secretref.SchemeEnv {
+					sawEnvRef = true
+				}
 			}
+		})
 
-			if !secretRefPattern.MatchString(strVal) {
-				continue
-			}
-
-			resolved, didResolve, err := s.resolveRefString(ctx, orgUID, strVal)
-			if err != nil {
-				return nil, fmt.Errorf("check %q config %q: %w", doc.Checks[idx].Slug, key, err)
-			}
-
-			cfg[key] = resolved
-			if didResolve {
-				resolvedAnySecret = true
-			}
+		// The SAME traversal execution uses, so the two cannot disagree about
+		// what counts as a reference. Validating only top-level strings — which
+		// this did until the spec-03 audit — let a nested one through: a gRPC
+		// check's `metadata` is a map, so `metadata.authorization =
+		// "${param:missing}"` passed both dry runs and then failed at execution,
+		// which is exactly what dry run exists to prevent. The resolved copy is
+		// thrown away: validation proves resolvability, it never stores.
+		if _, _, err := secretref.ResolveConfig(ctx, cfg, resolve); err != nil {
+			findings = append(findings, secretRefFinding{where: doc.Checks[idx].Slug, err: err})
 		}
 	}
 
-	if resolvedAnySecret && !s.creds.Enabled() {
-		warnings = append(warnings,
-			"SP_ENCRYPTION_MASTER_KEY is unset: resolved secret references are stored in plaintext config")
-	}
-
-	return warnings, nil
-}
-
-// resolveRefString replaces every ${env:…}/${param:…} reference in a single
-// string. Returns (resolved, anyResolved, error). A reference that can't be
-// resolved is a hard error.
-func (s *Service) resolveRefString(
-	ctx context.Context, orgUID, input string,
-) (string, bool, error) {
-	var resolveErr error
-
-	resolvedAny := false
-
-	out := secretRefPattern.ReplaceAllStringFunc(input, func(match string) string {
-		if resolveErr != nil {
-			return match
-		}
-
-		groups := secretRefPattern.FindStringSubmatch(match)
-		scheme, name := groups[1], groups[2]
-
-		value, err := s.resolveRef(ctx, orgUID, scheme, name)
-		if err != nil {
-			resolveErr = err
-
-			return match
-		}
-
-		resolvedAny = true
-
-		return value
-	})
-
-	if resolveErr != nil {
-		return "", false, resolveErr
-	}
-
-	return out, resolvedAny, nil
-}
-
-// resolveRef resolves a single env|param reference to its plaintext value.
-func (s *Service) resolveRef(ctx context.Context, orgUID, scheme, name string) (string, error) {
-	switch scheme {
-	case "env":
-		val, ok := os.LookupEnv(name)
-		if !ok {
-			return "", fmt.Errorf("%w: env:%s is not set", ErrUnresolvedSecretRef, name)
-		}
-
-		return val, nil
-	case "param":
-		return s.resolveParamRef(ctx, orgUID, name)
-	default:
-		return "", fmt.Errorf("%w: unknown scheme %q", ErrUnresolvedSecretRef, scheme)
-	}
-}
-
-// resolveParamRef resolves a ${param:KEY} reference. Org-scoped parameters take
-// precedence over system-wide ones. Parameter values are stored as
-// {"value": <v>} JSONB; the secret flag only masks API responses, so the
-// plaintext value is read directly here.
-func (s *Service) resolveParamRef(ctx context.Context, orgUID, key string) (string, error) {
-	if orgParam, err := s.db.GetOrgParameter(ctx, orgUID, key); err == nil && orgParam != nil {
-		if v, ok := paramStringValue(orgParam); ok {
-			return v, nil
-		}
-	}
-
-	if sysParam, err := s.db.GetSystemParameter(ctx, key); err == nil && sysParam != nil {
-		if v, ok := paramStringValue(sysParam); ok {
-			return v, nil
-		}
-	}
-
-	return "", fmt.Errorf("%w: param:%s not found", ErrUnresolvedSecretRef, key)
-}
-
-// paramStringValue extracts the stringified value from a parameter's
-// {"value": …} envelope.
-func paramStringValue(param *models.Parameter) (string, bool) {
-	raw, ok := param.Value["value"]
-	if !ok {
-		return "", false
-	}
-
-	switch val := raw.(type) {
-	case string:
-		return val, true
-	case fmt.Stringer:
-		return val.String(), true
-	default:
-		return fmt.Sprintf("%v", val), true
-	}
+	return findings, sawEnvRef
 }
 
 // ApplyChecks reconciles the manifest against the managed scope. With DryRun it
@@ -375,19 +386,27 @@ func (s *Service) ApplyChecks(
 		Plan:     []ApplyPlanEntry{},
 	}
 
-	// Resolve secret references first so the plan reflects the real config and a
-	// missing reference fails before any mutation.
-	warnings, err := s.resolveSecretRefs(ctx, org.UID, doc)
+	// Prove every secret reference resolves first, so a missing one fails
+	// before any mutation. The reference itself is what gets stored.
+	warnings, err := s.validateSecretRefs(ctx, org.UID, doc)
 	if err != nil {
 		return nil, err
 	}
 	result.Warnings = append(result.Warnings, warnings...)
 
-	plan, err := s.computeApplyPlan(ctx, org, doc, manifest)
+	snapshot, err := s.loadOrgCheckSnapshot(ctx, org.UID)
 	if err != nil {
 		return nil, err
 	}
+
+	plan := s.computeApplyPlan(ctx, org, snapshot, doc, manifest)
 	result.Plan = plan
+
+	changedSlugs := map[string][]string{}
+	for i := range plan {
+		collectUnappliable(changedSlugs, plan[i].Slug, plan[i].Changes)
+	}
+	result.Warnings = append(result.Warnings, unappliableWarnings(changedSlugs)...)
 
 	for i := range plan {
 		switch plan[i].Action {
@@ -395,6 +414,8 @@ func (s *Service) ApplyChecks(
 			result.Created++
 		case ApplyActionUpdate:
 			result.Updated++
+		case ApplyActionUnchanged:
+			result.Unchanged++
 		case ApplyActionUnmanaged:
 			result.Unmanaged++
 		case ApplyActionDelete:
@@ -430,12 +451,13 @@ func (s *Service) ApplyChecks(
 
 	// Create/update via the existing import path (handles groups, config,
 	// labels, and dependsOn in two passes).
-	importResult, err := s.ImportChecks(ctx, orgSlug, doc, false)
+	importResult, err := s.importChecks(ctx, orgSlug, doc, false, diffOptions{IgnoreManagedLabel: true})
 	if err != nil {
 		return nil, err
 	}
 	result.Created = importResult.Created
 	result.Updated = importResult.Updated
+	result.Unchanged = importResult.Unchanged
 	result.Errors = append(result.Errors, importResult.Errors...)
 
 	// Prune managed, absent checks.
@@ -465,6 +487,7 @@ func (s *Service) ApplyChecks(
 			"manifest":        manifest,
 			applyCountCreated: result.Created,
 			"updated":         result.Updated,
+			"unchanged":       result.Unchanged,
 			"deleted":         result.Deleted,
 			"unmanaged":       result.Unmanaged,
 			"pruned":          opts.Prune,

@@ -15,6 +15,7 @@ import {
   canDemoEditCheck,
   canOfferSilentEscalationShortcut,
   demoAutoLoginOwnsRedirect,
+  demoEntryDecision,
   demoFlagFromLocation,
   filterCheckTypesForDemo,
   isDemoReadOnlyError,
@@ -272,5 +273,46 @@ describe("demoAutoLoginOwnsRedirect", () => {
     // .../login?demo=true would sit on the page's `return null` guard — a
     // blank page, forever.
     expect(demoAutoLoginOwnsRedirect(true, false, false)).toBe(false);
+  });
+});
+
+describe("demoEntryDecision", () => {
+  // Spec 2026-09-12-01 §A. The invariant this encodes: login(demoOrg, …) runs
+  // ONLY while the URL is /orgs/<demoOrg>/login. Signing in from any other
+  // org's login page applies the demo session under a foreign org param, and
+  // the cross-org navigation that follows makes the org layout warn "You don't
+  // have access to <that org> — showing <demo> instead." at a visitor who
+  // asked for nothing but the demo.
+
+  it("signs in only on the demo org's own login page", () => {
+    expect(demoEntryDecision("demo", "demo")).toBe("signIn");
+  });
+
+  it("hops first from any other org's login page", () => {
+    expect(demoEntryDecision("default", "demo")).toBe("hopTo");
+    expect(demoEntryDecision("test", "demo")).toBe("hopTo");
+    // Slugs are compared exactly — no prefix or case folding, since an org
+    // named "demo-2" is a different org with a different membership.
+    expect(demoEntryDecision("demo-2", "demo")).toBe("hopTo");
+    expect(demoEntryDecision("DEMO", "demo")).toBe("hopTo");
+  });
+
+  it("reports unavailable while the demo org slug is not known yet", () => {
+    // The case that must NOT be mistaken for "foreign org, hop somewhere":
+    // the public-config document is still in flight (or this install has no
+    // demo at all), so there is nowhere to hop TO and nothing to sign into.
+    // Hopping on an undefined slug would navigate to /orgs/undefined/login.
+    expect(demoEntryDecision("default", undefined)).toBe("unavailable");
+    expect(demoEntryDecision("demo", undefined)).toBe("unavailable");
+    expect(demoEntryDecision(undefined, undefined)).toBe("unavailable");
+    expect(demoEntryDecision("default", "")).toBe("unavailable");
+  });
+
+  it("hops when the URL names no org but the demo org is known", () => {
+    // Not reachable from the login page (the route cannot match without an
+    // org), but the helper is the one place the rule lives: an unknown URL org
+    // is certainly not the demo org, so the safe answer is "go there first",
+    // never "sign in here".
+    expect(demoEntryDecision(undefined, "demo")).toBe("hopTo");
   });
 });

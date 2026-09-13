@@ -382,5 +382,38 @@
   },
   "accessRedirect": {
     "toast": "You don't have access to {{requested}} — showing {{shown}} instead."
+  },
+  "parameters": {
+    "title": "Parameters",
+    "subtitle": "Values your checks reference as ${param:KEY} instead of committing them to a file.",
+    "add": "Add parameter",
+    "addTitle": "Add a parameter",
+    "addDescription": "Pick a key, then reference it from any check config string as ${param:KEY}.",
+    "rotate": "Rotate",
+    "rotateTitle": "Rotate parameter",
+    "rotateDescription": "The key does not change, so every check that references it keeps working.",
+    "created": "Created {{key}}",
+    "rotated": "Rotated {{key}}",
+    "saveFailed": "Could not save the parameter",
+    "writeOnly": "Write-only",
+    "keyInvalid": "Keys are lowercase and start with a letter: a-z, 0-9, dot, dash, underscore.",
+    "secretLabel": "Secret",
+    "secretHelp": "The value is never returned by the API, here or anywhere else.",
+    "columns": {
+      "key": "Key",
+      "value": "Value",
+      "reference": "Reference",
+      "updated": "Updated"
+    },
+    "empty": {
+      "title": "No parameters yet",
+      "description": "Add one, then reference it from a check config as ${param:KEY}."
+    },
+    "delete": {
+      "title": "Delete this parameter?",
+      "description": "Any check referencing ${param:{{key}}} will fail with an unresolved secret reference at its next run.",
+      "deleted": "Parameter deleted",
+      "failed": "Could not delete the parameter"
+    }
   }
 }

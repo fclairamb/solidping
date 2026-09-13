@@ -167,5 +167,6 @@
   },
   "slos": "SLOs",
   "reportSchedules": "Uptime reports",
-  "audit": "Audit"
+  "audit": "Audit",
+  "parameters": "Parameters"
 }

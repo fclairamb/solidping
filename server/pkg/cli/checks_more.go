@@ -123,7 +123,14 @@ func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 		return checksValidateDocumentAction(cliCtx, raw)
 	}
 
+	// Normalized through the same JSON round trip the generated request struct
+	// used, so a YAML single-check definition still resolves its json tags.
 	req, err := readCheckDefinition(raw)
+	if err != nil {
+		return cli.Exit("Error: "+err.Error(), 5)
+	}
+
+	encoded, err := json.Marshal(req)
 	if err != nil {
 		return cli.Exit("Error: "+err.Error(), 5)
 	}
@@ -133,20 +140,23 @@ func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.HandleAuthError(err)
 	}
 
-	resp, err := apiClient.ValidateCheckWithResponse(ctx, cliCtx.GetOrg(), req)
+	// The hand-written client helper, not the generated operation: the route is
+	// content-negotiated and carries a `plan` flag only the document form uses
+	// (see SolidPingClient.ValidateChecks).
+	rawResp, err := apiClient.ValidateChecks(ctx, cliCtx.GetOrg(), encoded, "application/json", false)
 	if err != nil {
 		return cliCtx.HandleError("Failed to validate check", err)
 	}
 
-	if resp.StatusCode() != 200 || resp.JSON200 == nil {
-		return cliCtx.HandleStatusError("Failed to validate check", resp.StatusCode())
+	var result singleCheckValidateResult
+	if jsonErr := json.Unmarshal(rawResp, &result); jsonErr != nil {
+		return cliCtx.HandleError("Failed to parse validation result", jsonErr)
 	}
 
 	if !cliCtx.IsText() {
-		return cliCtx.Outputter.Print(resp.JSON200)
+		return cliCtx.Outputter.Print(result)
 	}
 
-	result := resp.JSON200
 	if result.Valid {
 		output.PrintSuccess(os.Stdout, "Check configuration is valid")
 
@@ -155,14 +165,28 @@ func checksValidateAction(ctx context.Context, cmd *cli.Command) error {
 
 	output.PrintError(os.Stdout, "Check configuration is invalid")
 
-	if result.Fields != nil {
-		fields := *result.Fields
-		for i := range fields {
-			output.PrintMessage(os.Stdout, "  "+fields[i].Name+": "+fields[i].Message)
-		}
+	for i := range result.Fields {
+		output.PrintMessage(os.Stdout, "  "+result.Fields[i].Name+": "+result.Fields[i].Message)
 	}
 
 	return cli.Exit("", 1)
+}
+
+// singleCheckValidateResult mirrors the server's ValidateCheckResponse for the
+// single-check form of `sp checks validate`.
+type singleCheckValidateResult struct {
+	Valid    bool                  `json:"valid"`
+	Fields   []validateResultField `json:"fields"`
+	Warnings []validateResultField `json:"warnings"`
+}
+
+// validateResultField is one finding, with the stable machine code alongside
+// the prose.
+type validateResultField struct {
+	Name     string `json:"name"`
+	Message  string `json:"message"`
+	Code     string `json:"code,omitempty"`
+	Severity string `json:"severity,omitempty"`
 }
 
 // checksValidateDocumentAction validates a whole export/manifest document
@@ -194,7 +218,10 @@ func checksValidateDocumentAction(cliCtx *Context, raw []byte) error {
 	output.PrintError(os.Stdout, fmt.Sprintf("Document is invalid: %d problem(s)", len(issues)))
 	for i := range issues {
 		issue := &issues[i]
-		output.PrintMessage(os.Stdout, fmt.Sprintf("  [%s] %s", issue.Where, issue.Message))
+		// The CODE is printed alongside the prose: it is the stable half, and
+		// it is what a CI job allow-lists (spec 2026-09-11-04).
+		output.PrintMessage(os.Stdout, fmt.Sprintf("  [%s] %s %s: %s",
+			issue.Where, issue.Code, issue.Field, issue.Message))
 	}
 
 	return cli.Exit("", 1)

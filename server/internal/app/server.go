@@ -85,6 +85,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	"github.com/fclairamb/solidping/server/internal/handlers/orglogo"
+	"github.com/fclairamb/solidping/server/internal/handlers/orgparams"
 	"github.com/fclairamb/solidping/server/internal/handlers/ovhsmscb"
 	"github.com/fclairamb/solidping/server/internal/handlers/publicconfig"
 	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
@@ -844,6 +845,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgSettings.GET("", authHandler.GetOrgSettings)
 	orgSettings.PATCH("", authHandler.UpdateOrgSettings)
 
+	// Org parameters (spec 2026-09-11-03) — org ADMIN only, structurally, the
+	// same chain orgChecksAdmin uses. These are the values a config-as-code
+	// manifest references as ${param:KEY}; a secret one is write-only, so there
+	// is no route here that returns a stored secret value.
+	orgParamsHandler := orgparams.NewHandler(orgparams.NewService(s.dbService), s.config)
+	orgParams := api.NewGroup("/orgs/:org/parameters").
+		Use(orgSlugRedirect.Middleware,
+			authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgParams.GET("", orgParamsHandler.List)
+	orgParams.GET("/:key", orgParamsHandler.Get)
+	orgParams.PUT("/:key", orgParamsHandler.Set)
+	orgParams.DELETE("/:key", orgParamsHandler.Delete)
+
 	// Org membership requests (protected, admin-only checked in handler)
 	orgMembershipRequests := orgGroup("/orgs/:org/membership-requests")
 	orgMembershipRequests.GET("", authHandler.ListOrgMembershipRequestsHandler)
@@ -1060,7 +1074,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	importersHandler := importers.NewHandler(checksService, s.config)
 	importersHandler.RegisterRoutes(orgChecksAdmin)
 
-	orgChecks.POST("/validate", checksHandler.ValidateCheck)
+	// /checks/validate is registered on the READ-level chain (spec
+	// 2026-09-11-04): posting a whole config-as-code document to it writes
+	// nothing, and a CI job that only asks "is this file valid?" must not need
+	// a write-capable token. The single-check form of the same route keeps the
+	// write floor, enforced inline in the handler (which answers with
+	// middleware.ViewerWriteMessage, so TestEveryOrgScopedWriteRouteRefusesViewers
+	// still recognizes the gate), and `?plan=true` needs admin.
+	//
+	// Import, apply and export are deliberately NOT relaxed: they mutate, and
+	// apply can delete by absence.
+	orgGroupSelf("/orgs/:org/checks").POST("/validate", checksHandler.ValidateCheck)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)

@@ -370,6 +370,20 @@ func (c *Check) EffectiveRecoveryPeriodAt(now time.Time) time.Duration {
 }
 
 // NewCheck creates a new check with generated UID.
+//
+// Period is deliberately a FLAT one-minute constant here, not a type-aware
+// default: this constructor has no access to checkerdef metadata (it lives in
+// the models package, below checkerdef in the import graph), and its two
+// callers that matter for a stored period both overwrite it anyway —
+// checks.Service.CreateCheck resolves the real value through
+// defaultPeriodForType (server/internal/handlers/checks/validate.go) right
+// after constructing the check, and CloneCheck's cloneBuildCheck always
+// copies Period from the source row. Every other direct caller (checkworker's
+// and jobworker's self-stats checks) marks the check Internal, which
+// validatePeriodForType exempts from the floor entirely. So: if a check ever
+// again shows up storing a period below its own type's MinPeriod, the bug is
+// in one of those resolvers, not in this flat constant — do not "fix" it here
+// (spec 2026-09-11-07).
 func NewCheck(orgUID, slug, checkType string) *Check {
 	now := time.Now()
 

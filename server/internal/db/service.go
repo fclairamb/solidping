@@ -356,6 +356,16 @@ type Service interface {
 	ListChecksByTunnelCheckUID(ctx context.Context, orgUID, tunnelCheckUID string) ([]*models.Check, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
 	DeleteCheck(ctx context.Context, uid string) error
+	// PurgeCheck HARD-deletes a check row (and, through the on-delete-cascade
+	// foreign keys, its check_jobs / check_labels / check_connections /
+	// results). DeleteCheck is a soft delete and keeps the slug claimed; this
+	// releases it.
+	//
+	// It exists for exactly one caller: the compensating delete that undoes a
+	// check whose creation could not be finished (spec 2026-09-10-01). It is
+	// NOT the user-facing delete and must not become one — a soft delete is
+	// what makes a real deletion recoverable.
+	PurgeCheck(ctx context.Context, uid string) error
 	// ListChecksWithStaleJobPeriods returns enabled, non-deleted checks that
 	// have at least one check_job whose period no longer matches the check's
 	// period — the one-shot startup reconcile target (spec 2026-07-20-05).
@@ -810,9 +820,22 @@ type Service interface {
 	// Organization Parameter operations (organization_uid IS NOT NULL)
 	// ListOrgParametersByKey returns all org-scoped parameters with a specific key.
 	ListOrgParametersByKey(ctx context.Context, key string) ([]*models.Parameter, error)
+	// ListOrgParameters returns every live parameter owned by one organization,
+	// ordered by key. Values come back as stored — masking a secret one is the
+	// API layer's job, not the store's.
+	ListOrgParameters(ctx context.Context, orgUID string) ([]*models.Parameter, error)
 	// GetOrgParameter retrieves an org-scoped parameter by orgUID and key, returns nil if not found.
 	GetOrgParameter(ctx context.Context, orgUID, key string) (*models.Parameter, error)
 	// SetOrgParameter creates or updates an org-scoped parameter.
+	//
+	// NEVER write a key under the `usr.` prefix (paramkeys.OrgKeyPrefix) from
+	// platform code. That namespace is owned end-to-end by the org parameters
+	// API (spec 2026-09-11-03): org admins can overwrite and delete anything in
+	// it, and `${param:KEY}` in any check config reads it. A platform key
+	// placed there would be an org's to rewrite — and an org's row would be
+	// read as platform configuration. It is the one direction the namespace
+	// cannot enforce on its own; paramkeys.TestPlatformKeysAreOutsideTheOrgNamespace
+	// is the guard.
 	SetOrgParameter(ctx context.Context, orgUID, key string, value any, secret bool) error
 	// DeleteOrgParameter soft-deletes an org-scoped parameter.
 	DeleteOrgParameter(ctx context.Context, orgUID, key string) error

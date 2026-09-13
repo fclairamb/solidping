@@ -14,8 +14,14 @@ import (
 )
 
 // paramValueField is the field name reported in a validation error for the
-// request body's "value" field.
-const paramValueField = "value"
+// request body's "value" field. keyField is the equivalent for a malformed
+// key taken from the URL — kept as a separate constant rather than reused,
+// since the two errors (ErrInvalidParameter, ErrInvalidParameterKey) must
+// attribute to different fields.
+const (
+	paramValueField = "value"
+	keyField        = "key"
+)
 
 // invalidJSONMessage is the validation message every malformed-body branch in
 // this package returns, and bodyField the field it is attributed to.
@@ -140,6 +146,19 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 	switch {
 	case errors.Is(err, ErrParameterNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
+	case errors.Is(err, ErrInvalidParameterKey):
+		// Deliberately not h.WriteValidationError: that helper hardcodes 422
+		// (base.go:227-237). The org-managed parameters route
+		// (orgparams/handler.go:83-86) answers this exact error — a malformed
+		// key — with 400, and every validation branch in that handler is 400;
+		// the same key against either route must not diverge on status code.
+		return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+			Title: err.Error(),
+			Code:  string(base.ErrorCodeValidationError),
+			Fields: []base.ValidationErrorField{
+				{Name: keyField, Message: err.Error()},
+			},
+		})
 	case errors.Is(err, ErrInvalidParameter):
 		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
 			{Name: paramValueField, Message: err.Error()},

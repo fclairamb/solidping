@@ -8,6 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portProviderLinksPG is distinct from every other embedded-Postgres port
@@ -128,13 +129,13 @@ func newPostgresDBService(t *testing.T) db.Service {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbService.Close() })
 
 	if initErr := dbService.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	return dbService

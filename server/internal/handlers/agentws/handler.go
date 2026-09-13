@@ -963,7 +963,7 @@ func (h *Handler) buildTunnelBlock(
 	// exactly like the job's own — otherwise every tunneled cloud check would
 	// fail on a platform region with "not sealed for this agent".
 	if agent.IsSystem() {
-		sealed, sealErr := h.sealSecretsFor(ctx, agent, sshCheck.OrganizationUID, sshCheck.ConfigPrivate,
+		sealed, sealErr := h.sealSecretsFor(ctx, agent, sshCheck.OrganizationUID, sshCheck.ConfigPrivate, nil,
 			"ssh tunnel check", sshCheck.UID)
 		if sealErr != nil {
 			return nil, sealErr
@@ -986,7 +986,19 @@ func (h *Handler) buildTunnelBlock(
 func (h *Handler) sealJobForSystemAgent(
 	ctx context.Context, agent *models.Agent, job *models.CheckJob, wireJob *agentcrypto.AgentJob,
 ) error {
-	sealed, err := h.sealSecretsFor(ctx, agent, job.OrganizationUID, job.ConfigPrivate, "check", job.CheckUID)
+	// ${param:…} in the PUBLIC config is resolved here and shipped inside the
+	// sealed envelope rather than in the wire config (spec 2026-09-11-03): the
+	// agent merges the envelope over its config, so the resolved value lands
+	// exactly where the reference was — and never travels in the clear. The
+	// reference itself stays in wireJob.Config, which is what a dump of the
+	// wire, or the agent's own logs, should show.
+	overlay, refErr := checkjobsvc.ParamOverlay(ctx, h.dbService, job.OrganizationUID, wireJob.Config)
+	if refErr != nil {
+		return refErr
+	}
+
+	sealed, err := h.sealSecretsFor(
+		ctx, agent, job.OrganizationUID, job.ConfigPrivate, overlay, "check", job.CheckUID)
 	if err != nil {
 		return err
 	}
@@ -1000,14 +1012,23 @@ func (h *Handler) sealJobForSystemAgent(
 // single agent's X25519 key. It returns nil (no envelope) when there are no
 // secrets to ship. Failures return the STATIC actionable reason — the cause,
 // which can carry cryptographic detail, is only logged.
+//
+// `extra` is folded in on top of whatever the envelope held: it carries the
+// values resolved from ${param:…} references, which have no envelope of their
+// own but must reach the agent the same sealed way.
 func (h *Handler) sealSecretsFor(
-	ctx context.Context, agent *models.Agent, orgUID string, envelope *string, kind, uid string,
+	ctx context.Context, agent *models.Agent, orgUID string, envelope *string,
+	extra map[string]any, kind, uid string,
 ) (*string, error) {
 	secrets, outcome, openErr := checkjobsvc.OpenSecretsEnvelope(ctx, h.creds, orgUID, envelope)
 
 	switch outcome {
 	case checkjobsvc.SecretMergeNoop:
-		return nil, nil //nolint:nilnil // "no envelope to ship" is genuinely (nil, nil)
+		if len(extra) == 0 {
+			return nil, nil //nolint:nilnil // "no envelope to ship" is genuinely (nil, nil)
+		}
+
+		secrets = make(map[string]any, len(extra))
 	case checkjobsvc.SecretMergeMerged:
 		// fall through to sealing
 	case checkjobsvc.SecretMergeUnavailable:
@@ -1022,6 +1043,25 @@ func (h *Handler) sealSecretsFor(
 			"error", openErr, "kind", kind, "uid", uid, "agent", agent.UID)
 
 		return nil, checkjobsvc.ResultReason(outcome, openErr)
+	}
+
+	// A secret FIELD can hold a reference too (`password: "${param:x}"`), and
+	// it is opened here for the first time — so resolve inside the envelope as
+	// well, not only in the public half.
+	secretOverlay, refErr := checkjobsvc.ParamOverlay(ctx, h.dbService, orgUID, secrets)
+	if refErr != nil {
+		h.logger.ErrorContext(ctx, "cannot resolve parameter reference for system agent",
+			"error", refErr, "kind", kind, "uid", uid, "agent", agent.UID)
+
+		return nil, refErr
+	}
+
+	for key, value := range secretOverlay {
+		secrets[key] = value
+	}
+
+	for key, value := range extra {
+		secrets[key] = value
 	}
 
 	sealed, sealErr := credentials.SealForRecipients([]string{agent.X25519PublicKey}, secrets)

@@ -19,3 +19,17 @@ package checkheartbeat
 func (c *HeartbeatConfig) SecretFields() []string {
 	return []string{}
 }
+
+// ExportRedactedFields declares the config keys that stay in the PUBLIC column
+// (see SecretFields above) but must never be written into a config-as-code
+// export. Implements credentials.ExportRedactedFielder.
+//
+// The `token` is the shared secret embedded in the public ping URL: anyone who
+// can read it can post a heartbeat and keep the check green. Storage is
+// unchanged — the ping handler still reads it from the public column — and an
+// import/apply that omits it preserves the stored value, which is the exact
+// behavior preserveHeartbeatToken gave this field before spec 2026-09-11-02
+// generalized it (checks.preserveAbsentRedactedFields).
+func (c *HeartbeatConfig) ExportRedactedFields() []string {
+	return []string{"token"}
+}

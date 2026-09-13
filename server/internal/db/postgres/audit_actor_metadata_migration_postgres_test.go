@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portAuditActorMetadata / portAuditActorMetadataRollback are distinct from
@@ -35,13 +37,13 @@ func TestAuditActorMetadataMigration_Postgres(t *testing.T) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portAuditActorMetadata, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	count := func(query string, args ...any) int {
@@ -131,13 +133,13 @@ func TestAuditActorMetadataRollback_Postgres(t *testing.T) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portAuditActorMetadataRollback, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	count := func(query string, args ...any) int {

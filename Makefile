@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
-	test test-scenario test-dash0 test-docs lint lint-back lint-dash0 fmt deps migrate help sync-brand-assets build-favicons \
+	test test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 fmt deps migrate help sync-brand-assets build-favicons \
 	showcase \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -332,10 +332,34 @@ clean-all: clean ## Remove all generated files including node_modules
 	@rm -rf $(STATUS0_DIR)/node_modules $(STATUS0_DIR)/.bun
 	@echo "Deep clean complete"
 
-test: ## Run all tests
+test: ## Run all tests (SQLite only — `-short` skips every Postgres suite)
 	@echo "Running backend tests..."
 	@cd $(BACK_DIR) && go test ./... -short
 	@echo "Tests complete"
+
+# `make test` above is -short, which means it has NEVER exercised Postgres.
+# That is deliberate (it keeps the inner loop fast) and it is exactly how spec
+# 2026-09-11-03 shipped a 500: a key pattern SQLite accepted and Postgres
+# refused. This target is the other half — the same invocation the
+# `backend-postgres` CI job runs, character for character, so "green locally"
+# and "green in CI" mean the same thing. See wiki/testing/test-layers.md.
+#
+#   -p 1  embedded-postgres shares ~/.embedded-postgres-go/extracted (pwfile
+#         included) across instances, so concurrent packages race and the loser
+#         fails to start.
+#   -v    the CI guard step parses --- PASS / --- SKIP out of this.
+#   SP_TEST_REQUIRE_POSTGRES=1  turns "embedded postgres unavailable" from a
+#         silent skip into a failure (internal/testsupport).
+test-postgres: ## Run the backend tests against Postgres (non-short, ~10-15 min)
+	@echo "Running backend tests against embedded PostgreSQL (this takes ~10-15 minutes)..."
+	@cd $(BACK_DIR) && SP_TEST_REQUIRE_POSTGRES=1 go test -count=1 -p 1 -v ./...
+	@echo "Postgres test layer complete"
+
+test-slow: ## Run the slowtests layer (live network + Docker; nightly in CI)
+	@echo "Running the slowtests layer (needs the public internet and a Docker daemon)..."
+	@cd $(BACK_DIR) && go test -count=1 -p 1 -tags slowtests -v \
+		./internal/checkers/... ./internal/tlsedge/...
+	@echo "Slow test layer complete"
 
 test-scenario: ## Run full-pipeline scenario tests (requires Docker / embedded Postgres)
 	@echo "Running scenario integration tests..."

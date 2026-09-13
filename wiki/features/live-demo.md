@@ -69,6 +69,31 @@ always ends at the demo org's root, and `resolveDestination` would refuse a
 the login page's redirect-if-authenticated effect stands down, and `enterDemo`
 short-circuits when the current principal is already the demo user.
 
+### The one invariant: `login(demoOrg, …)` runs only on `/orgs/<demoOrg>/login`
+
+The demo used to be *signed into* from whatever org the URL happened to name —
+the button is offered on every org's login page, and `/`, `/login` and `/demo`
+all resolve to `/orgs/<localStorage org || "default">/login` — and only then
+moved to the demo org. That cross-org jump is what made the org layout's
+non-member fallback fire, so the product's front door greeted a first-time
+visitor with "You don't have access to default — showing demo instead." about an
+org they never asked for.
+
+Every entry point now hops to the demo org's own login page first (a `replace`
+navigation carrying `demo: true`) and lets that page do the sign-in. The
+decision lives in one pure helper, `demoEntryDecision(urlOrg, demoOrgSlug)` in
+`web/dash0/src/lib/demo.ts`, so the button and the `?demo` auto-login effect
+cannot drift apart; its `"unavailable"` case is the window where the
+public-config document has not answered and the demo org's slug is not known
+yet. The three redirects that pick an org aim straight at the demo org when
+that document happens to be cached already, and never wait for it — the login
+page hops on its own, so a cold deep link simply costs two hops.
+
+The payoff is that the layout's `$org` param is the demo org before, during and
+after the sign-in, which removes a whole class of race rather than patching its
+symptoms (spec 2026-09-12-01 §A, after 2026-09-06-02, 2026-09-07-02 and
+2026-09-08-01 each patched one).
+
 ## Possible extension: dependency edges between two visitor-owned checks
 
 Dependency writes (`POST/PATCH/DELETE …/dependencies`) are outside the allowlist,
