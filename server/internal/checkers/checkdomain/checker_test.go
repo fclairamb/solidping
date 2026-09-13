@@ -92,38 +92,6 @@ func TestDomainChecker_Validate(t *testing.T) {
 	}
 }
 
-func TestDomainChecker_Execute(t *testing.T) {
-	t.Parallel()
-
-	// This test performs a real WHOIS lookup
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
-	checker := &DomainChecker{}
-	ctx := context.Background()
-
-	config := &DomainConfig{
-		Domain:        "google.com",
-		ThresholdDays: 30,
-	}
-
-	result, err := checker.Execute(ctx, config)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// google.com should definitely be "up" (not expiring in < 30 days)
-	// unless something is very wrong with their registration or the lookup
-	require.Equal(t, checkerdef.StatusUp, result.Status)
-	require.Contains(t, result.Output, "domain")
-	require.Contains(t, result.Output, "expiry_date")
-	require.Contains(t, result.Output, "days_remaining")
-
-	daysRemaining, ok := result.Metrics["days_remaining"].(int)
-	require.True(t, ok, "days_remaining metric should be an int")
-	require.Greater(t, daysRemaining, 30)
-}
-
 // ── RDAP/WHOIS dispatch tests ──
 //
 // These use an httptest fake serving both an IANA-shaped bootstrap document

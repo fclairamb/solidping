@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portWorkerSlugLeadingDigit is distinct from every other _postgres_test.go
@@ -31,13 +32,13 @@ func TestWorkerSlugLeadingDigit_Postgres(t *testing.T) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portWorkerSlugLeadingDigit, RunMode: "test"})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	var constraintDef string

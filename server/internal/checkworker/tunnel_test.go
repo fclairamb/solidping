@@ -263,3 +263,45 @@ func (l *tunnelCheckLoader) GetCheck(_ context.Context, orgUID, checkUID string)
 }
 
 var errNoSuchCheck = errors.New("no such check")
+
+// TestExecuteJob_UnresolvableTunnelReferenceIsATunnelFailure closes the loop on
+// spec 2026-09-11-03's audit item 5, end to end through the real executeJob.
+//
+// The unit tests in internal/integrations/sshtunnel prove LoadConfig refuses an
+// unresolvable reference; this proves what an OPERATOR sees when it does — the
+// distinct `tunnel_failed` result carrying the standard message, not a silent
+// skip and not a probe that dialed the bastion with the literal `${param:…}` as
+// its password.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJob_UnresolvableTunnelReferenceIsATunnelFailure(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	const ttype = checkerdef.CheckType("test-tunnel-unresolvable-ref")
+	checker := &dialerObservingChecker{checkType: ttype, status: checkerdef.StatusUp}
+	runner.getChecker, runner.parseConfig = stubResolvers(ttype, checker)
+
+	// A perfectly good bastion whose password is a reference nothing on this
+	// path can resolve: `${param:}` needs the parameter store, and a tunnel is
+	// loaded through a CheckLoader that has none.
+	srv := sshtunneltest.Start(t)
+	config := srv.CheckConfig()
+	config["password"] = "${param:bastion-password}"
+
+	ctx = sshtunnel.WithResolver(ctx, sshtunnel.NewResolver(&tunnelCheckLoader{config: config}, nil))
+
+	checkJob := setupTunnelJob(t, runner, dbSvc, ctx, ttype, models.JSONMap{
+		checkerdef.TunnelCheckUIDConfigKey: tunnelSSHCheckUID,
+	})
+
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+	require.False(t, checker.sawDialer, "the target probe must not run behind an unarmed tunnel")
+
+	result := lastResultForJob(t, dbSvc, ctx, checkJob)
+	require.Equal(t, int(checkerdef.StatusError), *result.Status)
+	require.Equal(t, true, result.Output[checkerdef.OutputKeyTunnelFailed],
+		"it is the BASTION that is misconfigured, not the service behind it")
+	require.Contains(t, result.Output[checkerdef.OutputKeyError],
+		"unresolved secret reference: param:bastion-password")
+}

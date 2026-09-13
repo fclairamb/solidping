@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel/sshtunneltest"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 func newTunnelTestBackend() *WSBackend {
@@ -52,7 +53,7 @@ func TestResolveTunnelUnsealsAndDials(t *testing.T) {
 		ConfigSealed: &sealed,
 	}
 
-	cfg, err := buildTunnelConfig(keys.X25519Identity, tunnel)
+	cfg, err := buildTunnelConfig(t.Context(), keys.X25519Identity, tunnel)
 	r.NoError(err)
 	r.Equal(srv.Password, cfg.Password, "the sealed password must merge over the public config")
 	r.Equal(srv.Username, cfg.Username)
@@ -101,7 +102,7 @@ func TestBuildTunnelConfigWrongIdentity(t *testing.T) {
 		ConfigSealed: &sealed,
 	}
 
-	_, err = buildTunnelConfig(ourKeys.X25519Identity, tunnel)
+	_, err = buildTunnelConfig(t.Context(), ourKeys.X25519Identity, tunnel)
 	r.ErrorIs(err, ErrTunnelSealedForOthers)
 }
 
@@ -119,7 +120,7 @@ func TestBuildTunnelConfigPlaintextFallback(t *testing.T) {
 		},
 	}
 
-	cfg, err := buildTunnelConfig("", tunnel)
+	cfg, err := buildTunnelConfig(t.Context(), "", tunnel)
 	r.NoError(err)
 	r.Equal("plain", cfg.Password)
 }
@@ -135,7 +136,7 @@ func TestBuildTunnelConfigNoCredentials(t *testing.T) {
 		Config:   map[string]any{"host": "bastion", "expected_fingerprint": "SHA256:abc", "username": "u"},
 	}
 
-	_, err := buildTunnelConfig("", tunnel)
+	_, err := buildTunnelConfig(t.Context(), "", tunnel)
 	r.ErrorIs(err, ErrTunnelNoCredentials)
 }
 
@@ -210,4 +211,48 @@ func echoTarget(t *testing.T, srv *sshtunneltest.Server, requested string) strin
 	srv.Forward(requested, listener.Addr().String())
 
 	return greeting
+}
+
+// TestTunnelConfigMaterializesSecretReferences covers the last path on which a
+// `${…}` reference could still reach a remote endpoint VERBATIM (spec
+// 2026-09-11-03, audit item 5).
+//
+// A bastion's config goes straight from the merged map into an SSH dial, so
+// before this a `${env:SSH_PASSWORD}` in the public config was offered to the
+// SSH server as a literal password. Now `${env:}` resolves on the process doing
+// the dialing — which for an agent is the agent's own environment, the
+// documented per-region behavior.
+//
+// Uses t.Setenv, which is incompatible with t.Parallel.
+func TestTunnelConfigMaterializesSecretReferences(t *testing.T) {
+	r := require.New(t)
+
+	srv := sshtunneltest.Start(t)
+	t.Setenv("SP_TEST_TUNNEL_PASSWORD", srv.Password)
+
+	config := tunnelPublicConfig(srv)
+	config["password"] = "${env:SP_TEST_TUNNEL_PASSWORD}"
+
+	cfg, err := buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config})
+	r.NoError(err)
+	r.Equal(srv.Password, cfg.Password, "the reference must be resolved before the dial")
+}
+
+// TestTunnelConfigRefusesAnUnresolvableReference is the failure half: a
+// `${param:}` cannot be resolved on this path (the tunnel block is built from a
+// check row, with no parameter store in reach), so it must fail loudly with the
+// standard "unresolved secret reference" — which the caller turns into a
+// tunnel_failed error result — rather than dialing with the literal.
+func TestTunnelConfigRefusesAnUnresolvableReference(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := sshtunneltest.Start(t)
+
+	config := tunnelPublicConfig(srv)
+	config["password"] = "${param:bastion-password}"
+
+	_, err := buildTunnelConfig(t.Context(), "", &agents.AgentJobTunnel{CheckUID: "ssh-ref", Config: config})
+	r.ErrorIs(err, secretref.ErrUnresolved)
+	r.Contains(err.Error(), "unresolved secret reference: param:bastion-password")
 }

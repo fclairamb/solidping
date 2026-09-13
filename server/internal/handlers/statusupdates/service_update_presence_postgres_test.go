@@ -9,6 +9,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portPresencePG is distinct from every other embedded-Postgres port claimed
@@ -62,13 +63,13 @@ func newPGPresenceFixture(t *testing.T) *pgPresenceFixture {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	svc := statusupdates.NewService(dbSvc)

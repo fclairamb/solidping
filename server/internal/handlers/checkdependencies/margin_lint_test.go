@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -304,12 +305,12 @@ func TestListForCheckWarnings_Postgres(t *testing.T) {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	listForCheckLintCase(t, dbSvc, "lint-pg")

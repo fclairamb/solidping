@@ -54,7 +54,8 @@ this page covers behavior and operational concerns.
 
 ## Failure screenshots
 
-With `screenshot: true`, a **failing** execution captures a full-page PNG before
+With `screenshot: true`, a **failing** execution captures a full-page image
+(**WebP**, quality 85 — see `checkbrowser.ScreenshotFormat`) before
 the browser context is disposed, and the incident pipeline keeps it — but only
 for the run that OPENED or REOPENED an incident. Every other failing run's
 capture exists in the worker's memory and is dropped: a flapping 30 s check
@@ -74,7 +75,7 @@ the expense of a verdict):
 - `StatusError` is never captured — from this checker it means "no browser to
   drive", so there is no page.
 - Over `MaxScreenshotBytes` (4 MiB) the capture is **dropped**, never truncated.
-  Half a PNG is a broken-image icon, not evidence.
+  Half an image is a broken-image icon, not evidence.
 - Storage: the blob is a `files` row attached to the incident via
   `files.topic = incidents/<uid>/screenshot` (spec 2026-08-21-01). It is served
   through a short-lived **signed** URL on the incident detail API, is reaped
@@ -84,13 +85,40 @@ the expense of a verdict):
   capture drops the stale one rather than showing the old outage's picture next
   to a different failure.
 
+### Format
+
+**WebP, quality 85** — one constant, `checkbrowser.ScreenshotFormat`, for every
+capture in the process (the browser check's and the JS runtime's
+`page.screenshot()`, which share one code path). There is no per-check
+`screenshotFormat` field and no system parameter; the format travels with the
+bytes as a value (`checkerdef.Screenshot.Format`), so promoting it to a
+parameter later is a one-line change rather than a re-plumbing.
+
+WebP because it is 25-35% smaller than JPEG at equal visual quality — which
+keeps the 4 MiB cap comfortable on exactly the busy pages the cap exists for —
+and because every browser that can open the dashboard decodes it.
+
+This used to be folklore, and the folklore was wrong (spec 2026-09-13-01). The
+code named a constant `screenshotQuality = 90` and a field `PNG`;
+`chromedp.FullScreenshot` selects PNG only at quality **100** and JPEG
+otherwise, so the capture was a JPEG. The attachment store sniffed for PNG
+magic bytes and refused it, which means **no browser-check screenshot was ever
+stored** until that spec. Two consequences worth remembering:
+
+- The capture drives `page.CaptureScreenshot` directly, not
+  `chromedp.FullScreenshot`, which can only ever emit PNG or JPEG.
+- The store sniffs the bytes and accepts PNG, JPEG or WebP, failing closed on
+  anything else; the stored filename takes the extension of the **sniffed**
+  type, and all three are on `files.safeInlineMIME`'s allowlist so the incident
+  card renders them inline under `nosniff`.
+
 ### Deported agents
 
 A private agent runs the same capture code, but its WebSocket to the master is a
-JSON control channel, so the PNG cannot ride the result frame. The bytes are
+JSON control channel, so the image cannot ride the result frame. The bytes are
 split from the announcement (spec 2026-08-21-05):
 
-1. The agent keeps the PNG in a small **bounded, TTL'd, take-once cache** (a few
+1. The agent keeps the image in a small **bounded, TTL'd, take-once cache** (a few
    entries, a few MiB; `internal/agents/capturecache`) and puts only a marker on
    the result frame — `screenshot: {available: true, captureId: "…"}`. The bytes
    never touch the socket in any encoding.

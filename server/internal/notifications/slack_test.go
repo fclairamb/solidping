@@ -301,6 +301,8 @@ func (m *mockDBService) UpdateCheck(_ context.Context, _ string, _ *models.Check
 }
 func (m *mockDBService) DeleteCheck(_ context.Context, _ string) error { panic("not implemented") }
 
+func (m *mockDBService) PurgeCheck(_ context.Context, _ string) error { panic("not implemented") }
+
 func (m *mockDBService) ListChecksWithStaleJobPeriods(_ context.Context) ([]*models.Check, error) {
 	panic("not implemented")
 }
@@ -1283,6 +1285,10 @@ func (m *mockDBService) DeleteStatusPageResource(_ context.Context, _ string) er
 }
 
 func (m *mockDBService) ListOrgParametersByKey(_ context.Context, _ string) ([]*models.Parameter, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrgParameters(_ context.Context, _ string) ([]*models.Parameter, error) {
 	panic("not implemented")
 }
 

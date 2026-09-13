@@ -20,3 +20,22 @@ package checkemail
 func (c *EmailConfig) SecretFields() []string {
 	return []string{}
 }
+
+// ExportRedactedFields declares the config keys that stay in the PUBLIC column
+// (see SecretFields above) but must never be written into a config-as-code
+// export. Implements credentials.ExportRedactedFielder.
+//
+// The `token` is the local part of the check's inbound address
+// (`<token>@<addressDomain>`): anyone who can read it can mail that address and
+// mark the check `up`. Before spec 2026-09-11-02 the exporter stripped only
+// SecretFields(), so a document stamped `secrets: stripped` carried the
+// 48-hex-char token verbatim — and a real customer's git history got it.
+//
+// Storage is unchanged: the token stays public and queryable, so
+// GetCheckByEmailToken and the dashboard's address rendering keep working. On
+// import/apply an absent `token` is preserved from the existing check
+// (checks.preserveAbsentRedactedFields); on a create the checker mints a fresh
+// one, which is the only correct answer on a new instance anyway.
+func (c *EmailConfig) ExportRedactedFields() []string {
+	return []string{"token"}
+}

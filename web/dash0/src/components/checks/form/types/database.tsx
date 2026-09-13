@@ -22,6 +22,7 @@ export interface SqlDbState {
 
 export const sqlDatabaseModule: CheckTypeModule<SqlDbState> = {
   types: ["postgresql", "mysql", "mssql", "oracle"],
+  ownedKeys: ["host", "port", "username", "password", "database", "query"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -129,6 +130,7 @@ export interface RedisState {
 
 export const redisModule: CheckTypeModule<RedisState> = {
   types: ["redis"],
+  ownedKeys: ["host", "port", "password", "database"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -211,6 +213,7 @@ export interface MongoState {
 
 export const mongodbModule: CheckTypeModule<MongoState> = {
   types: ["mongodb"],
+  ownedKeys: ["host", "port", "username", "password", "database"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -306,6 +309,7 @@ export interface RabbitmqState {
 
 export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
   types: ["rabbitmq"],
+  ownedKeys: ["host", "port", "username", "password", "vhost", "queue", "tls", "tls_verify"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -313,10 +317,14 @@ export const rabbitmqModule: CheckTypeModule<RabbitmqState> = {
     password: getConfigField(config, "password"),
     vhost: getConfigField(config, "vhost"),
     queue: getConfigField(config, "queue"),
-    // Preserved quirk: the "Use TLS" checkbox was seeded from the shared
-    // `tls_verify` field (not `tls`), so an existing rabbitmq check's `tls`
-    // flag does not re-check the box on edit unless the user toggles it.
-    tls: getConfigField(config, "tls_verify") === "true",
+    // The stored key is `tls` (RabbitMQConfig.TLS); `tls_verify` is only a
+    // legacy spelling this form used to seed from. Reading `tls` FIRST matters:
+    // seeding from `tls_verify` alone left the box unchecked for a TLS-enabled
+    // check, and since `tls` is a key this module owns, the next save dropped
+    // it — silently turning TLS off.
+    tls:
+      getConfigField(config, "tls") === "true" ||
+      getConfigField(config, "tls_verify") === "true",
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};

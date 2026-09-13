@@ -37,6 +37,10 @@ function OrganizationLayout() {
       label: t("nav:reportSchedules", "Uptime reports"),
       path: "/orgs/$org/organization/report-schedules",
     },
+    {
+      label: t("nav:parameters", "Parameters"),
+      path: "/orgs/$org/organization/parameters",
+    },
     { label: t("nav:audit", "Audit"), path: "/orgs/$org/organization/audit" },
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];

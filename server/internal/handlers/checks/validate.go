@@ -2,8 +2,10 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -55,6 +57,41 @@ const (
 // fieldPeriod is the JSON/validation field name for the check period.
 const fieldPeriod = "period"
 
+// fieldName is the JSON/validation field name for the check name.
+const fieldName = "name"
+
+// msgNameRequired is the client-facing wording for a blank name. Capitalized
+// because it is rendered verbatim as a field message in the dashboard, next to
+// the other field messages in handler.go.
+const msgNameRequired = "Name is required and cannot be blank"
+
+// errCheckNameRequired is returned by create and update when the resulting
+// check name would be empty or whitespace-only (spec 2026-09-11-02).
+//
+// Why the API ever accepted one: the validation treated an empty string as
+// "present". The consequences only showed up two systems later — the exporter
+// omits an empty string, and both ValidateDocument and the import path require
+// `name`, so the instance produced a config-as-code document it would itself
+// refuse to consume. One org's export failed its validator with `missing
+// required key 'name'` and the offending check had to be excluded from the
+// tracked file.
+var errCheckNameRequired = errors.New("name is required and cannot be blank")
+
+// validateCheckName enforces "required, min length 1 AFTER trimming".
+//
+// Trimming is the point: `" "` is exactly as unusable as `""` — it renders as
+// a blank row in the dashboard and exports as a name nobody can search for —
+// and accepting it would leave the same hole one space wide. The stored value
+// is NOT trimmed here: this validates, it does not rewrite what the caller
+// asked for.
+func validateCheckName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errCheckNameRequired
+	}
+
+	return nil
+}
+
 // Field names for the request-level guards shared by CreateCheck and
 // ValidateCheck (spec 2026-08-28-14) — mirror the JSON tags of both request
 // structs exactly, since these are the same field on either shape.
@@ -68,12 +105,43 @@ const (
 	fieldMaxRecoveryMultiplier     = "maxRecoveryMultiplier"
 )
 
-// defaultCheckPeriod mirrors models.NewCheck's default Period. CreateCheck
-// resolves the check's effective period to this before validating
-// regionSpread whenever the request doesn't propose one; ValidateCheck must
-// resolve the same fallback or a bare regionSpread (no period proposed) would
-// be checked against 0 and rejected as a false positive.
+// defaultCheckPeriod is the flat fallback defaultPeriodForType uses for a
+// check type that declares no DefaultPeriod of its own (http, tcp, icmp, …).
+// It happens to equal models.NewCheck's own constant, but that is no longer
+// load-bearing anywhere below NewCheck itself: every other reader resolves
+// through defaultPeriodForType, which is type-aware. See NewCheck's comment
+// for why NewCheck keeps this flat value directly instead of calling the
+// resolver.
 const defaultCheckPeriod = time.Minute
+
+// defaultPeriodForType resolves the period a check of this type gets when a
+// create/import/validate request supplies none (spec 2026-09-11-07). It is
+// the ONE place that resolution happens — CreateCheck, planCreateCheck's
+// effective period (for the regionSpread bound) and
+// validateRequestFieldFindings (POST /checks/validate, same bound) all call
+// this, so the three cannot answer differently about the same no-period
+// request the way they used to when CreateCheck alone fell through to
+// models.NewCheck's flat 1-minute constant regardless of type.
+//
+// Resolution: the type's own MinPeriod/DefaultPeriod (checkerdef metadata),
+// clamped UP to MinPeriod if a meta ever declared a DefaultPeriod below its
+// own floor — see TestCheckTypeMetaDefaultPeriodNeverBelowMinPeriod in
+// checkerdef, which pins that no meta does today so the clamp here is a
+// by-construction guarantee, not a rescue for a known-bad value. Falls back to
+// defaultCheckPeriod for a type with no DefaultPeriod at all (0 = "use the
+// global default").
+func defaultPeriodForType(checkType string) time.Duration {
+	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType))
+	if meta == nil || meta.DefaultPeriod == 0 {
+		return defaultCheckPeriod
+	}
+
+	if meta.MinPeriod > 0 && meta.DefaultPeriod < meta.MinPeriod {
+		return meta.MinPeriod
+	}
+
+	return meta.DefaultPeriod
+}
 
 // requestFieldValues is the request-level field set both CreateCheck and
 // ValidateCheck check for exactly the same rules (spec 2026-08-28-14). Every
@@ -90,9 +158,9 @@ type requestFieldValues struct {
 	Internal *bool
 
 	// RegionSpreadPeriod is the period regionSpread is measured against —
-	// the request's own proposed period when given, else defaultCheckPeriod,
-	// exactly as CreateCheck resolves check.Period before validating
-	// regionSpread today.
+	// the request's own proposed period when given, else defaultPeriodForType
+	// (spec 2026-09-11-07), exactly as CreateCheck resolves check.Period
+	// before validating regionSpread today.
 	RegionSpreadPeriod time.Duration
 	RegionSpread       *string
 
@@ -439,7 +507,9 @@ func (s *Service) validatePeriodFindings(
 
 	// Nothing validated here can be internal — the flag is not writable
 	// (spec 2026-08-27-01) — hence the constant false.
-	if err := validatePeriodForType(req.Type, period, false); err != nil {
+	if err := validatePeriodForType(
+		req.Type, period, false, parsedConfigForType(req.Type, effective),
+	); err != nil {
 		findings.addErrorFrom(err, fieldPeriod, CodeInvalidPeriod)
 	}
 
@@ -495,7 +565,7 @@ func (s *Service) validateSlugFindings(
 func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duration, findings *validateFindings) {
 	regionSpreadPeriod := period
 	if period == 0 {
-		regionSpreadPeriod = defaultCheckPeriod
+		regionSpreadPeriod = defaultPeriodForType(req.Type)
 	}
 
 	fieldFindings := requestFieldFindings(requestFieldValues{

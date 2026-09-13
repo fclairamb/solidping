@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portPrivateRegionMigration is distinct from every other _postgres_test.go
@@ -29,13 +31,13 @@ func TestPrivateRegionMigrationCollapsesBothSpellings_Postgres(t *testing.T) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portPrivateRegionMigration, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	migration, err := migrationsFS.ReadFile("migrations/011_v0_14_0.up.sql")

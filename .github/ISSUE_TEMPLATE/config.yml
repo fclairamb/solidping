@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://docs.solidping.io
+    about: Check the docs before filing an issue — many questions are answered there.
+  - name: Report a security vulnerability
+    url: https://github.com/fclairamb/solidping/security/advisories/new
+    about: Please do not open a public issue for security reports — use the private advisory form (or security@solidping.io).
+  - name: Migrating from another tool?
+    url: https://docs.solidping.io/docs/features/migrate/
+    about: See the migrate-from-* guides in the docs for uptime-kuma, UptimeRobot, Gatus, Better Stack and others.

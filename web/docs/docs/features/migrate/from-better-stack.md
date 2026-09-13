@@ -122,5 +122,5 @@ Reported as warnings on the import preview:
 
 ## After the import
 
-Checks created this way carry the label `solidping.io/managed=betterstack`, so you
+Checks created this way carry the label `solidping-managed=betterstack`, so you
 can filter on them and re-run the import while you are still cutting over.

@@ -32,12 +32,17 @@ type ContextConverter interface {
 // the conversion warnings. Warnings raised by the apply itself are folded into
 // the same array so callers only have one place to look.
 type ConvertResult struct {
-	Source    string                  `json:"source"`
-	Converted int                     `json:"converted"`
-	Manifest  string                  `json:"manifest"`
-	DryRun    bool                    `json:"dryRun"`
-	Created   int                     `json:"created"`
-	Updated   int                     `json:"updated"`
+	Source    string `json:"source"`
+	Converted int    `json:"converted"`
+	Manifest  string `json:"manifest"`
+	DryRun    bool   `json:"dryRun"`
+	Created   int    `json:"created"`
+	Updated   int    `json:"updated"`
+	// Unchanged counts the checks the payload already describes exactly — a
+	// re-conversion of the same file is `created=0 updated=0 unchanged=N`
+	// (spec 2026-09-11-04), which is how a caller tells "nothing to do" from
+	// "everything rewritten".
+	Unchanged int                     `json:"unchanged"`
 	Unmanaged int                     `json:"unmanaged"`
 	Plan      []checks.ApplyPlanEntry `json:"plan"`
 	Errors    []checks.ImportError    `json:"errors"`
@@ -175,6 +180,7 @@ func buildConvertResult(
 		DryRun:    applyResult.DryRun,
 		Created:   applyResult.Created,
 		Updated:   applyResult.Updated,
+		Unchanged: applyResult.Unchanged,
 		Unmanaged: applyResult.Unmanaged,
 		Plan:      applyResult.Plan,
 		Errors:    applyResult.Errors,

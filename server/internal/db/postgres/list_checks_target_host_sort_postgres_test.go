@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portTargetHostSort is distinct from every other _postgres_test.go file's
@@ -112,12 +113,12 @@ func newTargetHostSortPG(t *testing.T) *Service {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portTargetHostSort, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	return s

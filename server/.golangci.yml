@@ -3,6 +3,12 @@ run:
   concurrency: 4
   issues-exit-code: 1
   tests: true
+  # The `slowtests` files (live-network checkers, the Pebble/Docker ACME suite)
+  # only build under this tag. Without it they would be invisible to the linter
+  # and rot un-checked between nightly runs; with it every file in the tree is
+  # linted, because a tagged build compiles the untagged files too.
+  build-tags:
+    - slowtests
 linters:
   default: none
   enable:

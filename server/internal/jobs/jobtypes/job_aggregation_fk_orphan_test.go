@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portAggFKOrphanRunPG is distinct from every embedded-Postgres port used by the
@@ -328,12 +329,12 @@ func TestRun_StageErrorStillSchedulesFollowUp_Postgres(t *testing.T) {
 
 	pgSvc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portAggFKOrphanRunPG, RunMode: "test"})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = pgSvc.Close() })
 
 	if initErr := pgSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	orgUID := uuid.Must(uuid.NewV7()).String()

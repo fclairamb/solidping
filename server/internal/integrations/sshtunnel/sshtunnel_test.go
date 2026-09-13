@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel"
 	"github.com/fclairamb/solidping/server/internal/integrations/sshtunnel/sshtunneltest"
+	"github.com/fclairamb/solidping/server/internal/secretref"
 )
 
 const (
@@ -545,4 +546,69 @@ func readLine(t *testing.T, conn net.Conn) string {
 	require.NoError(t, err)
 
 	return string(buf[:n-1])
+}
+
+// TestLoadConfigMaterializesSecretReferences is the SERVER-side mirror of
+// backend.TestTunnelConfigMaterializesSecretReferences (spec 2026-09-11-03,
+// audit item 5).
+//
+// Both tunnel paths end in `SSHConfig.FromMap` on a merged map, so both were
+// places where a `${…}` reference reached a remote endpoint verbatim — offered
+// to the SSH server as a literal password. The agent path is covered in
+// internal/checkworker/backend; this is the one the in-process worker takes.
+//
+// Uses t.Setenv, which is incompatible with t.Parallel.
+func TestLoadConfigMaterializesSecretReferences(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_TEST_BASTION_PASSWORD", "from-the-environment")
+
+	check := sshCheck(map[string]any{
+		"host": "bastion.example", "username": "u", "expected_fingerprint": "SHA256:abc",
+		"password": "${env:SP_TEST_BASTION_PASSWORD}",
+	})
+
+	cfg, err := sshtunnel.LoadConfig(
+		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, testOrgUID, testCheckUID)
+	r.NoError(err)
+	r.Equal("from-the-environment", cfg.Password,
+		"the reference must be resolved on the process that will dial")
+}
+
+// TestLoadConfigRefusesAnUnresolvableReference is the failure half: a reference
+// this process cannot resolve must fail loudly with the standard message —
+// which the worker turns into a `tunnel_failed` error result — rather than
+// dialing with the literal `${param:…}` as the password.
+//
+// `${param:}` is deliberately unresolvable here: the tunnel is loaded through a
+// CheckLoader, which has no parameter store in reach.
+func TestLoadConfigRefusesAnUnresolvableReference(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	for _, ref := range []string{"${param:bastion-password}", "${env:SP_TEST_DEFINITELY_NOT_SET}"} {
+		check := sshCheck(map[string]any{
+			"host": "bastion.example", "username": "u", "expected_fingerprint": "SHA256:abc",
+			"password": ref,
+		})
+
+		_, err := sshtunnel.LoadConfig(
+			t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, testOrgUID, testCheckUID)
+		r.ErrorIsf(err, secretref.ErrUnresolved, "%s must fail loudly", ref)
+
+		// Classified as a tunnel error, which is what earns the distinct
+		// `tunnel_failed` result output rather than a generic check failure.
+		r.Truef(sshtunnel.IsTunnelError(err), "%s must be classified as a tunnel failure", ref)
+	}
+
+	// And the message is the one every other surface shows, so an operator
+	// reading a check's history sees the same sentence wherever it came from.
+	check := sshCheck(map[string]any{
+		"host": "bastion.example", "username": "u", "expected_fingerprint": "SHA256:abc",
+		"password": "${param:bastion-password}",
+	})
+
+	_, err := sshtunnel.LoadConfig(
+		t.Context(), &stubLoader{check: check}, &stubCreds{enabled: true}, testOrgUID, testCheckUID)
+	r.Contains(err.Error(), "unresolved secret reference: param:bastion-password")
 }

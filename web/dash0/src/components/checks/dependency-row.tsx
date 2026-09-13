@@ -31,8 +31,14 @@ export function DependencyRowList({
     <div
       data-testid={testId}
       className={cn(
-        "divide-y overflow-hidden rounded-lg border",
-        tone === "muted" ? "bg-muted/30" : "bg-card",
+        "divide-y overflow-hidden rounded-lg border dark:border-white/10",
+        // The `Card` behind this list gets its own dark-mode lift from a
+        // faint gradient (see ui/card.tsx), so a flat bg-muted/30 nearly
+        // vanishes into it there. bg-muted/60 keeps the light-theme contrast
+        // and dark:bg-white/[0.035] gives the dark theme a real, if subtle,
+        // step up from the card so the list reads as an inset panel rather
+        // than a set of divide-y hairlines on the same surface.
+        tone === "muted" ? "bg-muted/60 dark:bg-white/[0.035]" : "bg-card",
         className,
       )}
     >
@@ -46,6 +52,13 @@ interface DependencyRowProps {
   identity: ReactNode;
   /** Kind badge (read-only) or kind select (edit form). */
   kind?: ReactNode;
+  /**
+   * A small inline hint rendered right after `kind`, in the same column —
+   * e.g. the confirmation-margin warning glyph
+   * (`DependencyWarningHint`, dependency-warnings.tsx). Only ever set on hard
+   * `dependsOn` rows that have a warning attached.
+   */
+  hint?: ReactNode;
   /** Free-text description, or the description input on the edit form. */
   description?: ReactNode;
   /** Trailing actions — remove, etc. */
@@ -64,6 +77,7 @@ interface DependencyRowProps {
 export function DependencyRow({
   identity,
   kind,
+  hint,
   description,
   actions,
   interactive = false,
@@ -75,13 +89,20 @@ export function DependencyRow({
       data-testid={testId}
       className={cn(
         "flex min-h-10 items-center gap-3 px-3 py-2",
-        interactive && "transition-colors hover:bg-muted/50",
+        // The base tint is stronger now (bg-muted/60 / dark:bg-white/[0.035],
+        // see DependencyRowList), so the hover tint needs a matching bump to
+        // stay perceptible on top of it.
+        interactive &&
+          "transition-colors hover:bg-muted/80 dark:hover:bg-white/[0.07]",
         className,
       )}
     >
       <div className="grid min-w-0 flex-1 items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,12rem)_auto_minmax(0,1fr)]">
         <div className="min-w-0 truncate text-sm font-medium">{identity}</div>
-        <div className="min-w-0">{kind}</div>
+        <div className="inline-flex min-w-0 items-center gap-1.5">
+          {kind}
+          {hint}
+        </div>
         <div className="min-w-0">{description}</div>
       </div>
       {actions ? (

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portStatusPageBrandingSettings is this test's own embedded-postgres port.
@@ -21,13 +22,13 @@ func brandingSettingsPG(t *testing.T) (context.Context, *Service, string) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portStatusPageBrandingSettings, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := "88888888-8888-8888-8888-888888888888"

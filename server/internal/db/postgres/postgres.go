@@ -2092,6 +2092,18 @@ func (s *Service) DeleteCheck(ctx context.Context, uid string) error {
 	return err
 }
 
+// PurgeCheck hard-deletes the check row; every child table that references
+// checks(uid) with on delete cascade goes with it. Used only by the
+// compensating delete for a half-created check (spec 2026-09-10-01).
+func (s *Service) PurgeCheck(ctx context.Context, uid string) error {
+	_, err := s.db.NewDelete().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", uid).
+		Exec(ctx)
+
+	return err
+}
+
 // CheckJob operations
 
 func (s *Service) ListCheckJobsByCheckUID(ctx context.Context, checkUID string) ([]*models.CheckJob, error) {
@@ -4502,6 +4514,24 @@ func (s *Service) ListOrgParametersByKey(ctx context.Context, key string) ([]*mo
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list org parameters by key: %w", err)
+	}
+
+	return params, nil
+}
+
+// ListOrgParameters returns every live parameter owned by one organization,
+// ordered by key.
+func (s *Service) ListOrgParameters(ctx context.Context, orgUID string) ([]*models.Parameter, error) {
+	var params []*models.Parameter
+
+	err := s.db.NewSelect().
+		Model(&params).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("key ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list org parameters: %w", err)
 	}
 
 	return params, nil

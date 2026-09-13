@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { KeyValueRows } from "@/components/ui/key-value-rows";
 import {
   Select,
   SelectContent,
@@ -66,19 +68,37 @@ export interface HttpState {
   // secret field, so the server's PATCH-merge drops any public key missing
   // from the submitted config — see toConfig below).
   jsonPathAssertions: AssertionNode | null;
+  // Request body. Public, round-trips on GET, so no dirty flag: written
+  // whenever non-empty, cleared by emptying the textarea. Deliberately written
+  // even when the method is GET/HEAD (where the editor is hidden) so switching
+  // method to GET and back does not destroy a body the user may still want —
+  // the backend ignores a body on a GET probe.
+  body: string;
+  // Plain (non-secret) request headers. Unlike secretHeaders these come back
+  // on GET, so there is no dirty flag either: an empty editor omits the key,
+  // which is what clears the stored value.
+  headers: { key: string; value: string }[];
 }
+
+// METHODS_WITHOUT_BODY are the verbs whose probe never carries a request body,
+// so the body editor is hidden for them (hidden, not cleared — see HttpState).
+const METHODS_WITHOUT_BODY = ["GET", "HEAD"];
 
 // seedExpectedStatusCodes implements the fromConfig precedence from spec
 // 2026-07-21-02: prefer the new expectedStatusCodes list; else fall back to
 // the legacy single expectedStatus int as one exact chip; else default to
 // the implicit ["200"].
+// The server resolves both spellings of both keys (checkhttp's resolveKey), so
+// a check created through the API/CLI/manifest may well carry the snake_case
+// one; reading only the camelCase spelling seeded the default ["200"], which
+// toConfig then omitted as implicit — silently widening the check's contract.
 function seedExpectedStatusCodes(config: CheckConfig): string[] {
-  const rawCodes = config.expectedStatusCodes;
+  const rawCodes = config.expectedStatusCodes ?? config.expected_status_codes;
   if (Array.isArray(rawCodes) && rawCodes.length > 0) {
     const deduped = dedupeStatusPatterns(rawCodes.map(String));
     if (deduped.length > 0) return deduped;
   }
-  const legacy = config.expectedStatus;
+  const legacy = config.expectedStatus ?? config.expected_status;
   if (legacy !== undefined && legacy !== null && String(legacy) !== "") {
     const deduped = dedupeStatusPatterns([String(legacy)]);
     if (deduped.length > 0) return deduped;
@@ -98,6 +118,16 @@ function seedJsonPathAssertions(config: CheckConfig): AssertionNode | null {
   return raw as AssertionNode;
 }
 
+// seedHeaderRows turns a config header map into editor rows, tolerating a
+// missing or malformed value the same lenient way the rest of the seeding does.
+function seedHeaderRows(raw: unknown): { key: string; value: string }[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  return Object.entries(raw as Record<string, unknown>).map(([key, value]) => ({
+    key,
+    value: value === undefined || value === null ? "" : String(value),
+  }));
+}
+
 function fromConfig(config: CheckConfig): HttpState {
   const rawHeaders = config.secretHeaders;
   const hasHeaders =
@@ -112,8 +142,17 @@ function fromConfig(config: CheckConfig): HttpState {
   // Both keys are only ever stored at their non-default (false) value — see
   // toConfig — so anything other than a literal `false` (absent, true, or a
   // malformed value) means "on", matching the server's default.
-  const verifySsl = config.verifySsl !== false;
-  const followRedirects = config.followRedirects !== false;
+  //
+  // The snake_case fallback is load-bearing, not cosmetic: the server resolves
+  // both spellings (checkhttp's resolveKey), and reading only the camelCase one
+  // seeded `true` for a check stored with `verify_ssl: false`, which toConfig
+  // then omitted as the default — silently turning TLS verification back ON on
+  // the next UI save. Same class of loss as the keys this spec is named after,
+  // except this one weakens a security control.
+  const verifySsl =
+    (config.verifySsl ?? config.verify_ssl) !== false;
+  const followRedirects =
+    (config.followRedirects ?? config.follow_redirects) !== false;
   // Canonical key is snake_case (the server accepts the camelCase alias on
   // read but always re-emits the snake one), so read both and prefer the
   // canonical spelling.
@@ -131,6 +170,8 @@ function fromConfig(config: CheckConfig): HttpState {
     followRedirects,
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
+    body: getConfigField(config, "body"),
+    headers: seedHeaderRows(config.headers),
     // Seeding matters three ways: a legacy row's username is public and comes
     // back, so it round-trips and folds into `basicAuth` on save; a prefill link
     // (`?username=probe`) must submit what it prefilled; and on a deployment
@@ -188,6 +229,15 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
   if (state.jsonPathAssertions) {
     cfg.jsonPathAssertions = state.jsonPathAssertions;
   }
+  // Same omit-to-clear rule as jsonPathAssertions: both are public keys that
+  // round-trip on GET, so writing them only when non-empty is what lets the
+  // user clear them. The body is written regardless of method — see HttpState.
+  if (state.body) cfg.body = state.body;
+  const headerMap: Record<string, string> = {};
+  for (const { key, value } of state.headers) {
+    if (key) headerMap[key] = value;
+  }
+  if (Object.keys(headerMap).length > 0) cfg.headers = headerMap;
   const errors: FieldErrors = [];
   if (!state.url) errors.push({ name: "url", message: "URL is required" });
   // Invalid chips block save with a field-scoped error, the same mechanism
@@ -489,6 +539,53 @@ export function HttpOptionsFields({
           {t("http.captureFailingResponseHelp")}
         </p>
       )}
+      {!METHODS_WITHOUT_BODY.includes(state.method) && (
+        <div className="space-y-2 border-t pt-3">
+          <div>
+            <Label htmlFor="http-body">
+              {t("http.requestBody", "Request body")}
+            </Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t(
+                "http.requestBodyDescription",
+                "Sent as-is. Set a Content-Type header to match (e.g. application/json).",
+              )}
+            </p>
+          </div>
+          <Textarea
+            id="http-body"
+            rows={4}
+            value={state.body}
+            onChange={(e) => onChange({ ...state, body: e.target.value })}
+            className="font-mono text-xs"
+            data-testid="check-http-body-input"
+          />
+        </div>
+      )}
+      <div className="space-y-2 border-t pt-3">
+        <div>
+          <Label>{t("http.requestHeaders", "Request headers")}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t(
+              "http.requestHeadersDescription",
+              "Plain headers, stored and shown in clear. Put API keys and tokens in Secret headers instead.",
+            )}
+          </p>
+        </div>
+        <KeyValueRows
+          rows={state.headers}
+          onChange={(headers) => onChange({ ...state, headers })}
+          addLabel={t("http.addRequestHeader", "Add header")}
+          keyPlaceholder="Header-Name"
+          valuePlaceholder="value"
+          removeLabel={(key) =>
+            t("http.removeRequestHeader", "Remove {{header}}", {
+              header: key || "header",
+            })
+          }
+          testIdPrefix="request-header"
+        />
+      </div>
       <div className="space-y-2 border-t pt-3">
         <div>
           <Label>{t("jsonAssertions")}</Label>
@@ -521,11 +618,42 @@ export function httpOptionsSummary(state: HttpState): {
   if (!state.followRedirects) parts.push("redirects not followed");
   if (state.captureFailureResponse) parts.push("failure response captured");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
+  if (state.body) parts.push("request body");
+  const headerCount = state.headers.filter((h) => h.key).length;
+  if (headerCount > 0)
+    parts.push(`${headerCount} header${headerCount === 1 ? "" : "s"}`);
   return { text: parts.join(" · "), customized: parts.length > 0 };
 }
 
 export const httpModule: CheckTypeModule<HttpState> = {
   types: ["http"],
+  // Both spellings of every aliased key: the server's resolveKey accepts the
+  // snake_case form, so declaring only the camelCase one would make the
+  // passthrough resurrect a snake-spelled value the form just cleared.
+  // Deliberately NOT listed (and therefore preserved untouched): body_expect,
+  // body_reject, body_pattern, body_pattern_reject, headers_pattern.
+  ownedKeys: [
+    "url",
+    "method",
+    "expectedStatus",
+    "expected_status",
+    "expectedStatusCodes",
+    "expected_status_codes",
+    "username",
+    "password",
+    "basicAuth",
+    "secretHeaders",
+    "verifySsl",
+    "verify_ssl",
+    "followRedirects",
+    "follow_redirects",
+    "capture_failure_response",
+    "captureFailureResponse",
+    "jsonPathAssertions",
+    "json_path_assertions",
+    "body",
+    "headers",
+  ],
   fromConfig,
   toConfig,
   Fields,

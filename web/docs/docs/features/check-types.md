@@ -1174,7 +1174,10 @@ but it isn't this one.
 
 ### JavaScript {#javascript}
 
-Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
+Custom monitoring scripts with arbitrary logic, run against a real sandboxed
+JS engine once per execution: log in through a form and hold a session,
+chain a bearer-token login into an authenticated call, or aggregate several
+checks into one result.
 
 Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals).
 
@@ -1183,6 +1186,15 @@ Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals)
 - Custom business logic validation
 - Conditional checks based on time or state
 - Aggregating multiple checks into one
+- **Login flow verification** — a `js` check can drive a real headless-Chrome
+  page (fill the form, click, assert on what rendered) through its `browser`
+  API; a script that opens one runs at the browser check's `1m` floor
+
+**Where a credential goes, how `http` and `http.session()` work, the full
+`solidping.*`/`base64`/`browser`/`console` API, and full tested examples
+(bearer-token chaining, a cookie-jar login, a real-browser form login, Basic
+auth, cleanup workflows, sub-check aggregation) are on their own page:**
+[**JavaScript checks →**](./javascript-checks.md)
 
 ### Browser {#browser}
 
@@ -1194,9 +1206,13 @@ seconds, so faster periods would occupy a monitoring slot continuously. See
 
 **Use cases:**
 - Single-page application monitoring
-- Login flow verification
 - Visual regression detection
 - JavaScript-rendered content checks
+
+A browser check **loads a page**: navigate, optionally wait for a selector,
+optionally match a keyword. It has no click and no typing. To *drive* the page
+— fill a form, click, assert on the result — write a
+[`js` check and use its `browser` API](./javascript-checks.md#browser).
 
 #### Where Chrome comes from
 
@@ -1230,6 +1246,13 @@ Your monitored site is not implicated by your browser sidecar being down, and
 SolidPing will not raise a false incident for it. The `browser` capability
 (below) also drops on the next worker heartbeat.
 
+The same sidecar now serves `js` checks too: a script's
+[`browser` API](./javascript-checks.md#browser) opens its page through this
+endpoint, under the same slot cap and the same isolated context. Give every
+region that runs `js` checks one, or pin browser-using scripts to regions whose
+capability list shows `browser` — a `js` check is scheduled as a `js` check and
+is not routed to a browser-capable region for you.
+
 **2. Local Chrome binary (fallback).** With no `cdp_url` configured, SolidPing
 executes a locally installed Chrome/Chromium: `chrome_path` if set, otherwise
 the usual binary names (`google-chrome`, `chromium`, `chromium-browser`, …).
@@ -1239,10 +1262,11 @@ browser.
 
 #### Concurrency
 
-At most **4 browser checks run at a time per worker** — a browser execution
+At most **4 browser executions run at a time per worker** — a browser execution
 costs orders of magnitude more than a network probe, and an unbounded pool of
 tabs would starve the sidecar. A fifth execution waits for a slot inside its own
-timeout budget and reports a timeout if none frees up. Space browser checks out,
+timeout budget and reports a timeout if none frees up. A `js` script holding a
+page counts as one of the four, for as long as it holds it. Space browser checks out,
 or add workers, rather than lowering their period.
 
 #### Region capability

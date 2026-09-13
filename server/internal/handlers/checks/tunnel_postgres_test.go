@@ -8,6 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portTunnelPG is distinct from every other embedded-Postgres port claimed in
@@ -39,13 +40,13 @@ func TestListChecksByTunnelCheckUID_Postgres(t *testing.T) {
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("tunnel-pg-org", "")

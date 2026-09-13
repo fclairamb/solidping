@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/migrationguard"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portMigrationGuard is distinct from every other _postgres_test.go file's
@@ -43,7 +44,7 @@ func TestMigrationGuardModePairPG(t *testing.T) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portMigrationGuard, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = svc.Close() })
 
@@ -80,7 +81,7 @@ func TestRepairMigrationChecksumsPG(t *testing.T) {
 
 	svc, err := New(ctx, &Config{Embedded: true, Port: portMigrationGuard + 1, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = svc.Close() })
 

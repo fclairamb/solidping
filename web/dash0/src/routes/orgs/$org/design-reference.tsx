@@ -86,7 +86,7 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
-import { DependencyWarnings } from "@/components/checks/dependency-warnings";
+import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
 import {
   DependencyEmptyRow,
   DependencyKindBadge,
@@ -194,6 +194,8 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { CodeTextarea } from "@/components/ui/code-textarea";
+import { KeyValueRows, type KeyValueRow } from "@/components/ui/key-value-rows";
+import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";
 import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { AvailabilityStrip } from "@/components/ui/availability-strip";
 import { useIsDarkTheme } from "@/hooks/use-is-dark-theme";
@@ -221,7 +223,9 @@ const TIME_AGO_DEMO_DATE = new Date(Date.now() - 46 * 60_000).toISOString();
 const LAST_SEEN_SESSION_DEMO_DATE = new Date(
   Date.now() - 21 * 24 * 60 * 60_000,
 ).toISOString();
-const LAST_SEEN_TOKEN_DEMO_DATE = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+const LAST_SEEN_TOKEN_DEMO_DATE = new Date(
+  Date.now() - 2 * 60 * 60_000,
+).toISOString();
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -2160,8 +2164,8 @@ function ButtonsBadgesSection() {
             Last seen
           </code>{" "}
           column (spec 2026-09-09-05). Two independent, nullable timestamps —
-          dashboard presence and credential (PAT/OAuth) activity — collapse
-          into one headline value via{" "}
+          dashboard presence and credential (PAT/OAuth) activity — collapse into
+          one headline value via{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             lastSeenFor()
           </code>{" "}
@@ -2183,11 +2187,11 @@ function ButtonsBadgesSection() {
             KeyRound
           </code>{" "}
           for a token) names which channel won, and its Tooltip lists{" "}
-          <em>both</em> channels' own relative times — the point of keeping
-          the two API fields apart is exactly that a departed employee whose
+          <em>both</em> channels' own relative times — the point of keeping the
+          two API fields apart is exactly that a departed employee whose
           automation is still running should look like "no dashboard since
-          March, token used last night," not "active." No icon renders when
-          both timestamps are null.
+          March, token used last night," not "active." No icon renders when both
+          timestamps are null.
         </p>
         <ExampleRow
           preview={
@@ -2211,8 +2215,7 @@ function ButtonsBadgesSection() {
                 </TooltipTrigger>
                 <TooltipContent>
                   <div>
-                    Dashboard ·{" "}
-                    <TimeAgo date={LAST_SEEN_SESSION_DEMO_DATE} />
+                    Dashboard · <TimeAgo date={LAST_SEEN_SESSION_DEMO_DATE} />
                   </div>
                   <div>
                     API token · <TimeAgo date={LAST_SEEN_TOKEN_DEMO_DATE} />
@@ -2453,6 +2456,16 @@ function FormsSection() {
             </div>
           }
           importLine={`import { Textarea } from "@/components/ui/textarea";`}
+        />
+
+        <ExampleRow
+          preview={<SecretKeyValueRowsExample />}
+          importLine={`import { SecretKeyValueRows } from "@/components/ui/secret-key-value-rows";\n\nconst [rows, setRows] = useState<KeyValueRow[]>([]);\nconst [dirty, setDirty] = useState(false);\n\n<SecretKeyValueRows\n  label="Secrets"\n  description="Stored encrypted, never shown again."\n  rows={rows}\n  dirty={dirty}\n  onChange={(next, nextDirty) => { setRows(next); setDirty(nextDirty); }}\n  stored={configPrivateKeys?.includes("secrets")}\n  storedLabel={t("http.encryptedEnterNewValues")}\n  addLabel="Add secret"\n  testIdPrefix="js-secret"\n/>\n\n{/* Untouched (dirty === false) ⇒ omit the key from the submitted\n    config ⇒ the server preserves the stored values. */}`}
+        />
+
+        <ExampleRow
+          preview={<KeyValueRowsExample />}
+          importLine={`import { KeyValueRows } from "@/components/ui/key-value-rows";\n\nconst [rows, setRows] = useState<KeyValueRow[]>([]);\n\n<KeyValueRows\n  rows={rows}\n  onChange={setRows}\n  addLabel="Add header"\n  keyPlaceholder="Header-Name"\n  valuePlaceholder="value"\n  removeLabel={(key) => \`Remove \${key}\`}\n  testIdPrefix="request-header"\n/>\n\n{/* secretValues renders the value inputs as password fields */}`}
         />
 
         <ExampleRow
@@ -2765,6 +2778,68 @@ function ImageFieldExample() {
       }
       importLine={`const fileInput = useRef<HTMLInputElement>(null);\n// isUploadedLogoPath(value) === !value.startsWith("http") && value !== ""\n\n<div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">\n  {currentUrl ? <img src={currentUrl} alt="" className="h-full w-full object-contain" /> : <Building2 className="h-6 w-6 text-muted-foreground" />}\n</div>\n{showUrlField ? (\n  <Input type="url" value={urlDraft} onChange={...} className="min-w-0 flex-1" />\n) : (\n  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">\n    <Badge variant="secondary">Uploaded file</Badge>\n    <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={() => setShowUrlField(true)}>Use an external URL instead</Button>\n  </div>\n)}\n<input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="hidden" onChange={...} />\n<Button type="button" variant="outline" onClick={() => fileInput.current?.click()}>\n  <Upload className="mr-2 h-4 w-4" />\n  {currentUrl ? "Replace" : "Upload"}\n</Button>\n<Button type="button" variant="ghost" size="icon" className="text-destructive" aria-label="Remove image">\n  <Trash2 className="h-4 w-4" />\n</Button>`}
     />
+  );
+}
+
+// KeyValueRowsExample showcases the shared key/value row editor used for HTTP
+// request headers, secret headers and other Record<string, string> config keys.
+function KeyValueRowsExample() {
+  const [rows, setRows] = useState<KeyValueRow[]>([
+    { key: "Content-Type", value: "application/json" },
+  ]);
+  return (
+    <div className="w-full max-w-sm space-y-2">
+      <Label>Key / value rows</Label>
+      <KeyValueRows
+        rows={rows}
+        onChange={setRows}
+        addLabel="Add header"
+        keyPlaceholder="Header-Name"
+        valuePlaceholder="value"
+        removeLabel={(key) => `Remove ${key || "header"}`}
+        testIdPrefix="dr-key-value"
+      />
+      <p className="text-xs text-muted-foreground">
+        Stacks key over value below <code>sm</code> so it never scrolls
+        horizontally on a phone. Pass <code>secretValues</code> for masked
+        values.
+      </p>
+    </div>
+  );
+}
+
+// SecretKeyValueRowsExample showcases the WRITE-ONLY variant: a stored-value
+// placeholder plus the dirty rule that keeps an untouched section out of the
+// submitted config. Use it for any encrypted map key (a JS check's `secrets`);
+// plain KeyValueRows stays right for a public map.
+function SecretKeyValueRowsExample() {
+  const [rows, setRows] = useState<KeyValueRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  return (
+    <div className="w-full max-w-sm space-y-2">
+      <SecretKeyValueRows
+        label="Secrets (encrypted)"
+        description="Stored encrypted, never returned on a read."
+        rows={rows}
+        dirty={dirty}
+        onChange={(next, nextDirty) => {
+          setRows(next);
+          setDirty(nextDirty);
+        }}
+        stored
+        storedLabel="(encrypted — enter new values to replace)"
+        addLabel="Add secret"
+        keyPlaceholder="PASSWORD"
+        valuePlaceholder="value"
+        removeLabel={(key) => `Remove ${key || "secret"}`}
+        testIdPrefix="dr-secret-key-value"
+      />
+      <p className="text-xs text-muted-foreground">
+        Clicking <em>Add</em> does not dirty the section; typing or removing a
+        row does. That is what stops a stray click plus a save from wiping a
+        stored credential.
+      </p>
+    </div>
   );
 }
 
@@ -3495,7 +3570,7 @@ function MutedInlineExternalLinkSection() {
     <Section
       id="muted-inline-external-link"
       title="Muted inline external link"
-      description="A quiet outbound link inline in muted text — for a footer or aside where the link is a courtesy, not a call to action, so it must not compete with the page's real actions. Keeps text-muted-foreground even on hover, gains underline-offset-4 hover:underline for the click affordance, and always carries target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot; (dash0's standard for any link leaving the app). Used by the login page footer's brand and changelog links."
+      description='A quiet outbound link inline in muted text — for a footer or aside where the link is a courtesy, not a call to action, so it must not compete with the page&apos;s real actions. Keeps text-muted-foreground even on hover, gains underline-offset-4 hover:underline for the click affordance, and always carries target="_blank" rel="noopener noreferrer" (dash0&apos;s standard for any link leaving the app). Used by the login page footer&apos;s brand and changelog links.'
     >
       <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
         <div className="text-center text-xs text-muted-foreground">
@@ -3789,10 +3864,10 @@ function FeedbackSection() {
           incident still open while every check it is linked to has recovered.
           The same amber{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
-          Alert: nothing is broken, the remedy is one click on the entry, and
-          it renders nothing when every page is clean. It is mounted on the
-          checks list (where an operator lands when the wallboard goes amber)
-          and on the status page&apos;s own detail route.
+          Alert: nothing is broken, the remedy is one click on the entry, and it
+          renders nothing when every page is clean. It is mounted on the checks
+          list (where an operator lands when the wallboard goes amber) and on
+          the status page&apos;s own detail route.
         </p>
         <ExampleRow
           preview={
@@ -3830,40 +3905,86 @@ function FeedbackSection() {
           importLine={`import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";`}
         />
 
-        <h3 className="text-sm font-medium">Configuration lint banner</h3>
+        <h3 className="text-sm font-medium">Dependency warnings</h3>
         <p className="text-sm text-muted-foreground">
           A <em>soft</em> lint on a configuration that is legal but will behave
           in a way the numbers on screen do not suggest — here, a check whose
           confirmation window is shorter than the time its hard parent needs to
-          notice the same outage. Amber{" "}
+          notice the same outage. It used to be a stacked amber{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
-          Alert, never destructive and never a blocking validation: the runtime
-          already handles the case, so the banner explains rather than forbids.
-          It renders nothing when the API returns no warnings, so a card can
-          mount it unconditionally.
+          Alert per warning, mounted above the Dependencies card's row list —
+          proportionate for one warning, but a check with five hard parents
+          sharing the same lint produced five near-identical banners before the
+          reader ever reached the row they described (spec 2026-09-10-02). Each
+          warning is keyed by{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            dependencyUid
+          </code>{" "}
+          and belongs to exactly one row of the "Depends on" list, so it now
+          renders <em>inline on that row</em>, right after the kind badge: a
+          small amber{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Info</code>{" "}
+          glyph (same amber family as the old Alert, so the semantic colour is
+          unchanged) that opens the explanation in a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Popover</code>{" "}
+          on click or tap — not a hover-only{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Tooltip</code>,
+          since the explanation has to be reachable on touch too. A row with no
+          warning renders no hint at all; there is no longer a card-level banner
+          to mount unconditionally.
         </p>
         <ExampleRow
           preview={
-            <div className="w-full max-w-md">
-              <DependencyWarnings
-                warnings={[
-                  {
-                    code: "CONFIRMATION_MARGIN_TOO_SHORT",
-                    dependencyUid: "edge-1",
-                    parentCheck: {
-                      uid: "p1",
-                      slug: "rabbitmq-aws",
-                      name: "RabbitMQ (AWS)",
-                    },
-                    childConfirmationSeconds: 120,
-                    recommendedConfirmationSeconds: 195,
-                    message: "",
-                  },
-                ]}
-              />
+            <div className="w-full">
+              <DependencyRowList>
+                <DependencyRow
+                  interactive
+                  identity={
+                    <span className="font-medium hover:underline">
+                      rabbitmq-aws
+                    </span>
+                  }
+                  kind={<DependencyKindBadge kind="hard" />}
+                  hint={
+                    <DependencyWarningHint
+                      warning={{
+                        code: "CONFIRMATION_MARGIN_TOO_SHORT",
+                        dependencyUid: "edge-1",
+                        parentCheck: {
+                          uid: "p1",
+                          slug: "rabbitmq-aws",
+                          name: "RabbitMQ (AWS)",
+                        },
+                        childConfirmationSeconds: 120,
+                        recommendedConfirmationSeconds: 195,
+                        message: "",
+                      }}
+                    />
+                  }
+                  description={
+                    <DependencyRowText>shares the database</DependencyRowText>
+                  }
+                />
+                {/* Negative control: a well-margined (or soft) parent gets no
+                    hint at all — the glyph is per-row, not per-list. */}
+                <DependencyRow
+                  interactive
+                  identity={
+                    <span className="font-medium hover:underline">
+                      cdn.edge
+                    </span>
+                  }
+                  kind={<DependencyKindBadge kind="soft" />}
+                  description={
+                    <DependencyRowText>
+                      informational only — paging still fires
+                    </DependencyRowText>
+                  }
+                />
+              </DependencyRowList>
             </div>
           }
-          importLine={`import { DependencyWarnings } from "@/components/checks/dependency-warnings";`}
+          importLine={`import { DependencyWarningHint } from "@/components/checks/dependency-warnings";\nimport { DependencyRow, DependencyRowList } from "@/components/checks/dependency-row";\n\n<DependencyRowList>\n  <DependencyRow\n    kind={<DependencyKindBadge kind="hard" />}\n    hint={warning ? <DependencyWarningHint warning={warning} /> : null}\n    …\n  />\n</DependencyRowList>`}
         />
 
         <h3 className="text-sm font-medium">Quota meter (pending draft)</h3>
@@ -4725,7 +4846,7 @@ function DependencyRowSection() {
     <Section
       id="dependency-row"
       title="Dependency row"
-      description="The canonical fix for a list of stacked, same-background items: one bordered container with divide-y rows, tinted a step off the panel behind it, instead of N separately-outlined rounded-md boxes floating on the page background. Columns are fixed — identity · kind · description · actions — so the eye can scan down each one; below sm the grid collapses to a single column and the description wraps under the identity. Rows keep a min-h-10 (40px) touch target. Built for the check Dependencies card and the check form's Dependencies section; reuse it for any short list of relationships."
+      description="The canonical fix for a list of stacked, same-background items: one bordered container with divide-y rows, tinted a step off the panel behind it (bg-muted/60, dark:bg-white/[0.035] — strong enough to read as an inset panel on both themes, not just the divide-y hairlines a flatter bg-muted/30 left on dark), instead of N separately-outlined rounded-md boxes floating on the page background. Columns are fixed — identity · kind · description · actions — so the eye can scan down each one; below sm the grid collapses to a single column and the description wraps under the identity. An optional hint slot sits right after kind, for a small per-row glyph like the dependency confirmation-margin warning (see the Dependency warnings section above) — it belongs on the one row it concerns, not stacked above the whole list. Rows keep a min-h-10 (40px) touch target. Built for the check Dependencies card and the check form's Dependencies section; reuse it for any short list of relationships."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Read-only rows (view surface)</h3>
@@ -4750,7 +4871,9 @@ function DependencyRowSection() {
                 <DependencyRow
                   interactive
                   identity={
-                    <span className="font-medium hover:underline">cdn.edge</span>
+                    <span className="font-medium hover:underline">
+                      cdn.edge
+                    </span>
                   }
                   kind={<DependencyKindBadge kind="soft" />}
                   description={
@@ -6063,9 +6186,9 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
         }
       />
       <p className="text-xs text-muted-foreground">
-        And the finish line — every step done. The emerald→primary strip is
-        the card&apos;s one celebratory moment; note that the progress bar
-        goes emerald at 5/5 rather than the destructive red{" "}
+        And the finish line — every step done. The emerald→primary strip is the
+        card&apos;s one celebratory moment; note that the progress bar goes
+        emerald at 5/5 rather than the destructive red{" "}
         <code className="font-mono">Progress</code> would pick by default, and
         that five done rows read as a completed set because nothing is struck
         through.
@@ -6088,7 +6211,7 @@ import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-check
           </div>
         }
         importLine={
-          '<OnboardingChecklistCard org={org} steps={allDoneSteps} allSet onDismiss={hide} />'
+          "<OnboardingChecklistCard org={org} steps={allDoneSteps} allSet onDismiss={hide} />"
         }
       />
       <CodeSnippet code={snippet} />

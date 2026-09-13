@@ -47,8 +47,60 @@ type Diagnostics struct {
 	NetworkFailure *NetworkFailure `json:"networkFailure,omitempty"`
 }
 
-// Screenshot is a PNG capture of the page a failing browser check was looking
-// at, taken before the browser context is disposed.
+// ImageFormat names the encoding of a captured image.
+//
+// It exists because the format used to be folklore: the capture was taken as
+// JPEG, stored in a field called `PNG`, declared to the attachment store as
+// `image/png`, and refused — see spec 2026-09-13-01. The format is now a value
+// that travels WITH the bytes, so no consumer down the chain has to guess and
+// none of them can disagree.
+//
+// The three members are exactly the formats Chrome's
+// `Page.captureScreenshot` can emit and the attachment store is willing to
+// sniff. Adding a fourth means teaching both.
+type ImageFormat string
+
+// The image formats a capture may be in.
+const (
+	ImageFormatPNG  ImageFormat = "png"
+	ImageFormatJPEG ImageFormat = "jpeg"
+	ImageFormatWebP ImageFormat = "webp"
+)
+
+// MIME is the media type for the format, or "" for one this build does not
+// know. Callers treat the empty string as "do not declare a type" rather than
+// as a default — a wrong Content-Type is worse than none, because the
+// attachment store sniffs anyway and the file handler serves with `nosniff`.
+func (f ImageFormat) MIME() string {
+	switch f {
+	case ImageFormatPNG:
+		return "image/png"
+	case ImageFormatJPEG:
+		return "image/jpeg"
+	case ImageFormatWebP:
+		return "image/webp"
+	default:
+		return ""
+	}
+}
+
+// Extension is the filename suffix (with the dot) for the format, or "" for an
+// unknown one.
+func (f ImageFormat) Extension() string {
+	switch f {
+	case ImageFormatPNG:
+		return ".png"
+	case ImageFormatJPEG:
+		return ".jpg"
+	case ImageFormatWebP:
+		return ".webp"
+	default:
+		return ""
+	}
+}
+
+// Screenshot is an image capture of the page a failing browser check was
+// looking at, taken before the browser context is disposed.
 //
 // HONESTY ABOUT WHAT THIS IS: it is what the page looked like a moment AFTER
 // the check decided the target was unhealthy, not the frame at the instant of
@@ -58,15 +110,22 @@ type Diagnostics struct {
 //
 // THE BYTES NEVER CROSS THE CONTROL CHANNEL. Diagnostics is serialized onto
 // the agent WebSocket result frame (internal/agents/protocol.go), which is
-// JSON: a megabyte PNG would become a multi-megabyte base64 blob on the socket
-// every agent uses to claim work. PNG is therefore `json:"-"` — a deported
-// agent uploads its bytes out-of-band to POST /api/v1/agent/attachments and
-// advertises only the marker fields below. The IN-PROCESS worker path keeps
-// the bytes in memory and never serializes them at all, which is why the field
-// works there with no wire representation.
+// JSON: a megabyte capture would become a multi-megabyte base64 blob on the
+// socket every agent uses to claim work. Image is therefore `json:"-"` — a
+// deported agent uploads its bytes out-of-band to POST
+// /api/v1/agent/attachments and advertises only the marker fields below. The
+// IN-PROCESS worker path keeps the bytes in memory and never serializes them
+// at all, which is why the field works there with no wire representation.
+//
+// FORMAT IS SERIALIZED even though the bytes are not: the deported agent's
+// marker frame has to tell the server what is coming, so the server is never
+// left guessing what it asked for.
 type Screenshot struct {
-	// PNG is the raw image. NEVER SERIALIZED — see the type doc.
-	PNG []byte `json:"-"`
+	// Image is the raw encoded image. NEVER SERIALIZED — see the type doc.
+	Image []byte `json:"-"`
+	// Format is the encoding Image is in. It rides the wire alongside the
+	// marker fields precisely because Image does not.
+	Format ImageFormat `json:"format,omitempty"`
 	// CapturedAt is when the screenshot was taken.
 	CapturedAt time.Time `json:"capturedAt,omitzero"`
 	// Available is the agent-side MARKER: "I hold a capture for this result".

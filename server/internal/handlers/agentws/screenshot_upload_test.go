@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,10 +131,11 @@ func (e *captureEnv) browserCheck(slug string) *models.Check {
 	return check
 }
 
-// capturedPNG is a real (well, real-enough) PNG: the magic bytes matter because
-// the upload endpoint SNIFFS the content type rather than believing it.
-func capturedPNG(marker string) []byte {
-	return append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte(marker)...)
+// capturedImage is a real-enough WebP — the format the capture path actually
+// produces (spec 2026-09-13-01). The magic bytes matter because the upload
+// endpoint SNIFFS the content type rather than believing the header.
+func capturedImage(marker string) []byte {
+	return append([]byte("RIFF\x00\x00\x00\x00WEBP"), []byte(marker)...)
 }
 
 func downWithCapture(marker string) *backend.SubmitResultRequest {
@@ -143,7 +145,8 @@ func downWithCapture(marker string) *backend.SubmitResultRequest {
 		Output:   map[string]any{checkerdef.OutputKeyError: "keyword not found"},
 		Diagnostics: &checkerdef.Diagnostics{
 			Screenshot: &checkerdef.Screenshot{
-				PNG:        capturedPNG(marker),
+				Image:      capturedImage(marker),
+				Format:     checkerdef.ImageFormatWebP,
 				CapturedAt: time.Now().UTC(),
 			},
 		},
@@ -234,14 +237,18 @@ func TestAgentCaptureReachesTheIncident(t *testing.T) {
 	list := waitForAttachment(t, env, env.org.UID, incident.UID)
 	r.Len(list, 1)
 	r.Equal(attachments.KindScreenshot, list[0].Kind)
-	r.Equal("image/png", list[0].MimeType)
-	r.EqualValues(len(capturedPNG("onset")), list[0].Size)
+	// The stored type is the SNIFFED one, and the deported-agent path is the
+	// one that used to hardcode image/png on the upload header.
+	r.Equal("image/webp", list[0].MimeType)
+	r.EqualValues(len(capturedImage("onset")), list[0].Size)
 
 	// The bytes really are the agent's capture, fetched back out of storage.
 	stored, err := env.dbSvc.GetFile(ctx, env.org.UID, list[0].UID)
 	r.NoError(err)
 	r.NotNil(stored.Topic)
 	r.Equal(attachments.IncidentScreenshotTopic(incident.UID), *stored.Topic)
+	r.True(strings.HasSuffix(stored.Name, ".webp"),
+		"the stored filename must carry the sniffed type's extension, got %q", stored.Name)
 }
 
 // TestIncidentOpensAfterTheAgentDisconnects is the spec's "agent disconnected
@@ -325,7 +332,7 @@ func TestIncidentOpensWhenTheCaptureIsGone(t *testing.T) {
 
 	// A marker naming a capture this agent never held.
 	req := downWithCapture("lost")
-	req.Diagnostics.Screenshot.PNG = nil
+	req.Diagnostics.Screenshot.Image = nil
 	req.Diagnostics.Screenshot.Available = true
 	req.Diagnostics.Screenshot.CaptureID = "capture-nobody-holds"
 

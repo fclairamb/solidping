@@ -123,12 +123,38 @@ func runSourceRoundTrip(t *testing.T, harness *convertHarness, source string, bo
 	r.Equal(preview.Converted, applied.Created)
 	r.Equal(applied.Created, harness.countChecks(t))
 
-	// 3. Re-importing the same payload is idempotent: updates, no new checks.
+	// 3. Re-importing the same payload is idempotent — and since spec
+	// 2026-09-11-04 that shows up as `unchanged` rather than as a full sweep
+	// of updates, which is what makes "nothing to do" distinguishable from
+	// "everything rewritten".
+	//
+	// The one exception is a payload that INLINES a credential (a Better Stack
+	// basic-auth monitor, an UptimeRobot custom header): the stored value lives
+	// in an encrypted column a dry run must not open, so equality cannot be
+	// PROVEN and the entry is reported as a masked update rather than claimed
+	// equal. Asserted precisely below — every such entry must carry only masked
+	// changes, so a genuinely moving field can never hide behind this
+	// exception.
 	again := decodeConvert(t, harness.post(t, source, false, body))
 	r.Empty(again.Errors)
 	r.Equal(0, again.Created, "re-import must not create duplicates")
-	r.Equal(applied.Created, again.Updated)
+	r.Equal(applied.Created, again.Updated+again.Unchanged)
 	r.Equal(applied.Created, harness.countChecks(t))
+
+	for i := range again.Plan {
+		entry := &again.Plan[i]
+		if entry.Action != checks.ApplyActionUpdate {
+			continue
+		}
+
+		r.NotEmptyf(entry.Changes, "%s reports an update with no field diff", entry.Slug)
+
+		for _, change := range entry.Changes {
+			r.Equalf("***", change.From,
+				"%s: %s moved on a re-import of an identical payload", entry.Slug, change.Field)
+			r.Equal("***", change.To)
+		}
+	}
 
 	return applied
 }

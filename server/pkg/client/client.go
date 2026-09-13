@@ -770,6 +770,35 @@ func (c *SolidPingClient) ExportChecks(ctx context.Context, org string) (json.Ra
 	return doc, nil
 }
 
+// ValidateChecks posts a body to POST /checks/validate. It is hand-written
+// rather than taken from the generated client for one reason: the endpoint is
+// content-negotiated, so a single-check definition and a whole config-as-code
+// document travel to the same route with different bodies, different response
+// shapes and (for `plan`) a query flag only one of them understands. Declaring
+// that flag on the generated operation would put a params argument on every
+// caller of a single-check validate, for something single-check validate has no
+// use for.
+//
+// body is sent unmodified and contentType selects the server's parse path
+// (JSON, or YAML for a hand-authored manifest). plan asks for the reconcile
+// plan alongside the issues; it is admin-only and meaningful only for a
+// document body.
+func (c *SolidPingClient) ValidateChecks(
+	ctx context.Context, org string, body []byte, contentType string, plan bool,
+) (json.RawMessage, error) {
+	path := fmt.Sprintf("/api/v1/orgs/%s/checks/validate", org)
+	if plan {
+		path += "?plan=true"
+	}
+
+	var result json.RawMessage
+	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // ImportChecks posts an export document to the import endpoint. dryRun
 // previews without mutating. contentType selects the server's parse path
 // (JSON or YAML) and is sent verbatim as the request Content-Type; the body

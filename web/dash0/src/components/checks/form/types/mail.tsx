@@ -71,6 +71,7 @@ export interface SmtpState {
 
 export const smtpModule: CheckTypeModule<SmtpState> = {
   types: ["smtp"],
+  ownedKeys: ["host", "port", "starttls", "tls_verify", "check_auth", "ehlo_domain", "expect_greeting", "username", "password", "send_email", "mail_from", "delivery_to", "delivery_check_uid"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -312,6 +313,7 @@ export interface MailboxState {
 
 export const mailboxModule: CheckTypeModule<MailboxState> = {
   types: ["pop3", "imap"],
+  ownedKeys: ["host", "port", "tls", "starttls", "username", "password"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),

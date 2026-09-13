@@ -16,6 +16,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // Distinct from every other embedded port claimed in this directory (the
@@ -40,12 +41,12 @@ func TestDEKColdReloadPostgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portDEKColdReload, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("acme-dek", "Acme DEK")

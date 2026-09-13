@@ -25,6 +25,7 @@ export interface HostPortState {
 
 export const tcpModule: CheckTypeModule<HostPortState> = {
   types: ["tcp", "udp"],
+  ownedKeys: ["host", "port"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -116,6 +117,7 @@ const hostPortUserPassFromConfig = (
 
 export const sshModule: CheckTypeModule<HostPortUserPassState> = {
   types: ["ssh"],
+  ownedKeys: ["host", "port", "username", "password", "private_key", "expected_fingerprint"],
   fromConfig: hostPortUserPassFromConfig,
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -264,6 +266,7 @@ function SshFields({
 // ── SFTP ──
 export const sftpModule: CheckTypeModule<HostPortUserPassState> = {
   types: ["sftp"],
+  ownedKeys: ["host", "port", "username", "password", "private_key", "expected_fingerprint"],
   fromConfig: hostPortUserPassFromConfig,
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -365,6 +368,7 @@ function SftpFields({
 // ── FTP ──
 export const ftpModule: CheckTypeModule<HostPortUserPassState> = {
   types: ["ftp"],
+  ownedKeys: ["host", "port", "username", "password", "private_key", "expected_fingerprint"],
   fromConfig: hostPortUserPassFromConfig,
   toConfig: (state) => {
     const cfg: CheckConfig = {};
@@ -439,6 +443,7 @@ export interface IcmpState {
 
 export const icmpModule: CheckTypeModule<IcmpState> = {
   types: ["icmp"],
+  ownedKeys: ["host"],
   fromConfig: (config) => ({ host: getConfigField(config, "host") }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};

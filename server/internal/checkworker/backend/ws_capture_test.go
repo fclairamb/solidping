@@ -23,10 +23,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// pngMarker is deliberately ASCII so its ABSENCE from the wire can be asserted
-// both raw and base64-encoded — a JSON encoder that ever learned to serialize
-// the bytes would produce one or the other.
-const pngMarker = "SCREENSHOT-BYTES-MUST-NOT-SHIP"
+// imageMarker is deliberately ASCII so its ABSENCE from the wire can be
+// asserted both raw and base64-encoded — a JSON encoder that ever learned to
+// serialize the bytes would produce one or the other.
+const imageMarker = "SCREENSHOT-BYTES-MUST-NOT-SHIP"
 
 // bodyMarker plays the same role for the positive control: it rides
 // failureResponse, which DOES serialize, so its presence proves the frame was
@@ -35,8 +35,10 @@ const bodyMarker = "FAILURE-BODY-MUST-SHIP"
 
 const uploadTopic = "incidents/inc-1/screenshot"
 
-func capturePNG() []byte {
-	return append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte(pngMarker)...)
+// captureImage is a RIFF/WEBP-prefixed blob, matching what the real capture
+// path now produces (spec 2026-09-13-01).
+func captureImage() []byte {
+	return append([]byte("RIFF\x00\x00\x00\x00WEBP"), []byte(imageMarker)...)
 }
 
 // diagnosticsWithCapture is what a failing browser check hands the worker: a
@@ -49,7 +51,8 @@ func diagnosticsWithCapture() *checkerdef.Diagnostics {
 			Body:       bodyMarker,
 		},
 		Screenshot: &checkerdef.Screenshot{
-			PNG:        capturePNG(),
+			Image:      captureImage(),
+			Format:     checkerdef.ImageFormatWebP,
 			CapturedAt: time.Now().UTC(),
 		},
 	}
@@ -57,12 +60,13 @@ func diagnosticsWithCapture() *checkerdef.Diagnostics {
 
 // uploadRecord is one attachment POST the fake endpoint received.
 type uploadRecord struct {
-	topic     string
-	body      []byte
-	agentUID  string
-	signature string
-	timestamp string
-	nonce     string
+	topic       string
+	body        []byte
+	contentType string
+	agentUID    string
+	signature   string
+	timestamp   string
+	nonce       string
 }
 
 // captureServer is a fake master that speaks BOTH halves of the capture
@@ -109,12 +113,13 @@ func (f *captureServer) serveUpload(writer http.ResponseWriter, req *http.Reques
 
 	f.mu.Lock()
 	f.uploads = append(f.uploads, uploadRecord{
-		topic:     req.URL.Query().Get("topic"),
-		body:      body,
-		agentUID:  req.Header.Get("X-Sp-Agent-Uid"),
-		signature: req.Header.Get("X-Sp-Signature"),
-		timestamp: req.Header.Get("X-Sp-Timestamp"),
-		nonce:     req.Header.Get("X-Sp-Nonce"),
+		topic:       req.URL.Query().Get("topic"),
+		body:        body,
+		contentType: req.Header.Get("Content-Type"),
+		agentUID:    req.Header.Get("X-Sp-Agent-Uid"),
+		signature:   req.Header.Get("X-Sp-Signature"),
+		timestamp:   req.Header.Get("X-Sp-Timestamp"),
+		nonce:       req.Header.Get("X-Sp-Nonce"),
 	})
 	f.mu.Unlock()
 
@@ -302,15 +307,20 @@ func TestResultFrameCarriesMarkerNotBytes(t *testing.T) {
 	r.Contains(raw, `"captureId":"`)
 
 	// THE NEGATIVE: no bytes, in any encoding a JSON encoder could reach for.
-	r.NotContains(raw, pngMarker, "raw PNG bytes must never ride the control channel")
-	r.NotContains(raw, base64.StdEncoding.EncodeToString(capturePNG()),
-		"base64 PNG bytes must never ride the control channel either")
-	r.NotContains(raw, `"png"`)
-	r.NotContains(raw, `"PNG"`)
+	r.NotContains(raw, imageMarker, "raw image bytes must never ride the control channel")
+	r.NotContains(raw, base64.StdEncoding.EncodeToString(captureImage()),
+		"base64 image bytes must never ride the control channel either")
+	r.NotContains(raw, `"image"`)
+	r.NotContains(raw, `"Image"`)
+
+	// The FORMAT does ride the wire — that is the whole point of separating it
+	// from the bytes: the server has to know what the upload it asks for will
+	// contain (spec 2026-09-13-01 §3).
+	r.Contains(raw, `"format":"webp"`)
 
 	// And the caller's own Result is untouched: stashing is a copy, so whoever
 	// else holds this Diagnostics still sees what the checker produced.
-	r.Equal(capturePNG(), diagnostics.Screenshot.PNG)
+	r.Equal(captureImage(), diagnostics.Screenshot.Image)
 	r.False(diagnostics.Screenshot.Available)
 	r.Empty(diagnostics.Screenshot.CaptureID)
 }
@@ -334,7 +344,9 @@ func TestUploadRequestPostsTheCapture(t *testing.T) {
 	uploads, pub := fake.uploadSnapshot()
 	r.Len(uploads, 1)
 	r.Equal(uploadTopic, uploads[0].topic, "the topic is the server's, echoed nowhere else")
-	r.Equal(capturePNG(), uploads[0].body, "the bytes arrive out-of-band, intact")
+	r.Equal(captureImage(), uploads[0].body, "the bytes arrive out-of-band, intact")
+	r.Equal("image/webp", uploads[0].contentType,
+		"the upload must declare the capture's REAL type, not a hardcoded image/png")
 	r.Equal("agent-1", uploads[0].agentUID)
 
 	// The upload is authenticated by the SAME Ed25519 challenge the WS

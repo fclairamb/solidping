@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,8 +24,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobworker"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
+)
+
+// errSharedPostgresMissing is the reason NewPostgresScenario cannot proceed:
+// TestMain never populated sharedDB.dbURL.
+var errSharedPostgresMissing = errors.New(
+	"shared Postgres not initialized by TestMain (embedded postgres would not start)",
 )
 
 // sharedDB holds the single shared embedded-Postgres connection string
@@ -205,8 +213,12 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 
 	r := require.New(t)
 
+	// Unreachable under SP_TEST_REQUIRE_POSTGRES=1 — TestMain exits non-zero
+	// before the suite runs — but kept as the second half of the guard so a
+	// scenario can never quietly no-op against an empty DSN if it is somehow
+	// reached. testsupport turns it into a failure in that mode too.
 	if sharedDB.dbURL == "" {
-		t.Skip("shared Postgres not initialized — Docker unavailable or TestMain skipped")
+		testsupport.PostgresUnavailable(t, errSharedPostgresMissing)
 	}
 
 	const refreshTokenExpiryHours = 24

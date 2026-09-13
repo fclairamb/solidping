@@ -1,4 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { parseDemoFlag } from "@/lib/demo";
 
 export const Route = createFileRoute("/login")({
@@ -39,13 +41,19 @@ function getStoredOrg(): string | null {
 // localStorage; fall back to "default" (the prod default org slug).
 function LoginRedirect() {
   const { returnTo, demo } = Route.useSearch();
-  const org = getStoredOrg() || "default";
+  const queryClient = useQueryClient();
+  // Since spec 2026-09-12-01 the demo is signed into ONLY from the demo org's
+  // own login page, so landing a demo visitor anywhere else costs an extra hop.
+  // Aim straight at the demo org when the public-config document happens to be
+  // cached already; never wait for it — the login page hops on its own, and a
+  // redirect that blocked on the network would be a blank screen on the
+  // product's front door.
+  const cachedDemoOrg = demo ? readCachedDemoOrgSlug(queryClient) : undefined;
+  const org = cachedDemoOrg || getStoredOrg() || "default";
   return (
     <Navigate
       to="/orgs/$org/login"
       params={{ org }}
-      // The org in the path is irrelevant to a demo entry: the login page
-      // signs into the *configured* demo org whatever page it is rendered on.
       // A returnTo captured alongside the flag is still forwarded — the demo
       // auto-login ignores it, and an ordinary sign-in on the same page (the
       // flag-less case, or an instance with no demo) still needs it.

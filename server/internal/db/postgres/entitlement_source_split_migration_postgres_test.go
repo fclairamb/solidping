@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portEntitlementSourceSplitMigration is distinct from every other
@@ -78,13 +79,13 @@ func TestEntitlementSourceSplitMigrationRelabels_Postgres(t *testing.T) {
 		Embedded: true, Port: portEntitlementSourceSplitMigration, RunMode: runModeTest,
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = svc.Close() })
 
 	if initErr := svc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	seed := func(slug, payload string) *models.Organization {

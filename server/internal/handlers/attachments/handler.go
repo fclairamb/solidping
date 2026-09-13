@@ -44,7 +44,7 @@ const (
 // Handler serves POST /api/v1/agent/attachments — the ONE endpoint through
 // which a deported agent gets binary bytes into storage.
 //
-// It exists because the WS control channel is JSON: a PNG there would be
+// It exists because the WS control channel is JSON: an image there would be
 // base64 on the socket every agent uses to claim work. Agents hold no storage
 // credentials by design, so the server is the only thing that can write the
 // blob, and this is the narrow door it does it through.
@@ -194,8 +194,14 @@ func rawTopic(topic ParsedTopic) string {
 	return topic.Entity + "/" + topic.EntityUID + "/" + topic.Kind
 }
 
+// attachmentName is the stored filename WITHOUT an extension: Put appends the
+// one matching the sniffed media type.
+//
+// It used to hardcode `.png`, which was wrong twice over — a traceroute upload
+// got a `.png` too — and is exactly the kind of "the format is whatever the
+// name says" assumption spec 2026-09-13-01 removed.
 func attachmentName(topic ParsedTopic) string {
-	return topic.Entity + "-" + topic.EntityUID + "-" + topic.Kind + ".png"
+	return topic.Entity + "-" + topic.EntityUID + "-" + topic.Kind
 }
 
 // errUnauthenticated is the single message every authentication failure

@@ -91,8 +91,8 @@ Checks are matched by slug and updated in place, never duplicated. You can run
 the import again as your old configuration changes, and keep both tools running
 side by side until you are ready to cut over.
 
-Every imported check carries the label `solidping.io/managed=<source>` (for
-example `solidping.io/managed=gatus`), so you can filter on exactly what the
+Every imported check carries the label `solidping-managed=<source>` (for
+example `solidping-managed=gatus`), so you can filter on exactly what the
 import created.
 
 ### What is never imported

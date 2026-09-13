@@ -13,6 +13,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -46,13 +47,13 @@ func newReconcilePostgresService(
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: port, RunMode: "test"})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("reconcile-pg", "Reconcile PG Org")

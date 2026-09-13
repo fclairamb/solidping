@@ -17,6 +17,7 @@ export interface WebsocketState {
 
 export const websocketModule: CheckTypeModule<WebsocketState> = {
   types: ["websocket"],
+  ownedKeys: ["url", "send", "expect"],
   fromConfig: (config) => ({
     url: getConfigField(config, "url"),
     send: getConfigField(config, "send"),
@@ -96,6 +97,7 @@ export interface BrowserState {
 
 export const browserModule: CheckTypeModule<BrowserState> = {
   types: ["browser"],
+  ownedKeys: ["url", "waitSelector", "keyword", "screenshot"],
   fromConfig: (config) => ({
     url: getConfigField(config, "url"),
     waitSelector: getConfigField(config, "waitSelector"),

@@ -119,28 +119,70 @@ async function deleteCheck(
   });
 }
 
+/**
+ * Resolves on the first `subscribed` ack matching `matches`, from WHICHEVER
+ * `/events/ws` socket carries it, and returns that socket.
+ *
+ * The shape matters, and the obvious shape is wrong. Awaiting
+ * `page.waitForEvent("websocket")` and only then attaching `framereceived`
+ * binds the wait to one specific socket — the first one to appear after the
+ * waiter is armed. Every caller here arms the waiter *before* `page.goto`,
+ * precisely so the new page's socket cannot be missed, but that window also
+ * catches the socket belonging to the page being navigated AWAY from. When it
+ * does, the navigation closes that socket milliseconds later and the wait sits
+ * on a dead object for its full timeout while the real subscription completes
+ * on the next socket. Measured on a failing run:
+ *
+ *     +6ms     ws#1 created  ->  waiter binds here
+ *     +6ms     ws#1 CLOSED       (the goto tore it down)
+ *     +839ms   ws#2 created
+ *     +844ms   ws#2 subscribed(checks)   <- the ack, on the socket nobody watched
+ *     +15008ms TIMED OUT
+ *
+ * So: listen on `page`, not on one socket, and attach `framereceived`
+ * synchronously inside the `websocket` handler. Synchronous attachment also
+ * closes a second, narrower hole — the ack lands ~5ms after the socket opens,
+ * and awaiting anything before attaching spends that budget on Playwright
+ * round-trips.
+ *
+ * The 15s budget is deliberately unchanged: the server acks ~5ms after the
+ * socket opens, so a genuine ack failure is a real defect and must still fail.
+ */
+function waitForSubscribedAck(
+  page: Page,
+  matches: (payload: string) => boolean,
+  describe: string,
+): Promise<WebSocket> {
+  return new Promise<WebSocket>((resolve, reject) => {
+    const onSocket = (socket: WebSocket) => {
+      if (!socket.url().includes("/events/ws")) return;
+      socket.on("framereceived", (frame) => {
+        const text = typeof frame.payload === "string" ? frame.payload : "";
+        if (!matches(text)) return;
+        clearTimeout(timer);
+        page.off("websocket", onSocket);
+        resolve(socket);
+      });
+    };
+
+    const timer = setTimeout(() => {
+      page.off("websocket", onSocket);
+      reject(new Error(describe));
+    }, 15000);
+
+    page.on("websocket", onSocket);
+  });
+}
+
 /** Waits for the realtime v2 socket to open and reach the `subscribed`
  * state for at least one scope — the client-side signal that live updates
  * are flowing, equivalent to v1's "stream connected" 200 response wait. */
-async function waitForLiveSubscribed(page: Page): Promise<WebSocket> {
-  const ws = await page.waitForEvent("websocket", {
-    predicate: (socket) => socket.url().includes("/events/ws"),
-    timeout: 15000,
-  });
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("timed out waiting for a subscribed ack")),
-      15000,
-    );
-    ws.on("framereceived", (frame) => {
-      const text = typeof frame.payload === "string" ? frame.payload : "";
-      if (text.includes('"type":"subscribed"')) {
-        clearTimeout(timer);
-        resolve();
-      }
-    });
-  });
-  return ws;
+function waitForLiveSubscribed(page: Page): Promise<WebSocket> {
+  return waitForSubscribedAck(
+    page,
+    (text) => text.includes('"type":"subscribed"'),
+    "timed out waiting for a subscribed ack",
+  );
 }
 
 /** Like waitForLiveSubscribed, but for one *specific* entity scope: resolves
@@ -149,34 +191,17 @@ async function waitForLiveSubscribed(page: Page): Promise<WebSocket> {
  * regression guard that the page actually registers its scope — a refactor
  * that drops the useLiveSubscription call times out here, it can't pass by
  * riding on some other component's subscription. */
-async function waitForScopeSubscribed(
+function waitForScopeSubscribed(
   page: Page,
   entity: "checks" | "incidents" | "events" | "jobs",
 ): Promise<WebSocket> {
-  const ws = await page.waitForEvent("websocket", {
-    predicate: (socket) => socket.url().includes("/events/ws"),
-    timeout: 15000,
-  });
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () =>
-        reject(
-          new Error(`timed out waiting for a subscribed ack for entity "${entity}"`),
-        ),
-      15000,
-    );
-    ws.on("framereceived", (frame) => {
-      const text = typeof frame.payload === "string" ? frame.payload : "";
-      if (
-        text.includes('"type":"subscribed"') &&
-        text.includes(`"entity":"${entity}"`)
-      ) {
-        clearTimeout(timer);
-        resolve();
-      }
-    });
-  });
-  return ws;
+  return waitForSubscribedAck(
+    page,
+    (text) =>
+      text.includes('"type":"subscribed"') &&
+      text.includes(`"entity":"${entity}"`),
+    `timed out waiting for a subscribed ack for entity "${entity}"`,
+  );
 }
 
 test.describe("Live dashboard updates", () => {
@@ -734,6 +759,72 @@ test.describe("Live dashboard updates", () => {
       await deleteCheckGroup(page, token, groupA.uid);
       await deleteCheckGroup(page, token, groupB.uid);
     }
+  });
+
+  // The two tests below guard waitForSubscribedAck itself. Every live
+  // assertion in this file is only as trustworthy as that helper: if it can
+  // silently latch onto the wrong socket it produces phantom reds, and if it
+  // resolves on any ack at all it stops proving the page registered its scope.
+  // One test pins each failure direction.
+
+  test("the subscribed wait survives a socket the navigation replaces", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // A deterministic replay of the intermittent failure this helper used to
+    // produce. The wait is armed, then a socket is opened and torn down while
+    // it is still outstanding, so the `checks` ack necessarily arrives on a
+    // LATER socket than the first one to appear.
+    //
+    // Two details make this deterministic rather than a coin flip, and both
+    // are load-bearing:
+    //
+    //  - The first page must be one that does NOT itself subscribe to
+    //    `checks`. The incidents list subscribes to `incidents` only; the org
+    //    dashboard is disqualified because it subscribes to `checks` too
+    //    (dashboard-page.tsx), which would hand even a one-socket waiter a
+    //    valid ack and let this test pass against the very bug it guards.
+    //  - The first socket must be awaited before navigating on. Otherwise the
+    //    second goto usually wins the race and no first socket is ever
+    //    created — which is exactly why the original bug surfaced as an
+    //    occasional red rather than a constant one.
+    //
+    // A waiter bound to a single socket sits on the dead one for its full 15s
+    // and fails here every time; one that listens on the page catches the ack
+    // wherever it lands.
+    const subscribed = waitForScopeSubscribed(page, "checks");
+    const firstSocket = page.waitForEvent("websocket", {
+      predicate: (socket) => socket.url().includes("/events/ws"),
+      timeout: 15000,
+    });
+
+    await page.goto("orgs/test/incidents");
+    await firstSocket;
+    await page.goto("orgs/test/checks");
+    await subscribed;
+
+    await expect(page.getByPlaceholder("Search checks...")).toBeVisible();
+  });
+
+  test("the subscribed wait still fails when the page never registers that scope", async ({
+    authenticatedPage,
+  }) => {
+    // The negative control for the test above. The checks list page subscribes
+    // to `checks` and nothing else (checks.index.tsx), so a wait for `jobs`
+    // MUST time out. Without this, a helper that resolved on any `subscribed`
+    // frame — or on merely opening a socket — would keep every positive wait in
+    // this file green while proving nothing, which is exactly the failure mode
+    // the entity-scoped variant exists to prevent.
+    test.setTimeout(45_000);
+    const page = authenticatedPage;
+
+    const neverAcked = waitForScopeSubscribed(page, "jobs");
+    await page.goto("orgs/test/checks");
+
+    await expect(neverAcked).rejects.toThrow(
+      /timed out waiting for a subscribed ack for entity "jobs"/,
+    );
   });
 
   test("sidebar live-status dot shows green once the dashboard is streaming", async ({

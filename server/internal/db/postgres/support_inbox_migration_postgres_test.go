@@ -16,7 +16,12 @@ import (
 // deployment silently gains a bug the other does not have.
 //
 // Pure text assertions on the shipped file: no database needed, so this runs
-// everywhere rather than only where testcontainers can start.
+// everywhere rather than only where testcontainers can start. Spec
+// 2026-09-12-05 listed this file as a candidate for the `slowtests` build
+// tag on the strength of that word "testcontainers"; it is deliberately NOT
+// tagged, because the dependency is not in go.mod and the assertions are
+// string matches over an embedded .sql file. Tagging it would delete PR
+// coverage to buy nothing. See wiki/testing/test-layers.md.
 func TestSupportInboxMigrationPostgresParity(t *testing.T) {
 	t.Parallel()
 

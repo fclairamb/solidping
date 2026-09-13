@@ -382,5 +382,38 @@
   },
   "accessRedirect": {
     "toast": "Sie haben keinen Zugriff auf {{requested}} — stattdessen wird {{shown}} angezeigt."
+  },
+  "parameters": {
+    "title": "Parameter",
+    "subtitle": "Werte, die Ihre Checks als ${param:KEY} referenzieren, statt sie in eine Datei zu committen.",
+    "add": "Parameter hinzufügen",
+    "addTitle": "Parameter hinzufügen",
+    "addDescription": "Wählen Sie einen Schlüssel und referenzieren Sie ihn in jedem Konfigurationstext als ${param:KEY}.",
+    "rotate": "Erneuern",
+    "rotateTitle": "Parameter erneuern",
+    "rotateDescription": "Der Schlüssel bleibt gleich, alle Checks, die ihn referenzieren, laufen weiter.",
+    "created": "{{key}} erstellt",
+    "rotated": "{{key}} erneuert",
+    "saveFailed": "Parameter konnte nicht gespeichert werden",
+    "writeOnly": "Nur schreibbar",
+    "keyInvalid": "Schlüssel sind klein geschrieben und beginnen mit einem Buchstaben: a-z, 0-9, Punkt, Bindestrich, Unterstrich.",
+    "secretLabel": "Geheim",
+    "secretHelp": "Der Wert wird von der API nie zurückgegeben, weder hier noch anderswo.",
+    "columns": {
+      "key": "Schlüssel",
+      "value": "Wert",
+      "reference": "Referenz",
+      "updated": "Aktualisiert"
+    },
+    "empty": {
+      "title": "Noch keine Parameter",
+      "description": "Legen Sie einen an und referenzieren Sie ihn in einer Check-Konfiguration als ${param:KEY}."
+    },
+    "delete": {
+      "title": "Diesen Parameter löschen?",
+      "description": "Jeder Check, der ${param:{{key}}} referenziert, schlägt beim nächsten Lauf mit einer nicht aufgelösten Secret-Referenz fehl.",
+      "deleted": "Parameter gelöscht",
+      "failed": "Parameter konnte nicht gelöscht werden"
+    }
   }
 }

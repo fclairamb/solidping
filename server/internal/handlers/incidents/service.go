@@ -123,10 +123,10 @@ const (
 // Every call is best-effort at the call site: a missing screenshot is a
 // papercut, a missing incident is an outage nobody is paged for.
 type AttachmentStore interface {
-	// PutIncidentScreenshot stores (replacing any previous one) the PNG
+	// PutIncidentScreenshot stores (replacing any previous one) the image
 	// capture that is this incident's current onset evidence.
 	PutIncidentScreenshot(
-		ctx context.Context, orgUID, incidentUID string, png []byte, details models.JSONMap,
+		ctx context.Context, orgUID, incidentUID string, image []byte, details models.JSONMap,
 	) (string, error)
 	// DeleteIncidentAttachments soft-deletes everything attached to the
 	// incident and reports how many rows changed.
@@ -143,7 +143,7 @@ type AttachmentStore interface {
 // AgentUploadRequester is the deported-agent side of onset evidence (spec
 // 2026-08-21-05).
 //
-// A deported agent cannot put a PNG on its JSON control channel, so its result
+// A deported agent cannot put an image on its JSON control channel, so its result
 // frame carries only a marker naming a capture it holds. When that result opens
 // or reopens an incident — and ONLY then — this asks the agent to upload the
 // bytes to POST /api/v1/agent/attachments under a topic THIS package generates
@@ -456,7 +456,7 @@ func (s *Service) persistScreenshot(
 	}
 
 	shot := result.Diagnostics.Screenshot
-	if len(shot.PNG) == 0 {
+	if len(shot.Image) == 0 {
 		// The agent path advertises a capture it holds rather than sending the
 		// bytes (see checkerdef.Screenshot). Ask for it: the upload arrives
 		// out-of-band through POST /api/v1/agent/attachments.
@@ -485,7 +485,7 @@ func (s *Service) persistScreenshot(
 	}
 
 	if _, err := s.attachmentStore.PutIncidentScreenshot(
-		ctx, check.OrganizationUID, incident.UID, shot.PNG, details,
+		ctx, check.OrganizationUID, incident.UID, shot.Image, details,
 	); err != nil {
 		slog.WarnContext(ctx, "Failed to persist incident screenshot",
 			"incidentUid", incident.UID, "error", err)
@@ -537,7 +537,7 @@ func (s *Service) dropStaleScreenshot(
 	}
 
 	if result != nil && result.Diagnostics != nil &&
-		result.Diagnostics.Screenshot != nil && len(result.Diagnostics.Screenshot.PNG) > 0 {
+		result.Diagnostics.Screenshot != nil && len(result.Diagnostics.Screenshot.Image) > 0 {
 		return
 	}
 

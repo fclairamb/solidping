@@ -65,6 +65,7 @@ function seedStringArray(config: CheckConfig, field: string): string[] {
 
 export const dnsModule: CheckTypeModule<DnsState> = {
   types: ["dns"],
+  ownedKeys: ["host", "nameserver", "record_type", "expected_ips", "expected_values"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     nameserver: getConfigField(config, "nameserver"),
@@ -256,6 +257,7 @@ export interface DomainState {
 
 export const domainModule: CheckTypeModule<DomainState> = {
   types: ["domain"],
+  ownedKeys: ["domain", "method", "warningDays", "criticalDays", "threshold_days"],
   fromConfig: (config) => ({
     domain: getConfigField(config, "domain"),
     method: getConfigField(config, "method"),
@@ -383,6 +385,7 @@ export interface DnsblState {
 
 export const dnsblModule: CheckTypeModule<DnsblState> = {
   types: ["dnsbl"],
+  ownedKeys: ["target", "blocklists", "nameserver"],
   fromConfig: (config) => ({
     target: getConfigField(config, "target"),
     blocklists: Array.isArray(config.blocklists)

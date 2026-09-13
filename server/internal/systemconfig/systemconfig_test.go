@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 )
 
 // Env var names reused across the password precedence cases below, hoisted to
@@ -835,5 +836,32 @@ func TestNodeRoleParameterApply(t *testing.T) {
 			rr.Equal(tt.wantJobs, cfg.ShouldRunJobs())
 			rr.Equal(tt.wantChks, cfg.ShouldRunChecks())
 		})
+	}
+}
+
+// TestGetKnownParameters_KeysMatchParamKeyPattern is the "registry proof"
+// spec 2026-09-12-03 asks for: every ParameterKey the platform actually
+// defines must satisfy paramkeys.KeyPattern, which is what the system-
+// parameters HTTP route (internal/handlers/system) now validates against
+// before writing to the DB. This keeps that guarantee true as keys are
+// added — a future key the pattern refuses would fail here, not only as a
+// 422 discovered against a live deployment. getKnownParameters is
+// unexported, so this proof can only run inside this package; the ad-hoc
+// keys named in the spec that are NOT systemconfig.ParameterKey constants are
+// covered separately by
+// TestSystemParameterKeyValidation_AdHocKeysMatchPattern in
+// internal/handlers/system.
+func TestGetKnownParameters_KeysMatchParamKeyPattern(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	params := getKnownParameters()
+	r.NotEmpty(params)
+
+	for _, def := range params {
+		key := string(def.Key)
+		r.Truef(paramkeys.KeyPattern.MatchString(key),
+			"parameter key %q must match %s", key, paramkeys.KeyPattern.String())
 	}
 }

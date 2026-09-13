@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portPublicStatusUpdates is distinct from every other _postgres_test.go
@@ -40,12 +41,12 @@ func TestListPublicStatusUpdates_WindowAndSoftDelete_Postgres(t *testing.T) {
 		RunMode:  runModeTest,
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	// FK chain: status_updates → organizations, status_pages, users(author).

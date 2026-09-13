@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/opsnotify"
+	"github.com/fclairamb/solidping/server/internal/paramkeys"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 	"github.com/fclairamb/solidping/server/internal/watchdog"
@@ -24,8 +25,13 @@ import (
 
 // Errors for system parameter operations.
 var (
-	ErrParameterNotFound       = errors.New("parameter not found")
-	ErrInvalidParameter        = errors.New("invalid parameter value")
+	ErrParameterNotFound = errors.New("parameter not found")
+	ErrInvalidParameter  = errors.New("invalid parameter value")
+	// ErrInvalidParameterKey is returned for a key that does not match
+	// paramkeys.KeyPattern. Kept distinct from ErrInvalidParameter (which
+	// covers a malformed value) because the two map to different response
+	// fields — "key" versus "value".
+	ErrInvalidParameterKey     = errors.New("invalid parameter key")
 	ErrEmailInboxNotConfigured = errors.New("email inbox not configured")
 	ErrEmailInboxDisabled      = errors.New("email inbox disabled")
 	ErrEmailInboxNotAvailable  = errors.New("email inbox manager not initialized")
@@ -239,8 +245,25 @@ func (s *Service) ListParameters(ctx context.Context) (*ListParametersResponse, 
 	}, nil
 }
 
+// validateParameterKey checks a system parameter key's shape. It deliberately
+// uses paramkeys.KeyPattern rather than paramkeys.Validate: Validate also
+// refuses the "sp." reserved prefix, a rule that exists to reserve that
+// namespace FOR the platform — applying it here would refuse the platform its
+// own namespace. The system route only needs the shape check.
+func validateParameterKey(key string) error {
+	if !paramkeys.KeyPattern.MatchString(key) {
+		return fmt.Errorf("%w: %q must match %s", ErrInvalidParameterKey, key, paramkeys.KeyPattern.String())
+	}
+
+	return nil
+}
+
 // GetParameter returns a single system parameter with secret masked.
 func (s *Service) GetParameter(ctx context.Context, key string) (*ParameterResponse, error) {
+	if err := validateParameterKey(key); err != nil {
+		return nil, err
+	}
+
 	param, err := s.db.GetSystemParameter(ctx, key)
 	if err != nil {
 		return nil, err
@@ -260,6 +283,10 @@ func (s *Service) GetParameter(ctx context.Context, key string) (*ParameterRespo
 // that would abort the next startup or be silently ignored by the job is
 // rejected here with a validation error instead of being persisted.
 func (s *Service) SetParameter(ctx context.Context, key string, value any, secret bool) (*ParameterResponse, error) {
+	if err := validateParameterKey(key); err != nil {
+		return nil, err
+	}
+
 	if config.IsPasswordParameterKey(key) {
 		if err := config.ValidatePasswordParameter(key, value); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
@@ -307,6 +334,10 @@ func (s *Service) SetParameter(ctx context.Context, key string, value any, secre
 
 // DeleteParameter soft-deletes a system parameter.
 func (s *Service) DeleteParameter(ctx context.Context, key string) error {
+	if err := validateParameterKey(key); err != nil {
+		return err
+	}
+
 	err := s.db.DeleteSystemParameter(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

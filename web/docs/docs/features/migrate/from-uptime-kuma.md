@@ -106,5 +106,5 @@ Reported as warnings on the import preview:
 
 ## After the import
 
-Checks created this way carry the label `solidping.io/managed=uptime-kuma`, so you
+Checks created this way carry the label `solidping-managed=uptime-kuma`, so you
 can filter on them and re-run the import while both tools run side by side.

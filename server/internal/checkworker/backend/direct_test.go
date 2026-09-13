@@ -24,6 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -568,13 +569,13 @@ func newPostgresDirectBackend(
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	eventNotifier := notifier.NewLocalEventNotifier()

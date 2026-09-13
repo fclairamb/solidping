@@ -91,6 +91,7 @@ import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$
 import { Route as OrgsOrgOrganizationRequestsRouteImport } from './routes/orgs/$org/organization.requests'
 import { Route as OrgsOrgOrganizationReportSchedulesRouteImport } from './routes/orgs/$org/organization.report-schedules'
 import { Route as OrgsOrgOrganizationPrivateLocationsRouteImport } from './routes/orgs/$org/organization.private-locations'
+import { Route as OrgsOrgOrganizationParametersRouteImport } from './routes/orgs/$org/organization.parameters'
 import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOrganizationAuditRouteImport } from './routes/orgs/$org/organization.audit'
@@ -580,6 +581,12 @@ const OrgsOrgOrganizationPrivateLocationsRoute =
     path: '/private-locations',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOrganizationParametersRoute =
+  OrgsOrgOrganizationParametersRouteImport.update({
+    id: '/parameters',
+    path: '/parameters',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
 const OrgsOrgOrganizationMembersRoute =
   OrgsOrgOrganizationMembersRouteImport.update({
     id: '/members',
@@ -981,6 +988,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/parameters': typeof OrgsOrgOrganizationParametersRoute
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   '/orgs/$org/organization/report-schedules': typeof OrgsOrgOrganizationReportSchedulesRouteWithChildren
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -1103,6 +1111,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/parameters': typeof OrgsOrgOrganizationParametersRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/organization/usage': typeof OrgsOrgOrganizationUsageRoute
@@ -1243,6 +1252,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/audit': typeof OrgsOrgOrganizationAuditRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/parameters': typeof OrgsOrgOrganizationParametersRoute
   '/orgs/$org/organization/private-locations': typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   '/orgs/$org/organization/report-schedules': typeof OrgsOrgOrganizationReportSchedulesRouteWithChildren
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -1388,6 +1398,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/parameters'
     | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/report-schedules'
     | '/orgs/$org/organization/requests'
@@ -1510,6 +1521,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/parameters'
     | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/organization/usage'
@@ -1649,6 +1661,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/audit'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/parameters'
     | '/orgs/$org/organization/private-locations'
     | '/orgs/$org/organization/report-schedules'
     | '/orgs/$org/organization/requests'
@@ -2316,6 +2329,13 @@ declare module '@tanstack/react-router' {
       path: '/private-locations'
       fullPath: '/orgs/$org/organization/private-locations'
       preLoaderRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
+    '/orgs/$org/organization/parameters': {
+      id: '/orgs/$org/organization/parameters'
+      path: '/parameters'
+      fullPath: '/orgs/$org/organization/parameters'
+      preLoaderRoute: typeof OrgsOrgOrganizationParametersRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
     '/orgs/$org/organization/members': {
@@ -3033,6 +3053,7 @@ interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationAuditRoute: typeof OrgsOrgOrganizationAuditRoute
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
   OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
+  OrgsOrgOrganizationParametersRoute: typeof OrgsOrgOrganizationParametersRoute
   OrgsOrgOrganizationPrivateLocationsRoute: typeof OrgsOrgOrganizationPrivateLocationsRouteWithChildren
   OrgsOrgOrganizationReportSchedulesRoute: typeof OrgsOrgOrganizationReportSchedulesRouteWithChildren
   OrgsOrgOrganizationRequestsRoute: typeof OrgsOrgOrganizationRequestsRoute
@@ -3047,6 +3068,7 @@ const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationAuditRoute: OrgsOrgOrganizationAuditRoute,
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
   OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
+  OrgsOrgOrganizationParametersRoute: OrgsOrgOrganizationParametersRoute,
   OrgsOrgOrganizationPrivateLocationsRoute:
     OrgsOrgOrganizationPrivateLocationsRouteWithChildren,
   OrgsOrgOrganizationReportSchedulesRoute:

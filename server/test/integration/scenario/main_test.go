@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/fclairamb/solidping/server/internal/db/postgres/embeddedpg"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 var errUnexpectedAddrType = errors.New("unexpected listener address type")
@@ -49,9 +50,21 @@ func TestMain(m *testing.M) {
 	})
 	if startErr != nil {
 		// Embedded postgres not available (e.g. no internet access to download
-		// binaries, or unsupported arch). Skip gracefully — tests will call
-		// t.Skip via NewPostgresScenario when sharedDB.dbURL is empty.
-		fmt.Fprintf(os.Stderr, "scenario: embedded postgres start failed (tests will be skipped): %v\n", startErr)
+		// binaries, an unsupported arch, or a port clash). Locally that is a
+		// graceful skip: sharedDB.dbURL stays empty and every scenario bails
+		// out via NewPostgresScenario.
+		//
+		// Under SP_TEST_REQUIRE_POSTGRES=1 it is a hard failure instead. This
+		// package sits inside the backend-postgres job's ./... scope, and
+		// "run the suite anyway so all seven tests skip" is the same
+		// prove-nothing hole as a bare t.Skipf on a startup error — spec
+		// 2026-09-12-05, trap 2. Exiting non-zero here also gives the operator
+		// the actionable message rather than the CI guard's generic one.
+		if testsupport.PostgresUnavailableTestMain(os.Stderr, startErr) {
+			os.Exit(1)
+		}
+
+		fmt.Fprintln(os.Stderr, "scenario: tests will be skipped")
 		os.Exit(m.Run()) // runs; each test will skip via NewPostgresScenario
 	}
 

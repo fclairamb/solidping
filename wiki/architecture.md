@@ -55,7 +55,9 @@ All resources are scoped to organizations using `organization_uid`:
 - Data isolation at the database level
 - Organization context injected via middleware
 - URL-based organization identification (`/api/v1/orgs/$org/...`)
-- Results table partitioned by organization for performance
+- Every results index leads with `organization_uid`, so org-scoped reads never
+  touch another tenant's rows. The table itself is a single flat table — it is
+  **not** partitioned by organization (see [Scalability Considerations](#database)).
 
 ### Two-Tier Worker System
 
@@ -409,8 +411,13 @@ solidping/
 
 #### Results
 - Time-series monitoring data
-- Partitioned by organization
-- Period-based aggregation (YYYY, YYYY-MM, YYYY-MM-DD)
+- One flat table holding both raw data points (`period_type = 'raw'`) and
+  hour/day/month rollups. Two partial btree indexes, split on that predicate,
+  both lead with `(organization_uid, check_uid, period_start desc)` — every hot
+  read is per-check, so a query must sit entirely on one side of the raw/rollup
+  split to use an index (`models.PeriodTypesTierSide`)
+- Retention-driven compaction: the aggregation job rolls raw rows up into hourly
+  rows and deletes them (defaults: raw 24 h, hourly 7 d, daily 2 months)
 - Status tracking: created (1), running (2), up (3), down (4), timeout (5), error (6) — lifecycle order
 - Response time metrics: avg/min/max duration
 - Availability percentage
@@ -484,7 +491,14 @@ All errors return:
 ## Scalability Considerations
 
 ### Database
-- Organization-based partitioning for results table
+- The results table is **not partitioned**. Tenant isolation comes from the
+  `organization_uid`-leading indexes, and retention from the compaction job's
+  DELETEs. Since raw retention is 24 h the raw set turns over daily, so the
+  structural cost is delete/vacuum churn — the planned fix is daily **time-range**
+  partitions on raw results (retention becomes `DROP TABLE`), never partitioning
+  by organization: hash-by-tenant leaves the churn in every partition, breaks the
+  cross-org watchdog/reaper scans, and forces the partition key into the primary
+  key. Analysis: `specs/ideas/2026-07-22-results-table-storage-optimization.md`.
 - Soft deletes for data recovery
 - JSONB for flexible schema evolution
 - Efficient indexing on `organization_uid`

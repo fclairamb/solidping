@@ -128,6 +128,7 @@ function grpcToConfig(state: GrpcState): {
 
 export const grpcModule: CheckTypeModule<GrpcState> = {
   types: ["grpc"],
+  ownedKeys: ["host", "port", "serviceName", "tls", "tlsSkipVerify", "metadata", "secretMetadata"],
   fromConfig: grpcFromConfig,
   toConfig: grpcToConfig,
   Fields: GrpcFields,
@@ -420,13 +421,24 @@ export interface KafkaState {
 
 export const kafkaModule: CheckTypeModule<KafkaState> = {
   types: ["kafka"],
+  ownedKeys: ["brokers", "topic", "username", "password", "tls", "produceTest", "saslUsername", "saslPassword", "saslMechanism"],
   fromConfig: (config) => ({
     brokers: Array.isArray(config.brokers)
       ? (config.brokers as string[]).join(", ")
       : getConfigField(config, "brokers"),
     topic: getConfigField(config, "topic"),
-    username: getConfigField(config, "username"),
-    password: getConfigField(config, "password"),
+    // toConfig writes `saslUsername`/`saslPassword` (KafkaConfig's real keys),
+    // so those are what must be read back — seeding from the plain `username`
+    // spelling alone left the field empty for every stored check, and since
+    // `saslUsername` is a key this module owns, the next save deleted the
+    // credential. `saslPassword` is a declared secret and never comes back, so
+    // it stays empty and the server's preserve-absent-secrets merge keeps it.
+    username:
+      getConfigField(config, "saslUsername") ||
+      getConfigField(config, "username"),
+    password:
+      getConfigField(config, "saslPassword") ||
+      getConfigField(config, "password"),
     tls: getConfigField(config, "tls") === "true",
     produceTest: getConfigField(config, "produceTest") === "true",
   }),
@@ -537,6 +549,7 @@ export interface MqttState {
 
 export const mqttModule: CheckTypeModule<MqttState> = {
   types: ["mqtt"],
+  ownedKeys: ["host", "port", "username", "password", "topic", "tls"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),

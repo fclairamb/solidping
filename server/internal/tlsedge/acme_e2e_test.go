@@ -1,3 +1,16 @@
+//go:build slowtests
+
+// This file is behind the `slowtests` build tag because it needs DOCKER: it
+// boots a real Pebble ACME CA in a container and drives a real issuance
+// against it (plumbing in pebble_test.go, tagged the same way). Excluded from
+// `make test`, from `make test-postgres` and from both per-PR CI jobs; runs in
+// the nightly `slowtests` workflow (.github/workflows/nightly.yml) or via
+// `make test-slow`.
+//
+// `-short` used to be the only switch, which meant the Postgres layer could not
+// be run non-short on a PR without also demanding Docker. See
+// wiki/testing/test-layers.md.
+
 package tlsedge
 
 import (
@@ -45,10 +58,6 @@ const (
 //
 //nolint:paralleltest // owns a Docker container and two listeners
 func TestACMEEndToEndWithPebble(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping ACME end-to-end test in -short mode")
-	}
-
 	ctx := t.Context()
 	r := require.New(t)
 
@@ -289,10 +298,6 @@ const chainedE2EDomain = "chained-e2e.example.com"
 //
 //nolint:paralleltest // owns a Docker container and four listeners
 func TestACMEChainedFallbackWithPebble(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping ACME end-to-end test in -short mode")
-	}
-
 	ctx := t.Context()
 	r := require.New(t)
 

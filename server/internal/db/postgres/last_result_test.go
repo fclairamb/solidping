@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // portLastResult is distinct from every other _postgres_test.go file's
@@ -61,12 +62,12 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 		RunMode:  runModeTest,
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("last-result-pg-org", "Last Result PG Org")
@@ -116,12 +117,12 @@ func TestGetLastResultForChecks_Parity_Postgres(t *testing.T) {
 		RunMode:  runModeTest,
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("parity-pg-org", "Parity PG Org")
@@ -188,12 +189,12 @@ func TestGetLastResultForChecks_ExcludesCreatedMarkerOnly_Postgres(t *testing.T)
 		RunMode:  runModeTest,
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("marker-pg-org", "Lifecycle Marker PG Org")
@@ -272,12 +273,12 @@ func TestGetLastResultForChecks_FiltersByOrganization_Postgres(t *testing.T) {
 		RunMode:  runModeTest,
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	orgA := models.NewOrganization("org-a", "Org A")

@@ -68,10 +68,14 @@ type ownerMarker struct {
 
 // Instance is a running embedded-PostgreSQL instance owned by this package.
 type Instance struct {
-	dataDir  string
-	dsn      string
-	pg       *embeddedpostgres.EmbeddedPostgres
-	watchdog *watchdogHandle
+	dataDir string
+	// runtimeDir is this instance's private embedded-postgres runtime path
+	// (holds the pwfile). Removed by Stop; see the Start comment for why it
+	// must not live inside dataDir.
+	runtimeDir string
+	dsn        string
+	pg         *embeddedpostgres.EmbeddedPostgres
+	watchdog   *watchdogHandle
 }
 
 // DSN returns the PostgreSQL connection string for this instance.
@@ -102,11 +106,107 @@ func (i *Instance) Stop() error {
 		_ = os.RemoveAll(i.dataDir)
 	}
 
+	if i.runtimeDir != "" {
+		_ = os.RemoveAll(i.runtimeDir)
+	}
+
 	if stopErr != nil {
 		return fmt.Errorf("failed to stop embedded postgres: %w", stopErr)
 	}
 
 	return nil
+}
+
+// sharedBinariesPath is the ONE directory every instance extracts the
+// PostgreSQL binaries into and then reuses.
+//
+// It deliberately matches embedded-postgres's own default location
+// (~/.embedded-postgres-go/extracted) so an existing cache — including CI's
+// actions/cache of ~/.embedded-postgres-go — keeps working untouched. Sharing
+// it is safe and cheap: the library skips both download and extraction when
+// <binariesPath>/bin/pg_ctl already exists, under a package-level mutex
+// (embedded_postgres.go:150-167). What was never safe was sharing the RUNTIME
+// path, which Start() unconditionally deletes; see the comment at the
+// NewDatabase call.
+//
+// SP_TEST_PG_BINARIES_PATH overrides it for an environment where the home
+// directory is not writable.
+func sharedBinariesPath() string {
+	if custom := os.Getenv("SP_TEST_PG_BINARIES_PATH"); custom != "" {
+		return custom
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(os.TempDir(), unifiedPrefix+"-binaries")
+	}
+
+	return filepath.Join(home, ".embedded-postgres-go", "extracted")
+}
+
+// resolved holds an Options with every zero value replaced by its default, so
+// the connection string and the embedded-postgres config cannot disagree about
+// what was actually started.
+type resolved struct {
+	database    string
+	username    string
+	password    string
+	port        uint32
+	startParams map[string]string
+}
+
+// resolveOptions fills in the defaults for anything the caller left unset.
+func resolveOptions(opts *Options) resolved {
+	res := resolved{
+		database:    opts.Database,
+		username:    opts.Username,
+		password:    opts.Password,
+		port:        opts.Port,
+		startParams: opts.StartParameters,
+	}
+
+	if res.database == "" {
+		res.database = "solidping_test"
+	}
+
+	if res.username == "" {
+		res.username = "postgres"
+	}
+
+	if res.password == "" {
+		res.password = "postgres"
+	}
+
+	if res.port == 0 {
+		res.port = 5433
+	}
+
+	if res.startParams == nil {
+		res.startParams = map[string]string{
+			"dynamic_shared_memory_type": "posix",
+			"shared_buffers":             "128kB",
+			"max_connections":            "10",
+		}
+	}
+
+	return res
+}
+
+// embeddedConfig builds the embedded-postgres config for one instance. See the
+// Start comment for why RuntimePath is private per instance while BinariesPath
+// is shared.
+func embeddedConfig(opts *Options, dataDir, runtimeDir string) embeddedpostgres.Config {
+	res := resolveOptions(opts)
+
+	return embeddedpostgres.DefaultConfig().
+		Port(res.port).
+		Database(res.database).
+		Username(res.username).
+		Password(res.password).
+		DataPath(dataDir).
+		RuntimePath(runtimeDir).
+		BinariesPath(sharedBinariesPath()).
+		StartParameters(res.startParams)
 }
 
 // Start creates a fresh, self-owned data directory, runs the startup sweep
@@ -132,59 +232,65 @@ func Start(opts *Options) (*Instance, error) {
 		return nil, fmt.Errorf("failed to write owner marker: %w", markErr)
 	}
 
-	database := opts.Database
-	if database == "" {
-		database = "solidping_test"
+	// Each instance gets its OWN runtime directory, and they all share ONE
+	// binaries directory. Both halves matter.
+	//
+	// embedded-postgres opens Start() with an unconditional
+	// `os.RemoveAll(runtimePath)` (embedded_postgres.go:95), and when
+	// runtimePath is unset it defaults to the shared
+	// ~/.embedded-postgres-go/extracted — which is also where it puts the
+	// extracted binaries and the pwfile. So every instance was deleting the
+	// directory every other instance depends on. That is the shared-pwfile
+	// trap spec 2026-09-12-05 documented, and it is what made CI's new
+	// backend-postgres job fail wholesale with
+	//
+	//	unable to clean up runtime directory /home/runner/...
+	//
+	// once SP_TEST_REQUIRE_POSTGRES stopped letting it pass as a silent skip.
+	// A private runtimePath makes that RemoveAll touch only this instance.
+	//
+	// BinariesPath must then be set explicitly, because the library otherwise
+	// points it AT runtimePath (embedded_postgres.go:99-101) — which would
+	// re-extract (and on a cold cache re-download) PostgreSQL for every single
+	// instance, and would defeat the CI cache of ~/.embedded-postgres-go.
+	// A SIBLING of dataDir, never a child: embedded-postgres wipes the whole
+	// data path during init (cleanDataDirectoryAndInit ->
+	// os.RemoveAll(dataPath), embedded_postgres.go:171), which would take a
+	// nested runtime directory with it and leave the pwfile write failing with
+	// "unable to write password file".
+	//
+	// The name deliberately does NOT start with unifiedPrefix+"-", so the
+	// orphan sweep (sweep.go isCandidateDir) does not mistake this for an
+	// instance directory missing its owner marker and delete it out from under
+	// a live instance. Stop removes it; a hard-killed process leaks only a
+	// directory holding a pwfile.
+	runtimeDir, err := os.MkdirTemp(os.TempDir(), "solidping-pgruntime-"+suite+"-*")
+	if err != nil {
+		_ = os.RemoveAll(dataDir)
+
+		return nil, fmt.Errorf("failed to create embedded-postgres runtime dir: %w", err)
 	}
 
-	username := opts.Username
-	if username == "" {
-		username = "postgres"
-	}
-
-	password := opts.Password
-	if password == "" {
-		password = "postgres"
-	}
-
-	port := opts.Port
-	if port == 0 {
-		port = 5433
-	}
-
-	startParams := opts.StartParameters
-	if startParams == nil {
-		startParams = map[string]string{
-			"dynamic_shared_memory_type": "posix",
-			"shared_buffers":             "128kB",
-			"max_connections":            "10",
-		}
-	}
-
-	embeddedPG := embeddedpostgres.NewDatabase(
-		embeddedpostgres.DefaultConfig().
-			Port(port).
-			Database(database).
-			Username(username).
-			Password(password).
-			DataPath(dataDir).
-			StartParameters(startParams),
-	)
+	embeddedPG := embeddedpostgres.NewDatabase(embeddedConfig(opts, dataDir, runtimeDir))
 
 	if startErr := embeddedPG.Start(); startErr != nil {
 		_ = os.RemoveAll(dataDir)
+		_ = os.RemoveAll(runtimeDir)
 
 		return nil, fmt.Errorf("failed to start embedded postgres: %w", startErr)
 	}
 
+	res := resolveOptions(opts)
 	dsn := fmt.Sprintf(
-		"postgres://%s:%s@localhost:%d/%s?sslmode=disable", username, password, port, database,
+		"postgres://%s:%s@localhost:%d/%s?sslmode=disable",
+		res.username, res.password, res.port, res.database,
 	)
 
 	inst := &Instance{
-		dataDir: dataDir,
-		dsn:     dsn,
-		pg:      embeddedPG,
+		dataDir:    dataDir,
+		runtimeDir: runtimeDir,
+		dsn:        dsn,
+		pg:         embeddedPG,
 	}
 
 	// The watchdog is best-effort infrastructure hardening: if it fails to

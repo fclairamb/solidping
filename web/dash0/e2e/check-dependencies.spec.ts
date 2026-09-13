@@ -38,6 +38,43 @@ test.describe("Check dependencies", () => {
     return page.url();
   }
 
+  // Same as createCheck, but also expands the "Incident tracking" section
+  // and sets an explicit confirmation period — used to force (or rule out)
+  // the confirmation-margin dependency warning regardless of the server's
+  // own defaults.
+  async function createCheckWithConfirmationPeriod(
+    page: Page,
+    name: string,
+    confirmationPeriodSeconds: string,
+  ): Promise<string> {
+    await page
+      .getByTestId("app-sidebar")
+      .getByRole("link", { name: "Checks" })
+      .click();
+    await page.waitForURL(/\/checks$/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await page.getByTestId("check-name-input").fill(name);
+    await page
+      .getByTestId("check-url-input")
+      .fill(`https://example.com/${encodeURIComponent(name)}`);
+    await page.getByTestId("section-incident-tracking-trigger").click();
+    await page
+      .getByTestId("confirmation-period-input")
+      .fill(confirmationPeriodSeconds);
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(
+      /\/checks\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      { timeout: 10000 },
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+    return page.url();
+  }
+
   // Opens the Dependencies section of a check's edit form via the detail
   // page's "Edit" affordance, which deep-links `?section=dependencies`.
   async function openDependencyEditor(page: Page, detailUrl: string) {
@@ -98,7 +135,9 @@ test.describe("Check dependencies", () => {
     // The detail page is a VIEW surface: link + kind badge + description,
     // and no mutation affordance anywhere in the Dependencies card.
     const dependsOn = page.getByTestId("depends-on-list");
-    await expect(dependsOn.getByRole("link", { name: parentName })).toBeVisible();
+    await expect(
+      dependsOn.getByRole("link", { name: parentName }),
+    ).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-hard")).toBeVisible();
     await expect(dependsOn.getByText("shares the database")).toBeVisible();
     // No inline editor, no per-row delete, no picker: the pencil, the trash
@@ -112,7 +151,19 @@ test.describe("Check dependencies", () => {
     await expect(
       dependsOn.getByRole("button", { name: "Remove dependency" }),
     ).toHaveCount(0);
-    await expect(dependsOn.locator("button")).toHaveCount(0);
+    // Backstop against a future mutation control sneaking in without the
+    // three explicit checks above being updated: the confirmation-margin
+    // hint (spec 2026-09-10-02, dependency-warning-hint) is the one
+    // legitimate non-mutating button this list can carry — it opens a
+    // read-only explanation, nothing more — so "no button that isn't a
+    // hint" is what "no mutation affordance" actually means now. This check
+    // creates two default-settings checks and links them Hard, and a
+    // confirmation-margin warning genuinely fires for that combination
+    // (child confirmation 120s < parent's required margin of parent
+    // confirmation + period + timeout), so the hint IS expected here.
+    await expect(
+      dependsOn.locator("button:not([data-testid='dependency-warning-hint'])"),
+    ).toHaveCount(0);
   });
 
   test("changing an existing dependency's kind and description on the edit page is saved", async ({
@@ -142,9 +193,7 @@ test.describe("Check dependencies", () => {
     const editorRow = page.locator('[data-testid^="dependency-editor-row-"]');
     await expect(editorRow).toHaveCount(1);
     await expect(editorRow).toContainText(parentName);
-    const kindSelect = page.locator(
-      '[data-testid^="dependency-kind-select-"]',
-    );
+    const kindSelect = page.locator('[data-testid^="dependency-kind-select-"]');
     await expect(kindSelect).toHaveText("Hard");
     await kindSelect.click();
     await page.getByRole("option", { name: "Soft", exact: true }).click();
@@ -177,7 +226,9 @@ test.describe("Check dependencies", () => {
     // The write path used to hard-code kind: "hard" — a soft pick landed as a
     // hard edge, so this assertion is the regression guard for it.
     const dependsOn = page.getByTestId("depends-on-list");
-    await expect(dependsOn.getByRole("link", { name: parentName })).toBeVisible();
+    await expect(
+      dependsOn.getByRole("link", { name: parentName }),
+    ).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-soft")).toBeVisible();
     await expect(dependsOn.getByTestId("dependency-kind-hard")).toHaveCount(0);
     await expect(dependsOn.getByText("best effort upstream")).toBeVisible();
@@ -205,7 +256,9 @@ test.describe("Check dependencies", () => {
 
     // Sanity: the edge shows up correctly on both sides before the delete.
     await expect(
-      page.getByTestId("depends-on-list").getByRole("link", { name: parentName }),
+      page
+        .getByTestId("depends-on-list")
+        .getByRole("link", { name: parentName }),
     ).toBeVisible();
 
     await page.goto(parentUrl);
@@ -233,5 +286,74 @@ test.describe("Check dependencies", () => {
         "No dependencies configured. Use Edit to add a parent and start cascading-incident rollup.",
       ),
     ).toBeVisible();
+  });
+
+  // Coverage for spec 2026-09-10-02: the confirmation-margin warning used to
+  // stack as a full-width amber banner above the whole list. It now renders
+  // inline on the one "Depends on" row it concerns.
+  test("a confirmation-margin warning renders inline on its row, not as a banner above the list", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const stamp = Date.now();
+    const parentName = `E2E Dep Warn Parent ${stamp}`;
+    const softParentName = `E2E Dep Warn Soft Parent ${stamp}`;
+    const childName = `E2E Dep Warn Child ${stamp}`;
+
+    // Parent confirmation window is 3600s — however long its own period and
+    // timeout default to, the required margin (confirmation + period +
+    // timeout) comfortably exceeds the child's 5s confirmation, so the hard
+    // edge below is guaranteed to warn regardless of server defaults.
+    await createCheckWithConfirmationPeriod(page, parentName, "3600");
+    // Negative control #1: a second, identically-configured parent — but
+    // linked SOFT below. Soft edges are never linted, so this row must never
+    // carry a hint even though its own numbers would also trigger the lint.
+    await createCheckWithConfirmationPeriod(page, softParentName, "3600");
+    const childUrl = await createCheckWithConfirmationPeriod(
+      page,
+      childName,
+      "5",
+    );
+
+    await openDependencyEditor(page, childUrl);
+    await stageDependency(page, parentName, "Hard", "shares the database");
+    await stageDependency(page, softParentName, "Soft", "informational only");
+    await saveCheck(page);
+
+    const dependsOn = page.getByTestId("depends-on-list");
+    await expect(
+      dependsOn.getByRole("link", { name: parentName, exact: true }),
+    ).toBeVisible();
+    await expect(
+      dependsOn.getByRole("link", { name: softParentName, exact: true }),
+    ).toBeVisible();
+
+    // No stacked banner above the list any more.
+    await expect(page.getByTestId("dependency-warnings")).toHaveCount(0);
+
+    // Exactly one hint in the whole "Depends on" list...
+    await expect(dependsOn.getByTestId("dependency-warning-hint")).toHaveCount(
+      1,
+    );
+
+    // ...and it sits in the warned parent's own row.
+    const warnedRow = dependsOn.locator("> div", {
+      has: page.getByRole("link", { name: parentName, exact: true }),
+    });
+    await expect(warnedRow.getByTestId("dependency-warning-hint")).toHaveCount(
+      1,
+    );
+
+    // Negative control #2: the soft parent's row — despite having the exact
+    // same numbers as the warned one — carries no hint.
+    const softRow = dependsOn.locator("> div", {
+      has: page.getByRole("link", { name: softParentName, exact: true }),
+    });
+    await expect(softRow.getByTestId("dependency-warning-hint")).toHaveCount(0);
+
+    // Tapping the hint reveals the explanation (Popover, not a hover-only
+    // Tooltip, so this must work via a plain click too).
+    await warnedRow.getByTestId("dependency-warning-hint").click();
+    await expect(page.getByText(/Confirms faster than/)).toBeVisible();
   });
 });

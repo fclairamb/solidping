@@ -5,6 +5,29 @@ import (
 	"time"
 )
 
+// MaxPayloadBytes is the shared ceiling on ONE payload a script is handed
+// back: an HTTP response body, the text of a page selector, the JSON value of
+// an evaluated expression.
+//
+// One constant on purpose (spec 2026-09-12-06 §4): a megabyte of response body
+// and a megabyte of page text are the same memory risk, and two numbers would
+// drift into "why is the browser cap different from the HTTP cap?".
+const MaxPayloadBytes = 1024 * 1024
+
+// MinPeriodHint is the optional interface a Config implements when the
+// CONTENT of the config raises the check type's own minimum period.
+//
+// The one implementer today is JSConfig: a script that opens a browser costs
+// what a browser check costs, so it inherits the browser type's floor even
+// though it is scheduled as a `js` check. Returning 0 means "no opinion", and
+// a config that does not implement this interface is treated the same way.
+//
+// It is consulted at VALIDATION time, which is the only place that sees both
+// the proposed period and the config; Execute never sees a period at all.
+type MinPeriodHint interface {
+	MinPeriodHint() time.Duration
+}
+
 // Status represents the outcome of a check execution.
 type Status int
 

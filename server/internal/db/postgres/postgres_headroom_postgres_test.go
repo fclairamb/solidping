@@ -13,6 +13,8 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
+
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // Ports 15438-15444 below are distinct from every other _postgres_test.go
@@ -53,12 +55,12 @@ func startEmbeddedForHeadroomTest(t *testing.T, port uint32) (*Service, func(rol
 		RunMode:  "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	dsnFor := func(role, password string) string {

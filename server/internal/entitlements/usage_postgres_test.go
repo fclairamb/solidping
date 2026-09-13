@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -36,13 +37,13 @@ func TestUsageChecksPerMinuteCountsRegions_Postgres(t *testing.T) {
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{Embedded: true, Port: portUsagePG, RunMode: "test"})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("usage-pg-org", "Usage PG Org")

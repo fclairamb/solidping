@@ -99,7 +99,8 @@ checks:
 	rec = postImport(t, router, org, "", jsonDoc)
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &result))
-	r.Equal(1, result.Updated, "re-importing the same slug updates it")
+	r.Equal(0, result.Updated, "re-importing an identical document changes nothing")
+	r.Equal(1, result.Unchanged, "re-importing the same slug reports it unchanged")
 }
 
 // TestImportChecksRejectsGarbage is the negative control: broadening the parser

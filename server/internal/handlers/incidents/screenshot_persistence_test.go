@@ -31,12 +31,12 @@ type fakeAttachmentStore struct {
 
 type fakePut struct {
 	incidentUID string
-	png         []byte
+	image       []byte
 	details     models.JSONMap
 }
 
 func (f *fakeAttachmentStore) PutIncidentScreenshot(
-	_ context.Context, _, incidentUID string, png []byte, details models.JSONMap,
+	_ context.Context, _, incidentUID string, image []byte, details models.JSONMap,
 ) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -45,7 +45,7 @@ func (f *fakeAttachmentStore) PutIncidentScreenshot(
 		return "", f.failPut
 	}
 
-	f.puts = append(f.puts, fakePut{incidentUID: incidentUID, png: png, details: details})
+	f.puts = append(f.puts, fakePut{incidentUID: incidentUID, image: image, details: details})
 
 	return "file-" + incidentUID, nil
 }
@@ -91,8 +91,8 @@ func (f *fakeAttachmentStore) snapshot() ([]fakePut, []string) {
 	return append([]fakePut(nil), f.puts...), append([]string(nil), f.deletes...)
 }
 
-// screenshotPNG is a recognizable blob; nothing decodes it.
-func screenshotPNG(marker string) []byte {
+// screenshotImage is a recognizable blob; nothing decodes it.
+func screenshotImage(marker string) []byte {
 	return append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte(marker)...)
 }
 
@@ -101,7 +101,8 @@ func shotDownResult(orgUID, checkUID, marker string) *models.Result {
 	result := downResult(orgUID, checkUID, "keyword check failed")
 	result.Diagnostics = &checkerdef.Diagnostics{
 		Screenshot: &checkerdef.Screenshot{
-			PNG:        screenshotPNG(marker),
+			Image:      screenshotImage(marker),
+			Format:     checkerdef.ImageFormatWebP,
 			CapturedAt: time.Now().UTC(),
 		},
 	}
@@ -131,7 +132,7 @@ func TestCreateIncidentPersistsScreenshot(t *testing.T) {
 	puts, _ := store.snapshot()
 	r.Len(puts, 1)
 	r.Equal(inc.UID, puts[0].incidentUID)
-	r.Equal(screenshotPNG("onset"), puts[0].png)
+	r.Equal(screenshotImage("onset"), puts[0].image)
 	r.Equal(attachments.TriggerIncidentOpen, puts[0].details[attachments.DetailKeyTrigger])
 	r.Equal(s.check.UID, puts[0].details[attachments.DetailKeyCheckUID])
 	r.Equal("eu", puts[0].details[attachments.DetailKeyRegion],
@@ -175,7 +176,7 @@ func TestScreenshotOnlyPersistedOnTransitions(t *testing.T) {
 
 	puts, _ = store.snapshot()
 	r.Len(puts, 1)
-	r.Equal(screenshotPNG("transition"), puts[0].png)
+	r.Equal(screenshotImage("transition"), puts[0].image)
 }
 
 // TestReopenReplacesScreenshot pins the reopen rule: the relapse's capture
@@ -212,7 +213,7 @@ func TestReopenReplacesScreenshot(t *testing.T) {
 
 	puts, deletes := store.snapshot()
 	r.Len(puts, 2)
-	r.Equal(screenshotPNG("relapse"), puts[1].png)
+	r.Equal(screenshotImage("relapse"), puts[1].image)
 	r.Equal(attachments.TriggerIncidentReopen, puts[1].details[attachments.DetailKeyTrigger])
 
 	// The pipeline does NOT issue a separate delete when the relapse brought

@@ -35,6 +35,7 @@ export interface SnmpState {
 
 export const snmpModule: CheckTypeModule<SnmpState> = {
   types: ["snmp"],
+  ownedKeys: ["host", "port", "oid", "community", "expectedValue", "operator"],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
@@ -183,6 +184,7 @@ export interface DockerState {
 
 export const dockerModule: CheckTypeModule<DockerState> = {
   types: ["docker"],
+  ownedKeys: ["containerName", "containerId", "host", "restartLoopMinRestarts", "restartLoopWindow"],
   fromConfig: (config) => ({
     containerName: getConfigField(config, "containerName"),
     containerId: getConfigField(config, "containerId"),
@@ -345,6 +347,7 @@ export interface FreeboxLineState {
 
 export const freeboxLineModule: CheckTypeModule<FreeboxLineState> = {
   types: ["freebox_line"],
+  ownedKeys: ["connectionUid", "linkType", "minSyncRateDownKbps", "minSnrMarginDownDb", "maxAttenuationDb", "maxCrcErrorsPerRun", "minRxPowerMw", "maxRxPowerMw"],
   fromConfig: (config) => ({
     connectionUid: getConfigField(config, "connectionUid"),
     linkType: getConfigField(config, "linkType") || "xdsl",
@@ -645,6 +648,7 @@ function numberFromConfig(config: CheckConfig, field: string): string {
 
 export const prometheusModule: CheckTypeModule<PrometheusState> = {
   types: ["prometheus"],
+  ownedKeys: ["url", "mode", "metric", "labels", "query", "operator", "warningValue", "criticalValue", "match", "onMissing", "headers"],
   fromConfig: (config) => ({
     url: getConfigField(config, "url"),
     mode: getConfigField(config, "mode") || "scrape",

@@ -167,5 +167,6 @@
   "reportSchedules": "Verfügbarkeitsberichte",
   "audit": "Audit",
   "promote": "Befördern",
-  "sessions": "Sitzungen"
+  "sessions": "Sitzungen",
+  "parameters": "Parameter"
 }

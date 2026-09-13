@@ -28,6 +28,18 @@
       "http": "URL a monitorear",
       "icmp": "Host para hacer ping",
       "ssl": "Dominio para SSL"
+    },
+    "validation": {
+      "empty": {
+        "http": "Indica la URL o el nombre de host que quieres monitorear.",
+        "icmp": "Indica el host al que quieres hacer ping.",
+        "ssl": "Indica el dominio cuyo certificado SSL quieres comprobar."
+      },
+      "invalid": {
+        "http": "Esto no parece una URL. Prueba example.com o https://example.com.",
+        "icmp": "Indica solo un nombre de host o una dirección IP — sin http://, sin puerto y sin ruta.",
+        "ssl": "Indica solo un nombre de dominio — sin http://, sin puerto y sin ruta."
+      }
     }
   },
   "onboarding": {

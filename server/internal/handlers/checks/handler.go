@@ -70,9 +70,16 @@ const (
 	// msgInternalNotWritable explains the refusal of a client-supplied
 	// `internal` (spec 2026-08-27-01) — read-only, server-owned.
 	msgInternalNotWritable = "The internal flag is read-only: it marks server-created checks and cannot be set by a client"
+	// msgUnreadableBody is the field message for a request body that could not
+	// be read off the wire at all.
+	msgUnreadableBody = "could not read request body"
 	// queryTrue is the literal a boolean query flag must equal to be enabled
 	// (e.g. ?dryRun=true).
 	queryTrue = "true"
+	// msgPlanRequiresAdmin explains the refusal of `?plan=true` to a
+	// non-admin: validating a document is member-level, but planning it reads
+	// the organization's whole check set.
+	msgPlanRequiresAdmin = "Admin access required to compute the reconcile plan (drop ?plan=true to validate only)"
 )
 
 // Handler provides HTTP handlers for check management endpoints.
@@ -89,14 +96,45 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
-// ValidateCheck handles validating a check configuration without persisting.
+// ValidateCheck handles POST /api/v1/orgs/:org/checks/validate. It is
+// CONTENT-NEGOTIATED (spec 2026-09-11-04): a body carrying a top-level
+// `checks` list — JSON or YAML — is a whole export/manifest document and takes
+// the document path; anything else is a single check definition and behaves
+// exactly as before.
+//
+// Authorization is split rather than uniform, which is the point of the change:
+//
+//   - The DOCUMENT path is member-level. Validating a file writes nothing, and
+//     a CI job that only wants "is this valid?" must not need a write-capable
+//     token — needing one is why third parties kept maintaining their own
+//     validators, which then drifted from the server by construction.
+//   - The SINGLE-CHECK path keeps the write floor, enforced INLINE here
+//     because the route itself no longer carries RequireOrgWrite. It answers
+//     with middleware.ViewerWriteMessage verbatim, so the route-table proof in
+//     internal/app still recognizes the floor.
+//   - `?plan=true` needs admin: the plan reads the org's whole check set.
 func (h *Handler) ValidateCheck(
 	writer http.ResponseWriter, req *http.Request,
 ) error {
 	orgSlug := httpx.Param(req, "org")
 
+	body, readErr := io.ReadAll(req.Body)
+	if readErr != nil {
+		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgUnreadableBody},
+		})
+	}
+
+	if IsDocumentBody(body) {
+		return h.validateDocument(writer, req, orgSlug, body)
+	}
+
+	if !h.orgRoleAtLeast(req, models.MemberRoleUser) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, mw.ViewerWriteMessage)
+	}
+
 	var validateReq ValidateCheckRequest
-	if err := json.NewDecoder(req.Body).Decode(&validateReq); err != nil {
+	if decodeErr := json.Unmarshal(body, &validateReq); decodeErr != nil {
 		return h.WriteValidationError(
 			writer, "Invalid JSON", []base.ValidationErrorField{
 				{Name: fieldBody, Message: msgInvalidJSON},
@@ -109,6 +147,75 @@ func (h *Handler) ValidateCheck(
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// validateDocument answers the whole-document form of /checks/validate.
+func (h *Handler) validateDocument(
+	writer http.ResponseWriter, req *http.Request, orgSlug string, body []byte,
+) error {
+	doc, err := ParseManifest(body, req.Header.Get("Content-Type"))
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid document", []base.ValidationErrorField{
+			{Name: fieldBody, Message: err.Error()},
+		})
+	}
+
+	withPlan := req.URL.Query().Get("plan") == queryTrue
+	if withPlan && !h.orgRoleAtLeast(req, models.MemberRoleAdmin) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, msgPlanRequiresAdmin)
+	}
+
+	resp, err := h.svc.ValidateDocumentForOrg(req.Context(), orgSlug, doc, withPlan)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationNotFound) {
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// orgRoleAtLeast reports whether the authenticated caller holds at least
+// minRole in the request's organization — the same hierarchical, membership-row
+// test AuthMiddleware.requireOrgRole makes, done inline for the one route that
+// carries two different floors on two different bodies. Reading the MEMBERSHIP
+// ROW rather than claims.Role is what makes a demotion take effect on the next
+// request instead of the next token refresh.
+//
+// The no-user case is where it deliberately does NOT behave like a single
+// middleware, because the middlewares themselves do not agree there. A trusted
+// service request resolves no user and has no membership row: RequireOrgWrite
+// lets it past (`isServiceAuthorized`), while RequireOrgAdmin has no such
+// bypass and refuses. This mirrors that split per floor rather than picking
+// one — a service credential keeps the write-level access it already has on
+// every other org route, and does not gain an admin-only surface (`?plan=true`)
+// that RequireOrgAdmin would refuse it.
+func (h *Handler) orgRoleAtLeast(req *http.Request, minRole models.MemberRole) bool {
+	ctx := req.Context()
+
+	user, ok := mw.GetUserFromContext(ctx)
+	if !ok {
+		return !minRole.AtLeast(models.MemberRoleAdmin)
+	}
+
+	if user.SuperAdmin {
+		return true
+	}
+
+	org, ok := mw.GetOrganizationFromContext(ctx)
+	if !ok {
+		return false
+	}
+
+	member, err := h.svc.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
+	if err != nil || member == nil {
+		return false
+	}
+
+	return member.Role.AtLeast(minRole)
 }
 
 // parseTypeFilter splits the `type` query parameter — singular name,
@@ -581,7 +688,7 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) er
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
-			{Name: fieldBody, Message: "could not read request body"},
+			{Name: fieldBody, Message: msgUnreadableBody},
 		})
 	}
 
@@ -598,6 +705,11 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req *http.Request) er
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
 				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case errors.Is(err, ErrUnresolvedSecretRef):
+			// Same 400 /apply answers with — the two endpoints take the same
+			// document and now judge its references identically.
+			return h.WriteErrorErr(
+				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		default:
 			return h.WriteErrorErr(
 				writer, req, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
@@ -619,7 +731,7 @@ func (h *Handler) ApplyChecks(writer http.ResponseWriter, req *http.Request) err
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
-			{Name: fieldBody, Message: "could not read request body"},
+			{Name: fieldBody, Message: msgUnreadableBody},
 		})
 	}
 
@@ -735,6 +847,10 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, request *http.Re
 				Message: msgSlugConflictOrg,
 			},
 		})
+	case errors.Is(err, errCheckNameRequired):
+		return h.WriteValidationError(writer, "Invalid name", []base.ValidationErrorField{
+			{Name: fieldName, Message: msgNameRequired},
+		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
@@ -806,6 +922,10 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 				Message: msgSlugConflictOrg,
 			},
 		})
+	case errors.Is(err, errCheckNameRequired):
+		return h.WriteValidationError(writer, "Invalid name", []base.ValidationErrorField{
+			{Name: fieldName, Message: msgNameRequired},
+		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
@@ -826,7 +946,8 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, request *http.Re
 func isCheckFieldValidationError(err error) bool {
 	var periodErr *periodBoundError
 
-	return errors.Is(err, errIncidentPeriodOutOfRange) ||
+	return models.IsLabelValidationError(err) ||
+		errors.Is(err, errIncidentPeriodOutOfRange) ||
 		errors.Is(err, errRegionSpreadOutOfRange) ||
 		// A legacy `@<org>/<slug>` region naming somebody ELSE's org is a
 		// caller mistake (or an attempt), not a server fault — 400, never 500.
@@ -930,6 +1051,10 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, request *http.Req
 				Name:    fieldSlug,
 				Message: msgSlugConflictOrg,
 			},
+		})
+	case errors.Is(err, errCheckNameRequired):
+		return h.WriteValidationError(writer, "Invalid name", []base.ValidationErrorField{
+			{Name: fieldName, Message: msgNameRequired},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // These are distinct from every other _postgres_test.go embedded port in the
@@ -35,12 +36,12 @@ func TestReserveMonthlyUsage_ConcurrentNeverOverruns_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portOrgUsageCounter, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("usage-cc-org", "Usage CC Org")
@@ -116,12 +117,12 @@ func TestIncrementUsageCounter_Concurrent_Postgres(t *testing.T) {
 
 	s, err := New(ctx, &Config{Embedded: true, Port: portOrgUsageCounterIncrement, RunMode: runModeTest})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
 	if initErr := s.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	org := models.NewOrganization("usage-inc-org", "Usage Inc Org")

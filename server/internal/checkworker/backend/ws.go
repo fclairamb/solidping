@@ -305,7 +305,7 @@ func (b *WSBackend) claim(
 		// can find it. Unseal failure is reported like a job-envelope failure —
 		// a clear error result, dropped from the batch, never run half-armed.
 		if wireJob.Tunnel != nil {
-			cfg, tunErr := buildTunnelConfig(b.identityX25519(), wireJob.Tunnel)
+			cfg, tunErr := buildTunnelConfig(ctx, b.identityX25519(), wireJob.Tunnel)
 			if tunErr != nil {
 				b.logger.WarnContext(ctx, "ssh tunnel not available on this agent",
 					"check_uid", job.CheckUID, "tunnel_check_uid", wireJob.Tunnel.CheckUID, "error", tunErr)

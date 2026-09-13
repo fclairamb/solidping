@@ -1,7 +1,6 @@
 package checkssl
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -89,38 +88,6 @@ func TestSSLChecker_Validate(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestSSLChecker_Execute(t *testing.T) {
-	t.Parallel()
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode (requires network)")
-	}
-
-	checker := &SSLChecker{}
-	ctx := context.Background()
-
-	config := &SSLConfig{
-		Host:          "google.com",
-		ThresholdDays: 7,
-	}
-
-	result, err := checker.Execute(ctx, config)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, checkerdef.StatusUp, result.Status)
-
-	require.Contains(t, result.Output, "subject")
-	require.Contains(t, result.Output, "issuer")
-	require.Contains(t, result.Output, "not_after")
-	require.Contains(t, result.Output, "days_remaining")
-	require.Contains(t, result.Output, "tls_version")
-	require.Contains(t, result.Output, "dns_names")
-
-	daysRemaining, ok := result.Metrics["days_remaining"].(int)
-	require.True(t, ok, "days_remaining metric should be an int")
-	require.Greater(t, daysRemaining, 7)
 }
 
 func TestSSLConfig_FromMap(t *testing.T) {

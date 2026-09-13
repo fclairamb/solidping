@@ -181,3 +181,48 @@ export function demoAutoLoginOwnsRedirect(
 
   return demoAvailable || demoConfigLoading;
 }
+
+/**
+ * What an entry point offering the live demo must do from the org page it is
+ * currently rendered on (spec 2026-09-12-01 §A).
+ *
+ * - `"signIn"` — the URL already names the demo org, so `login(demoOrg, …)`
+ *   may run here.
+ * - `"hopTo"`  — the URL names some other org; navigate to the demo org's own
+ *   login page first (`replace`, carrying `demo: true`) and let that page sign
+ *   in.
+ * - `"unavailable"` — the instance has not told us the demo org slug yet (the
+ *   public-config document is still in flight, or this install has no demo).
+ */
+export type DemoEntryDecision = "signIn" | "hopTo" | "unavailable";
+
+/**
+ * The one invariant of the live demo's entry flow: **`login(demoOrg, …)` runs
+ * only while the URL is `/orgs/<demoOrg>/login`.**
+ *
+ * Signing in from a FOREIGN org's login page is what produced the
+ * "You don't have access to <org> — showing <demo> instead." toast on the
+ * product's own front door. The demo session is applied while the URL still
+ * names the other org, and the cross-org navigation that follows commits a
+ * render where the org layout sees the new pathname next to the old `$org`
+ * param — reproduced and confirmed for spec 2026-09-12-01, see §B — so its
+ * non-member fallback fires and warns about a refusal nobody asked for.
+ *
+ * Hopping first costs one extra `replace` navigation and removes the class of
+ * race outright: the layout's org param is the demo org before, during and
+ * after the sign-in.
+ *
+ * Pure, and separate from the component, so both callers on the login page
+ * (the button and the `?demo` auto-login effect) provably agree, and so the
+ * "slug not known yet" case — the one that must NOT be mistaken for "this is
+ * a foreign org, hop somewhere" — is pinned by a unit test.
+ */
+export function demoEntryDecision(
+  urlOrg: string | undefined,
+  demoOrgSlug: string | undefined,
+): DemoEntryDecision {
+  if (!demoOrgSlug) return "unavailable";
+  if (!urlOrg) return "hopTo";
+
+  return urlOrg === demoOrgSlug ? "signIn" : "hopTo";
+}

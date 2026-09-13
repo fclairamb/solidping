@@ -14,6 +14,7 @@ import (
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 )
 
 // Port for the availability24h embedded-Postgres suite. Distinct from every
@@ -46,13 +47,13 @@ func newAvailability24hPostgresDB(t *testing.T) db.Service {
 		Embedded: true, Port: portAvailability24hPG, RunMode: "test",
 	})
 	if err != nil {
-		t.Skipf("embedded postgres unavailable: %v", err)
+		testsupport.PostgresUnavailable(t, err)
 	}
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	if initErr := dbSvc.Initialize(ctx); initErr != nil {
-		t.Skipf("embedded postgres init failed: %v", initErr)
+		testsupport.PostgresInitFailed(t, initErr)
 	}
 
 	return dbSvc
