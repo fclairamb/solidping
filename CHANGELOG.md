@@ -3,6 +3,13 @@
 ## Unreleased
 
 
+## [0.28.1](https://github.com/fclairamb/solidping/compare/v0.28.0...v0.28.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **ci:** build the sp image multi-arch, and let sp report its real version ([#371](https://github.com/fclairamb/solidping/issues/371)) ([e0023b0](https://github.com/fclairamb/solidping/commit/e0023b0ecb591420d0e105c0dbc963ff5530cf03))
+
 ## [0.28.0](https://github.com/fclairamb/solidping/compare/v0.27.1...v0.28.0) (2026-09-13)
 
 
