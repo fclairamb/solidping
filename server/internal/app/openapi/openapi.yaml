@@ -11158,9 +11158,11 @@ components:
           description: >-
             Evidence blobs attached to this incident (spec 2026-08-21-01).
             Present on the DETAIL endpoint only — the list endpoint never
-            populates it. Today the only kind is `screenshot`: the PNG a
+            populates it. Today the only kind is `screenshot`: the image a
             browser check captured when the incident opened or reopened, for
-            checks with the browser `screenshot` option enabled.
+            checks with the browser `screenshot` option enabled. Captures are
+            WebP (`image/webp`); read the entry's `mimeType` rather than
+            assuming a format.
 
 
             **Operator-only, exactly like `details`.** Each entry carries a
@@ -11210,8 +11212,11 @@ components:
           type: string
           enum: [screenshot, traceroute]
           description: >-
-            Attachment kind. `screenshot` is a PNG of what a failing browser
-            check's page looked like; `traceroute` is a JSON MTR-style path
+            Attachment kind. `screenshot` is an image of what a failing
+            browser check's page looked like — WebP today, and `mimeType` is
+            the authority (the server sniffs the stored bytes and accepts
+            `image/png`, `image/jpeg` and `image/webp`); `traceroute` is a
+            JSON MTR-style path
             capture (`nettrace.Capture`: mode, hops with address/PTR/loss and
             min/avg/max RTT) taken after a network-reachability failure opened
             the incident. Fetch and parse the JSON from `downloadUrl` — it is

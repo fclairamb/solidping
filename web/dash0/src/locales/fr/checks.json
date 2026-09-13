@@ -1040,7 +1040,7 @@
     "keywordOptional": "Mot-clé (optionnel)",
     "keywordHelp": "Texte à rechercher dans le contenu de la page rendue.",
     "captureScreenshotOnFailure": "Capturer une capture d'écran en cas d'échec",
-    "captureScreenshotHelp": "Conserve un PNG de la page sur l'incident que ce contrôle ouvre ou rouvre. Pris juste après la détection de l'échec, depuis la région de sonde — une preuve, pas l'image de l'échec elle-même. Désactivé par défaut."
+    "captureScreenshotHelp": "Conserve une image WebP de la page sur l'incident que ce contrôle ouvre ou rouvre. Pris juste après la détection de l'échec, depuis la région de sonde — une preuve, pas l'image de l'échec elle-même. Désactivé par défaut."
   },
   "ssl": {
     "chainTitle": "Chaîne de certificats",

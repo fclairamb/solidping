@@ -333,7 +333,8 @@ capture is **kept only when the final status is `down` or `timeout`** — the
 verdicts a browser check keeps one for — and dropped otherwise, so a shot on
 an `up` run costs a CDP round-trip and nothing else. As with a browser check,
 the image is what the page looked like when *the script asked*, not a frame
-from the instant of failure.
+from the instant of failure — and, as with a browser check, it is a **WebP**
+full-page capture. The format is not selectable from the script.
 
 **Period floor.** A script that calls `browser.open(` is held to the `browser`
 check's **1m** minimum period instead of the `js` type's 30s, decided when the

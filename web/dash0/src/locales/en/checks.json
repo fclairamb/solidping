@@ -1040,7 +1040,7 @@
     "keywordOptional": "Keyword (optional)",
     "keywordHelp": "Text to search for in the rendered page content.",
     "captureScreenshotOnFailure": "Capture a screenshot on failure",
-    "captureScreenshotHelp": "Keeps a PNG of the page on the incident this check opens or reopens. Taken just after the failure is detected, from the probing region — evidence, not the failing frame itself. Off by default."
+    "captureScreenshotHelp": "Keeps a WebP image of the page on the incident this check opens or reopens. Taken just after the failure is detected, from the probing region — evidence, not the failing frame itself. Off by default."
   },
   "ssl": {
     "chainTitle": "Certificate chain",

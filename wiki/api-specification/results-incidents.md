@@ -89,8 +89,9 @@ Query parameters:
 
 Response extra (detail endpoint only): `attachments[]` — the incident's stored
 evidence blobs (spec 2026-08-21-01). Today the only kind is `screenshot`: the
-PNG a browser check with `screenshot: true` captured when this incident opened
-or reopened. Each entry carries `uid`, `kind`, `name`, `mimeType`, `size`,
+image a browser check with `screenshot: true` captured when this incident
+opened or reopened — WebP today, and `mimeType` is the authority (the store
+sniffs the bytes and accepts PNG, JPEG or WebP). Each entry carries `uid`, `kind`, `name`, `mimeType`, `size`,
 `createdAt`, `capturedAt`, `region`, `checkUid`, `trigger`, and a **relative,
 short-lived signed** `downloadUrl` (`/pub/files/<uid>?exp=…&sig=…`) — relative
 so it resolves against whichever host served the client, re-signed on every

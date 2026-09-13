@@ -1040,7 +1040,7 @@
     "keywordOptional": "Palabra clave (opcional)",
     "keywordHelp": "Texto que se busca en el contenido de la página renderizada.",
     "captureScreenshotOnFailure": "Capturar una captura de pantalla en caso de fallo",
-    "captureScreenshotHelp": "Guarda un PNG de la página en el incidente que abre o reabre esta comprobación. Se toma justo después de detectar el fallo, desde la región de sondeo — es evidencia, no el fotograma del fallo en sí. Desactivado por defecto."
+    "captureScreenshotHelp": "Guarda una imagen WebP de la página en el incidente que abre o reabre esta comprobación. Se toma justo después de detectar el fallo, desde la región de sondeo — es evidencia, no el fotograma del fallo en sí. Desactivado por defecto."
   },
   "ssl": {
     "chainTitle": "Cadena de certificados",

@@ -1040,7 +1040,7 @@
     "keywordOptional": "Schlüsselwort (optional)",
     "keywordHelp": "Text, nach dem im gerenderten Seiteninhalt gesucht wird.",
     "captureScreenshotOnFailure": "Screenshot bei Fehler erfassen",
-    "captureScreenshotHelp": "Speichert ein PNG der Seite am Vorfall, den diese Prüfung öffnet oder wiedereröffnet. Aufgenommen unmittelbar nach Erkennung des Fehlers, aus der Prüfregion — ein Beleg, nicht das fehlerhafte Bild selbst. Standardmäßig deaktiviert."
+    "captureScreenshotHelp": "Speichert ein WebP-Bild der Seite am Vorfall, den diese Prüfung öffnet oder wiedereröffnet. Aufgenommen unmittelbar nach Erkennung des Fehlers, aus der Prüfregion — ein Beleg, nicht das fehlerhafte Bild selbst. Standardmäßig deaktiviert."
   },
   "ssl": {
     "chainTitle": "Zertifikatskette",
