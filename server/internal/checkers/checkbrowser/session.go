@@ -476,7 +476,7 @@ type Capture struct {
 func (c Capture) Empty() bool { return len(c.Image) == 0 }
 
 // cdpScreenshotFormat maps a checkerdef format onto the CDP enum. Unknown
-// formats fall back to PNG: an unrecognised value must not silently become the
+// formats fall back to PNG: an unrecognized value must not silently become the
 // encoder's own default, because that default is what this spec exists to fix.
 func cdpScreenshotFormat(format checkerdef.ImageFormat) page.CaptureScreenshotFormat {
 	switch format {

@@ -114,7 +114,7 @@ func TestScreenshotSniffFailsClosedOnUnknownMagic(t *testing.T) {
 
 			_, err := svc.PutIncidentScreenshot(ctx, org.UID, uuid.New().String(), tc.body, nil)
 			r.ErrorIs(err, ErrUnsupportedMediaType,
-				"an unrecognised body must still be refused for the screenshot kind")
+				"an unrecognized body must still be refused for the screenshot kind")
 		})
 	}
 
