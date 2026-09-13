@@ -8,7 +8,8 @@
 
 ### Bug Fixes
 
-* **ci:** build the sp image multi-arch, and let sp report its real version ([#371](https://github.com/fclairamb/solidping/issues/371)) ([e0023b0](https://github.com/fclairamb/solidping/commit/e0023b0ecb591420d0e105c0dbc963ff5530cf03))
+* **ci:** **v0.28.0 published no `sp` image, despite its changelog promising one.** The `Publish the sp CLI` job asked buildx for `linux/amd64,linux/arm64` without ever setting Buildx up, so it ran on the default `docker` driver — which cannot build a multi-arch image at all — and failed with `Multi-platform build is not supported for the docker driver`. The four release archives and the main server image were unaffected and did publish; only `ghcr.io/fclairamb/solidping/sp` was missing. `Dockerfile.sp`'s builder stage is now also pinned to `--platform=$BUILDPLATFORM`: it already cross-compiles via `TARGETOS`/`TARGETARCH`, so without that pin the arm64 target ran `go mod download` and the compile under QEMU emulation to produce exactly the same binary, minutes slower ([#371](https://github.com/fclairamb/solidping/issues/371)) ([e0023b0](https://github.com/fclairamb/solidping/commit/e0023b0ecb591420d0e105c0dbc963ff5530cf03))
+* **cli:** **`sp --version` reported `1.0.0` on every build ever shipped.** `cmd/sp` hard-coded that string and never imported `internal/version`, so all four `-X …internal/version.Version=` ldflags the release workflow passes were inert — the published v0.28.0 archives report `1.0.0` too. It now reports the stamped version, and `dev` when built without one ([#371](https://github.com/fclairamb/solidping/issues/371)) ([e0023b0](https://github.com/fclairamb/solidping/commit/e0023b0ecb591420d0e105c0dbc963ff5530cf03))
 
 ## [0.28.0](https://github.com/fclairamb/solidping/compare/v0.27.1...v0.28.0) (2026-09-13)
 
