@@ -269,3 +269,63 @@ keep working and keep producing a valid attachment through the fixed path — th
 is the only requirement on it here. (Note `page.screenshot()` landed in spec
 2026-09-12-06, so the `checkjs` browser global is now a second caller of this
 capture path; both must end up on the shared, format-aware implementation.)
+
+## Implementation Plan
+
+### §1 — Live evidence (DONE FIRST, on the unfixed build)
+
+Two throwaway tests, run against a local Chrome (`FindChromeBinary("")`), then deleted:
+
+1. `Session.Screenshot` on a real page → **4511 bytes, magic `ff d8 ff e0 00 10 4a 46 49 46`**
+   (JPEG/JFIF). Not PNG.
+2. Those exact bytes into `attachments.Service.PutIncidentScreenshot` (SQLite + local-FS
+   harness) → `fileUID=""`, `err = unsupported attachment media type: screenshot attachments
+   must be image/png`.
+
+**The shipped-bug claim is confirmed: browser-check screenshots have never been stored.**
+
+### §2 — Capture
+
+- `checkbrowser`: replace `screenshotQuality = 90` with an exported `ScreenshotFormat`
+  (`checkerdef.ImageFormatWebP`) + `screenshotQuality = 85`, documented with the reasoning.
+- `Session.Screenshot` drives `page.CaptureScreenshot().WithFormat(...).WithQuality(...)
+  .WithCaptureBeyondViewport(true).WithFromSurface(true)` — `chromedp.FullScreenshot` can only
+  ever emit PNG or JPEG, so WebP is unreachable through it. Still exactly ONE capture call.
+- Returns a `Capture{Image, Format}` so the format travels with the bytes.
+- Rewrite the `MaxScreenshotBytes` doc comment (no more "a single captured PNG").
+
+### §3 — Carry the format
+
+- `checkerdef`: new `ImageFormat` string type (`png`/`jpeg`/`webp`) with `MIME()`/`Extension()`;
+  `Screenshot.PNG` → `Image []byte` + `Format ImageFormat \`json:"format,omitempty"\`` (serialized,
+  so the agent marker frame declares what is coming). Rewrite the type doc.
+- `agents/capturecache`: `entry.png` → `entry.blob` + `format`; `Put(blob, format)`,
+  `Take` returns both; package doc de-PNG'd.
+- `checkworker/backend/ws_capture.go`: hardcoded `mimePNG` → the capture's real MIME.
+- `checkjs`: `screenshotPNG` → `screenshotImage` + format; `BrowserSession.Screenshot` returns
+  `checkbrowser.Capture`.
+- `incidents/service.go`: `shot.PNG` → `shot.Image`.
+
+### §4 — Attachment store
+
+- `sniffMime` gains a PNG/JPEG/WebP magic-byte table for `KindScreenshot`; anything else stays
+  refused (fail closed). `safeInlineMIME` (`files/handler.go:163`) already allows all three —
+  confirmed by reading, and pinned by a new test.
+- Filenames: `Put` now takes a base name WITHOUT extension and appends the one matching the
+  SNIFFED type. This also fixes `attachments/handler.go`'s `attachmentName`, which gave every
+  agent upload — traceroute JSON included — a `.png` extension.
+
+### §5 — Existing rows
+
+**Nothing to migrate.** §1 proves the store refused every browser-check screenshot ever
+captured, so no row exists with `image/png` and non-PNG bytes. No migration, no note.
+
+### §6 — Tests + docs
+
+- `session_live_test.go`: drop the apologetic comment, assert the real WebP `RIFF....WEBP` magic.
+- `attachments`: real-bytes store test (PNG/JPEG/WebP → stored MIME + filename extension),
+  negative control (unrecognised magic still refused for `KindScreenshot`).
+- Served `Content-Type` matches the bytes (the `nosniff` render proof).
+- `checkjs` live coverage of `page.screenshot()` through the shared path.
+- Docs: `wiki/features/browser-monitoring.md`, the JS-check docs, `openapi.yaml:11161,11213`,
+  and `captureScreenshotHelp` in `web/dash0/src/locales/{en,de,es,fr}/checks.json`.
