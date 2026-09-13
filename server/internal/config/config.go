@@ -528,6 +528,7 @@ type Config struct {
 	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	LogFormat    LogFormat            `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
 }
 
 // ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt
@@ -1915,6 +1916,7 @@ func Load() (*Config, error) {
 
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
+	cfg.LogFormat = ParseLogFormat(os.Getenv("SP_LOG_FORMAT"))
 
 	// App / GitHub: SP_APP_GITHUB_ISSUES_TOKEN takes precedence over the
 	// bare GITHUB_ISSUES_TOKEN — keeps SP_*-prefixed conventions while
@@ -3438,5 +3440,39 @@ func ParseLogLevel(level string) slog.Level {
 		return slog.LevelError
 	default:
 		return slog.LevelInfo // Default to info level
+	}
+}
+
+// LogFormat selects how log records are rendered on stdout.
+type LogFormat string
+
+const (
+	// LogFormatText is Go's key=value logfmt-style handler. The default: it
+	// stays readable with no tooling, which is what a self-hosted operator
+	// tailing a container gets without opting in to anything.
+	LogFormatText LogFormat = "text"
+	// LogFormatJSON emits one JSON object per record. Pick this when a log
+	// collector parses stdout — attributes become queryable fields instead of
+	// being buried in a formatted message.
+	LogFormatJSON LogFormat = "json"
+	// LogFormatPretty is the colorized, human-first handler. For interactive
+	// development; it is not machine-parseable.
+	LogFormatPretty LogFormat = "pretty"
+)
+
+// ParseLogFormat parses a log format string into a LogFormat.
+// Valid values: text, json, pretty (case-insensitive).
+// Returns LogFormatText if the value is empty or unrecognized — an unreadable
+// typo must not cost the operator their logs.
+func ParseLogFormat(format string) LogFormat {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json":
+		return LogFormatJSON
+	case "pretty":
+		return LogFormatPretty
+	case "text", "logfmt":
+		return LogFormatText
+	default:
+		return LogFormatText
 	}
 }

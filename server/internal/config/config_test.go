@@ -299,6 +299,68 @@ func TestParseLogLevel(t *testing.T) {
 	}
 }
 
+func TestParseLogFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected LogFormat
+	}{
+		{
+			name:     "json lowercase",
+			input:    "json",
+			expected: LogFormatJSON,
+		},
+		{
+			name:     "json uppercase",
+			input:    "JSON",
+			expected: LogFormatJSON,
+		},
+		{
+			name:     "text",
+			input:    "text",
+			expected: LogFormatText,
+		},
+		{
+			name:     "logfmt is an alias for text",
+			input:    "logfmt",
+			expected: LogFormatText,
+		},
+		{
+			name:     "pretty",
+			input:    "pretty",
+			expected: LogFormatPretty,
+		},
+		{
+			name:     "empty string defaults to text",
+			input:    "",
+			expected: LogFormatText,
+		},
+		{
+			name:     "invalid value defaults to text",
+			input:    "yaml",
+			expected: LogFormatText,
+		},
+		{
+			name:     "whitespace trimmed",
+			input:    "  json  ",
+			expected: LogFormatJSON,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := ParseLogFormat(testCase.input)
+			if result != testCase.expected {
+				t.Errorf("ParseLogFormat(%q) = %v, want %v", testCase.input, result, testCase.expected)
+			}
+		})
+	}
+}
+
 // TestApplyFileStorageEnv confirms the manual reader bypasses koanf's env
 // underscore→dot collapse: every SP_FILESTORAGE_S3_* var lands on the
 // snake_case-tagged FileStorageConfig field. Uses t.Setenv, which is
