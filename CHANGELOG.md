@@ -21,6 +21,22 @@
 * **checks:** there is now one label key rule, and every layer agrees on it: lowercase, starting with a letter, 3 to 51 characters, letters, digits and hyphens — `^[a-z][a-z0-9-]{2,50}$` — with values that are non-empty and at most 200 characters. It is the rule PostgreSQL, the dashboard and status-page selectors have always enforced. The import and manifest validator used a laxer one of its own that accepted two-character keys, leading digits and dots, so a document with a key like `os` or `k8s.cluster` passed validation and then failed at write time with a raw database error: `failed to create label: failed to create label: ERROR: … violates check constraint "labels_key_check" (SQLSTATE=23514)`. Those keys are now refused up front, by a message naming the key and the rule, as a `400 VALIDATION_ERROR` on `POST /checks` and `PATCH /checks/:uid` and as a per-entry error on import — and no database wording reaches you under any circumstances. **This is a behaviour change for SQLite deployments**, which until now had no such constraint and accepted keys PostgreSQL could never store. A migration brings SQLite onto the same rule; any existing label whose key does not match it is dropped, because it is a label PostgreSQL could not hold and nothing will create again. If you author label keys through the dashboard you are unaffected — it has always enforced this rule
 * **checks:** **the reserved config-as-code label changed from `solidping.io/managed` to `solidping-managed`.** That key contains a dot and a slash, which the label key rule above has never permitted, so `POST /checks/apply` and every "migrate from…" importer — Better Stack, Gatus, Uptime Kuma, UptimeRobot — were in fact broken on PostgreSQL and only appeared to work on SQLite. Existing SQLite installations have their labels renamed by the migration, so a manifest keeps its managed scope across the upgrade and nothing is adopted or deleted by surprise. If you filter or search checks on `solidping.io/managed`, switch to `solidping-managed`
 
+## [0.28.0](https://github.com/fclairamb/solidping/compare/v0.27.1...v0.28.0) (2026-09-13)
+
+
+### Features
+
+* browser-driving js checks, a Postgres CI test layer, and config-as-code hardening ([#365](https://github.com/fclairamb/solidping/issues/365)) ([6366c7c](https://github.com/fclairamb/solidping/commit/6366c7c40a7448cb79b2b5342c47b2ff12e2086e))
+* **server:** campaign links under /demo carry utm_source ([#363](https://github.com/fclairamb/solidping/issues/363)) ([3142588](https://github.com/fclairamb/solidping/commit/31425888456fb5eae2974b51486832df08041e1a))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to fabc3b8 ([#364](https://github.com/fclairamb/solidping/issues/364)) ([139541f](https://github.com/fclairamb/solidping/commit/139541f79910964430568084468d463b297a53b9))
+* **deps:** update go dependencies (non-major) ([#359](https://github.com/fclairamb/solidping/issues/359)) ([1cd404c](https://github.com/fclairamb/solidping/commit/1cd404c79f019f78a2e2f7a3ba7e2fc226253be2))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.113.1 ([#366](https://github.com/fclairamb/solidping/issues/366)) ([22e2e65](https://github.com/fclairamb/solidping/commit/22e2e65da4a776268fdc889f14fc68f836d20e50))
+* **deps:** update module go.mongodb.org/mongo-driver/v2 to v2.9.1 ([#361](https://github.com/fclairamb/solidping/issues/361)) ([37c55f9](https://github.com/fclairamb/solidping/commit/37c55f9cf99a6da9f96588a2f2a3af5161758520))
+
 ## [0.27.1](https://github.com/fclairamb/solidping/compare/v0.27.0...v0.27.1) (2026-09-09)
 
 
