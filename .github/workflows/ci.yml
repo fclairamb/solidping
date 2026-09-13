@@ -206,7 +206,7 @@ jobs:
       # otherwise be the most likely way this job fails for a reason unrelated
       # to the code under test.
       - name: Cache embedded PostgreSQL binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.embedded-postgres-go
           key: embedded-postgres-${{ runner.os }}-${{ hashFiles('server/go.sum') }}
