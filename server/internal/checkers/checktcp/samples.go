@@ -13,7 +13,30 @@ const (
 	// demoHost is the only host the public live demo's TCP catalog probes:
 	// our own.
 	demoHost = "solidping.io"
+
+	// SampleHTTPRequest is a minimal HTTP/1.0 HEAD request against demoHost,
+	// written with `escaped` encoding because CRLF cannot be typed into a
+	// <textarea> any other way.
+	SampleHTTPRequest = `HEAD / HTTP/1.0\r\nHost: ` + demoHost + `\r\n\r\n`
+	// SampleHTTPExpect proves a web server ANSWERED, not merely that the port
+	// accepted a connection and completed a TLS handshake.
+	SampleHTTPExpect = `^HTTP/1\.[01] (200|301|302)`
 )
+
+// speakingSolidpingSample is the TCP sample that actually talks: connect over
+// TLS, send a HEAD request, and require a status line back.
+func speakingSolidpingSample() map[string]any {
+	return (&TCPConfig{
+		Host:          demoHost,
+		Port:          samplePort,
+		Timeout:       sampleTimeout,
+		TLS:           true,
+		TLSVerify:     true,
+		SendData:      SampleHTTPRequest,
+		SendEncoding:  checkerdef.PayloadEncodingEscaped,
+		ExpectPattern: SampleHTTPExpect,
+	}).GetConfig()
+}
 
 // GetSampleConfigs returns sample TCP check configurations.
 func (c *TCPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
@@ -26,11 +49,7 @@ func (c *TCPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				Name:   "solidping.io TLS port",
 				Slug:   "demo-tcp-solidping",
 				Period: time.Minute,
-				Config: (&TCPConfig{
-					Host:    demoHost,
-					Port:    samplePort,
-					Timeout: sampleTimeout,
-				}).GetConfig(),
+				Config: speakingSolidpingSample(),
 			},
 		}
 	}
@@ -67,6 +86,14 @@ func (c *TCPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []chec
 				Port:    samplePort,
 				Timeout: sampleTimeout,
 			}).GetConfig(), checkerdef.IPVersionIPv6),
+		},
+		{
+			// The one sample that proves the SERVICE works, not just that the
+			// port is open: it sends a request and requires a status line back.
+			Name:   "solidping.io HTTPS request (443)",
+			Slug:   "tcp-solidping-https",
+			Period: time.Minute * 5,
+			Config: speakingSolidpingSample(),
 		},
 		{
 			Name:   "GitHub HTTPS (443)",
