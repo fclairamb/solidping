@@ -973,7 +973,18 @@
     "privateKeyEncrypted": "(encrypted — enter a new key to replace)",
     "passwordOverridesPrivateKey": "If both a password and a private key are set, the password is used.",
     "password": "Password",
-    "usernameOptionalAnonymous": "Username (optional, default: anonymous)"
+    "usernameOptionalAnonymous": "Username (optional, default: anonymous)",
+    "payloadReply": "Payload & reply",
+    "payloadReplySummary": "Send a payload and wait for a matching reply",
+    "sendOptional": "Send (optional)",
+    "expectOptional": "Expect (optional)",
+    "expectModeContains": "Contains",
+    "expectModeRegex": "Matches regex",
+    "encoding_text": "Text",
+    "encoding_escaped": "Escaped",
+    "encoding_hex": "Hex",
+    "payloadHelp": "Set an expectation to prove the service answers, not just that the port is open.",
+    "payloadHelpUdp": "Without one, this check can only detect port-unreachable."
   },
   "prometheus": {
     "mode": "Mode",
