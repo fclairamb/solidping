@@ -9,15 +9,30 @@ import (
 
 // TCPConfig holds the configuration for TCP connection checks.
 type TCPConfig struct {
-	URL           string        `json:"url,omitempty"`
-	Host          string        `json:"host,omitempty"`
-	Port          int           `json:"port,omitempty"`
-	Timeout       time.Duration `json:"timeout,omitempty"`
-	SendData      string        `json:"send_data,omitempty"`   //nolint:tagliatelle // API uses snake_case
-	ExpectData    string        `json:"expect_data,omitempty"` //nolint:tagliatelle // API uses snake_case
-	TLS           bool          `json:"tls,omitempty"`
-	TLSVerify     bool          `json:"tls_verify,omitempty"`      //nolint:tagliatelle // API uses snake_case
-	TLSServerName string        `json:"tls_server_name,omitempty"` //nolint:tagliatelle // API uses snake_case
+	URL            string        `json:"url,omitempty"`
+	Host           string        `json:"host,omitempty"`
+	Port           int           `json:"port,omitempty"`
+	Timeout        time.Duration `json:"timeout,omitempty"`
+	SendData       string        `json:"send_data,omitempty"`       //nolint:tagliatelle // API uses snake_case
+	SendEncoding   string        `json:"send_encoding,omitempty"`   //nolint:tagliatelle // API uses snake_case
+	ExpectData     string        `json:"expect_data,omitempty"`     //nolint:tagliatelle // API uses snake_case
+	ExpectEncoding string        `json:"expect_encoding,omitempty"` //nolint:tagliatelle // API uses snake_case
+	ExpectPattern  string        `json:"expect_pattern,omitempty"`  //nolint:tagliatelle // API uses snake_case
+	TLS            bool          `json:"tls,omitempty"`
+	TLSVerify      bool          `json:"tls_verify,omitempty"`      //nolint:tagliatelle // API uses snake_case
+	TLSServerName  string        `json:"tls_server_name,omitempty"` //nolint:tagliatelle // API uses snake_case
+}
+
+// exchangeFields projects the send/expect half of the config onto the shared
+// type that parses, serializes and validates it.
+func (c *TCPConfig) exchangeFields() *checkerdef.ExchangeFields {
+	return &checkerdef.ExchangeFields{
+		SendData:       c.SendData,
+		SendEncoding:   c.SendEncoding,
+		ExpectData:     c.ExpectData,
+		ExpectEncoding: c.ExpectEncoding,
+		ExpectPattern:  c.ExpectPattern,
+	}
 }
 
 // FromMap populates the configuration from a map.
@@ -68,19 +83,18 @@ func (c *TCPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("timeout", "must be a string")
 	}
 
-	// Extract SendData (optional)
-	if sendData, ok := configMap["send_data"].(string); ok {
-		c.SendData = sendData
-	} else if configMap["send_data"] != nil {
-		return checkerdef.NewConfigError("send_data", "must be a string")
+	// Extract the send/expect payload keys (optional) — parsed once, in
+	// checkerdef, so `tcp` and `udp` cannot drift apart.
+	exchange := checkerdef.ExchangeFields{}
+	if err := exchange.FromMap(configMap); err != nil {
+		return err
 	}
 
-	// Extract ExpectData (optional)
-	if expectData, ok := configMap["expect_data"].(string); ok {
-		c.ExpectData = expectData
-	} else if configMap["expect_data"] != nil {
-		return checkerdef.NewConfigError("expect_data", "must be a string")
-	}
+	c.SendData = exchange.SendData
+	c.SendEncoding = exchange.SendEncoding
+	c.ExpectData = exchange.ExpectData
+	c.ExpectEncoding = exchange.ExpectEncoding
+	c.ExpectPattern = exchange.ExpectPattern
 
 	// Extract TLS (optional)
 	if tls, ok := configMap["tls"].(bool); ok {
@@ -121,13 +135,7 @@ func (c *TCPConfig) GetConfig() map[string]any {
 		cfg["timeout"] = c.Timeout.String()
 	}
 
-	if c.SendData != "" {
-		cfg["send_data"] = c.SendData
-	}
-
-	if c.ExpectData != "" {
-		cfg["expect_data"] = c.ExpectData
-	}
+	c.exchangeFields().Apply(cfg)
 
 	if c.TLS {
 		cfg["tls"] = c.TLS
