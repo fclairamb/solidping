@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -97,21 +97,21 @@ func (c *DockerChecker) Execute(
 
 	defer func() { _ = cli.Close() }()
 
-	info, err := cli.ContainerInspect(ctx, cfg.resolveContainerRef())
+	inspected, err := cli.ContainerInspect(ctx, cfg.resolveContainerRef(), client.ContainerInspectOptions{})
 	if err != nil {
 		return handleInspectError(ctx, err, start, metrics), nil
 	}
 
 	metrics["inspect_time_ms"] = durationMs(time.Since(start))
 
-	return buildResult(cfg, info, start, metrics, output), nil
+	return buildResult(cfg, &inspected.Container, start, metrics, output), nil
 }
 
 func createClient(cfg *DockerConfig) (*client.Client, error) {
-	return client.NewClientWithOpts(
-		client.WithHost(cfg.resolveHost()),
-		client.WithAPIVersionNegotiation(),
-	)
+	// API-version negotiation is on by default in this client, so the endpoint
+	// host is the only thing worth configuring: an older daemon (or Podman's
+	// Docker-compatible socket) is negotiated down on the first request.
+	return client.New(client.WithHost(cfg.resolveHost()))
 }
 
 func handleInspectError(
@@ -139,7 +139,7 @@ func handleInspectError(
 
 func buildResult(
 	cfg *DockerConfig,
-	info container.InspectResponse,
+	info *container.InspectResponse,
 	start time.Time,
 	metrics map[string]any,
 	output map[string]any,
@@ -199,7 +199,7 @@ func buildResult(
 
 func detectRestartLoop(
 	cfg *DockerConfig,
-	info container.InspectResponse,
+	info *container.InspectResponse,
 	start time.Time,
 	metrics map[string]any,
 	output map[string]any,

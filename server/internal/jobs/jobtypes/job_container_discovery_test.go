@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
@@ -129,7 +129,7 @@ func TestContainerDiscoveryPersistsGroupedChecks(t *testing.T) {
 			Image:  "nginx:latest",
 			State:  "running",
 			Status: "Up 2 hours (healthy)",
-			Ports: []container.Port{
+			Ports: []container.PortSummary{
 				{PrivatePort: 80, PublicPort: 8080, Type: "tcp"},
 				{PrivatePort: 9000, PublicPort: 0, Type: "tcp"}, // exposed-only -> no suggestion
 			},
