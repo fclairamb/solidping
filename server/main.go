@@ -26,6 +26,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	"github.com/fclairamb/solidping/server/internal/procwatch"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
+	"github.com/fclairamb/solidping/server/internal/utils/slog/pretty"
 	"github.com/fclairamb/solidping/server/internal/version"
 	spCli "github.com/fclairamb/solidping/server/pkg/cli"
 )
@@ -39,7 +40,7 @@ func main() {
 	// Set up logger early (before config load to ensure it's always configured)
 	// Read LOG_LEVEL env var directly to configure logger before config load
 	logLevel := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
-	setupLogger(logLevel)
+	setupLogger(logLevel, config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
 	cmd := &cli.Command{
 		Name:           "solidping",
@@ -91,12 +92,27 @@ func main() {
 	}
 }
 
-// setupLogger configures the default slog logger with the given level.
-func setupLogger(level slog.Level) {
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	})
-	logger := slog.New(handler)
+// newLogHandler builds the stdout handler for the requested format. It is the
+// single place that maps a config.LogFormat onto a slog.Handler, so the plain
+// path and the OTel fanout path below can never drift apart.
+func newLogHandler(level slog.Level, format config.LogFormat) slog.Handler {
+	opts := &slog.HandlerOptions{Level: level}
+
+	switch format {
+	case config.LogFormatJSON:
+		return slog.NewJSONHandler(os.Stdout, opts)
+	case config.LogFormatPretty:
+		return pretty.NewPretty(os.Stdout, opts)
+	case config.LogFormatText:
+		return slog.NewTextHandler(os.Stdout, opts)
+	default:
+		return slog.NewTextHandler(os.Stdout, opts)
+	}
+}
+
+// setupLogger configures the default slog logger with the given level and format.
+func setupLogger(level slog.Level, format config.LogFormat) {
+	logger := slog.New(newLogHandler(level, format))
 	slog.SetDefault(logger)
 }
 
@@ -109,7 +125,7 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	// Re-configure logger with the log level from config
-	setupLogger(cfg.LogLevel)
+	setupLogger(cfg.LogLevel, cfg.LogFormat)
 
 	// Warn about unrecognized SP_* environment variables before validating: a
 	// typo'd var is often *why* validation fails, so the hint must print before
@@ -160,16 +176,13 @@ func serve(ctx context.Context, _ *cli.Command) error {
 
 	// If OTel logs are enabled, add otelslog bridge via fanout
 	if logProvider != nil {
-		textHandler := slog.NewTextHandler(
-			os.Stdout,
-			&slog.HandlerOptions{Level: cfg.LogLevel},
-		)
+		stdoutHandler := newLogHandler(cfg.LogLevel, cfg.LogFormat)
 		otelHandler := otelslog.NewHandler(
 			"solidping",
 			otelslog.WithLoggerProvider(logProvider),
 		)
 		fanout := slogutil.NewFanoutHandler(
-			textHandler, otelHandler,
+			stdoutHandler, otelHandler,
 		)
 		slog.SetDefault(slog.New(fanout))
 	}
@@ -376,7 +389,7 @@ func migrate(ctx context.Context, _ *cli.Command) error {
 	}
 
 	// Re-configure logger with the log level from config
-	setupLogger(cfg.LogLevel)
+	setupLogger(cfg.LogLevel, cfg.LogFormat)
 
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
@@ -398,7 +411,7 @@ func migrateRepair(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
-	setupLogger(cfg.LogLevel)
+	setupLogger(cfg.LogLevel, cfg.LogFormat)
 
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
@@ -456,7 +469,7 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	setupLogger(cfg.LogLevel)
+	setupLogger(cfg.LogLevel, cfg.LogFormat)
 
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)

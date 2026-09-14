@@ -42,7 +42,7 @@ func browserToSleep(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	setupLogger(cfg.LogLevel)
+	setupLogger(cfg.LogLevel, cfg.LogFormat)
 
 	if validationErr := cfg.Validate(); validationErr != nil {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)

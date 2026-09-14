@@ -176,6 +176,7 @@ used, so edits made through the API are preserved across restarts.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SP_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `SP_LOG_FORMAT` | `text` | Output format: `text` (key=value logfmt), `json` (one object per record, for log collectors), `pretty` (colourized, for interactive use) |
 | `LOG_LEVEL` | `info` | Same, but read before the configuration system loads — use it to debug startup itself |
 | `NO_COLOR` | - | Set to any value to disable coloured terminal output ([no-color.org](https://no-color.org/)) |
 | `FORCE_COLOR` | - | Set to any value to force coloured output when the terminal is not detected as a TTY |
@@ -326,6 +327,7 @@ SP_GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Logging
 SP_LOG_LEVEL=info
+SP_LOG_FORMAT=text
 ```
 
 ### Configuration File (config.yml)

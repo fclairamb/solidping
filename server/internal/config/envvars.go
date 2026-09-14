@@ -133,6 +133,7 @@ func manualReaderServerEnvVars() []string {
 		"SP_SERVER_MAX_REQUEST_DURATION",
 		"SP_DB_RESET",
 		"SP_LOG_LEVEL",
+		"SP_LOG_FORMAT",
 		"SP_APP_GITHUB_ISSUES_TOKEN",
 		"SP_APP_GITHUB_REPO",
 		// applyCheckersEnv — both keys have a snake_case segment, so koanf's
