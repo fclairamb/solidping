@@ -97,12 +97,17 @@ tcps://hostname:port  # With TLS
 | Host | Target hostname | `db.example.com` |
 | Port | Target port | `5432` |
 | TLS | Enable TLS/SSL | `true` / `false` |
-| Timeout | Connection timeout | `10s` |
+| Timeout | Time budget for the **whole** exchange: connect, TLS, send and wait for the reply | `10s` |
+| `send_data` | Payload to send once connected (after the TLS handshake for `tcps`) | `PING\r\n` |
+| `send_encoding` | How `send_data` becomes bytes: `text` (default), `escaped`, `hex` | `escaped` |
+| `expect_data` | Substring the reply must contain | `+PONG` |
+| `expect_encoding` | How `expect_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
+| `expect_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the reply must match | `^220 .* ESMTP` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
 
 ### UDP {#udp}
 
-Check UDP port reachability.
+Check a UDP service by sending it something and asserting the answer.
 
 **URL Format:**
 ```
@@ -113,7 +118,68 @@ udp://hostname:port
 |--------|-------------|---------|
 | Host | Target hostname | `dns.example.com` |
 | Port | Target port | `53` |
-| Timeout | Connection timeout | `10s` |
+| Timeout | Time budget for the **whole** exchange: connect, send and wait for the reply | `10s` |
+| `send_data` | Datagram to send | `5350 0100 0001 ...` |
+| `send_encoding` | How `send_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
+| `expect_data` | Substring the reply must contain | `53508180` |
+| `expect_encoding` | How `expect_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
+| `expect_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the reply must match | `^[\x1c\x24]` |
+
+:::caution A UDP check with no expectation proves almost nothing
+UDP has no handshake. A datagram sent into the void succeeds whether or not
+anything is listening, so a UDP check **without** `expect_data` or
+`expect_pattern` can only ever fail on an ICMP port-unreachable. Always set an
+expectation.
+:::
+
+### Send a payload and wait for a reply {#send-and-expect}
+
+Completing a TCP handshake proves a firewall forwards the port, not that the
+service behind it works. `tcp` and `udp` checks can send a payload and require
+an answer — which is what actually proves the service is alive.
+
+**Redis over TCP** — send `PING`, require `+PONG`:
+
+```yaml
+host: redis.example.com
+port: 6379
+send_data: 'PING\r\n'
+send_encoding: escaped
+expect_pattern: '^\+PONG'
+```
+
+**DNS over UDP** — send a real query for `example.com A` and require an answer
+carrying the same transaction ID, with `RCODE 0`:
+
+```yaml
+host: 8.8.8.8
+port: 53
+send_encoding: hex
+send_data: "5350 0100 0001 0000 0000 0000 07 6578616d706c65 03 636f6d 00 0001 0001"
+expect_encoding: hex
+expect_data: "53508180"
+```
+
+How it behaves:
+
+- **Encodings.** `text` sends the string byte-for-byte (the default, so nothing
+  stored before encodings existed changes meaning). `escaped` decodes the C-style
+  escapes `\r`, `\n`, `\t`, `\0`, `\\` and `\xNN` — the only way to express a CRLF
+  in a form field. `hex` decodes hex digits, whitespace ignored.
+- **Both expectations apply.** `expect_data` and `expect_pattern` may both be
+  set; the reply must satisfy both.
+- **The reply is read until it matches**, not once. A banner split across two
+  segments, or an answer that arrives after a greeting, matches — up to a 4 KB
+  cap on the reply. Matching runs on the whole buffer; the `received_data`
+  output field is capped at 1 KB and rendered with `\xNN` escapes when the reply
+  is not valid UTF-8.
+- **Silence is a `Timeout`**, not a `Down`: a port that accepts a connection and
+  then says nothing is a distinct failure, reported as
+  `no matching reply within 10s (0 bytes received)`.
+- A payload with **no** expectation keeps its old meaning: the reply is read once
+  for diagnostics and silence is not a failure.
+- A **raw byte above `0x7F`** is not valid UTF-8 and cannot be written as `\xNN`
+  in `expect_pattern` — assert it with a hex `expect_data` instead.
 
 ### ICMP (Ping) {#icmp-ping}
 

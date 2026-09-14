@@ -108,9 +108,12 @@ with `response body is not valid JSON for assertion evaluation`.
 | `url` | string | O | | TCP URL (e.g., `tcp://host:port` or `tcps://host:port`) |
 | `host` | string | O | | Hostname (legacy, use `url` instead) |
 | `port` | int | O | | Port number (legacy, use `url` instead) |
-| `timeout` | duration | O | | Connection timeout |
-| `send_data` | string | O | | Data to send after connecting |
-| `expect_data` | string | O | | Expected data in response |
+| `timeout` | duration | O | 5s | Budget for the WHOLE exchange: dial, TLS, write and wait for the reply |
+| `send_data` | string | O | | Payload to send after connecting (after the TLS handshake for `tcps`) |
+| `send_encoding` | string | O | `text` | How `send_data` is decoded: `text`, `escaped` (`\r \n \t \0 \\ \xNN`), `hex` (whitespace ignored) |
+| `expect_data` | string | O | | Substring the reply must contain |
+| `expect_encoding` | string | O | `text` | Same decoder, applied to `expect_data` |
+| `expect_pattern` | string | O | | RE2 regex the reply must match; compiled in `Validate()` |
 | `tls` | bool | O | false | Use TLS/SSL |
 | `tls_verify` | bool | O | false | Verify TLS certificate |
 | `tls_server_name` | string | O | | Override TLS server name (SNI) |
@@ -125,9 +128,18 @@ Either `url` or `host`+`port` is required.
 |-------|------|----------|---------|-------------|
 | `host` | string | R | | Target hostname |
 | `port` | int | R | | Target port |
-| `timeout` | duration | O | | Response timeout |
-| `send_data` | string | O | | Data to send |
-| `expect_data` | string | O | | Expected response data |
+| `timeout` | duration | O | 5s | Budget for the WHOLE exchange: dial, write and wait for the reply |
+| `send_data` | string | O | | Datagram to send |
+| `send_encoding` | string | O | `text` | How `send_data` is decoded: `text`, `escaped`, `hex` |
+| `expect_data` | string | O | | Substring the reply must contain |
+| `expect_encoding` | string | O | `text` | Same decoder, applied to `expect_data` |
+| `expect_pattern` | string | O | | RE2 regex the reply must match; compiled in `Validate()` |
+
+Shared with `tcp` (`checkerdef.DecodePayload` / `checkerdef.Exchange`): both
+expectations apply when both are set, the reply is read until it matches (4 KB
+cap, matched on the full buffer), and silence with an expectation set is
+`Timeout`, not `Down`. Without an expectation a UDP check can only ever detect
+port-unreachable.
 
 ---
 
