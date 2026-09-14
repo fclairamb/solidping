@@ -19,7 +19,7 @@ import (
 func listenerFunc(t *testing.T, handle func(net.Conn)) int {
 	t.Helper()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = listener.Close() })
@@ -78,7 +78,9 @@ func TestTCPExchange_BannerSplitAcrossTwoWrites(t *testing.T) {
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
-	r.GreaterOrEqual(result.Output[checkerdef.OutputKeyReadCount].(int), 2)
+	reads, ok := result.Output[checkerdef.OutputKeyReadCount].(int)
+	r.True(ok)
+	r.GreaterOrEqual(reads, 2)
 	r.Contains(result.Output[checkerdef.OutputKeyReceivedData], "ESMTP Postfix")
 }
 
@@ -138,9 +140,9 @@ func TestTCPExchange_MatchPastTheOutputCap(t *testing.T) {
 			r.Equal(tt.expect, result.Status, result.Output)
 
 			// Whatever the verdict, the OUTPUT copy stays capped at 1 KB.
-			r.LessOrEqual(
-				len(result.Output[checkerdef.OutputKeyReceivedData].(string)),
-				checkerdef.MaxExchangeOutputSize)
+			received, ok := result.Output[checkerdef.OutputKeyReceivedData].(string)
+			r.True(ok)
+			r.LessOrEqual(len(received), checkerdef.MaxExchangeOutputSize)
 		})
 	}
 }

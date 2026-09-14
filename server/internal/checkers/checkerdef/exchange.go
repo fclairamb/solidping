@@ -97,7 +97,7 @@ func (e *Exchange) Matches(buf []byte) bool {
 // Over UDP each Read is one datagram; datagrams accumulate in the same buffer
 // and are matched the same way, so a reply split across two datagrams works.
 //
-//nolint:cyclop,gocognit // one loop with four documented exits; splitting it hides the contract
+// One loop with four documented exits; splitting it would hide the contract.
 func (e *Exchange) Run(conn net.Conn, metrics, output map[string]any) *Result {
 	if len(e.Send) > 0 {
 		if failure := e.write(conn, metrics, output); failure != nil {
