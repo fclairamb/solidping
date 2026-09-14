@@ -3,6 +3,15 @@
 ## Unreleased
 
 
+## [0.28.2](https://github.com/fclairamb/solidping/compare/v0.28.1...v0.28.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* **dash0:** a dismissed modal keeps swallowing clicks while it fades out ([#375](https://github.com/fclairamb/solidping/issues/375)) ([b049bc7](https://github.com/fclairamb/solidping/commit/b049bc7888765811dd5c972a5c229dd4d54cdc3f))
+* **deps:** clear all 7 Dependabot security alerts ([#373](https://github.com/fclairamb/solidping/issues/373)) ([1bf37ed](https://github.com/fclairamb/solidping/commit/1bf37ed217d65e09dd7d1c3963a3b9850c926b0c))
+* make the log output format configurable with SP_LOG_FORMAT ([#374](https://github.com/fclairamb/solidping/issues/374)) ([17bb66a](https://github.com/fclairamb/solidping/commit/17bb66a712a108d07efcc9f8c6ff1c530be7686a))
+
 ## [0.28.1](https://github.com/fclairamb/solidping/compare/v0.28.0...v0.28.1) (2026-09-13)
 
 
