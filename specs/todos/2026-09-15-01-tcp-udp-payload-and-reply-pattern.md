@@ -279,3 +279,47 @@ Dashboard:
   STARTTLS, and a reply-pattern *reject* (the `bodyPatternReject`
   counterpart). All three are natural follow-ups once the single exchange is
   solid.
+
+## Implementation Plan
+
+1. **`checkerdef` — one decoder, one matcher, one exchange** (new
+   `payload.go` + `exchange.go`, new `payload_test.go`):
+   - `DecodePayload(s, encoding string) ([]byte, error)` for `text` (default,
+     byte-for-byte), `escaped` (`\r \n \t \0 \\ \xNN`, unknown escape and a
+     trailing lone `\` rejected) and `hex` (whitespace ignored, odd length and
+     non-hex digits rejected). Any other encoding name is rejected.
+   - `RenderReplyData(b []byte) string` — 1 KB cap, raw when the capped copy is
+     valid UTF-8, `\xNN`-escaped otherwise.
+   - `Exchange` (decoded `Send`, `ExpectData`, compiled `ExpectPattern`,
+     `Timeout`, `Deadline`) with `HasExpectation()`, `Matches(buf)` (both
+     expectations must hold, matched on the FULL buffer) and
+     `Run(conn, metrics, output) *Result` — the write + read-until-match loop
+     under the single context deadline, returning `nil` on success or the
+     failure `Result` verbatim.
+   - `ValidateExchangeConfig(...)` returns the `VALIDATION_ERROR`-shaped
+     `ConfigError` for a bad encoding, a bad payload or an uncompilable
+     `expect_pattern`; both checkers call it from `Validate()`.
+2. **`checktcp`** — config gains `send_encoding`, `expect_encoding`,
+   `expect_pattern` (FromMap/GetConfig/Validate); `connect()` drops its three
+   independent deadlines and its single `conn.Read` in favour of
+   `Exchange.Run` under the context deadline.
+3. **`checkudp`** — same config additions, same `Exchange.Run` call, so the
+   datagram path and the segment path share one implementation.
+4. **Samples** — UDP Google DNS sends a hex `solidping.io A` query
+   (ID `0x5350`) and expects hex `53508180`; UDP NTP sends the 48-byte client
+   request and expects `^[\x1c\x24]`; TCP gains a speaking `solidping.io`
+   HTTPS sample (escaped `HEAD / HTTP/1.0`, `^HTTP/1\.[01] (200|301|302)`),
+   also applied to the demo catalog entry.
+5. **Dashboard** — `tcpModule` gains a collapsible "Payload & reply" section
+   (Send textarea + encoding select; Expect input + `Contains`/`Matches regex`
+   mode select + encoding select), the six new keys in `ownedKeys`, and locale
+   keys in `de`/`en`/`es`/`fr`.
+6. **Docs** — `check-types.md` TCP and UDP tables + a shared "Send a payload
+   and wait for a reply" section; `wiki/conventions/checker-config.md` tables;
+   `CHANGELOG.md` Unreleased entry.
+7. **Tests** — `checkerdef/payload_test.go`; `checktcp/checker_test.go` grows
+   the split-write, past-1 KB (with the reverse as positive control), silent
+   listener (`Timeout`, whole check under 3 s), EOF, 5 KB-no-match and
+   binary-reply cases; a brand-new `checkudp/checker_test.go`; a `slowtests`
+   `samples_live_test.go` per checker; `network.test.ts` for the form module
+   round-trip; a Playwright round-trip in `web/dash0/e2e/checks.spec.ts`.
