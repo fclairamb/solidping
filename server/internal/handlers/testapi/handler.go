@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -31,6 +32,18 @@ import (
 // connection open.
 const MaxFakeDelayMS = 5000
 
+// MaxSlowResponseChunkBytes and MaxSlowResponseTotalBytes bound the allocation
+// `/fake?slowResponse=<iterations>,<bytes>,<delay>` drives. `bytes` used to be
+// checked only for `>= 1`, and the chunk is allocated per iteration, so a
+// single request with bytes=2000000000 was enough to OOM an instance of a
+// deliberately public, unauthenticated endpoint. 64 KiB per chunk and 1 MiB in
+// total (iterations x bytes) leave the fixture useful for exercising a slow,
+// chunked upstream while making the worst case a rounding error.
+const (
+	MaxSlowResponseChunkBytes = 64 * 1024
+	MaxSlowResponseTotalBytes = 1024 * 1024
+)
+
 var (
 	// ErrPeriodRange is returned when period is outside valid range.
 	ErrPeriodRange = errors.New("period must be between 1 and 86400 seconds")
@@ -45,11 +58,15 @@ var (
 	// ErrSlowResponseIterations is returned when iterations value is invalid.
 	ErrSlowResponseIterations = errors.New("slowResponse iterations must be between 1 and 100")
 	// ErrSlowResponseBytes is returned when bytes value is invalid.
-	ErrSlowResponseBytes = errors.New("slowResponse bytes must be positive")
+	ErrSlowResponseBytes = fmt.Errorf(
+		"slowResponse bytes must be between 1 and %d, and iterations x bytes must not exceed %d",
+		MaxSlowResponseChunkBytes, MaxSlowResponseTotalBytes)
 	// ErrSlowResponseDelay is returned when delay_ms is outside valid range.
 	ErrSlowResponseDelay = fmt.Errorf("slowResponse delay_ms must be between 0 and %d milliseconds", MaxFakeDelayMS)
-	// ErrRedirectSSRF is returned when redirect target is internal/private IP.
-	ErrRedirectSSRF = errors.New("redirect to internal/private IPs not allowed")
+	// ErrRedirectNotSameOrigin is returned when the redirect target is neither
+	// a relative path nor this instance's own origin.
+	ErrRedirectNotSameOrigin = errors.New(
+		"redirectTo must be a relative path or an absolute URL on this origin")
 	// ErrStreamingNotSupported is returned when streaming is not supported.
 	ErrStreamingNotSupported = errors.New("streaming not supported")
 )
@@ -279,8 +296,8 @@ func (h *Handler) FakeAPI(writer http.ResponseWriter, req *http.Request) error {
 
 	// Handle redirects (only when up)
 	if params.redirectTo != "" && isUp {
-		// Validate redirect URL to prevent SSRF
-		if err := h.validateRedirectURL(params.redirectTo); err != nil {
+		// Validate the redirect target so /fake is not an open redirect.
+		if err := h.validateRedirectURL(req, params.redirectTo); err != nil {
 			return h.writeError(writer, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		}
 		writer.Header().Set("Location", params.redirectTo)
@@ -397,7 +414,8 @@ func (h *Handler) parseFakeParams(req *http.Request) (*fakeParams, error) {
 		}
 
 		bytes, err := strconv.Atoi(parts[1])
-		if err != nil || bytes < 1 {
+		if err != nil || bytes < 1 || bytes > MaxSlowResponseChunkBytes ||
+			iterations*bytes > MaxSlowResponseTotalBytes {
 			return nil, ErrSlowResponseBytes
 		}
 
@@ -451,20 +469,45 @@ func (h *Handler) checkRequiredHeader(req *http.Request, requiredHeader string) 
 	return actualValue == expectedValue
 }
 
-// validateRedirectURL validates the redirect URL to prevent SSRF attacks.
-func (h *Handler) validateRedirectURL(redirectURL string) error {
+// validateRedirectURL keeps /fake from being an open redirect.
+//
+// This used to block a hand-written list of private address prefixes, which
+// answered the wrong question twice over: the list was incomplete (it missed
+// 172.17-31.x, 169.254.x, 0.0.0.0 and [::1]), and the redirect is executed by
+// the *client*, not by us — so the risk of a public endpoint on the
+// production domain is an open redirect
+// (solidping.io/api/v1/fake?redirectTo=https://evil), not SSRF.
+//
+// The rule is therefore an allow-list of two shapes:
+//
+//   - a relative path beginning with a single "/" — "//host" is a
+//     protocol-relative URL pointing somewhere else entirely, so it is not one;
+//   - an absolute URL whose scheme AND host equal the request's own origin.
+//
+// Redirect-following checks can still be exercised: the target just has to be
+// this same host.
+func (h *Handler) validateRedirectURL(req *http.Request, redirectURL string) error {
 	parsedURL, err := url.Parse(redirectURL)
 	if err != nil {
 		return fmt.Errorf("invalid redirect URL: %w", err)
 	}
 
-	// Block internal/private IPs
-	if parsedURL.Hostname() == "localhost" ||
-		strings.HasPrefix(parsedURL.Hostname(), "127.") ||
-		strings.HasPrefix(parsedURL.Hostname(), "192.168.") ||
-		strings.HasPrefix(parsedURL.Hostname(), "10.") ||
-		strings.HasPrefix(parsedURL.Hostname(), "172.16.") {
-		return ErrRedirectSSRF
+	// A relative path: no scheme, no host, and not protocol-relative.
+	if parsedURL.Scheme == "" && parsedURL.Host == "" {
+		if strings.HasPrefix(redirectURL, "/") && !strings.HasPrefix(redirectURL, "//") {
+			return nil
+		}
+
+		return ErrRedirectNotSameOrigin
+	}
+
+	scheme := "http"
+	if httpx.IsTLS(req) {
+		scheme = "https"
+	}
+
+	if !strings.EqualFold(parsedURL.Scheme, scheme) || !strings.EqualFold(parsedURL.Host, req.Host) {
+		return ErrRedirectNotSameOrigin
 	}
 
 	return nil

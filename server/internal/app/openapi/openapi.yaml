@@ -5951,9 +5951,14 @@ paths:
         - $ref: "#/components/parameters/SLOUidPath"
         - name: months
           in: query
-          description: How many calendar months to return (default 12, max 60)
+          description: >-
+            How many calendar months to return (default 12). Bounded at 36:
+            the value drives an allocation of one window per month, so anything
+            above the ceiling is rejected with 400 rather than clamped.
           schema:
             type: integer
+            minimum: 1
+            maximum: 36
       responses:
         "200":
           description: Monthly history, most recent first

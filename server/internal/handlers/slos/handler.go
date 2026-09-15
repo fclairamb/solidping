@@ -136,13 +136,20 @@ func (h *Handler) Burndown(writer http.ResponseWriter, req *http.Request) error 
 	return h.WriteJSON(writer, http.StatusOK, series)
 }
 
+// MaxHistoryMonths bounds `GET /orgs/{org}/slos/{uid}/history?months=N`. The
+// parameter drives an allocation of N windows (slo.PreviousMonthWindows) and
+// had no upper bound at all; the dashboard asks for 12. Three years is well
+// clear of anything the history page will want, and the point is that a bound
+// exists rather than the exact number.
+const MaxHistoryMonths = 36
+
 // History handles the past monthly windows.
 func (h *Handler) History(writer http.ResponseWriter, req *http.Request) error {
 	months := 0
 
 	if raw := req.URL.Query().Get("months"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed <= 0 {
+		if err != nil || parsed <= 0 || parsed > MaxHistoryMonths {
 			return h.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid months parameter")
 		}
