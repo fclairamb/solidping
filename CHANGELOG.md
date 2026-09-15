@@ -3,6 +3,16 @@
 ## Unreleased
 
 
+## [0.28.3](https://github.com/fclairamb/solidping/compare/v0.28.2...v0.28.3) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/chromedp/cdproto digest to 686a5c7 ([#378](https://github.com/fclairamb/solidping/issues/378)) ([48225cd](https://github.com/fclairamb/solidping/commit/48225cd8ab327673322682ed6b6607462fa96bfd))
+* **deps:** update github.com/dop251/goja digest to b3fa021 ([#383](https://github.com/fclairamb/solidping/issues/383)) ([3cbcce8](https://github.com/fclairamb/solidping/commit/3cbcce8f4d7eb7780c2570ea764a81d4ab855e85))
+* **deps:** update go dependencies (non-major) ([#380](https://github.com/fclairamb/solidping/issues/380)) ([0e1f3ad](https://github.com/fclairamb/solidping/commit/0e1f3ad091d430ff7fb7704d2c9ca1f5ad55b0f6))
+* **deps:** update go dependencies (non-major) ([#384](https://github.com/fclairamb/solidping/issues/384)) ([46480c0](https://github.com/fclairamb/solidping/commit/46480c0eb28b6ed86edcbb35cb0a6667048182cf))
+
 ## [0.28.2](https://github.com/fclairamb/solidping/compare/v0.28.1...v0.28.2) (2026-09-14)
 
 
