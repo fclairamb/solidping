@@ -973,7 +973,18 @@
     "privateKeyEncrypted": "(cifrada — introduzca una nueva clave para reemplazar)",
     "passwordOverridesPrivateKey": "Si se configuran tanto una contraseña como una clave privada, se usa la contraseña.",
     "password": "Contraseña",
-    "usernameOptionalAnonymous": "Usuario (opcional, por defecto: anonymous)"
+    "usernameOptionalAnonymous": "Usuario (opcional, por defecto: anonymous)",
+    "payloadReply": "Carga útil y respuesta",
+    "payloadReplySummary": "Enviar una carga útil y esperar una respuesta coincidente",
+    "sendOptional": "Enviar (opcional)",
+    "expectOptional": "Esperar (opcional)",
+    "expectModeContains": "Contiene",
+    "expectModeRegex": "Coincide con regex",
+    "encoding_text": "Texto",
+    "encoding_escaped": "Escapado",
+    "encoding_hex": "Hex",
+    "payloadHelp": "Define una expectativa para demostrar que el servicio responde, no solo que el puerto está abierto.",
+    "payloadHelpUdp": "Sin ella, esta comprobación solo puede detectar un puerto inaccesible."
   },
   "prometheus": {
     "mode": "Modo",
