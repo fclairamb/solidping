@@ -1,6 +1,7 @@
 package checkjs
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/dop251/goja"
 	"github.com/stretchr/testify/require"
 
@@ -771,6 +773,224 @@ func TestDocExampleBrowserLoginRunsAgainstARealBrowser(t *testing.T) {
 	r.Equal(checkerdef.ImageFormatWebP, wrong.Diagnostics.Screenshot.Format)
 	r.Equal("RIFF", string(wrong.Diagnostics.Screenshot.Image[:4]))
 	r.Equal("WEBP", string(wrong.Diagnostics.Screenshot.Image[8:12]))
+}
+
+// redisFixtureServer is a minimal RESP server: AUTH with the right password
+// answers `+OK`, anything else `-ERR`, and PING only answers `+PONG` once the
+// connection has authenticated — so an example that skipped the AUTH step could
+// not pass by accident.
+func redisFixtureServer(t *testing.T, password string) string {
+	t.Helper()
+
+	return startTCPFixture(t, func(conn net.Conn) {
+		reader := bufio.NewReader(conn)
+		authed := false
+
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+
+			switch {
+			case strings.HasPrefix(line, "AUTH "):
+				if strings.TrimSpace(strings.TrimPrefix(line, "AUTH ")) == password {
+					authed = true
+
+					_, _ = conn.Write([]byte("+OK\r\n"))
+				} else {
+					_, _ = conn.Write([]byte("-ERR invalid password\r\n"))
+				}
+			case strings.HasPrefix(line, "PING"):
+				if authed {
+					_, _ = conn.Write([]byte("+PONG\r\n"))
+				} else {
+					_, _ = conn.Write([]byte("-NOAUTH Authentication required.\r\n"))
+				}
+			default:
+				_, _ = conn.Write([]byte("-ERR unknown command\r\n"))
+			}
+		}
+	}).addr()
+}
+
+// udpQueryFixture answers a datagram beginning with the two magic bytes the
+// example sends, and stays silent otherwise — so the example's own prefix
+// assertion is doing real work.
+func udpQueryFixture(t *testing.T) string {
+	t.Helper()
+
+	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0") //nolint:noctx // loopback test fixture
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = packetConn.Close() })
+
+	go func() {
+		buf := make([]byte, 2048)
+
+		for {
+			n, addr, readErr := packetConn.ReadFrom(buf)
+			if readErr != nil {
+				return
+			}
+
+			if n < 2 || buf[0] != 0x53 || buf[1] != 0x50 {
+				continue
+			}
+
+			_, _ = packetConn.WriteTo([]byte{0x53, 0x50, 0x81, 0x80}, addr)
+		}
+	}()
+
+	return packetConn.LocalAddr().String()
+}
+
+// feedFixtureServer is the subscribe-then-heartbeat feed: two unrelated frames
+// first, so an example that asserted on the FIRST frame would fail.
+func feedFixtureServer(t *testing.T) string {
+	t.Helper()
+
+	server := startWSFixture(t, func(conn *websocket.Conn, req *http.Request) {
+		ctx := req.Context()
+
+		if _, _, err := conn.Read(ctx); err != nil {
+			return
+		}
+
+		for _, frame := range []string{
+			`{"type":"ticker","price":1}`,
+			`{"type":"ticker","price":2}`,
+			`{"type":"heartbeat","seq":42}`,
+		} {
+			if err := conn.Write(ctx, websocket.MessageText, []byte(frame)); err != nil {
+				return
+			}
+		}
+
+		<-ctx.Done()
+	})
+
+	return wsURL(server)
+}
+
+// TestDocExampleTCPRedisPing runs the tcp-redis-ping fence against the RESP
+// fixture: AUTH must succeed and PING must answer +PONG.
+func TestDocExampleTCPRedisPing(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	script := requireExample(t, extractJSExamples(t), "tcp-redis-ping")
+
+	result := runDocExample(t,
+		script,
+		map[string]string{"REDIS_ADDR": redisFixtureServer(t, "hunter2")},
+		map[string]string{"REDIS_PASSWORD": "hunter2"},
+	)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal("+PONG\r\n", result.Output["reply"])
+	r.Contains(result.Metrics, "connectMs")
+}
+
+// The negative the spec asks for by name: the SAME script against the SAME
+// fixture with the wrong password must come back down at the auth step —
+// proving the example checks the credential rather than just the transport.
+func TestDocExampleTCPRedisPingRejectsWrongPassword(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	script := requireExample(t, extractJSExamples(t), "tcp-redis-ping")
+
+	result := runDocExample(t,
+		script,
+		map[string]string{"REDIS_ADDR": redisFixtureServer(t, "hunter2")},
+		map[string]string{"REDIS_PASSWORD": "not-the-password"},
+	)
+
+	r.Equal("down", result.Status.String(), "output: %#v", result.Output)
+	r.Equal("auth", result.Output["step"])
+	r.Contains(result.Output["reply"], "-ERR")
+}
+
+// TestDocExampleUDPQuery proves the hex round-trip: the bytes the example says
+// it sends are the bytes the fixture requires before it answers at all.
+func TestDocExampleUDPQuery(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	script := requireExample(t, extractJSExamples(t), "udp-query")
+
+	result := runDocExample(t, script, map[string]string{"UDP_ADDR": udpQueryFixture(t)}, nil)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.Equal("53508180", result.Output["reply"])
+}
+
+// TestDocExampleWebSocketSubscribe proves the skipping is real: the fixture
+// sends two unrelated frames before the heartbeat, and the example reports
+// exactly that many skipped.
+func TestDocExampleWebSocketSubscribe(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	script := requireExample(t, extractJSExamples(t), "websocket-subscribe")
+
+	result := runDocExample(t, script, map[string]string{"FEED_URL": feedFixtureServer(t)}, nil)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
+	r.InDelta(42, result.Metrics["seq"], 0.001)
+	r.InDelta(2, result.Output["skipped"], 0.001)
+}
+
+// TestRedisPingSampleMatchesTheDocExample is the drift guard for the promoted
+// TCP sample: the sample's script must be the doc fence character for
+// character, exactly as the browser-login sample is.
+func TestRedisPingSampleMatchesTheDocExample(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	docScript := requireExample(t, extractJSExamples(t), "tcp-redis-ping")
+
+	checker := &JSChecker{}
+
+	var sampleScript string
+
+	for _, sample := range checker.GetSampleConfigs(nil) {
+		if sample.Slug == sampleTCPRedisPingSlug {
+			sampleScript, _ = sample.Config["script"].(string)
+		}
+	}
+
+	r.NotEmpty(sampleScript, "expected a promoted %s sample", sampleTCPRedisPingSlug)
+	r.Equal(docScript, sampleScript,
+		"the %s sample and the doc example must be the same script", sampleTCPRedisPingSlug)
+}
+
+// TestRedisPingSampleRuns executes the PROMOTED sample (not the fence) against
+// the RESP fixture, so the sample picker is kept honest too.
+func TestRedisPingSampleRuns(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	checker := &JSChecker{}
+
+	var sampleScript string
+
+	for _, sample := range checker.GetSampleConfigs(nil) {
+		if sample.Slug == sampleTCPRedisPingSlug {
+			sampleScript, _ = sample.Config["script"].(string)
+		}
+	}
+
+	r.NotEmpty(sampleScript)
+
+	result := runDocExample(t,
+		sampleScript,
+		map[string]string{"REDIS_ADDR": redisFixtureServer(t, "hunter2")},
+		map[string]string{"REDIS_PASSWORD": "hunter2"},
+	)
+
+	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
 }
 
 // liveBrowserSettings picks the browser backend this test should drive: a
