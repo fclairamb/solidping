@@ -311,6 +311,9 @@ test.describe("HTTP check request body and headers", () => {
     try {
       await page.goto(`orgs/test/checks/${uid}/edit`);
       await page.waitForLoadState("networkidle");
+      // Advanced is collapsed by default for an uncustomized check — open it
+      // before asserting on the body editor's visibility.
+      await page.getByTestId("section-advanced-trigger").click();
       // GET hides the body editor.
       await expect(page.getByTestId("check-http-body-input")).toHaveCount(0);
 
