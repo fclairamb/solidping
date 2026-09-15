@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, uniqueStamp } from "./fixtures";
 import { expandSection } from "./section-helpers";
 
 test.describe("Checks", () => {
@@ -165,7 +165,7 @@ test.describe("Checks", () => {
     // is what disambiguates it — see spec 2026-08-20-03 and
     // checks.insertResolvingSlugRace.
     const timestamp = Date.now();
-    const randomSuffix = Math.random().toString(36).substring(7);
+    const randomSuffix = uniqueStamp();
     const checkName = `E2E Create ${timestamp}`;
     const checkUrl = `https://httpbin.org/anything/${timestamp}-${randomSuffix}`;
 

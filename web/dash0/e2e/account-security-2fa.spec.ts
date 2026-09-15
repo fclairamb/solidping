@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 import { generateTotp } from "./totp-utils";
 
 // Spec 2026-08-18-11: the TOTP setup dialog opened with only its title and a
@@ -17,7 +17,7 @@ test.describe("Account > Security > 2FA setup", () => {
   const PASSWORD = "Totp-Setup-123!";
 
   async function seedUserWithOrg(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `acct-2fa-${stamp}@unknown.example`;
 
     const createUserResp = await page.request.post(
@@ -37,7 +37,7 @@ test.describe("Account > Security > 2FA setup", () => {
     expect(loginResp.status()).toBe(200);
     const login = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `a2f-${stamp.toString(36)}`;
+    const orgSlug = `a2f-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${login.accessToken}` },
       data: { name: `Acct 2FA Co ${stamp}`, slug: orgSlug },
@@ -117,9 +117,24 @@ test.describe("Account > Security > 2FA setup", () => {
     const { org } = await seedUserWithOrg(page);
     await seedBrowserSession(page, { ...org, slug: org.slug });
 
+    // The assertion is "no request left the page", not "no request went to
+    // qrserver.com": a substring match on one vendor's hostname would pass
+    // just as happily if the QR generator were swapped for a different third
+    // party, and a URL substring is fooled by a same-looking path
+    // (…/?u=https://qrserver.com/). Compare parsed origins instead.
+    // API_BASE is the origin the dashboard itself is served from in this
+    // suite (see fixtures.ts), so it is what "the page's own origin" means.
+    const appOrigin = new URL(API_BASE).origin;
     const thirdPartyRequests: string[] = [];
     page.on("request", (req) => {
-      if (req.url().includes("qrserver.com")) {
+      let origin: string;
+      try {
+        origin = new URL(req.url()).origin;
+      } catch {
+        return; // data:/blob: carry no origin and never leave the page
+      }
+
+      if (origin !== appOrigin && origin !== "null") {
         thirdPartyRequests.push(req.url());
       }
     });

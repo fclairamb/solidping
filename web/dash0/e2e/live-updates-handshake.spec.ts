@@ -1,4 +1,4 @@
-import { test, expect, type Page, API_BASE } from "./fixtures";
+import { test, expect, type Page, API_BASE, uniqueStamp } from "./fixtures";
 
 // Regression coverage for the "live updates silently unavailable" incident
 // (spec 2026-07-10-03), updated for spec 2026-07-14-04 which moved WS auth to
@@ -36,7 +36,7 @@ async function createHeartbeatCheck(
   token: string,
   name: string,
 ): Promise<HeartbeatCheck> {
-  const hbToken = `e2e-hs-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const hbToken = `e2e-hs-${uniqueStamp()}`;
   const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
@@ -250,8 +250,8 @@ test.describe("Live updates handshake", () => {
 
     // Org A is the one the URL will name; org B is the one the token is scoped
     // to. The user is a genuine member (owner) of both.
-    const orgA = `visitedorg-${stamp.toString(36)}`;
-    const orgB = `tokenorg-${stamp.toString(36)}`;
+    const orgA = `visitedorg-${stamp}`;
+    const orgB = `tokenorg-${stamp}`;
     await createOrg(orgA, `Visited Org ${stamp}`);
     const orgBSession = await createOrg(orgB, `Token Org ${stamp}`);
     expect(orgBSession.accessToken).toBeTruthy();

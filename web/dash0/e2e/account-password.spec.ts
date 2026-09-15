@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-16-04: a logged-in user had no way to change their password
 // from the dashboard — only the logged-out forgotten-password email flow.
@@ -10,7 +10,7 @@ test.describe("Account > Security > Password", () => {
   const OLD_PASSWORD = "Old-Pass-123!";
 
   async function seedUserWithOrg(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `acct-pwd-${stamp}@unknown.example`;
 
     const createUserResp = await page.request.post(
@@ -30,7 +30,7 @@ test.describe("Account > Security > Password", () => {
     expect(loginResp.status()).toBe(200);
     const login = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `ap1-${stamp.toString(36)}`;
+    const orgSlug = `ap1-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${login.accessToken}` },
       data: { name: `Acct Pwd Co ${stamp}`, slug: orgSlug },

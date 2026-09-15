@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-29-03: the Getting Started steps each land the user on an
 // empty form. This exercises the one-click "magic wand" default on each of
@@ -59,7 +59,7 @@ test.describe("Magic wand defaults", () => {
    * only care that they exist and have names).
    */
   async function seedOrg(page: Page, checkCount: number) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `wand-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
     const orgName = `Acme Wand ${stamp}`;
@@ -81,7 +81,7 @@ test.describe("Magic wand defaults", () => {
     expect(loginResp.status()).toBe(200);
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const slug = `wand-${stamp.toString(36)}`;
+    const slug = `wand-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       data: { name: orgName, slug },
