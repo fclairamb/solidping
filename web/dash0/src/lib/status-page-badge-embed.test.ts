@@ -102,6 +102,16 @@ describe("escapeMarkdownAltText", () => {
     );
   });
 
+  it("escapes the backslash before the bracket it would otherwise free", () => {
+    // Escaping only the brackets produced "foo\\\\]bar": an escaped backslash
+    // followed by a LIVE "]" that closes the alt text early.
+    expect(escapeMarkdownAltText("foo\\]bar")).toBe("foo\\\\\\]bar");
+  });
+
+  it("escapes a trailing backslash", () => {
+    expect(escapeMarkdownAltText("Acme\\")).toBe("Acme\\\\");
+  });
+
   it("leaves plain text untouched", () => {
     expect(escapeMarkdownAltText("Acme Status")).toBe("Acme Status");
   });
