@@ -190,3 +190,53 @@ image build is a different change with its own blast radius.
 - Windows assets for `sp` — the `apihelper.go` fix unlocks it; adding
   `windows/amd64` to `cli-release`'s loop is a one-line follow-up.
 - A Homebrew tap, an `install.sh`, macOS signing/notarization.
+
+## Implementation Plan
+
+1. **Make `windows/amd64` compile.**
+   - `server/pkg/cli/apihelper/apihelper.go`, `server/pkg/cli/auth.go`:
+     `term.ReadPassword(syscall.Stdin)` → `term.ReadPassword(int(os.Stdin.Fd()))`,
+     drop the now-unused `syscall` import from both.
+   - `server/internal/db/postgres/embeddedpg/`: extract the three unix-only
+     bits (`syscall.Kill` liveness check, `syscall.Kill` for termination,
+     `syscall.SysProcAttr{Setsid: true}`) behind `pidAlive`, `killPID`,
+     `detachedSysProcAttr` in a new `proc_unix.go` (`//go:build !windows`) and
+     `proc_windows.go` (`//go:build windows`, honest stubs — `killPID` returns
+     an error, `pidAlive` returns false, `detachedSysProcAttr` returns a
+     zero-value `SysProcAttr`, since `startWatchdog` already short-circuits on
+     `runtime.GOOS == "windows"` before ever calling these).
+   - `server/main.go`: both `cfg.Database.Type == "postgres-embedded"` switch
+     cases (`openDB`, `runMigrations`) refuse with a clear
+     `errPostgresEmbeddedUnsupportedOnWindows` when `runtime.GOOS == "windows"`.
+   - Not in the original file:line list but found by actually running the
+     build: `server/internal/nettrace/prober_tcp.go`'s `ttlControl` calls
+     `syscall.SetsockoptInt(int(handle), …)`, and Windows' `SetsockoptInt`
+     takes a `syscall.Handle`, not an `int`, for the fd. Fixed the same way —
+     a `setSockoptInt` helper split into `sockopt_unix.go` / `sockopt_windows.go`.
+   - Verify: `cd server && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null .`
+2. **PR-side cross-build guard.** Extend the `build` job in
+   `.github/workflows/ci.yml` with a step that cross-compiles
+   `linux/arm64`, `windows/amd64`, `darwin/amd64`, `darwin/arm64` to
+   `/dev/null`, same `CGO_ENABLED=0` / `-s -w` / ldflags as the release job
+   will use, so a future regression fails the PR instead of a tag push.
+3. **`server-release` job.** New job in `.github/workflows/ci.yml`,
+   `if: startsWith(github.ref, 'refs/tags/')`, no `needs`: build dash0 /
+   status0 / docs dists inline (same steps as the skipped `dash0`/`status0`/`docs`
+   jobs, minus lint/unit), cross-compile the 5 server targets with fixed
+   `solidping-<os>-<arch>[.exe]` names, `sha256sum` into
+   `solidping-checksums.txt`, then the same wait-for-release + hand-pushed-tag
+   fallback + `gh release upload --clobber` pattern as `cli-release` (`gh
+   release create` tolerates "already exists" via a `|| true` plus a
+   post-check `gh release view`, since two jobs can race the same fallback).
+4. **Docs.** `linux.md`: checksum step + macOS subsection. `windows.md`:
+   checksum step (`Get-FileHash`) + a note that `postgres-embedded` isn't
+   available on Windows. `README.md`: optional one-line mention of the bare
+   binary.
+5. **Changelog.** One `feat(release): …` commit describing the user-facing
+   change (every release now ships a server binary for Linux/macOS/Windows,
+   and the install guides' links work) — no direct `CHANGELOG.md` edit,
+   per `wiki/conventions/changelog.md`.
+6. **QA.** `make build-backend lint-back test`; manually run the 5
+   cross-compiles locally (not just trust the YAML); validate the edited
+   YAML parses. The tag-triggered upload path itself is **not** verifiable
+   pre-tag — noted explicitly in the final report, not claimed as tested.
