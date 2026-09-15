@@ -203,7 +203,15 @@ func (c *SSHChecker) executeBannerOnly(
 	return checkerdef.Result{Status: checkerdef.StatusUp, Metrics: metrics, Output: output}
 }
 
-// verifyFingerprint performs an SSH handshake to capture and compare the host key fingerprint.
+// verifyFingerprint performs an SSH handshake to compare the host key
+// fingerprint against the expected one.
+//
+// The comparison happens INSIDE the HostKeyCallback, so an unexpected key is
+// refused by the handshake itself rather than accepted and judged afterwards.
+// (The callback used to record the fingerprint and return nil unconditionally,
+// which is a host-key callback that cannot reject anything.) The captured
+// value is kept either way so the result can quote both fingerprints; the
+// operator-visible outcome — StatusDown, same message — is unchanged.
 func (c *SSHChecker) verifyFingerprint(
 	ctx context.Context, target string, cfg *SSHConfig, timeout time.Duration,
 	metrics map[string]any, output map[string]any,
@@ -215,19 +223,25 @@ func (c *SSHChecker) verifyFingerprint(
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 			capturedFingerprint = Fingerprint(key)
 
+			if capturedFingerprint != cfg.ExpectedFingerprint {
+				return fmt.Errorf("%w: got %s, expected %s",
+					errFingerprintMismatch, capturedFingerprint, cfg.ExpectedFingerprint)
+			}
+
 			return nil
 		},
 		Auth:    []ssh.AuthMethod{ssh.Password("")},
 		Timeout: timeout,
 	}
 
-	// We expect auth to fail, but we'll capture the fingerprint during handshake
+	// We expect auth to fail, but the handshake runs the host key callback
+	// before authentication, so a mismatch surfaces as a dial error.
 	conn, err := ssh.Dial("tcp", target, clientConfig)
 	if conn != nil {
 		_ = conn.Close()
 	}
 
-	// Auth failure is expected — we only care about the fingerprint
+	// Nothing was captured: the connection never reached the key exchange.
 	if capturedFingerprint == "" && err != nil {
 		return checkerdef.Result{
 			Status:  checkerdef.StatusDown,
