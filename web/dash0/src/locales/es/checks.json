@@ -1023,6 +1023,17 @@
     "requestHeadersHelp": "Para endpoints protegidos con autenticación bearer o básica.",
     "addHeader": "Añadir cabecera"
   },
+  "rabbitmq": {
+    "mode": "Modo",
+    "modeAmqp": "AMQP",
+    "modeManagement": "API de gestión",
+    "memoryWarning": "Advertencia de memoria",
+    "memoryCritical": "Memoria crítica",
+    "memoryThresholdHelp": "Un porcentaje de la marca de agua alta de RabbitMQ (p. ej. 80%) o un tamaño absoluto (p. ej. 1.5GiB).",
+    "diskWarning": "Advertencia de disco libre",
+    "diskCritical": "Disco libre crítico",
+    "diskThresholdHelp": "Solo un tamaño absoluto (p. ej. 10GiB) — la API de gestión no expone el tamaño total del disco, por lo que no se puede calcular un porcentaje."
+  },
   "snmp": {
     "oid": "OID",
     "communityOptional": "Community (opcional, por defecto: public)",
