@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
-	"syscall"
 )
 
 // watchdogScript polls the owner PID every 5s; when the owner is gone for
@@ -41,7 +40,7 @@ func (w *watchdogHandle) kill() {
 		return
 	}
 
-	_ = syscall.Kill(w.pid, syscall.SIGKILL)
+	_ = killPID(w.pid)
 }
 
 // startWatchdog spawns a detached process that outlives ownerPID's SIGKILL
@@ -77,7 +76,7 @@ func startWatchdog(ownerPID int, dataDir string) *watchdogHandle {
 
 	// New session: not part of the owner's process group, so it survives a
 	// SIGKILL sent to the owner's group as well as to the owner alone.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = detachedSysProcAttr()
 
 	if startErr := cmd.Start(); startErr != nil {
 		fmt.Fprintf(os.Stderr, sweepLogPrefix+"watchdog: failed to start: %v\n", startErr)

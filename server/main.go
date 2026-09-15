@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/urfave/cli/v3"
@@ -530,6 +531,16 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
+// errPostgresEmbeddedUnsupportedOnWindows is returned when the
+// "postgres-embedded" database type is selected on Windows. The embedded
+// Postgres supervisor (internal/db/postgres/embeddedpg) relies on Unix
+// process semantics (signals, sessions) that have no Windows equivalent
+// here; the Windows install docs only cover SQLite and external PostgreSQL,
+// so refusing to start with a clear error loses nothing documented (spec
+// 2026-09-15-02).
+var errPostgresEmbeddedUnsupportedOnWindows = errors.New(
+	`database type "postgres-embedded" is not supported on Windows — use "sqlite" or "postgres" (external) instead`)
+
 func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
 	guardMode := migrationguard.Mode(cfg.Database.MigrationGuardMode)
 
@@ -537,6 +548,10 @@ func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
 	case "postgres":
 		return postgres.New(ctx, &postgres.Config{DSN: cfg.Database.URL, Embedded: false, GuardMode: guardMode})
 	case "postgres-embedded":
+		if runtime.GOOS == "windows" {
+			return nil, errPostgresEmbeddedUnsupportedOnWindows
+		}
+
 		return postgres.New(ctx, &postgres.Config{
 			Embedded:  true,
 			Port:      embeddedPostgresPort,
@@ -567,6 +582,10 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 			GuardMode: guardMode,
 		})
 	case "postgres-embedded":
+		if runtime.GOOS == "windows" {
+			return errPostgresEmbeddedUnsupportedOnWindows
+		}
+
 		svc, err = postgres.New(ctx, &postgres.Config{
 			Embedded:  true,
 			Port:      embeddedPostgresPort,

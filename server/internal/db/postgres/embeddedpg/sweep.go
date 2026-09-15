@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -150,16 +149,7 @@ func readOwnerMarker(dataDir string) (ownerMarker, error) {
 	return marker, nil
 }
 
-// pidAlive reports whether a process with the given PID currently exists.
-// syscall.Kill with signal 0 sends no signal but still validates the PID —
-// the standard liveness-check idiom on Unix.
-func pidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-
-	return syscall.Kill(pid, 0) == nil
-}
+// pidAlive and killPID are platform-specific — see proc_unix.go / proc_windows.go.
 
 // readPostmasterPID reads the postgres PID from the first line of
 // postmaster.pid in dataDir, as written by postgres itself.
@@ -219,7 +209,7 @@ func killPostgresForDataDir(dataDir string) {
 		return
 	}
 
-	_ = syscall.Kill(pid, syscall.SIGKILL)
+	_ = killPID(pid)
 }
 
 // sweepFallbackPgrep catches postgres processes whose data directory was
@@ -259,6 +249,6 @@ func sweepFallbackPgrep() {
 		}
 
 		fmt.Fprintf(os.Stderr, sweepLogPrefix+"killing orphaned postgres pid %d found via pgrep fallback\n", pid)
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+		_ = killPID(pid)
 	}
 }

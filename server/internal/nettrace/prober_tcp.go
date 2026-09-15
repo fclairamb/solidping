@@ -107,12 +107,12 @@ func ttlControl(ttl int, isV6 bool) func(network, address string, conn syscall.R
 
 		controlErr := conn.Control(func(handle uintptr) {
 			if isV6 {
-				sockErr = syscall.SetsockoptInt(int(handle), syscall.IPPROTO_IPV6, syscall.IPV6_UNICAST_HOPS, ttl)
+				sockErr = setSockoptInt(handle, syscall.IPPROTO_IPV6, syscall.IPV6_UNICAST_HOPS, ttl)
 
 				return
 			}
 
-			sockErr = syscall.SetsockoptInt(int(handle), syscall.IPPROTO_IP, syscall.IP_TTL, ttl)
+			sockErr = setSockoptInt(handle, syscall.IPPROTO_IP, syscall.IP_TTL, ttl)
 		})
 		if controlErr != nil {
 			return fmt.Errorf("socket control: %w", controlErr)

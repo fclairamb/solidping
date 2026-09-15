@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -404,7 +403,7 @@ func promptForInput(prompt string) (string, error) {
 // readPassword reads a password from stdin without echoing.
 func readPassword(prompt string) (string, error) {
 	fmt.Print(prompt) //nolint:forbidigo // Interactive prompt requires direct stdin
-	bytePassword, err := term.ReadPassword(syscall.Stdin)
+	bytePassword, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println() //nolint:forbidigo // Print newline after password input
 	if err != nil {
 		return "", err
