@@ -255,3 +255,15 @@ gh api -X PATCH repos/fclairamb/solidping/code-scanning/alerts/<n> \
   as "this is fine forever".
 - `months` ceiling: 36 is a guess above the UI's 12. Anything the SLO
   history page will ever ask for is fine; the point is that a bound exists.
+
+## Resolved open questions
+
+- **Should the hosted instance move the SPA session to the `HttpOnly`
+  cookie (B1)?** Defer to a future spec. Keep tokens in `localStorage` for
+  now; dismiss alerts 1, 2, 3, 5 as "won't fix" exactly as B1 already
+  drafts, and track the cookie migration (token refresh, the WebSocket
+  handshake, CSRF) as separate future work — do not fold it into this spec.
+- **`months` ceiling: what bound to ship?** 36 months (3 years), as already
+  drafted in Proposal A3. Comfortably above the UI's current 12-month usage
+  with headroom for any future ask; the exact number matters less than a
+  bound existing at all.
