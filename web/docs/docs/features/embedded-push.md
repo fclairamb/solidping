@@ -192,8 +192,8 @@ transports.
 ### UDP
 
 One datagram carries exactly one line. On success the server optionally replies
-`OK` — never more bytes than it received, so the listener can never be used as
-an amplification vector.
+`OK\n` (3 bytes) — the same reply TCP sends — and never more bytes than it
+received, so the listener can never be used as an amplification vector.
 
 **On any failure it replies nothing at all.** A malformed line, an unknown
 organization, an unknown check, a wrong token, a bad MAC, a replayed counter

@@ -107,11 +107,37 @@ func TestUDPRepliesOKOnlyWhenAccepted(t *testing.T) {
 
 	reply, gotReply := sendDatagram(t, server.UDPAddr(), validLine)
 	r.True(gotReply)
-	r.Equal("OK", string(reply))
+	r.Equal("OK\n", string(reply))
 
 	// The reply can never be longer than the datagram that triggered it, so
 	// the listener is not an amplification vector.
 	r.Less(len(reply), len(validLine))
+}
+
+// TestUDPAndTCPRepliesAreByteIdentical asserts the OK reply's symmetry across
+// transports as a tested property, not a coincidence of two constants that
+// happen to match today.
+func TestUDPAndTCPRepliesAreByteIdentical(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	sink := &fakeSink{accept: true}
+	server := startServer(t, sink, nil)
+
+	udpReply, gotReply := sendDatagram(t, server.UDPAddr(), validLine)
+	r.True(gotReply)
+
+	conn, reader := dialTCP(t, server.TCPAddr())
+
+	_, err := conn.Write([]byte(validLine + "\n"))
+	r.NoError(err)
+
+	r.NoError(conn.SetReadDeadline(time.Now().Add(time.Second)))
+
+	tcpReply, err := reader.ReadString('\n')
+	r.NoError(err)
+
+	r.Equal(tcpReply, string(udpReply))
 }
 
 // TestUDPIsSilentOnEveryFailure is the no-oracle property: a caller must not
