@@ -280,27 +280,7 @@ func (c *RabbitMQChecker) applyNodeThresholds(
 			breachMessage = "cannot evaluate memory/disk thresholds: " + err.Error()
 		}
 	default:
-		running := runningNodes(nodes)
-		output["nodes"] = nodeOutputs(running)
-
-		if len(running) > 0 {
-			evals := make([]nodeEval, 0, len(running))
-			for i := range running {
-				evals = append(evals, evaluateNode(running[i], memWarn, memCrit, diskWarn, diskCrit))
-			}
-
-			worst := worstEval(evals)
-			nodeStatus = worst.status
-			breachMessage = strings.Join(worst.reasons, "; ")
-
-			metrics["mem_used_bytes"] = float64(worst.node.MemUsed)
-			metrics["mem_limit_bytes"] = float64(worst.node.MemLimit)
-			metrics["mem_used_percent"] = worst.memPercent
-			metrics["disk_free_bytes"] = float64(worst.node.DiskFree)
-			metrics["disk_free_limit_bytes"] = float64(worst.node.DiskFreeLimit)
-			metrics["nodes_running"] = float64(len(running))
-			metrics["nodes_total"] = float64(len(nodes))
-		}
+		nodeStatus, breachMessage = gradeNodes(nodes, memWarn, memCrit, diskWarn, diskCrit, output, metrics)
 	}
 
 	status := alarms.Status
@@ -318,6 +298,52 @@ func (c *RabbitMQChecker) applyNodeThresholds(
 		Metrics:  metrics,
 		Output:   output,
 	}
+}
+
+// gradeNodes runs the per-node threshold evaluation once /api/nodes has been
+// fetched successfully: it writes the raw per-node output and the metrics
+// gauges into output/metrics (mutated in place) and returns the resulting
+// node-threshold status plus the worst node's breach message (empty when
+// nothing breached).
+func gradeNodes(
+	nodes []nodeInfo, memWarn, memCrit, diskWarn, diskCrit *threshold, output, metrics map[string]any,
+) (checkerdef.Status, string) {
+	running := runningNodes(nodes)
+	output["nodes"] = nodeOutputs(running)
+
+	if len(running) == 0 {
+		return checkerdef.StatusUp, ""
+	}
+
+	evals := make([]nodeEval, 0, len(running))
+	for i := range running {
+		evals = append(evals, evaluateNode(running[i], memWarn, memCrit, diskWarn, diskCrit))
+	}
+
+	worst := worstEval(evals)
+
+	// notes carries every node's reasons — not just the worst node's — so an
+	// informational note (e.g. "mem_limit is not reported") on a node that
+	// is otherwise fine still surfaces even when the overall status stays Up
+	// and nothing goes into `error`.
+	var notes []string
+	for i := range evals {
+		notes = append(notes, evals[i].reasons...)
+	}
+
+	if len(notes) > 0 {
+		output["notes"] = notes
+	}
+
+	metrics["mem_used_bytes"] = float64(worst.node.MemUsed)
+	metrics["mem_limit_bytes"] = float64(worst.node.MemLimit)
+	metrics["mem_used_percent"] = worst.memPercent
+	metrics["disk_free_bytes"] = float64(worst.node.DiskFree)
+	metrics["disk_free_limit_bytes"] = float64(worst.node.DiskFreeLimit)
+	metrics["nodes_running"] = float64(len(running))
+	metrics["nodes_total"] = float64(len(nodes))
+
+	return worst.status, strings.Join(worst.reasons, "; ")
 }
 
 // resolveThresholds parses the four threshold keys, ignoring parse errors:
