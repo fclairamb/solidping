@@ -202,30 +202,28 @@ You only need the database settings to get started — the defaults cover the re
 
 ### SQLite (the default — good for a single instance)
 
-Nothing to configure. To keep the data across restarts, point `SP_DB_DIR` at a
-directory you mount in:
+Nothing to configure. The image already stores the SQLite database and every
+uploaded blob (org logos, status-page assets, screenshots) under `/data`, so a
+single mounted named volume is enough:
 
 ```bash
-mkdir -p ./solidping-data
-
 docker run -p 4000:4000 \
   --hostname solidping \
-  -u "$(id -u):$(id -g)" \
-  -v "$PWD/solidping-data:/data" \
-  -e SP_DB_DIR=/data \
+  -v solidping-data:/data \
   ghcr.io/fclairamb/solidping
 ```
 
-Two flags there are not optional, and both are easy to trip over:
+**`--hostname solidping`** is not optional: the worker name is derived from the
+hostname and must match `^[a-z][a-z0-9-]{2,20}$`. Docker's default hostname is
+the random container ID, which starts with a digit most of the time, and the
+server then refuses to start. Pass `--hostname`, or set `SP_NODE_NAME` instead.
 
-- **`--hostname solidping`** — the worker name is derived from the hostname and
-  must match `^[a-z][a-z0-9-]{2,20}$`. Docker's default hostname is the random
-  container ID, which starts with a digit most of the time, and the server then
-  refuses to start. Pass `--hostname`, or set `SP_NODE_NAME` instead.
-- **`-u "$(id -u):$(id -g)"`** — the image runs as the nonroot user `65532`,
-  which cannot write to a directory your host created. Running as yourself, with
-  a directory you own, is the simplest thing that works. (A named Docker volume
-  hits the same wall: it is created root-owned.)
+If you use a bind mount instead of a named volume (`-v ./solidping-data:/data`),
+the host directory keeps its own ownership, which is usually not writable by
+the image's nonroot user (uid/gid `65532`). Either `chown 65532:65532` the
+host directory first, or run with `-u "$(id -u):$(id -g)"`. A named volume, as
+used above, doesn't have this problem — Docker seeds it from the image with
+the right ownership.
 
 ### PostgreSQL (recommended for production)
 
@@ -251,7 +249,7 @@ remote database, use `sslmode=require` (or `verify-full`) instead.
 |----------|---------|-------------|
 | `SP_DB_TYPE` | `sqlite` | `sqlite` or `postgres` |
 | `SP_DB_URL` | — | PostgreSQL connection string (required when `SP_DB_TYPE=postgres`) |
-| `SP_DB_DIR` | `.` | Where the SQLite file lives — set it to a volume |
+| `SP_DB_DIR` | `/data` in the image, `.` for the bare binary | Where the SQLite file lives — set it to a volume |
 | `SP_SERVER_LISTEN` | `:4000` | Listen address |
 | `SP_BASE_URL` | `http://localhost:4000` | Public URL, used in links and notifications |
 | `SP_NODE_NAME` | the hostname | Worker name, `^[a-z][a-z0-9-]{2,20}$`. Set it, or pass `--hostname` — the server will not start if the hostname does not match |

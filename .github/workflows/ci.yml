@@ -814,12 +814,44 @@ jobs:
         with:
           context: .
           push: true
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.version.outputs.VERSION }}
             COMMIT=${{ steps.version.outputs.GIT_HASH }}
             GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
+
+      # Regression guard for the bug fixed by fix(docker): persist data with
+      # zero env vars — a bare `docker run -v <volume>:/data` used to lose the
+      # SQLite database and every upload because the image had no ENV/VOLUME
+      # pointing at /data. `load: true` above makes the just-built image
+      # available to the local Docker daemon under the same tags that were
+      # pushed, so this runs against the exact image that was published.
+      - name: Smoke test image data persistence
+        run: |
+          set -euo pipefail
+          IMAGE=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)
+
+          docker volume create sp-smoke
+          docker run -d --name sp-smoke -p 4000:4000 -v sp-smoke:/data "$IMAGE"
+
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:4000/api/mgmt/version > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:4000/api/mgmt/version
+
+          docker run --rm -v sp-smoke:/data alpine sh -c '
+            set -eu
+            ls -la /data /data/files
+            test -f /data/solidping.db
+          '
+
+          docker rm -f sp-smoke
+          docker volume rm sp-smoke
 
   cli-release:
     name: Publish the sp CLI

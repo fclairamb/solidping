@@ -4,6 +4,7 @@
 
 ### Bug Fixes
 
+* **docker:** **the published image now persists its data with zero env vars.** `docker run -p 4000:4000 -v solidping-data:/data ghcr.io/fclairamb/solidping` booted but kept nothing: the final stage had no `ENV` or `VOLUME`, so the SQLite database defaulted to `/app` and uploads (org logos, status-page assets, screenshots) to `/app/data/files` — both outside the mounted volume, both gone on the next `docker run`. The image now sets `SP_DB_TYPE=sqlite`, `SP_DB_DIR=/data` and `SP_FILESTORAGE_LOCAL_ROOT=/data/files` by default and declares `VOLUME /data`, pre-seeded and owned by the nonroot user (`65532:65532`) so a fresh named volume is writable on first run. The old `-e` flags keep working as overrides — Postgres users still set `SP_DB_TYPE=postgres` and `SP_DB_URL`
 * **heartbeat:** **an accepted UDP heartbeat beat is now answered with `OK\n` (3 bytes), matching what TCP has always sent.** UDP replied with a bare 2-byte `OK`, so the two transports answered the same accepted beat with different bytes on the wire. If anything on your side matched the UDP reply on an exact 2-byte length or an exact `OK` (no trailing newline), loosen that comparison — it needs to accept `OK\n` now. The amplification guard (never more reply bytes than the datagram that triggered it) and the silence-on-failure behavior are unchanged
 
 ### Features
