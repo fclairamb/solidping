@@ -150,6 +150,21 @@ func (c *SFTPConfig) Validate() error {
 		return checkerdef.NewConfigError("username", "is required")
 	}
 
+	if err := c.validateCredentials(); err != nil {
+		return err
+	}
+
+	if c.HostKeyFingerprint != "" && !strings.HasPrefix(c.HostKeyFingerprint, fingerprintPrefix) {
+		return checkerdef.NewConfigErrorf("host_key_fingerprint",
+			"must be a %s… fingerprint, as reported in the check output", fingerprintPrefix)
+	}
+
+	return nil
+}
+
+// validateCredentials enforces the "exactly one of password / private_key"
+// rule, and that a supplied key parses.
+func (c *SFTPConfig) validateCredentials() error {
 	if c.Password == "" && c.PrivateKey == "" {
 		return checkerdef.NewConfigError("password", "password or private_key is required")
 	}
@@ -159,14 +174,7 @@ func (c *SFTPConfig) Validate() error {
 	}
 
 	if c.PrivateKey != "" {
-		if err := validatePrivateKey(c.PrivateKey); err != nil {
-			return err
-		}
-	}
-
-	if c.HostKeyFingerprint != "" && !strings.HasPrefix(c.HostKeyFingerprint, fingerprintPrefix) {
-		return checkerdef.NewConfigErrorf("host_key_fingerprint",
-			"must be a %s… fingerprint, as reported in the check output", fingerprintPrefix)
+		return validatePrivateKey(c.PrivateKey)
 	}
 
 	return nil
