@@ -136,6 +136,11 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// (spec 2026-09-12-06 §3).
 	defer runtime.closeBrowser()
 
+	// Same rule for every socket the script opened: a script that returns
+	// early, throws or is interrupted never leaks a TCP/UDP/WebSocket
+	// connection (spec 2026-09-15-06 §3).
+	defer runtime.closeSockets()
+
 	// Set up interrupt for timeout
 	go func() {
 		<-ctx.Done()
@@ -241,6 +246,55 @@ type jsRuntime struct {
 	// (see attachScreenshot).
 	screenshot   checkbrowser.Capture
 	screenshotAt time.Time
+
+	// sockets holds one disposer per connection the script opened through the
+	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
+	// closeSockets() over it, so nothing leaks whatever the script did.
+	sockets []func()
+	// socketCount is the per-execution CONNECTION budget (maxSocketConnections),
+	// counted at open and never given back by a close: a closed connection is
+	// one this script already spent.
+	socketCount atomic.Int32
+	// socketActions is the read/write budget (maxSocketActions), counted
+	// SEPARATELY from subCheckCount for the same reason browserActions is —
+	// see the comment on maxBrowserActions.
+	socketActions atomic.Int32
+	// payloadUsed is the shared byte pool socket reads draw from. See
+	// remainingPayload.
+	payloadUsed atomic.Int64
+}
+
+// remainingPayload is what is left of the execution's single maxHTTPBody-byte
+// payload pool.
+//
+// Socket reads SPEND from this pool (a `read()` that accumulates 700 KiB leaves
+// 324 KiB), and an HTTP response body is capped at whatever remains — so the
+// 1 MiB in the Limits table is genuinely ONE number rather than one per
+// transport. HTTP bodies deliberately do NOT spend: a script that never touches
+// a socket keeps exactly the per-request 1 MiB cap it has always had.
+func (r *jsRuntime) remainingPayload() int64 {
+	remaining := int64(maxHTTPBody) - r.payloadUsed.Load()
+	if remaining < 0 {
+		return 0
+	}
+
+	return remaining
+}
+
+// spendPayload draws n bytes from the shared pool.
+func (r *jsRuntime) spendPayload(n int) {
+	if n > 0 {
+		r.payloadUsed.Add(int64(n))
+	}
+}
+
+// closeSockets disposes every connection the script opened, in open order.
+// Each disposer is idempotent, so a script that closed its own handles costs
+// nothing here.
+func (r *jsRuntime) closeSockets() {
+	for _, dispose := range r.sockets {
+		dispose()
+	}
 }
 
 // newJSRuntime creates a new jsRuntime with the given context and config.
@@ -262,6 +316,9 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerHTTP()
 	r.registerBase64()
 	r.registerBrowser()
+	r.registerTCP()
+	r.registerUDP()
+	r.registerWebSocket()
 }
 
 // registerEnv exposes config.Env as a read-only "env" object.
@@ -752,8 +809,10 @@ func (r *jsRuntime) httpRequest(
 
 	duration := time.Since(start)
 
-	// Read body capped at 1MB
-	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxHTTPBody)))
+	// Read body capped at 1MB — minus whatever socket reads already drew from
+	// the shared payload pool, so the documented 1 MiB is one number for the
+	// whole execution rather than one per transport.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, r.remainingPayload()))
 	if err != nil {
 		return map[string]any{
 			jsKeyStatusCode:           resp.StatusCode,
