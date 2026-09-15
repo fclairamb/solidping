@@ -141,7 +141,7 @@ func checksAdd(ctx context.Context, svc *Service, cmd *Command) (*CommandRespons
 	result, err := svc.CreateCheck(ctx, cmd.GuildID, target)
 	if err != nil {
 		slog.ErrorContext(ctx, "Discord: failed to create check",
-			"url", checkhttp.RedactURL(target), "error", err)
+			"url", checkhttp.RedactURL(target), "error", checkhttp.RedactURL(err.Error()))
 
 		return ephemeral("Failed to create check: " + err.Error()), nil
 	}
