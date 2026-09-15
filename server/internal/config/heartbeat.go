@@ -100,7 +100,7 @@ type HeartbeatConfig struct {
 	// MaxConnections caps concurrent TCP connections
 	// (SP_HEARTBEAT_MAX_CONNECTIONS).
 	MaxConnections int `koanf:"max_connections"`
-	// UDPReplyOK sends a two-byte "OK" back on an ACCEPTED datagram
+	// UDPReplyOK sends a three-byte "OK\n" back on an ACCEPTED datagram
 	// (SP_HEARTBEAT_UDP_REPLY_OK, default true). Never more bytes than were
 	// received, so the listener can never be an amplification vector, and
 	// never anything at all on a failure, so it is never a validity oracle.
