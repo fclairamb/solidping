@@ -20,5 +20,21 @@ func (c *RabbitMQChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []ch
 				Password: "guest",
 			}).GetConfig(),
 		},
+		{
+			Name:   "RabbitMQ with memory/disk thresholds",
+			Slug:   "rabbitmq-management-thresholds",
+			Period: 5 * time.Minute,
+			Config: (&RabbitMQConfig{
+				Host:               "localhost",
+				Username:           "guest",
+				Password:           "guest",
+				Mode:               ModeManagement,
+				ManagementPort:     defaultManagementPort,
+				MemoryUsedWarning:  "70%",
+				MemoryUsedCritical: "90%",
+				DiskFreeWarning:    "20GiB",
+				DiskFreeCritical:   "5GiB",
+			}).GetConfig(),
+		},
 	}
 }
