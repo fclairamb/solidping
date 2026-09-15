@@ -764,6 +764,21 @@ func TestHTTPChecker_Execute(t *testing.T) {
 			wantStatus: checkerdef.StatusUp,
 		},
 		{
+			// Same gate, exercised through json_path_assertions instead of
+			// body_expect.
+			name: "QUERY request with json_path assertions evaluates the response body",
+			config: &HTTPConfig{
+				Method:             "QUERY",
+				JSONPathAssertions: jsonPathStatusIsOK(),
+			},
+			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", contentTypeJSON)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
+			},
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
 			name: "unexpected status code",
 			config: &HTTPConfig{
 				Method:         "GET",
