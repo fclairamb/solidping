@@ -292,4 +292,43 @@ test.describe("HTTP check request body and headers", () => {
       await deleteCheck(page, token, uid);
     }
   });
+
+  // Spec 2026-09-15-04: QUERY (draft-ietf-httpbis-safe-method-w-body) is a
+  // safe, body-carrying verb, so it must NOT be in METHODS_WITHOUT_BODY — the
+  // body editor stays visible exactly as it does for POST, and the body
+  // actually saves.
+  test("selecting QUERY keeps the body editor visible and saves the body", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const uid = await createViaApi(page, token, "query-method", {
+      url: "https://acme.com/graphql",
+      method: "GET",
+    });
+
+    try {
+      await page.goto(`orgs/test/checks/${uid}/edit`);
+      await page.waitForLoadState("networkidle");
+      // GET hides the body editor.
+      await expect(page.getByTestId("check-http-body-input")).toHaveCount(0);
+
+      await page.getByTestId("check-method-select").click();
+      await page.getByRole("option", { name: "QUERY", exact: true }).click();
+      await expect(page.getByTestId("check-http-body-input")).toBeVisible();
+
+      await page
+        .getByTestId("check-http-body-input")
+        .fill("{\"query\":\"{ ping }\"}");
+
+      await saveAndWait(page, uid);
+
+      const saved = await getCheck(page, token, uid);
+      expect(saved.config.method).toBe("QUERY");
+      expect(saved.config.body).toBe("{\"query\":\"{ ping }\"}");
+    } finally {
+      await deleteCheck(page, token, uid);
+    }
+  });
 });
