@@ -44,7 +44,7 @@ incidents and on-call escalation — in a single Go binary.
 | **Hosted** | [www.solidping.io](https://www.solidping.io) — sign up, no card needed |
 | **Live status page** | [status.solidping.io](https://status.solidping.io) — a real SolidPing instance watching the production one, from another provider in another country |
 | **Documentation** | [docs.solidping.io](https://docs.solidping.io) |
-| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). |
+| **Self-host** | `docker run -p 4000:4000 --hostname solidping ghcr.io/fclairamb/solidping` — SQLite by default, no other service needed. First login is `admin@solidping.io` / `solidpass`, and you must change it (see [Default Credentials](#default-credentials)). Prefer a bare binary? Every release also publishes one for Linux, macOS and Windows — see the [installation guides](https://docs.solidping.io/installation/linux). |
 
 ## Overview
 

@@ -29,6 +29,45 @@ curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/down
 chmod +x solidping
 ```
 
+### Verify the checksum (recommended)
+
+Every release also publishes `solidping-checksums.txt`, covering all five
+published binaries:
+
+```bash
+curl -L -o solidping-checksums.txt https://github.com/fclairamb/solidping/releases/latest/download/solidping-checksums.txt
+sha256sum -c --ignore-missing solidping-checksums.txt
+```
+
+`--ignore-missing` skips the checksum lines for binaries you didn't download,
+so this works no matter which platform's file you fetched.
+
+## macOS
+
+The same release publishes binaries for macOS — Apple Silicon and Intel:
+
+```bash
+# Apple Silicon
+curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-arm64
+
+# Intel
+curl -L -o solidping https://github.com/fclairamb/solidping/releases/latest/download/solidping-darwin-amd64
+
+chmod +x solidping
+```
+
+The binary is unsigned and not notarized, so macOS Gatekeeper quarantines it
+on download and refuses to run it. Clear the quarantine attribute once
+before first run:
+
+```bash
+xattr -d com.apple.quarantine solidping
+```
+
+There is no dedicated macOS page (launchd service, Homebrew tap) yet — once
+the binary is in place, the "Running" section below and the rest of this
+guide apply the same way on macOS as on Linux.
+
 ## Running
 
 ### Quick Start with SQLite
