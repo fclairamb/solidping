@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
@@ -94,7 +95,7 @@ func (h *Handler) handleChecksAdd(ctx context.Context, activity *Activity, cmd *
 	result, err := h.svc.CreateCheckWithOptions(ctx, activity.TenantID(), target, slug, period)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to create check from Teams mention",
-			"url", target, "tenant_id", activity.TenantID(), "error", err)
+			"url", checkhttp.RedactURL(target), "tenant_id", activity.TenantID(), "error", err)
 
 		return h.replyError(ctx, activity, "Failed to create check: "+err.Error())
 	}
