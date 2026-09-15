@@ -661,6 +661,17 @@ sftp://hostname:22
 | Host | SFTP server | `sftp.example.com` |
 | Port | SFTP port | `22` |
 | Timeout | Connection timeout | `10s` |
+| Host key fingerprint | Optional pin on the server's host key | `SHA256:uNiVztks…` |
+
+**Pinning the host key.** Leave *Host key fingerprint* empty and the check
+accepts whatever key the server presents — it is a reachability probe against a
+host you own. Either way, the fingerprint the server actually presented is
+written to the check's output as `host_key_fingerprint`, so you can read it off
+a passing check and paste it back into the field. Once set, a server presenting
+a different key fails the check with both fingerprints in the message, and the
+rejection happens during the handshake rather than after it. The value uses the
+same `SHA256:…` form as the SSH check, so `ssh-keyscan host | ssh-keygen -lf -`
+produces it.
 
 ## Messaging & Streaming
 

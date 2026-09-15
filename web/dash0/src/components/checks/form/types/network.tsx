@@ -464,6 +464,10 @@ function SshFields({
 }
 
 // ── SFTP ──
+// SFTP spells the pin `host_key_fingerprint`, not SSH's `expected_fingerprint`:
+// the SSH key has a second job (it gates using the check as a tunnel bastion)
+// that SFTP has no equivalent for, so the two stay separate keys. The shared
+// state field is reused because the value is the same `SHA256:…` string.
 export const sftpModule: CheckTypeModule<HostPortUserPassState> = {
   types: ["sftp"],
   ownedKeys: [
@@ -473,8 +477,12 @@ export const sftpModule: CheckTypeModule<HostPortUserPassState> = {
     "password",
     "private_key",
     "expected_fingerprint",
+    "host_key_fingerprint",
   ],
-  fromConfig: hostPortUserPassFromConfig,
+  fromConfig: (config) => ({
+    ...hostPortUserPassFromConfig(config),
+    expectedFingerprint: getConfigField(config, "host_key_fingerprint"),
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.host) cfg.host = state.host;
@@ -482,6 +490,9 @@ export const sftpModule: CheckTypeModule<HostPortUserPassState> = {
     if (state.username) cfg.username = state.username;
     if (state.password) cfg.password = state.password;
     if (state.privateKey) cfg.private_key = state.privateKey;
+    if (state.expectedFingerprint) {
+      cfg.host_key_fingerprint = state.expectedFingerprint;
+    }
     return { config: cfg, errors: hostRequired(state.host) };
   },
   Fields: SftpFields,
@@ -564,6 +575,25 @@ function SftpFields({
         )}
         <p className="text-xs text-muted-foreground">
           {t("network.passwordOverridesPrivateKey")}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="host-key-fingerprint">
+          {t("network.hostKeyFingerprintOptional")}
+        </Label>
+        <Input
+          id="host-key-fingerprint"
+          type="text"
+          placeholder="SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          value={state.expectedFingerprint}
+          onChange={(e) =>
+            onChange({ ...state, expectedFingerprint: e.target.value })
+          }
+          className="font-mono text-xs"
+          data-testid="check-host-key-fingerprint-input"
+        />
+        <p className="text-xs text-muted-foreground">
+          {t("network.sftpFingerprintHelp")}
         </p>
       </div>
     </>

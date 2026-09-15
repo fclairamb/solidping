@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",
+    "sftpFingerprintHelp": "\u00c9pingle la cl\u00e9 d'h\u00f4te du serveur. Laisser vide pour accepter n'importe quelle cl\u00e9 \u2014 l'empreinte pr\u00e9sent\u00e9e par le serveur est toujours report\u00e9e dans la sortie du check, pour pouvoir la recopier ici ensuite.",
     "fingerprintHelpPrefix": "Vérifie l'identité du serveur à chaque contrôle, et est requis pour utiliser ce contrôle comme",
     "tunnelBastionLabel": "Passer par un tunnel SSH",
     "fingerprintHelpSuffix": "bastion pour d'autres contrôles. Obtenez-la avec",

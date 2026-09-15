@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",
+    "sftpFingerprintHelp": "Fixiert den Host-Schl\u00fcssel des Servers. Leer lassen, um jeden Schl\u00fcssel zu akzeptieren \u2014 der vom Server vorgelegte Fingerabdruck steht immer in der Pr\u00fcfausgabe und kann von dort hierher kopiert werden.",
     "fingerprintHelpPrefix": "Überprüft die Identität des Servers bei jeder Prüfung und ist erforderlich, um diese Prüfung als",
     "tunnelBastionLabel": "Über SSH-Tunnel ausführen",
     "fingerprintHelpSuffix": "Bastion für andere Prüfungen zu verwenden. Ermitteln Sie ihn mit",

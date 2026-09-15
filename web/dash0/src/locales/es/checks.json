@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",
+    "sftpFingerprintHelp": "Fija la clave del host del servidor. D\u00e9jalo vac\u00edo para aceptar cualquier clave: la huella que presenta el servidor siempre aparece en la salida de la comprobaci\u00f3n, para poder copiarla aqu\u00ed despu\u00e9s.",
     "fingerprintHelpPrefix": "Verifica la identidad del servidor en cada comprobación, y es necesario para usar esta comprobación como",
     "tunnelBastionLabel": "Ejecutar a través de un túnel SSH",
     "fingerprintHelpSuffix": "bastión para otras comprobaciones. Obténgala con",
