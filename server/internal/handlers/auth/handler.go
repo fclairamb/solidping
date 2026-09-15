@@ -105,12 +105,22 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 // refresh bounce. Every login-shaped response — password login, SSO
 // callbacks, refresh, org switch, 2FA — must set it through this helper so
 // the cookie shape stays defined in one place.
-func setAccessTokenCookie(writer http.ResponseWriter, accessToken string, expiresIn int) {
+//
+// The cookie is HttpOnly: it is read only server-side (the auth middleware
+// and the realtimews handshake), the SPA never touches document.cookie for
+// it, so script access buys nothing and costs one XSS-to-session-theft path.
+// SameSite=Lax keeps it off cross-site POSTs while still surviving the
+// top-level navigations the OAuth consent flow relies on. Secure is dynamic —
+// see httpx.IsTLS for why it is not hard-coded to true.
+func setAccessTokenCookie(writer http.ResponseWriter, req *http.Request, accessToken string, expiresIn int) {
 	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  accessToken,
-		Path:   "/",
-		MaxAge: expiresIn,
+		Name:     CookieAuthToken,
+		Value:    accessToken,
+		Path:     "/",
+		MaxAge:   expiresIn,
+		HttpOnly: true,
+		Secure:   httpx.IsTLS(req),
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -146,7 +156,7 @@ func (h *Handler) Login(writer http.ResponseWriter, req *http.Request) error {
 		return h.handleAuthError(writer, req, err)
 	}
 
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -177,7 +187,7 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 		}
 
 		// Clear cookie
-		h.clearAuthCookie(writer)
+		h.clearAuthCookie(writer, req)
 
 		return h.WriteJSON(writer, http.StatusOK, resp)
 	}
@@ -201,7 +211,7 @@ func (h *Handler) Logout(writer http.ResponseWriter, req *http.Request) error {
 	}
 
 	// Clear cookie
-	h.clearAuthCookie(writer)
+	h.clearAuthCookie(writer, req)
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"message": "Successfully logged out"})
 }
@@ -229,7 +239,7 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req *http.Request) error {
 	// Re-set the access token cookie exactly like Login does — without this,
 	// cookie-authenticated surfaces silently lapse after the first hour even
 	// though the bearer-token session keeps refreshing.
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
 		"accessToken": resp.AccessToken,
@@ -428,7 +438,7 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req *http.Request) error
 		return h.handleAuthError(writer, req, err)
 	}
 
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -524,13 +534,18 @@ func (h *Handler) handleRevokeError(writer http.ResponseWriter, request *http.Re
 	}
 }
 
-// clearAuthCookie clears the authentication cookie.
-func (h *Handler) clearAuthCookie(writer http.ResponseWriter) {
+// clearAuthCookie clears the authentication cookie. The attributes must match
+// setAccessTokenCookie's, or the browser treats this as a different cookie and
+// the session one lingers.
+func (h *Handler) clearAuthCookie(writer http.ResponseWriter, req *http.Request) {
 	http.SetCookie(writer, &http.Cookie{
-		Name:   CookieAuthToken,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     CookieAuthToken,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   httpx.IsTLS(req),
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -591,7 +606,7 @@ func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req *http.Requ
 	}
 
 	if resp.AccessToken != "" {
-		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+		setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -768,7 +783,7 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req *http.Request) error
 	// Set access token cookie, matching every other login-shaped response
 	// (Login, SwitchOrg, Verify2FA, …) — CreateOrg now mints a fresh session
 	// too.
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	// Product analytics (spec 2026-08-02-08). No-op unless PostHog is
 	// configured. Only the UUIDs travel — never the org name or slug.
@@ -830,12 +845,12 @@ func (h *Handler) DeleteOrg(writer http.ResponseWriter, req *http.Request) error
 	if resp == nil || resp.AccessToken == "" {
 		// No replacement session could be minted. The deletion still happened,
 		// so drop the cookie rather than leaving a token that now 404s.
-		h.clearAuthCookie(writer)
+		h.clearAuthCookie(writer, req)
 
 		return h.WriteJSON(writer, http.StatusOK, &LoginResponse{})
 	}
 
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -874,7 +889,7 @@ func (h *Handler) UpdateOrgProfile(writer http.ResponseWriter, req *http.Request
 	}
 
 	if resp.AccessToken != "" {
-		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+		setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -1035,7 +1050,7 @@ func (h *Handler) AcceptInvite(writer http.ResponseWriter, req *http.Request) er
 	}
 
 	if resp.AccessToken != "" {
-		setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+		setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
@@ -1239,7 +1254,7 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req *http.Request) error
 		return h.handle2FAError(writer, req, err)
 	}
 
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
@@ -1274,7 +1289,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req *http.Request) err
 		return h.handle2FAError(writer, req, err)
 	}
 
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
