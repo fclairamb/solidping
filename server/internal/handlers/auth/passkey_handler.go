@@ -144,7 +144,7 @@ func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req *http.Reque
 		return h.translatePasskeyError(writer, req, err)
 	}
 
-	setAccessTokenCookie(writer, resp.AccessToken, resp.ExpiresIn)
+	setAccessTokenCookie(writer, req, resp.AccessToken, resp.ExpiresIn)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }

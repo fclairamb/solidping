@@ -484,6 +484,34 @@ jobs:
           path: solidping
           retention-days: 7
 
+      # Compile-only guard for the four targets server-release (tag-triggered,
+      # below) publishes besides linux/amd64. That job cannot run on a PR — it
+      # is gated on refs/tags/ — so this is the only place a broken
+      # cross-build gets caught before a real tag exists. Same CGO_ENABLED=0
+      # / -s -w / ldflags server-release uses; output goes to /dev/null since
+      # nothing here needs to run these binaries, only prove they build.
+      - name: Cross-compile the other release targets (compile-only guard)
+        working-directory: server
+        run: |
+          set -euo pipefail
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "dev")
+          COMMIT=$(git rev-parse --short HEAD)
+          GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+
+          for target in linux/arm64 windows/amd64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+
+            echo "::group::build $target"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -ldflags "-s -w \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Version=${VERSION}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Commit=${COMMIT}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.GitTime=${GIT_TIME}'" \
+              -o /dev/null .
+            echo "::endgroup::"
+          done
+
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-24.04
@@ -786,12 +814,44 @@ jobs:
         with:
           context: .
           push: true
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.version.outputs.VERSION }}
             COMMIT=${{ steps.version.outputs.GIT_HASH }}
             GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
+
+      # Regression guard for the bug fixed by fix(docker): persist data with
+      # zero env vars — a bare `docker run -v <volume>:/data` used to lose the
+      # SQLite database and every upload because the image had no ENV/VOLUME
+      # pointing at /data. `load: true` above makes the just-built image
+      # available to the local Docker daemon under the same tags that were
+      # pushed, so this runs against the exact image that was published.
+      - name: Smoke test image data persistence
+        run: |
+          set -euo pipefail
+          IMAGE=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)
+
+          docker volume create sp-smoke
+          docker run -d --name sp-smoke -p 4000:4000 -v sp-smoke:/data "$IMAGE"
+
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:4000/api/mgmt/version > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://localhost:4000/api/mgmt/version
+
+          docker run --rm -v sp-smoke:/data alpine sh -c '
+            set -eu
+            ls -la /data /data/files
+            test -f /data/solidping.db
+          '
+
+          docker rm -f sp-smoke
+          docker volume rm sp-smoke
 
   cli-release:
     name: Publish the sp CLI
@@ -923,6 +983,141 @@ jobs:
             VERSION=${{ steps.version.outputs.VERSION }}
             COMMIT=${{ steps.version.outputs.GIT_HASH }}
             GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
+
+  server-release:
+    name: Publish the server binaries
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    # Deliberately no `needs`: this runs alongside cli-release and docker,
+    # not behind them. A failed asset upload here must never block `deploy`
+    # (which only needs `docker`), and this job's own three web builds
+    # should not wait behind cli-release's sp archives either — spec
+    # 2026-09-15-02.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # dash0/status0/docs are skipped entirely on tag pushes (see their
+      # `if:` above: !startsWith(github.ref, 'refs/tags/')), so their dists
+      # don't exist as artifacts on this run — this job builds them itself.
+      # No lint/unit steps: the tag commit already passed them on `main`
+      # before being tagged.
+      - name: Build dash0 dist
+        working-directory: web/dash0
+        run: |
+          bun install
+          bun run build
+
+      - name: Build status0 dist
+        working-directory: web/status0
+        run: |
+          bun install
+          bun run build
+
+      - name: Build docs dist
+        working-directory: web/docs
+        run: |
+          bun install
+          bun run build
+
+      - name: Place web dists where the server embeds them
+        run: |
+          mkdir -p server/internal/app/dash0res server/internal/app/status0res server/internal/app/docsres
+          cp -r web/dash0/dist/. server/internal/app/dash0res/
+          cp -r web/status0/dist/. server/internal/app/status0res/
+          cp -r web/docs/build/. server/internal/app/docsres/
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: server/go.sum
+
+      # Fixed, version-free names: these are the exact URLs the install docs
+      # already reference (web/docs/docs/installation/{linux,windows}.md), so
+      # releases/latest/download/<name> is a stable contract no matter which
+      # version is latest. Bare binaries, not tarballs — unlike `sp`, whose
+      # audience (CI jobs) pins versions, a self-hosted server is downloaded
+      # once, and this way Windows users get a runnable .exe with no tar
+      # step. -s -w strips symbols/DWARF (the unstripped binary is ~250MB —
+      # the embedded docs alone are ~49MB); pclntab is kept regardless, so
+      # panics still print symbolic stack traces and pprof still works.
+      - name: Build the server for every published platform
+        working-directory: server
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          COMMIT=$(git rev-parse --short HEAD)
+          GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+
+          mkdir -p ../dist
+
+          declare -A OUT=(
+            [linux/amd64]=solidping-linux-amd64
+            [linux/arm64]=solidping-linux-arm64
+            [windows/amd64]=solidping-windows-amd64.exe
+            [darwin/amd64]=solidping-darwin-amd64
+            [darwin/arm64]=solidping-darwin-arm64
+          )
+
+          for target in "${!OUT[@]}"; do
+            os="${target%/*}"
+            arch="${target#*/}"
+
+            echo "::group::build $target -> ${OUT[$target]}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
+              -ldflags "-s -w \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Version=${VERSION}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.Commit=${COMMIT}' \
+                -X 'github.com/fclairamb/solidping/server/internal/version.GitTime=${GIT_TIME}'" \
+              -o "../dist/${OUT[$target]}" .
+            echo "::endgroup::"
+          done
+
+          cd ../dist
+          sha256sum solidping-* > solidping-checksums.txt
+          ls -l
+
+      # release-please creates the GitHub release from the same tag push that
+      # triggered this run, so the release may not exist yet. Wait for it
+      # rather than racing it — and if it never appears (a hand-pushed tag),
+      # create it. cli-release runs the identical fallback in parallel (no
+      # `needs` between the two jobs), so tolerate "already exists" from that
+      # race by re-viewing rather than failing outright.
+      - name: Attach the binaries to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+
+          for _ in $(seq 1 30); do
+            if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              break
+            fi
+            echo "waiting for release $TAG_NAME to be created..."
+            sleep 10
+          done
+
+          if ! gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::warning::release $TAG_NAME was not created by release-please; creating it for the assets"
+            gh release create "$TAG_NAME" --repo "${{ github.repository }}" \
+              --title "$TAG_NAME" --notes "Automated release." --target "${GITHUB_SHA}" \
+              || gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null
+          fi
+
+          gh release upload "$TAG_NAME" dist/solidping-* \
+            --repo "${{ github.repository }}" --clobber
 
   deploy:
     name: Deploy to k8xp

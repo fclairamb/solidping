@@ -3,6 +3,7 @@ package checksftp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -13,8 +14,18 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
+
+// outputKeyHostKeyFingerprint names the result-output key carrying the host
+// key the server actually presented. It is written on every run, pinned or
+// not, and matches the config key an operator pastes it into.
+const outputKeyHostKeyFingerprint = "host_key_fingerprint"
+
+// errHostKeyMismatch is returned by the host key callback so the dial error
+// can be told apart from a network failure.
+var errHostKeyMismatch = errors.New("host key mismatch")
 
 // SFTPChecker implements the Checker interface for SFTP checks.
 type SFTPChecker struct{}
@@ -99,10 +110,12 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
 
+	var observedFingerprint string
+
 	sshConfig := &ssh.ClientConfig{
 		User:            cfg.Username,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback(cfg.HostKeyFingerprint, output, &observedFingerprint),
 		Timeout:         timeout,
 	}
 
@@ -133,6 +146,18 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, target, sshConfig)
 	if err != nil {
 		_ = netConn.Close()
+
+		if errors.Is(err, errHostKeyMismatch) {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusDown,
+				Duration: time.Since(start),
+				Output: mergeOutput(output, map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf(
+						"host key mismatch: got %s, expected %s",
+						observedFingerprint, cfg.HostKeyFingerprint),
+				}),
+			}, nil
+		}
 
 		if ctx.Err() != nil {
 			return &checkerdef.Result{
@@ -195,6 +220,27 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Metrics:  metrics,
 		Output:   output,
 	}, nil
+}
+
+// hostKeyCallback builds the SSH host key callback for an SFTP check.
+//
+// The observed key is ALWAYS recorded in the output, pinned or not, so an
+// operator can read it off a passing check and paste it into
+// host_key_fingerprint. With `pin` set the comparison happens INSIDE the
+// callback (mirroring checkssh.verifyFingerprint) so the handshake itself
+// refuses an unexpected key; with no pin the callback accepts anything, which
+// is what a reachability probe against a host the operator owns needs.
+func hostKeyCallback(pin string, output map[string]any, observed *string) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		*observed = checkssh.Fingerprint(key)
+		output[outputKeyHostKeyFingerprint] = *observed
+
+		if pin != "" && *observed != pin {
+			return fmt.Errorf("%w: got %s, expected %s", errHostKeyMismatch, *observed, pin)
+		}
+
+		return nil
+	}
 }
 
 func mergeOutput(base, extra map[string]any) map[string]any {

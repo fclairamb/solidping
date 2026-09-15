@@ -8,11 +8,26 @@ import (
 
 // UDPConfig holds the configuration for UDP port checks.
 type UDPConfig struct {
-	Host       string        `json:"host,omitempty"`
-	Port       int           `json:"port,omitempty"`
-	Timeout    time.Duration `json:"timeout,omitempty"`
-	SendData   string        `json:"send_data,omitempty"`   //nolint:tagliatelle // API uses snake_case
-	ExpectData string        `json:"expect_data,omitempty"` //nolint:tagliatelle // API uses snake_case
+	Host           string        `json:"host,omitempty"`
+	Port           int           `json:"port,omitempty"`
+	Timeout        time.Duration `json:"timeout,omitempty"`
+	SendData       string        `json:"send_data,omitempty"`       //nolint:tagliatelle // API uses snake_case
+	SendEncoding   string        `json:"send_encoding,omitempty"`   //nolint:tagliatelle // API uses snake_case
+	ExpectData     string        `json:"expect_data,omitempty"`     //nolint:tagliatelle // API uses snake_case
+	ExpectEncoding string        `json:"expect_encoding,omitempty"` //nolint:tagliatelle // API uses snake_case
+	ExpectPattern  string        `json:"expect_pattern,omitempty"`  //nolint:tagliatelle // API uses snake_case
+}
+
+// exchangeFields projects the send/expect half of the config onto the shared
+// type that parses, serializes and validates it — the same one `tcp` uses.
+func (c *UDPConfig) exchangeFields() *checkerdef.ExchangeFields {
+	return &checkerdef.ExchangeFields{
+		SendData:       c.SendData,
+		SendEncoding:   c.SendEncoding,
+		ExpectData:     c.ExpectData,
+		ExpectEncoding: c.ExpectEncoding,
+		ExpectPattern:  c.ExpectPattern,
+	}
 }
 
 // FromMap populates the configuration from a map.
@@ -42,17 +57,16 @@ func (c *UDPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("timeout", "must be a string")
 	}
 
-	if sendData, ok := configMap["send_data"].(string); ok {
-		c.SendData = sendData
-	} else if configMap["send_data"] != nil {
-		return checkerdef.NewConfigError("send_data", "must be a string")
+	exchange := checkerdef.ExchangeFields{}
+	if err := exchange.FromMap(configMap); err != nil {
+		return err
 	}
 
-	if expectData, ok := configMap["expect_data"].(string); ok {
-		c.ExpectData = expectData
-	} else if configMap["expect_data"] != nil {
-		return checkerdef.NewConfigError("expect_data", "must be a string")
-	}
+	c.SendData = exchange.SendData
+	c.SendEncoding = exchange.SendEncoding
+	c.ExpectData = exchange.ExpectData
+	c.ExpectEncoding = exchange.ExpectEncoding
+	c.ExpectPattern = exchange.ExpectPattern
 
 	return nil
 }
@@ -68,13 +82,7 @@ func (c *UDPConfig) GetConfig() map[string]any {
 		cfg["timeout"] = c.Timeout.String()
 	}
 
-	if c.SendData != "" {
-		cfg["send_data"] = c.SendData
-	}
-
-	if c.ExpectData != "" {
-		cfg["expect_data"] = c.ExpectData
-	}
+	c.exchangeFields().Apply(cfg)
 
 	return cfg
 }

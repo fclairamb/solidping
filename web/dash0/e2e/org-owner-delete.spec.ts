@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-08-11: the creator of an organization becomes its OWNER, only an
 // owner sees the settings danger zone, and deleting the org through it lands the
@@ -21,7 +21,7 @@ test.describe("Organization owner and deletion", () => {
 
   // seedUser creates a throwaway user through the test-only endpoint and logs
   // them in, returning their (org-less) session.
-  async function seedUser(page: Page, stamp: number) {
+  async function seedUser(page: Page, stamp: string) {
     const email = `owner-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -95,9 +95,9 @@ test.describe("Organization owner and deletion", () => {
   // seedOwnedOrg creates a user, logs them in, creates an org through the API,
   // and seeds the browser with the returned org-scoped session.
   async function seedOwnedOrg(page: Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const { email, accessToken } = await seedUser(page, stamp);
-    const org = await createOrg(page, accessToken, `own-${stamp.toString(36)}`);
+    const org = await createOrg(page, accessToken, `own-${stamp}`);
 
     await seedBrowserSession(page, org);
 
@@ -212,14 +212,14 @@ test.describe("Organization owner and deletion", () => {
   test("deleting one of two orgs switches the owner into the surviving one", async ({
     page,
   }) => {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const { accessToken } = await seedUser(page, stamp);
 
-    const keeper = await createOrg(page, accessToken, `keep-${stamp.toString(36)}`);
+    const keeper = await createOrg(page, accessToken, `keep-${stamp}`);
     const doomed = await createOrg(
       page,
       keeper.accessToken,
-      `gone-${stamp.toString(36)}`,
+      `gone-${stamp}`,
     );
 
     // The browser is sitting in the org that is about to be deleted.
@@ -269,7 +269,7 @@ test.describe("Organization owner and deletion", () => {
   }) => {
     const { orgSlug, ownerToken } = await seedOwnedOrg(page);
 
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const adminEmail = `admin-${stamp}@unknown.example`;
     const adminPassword = "Strong-Pass-123!";
 

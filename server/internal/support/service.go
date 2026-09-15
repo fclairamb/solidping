@@ -1044,7 +1044,12 @@ func (s *Service) ListThreads(
 		limit = 500
 	}
 
-	threads := make([]*models.SupportThread, 0, limit)
+	// No capacity hint: `limit` is caller-supplied (clamped just above), the
+	// query is paged, and the hint buys nothing a nil slice does not — while
+	// code scanning reads make(..., 0, userValue) as an unbounded allocation.
+	// The handler rebuilds a non-nil response slice, so the JSON shape is
+	// unchanged when there are no rows.
+	var threads []*models.SupportThread
 
 	query := s.bun().NewSelect().Model(&threads).
 		Where("deleted_at is null").
@@ -1084,7 +1089,9 @@ func (s *Service) ListMessages(
 		limit = 1000
 	}
 
-	messages := make([]*models.SupportMessage, 0, limit)
+	// Same reasoning as ListThreads: no capacity hint off a caller-supplied
+	// limit.
+	var messages []*models.SupportMessage
 
 	err := s.bun().NewSelect().Model(&messages).
 		Where("thread_uid = ?", threadUID).

@@ -12,6 +12,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/urfave/cli/v3"
 
+	"github.com/fclairamb/solidping/server/pkg/cli/kumadb"
 	"github.com/fclairamb/solidping/server/pkg/cli/output"
 	"github.com/fclairamb/solidping/server/pkg/client"
 )
@@ -313,7 +314,8 @@ type importResultSummary struct {
 	} `json:"errors"`
 }
 
-// checksImportAction implements `sp checks import <file> [--dry-run]`. The
+// checksImportAction implements `sp checks import <file> [--dry-run]` and,
+// with --from, `sp checks import --from <source> <file> [--apply]`. The
 // file's Content-Type is inferred from its extension (reusing
 // detectContentType, the same helper `sp apply` uses) so a hand-authored YAML
 // file parses correctly server-side.
@@ -327,6 +329,10 @@ func checksImportAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("Error: an export file is required", 5)
 	}
 	file := cmd.Args().Get(0)
+
+	if source := cmd.String(flagFrom); source != "" {
+		return checksImportFromAction(ctx, cliCtx, source, file, cmd.Bool("apply"))
+	}
 
 	body, readErr := os.ReadFile(file)
 	if readErr != nil {
@@ -404,4 +410,182 @@ func formatImportSummary(result importResultSummary, dryRun bool) importSummaryT
 	}
 
 	return summary
+}
+
+// importSourceUptimeKumaDB is the only value `--from` currently accepts: a
+// local Uptime Kuma SQLite database (kuma.db), read and converted on this
+// machine — never uploaded whole. See server/pkg/cli/kumadb.
+const importSourceUptimeKumaDB = "uptime-kuma-db"
+
+// convertSourceUptimeKuma is the `source` query value the convert endpoint's
+// Uptime Kuma converter is registered under
+// (importers.SourceUptimeKuma) — duplicated here as a literal rather than
+// imported, same reasoning as kumadb's own package doc: the CLI does not
+// import server/internal/handlers/* and this keeps it that way.
+const convertSourceUptimeKuma = "uptime-kuma"
+
+// checksImportFromAction implements the --from branch of `sp checks import`:
+// file is a third-party source read and converted locally, then posted to
+// the convert endpoint — never the whole source file. Dry-run is the default
+// here, the opposite of the plain import: the input is a file another
+// product wrote, not one the user authored, so the preview with its warnings
+// is the point. apply performs the write; --dry-run is accepted for symmetry
+// but is a no-op alongside --from (dry-run unless --apply is already this
+// branch's default).
+func checksImportFromAction(ctx context.Context, cliCtx *Context, source, file string, apply bool) error {
+	if source != importSourceUptimeKumaDB {
+		return cli.Exit(fmt.Sprintf(
+			"Error: unsupported --from source %q (supported: %s)", source, importSourceUptimeKumaDB), 5)
+	}
+
+	backupJSON, readErr := kumadb.Read(ctx, file)
+	if readErr != nil {
+		return cli.Exit(fmt.Sprintf("Error: %v", readErr), 5)
+	}
+
+	apiClient, err := cliCtx.APIHelper.GetClient(ctx)
+	if err != nil {
+		return cliCtx.HandleAuthError(err)
+	}
+
+	dryRun := !apply
+
+	resultRaw, convertErr := apiClient.ConvertChecks(ctx, cliCtx.GetOrg(), convertSourceUptimeKuma, backupJSON, dryRun)
+	if convertErr != nil {
+		return cliCtx.HandleError("Failed to convert checks", convertErr)
+	}
+
+	var result convertResultSummary
+	if jsonErr := json.Unmarshal(resultRaw, &result); jsonErr != nil {
+		return cliCtx.HandleError("Failed to parse convert result", jsonErr)
+	}
+
+	if !cliCtx.IsText() {
+		return cliCtx.Outputter.Print(result)
+	}
+
+	summary := formatConvertSummary(&result, dryRun)
+	printConvertSummary(&summary)
+
+	if summary.exitCode != 0 {
+		return cli.Exit("", summary.exitCode)
+	}
+
+	return nil
+}
+
+// convertWarning mirrors the server's importers.ConversionWarning for CLI
+// decoding.
+type convertWarning struct {
+	Item    string `json:"item,omitempty"`
+	Field   string `json:"field,omitempty"`
+	Message string `json:"message"`
+}
+
+// convertItemError mirrors one entry of the server's checks.ImportError for
+// CLI decoding (same shape importResultSummary.Errors uses inline; named
+// here because convertResultSummary needs it as its own field type too).
+type convertItemError struct {
+	Index int    `json:"index"`
+	Slug  string `json:"slug"`
+	Error string `json:"error"`
+}
+
+// convertResultSummary mirrors the server's importers.ConvertResult for
+// text-mode reporting and JSON/YAML passthrough.
+type convertResultSummary struct {
+	Source    string             `json:"source"`
+	Converted int                `json:"converted"`
+	Manifest  string             `json:"manifest"`
+	DryRun    bool               `json:"dryRun"`
+	Created   int                `json:"created"`
+	Updated   int                `json:"updated"`
+	Unchanged int                `json:"unchanged"`
+	Unmanaged int                `json:"unmanaged"`
+	Plan      []applyPlanEntry   `json:"plan"`
+	Errors    []convertItemError `json:"errors"`
+	Warnings  []convertWarning   `json:"warnings"`
+}
+
+// convertSummaryText is the text-mode rendering of a convert result: the
+// headline counts, one line per warning, one line per per-check error, an
+// optional footer, and the exit code.
+type convertSummaryText struct {
+	headline     string
+	warningLines []string
+	errorLines   []string
+	footer       string
+	exitCode     int
+}
+
+// formatConvertSummary is the pure (network-free) core of
+// checksImportFromAction's text-mode output, split out so it is directly
+// unit-testable without a live server — mirrors formatImportSummary.
+func formatConvertSummary(result *convertResultSummary, dryRun bool) convertSummaryText {
+	mode := "APPLIED"
+	if dryRun {
+		mode = "PREVIEW"
+	}
+
+	summary := convertSummaryText{
+		headline: fmt.Sprintf("%s: converted=%d created=%d updated=%d unchanged=%d unmanaged=%d",
+			mode, result.Converted, result.Created, result.Updated, result.Unchanged, result.Unmanaged),
+	}
+
+	for i := range result.Warnings {
+		summary.warningLines = append(summary.warningLines, formatConvertWarning(&result.Warnings[i]))
+	}
+
+	for i := range result.Errors {
+		e := &result.Errors[i]
+		summary.errorLines = append(summary.errorLines, fmt.Sprintf("[%d] %s: %s", e.Index, e.Slug, e.Error))
+	}
+
+	if dryRun {
+		summary.footer = "Re-run with --apply to write these checks."
+	}
+
+	if len(summary.errorLines) > 0 {
+		summary.exitCode = 1
+	}
+
+	return summary
+}
+
+// formatConvertWarning renders one warning on a single line: [item] field: message,
+// degrading gracefully when item/field are absent (document-level warnings).
+func formatConvertWarning(warning *convertWarning) string {
+	switch {
+	case warning.Item != "" && warning.Field != "":
+		return fmt.Sprintf("[%s] %s: %s", warning.Item, warning.Field, warning.Message)
+	case warning.Item != "":
+		return fmt.Sprintf("[%s] %s", warning.Item, warning.Message)
+	default:
+		return warning.Message
+	}
+}
+
+// printConvertSummary writes a formatted convert summary to stdout.
+func printConvertSummary(summary *convertSummaryText) {
+	output.PrintMessage(os.Stdout, summary.headline)
+
+	if len(summary.warningLines) > 0 {
+		output.PrintWarning(os.Stdout, fmt.Sprintf("%d warning(s):", len(summary.warningLines)))
+
+		for _, line := range summary.warningLines {
+			output.PrintMessage(os.Stdout, "  "+line)
+		}
+	}
+
+	if len(summary.errorLines) > 0 {
+		output.PrintError(os.Stdout, fmt.Sprintf("%d error(s):", len(summary.errorLines)))
+
+		for _, line := range summary.errorLines {
+			output.PrintMessage(os.Stdout, "  "+line)
+		}
+	}
+
+	if summary.footer != "" {
+		output.PrintMessage(os.Stdout, summary.footer)
+	}
 }

@@ -1,5 +1,5 @@
 import { test as base, expect, type Page } from "@playwright/test";
-import { test, API_BASE, DASH_BASE, escapeRegExp } from "./fixtures";
+import { test, API_BASE, DASH_BASE, escapeRegExp, uniqueStamp } from "./fixtures";
 
 /**
  * E2E for spec 2026-09-09-07: the organization cell on the super-admin
@@ -20,7 +20,7 @@ import { test, API_BASE, DASH_BASE, escapeRegExp } from "./fixtures";
  * @returns the slug of the freshly created org.
  */
 async function seedForeignOrg(page: Page): Promise<string> {
-  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const stamp = uniqueStamp();
   const email = `activation-org-${stamp}@unknown.example`;
   const password = "Strong-Pass-123!";
 

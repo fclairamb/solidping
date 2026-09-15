@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, uniqueStamp } from "./fixtures";
 
 // Regression guard for spec 2026-07-17-02: the checks list must issue ONE
 // batched request for the whole page, not one per group section.
@@ -49,7 +49,7 @@ async function createCheck(
     data: {
       type: "http",
       name,
-      config: { url: `https://example.com/${Date.now()}-${Math.random()}` },
+      config: { url: `https://example.com/${uniqueStamp()}` },
       period: "00:05:00",
       checkGroupUid,
       labels,

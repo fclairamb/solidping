@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",
+    "sftpFingerprintHelp": "Fija la clave del host del servidor. D\u00e9jalo vac\u00edo para aceptar cualquier clave: la huella que presenta el servidor siempre aparece en la salida de la comprobaci\u00f3n, para poder copiarla aqu\u00ed despu\u00e9s.",
     "fingerprintHelpPrefix": "Verifica la identidad del servidor en cada comprobación, y es necesario para usar esta comprobación como",
     "tunnelBastionLabel": "Ejecutar a través de un túnel SSH",
     "fingerprintHelpSuffix": "bastión para otras comprobaciones. Obténgala con",
@@ -973,7 +974,18 @@
     "privateKeyEncrypted": "(cifrada — introduzca una nueva clave para reemplazar)",
     "passwordOverridesPrivateKey": "Si se configuran tanto una contraseña como una clave privada, se usa la contraseña.",
     "password": "Contraseña",
-    "usernameOptionalAnonymous": "Usuario (opcional, por defecto: anonymous)"
+    "usernameOptionalAnonymous": "Usuario (opcional, por defecto: anonymous)",
+    "payloadReply": "Carga útil y respuesta",
+    "payloadReplySummary": "Enviar una carga útil y esperar una respuesta coincidente",
+    "sendOptional": "Enviar (opcional)",
+    "expectOptional": "Esperar (opcional)",
+    "expectModeContains": "Contiene",
+    "expectModeRegex": "Coincide con regex",
+    "encoding_text": "Texto",
+    "encoding_escaped": "Escapado",
+    "encoding_hex": "Hex",
+    "payloadHelp": "Define una expectativa para demostrar que el servicio responde, no solo que el puerto está abierto.",
+    "payloadHelpUdp": "Sin ella, esta comprobación solo puede detectar un puerto inaccesible."
   },
   "prometheus": {
     "mode": "Modo",
@@ -1010,6 +1022,17 @@
     "requestHeaders": "Cabeceras de la solicitud",
     "requestHeadersHelp": "Para endpoints protegidos con autenticación bearer o básica.",
     "addHeader": "Añadir cabecera"
+  },
+  "rabbitmq": {
+    "mode": "Modo",
+    "modeAmqp": "AMQP",
+    "modeManagement": "API de gestión",
+    "memoryWarning": "Advertencia de memoria",
+    "memoryCritical": "Memoria crítica",
+    "memoryThresholdHelp": "Un porcentaje de la marca de agua alta de RabbitMQ (p. ej. 80%) o un tamaño absoluto (p. ej. 1.5GiB).",
+    "diskWarning": "Advertencia de disco libre",
+    "diskCritical": "Disco libre crítico",
+    "diskThresholdHelp": "Solo un tamaño absoluto (p. ej. 10GiB) — la API de gestión no expone el tamaño total del disco, por lo que no se puede calcular un porcentaje."
   },
   "snmp": {
     "oid": "OID",

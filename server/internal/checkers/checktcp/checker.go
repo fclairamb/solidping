@@ -4,9 +4,7 @@ package checktcp
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -19,9 +17,7 @@ const (
 	// Default values from spec.
 	defaultTimeout       = 5 * time.Second
 	defaultTLSVerify     = true
-	maxReadSize          = 4 * 1024 // 4KB buffer for reading response
-	maxOutputDataSize    = 1024     // 1KB max for output data
-	microsecondsPerMilli = 1000.0   // Conversion factor for microseconds to milliseconds
+	microsecondsPerMilli = 1000.0 // Conversion factor for microseconds to milliseconds
 )
 
 // TCPChecker implements the Checker interface for TCP connection checks.
@@ -56,6 +52,12 @@ func (c *TCPChecker) Validate(spec *checkerdef.CheckSpec) error {
 	// Validate Timeout (> 0 and <= 30s) - check the original value if set
 	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
 		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
+	}
+
+	// A bad encoding or an uncompilable `expect_pattern` is a VALIDATION_ERROR
+	// on save, never a check that errors forever at runtime.
+	if err := cfg.exchangeFields().Validate(); err != nil {
+		return err
 	}
 
 	if spec.Slug == "" {
@@ -174,7 +176,7 @@ func (c *TCPChecker) executeDirect(
 // already-resolved `ip:port` in the former case and the raw configured
 // `host:port` in the latter (remote-side resolution).
 //
-//nolint:funlen,cyclop,gocognit // TCP connection requires comprehensive logic
+//nolint:funlen // TCP connection requires comprehensive logic
 func (c *TCPChecker) connect(
 	ctx context.Context,
 	dialer checkerdef.ContextDialer,
@@ -183,9 +185,30 @@ func (c *TCPChecker) connect(
 	timeout time.Duration,
 	tlsVerify bool,
 ) checkerdef.Result {
-	// Create context with timeout
+	// Create context with timeout. Its deadline bounds the WHOLE exchange —
+	// dial, TLS handshake, write and the wait for the reply — instead of each
+	// stage re-arming `now + timeout` for itself.
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	deadline, hasDeadline := ctxWithTimeout.Deadline()
+	if !hasDeadline {
+		deadline = time.Now().Add(timeout)
+	}
+
+	exchange, exchangeErr := checkerdef.NewExchange(
+		cfg.SendData, cfg.SendEncoding,
+		cfg.ExpectData, cfg.ExpectEncoding,
+		cfg.ExpectPattern, timeout, deadline,
+	)
+	if exchangeErr != nil {
+		return checkerdef.Result{
+			Status: checkerdef.StatusError,
+			Output: map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("invalid payload configuration: %v", exchangeErr),
+			},
+		}
+	}
 
 	// Track timing
 	connectStart := time.Now()
@@ -272,94 +295,10 @@ func (c *TCPChecker) connect(
 		conn = tlsConn
 	}
 
-	// Send data if specified
-	var bytesSent int
-
-	if cfg.SendData != "" {
-		if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-			return checkerdef.Result{
-				Status:  checkerdef.StatusError,
-				Metrics: metrics,
-				Output: map[string]any{
-					checkerdef.OutputKeyError: fmt.Sprintf("failed to set write deadline: %v", err),
-				},
-			}
-		}
-
-		n, err := conn.Write([]byte(cfg.SendData))
-		if err != nil {
-			return checkerdef.Result{
-				Status:  checkerdef.StatusDown,
-				Metrics: metrics,
-				Output: map[string]any{
-					checkerdef.OutputKeyError: fmt.Sprintf("failed to send data: %v", err),
-				},
-			}
-		}
-
-		bytesSent = n
-		metrics["bytes_sent"] = bytesSent
-	}
-
-	// Read response if expect_data is specified
-	var bytesReceived int
-
-	var receivedData string
-
-	//nolint:nestif // Conditional logic complexity is acceptable for data validation
-	if cfg.ExpectData != "" || cfg.SendData != "" {
-		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-			return checkerdef.Result{
-				Status:  checkerdef.StatusError,
-				Metrics: metrics,
-				Output: map[string]any{
-					checkerdef.OutputKeyError: fmt.Sprintf("failed to set read deadline: %v", err),
-				},
-			}
-		}
-
-		buf := make([]byte, maxReadSize)
-
-		n, err := conn.Read(buf)
-		if err != nil && !errors.Is(err, io.EOF) {
-			// If we sent data and expected a response, this is a failure
-			if cfg.ExpectData != "" {
-				return checkerdef.Result{
-					Status:  checkerdef.StatusDown,
-					Metrics: metrics,
-					Output: map[string]any{
-						checkerdef.OutputKeyError: fmt.Sprintf("failed to read response: %v", err),
-					},
-				}
-			}
-			// Otherwise, it's just a note in the output
-		} else {
-			bytesReceived = n
-			metrics["bytes_received"] = bytesReceived
-
-			// Store first 1KB of received data
-			if n > maxOutputDataSize {
-				receivedData = string(buf[:maxOutputDataSize])
-			} else {
-				receivedData = string(buf[:n])
-			}
-
-			output["received_data"] = receivedData
-		}
-
-		// Validate expected data if specified
-		if cfg.ExpectData != "" {
-			if !strings.Contains(receivedData, cfg.ExpectData) {
-				return checkerdef.Result{
-					Status:  checkerdef.StatusDown,
-					Metrics: metrics,
-					Output: map[string]any{
-						checkerdef.OutputKeyError: fmt.Sprintf("expected data not found: '%s'", cfg.ExpectData),
-						"received_data":           receivedData,
-					},
-				}
-			}
-		}
+	// Send the payload, then read until the expectation is satisfied — under
+	// the single deadline computed above.
+	if failure := exchange.Run(conn, metrics, output); failure != nil {
+		return *failure
 	}
 
 	// Calculate total time
@@ -407,18 +346,9 @@ func (c *TCPChecker) executeTunneled(
 	return &result
 }
 
-// tlsVersionString converts TLS version constant to string.
+// tlsVersionString converts TLS version constant to string. The rendering
+// itself lives in checkerdef so the JS `tcp.connect()` handle reports the
+// same strings this check does.
 func tlsVersionString(version uint16) string {
-	switch version {
-	case tls.VersionTLS10:
-		return "TLS 1.0"
-	case tls.VersionTLS11:
-		return "TLS 1.1"
-	case tls.VersionTLS12:
-		return "TLS 1.2"
-	case tls.VersionTLS13:
-		return "TLS 1.3"
-	default:
-		return fmt.Sprintf("Unknown (0x%04x)", version)
-	}
+	return checkerdef.TLSVersionString(version)
 }

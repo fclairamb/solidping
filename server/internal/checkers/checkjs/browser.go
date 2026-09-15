@@ -39,6 +39,8 @@ var (
 		"a page is already open: a script may open one browser page per execution")
 	errBrowserTypeDisabled = errors.New(
 		`check type "browser" is disabled on this server`)
+	errBrowserUnderTunnel = errors.New(
+		"browser cannot run through an SSH tunnel")
 )
 
 // BrowserSession is the slice of checkbrowser.Session the `browser` bindings
@@ -121,6 +123,15 @@ func (r *jsRuntime) openPage() (*goja.Object, error) {
 		return nil, errBrowserTypeDisabled
 	}
 
+	// Chrome has its own network stack and cannot be routed through a
+	// ContextDialer, so a tunneled script must not be allowed to believe its
+	// browsing went through the bastion. This is a configuration conflict, not
+	// a target verdict, so it throws like the gate above — before the browser
+	// session (and its slot/allocation cost) is touched at all.
+	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
+		return nil, errBrowserUnderTunnel
+	}
+
 	session, err := OpenBrowser(r.execCtx)
 	if err != nil {
 		return nil, err
@@ -180,7 +191,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		}
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
-			ctx, cancel, err := r.pageCallContext(opts)
+			ctx, cancel, err := r.callContext(opts)
 			if err != nil {
 				return nil, err
 			}
@@ -391,12 +402,16 @@ func (r *jsRuntime) pageAction(run func(session BrowserSession) (map[string]any,
 // with no session behind it.
 var errPageClosed = errors.New("no browser page is open")
 
-// pageCallContext applies a per-call `timeout` option, with the same rule the
+// callContext applies a per-call `timeout` option, with the same rule the
 // `http.*` options use: a duration string or a number of milliseconds, clamped
 // to the script's remaining time and never widening it. With no option the
 // call simply runs on the execution context — which is what makes a `waitFor`
-// on a selector that never appears end at the CHECK's timeout.
-func (r *jsRuntime) pageCallContext(opts map[string]any) (context.Context, context.CancelFunc, error) {
+// on a selector that never appears, or a socket `read()` on a silent peer, end
+// at the CHECK's timeout.
+//
+// Shared by the `browser` page methods and the `tcp`/`udp`/`websocket` handles:
+// "a per-call timeout is a clamp, never an extension" is one rule, in one place.
+func (r *jsRuntime) callContext(opts map[string]any) (context.Context, context.CancelFunc, error) {
 	if opts == nil {
 		return r.execCtx, func() {}, nil
 	}

@@ -73,7 +73,7 @@ func TestWireUDPAcceptsAndRecords(t *testing.T) {
 	w := newWireSetup(t)
 
 	reply := w.sendUDP(t, "SP1 "+w.org.Slug+"/"+w.checkSlug()+" "+testToken)
-	r.Equal("OK", string(reply))
+	r.Equal("OK\n", string(reply))
 	r.Eventually(func() bool { return w.beatCount(t) == 1 }, 2*time.Second, 20*time.Millisecond)
 }
 
@@ -92,7 +92,7 @@ func TestWireUDPFailuresAreIndistinguishable(t *testing.T) {
 
 	// Burn one signed counter so the replay case below is a genuine replay.
 	replayed := heartbeatpush.SignSP2(w.org.Slug, slug, testToken, 0, 5, "")
-	r.Equal("OK", string(w.sendUDP(t, replayed)), "positive control")
+	r.Equal("OK\n", string(w.sendUDP(t, replayed)), "positive control")
 	r.Eventually(func() bool { return w.beatCount(t) == 1 }, 2*time.Second, 20*time.Millisecond)
 
 	for name, payload := range map[string]string{
@@ -113,7 +113,7 @@ func TestWireUDPFailuresAreIndistinguishable(t *testing.T) {
 	r.Equal(1, w.beatCount(t))
 
 	// Positive control again, so the silences above are not a dead listener.
-	r.Equal("OK", string(w.sendUDP(t, heartbeatpush.SignSP2(w.org.Slug, slug, testToken, 0, 6, ""))))
+	r.Equal("OK\n", string(w.sendUDP(t, heartbeatpush.SignSP2(w.org.Slug, slug, testToken, 0, 6, ""))))
 	r.Eventually(func() bool { return w.beatCount(t) == 2 }, 2*time.Second, 20*time.Millisecond)
 }
 
@@ -173,6 +173,6 @@ func TestWireSP1RejectedOnRequireHMACCheck(t *testing.T) {
 	r.Zero(w.beatCount(t))
 
 	// Positive control: the signed form on the same check is accepted.
-	r.Equal("OK", string(w.sendUDP(t, heartbeatpush.SignSP2(w.org.Slug, slug, testToken, 0, 1, ""))))
+	r.Equal("OK\n", string(w.sendUDP(t, heartbeatpush.SignSP2(w.org.Slug, slug, testToken, 0, 1, ""))))
 	r.Eventually(func() bool { return w.beatCount(t) == 1 }, 2*time.Second, 20*time.Millisecond)
 }

@@ -32,11 +32,11 @@ https://api.example.com/health
 | Option | Description | Example |
 |--------|-------------|---------|
 | URL | The endpoint to check | `https://api.example.com/health` |
-| Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE` |
+| Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE`, `QUERY` |
 | Timeout | Request timeout | `30s` |
 | Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
 | Headers | Custom request headers | `Authorization: Bearer token` |
-| Body | Request body (for POST/PUT) | `{"key": "value"}` |
+| Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
 | Body Match | Pattern to match in response | `"status": "ok"` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
@@ -45,6 +45,11 @@ https://api.example.com/health
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`
 - Wildcard: `2XX` (any 2xx status), `5XX` (any 5xx status)
+
+**QUERY method:** `QUERY` is sent with the request body attached, exactly like
+`POST`, and is treated like `POST` for redirects (a 307/308 re-sends the
+method and body; 301/302/303 behave the same as they do for any other
+non-`GET`/`HEAD` method).
 
 **Basic Auth storage:** you still enter a username and a password in the form,
 but the pair is stored as a single encrypted credential (a reserved `basicAuth`
@@ -97,12 +102,17 @@ tcps://hostname:port  # With TLS
 | Host | Target hostname | `db.example.com` |
 | Port | Target port | `5432` |
 | TLS | Enable TLS/SSL | `true` / `false` |
-| Timeout | Connection timeout | `10s` |
+| Timeout | Time budget for the **whole** exchange: connect, TLS, send and wait for the reply | `10s` |
+| `send_data` | Payload to send once connected (after the TLS handshake for `tcps`) | `PING\r\n` |
+| `send_encoding` | How `send_data` becomes bytes: `text` (default), `escaped`, `hex` | `escaped` |
+| `expect_data` | Substring the reply must contain | `+PONG` |
+| `expect_encoding` | How `expect_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
+| `expect_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the reply must match | `^220 .* ESMTP` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) — the hostname is resolved by the bastion | An `ssh` check with `expected_fingerprint` set |
 
 ### UDP {#udp}
 
-Check UDP port reachability.
+Check a UDP service by sending it something and asserting the answer.
 
 **URL Format:**
 ```
@@ -113,7 +123,68 @@ udp://hostname:port
 |--------|-------------|---------|
 | Host | Target hostname | `dns.example.com` |
 | Port | Target port | `53` |
-| Timeout | Connection timeout | `10s` |
+| Timeout | Time budget for the **whole** exchange: connect, send and wait for the reply | `10s` |
+| `send_data` | Datagram to send | `5350 0100 0001 ...` |
+| `send_encoding` | How `send_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
+| `expect_data` | Substring the reply must contain | `53508180` |
+| `expect_encoding` | How `expect_data` becomes bytes: `text` (default), `escaped`, `hex` | `hex` |
+| `expect_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the reply must match | `^[\x1c\x24]` |
+
+:::caution A UDP check with no expectation proves almost nothing
+UDP has no handshake. A datagram sent into the void succeeds whether or not
+anything is listening, so a UDP check **without** `expect_data` or
+`expect_pattern` can only ever fail on an ICMP port-unreachable. Always set an
+expectation.
+:::
+
+### Send a payload and wait for a reply {#send-and-expect}
+
+Completing a TCP handshake proves a firewall forwards the port, not that the
+service behind it works. `tcp` and `udp` checks can send a payload and require
+an answer — which is what actually proves the service is alive.
+
+**Redis over TCP** — send `PING`, require `+PONG`:
+
+```yaml
+host: redis.example.com
+port: 6379
+send_data: 'PING\r\n'
+send_encoding: escaped
+expect_pattern: '^\+PONG'
+```
+
+**DNS over UDP** — send a real query for `example.com A` and require an answer
+carrying the same transaction ID, with `RCODE 0`:
+
+```yaml
+host: 8.8.8.8
+port: 53
+send_encoding: hex
+send_data: "5350 0100 0001 0000 0000 0000 07 6578616d706c65 03 636f6d 00 0001 0001"
+expect_encoding: hex
+expect_data: "53508180"
+```
+
+How it behaves:
+
+- **Encodings.** `text` sends the string byte-for-byte (the default, so nothing
+  stored before encodings existed changes meaning). `escaped` decodes the C-style
+  escapes `\r`, `\n`, `\t`, `\0`, `\\` and `\xNN` — the only way to express a CRLF
+  in a form field. `hex` decodes hex digits, whitespace ignored.
+- **Both expectations apply.** `expect_data` and `expect_pattern` may both be
+  set; the reply must satisfy both.
+- **The reply is read until it matches**, not once. A banner split across two
+  segments, or an answer that arrives after a greeting, matches — up to a 4 KB
+  cap on the reply. Matching runs on the whole buffer; the `received_data`
+  output field is capped at 1 KB and rendered with `\xNN` escapes when the reply
+  is not valid UTF-8.
+- **Silence is a `Timeout`**, not a `Down`: a port that accepts a connection and
+  then says nothing is a distinct failure, reported as
+  `no matching reply within 10s (0 bytes received)`.
+- A payload with **no** expectation keeps its old meaning: the reply is read once
+  for diagnostics and silence is not a failure.
+- A **raw byte above `0x7F`** is not valid UTF-8 and cannot be written as `\xNN`
+  in `expect_pattern` — assert it with a hex `expect_data` instead.
 
 ### ICMP (Ping) {#icmp-ping}
 
@@ -590,6 +661,17 @@ sftp://hostname:22
 | Host | SFTP server | `sftp.example.com` |
 | Port | SFTP port | `22` |
 | Timeout | Connection timeout | `10s` |
+| Host key fingerprint | Optional pin on the server's host key | `SHA256:uNiVztks…` |
+
+**Pinning the host key.** Leave *Host key fingerprint* empty and the check
+accepts whatever key the server presents — it is a reachability probe against a
+host you own. Either way, the fingerprint the server actually presented is
+written to the check's output as `host_key_fingerprint`, so you can read it off
+a passing check and paste it back into the field. Once set, a server presenting
+a different key fails the check with both fingerprints in the message, and the
+rejection happens during the handshake rather than after it. The value uses the
+same `SHA256:…` form as the SSH check, so `ssh-keyscan host | ssh-keygen -lf -`
+produces it.
 
 ## Messaging & Streaming
 
@@ -672,17 +754,52 @@ kafka://hostname:9092
 
 ### RabbitMQ {#rabbitmq}
 
-Monitor RabbitMQ message queue connectivity.
+Monitor RabbitMQ, in one of two modes.
 
-**URL Format:**
-```
-amqp://user:password@hostname:5672
-```
+**AMQP mode** (the default) connects over the AMQP protocol itself and,
+optionally, inspects a queue's depth and consumer count:
 
 | Option | Description | Example |
 |--------|-------------|---------|
-| URL | AMQP connection string | `amqp://guest:guest@rabbitmq:5672` |
+| Host | RabbitMQ hostname | `rabbitmq.example.com` |
+| Port | AMQP port | `5672` |
+| Username / Password | AMQP credentials | `guest` / `guest` |
+| Virtual Host | AMQP vhost | `/` |
+| Queue | Queue to inspect (optional) | `my-queue` |
+| TLS | Connect over `amqps://` | |
 | Timeout | Connection timeout | `10s` |
+
+**Management mode** talks to RabbitMQ's HTTP management API instead. It keeps
+the same backward-compatible up/down probe (`GET /api/health/checks/alarms`
+— down the moment RabbitMQ's own resource alarm is already active and
+blocking publishers), and adds an early-warning layer on top: it also reads
+each node's memory and disk figures from `GET /api/nodes` and can grade them
+against two-tier warning/critical thresholds — so a check can page *before*
+RabbitMQ's own watermark trips, not only once it already has.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| Host | RabbitMQ hostname | `rabbitmq.example.com` |
+| Management Port | Management API port | `15672` |
+| Username / Password | Management API credentials | `guest` / `guest` |
+| Memory used warning/critical | Ceiling on memory used: a percentage of RabbitMQ's high watermark, or a byte size | `80%`, `1.5GiB` |
+| Disk free warning/critical | Floor on free disk: a byte size only | `10GiB` |
+| Timeout | Connection timeout | `10s` |
+
+Memory accepts a percentage because RabbitMQ reports both `mem_used` and the
+high watermark (`mem_limit`) per node, so "80% of the watermark" is a
+computable ratio. Disk accepts a byte size only: the management API reports
+`disk_free` and the low watermark but never the volume's total size, so
+there is no denominator to compute a percentage of.
+
+In a cluster, the worst node decides the check's status: a critical breach on
+any node fails the check, a warning breach (with no critical breach anywhere)
+puts it in the amber warning state, which counts as up and never opens an
+incident. Metrics are recorded on every management-mode execution, with or
+without thresholds configured, so a check gains memory/disk history for free.
+
+Thresholds are only accepted in management mode — AMQP has no visibility
+into a node's resource usage.
 
 ### MQTT {#mqtt}
 
@@ -1351,6 +1468,10 @@ Run through SSH tunnel** in the dashboard. This covers the classic bastion use
 cases (a database or broker on a private network): `http`, `tcp`, `ssl`,
 `websocket`, `grpc`, `postgresql`, `mysql`, `mssql`, `oracle`,
 `clickhouse`, `redis`, `mongodb`, `rabbitmq`, `kafka`, `mqtt`, `smtp`, `imap`, `pop3`, and `ftp`.
+A [`js` check](./javascript-checks.md#running-through-an-ssh-tunnel) can tunnel
+too: its `http.*` and socket handles are dialed through the bastion, but a
+sub-check of an unlisted type or `browser.open()` is refused rather than run
+from the worker's own network.
 
 UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
 `a2s`) cannot tunnel — an SSH `direct-tcpip` forward is TCP only. The dashboard

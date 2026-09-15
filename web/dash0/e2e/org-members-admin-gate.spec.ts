@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-09-03: adding, re-roling and removing a member is admin-only.
 // Before this spec, any member — including a viewer — could POST/PATCH/DELETE
@@ -13,7 +13,7 @@ test.describe("Members write routes are admin-only", () => {
   // real POST /api/v1/orgs, and seeds the browser with the returned
   // org-scoped session — same technique as org-owner-delete.spec.ts.
   async function seedOwnedOrg(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `gate-owner-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -35,7 +35,7 @@ test.describe("Members write routes are admin-only", () => {
 
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `gate-${stamp.toString(36)}`;
+    const orgSlug = `gate-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       data: { name: `Gate Co ${stamp}`, slug: orgSlug },
@@ -57,7 +57,7 @@ test.describe("Members write routes are admin-only", () => {
     orgSlug: string,
     ownerToken: string,
   ) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `gate-user-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 

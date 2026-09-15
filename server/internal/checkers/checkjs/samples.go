@@ -26,10 +26,15 @@ return { status: "down", output: { error: "unexpected status: " + resp.statusCod
 // fence tagged `<!-- test: browser-login -->`, asserted character for
 // character by docs_examples_test.go — the sample picker and the docs page
 // cannot drift apart.
+// sampleTCPRedisPingSlug is the fourth promoted example: the "Redis: AUTH,
+// then PING" section. Like the browser one it is asserted character for
+// character against its doc fence (`<!-- test: tcp-redis-ping -->`), and
+// unlike it, it is ALSO executed against a RESP fixture — no Chrome needed.
 const (
 	sampleBearerChainSlug  = "js-bearer-token-chain"
 	sampleAggregateSlug    = "js-aggregate-subchecks"
 	sampleBrowserLoginSlug = "js-browser-login"
+	sampleTCPRedisPingSlug = "js-tcp-redis-ping"
 )
 
 // sampleBearerChainScript logs in with a JSON POST, then uses the returned
@@ -99,6 +104,34 @@ if (me.error || me.statusCode !== 200) {
 return { status: "up", metrics: { loginMs: nav.duration + dash.duration } };
 `
 
+// sampleTCPRedisPingScript holds a real conversation over one TCP connection:
+// authenticate, READ the reply to know whether that worked, and only then ask
+// the question the check is actually about. A `tcp` check can send one payload
+// and match one reply; it cannot make the second message conditional on the
+// first, which is the whole reason the socket handles exist (spec
+// 2026-09-15-06).
+//
+// Character for character the doc page's `tcp-redis-ping` fence.
+const sampleTCPRedisPingScript = `var c = tcp.connect(env.REDIS_ADDR, { timeout: "3s" });
+if (!c.ok) {
+  return { status: "down", output: { step: "connect", error: c.error, class: c.class } };
+}
+c.write("AUTH " + secrets.REDIS_PASSWORD + "\r\n");
+var auth = c.read({ until: "\r\n", timeout: "2s" });
+if (auth.data.charAt(0) !== "+") {
+  c.close();
+  return { status: "down", output: { step: "auth", reply: auth.data } };
+}
+c.write("PING\r\n");
+var pong = c.read({ until: "\r\n", timeout: "2s" });
+c.close();
+return {
+  status: pong.data === "+PONG\r\n" ? "up" : "down",
+  metrics: { connectMs: c.connectDuration, pingMs: pong.duration },
+  output: { reply: pong.data },
+};
+`
+
 // GetSampleConfigs returns sample JavaScript check configurations.
 func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	return []checkerdef.CheckSpec{
@@ -145,6 +178,20 @@ func (c *JSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerd
 				Env: map[string]string{
 					"BASE_URL": "https://app.example.com",
 					"USERNAME": "probe@example.com",
+				},
+			}).GetConfig(),
+		},
+		{
+			// Like the two above, deliberately no `Secrets` entry: the script
+			// reads secrets.REDIS_PASSWORD and the dashboard's `js` form has
+			// its own secrets editor to fill it in.
+			Name:   "JS: Redis AUTH + PING",
+			Slug:   sampleTCPRedisPingSlug,
+			Period: time.Minute,
+			Config: (&JSConfig{
+				Script: sampleTCPRedisPingScript,
+				Env: map[string]string{
+					"REDIS_ADDR": "redis.example.com:6379",
 				},
 			}).GetConfig(),
 		},

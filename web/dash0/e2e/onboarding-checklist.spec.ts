@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-28-17: after the first check exists, the dashboard shows a
 // getting-started checklist. Two properties are what make it worth shipping,
@@ -58,7 +58,7 @@ test.describe("Getting-started checklist", () => {
 
   /** Creates a zero-org user, an org they own, and one (disabled) check. */
   async function seedOrgWithCheck(page: Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `onboard-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -79,7 +79,7 @@ test.describe("Getting-started checklist", () => {
     expect(loginResp.status()).toBe(200);
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const slug = `onb-${stamp.toString(36)}`;
+    const slug = `onb-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       data: { name: `Acme Onboarding ${stamp}`, slug },
@@ -296,7 +296,7 @@ test.describe("Getting-started checklist", () => {
     page,
     browser,
   }) => {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `onboard-x-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -317,7 +317,7 @@ test.describe("Getting-started checklist", () => {
     expect(loginResp.status()).toBe(200);
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const slug = `onbx-${stamp.toString(36)}`;
+    const slug = `onbx-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       data: { name: `Acme Onboarding X ${stamp}`, slug },

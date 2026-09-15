@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",
+    "sftpFingerprintHelp": "Pins the server's host key. Leave it empty to accept any key \u2014 the fingerprint the server presented is always reported in the check output, so you can copy it here afterwards.",
     "fingerprintHelpPrefix": "Verifies the server's identity on every check, and is required to use this check as a",
     "tunnelBastionLabel": "Run through SSH tunnel",
     "fingerprintHelpSuffix": "bastion for other checks. Get it with",
@@ -973,7 +974,18 @@
     "privateKeyEncrypted": "(encrypted — enter a new key to replace)",
     "passwordOverridesPrivateKey": "If both a password and a private key are set, the password is used.",
     "password": "Password",
-    "usernameOptionalAnonymous": "Username (optional, default: anonymous)"
+    "usernameOptionalAnonymous": "Username (optional, default: anonymous)",
+    "payloadReply": "Payload & reply",
+    "payloadReplySummary": "Send a payload and wait for a matching reply",
+    "sendOptional": "Send (optional)",
+    "expectOptional": "Expect (optional)",
+    "expectModeContains": "Contains",
+    "expectModeRegex": "Matches regex",
+    "encoding_text": "Text",
+    "encoding_escaped": "Escaped",
+    "encoding_hex": "Hex",
+    "payloadHelp": "Set an expectation to prove the service answers, not just that the port is open.",
+    "payloadHelpUdp": "Without one, this check can only detect port-unreachable."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1010,6 +1022,17 @@
     "requestHeaders": "Request headers",
     "requestHeadersHelp": "For endpoints behind bearer or basic auth.",
     "addHeader": "Add header"
+  },
+  "rabbitmq": {
+    "mode": "Mode",
+    "modeAmqp": "AMQP",
+    "modeManagement": "Management API",
+    "memoryWarning": "Memory warning",
+    "memoryCritical": "Memory critical",
+    "memoryThresholdHelp": "A percentage of RabbitMQ's high watermark (e.g. 80%) or an absolute size (e.g. 1.5GiB).",
+    "diskWarning": "Disk free warning",
+    "diskCritical": "Disk free critical",
+    "diskThresholdHelp": "An absolute size only (e.g. 10GiB) — the management API exposes no total disk size, so a percentage cannot be computed."
   },
   "snmp": {
     "oid": "OID",

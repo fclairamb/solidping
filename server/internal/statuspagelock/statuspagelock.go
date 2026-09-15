@@ -46,6 +46,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/httpx"
 )
 
 // ErrLocked is returned by service code that resolved a password-protected
@@ -181,7 +182,7 @@ func SetCookie(writer http.ResponseWriter, req *http.Request, pageUID, token str
 		Path:     "/",
 		MaxAge:   int(TTL.Seconds()),
 		HttpOnly: true,
-		Secure:   isTLS(req),
+		Secure:   httpx.IsTLS(req),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -195,24 +196,9 @@ func ClearCookie(writer http.ResponseWriter, req *http.Request, pageUID string) 
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   isTLS(req),
+		Secure:   httpx.IsTLS(req),
 		SameSite: http.SameSiteLaxMode,
 	})
-}
-
-// isTLS reports whether the request reached us over HTTPS, honoring the
-// X-Forwarded-Proto header set by the edge proxy that terminates TLS for
-// custom domains.
-func isTLS(req *http.Request) bool {
-	if req == nil {
-		return false
-	}
-
-	if req.TLS != nil {
-		return true
-	}
-
-	return strings.EqualFold(req.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 // --- Context grant ---

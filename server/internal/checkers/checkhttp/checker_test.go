@@ -3,6 +3,7 @@ package checkhttp
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -427,6 +428,28 @@ func TestHTTPConfig_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestHTTPConfig_RoundTrip_QueryMethod pins that "QUERY" round-trips through
+// FromMap/GetConfig unchanged, exactly like any other method — there is no
+// method-specific handling in the config layer, only the allow-list in
+// Validate.
+func TestHTTPConfig_RoundTrip_QueryMethod(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var cfg HTTPConfig
+	r.NoError(cfg.FromMap(map[string]any{
+		"url":    "http://example.com",
+		"method": "QUERY",
+		"body":   "search-term=widgets",
+	}))
+	r.Equal("QUERY", cfg.Method)
+
+	result := cfg.GetConfig()
+	r.Equal("QUERY", result["method"])
+	r.Equal("search-term=widgets", result["body"])
+}
+
 func TestHTTPChecker_Type(t *testing.T) {
 	t.Parallel()
 	checker := &HTTPChecker{}
@@ -524,6 +547,25 @@ func TestHTTPChecker_Validate(t *testing.T) {
 			config: &HTTPConfig{
 				URL:    "http://example.com",
 				Method: "get",
+			},
+			wantErr: false,
+		},
+		{
+			// QUERY (draft-ietf-httpbis-safe-method-w-body) is a safe,
+			// body-carrying verb, added alongside GET/POST/PUT/DELETE/HEAD/
+			// OPTIONS/PATCH in the allow-list.
+			name: "query method validates",
+			config: &HTTPConfig{
+				URL:    "http://example.com",
+				Method: "QUERY",
+			},
+			wantErr: false,
+		},
+		{
+			name: "case insensitive query method",
+			config: &HTTPConfig{
+				URL:    "http://example.com",
+				Method: "query",
 			},
 			wantErr: false,
 		},
@@ -661,6 +703,80 @@ func TestHTTPChecker_Execute(t *testing.T) {
 					t.Errorf("Expected status_code 201, got %v", output["status_code"])
 				}
 			},
+		},
+		{
+			// QUERY is treated exactly like POST: a body-carrying verb sent
+			// with whatever Content-Type header is configured.
+			name: "successful QUERY request with body",
+			config: &HTTPConfig{
+				Method:         "QUERY",
+				ExpectedStatus: 200,
+				Body:           `{"query": "test"}`,
+				Headers:        map[string]string{"Content-Type": "application/json"},
+			},
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "QUERY" {
+					t.Errorf("Expected QUERY request, got %s", r.Method)
+				}
+				if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+					t.Errorf("Expected Content-Type application/json, got %s", ct)
+				}
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatalf("failed to read request body: %v", err)
+				}
+				if string(body) != `{"query": "test"}` {
+					t.Errorf("Expected body %q, got %q", `{"query": "test"}`, string(body))
+				}
+				w.WriteHeader(http.StatusOK)
+			},
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			// lowercase "query" validates and is sent uppercased, same as any
+			// other method (existing strings.ToUpper path).
+			name: "lowercase query method is sent uppercased",
+			config: &HTTPConfig{
+				Method:         "query",
+				ExpectedStatus: 200,
+			},
+			serverHandler: func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "QUERY" {
+					t.Errorf("Expected QUERY request, got %s", r.Method)
+				}
+				w.WriteHeader(http.StatusOK)
+			},
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			// The bodyDrivesAssertions gate (checker.go) is method-agnostic;
+			// this pins that a QUERY request with body_expect evaluates the
+			// response body exactly like any other method.
+			name: "QUERY request with body_expect evaluates the response body",
+			config: &HTTPConfig{
+				Method:     "QUERY",
+				BodyExpect: "success",
+			},
+			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("status: success"))
+			},
+			wantStatus: checkerdef.StatusUp,
+		},
+		{
+			// Same gate, exercised through json_path_assertions instead of
+			// body_expect.
+			name: "QUERY request with json_path assertions evaluates the response body",
+			config: &HTTPConfig{
+				Method:             "QUERY",
+				JSONPathAssertions: jsonPathStatusIsOK(),
+			},
+			serverHandler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", contentTypeJSON)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"ok"}`))
+			},
+			wantStatus: checkerdef.StatusUp,
 		},
 		{
 			name: "unexpected status code",
@@ -1678,6 +1794,107 @@ func TestHTTPChecker_Execute_FollowRedirects(t *testing.T) {
 		r.Equal(http.StatusMovedPermanently, result.Output[checkerdef.OutputKeyStatusCode])
 		r.False(*finalHit, "the redirect target must not have been reached")
 	})
+}
+
+// TestHTTPChecker_Execute_QueryMethodRedirect pins that QUERY is treated
+// exactly like POST for redirects (spec 2026-09-15-04, Proposal item 3):
+// net/http's client only rewrites the method to GET on 301/302/303, and
+// preserves method+body on 307/308 for any non-GET/HEAD verb — QUERY falls in
+// that same "not GET/HEAD" bucket as POST, so a 307 must re-send QUERY with
+// the original body, and followRedirects: false must stop at the 307 without
+// ever reaching the final destination.
+func TestHTTPChecker_Execute_QueryMethodRedirect(t *testing.T) {
+	t.Parallel()
+
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	const requestBody = "search-term=widgets"
+
+	t.Run("307 re-sends QUERY with the body", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		servers := newQueryRedirectServers(t)
+
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL:    servers.redirector.URL,
+			Method: "QUERY",
+			Body:   requestBody,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status)
+		r.True(*servers.finalHit, "the final destination must have been reached")
+		r.Equal("QUERY", *servers.finalMethod)
+		r.Equal(requestBody, *servers.finalBody)
+	})
+
+	t.Run("followRedirects false stops at the 307", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		servers := newQueryRedirectServers(t)
+
+		noFollow := false
+		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
+			URL:             servers.redirector.URL,
+			Method:          "QUERY",
+			Body:            requestBody,
+			FollowRedirects: &noFollow,
+			ExpectedStatus:  http.StatusTemporaryRedirect,
+		})
+		r.NoError(err)
+		r.Equal(checkerdef.StatusUp, result.Status)
+		r.Equal(http.StatusTemporaryRedirect, result.Output[checkerdef.OutputKeyStatusCode])
+		r.False(*servers.finalHit, "the redirect target must not have been reached")
+	})
+}
+
+// queryRedirectServers bundles a QUERY-redirect server pair with pointers that
+// capture whether/how the final destination was hit, so subtests can assert
+// on them after Execute returns.
+type queryRedirectServers struct {
+	redirector             *httptest.Server
+	finalHit               *bool
+	finalMethod, finalBody *string
+}
+
+// newQueryRedirectServers builds a fresh final destination + 307-redirector
+// pair. The final destination captures the method and body it actually
+// received, so a test can confirm both survived the redirect.
+func newQueryRedirectServers(t *testing.T) queryRedirectServers {
+	t.Helper()
+
+	hit := false
+	method := ""
+	body := ""
+
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		method = r.Method
+
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read final request body: %v", err)
+		}
+		body = string(b)
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(final.Close)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, final.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirector.Close)
+
+	return queryRedirectServers{
+		redirector:  redirector,
+		finalHit:    &hit,
+		finalMethod: &method,
+		finalBody:   &body,
+	}
 }
 
 // jsonPathStatusIsOK builds the assertion used across the read-gate tests:

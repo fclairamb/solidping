@@ -28,13 +28,20 @@ Two backends are supported, selected by `SP_FILESTORAGE_TYPE`:
 | `SP_FILESTORAGE_TYPE` | `local` | |
 | `SP_FILESTORAGE_LOCAL_ROOT` | `./data/files` | Root directory for blobs. **Relative to the process's working directory** — see the warning below. |
 
-:::warning In a container, this path must be a mounted volume
-`./data/files` is relative to the working directory **inside the image**. If
-that path is not backed by a mounted volume, every upload lives on the
-container's ephemeral writable layer and is destroyed the next time the
-container is recreated — a restart, a rollout, a redeploy — **silently**.
-Nothing fails at write time: the upload succeeds and the dashboard shows it.
-The loss only surfaces later, when a read returns
+The `./data/files` default above is the **bare-binary** default — running
+`solidping` directly, outside Docker. The published Docker image overrides
+`SP_FILESTORAGE_LOCAL_ROOT` to `/data/files` and declares `/data` as a
+`VOLUME`, so a plain `docker run -v solidping-data:/data ...` already
+persists uploads correctly.
+
+:::warning Running the bare binary, or overriding the path yourself: this must be a mounted volume
+`./data/files` (or whatever `SP_FILESTORAGE_LOCAL_ROOT` resolves to) is
+relative to the process's working directory. In a container, if that path —
+or any relative path you set explicitly — is not backed by a mounted volume,
+every upload lives on the container's ephemeral writable layer and is
+destroyed the next time the container is recreated — a restart, a rollout, a
+redeploy — **silently**. Nothing fails at write time: the upload succeeds and
+the dashboard shows it. The loss only surfaces later, when a read returns
 `500 read file: file not found in storage`.
 
 Either mount a volume at `SP_FILESTORAGE_LOCAL_ROOT` (set it to an absolute

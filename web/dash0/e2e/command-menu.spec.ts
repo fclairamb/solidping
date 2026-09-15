@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page, uniqueStamp } from "./fixtures";
 
 async function getAuthToken(page: Page): Promise<string> {
   const resp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -13,7 +13,7 @@ async function getAuthToken(page: Page): Promise<string> {
 // authenticatedPage caches for the whole worker, so adding a second org for
 // these tests can't leak extra memberships into every other spec.
 async function seedUserWithOrg(page: Page) {
-  const stamp = Date.now() + Math.floor(Math.random() * 1000);
+  const stamp = uniqueStamp();
   const email = `cmdk-org-${stamp}@unknown.example`;
   const password = "Strong-Pass-123!";
 
@@ -33,7 +33,7 @@ async function seedUserWithOrg(page: Page) {
   expect(loginResp.status()).toBe(200);
   const login = (await loginResp.json()) as { accessToken: string };
 
-  const orgSlug = `cmdk1-${stamp.toString(36)}`;
+  const orgSlug = `cmdk1-${stamp}`;
   const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
     headers: { Authorization: `Bearer ${login.accessToken}` },
     data: { name: `CmdK Org ${stamp}`, slug: orgSlug },
@@ -719,7 +719,7 @@ test.describe("Command Menu (Cmd+K)", () => {
 
     // A second org for the same user, created via the API with org1's token
     // — mirrors a user who already belongs to two organizations.
-    const org2Slug = `cmdk2-${stamp.toString(36)}`;
+    const org2Slug = `cmdk2-${stamp}`;
     const org2Name = `CmdK Org Two ${stamp}`;
     const createOrg2Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${org.accessToken}` },

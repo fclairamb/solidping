@@ -710,7 +710,7 @@ func RedirectPendingMembership(
 	writer http.ResponseWriter, req *http.Request,
 	baseURL, orgSlug, accessToken string, expiresIn int,
 ) {
-	setAccessTokenCookie(writer, accessToken, expiresIn)
+	setAccessTokenCookie(writer, req, accessToken, expiresIn)
 	http.Redirect(writer, req,
 		baseURL+pendingMembershipRedirect(orgSlug, accessToken, expiresIn),
 		http.StatusFound)
@@ -734,7 +734,7 @@ func finishProviderCallback(
 		redirectURL = pendingMembershipRedirect(pendingOrgSlug, accessToken, expiresIn)
 	}
 
-	setAccessTokenCookie(writer, accessToken, expiresIn)
+	setAccessTokenCookie(writer, req, accessToken, expiresIn)
 	http.Redirect(writer, req, redirectURL, http.StatusFound)
 
 	return nil

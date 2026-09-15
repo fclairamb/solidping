@@ -312,7 +312,10 @@ type CheckTypeMeta struct {
 	// context dialer: http, tcp, the mail protocols (smtp/imap/pop3), ssl, the
 	// database drivers (postgres/mysql/mssql/oracle), and the client-library
 	// types (redis/mongodb/rabbitmq/kafka/grpc/websocket/ftp/mqtt). UDP/ICMP
-	// types cannot — SSH direct-tcpip forwards TCP only.
+	// types cannot — SSH direct-tcpip forwards TCP only. Also enabled for js:
+	// its http.* helper and tcp/udp/websocket socket handles honor the dialer,
+	// and sub-checks of a type that itself lacks SupportsTunnel are refused
+	// rather than run silently from the worker's own network.
 	SupportsTunnel bool `json:"supportsTunnel"`
 
 	// SupportsIPVersion reports whether the type honors the shared `ipVersion`
@@ -356,7 +359,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health", SupportsTunnel: true},
 	{Type: CheckTypeFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check FTP server availability", SupportsTunnel: true},
 	{Type: CheckTypeSFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check SFTP server availability"},
-	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts", MinPeriod: 30 * time.Second, DefaultPeriod: time.Minute},
+	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts", MinPeriod: 30 * time.Second, DefaultPeriod: time.Minute, SupportsTunnel: true},
 	{Type: CheckTypeMSSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Microsoft SQL Server health", SupportsTunnel: true},
 	{Type: CheckTypeOracle, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Oracle Database health", SupportsTunnel: true},
 	{Type: CheckTypeClickHouse, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check ClickHouse database health", SupportsTunnel: true},

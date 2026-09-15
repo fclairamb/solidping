@@ -3,6 +3,7 @@ package checksftp
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -13,6 +14,10 @@ const (
 	defaultTimeout    = 10 * time.Second
 	maxTimeout        = 30 * time.Second
 	microsecondsPerMs = 1000.0
+
+	// fingerprintPrefix is the prefix checkssh.Fingerprint emits; the SFTP pin
+	// reuses that exact format rather than inventing a second one.
+	fingerprintPrefix = "SHA256:"
 )
 
 // SFTPConfig holds the configuration for SFTP checks.
@@ -24,6 +29,11 @@ type SFTPConfig struct {
 	Password   string        `json:"password,omitempty"`
 	PrivateKey string        `json:"private_key,omitempty"` //nolint:tagliatelle // API uses snake_case
 	Path       string        `json:"path,omitempty"`
+	// HostKeyFingerprint optionally pins the server's host key, in the
+	// `SHA256:<base64>` form checkssh.Fingerprint produces. When empty the
+	// check still reports the observed fingerprint in its output, so an
+	// operator can copy it in here; when set, a mismatch is a failed check.
+	HostKeyFingerprint string `json:"host_key_fingerprint,omitempty"` //nolint:tagliatelle // API uses snake_case
 }
 
 // FromMap populates the configuration from a map.
@@ -79,6 +89,12 @@ func (c *SFTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("path", "must be a string")
 	}
 
+	if fingerprint, ok := configMap["host_key_fingerprint"].(string); ok {
+		c.HostKeyFingerprint = fingerprint
+	} else if configMap["host_key_fingerprint"] != nil {
+		return checkerdef.NewConfigError("host_key_fingerprint", "must be a string")
+	}
+
 	return nil
 }
 
@@ -109,6 +125,10 @@ func (c *SFTPConfig) GetConfig() map[string]any {
 		cfg["path"] = c.Path
 	}
 
+	if c.HostKeyFingerprint != "" {
+		cfg["host_key_fingerprint"] = c.HostKeyFingerprint
+	}
+
 	return cfg
 }
 
@@ -130,6 +150,21 @@ func (c *SFTPConfig) Validate() error {
 		return checkerdef.NewConfigError("username", "is required")
 	}
 
+	if err := c.validateCredentials(); err != nil {
+		return err
+	}
+
+	if c.HostKeyFingerprint != "" && !strings.HasPrefix(c.HostKeyFingerprint, fingerprintPrefix) {
+		return checkerdef.NewConfigErrorf("host_key_fingerprint",
+			"must be a %s… fingerprint, as reported in the check output", fingerprintPrefix)
+	}
+
+	return nil
+}
+
+// validateCredentials enforces the "exactly one of password / private_key"
+// rule, and that a supplied key parses.
+func (c *SFTPConfig) validateCredentials() error {
 	if c.Password == "" && c.PrivateKey == "" {
 		return checkerdef.NewConfigError("password", "password or private_key is required")
 	}
@@ -139,9 +174,7 @@ func (c *SFTPConfig) Validate() error {
 	}
 
 	if c.PrivateKey != "" {
-		if err := validatePrivateKey(c.PrivateKey); err != nil {
-			return err
-		}
+		return validatePrivateKey(c.PrivateKey)
 	}
 
 	return nil

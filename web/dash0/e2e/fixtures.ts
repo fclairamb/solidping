@@ -43,6 +43,25 @@ export function escapeRegExp(value: string): string {
 }
 
 /**
+ * uniqueStamp returns a short token unique to this call, for building the
+ * one-off e-mails, org slugs and check names a spec seeds.
+ *
+ * Every site now calling it used to build its own suffix out of
+ * `Date.now() + Math.floor(Math.random() * 1000)`. That is a real collision
+ * risk — two workers entering the same millisecond have a 1-in-1000 chance of
+ * producing the identical stamp, and the failure reads as a flaky "slug
+ * already taken" rather than as a collision — and it reads to code scanning as
+ * `Math.random()` standing in for a security token. `crypto.randomUUID()`
+ * removes both.
+ *
+ * The value is lowercase hex, so it is safe inside a slug, an e-mail
+ * local-part or a hostname label with no further escaping.
+ */
+export function uniqueStamp(): string {
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+/**
  * localStorage key `lib/last-auth-method.ts` writes the remembered sign-in
  * method to. Seeded via `page.addInitScript` by the tests that assert the
  * /login promotion — and by the /register tests that assert it does NOT
@@ -283,7 +302,7 @@ export async function createHeartbeatCheck(
   checkGroupUid?: string,
   period?: string,
 ): Promise<HeartbeatCheck> {
-  const hbToken = `e2e-live-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const hbToken = `e2e-live-${uniqueStamp()}`;
   const resp = await page.request.post(`${API_BASE}/api/v1/orgs/test/checks`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {

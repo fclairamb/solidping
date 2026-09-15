@@ -45,6 +45,7 @@ that used to work.
 | `env` | map of string → string, ≤ 50 entries | Dashboard form, API, `sp`, config-as-code | Public, plaintext — see below |
 | `secrets` | map of string → string, ≤ 50 entries | Dashboard form, API, `sp`, config-as-code | Encrypted, write-only in the form — see below |
 | `timeout` | duration string, ≤ `30s` | API, `sp`, config-as-code | Defaults to `30s`. The one field with **no** dashboard control |
+| `tunnelCheckUid` | uid of an `ssh` check | Dashboard form (Advanced), API, `sp`, config-as-code | Runs the script's `http.*`, `http.session()`, and `tcp`/`udp`/`websocket` handles through that bastion — see below |
 
 **The dashboard form edits `script`, `env`, and `secrets`.** Only `timeout` has
 no field in the `js` check form — it is set through the REST API, the `sp`
@@ -94,6 +95,22 @@ and `${env:MY_VAR}` — so a tracked manifest can carry
   "secrets": { "PASSWORD": "${param:sso-password}" }
 }
 ```
+
+### Running through an SSH tunnel
+
+A `js` check can carry a `tunnelCheckUid` [like any other tunnel-capable
+type](./ssh-tunnels.md). Once set, three rules apply:
+
+- `http.*`, `http.session()`, and the `tcp`/`udp`/`websocket` handles are
+  dialed through the bastion — the hostname is resolved on the far side, not
+  by the worker, and a tunneled `http.<method>()` response gains
+  `tunneled: true` (`udp.open()` is still refused: UDP cannot be tunneled).
+- A sub-check of a type that itself does **not** support tunneling
+  (`solidping.udp(...)`, `solidping.icmp(...)`, `solidping.dns(...)`, …)
+  is refused with an error result rather than silently run from the
+  worker's own network.
+- `browser.open()` throws: Chrome has its own network stack and cannot be
+  routed through the tunnel.
 
 ## Result contract {#result-contract}
 
@@ -198,7 +215,10 @@ input was not valid base64".
 **Text only.** goja strings are UTF-16; `decode`'s output is only meaningful
 for text that was originally text (a `user:pass` pair, a JSON token) —
 arbitrary binary does not round-trip through a JS string. Every use on this
-page is exactly that kind of text.
+page is exactly that kind of text. For genuinely binary traffic — a DNS query,
+an RCON packet, a length-prefixed frame — use the socket handles' `encoding:
+"hex"` instead ([`tcp`](#tcp), [`udp`](#udp), [`websocket`](#websocket)), which
+is the one representation that survives the boundary intact.
 
 ### `http.<method>(url, options)`
 
@@ -227,6 +247,7 @@ next. For a flow that needs cookies across calls, see
 | `url` | The final URL, after any redirects that were followed |
 | `redirects` | The chain that was walked: `[{statusCode, location}]`, empty when nothing was followed |
 | `duration` | Milliseconds |
+| `tunneled` | `true` when the check has a `tunnelCheckUid` and the request was dialed through it — present only when true, so an untunneled response's shape is unchanged. See [Running through an SSH tunnel](#running-through-an-ssh-tunnel) |
 | `error` | Present **instead of** every field above when the request could not even be made (DNS failure, connection refused, …) — always check `resp.error` before reading `resp.statusCode` |
 
 ```js
@@ -341,6 +362,147 @@ check's **1m** minimum period instead of the `js` type's 30s, decided when the
 check is saved. A headless run costs seconds and holds one of four slots;
 without the floor one such check would starve every browser check beside it.
 
+### `tcp` {#tcp}
+
+`tcp.connect(address, options)` gives a script a **live TCP connection** to
+drive: connect once, write, read, decide in JavaScript what to send next, write
+again, close. That is the difference between "is the port open" — which
+[`solidping.tcp()`](#solidpingtypeconfig--solidpingchecktype-config) already
+answers — and a *conversation*: a Redis `AUTH` then `PING`, a challenge-response
+handshake, a length-prefixed binary protocol.
+
+Every call **blocks and returns a value**. There are no events, callbacks or
+promises: the runtime has no event loop, and `sleep` and `http.*` behave the
+same way.
+
+`address` is `host:port`, exactly like the `tcp` check's config.
+
+**`tcp.connect` options**
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `timeout` | duration string or number of ms | the check's remaining time | Connect *and* TLS-handshake budget, clamped to the check's own timeout and never widening it |
+| `tls` | boolean | `false` | Wrap the connection in TLS once connected |
+| `tlsVerify` | boolean | `true` | `false` skips certificate verification — the `tls_verify: false` of the `tcp` check |
+| `tlsServerName` | string | host part of `address` | SNI / verification name |
+| `ipVersion` | `"auto"`, `"ipv4"`, `"ipv6"` | `"auto"` | Address family, resolved and selected exactly as the `tcp` checker does |
+
+**Handle fields**
+
+| Field | Meaning |
+|---|---|
+| `ok` | Did the connection come up? **Always check this first** — every method on a failed handle returns `{ ok: false, error: "not connected" }` |
+| `error` | Why it did not, when `ok` is false |
+| `class` | Reachability class of a failed connect — `connection-refused`, `connect-timeout`, `network-unreachable`, `host-unreachable`. Absent when the failure has no class (a name that does not resolve has no address to trace to) |
+| `remoteAddr` | The `ip:port` actually dialed |
+| `ipVersion` | `ipv4` or `ipv6` |
+| `connectDuration` | Milliseconds |
+| `tls` | `{ version, cipherSuite }` — the same strings the `tcp` check reports — only when `tls: true` |
+| `tunneled` | `true` when the connection went through an SSH tunnel; `remoteAddr` and `ipVersion` are then absent |
+
+**Handle methods**
+
+| Call | Returns | Notes |
+|---|---|---|
+| `write(data, { encoding?, timeout? })` | `{ ok, bytes, duration, error? }` | One write. `encoding` is `text` (default), `escaped` (`\r`, `\n`, `\xNN`) or `hex`. Capped at 64 KiB per call. |
+| `read({ until?, bytes?, pattern?, maxBytes?, encoding?, timeout? })` | `{ ok, data, bytes, duration, timedOut, eof, error? }` | Accumulates until the criterion is met — see below. |
+| `close()` | `{ ok: true }` | Idempotent and **uncounted**. Called for you when the script ends. |
+
+`read` takes **at most one** criterion:
+
+- `until: "\r\n"` — accumulate until the delimiter appears.
+- `bytes: 4` — read exactly four bytes.
+- `pattern: "^\\+OK"` — accumulate until the RE2 pattern matches, the
+  `expect_pattern` semantics of the `tcp` check.
+- none at all — return the next chunk the kernel hands over, whatever its size.
+
+`maxBytes` bounds the accumulation for that one call (default 64 KiB, ceiling
+1 MB). Hitting it without a match is `{ ok: false, error: "no match in the
+first N bytes of the reply" }` with the accumulated `data` intact. `encoding`
+selects how `data` comes back: `text` (default) or `hex`.
+
+### `udp` {#udp}
+
+`udp.open(address, options)` returns a handle over a **connected** UDP socket —
+one datagram per call, because a datagram is the unit. Options: `timeout`
+(resolution only; UDP has no handshake) and `ipVersion`. Handle fields: `ok`,
+`error`, `class`, `remoteAddr`, `ipVersion`.
+
+| Call | Returns | Notes |
+|---|---|---|
+| `send(data, { encoding?, timeout? })` | `{ ok, bytes, duration, error? }` | One datagram. Same `encoding` names as `tcp`'s `write`. |
+| `receive({ timeout?, encoding?, maxBytes? })` | `{ ok, data, bytes, duration, timedOut, error? }` | One datagram. A datagram longer than `maxBytes` (default 64 KiB, which is also the protocol maximum) is truncated and `bytes` reports what was kept. |
+| `close()` | `{ ok: true }` | Idempotent, uncounted. |
+
+There is deliberately **no `until`**: UDP is message-based, and a script that
+wants several datagrams loops. Passing `until`, `bytes` or `pattern` to
+`receive` is an error rather than a silently ignored option.
+
+A connected UDP socket surfaces an ICMP port-unreachable on the **next** call,
+as the operating system does — `receive` reports it as
+`{ ok: false, error, class: "connection-refused" }` rather than as a timeout,
+which is the difference between "nothing is listening" and "the service is
+slow".
+
+**UDP cannot be tunneled.** An SSH `direct-tcpip` forward carries TCP only, so
+`udp.open` under a tunnel returns `{ ok: false, error: "UDP cannot be
+tunneled…" }` and never dials — it does not quietly fall back to probing from
+the worker's own network.
+
+### `websocket` {#websocket}
+
+`websocket.connect(url, options)` performs the handshake and returns a handle
+over the live connection. `url` is `ws://` or `wss://`. Options: `headers`
+(`{name: value}`), `timeout` (handshake budget) and `tlsVerify` (default `true`;
+`false` is the `websocket` check's `tls_skip_verify`).
+
+Handle fields: `ok`, `error`, `class`, `connectDuration`, `tunneled`, and
+`statusCode` — the handshake's HTTP status when the server answered at all
+(`101` on success, the rejecting status otherwise), absent when the dial never
+reached a server. A `401` on the upgrade and a connection that reached nothing
+are different incidents, and this is what tells them apart.
+
+| Call | Returns | Notes |
+|---|---|---|
+| `send(data, { type?, encoding?, timeout? })` | `{ ok, bytes, duration, error? }` | `type` is `text` (default) or `binary`; `encoding` decodes `data` first, so a binary frame is `send("cafe", { type: "binary", encoding: "hex" })`. |
+| `receive({ timeout?, encoding?, maxBytes? })` | `{ ok, type, data, bytes, duration, timedOut, eof?, error? }` | One frame. Pings are answered inside the read, so a script never sees a control frame. |
+| `close({ code?, reason? })` | `{ ok: true }` | Default code `1000`. Idempotent, uncounted. |
+
+`maxBytes` is applied as the read limit for that call; a frame over it fails and
+the connection is closed by the library, which the handle reflects on the next
+call. **A `receive` that hits its per-call `timeout` also closes the
+connection** — a half-read frame cannot be resumed — so unlike a `tcp` handle, a
+WebSocket handle is finished once a `receive` times out. `timedOut: true` is
+still a returned value, not a throw: the script decides what a silent feed means.
+
+### Sockets: what is returned and what is thrown {#socket-errors}
+
+The same split `browser` makes, for the same reason. A failure that is the
+**target's** verdict comes back as a value; a failure that is the **operator's**
+or the **runtime's** throws.
+
+Returned as `{ ok: false, error, … }`:
+
+- Connect failures of every kind — refused, reset, unresolvable, connect
+  timeout, TLS handshake failure, a rejected WebSocket handshake.
+- Read and write failures after connect — the peer closed (`eof: true`), a
+  reset, the per-call `timeout` (`timedOut: true`, **with the partial `data`
+  accumulated so far**), the byte cap hit without a match.
+- An invalid option value: a bad `timeout` string, an unknown `encoding`, a
+  `pattern` that does not compile, two read criteria at once.
+- A budget refusal (see [Limits](#limits)).
+
+Thrown, so the check reports `error` or `timeout`:
+
+- A transport the operator **disabled** on this server
+  (`checkers.enabled`/`checkers.disabled`), with the same message the sub-check
+  gate emits. A script does not get a check type back that an operator turned
+  off.
+- The **check's own deadline** expiring while a call is blocked. That is a
+  `timeout`, not a script error — and it is distinct from the per-call `timeout`
+  option, which is a value. Whatever the script opened is disposed on the way
+  out, so nothing leaks.
+
 ### `solidping.<type>(config)` / `solidping.check(type, config)`
 
 Runs another check type's logic inline and returns its result, without
@@ -371,14 +533,25 @@ string.
 | Limit | Value |
 |---|---|
 | Script size | 64 KB |
-| Sub-checks (`http.*` + `solidping.*` combined) | 20 per execution |
+| Sub-checks (`http.*` + `solidping.*` + each `connect`/`open` combined) | 20 per execution |
 | Browser pages | 1 per execution |
 | Browser actions (every `page.*` call except `url()`/`close()`) | 100 per execution, counted **separately** from the 20-call budget above |
+| Connections (`tcp` + `udp` + `websocket` combined) | 5 per execution, counted at `connect`/`open` **whether or not earlier ones were closed** |
+| Socket actions (`write`/`read`/`send`/`receive`; `close()` is free) | 200 per execution, counted **separately** from the 20-call budget |
 | Console output | 16 KB |
 | HTTP response body, `page.text()`, `page.evaluate()` | 1 MB (one shared cap) |
+| Bytes read across all socket handles | 1 MB per execution — a socket read **spends** it, and the next HTTP response body is capped at whatever is left |
+| Bytes per `read` / `receive` | 64 KiB by default via `maxBytes`, ceiling 1 MB |
+| Bytes per `write` / `send` | 64 KiB |
 | `env` / `secrets` entries | 50 each |
 | Default / maximum timeout | 30s |
 | Cookie jar (per session) | 100 cookies, 4 KiB each |
+
+Every budget is spent **before** the call runs, so a refused call still costs
+its unit and a script cannot spin the refusal path for free. Connections share
+the 20-call budget rather than getting a pool of their own because `http.*` set
+that rule and one number is easier to keep in your head: a script that spends 18
+calls on HTTP has two connections left. That is the intended trade.
 
 ## Full examples
 
@@ -576,6 +749,93 @@ The screenshot on the failing branch is kept only because that branch returns
 also shipped as the **JS: Browser Form Login** sample in the dashboard's sample
 picker, from the same source, so the two cannot drift.
 
+### Redis: AUTH, then PING (tested)
+
+The conversation a `tcp` check cannot hold: the second message only makes sense
+if the first one succeeded, and the reply to the first has to be *read* to know
+that. `env.REDIS_ADDR` is `host:port`; the password comes from `secrets`.
+
+<!-- test: tcp-redis-ping -->
+```js
+var c = tcp.connect(env.REDIS_ADDR, { timeout: "3s" });
+if (!c.ok) {
+  return { status: "down", output: { step: "connect", error: c.error, class: c.class } };
+}
+c.write("AUTH " + secrets.REDIS_PASSWORD + "\r\n");
+var auth = c.read({ until: "\r\n", timeout: "2s" });
+if (auth.data.charAt(0) !== "+") {
+  c.close();
+  return { status: "down", output: { step: "auth", reply: auth.data } };
+}
+c.write("PING\r\n");
+var pong = c.read({ until: "\r\n", timeout: "2s" });
+c.close();
+return {
+  status: pong.data === "+PONG\r\n" ? "up" : "down",
+  metrics: { connectMs: c.connectDuration, pingMs: pong.duration },
+  output: { reply: pong.data },
+};
+```
+
+A test with the wrong password proves this example actually checks the
+credential: RESP answers `-ERR …`, the `+` test fails, and the check reports
+`down` at the `auth` step instead of sailing on to `PING`. This example is also
+shipped as the **JS: Redis AUTH + PING** sample in the dashboard's sample
+picker, from the same source, so the two cannot drift.
+
+### A binary UDP query (tested)
+
+Bytes in and bytes out as hex, because a JS string cannot carry them. One
+datagram per call — there is no `until` over UDP.
+
+<!-- test: udp-query -->
+```js
+var u = udp.open(env.UDP_ADDR, { timeout: "2s" });
+if (!u.ok) {
+  return { status: "down", output: { step: "open", error: u.error } };
+}
+u.send("5350 0100 0001", { encoding: "hex" });
+var reply = u.receive({ timeout: "2s", encoding: "hex" });
+u.close();
+if (!reply.ok) {
+  return { status: "down", output: { step: "receive", error: reply.error, timedOut: reply.timedOut } };
+}
+return {
+  status: reply.data.indexOf("5350") === 0 ? "up" : "down",
+  metrics: { replyBytes: reply.bytes, replyMs: reply.duration },
+  output: { reply: reply.data },
+};
+```
+
+### A WebSocket feed: subscribe, then wait for the event that matters (tested)
+
+The frames before the one you care about are the script's problem to skip, which
+is exactly why a handle beats a one-shot check here: a `websocket` check
+matching a pattern would fire on the first frame that happened to contain it.
+
+<!-- test: websocket-subscribe -->
+```js
+var ws = websocket.connect(env.FEED_URL, { timeout: "5s" });
+if (!ws.ok) {
+  return { status: "down", output: { step: "handshake", error: ws.error, statusCode: ws.statusCode } };
+}
+ws.send(JSON.stringify({ op: "subscribe", channel: "heartbeat" }));
+for (var i = 0; i < 5; i++) {
+  var frame = ws.receive({ timeout: "5s" });
+  if (!frame.ok) {
+    ws.close();
+    return { status: "down", output: { step: "receive", error: frame.error, skipped: i } };
+  }
+  var event = JSON.parse(frame.data);
+  if (event.type === "heartbeat") {
+    ws.close({ code: 1000 });
+    return { status: "up", metrics: { seq: event.seq, waitMs: frame.duration }, output: { skipped: i } };
+  }
+}
+ws.close();
+return { status: "down", output: { step: "subscribe", error: "no heartbeat frame in 5 frames" } };
+```
+
 ### Time-conditional check
 
 Skip the probe outside business hours without calling anything — note that
@@ -606,6 +866,7 @@ type: js
 name: Login smoke test
 period: 5m
 config:
+  tunnelCheckUid: 8f2c1a6e-3b4d-4e5f-9a1b-2c3d4e5f6a7b # the bastion's ssh check uid; omit if reachable directly
   script: |
     var login = http.post(env.BASE_URL + "/login", {
       headers: { "Content-Type": "application/json" },

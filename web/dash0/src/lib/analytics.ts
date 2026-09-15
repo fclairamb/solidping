@@ -303,6 +303,20 @@ export function resetAnalytics(): void {
   client?.reset();
 }
 
+/**
+ * Captures a custom product event. A pure no-op when analytics was never
+ * initialized (kill switch off, no credentials, or a blocked/failed load) —
+ * callers never need to check `isAnalyticsEnabled` themselves.
+ *
+ * Properties pass through the same `sanitizeProperties` autocaptured events
+ * get, in case a URL-shaped value ever slips in; callers must still never
+ * pass an actual check target/hostname, which sanitizeProperties does not
+ * scrub.
+ */
+export function captureEvent(event: string, properties?: Record<string, unknown>): void {
+  client?.capture(event, sanitizeProperties(properties ?? {}));
+}
+
 /** Test seam: forgets any loaded client. Used by unit tests only. */
 export function __resetAnalyticsForTests(): void {
   client = null;

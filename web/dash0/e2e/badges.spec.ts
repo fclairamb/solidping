@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, DASH_BASE } from "./fixtures";
+import { test, expect, API_BASE, DASH_BASE, uniqueStamp } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -15,7 +15,7 @@ async function createCheck(
   name: string
 ): Promise<{ uid: string; slug: string }> {
   const timestamp = Date.now();
-  const randomSuffix = Math.random().toString(36).substring(7);
+  const randomSuffix = uniqueStamp();
   const resp = await page.request.post(
     `${API_BASE}/api/v1/orgs/test/checks`,
     {

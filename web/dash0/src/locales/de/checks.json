@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",
+    "sftpFingerprintHelp": "Fixiert den Host-Schl\u00fcssel des Servers. Leer lassen, um jeden Schl\u00fcssel zu akzeptieren \u2014 der vom Server vorgelegte Fingerabdruck steht immer in der Pr\u00fcfausgabe und kann von dort hierher kopiert werden.",
     "fingerprintHelpPrefix": "Überprüft die Identität des Servers bei jeder Prüfung und ist erforderlich, um diese Prüfung als",
     "tunnelBastionLabel": "Über SSH-Tunnel ausführen",
     "fingerprintHelpSuffix": "Bastion für andere Prüfungen zu verwenden. Ermitteln Sie ihn mit",
@@ -973,7 +974,18 @@
     "privateKeyEncrypted": "(verschlüsselt — neuen Schlüssel eingeben, um zu ersetzen)",
     "passwordOverridesPrivateKey": "Wenn sowohl ein Passwort als auch ein privater Schlüssel festgelegt sind, wird das Passwort verwendet.",
     "password": "Passwort",
-    "usernameOptionalAnonymous": "Benutzername (optional, Standard: anonymous)"
+    "usernameOptionalAnonymous": "Benutzername (optional, Standard: anonymous)",
+    "payloadReply": "Nutzdaten & Antwort",
+    "payloadReplySummary": "Nutzdaten senden und auf eine passende Antwort warten",
+    "sendOptional": "Senden (optional)",
+    "expectOptional": "Erwarten (optional)",
+    "expectModeContains": "Enthält",
+    "expectModeRegex": "Entspricht Regex",
+    "encoding_text": "Text",
+    "encoding_escaped": "Escaped",
+    "encoding_hex": "Hex",
+    "payloadHelp": "Legen Sie eine Erwartung fest, um zu belegen, dass der Dienst antwortet – nicht nur, dass der Port offen ist.",
+    "payloadHelpUdp": "Ohne Erwartung erkennt diese Prüfung nur einen nicht erreichbaren Port."
   },
   "prometheus": {
     "mode": "Modus",
@@ -1010,6 +1022,17 @@
     "requestHeaders": "Anfrage-Header",
     "requestHeadersHelp": "Für Endpunkte hinter Bearer- oder Basic-Auth.",
     "addHeader": "Header hinzufügen"
+  },
+  "rabbitmq": {
+    "mode": "Modus",
+    "modeAmqp": "AMQP",
+    "modeManagement": "Management-API",
+    "memoryWarning": "Speicher-Warnung",
+    "memoryCritical": "Speicher kritisch",
+    "memoryThresholdHelp": "Ein Prozentsatz von RabbitMQs High Watermark (z. B. 80%) oder eine absolute Größe (z. B. 1.5GiB).",
+    "diskWarning": "Freier Speicherplatz Warnung",
+    "diskCritical": "Freier Speicherplatz kritisch",
+    "diskThresholdHelp": "Nur eine absolute Größe (z. B. 10GiB) — die Management-API liefert keine Gesamtgröße des Datenträgers, ein Prozentsatz kann daher nicht berechnet werden."
   },
   "snmp": {
     "oid": "OID",

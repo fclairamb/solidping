@@ -65,6 +65,7 @@ to that organization, valid for 90 days, which you can review and revoke from
 | `sp checks deps` | Manage check dependencies |
 | `sp checks remove <uid>` | Delete a check |
 | `sp checks export` / `import` / `diff` / `validate` | Config-as-code: see below |
+| `sp checks import --from uptime-kuma-db <kuma.db>` | Migrate from Uptime Kuma 2.x: see below |
 | `sp results list` | List check results (with filters) |
 | `sp incidents list` / `get` | Inspect incidents and their events |
 | `sp events list` | Browse the audit event log |
@@ -106,6 +107,13 @@ sp checks export --file config.yaml
 `sp checks import config.yaml --dry-run` answers the same question in counts: **`0 created, 0 updated, 0 deleted` with N unchanged means the file matches the instance**. Region spellings, `expectedStatus` vs `expectedStatusCodes` and document defaults are normalized before the comparison, so a difference in the plan is a real difference.
 
 **Import never deletes.** `sp checks import` is an idempotent upsert keyed on each check's `slug`: a check present in SolidPing but absent from the file is left untouched. If a check was removed from the file on purpose, delete it explicitly with `sp checks remove`, or use `sp apply --prune` (a separate, declarative-reconcile command) for delete-by-absence semantics. Always start from a fresh `sp checks export` before hand-editing so the file reflects live state.
+
+`sp checks import --from <source> <file>` converts a **third-party** file instead of a SolidPing export document — today the only source is `uptime-kuma-db`, for migrating off [Uptime Kuma](/docs/features/migrate/from-uptime-kuma). The file is read and converted on your machine; only the resulting check definitions are sent, never the source file itself. Unlike the plain import, `--from` **previews by default** (the input is a file another product wrote, and the warning list is the point) — pass `--apply` to write:
+
+```bash
+sp checks import --from uptime-kuma-db ./data/kuma.db            # preview only
+sp checks import --from uptime-kuma-db ./data/kuma.db --apply    # create/update
+```
 
 `sp checks export` picks its output format from `--format yaml|json`, defaulting to the `--file` extension (`.yaml`/`.yml` → YAML, everything else including stdout → JSON). YAML output preserves the document's field order — two exports of unchanged live state produce byte-identical files, so diffs in version control only ever show real changes.
 

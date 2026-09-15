@@ -1,4 +1,11 @@
-import { test, expect, API_BASE, type Page, DASH_BASE } from "./fixtures";
+import {
+  test,
+  expect,
+  API_BASE,
+  type Page,
+  DASH_BASE,
+  uniqueStamp,
+} from "./fixtures";
 
 // Covers the empty-state onboarding hero (EmptyStateOnboarding, rendered on
 // /orgs/$org when the org has zero checks) and specifically the 2026-07-11
@@ -119,6 +126,12 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     // Spec 2026-09-12-04: the validation message the now-always-enabled submit
     // produces is the widest string this hero can render — it must wrap inside
     // the phone viewport rather than push the page sideways.
+    //
+    // Spec 2026-09-16-01: the field starts pre-filled with the user's own
+    // email domain (test@test.com -> test.com) now, so it must be cleared
+    // first to still exercise the "empty" validation path — otherwise this
+    // would submit a valid value and create a real check in the shared org.
+    await page.getByTestId("quick-start-input").fill("");
     await page.getByTestId("quick-start-submit").click();
     await expect(page.getByTestId("quick-start-error")).toBeVisible();
     const stillNoOverflow = await page.evaluate(
@@ -153,6 +166,81 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       await page.getByTestId(`quick-start-${chip}`).click();
       await expect(page.getByTestId("quick-start-input")).toBeFocused();
     }
+  });
+
+  // Spec 2026-09-16-01: the field now pre-fills with the signed-in user's own
+  // email domain (test@test.com -> test.com) and selects the whole
+  // suggestion whenever it receives focus while untouched, so typing
+  // replaces it instead of appending to it.
+  test("pre-fills the input with the user's own email domain, selected on mount focus", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoEmptyDashboard(page);
+    const input = page.getByTestId("quick-start-input");
+
+    await expect(input).toHaveValue("test.com");
+    // Mount focus (fine-pointer desktop browser) is unaffected by the
+    // pre-fill — it still fires.
+    await expect(input).toBeFocused();
+
+    const selection = await input.evaluate((el: HTMLInputElement) => ({
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    }));
+    expect(selection).toEqual({ start: 0, end: "test.com".length });
+
+    // Typing types OVER the selected suggestion rather than appending to it.
+    await page.keyboard.type("acme.com");
+    await expect(input).toHaveValue("acme.com");
+  });
+
+  test("chip switches keep the untouched suggestion and re-select it", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoEmptyDashboard(page);
+    const input = page.getByTestId("quick-start-input");
+    await expect(input).toHaveValue("test.com");
+
+    // A bare domain applies to every chip, so the suggestion stays put across
+    // every switch, unlike the "cleared" cases covered below for a full URL.
+    for (const chip of ["ssl", "icmp", "http"] as const) {
+      await page.getByTestId(`quick-start-${chip}`).click();
+      await expect(input).toHaveValue("test.com");
+      const selection = await input.evaluate((el: HTMLInputElement) => ({
+        start: el.selectionStart,
+        end: el.selectionEnd,
+      }));
+      expect(selection).toEqual({ start: 0, end: "test.com".length });
+    }
+  });
+
+  test("after the user edits the value, refocusing does not select-all", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoEmptyDashboard(page);
+    const input = page.getByTestId("quick-start-input");
+    await expect(input).toHaveValue("test.com");
+
+    await input.fill("acme.com");
+    await expect(input).toHaveValue("acme.com");
+
+    // Move focus away, then click back into the field: since the value no
+    // longer matches the suggestion, this must be an ordinary caret click,
+    // not a select-all — the negative for the selection rule above.
+    await page.getByRole("heading", { name: /welcome/i }).click();
+    await expect(input).not.toBeFocused();
+    await input.click();
+    await expect(input).toBeFocused();
+
+    const selection = await input.evaluate((el: HTMLInputElement) => ({
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    }));
+    // A collapsed caret (start === end), never the whole value selected.
+    expect(selection.start).toBe(selection.end);
   });
 
   test("a hostname survives every chip switch, a URL is cleared only where it cannot apply", async ({
@@ -220,10 +308,12 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     const input = page.getByTestId("quick-start-input");
     const submit = page.getByTestId("quick-start-submit");
 
-    // Empty input: enabled (pre-fix it was `disabled` and clicking it was a
-    // silent no-op).
-    await expect(input).toHaveValue("");
+    // Spec 2026-09-16-01: the field now starts pre-filled with the signed-in
+    // user's own email domain (test@test.com -> test.com), not empty. Clear
+    // it to exercise the "empty" validation path this test covers.
+    await expect(input).toHaveValue("test.com");
     await expect(submit).toBeEnabled();
+    await input.fill("");
 
     await submit.click();
     const error = page.getByTestId("quick-start-error");
@@ -233,7 +323,10 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
     // banner and the field is marked invalid and described by it.
     await expect(page.locator('[role="alert"]', { has: error })).toBeVisible();
     await expect(input).toHaveAttribute("aria-invalid", "true");
-    await expect(input).toHaveAttribute("aria-describedby", "quick-input-error");
+    await expect(input).toHaveAttribute(
+      "aria-describedby",
+      "quick-input-error",
+    );
     // Focus lands back where the fix has to happen.
     await expect(input).toBeFocused();
 
@@ -267,10 +360,24 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
   // GET stub instead of returning the created check. A fresh org sidesteps
   // that and also gives a clean, unshared checks list to assert against.
   test.describe("quick-create redirect (needs a real empty org)", () => {
-    /** Creates a fresh org with zero checks, authenticated as its owner. */
-    async function seedEmptyOrg(page: Page): Promise<string> {
-      const stamp = Date.now() + Math.floor(Math.random() * 1000);
-      const email = `quickcreate-${stamp}@unknown.example`;
+    /**
+     * Creates a fresh org with zero checks, authenticated as its owner.
+     *
+     * `emailLocalPart`/`emailDomain` default to the original
+     * `quickcreate-<stamp>@unknown.example` shape (a domain that is neither
+     * free-webmail-denylisted nor `test.com`, so callers that don't care
+     * about the hero's pre-fill suggestion get the same setup as before).
+     * Spec 2026-09-16-01 tests pass an explicit domain — `test.com` or a
+     * free-webmail one — to control what `suggestQuickTarget` suggests for
+     * this seeded user.
+     */
+    async function seedEmptyOrg(
+      page: Page,
+      emailLocalPart = "quickcreate",
+      emailDomain = "unknown.example",
+    ): Promise<string> {
+      const stamp = uniqueStamp();
+      const email = `${emailLocalPart}-${stamp}@${emailDomain}`;
       const password = "Strong-Pass-123!";
 
       const createUserResp = await page.request.post(
@@ -291,7 +398,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       expect(loginResp.status()).toBe(200);
       const session = (await loginResp.json()) as { accessToken: string };
 
-      const slug = `qc-${stamp.toString(36)}`;
+      const slug = `qc-${stamp}`;
       const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
         headers: { Authorization: `Bearer ${session.accessToken}` },
         data: { name: `Acme Quick Create ${stamp}`, slug },
@@ -306,7 +413,10 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
 
       await page.addInitScript(
         ({ accessToken, refreshToken, expiresIn, orgSlug }) => {
-          localStorage.setItem("solidping_session_token", accessToken as string);
+          localStorage.setItem(
+            "solidping_session_token",
+            accessToken as string,
+          );
           if (refreshToken) {
             localStorage.setItem(
               "solidping_refresh_token",
@@ -349,9 +459,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       await page.getByTestId("quick-start-submit").click();
 
       // Lands on the check detail route, not back on the dashboard.
-      await page.waitForURL(
-        new RegExp(`/orgs/${orgSlug}/checks/[^/]+/?$`),
-      );
+      await page.waitForURL(new RegExp(`/orgs/${orgSlug}/checks/[^/]+/?$`));
       await expect(
         page.locator('[data-testid="check-detail-header"] h1'),
       ).toContainText("HTTP — acme.com");
@@ -435,6 +543,45 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
         page.locator('[data-testid="check-detail-header"] h1'),
       ).toContainText("HTTP — acme.com");
       await expect(page.getByText("https://acme.com").first()).toBeVisible();
+    });
+
+    // Spec 2026-09-16-01: the one-click path, end to end — a signup whose
+    // own email domain is `test.com` submits with zero typing and lands on
+    // a real check. Uses its own seeded user (email domain deliberately
+    // `test.com`) rather than the shared `authenticatedPage` fixture, so the
+    // suggestion under test is produced by the real backend `/auth/me`
+    // response, not hardcoded in the test.
+    test("submitting the untouched suggestion creates the check with zero typing", async ({
+      page,
+    }) => {
+      const orgSlug = await seedEmptyOrg(page, "activation", "test.com");
+
+      await page.goto(`orgs/${orgSlug}`);
+      await page.waitForLoadState("networkidle");
+
+      const input = page.getByTestId("quick-start-input");
+      await expect(input).toHaveValue("test.com");
+
+      // No typing at all — just the submit click.
+      await page.getByTestId("quick-start-submit").click();
+
+      await page.waitForURL(new RegExp(`/orgs/${orgSlug}/checks/[^/]+/?$`));
+      await expect(
+        page.locator('[data-testid="check-detail-header"] h1'),
+      ).toContainText("HTTP — test.com");
+    });
+
+    // Spec 2026-09-16-01: a free-webmail signup gets none of this — the field
+    // stays exactly as empty as it always has.
+    test("a free-webmail signup's field stays empty, no junk suggestion", async ({
+      page,
+    }) => {
+      const orgSlug = await seedEmptyOrg(page, "freewebmail", "gmail.com");
+
+      await page.goto(`orgs/${orgSlug}`);
+      await page.waitForLoadState("networkidle");
+
+      await expect(page.getByTestId("quick-start-input")).toHaveValue("");
     });
   });
 });
