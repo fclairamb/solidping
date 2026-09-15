@@ -50,6 +50,10 @@ bench-results/
 # one reached the repo this way before they were listed here.
 *.db-shm
 *.db-wal
+# Exception: a committed, scrubbed Uptime Kuma SQLite fixture used by the
+# `--from uptime-kuma-db` importer tests (server/pkg/cli/kumadb). See the
+# README.md next to it for provenance and how to regenerate it.
+!server/internal/handlers/checks/importers/testdata/uptime-kuma-sqlite/kuma.db
 logs/
 agent-keys.json
 
