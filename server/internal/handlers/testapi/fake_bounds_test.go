@@ -120,6 +120,17 @@ func TestFakeAPI_ValidateRedirectURL(t *testing.T) {
 		"javascript:alert(1)",                     //
 		"path-without-leading-slash",              //
 		"mailto:alice@acme.com",                   //
+		// Backslash bypass: net/url gives "\\" no meaning, so these parse with
+		// an empty Scheme AND an empty Host and used to sail through the
+		// "starts with one /" branch — while a browser's WHATWG parser
+		// resolves them to http://evil.com/.
+		"/\\evil.com",
+		"/\\/evil.com",
+		"\\evil.com",
+		"/\\\\evil.com",
+		"/path/\\evil.com",
+		"/%5Cevil.com",  // the same trick, percent-encoded
+		"/%5c/evil.com", // lowercase encoding
 	}
 	for _, target := range refused {
 		t.Run("refuses "+target, func(t *testing.T) {

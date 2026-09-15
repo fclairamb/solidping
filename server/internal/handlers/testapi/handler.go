@@ -481,7 +481,8 @@ func (h *Handler) checkRequiredHeader(req *http.Request, requiredHeader string) 
 // The rule is therefore an allow-list of two shapes:
 //
 //   - a relative path beginning with a single "/" — "//host" is a
-//     protocol-relative URL pointing somewhere else entirely, so it is not one;
+//     protocol-relative URL pointing somewhere else entirely, so it is not one,
+//     and neither is anything containing a backslash (see below);
 //   - an absolute URL whose scheme AND host equal the request's own origin.
 //
 // Redirect-following checks can still be exercised: the target just has to be
@@ -494,11 +495,11 @@ func (h *Handler) validateRedirectURL(req *http.Request, redirectURL string) err
 
 	// A relative path: no scheme, no host, and not protocol-relative.
 	if parsedURL.Scheme == "" && parsedURL.Host == "" {
-		if strings.HasPrefix(redirectURL, "/") && !strings.HasPrefix(redirectURL, "//") {
-			return nil
+		if !isSafeRelativeRedirect(redirectURL, parsedURL) {
+			return ErrRedirectNotSameOrigin
 		}
 
-		return ErrRedirectNotSameOrigin
+		return nil
 	}
 
 	scheme := "http"
@@ -511,6 +512,25 @@ func (h *Handler) validateRedirectURL(req *http.Request, redirectURL string) err
 	}
 
 	return nil
+}
+
+// isSafeRelativeRedirect reports whether a scheme-less, host-less target really
+// stays on this origin once a BROWSER resolves it.
+//
+// Go's net/url gives "\" no special meaning, so "/\evil.com" parses with an
+// empty Scheme and an empty Host and looks like an ordinary relative path —
+// but the WHATWG URL parser every browser implements treats "\" as equivalent
+// to "/" for special schemes, so it resolves to http://evil.com/. Checking
+// only for a "//" prefix therefore left the open redirect this validator
+// exists to close wide open. A legitimate relative path on this API never
+// contains a backslash, so refuse it outright — in the raw string AND in the
+// decoded path, so a percent-encoded "%5C" cannot smuggle one back in.
+func isSafeRelativeRedirect(raw string, parsed *url.URL) bool {
+	if strings.ContainsRune(raw, '\\') || strings.ContainsRune(parsed.Path, '\\') {
+		return false
+	}
+
+	return strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//")
 }
 
 // writeSlowResponse writes a slow streaming response with random data.
