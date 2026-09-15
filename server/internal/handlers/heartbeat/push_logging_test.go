@@ -167,7 +167,7 @@ func TestListenerLoggingNeverLeaksCredentials(t *testing.T) {
 
 	signed := heartbeatpush.SignSP2(w.org.Slug, slug, testToken, 0, 5, "")
 
-	r.Equal("OK", string(w.sendUDP(t, signed)))
+	r.Equal("OK\n", string(w.sendUDP(t, signed)))
 	r.Nil(w.sendUDP(t, signed))                                       // replay
 	r.Nil(w.sendUDP(t, sp1(w.org.Slug, slug, "a-wrong-token", "")))   // bad token
 	r.Nil(w.sendUDP(t, "SP1 "+w.org.Slug+"/"+slug+" "+testToken+"x")) // near-miss token
