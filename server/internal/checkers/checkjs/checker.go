@@ -536,6 +536,25 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 		}
 	}
 
+	// A tunneled script cannot let a sub-check of a type that itself lacks
+	// SupportsTunnel probe from the WORKER's own network while the script
+	// believes it is running behind the bastion — that silent local probing is
+	// the security property this refusal exists to prevent. Types that do
+	// declare SupportsTunnel need nothing here: they already read the dialer
+	// off r.execCtx themselves. Uses the API's own sentence
+	// (handlers/checks/tunnel.go) so the message is familiar wherever it
+	// appears.
+	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
+		if meta := checkerdef.GetCheckTypeMeta(checkType); meta == nil || !meta.SupportsTunnel {
+			return map[string]any{
+				jsKeyStatus: logLevelError,
+				jsKeyOutput: map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr),
+				},
+			}
+		}
+	}
+
 	if ResolveChecker == nil {
 		return map[string]any{
 			jsKeyStatus: logLevelError,
@@ -792,6 +811,14 @@ func (r *jsRuntime) httpRequest(
 	client := &http.Client{
 		Timeout:       opts.timeout,
 		CheckRedirect: redirectPolicy(&opts, &redirects),
+		// nil when untunneled and no IP version is pinned (js does not declare
+		// SupportsIPVersion), which keeps http.DefaultTransport and its pooled
+		// connections byte-for-byte as before this feature. When a dialer is
+		// present the transport hands the raw host:port to it — no local
+		// resolution — exactly like the http and prometheus checkers.
+		Transport: checkerdef.BuildHTTPTransport(
+			checkerdef.TunnelDialerFrom(r.execCtx), false, checkerdef.IPVersionFrom(r.execCtx),
+		),
 	}
 
 	if jar != nil {
@@ -821,7 +848,7 @@ func (r *jsRuntime) httpRequest(
 		}
 	}
 
-	return map[string]any{
+	result := map[string]any{
 		jsKeyStatusCode: resp.StatusCode,
 		"body":          string(body),
 		"headers":       responseHeaders(resp),
@@ -829,6 +856,13 @@ func (r *jsRuntime) httpRequest(
 		"redirects":     redirects,
 		jsKeyDuration:   duration.Milliseconds(),
 	}
+
+	// Present only when true, so an untunneled response's shape is unchanged.
+	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
+		result[jsKeyTunneled] = true
+	}
+
+	return result
 }
 
 // redirectPolicy builds the client's CheckRedirect: it records the chain and

@@ -81,6 +81,31 @@ func TestCreateCheckWithTunnel(t *testing.T) {
 	r.Equal(bastion.UID, created.Config[checkerdef.TunnelCheckUIDConfigKey])
 }
 
+// TestCreateJSCheckWithTunnel proves `js` now declares SupportsTunnel (spec
+// 2026-09-15-07): a `js` check with a valid `ssh` reference is accepted the
+// same way `http` already was, instead of hitting the "cannot run through an
+// SSH tunnel" rejection TestTunnelChainingIsRejected still exercises for `ssh`
+// itself.
+func TestCreateJSCheckWithTunnel(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, _, org := setupTunnelChecksService(t)
+	ctx := t.Context()
+
+	bastion := createBastion(t, svc, ctx, org, "bastion")
+
+	created, err := svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name: "js-through-tunnel", Slug: "js-through-tunnel", Type: "js",
+		Config: map[string]any{
+			"script":                           `return { status: "up" };`,
+			checkerdef.TunnelCheckUIDConfigKey: bastion.UID,
+		},
+	})
+	r.NoError(err)
+	r.Equal(bastion.UID, created.Config[checkerdef.TunnelCheckUIDConfigKey])
+}
+
 func TestCreateCheckTunnelValidationRejections(t *testing.T) {
 	t.Parallel()
 
