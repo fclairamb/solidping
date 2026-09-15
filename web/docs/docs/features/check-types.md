@@ -32,11 +32,11 @@ https://api.example.com/health
 | Option | Description | Example |
 |--------|-------------|---------|
 | URL | The endpoint to check | `https://api.example.com/health` |
-| Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE` |
+| Method | HTTP method | `GET`, `POST`, `PUT`, `DELETE`, `QUERY` |
 | Timeout | Request timeout | `30s` |
 | Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
 | Headers | Custom request headers | `Authorization: Bearer token` |
-| Body | Request body (for POST/PUT) | `{"key": "value"}` |
+| Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
 | Body Match | Pattern to match in response | `"status": "ok"` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
@@ -45,6 +45,11 @@ https://api.example.com/health
 **Status Code Matching:**
 - Exact match: `200`, `201`, `404`
 - Wildcard: `2XX` (any 2xx status), `5XX` (any 5xx status)
+
+**QUERY method:** `QUERY` is sent with the request body attached, exactly like
+`POST`, and is treated like `POST` for redirects (a 307/308 re-sends the
+method and body; 301/302/303 behave the same as they do for any other
+non-`GET`/`HEAD` method).
 
 **Basic Auth storage:** you still enter a username and a password in the form,
 but the pair is stored as a single encrypted credential (a reserved `basicAuth`
