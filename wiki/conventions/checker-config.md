@@ -527,6 +527,7 @@ strictly typed — `SELECT 1` is a UInt8, not text). Output includes
 | `password` | string | O | | Auth password. Cannot combine with `private_key`. One of `password`/`private_key` required |
 | `private_key` | string | O | | PEM-encoded private key. Cannot combine with `password` |
 | `path` | string | O | | Directory or file path to verify |
+| `host_key_fingerprint` | string | O | | Pin on the server host key, `SHA256:…` (same form `checkssh.Fingerprint` emits). Unset accepts any key; the observed fingerprint is written to `output.host_key_fingerprint` either way |
 
 ---
 

@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",
+    "sftpFingerprintHelp": "Pins the server's host key. Leave it empty to accept any key \u2014 the fingerprint the server presented is always reported in the check output, so you can copy it here afterwards.",
     "fingerprintHelpPrefix": "Verifies the server's identity on every check, and is required to use this check as a",
     "tunnelBastionLabel": "Run through SSH tunnel",
     "fingerprintHelpSuffix": "bastion for other checks. Get it with",
