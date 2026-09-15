@@ -3,7 +3,11 @@ package checkrabbitmq
 import (
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/dustin/go-humanize"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -23,6 +27,21 @@ const (
 	ModeManagement = "management"
 )
 
+// Config map keys for the memory/disk thresholds — constants so FromMap /
+// GetConfig / Validate cannot drift.
+const (
+	keyMemoryUsedWarning  = "memoryUsedWarning"
+	keyMemoryUsedCritical = "memoryUsedCritical"
+	keyDiskFreeWarning    = "diskFreeWarning"
+	keyDiskFreeCritical   = "diskFreeCritical"
+)
+
+// minPercent/maxPercent bound the `NN%` form of a threshold.
+const (
+	minPercent = 1
+	maxPercent = 100
+)
+
 // RabbitMQConfig holds the configuration for RabbitMQ health checks.
 type RabbitMQConfig struct {
 	Host           string        `json:"host"`
@@ -35,6 +54,58 @@ type RabbitMQConfig struct {
 	ManagementPort int           `json:"managementPort,omitempty"`
 	Queue          string        `json:"queue,omitempty"`
 	Timeout        time.Duration `json:"timeout,omitempty"`
+
+	// MemoryUsedWarning/Critical accept a percentage of RabbitMQ's high
+	// watermark ("80%") or an absolute byte size ("1.5GiB"). Stored as the
+	// string the user typed — see threshold.raw.
+	MemoryUsedWarning  string `json:"memoryUsedWarning,omitempty"`
+	MemoryUsedCritical string `json:"memoryUsedCritical,omitempty"`
+
+	// DiskFreeWarning/Critical accept a byte size only: the management API
+	// exposes no total disk size, so "percent free" cannot be computed.
+	DiskFreeWarning  string `json:"diskFreeWarning,omitempty"`
+	DiskFreeCritical string `json:"diskFreeCritical,omitempty"`
+}
+
+// threshold is a parsed memory/disk threshold: either a percentage (memory
+// only, relative to mem_limit) or an absolute byte size.
+type threshold struct {
+	raw       string
+	isPercent bool
+	percent   int
+	bytes     uint64
+}
+
+// parseThreshold parses a threshold string. A `%` suffix yields a percentage
+// (1-100); anything else is parsed as a byte size via humanize.ParseBytes.
+// allowPercent is false for the disk keys, which have no total-size
+// denominator to be a percentage of.
+func parseThreshold(key, raw string, allowPercent bool) (*threshold, error) {
+	if strings.HasSuffix(raw, "%") {
+		if !allowPercent {
+			return nil, checkerdef.NewConfigErrorf(
+				key, "cannot be a percentage: the management API exposes no total disk size to be a percentage of; use a byte size (e.g. %q)", "10GiB",
+			)
+		}
+
+		digits := strings.TrimSuffix(raw, "%")
+
+		pct, err := strconv.Atoi(digits)
+		if err != nil || pct < minPercent || pct > maxPercent {
+			return nil, checkerdef.NewConfigErrorf(key, "must be a percentage between 1%% and 100%%, got %q", raw)
+		}
+
+		return &threshold{raw: raw, isPercent: true, percent: pct}, nil
+	}
+
+	bytesVal, err := humanize.ParseBytes(raw)
+	if err != nil {
+		return nil, checkerdef.NewConfigErrorf(
+			key, "must be a percentage (e.g. %q) or a byte size (e.g. %q), got %q", "80%", "1.5GiB", raw,
+		)
+	}
+
+	return &threshold{raw: raw, bytes: bytesVal}, nil
 }
 
 // FromMap populates the configuration from a map.
@@ -89,6 +160,28 @@ func (c *RabbitMQConfig) parseStringFields(configMap map[string]any) error {
 		c.Queue = queue
 	} else if configMap["queue"] != nil {
 		return checkerdef.NewConfigError("queue", "must be a string")
+	}
+
+	return c.parseThresholdFields(configMap)
+}
+
+func (c *RabbitMQConfig) parseThresholdFields(configMap map[string]any) error {
+	for key, target := range map[string]*string{
+		keyMemoryUsedWarning:  &c.MemoryUsedWarning,
+		keyMemoryUsedCritical: &c.MemoryUsedCritical,
+		keyDiskFreeWarning:    &c.DiskFreeWarning,
+		keyDiskFreeCritical:   &c.DiskFreeCritical,
+	} {
+		if configMap[key] == nil {
+			continue
+		}
+
+		v, ok := configMap[key].(string)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
+
+		*target = v
 	}
 
 	return nil
@@ -174,6 +267,17 @@ func (c *RabbitMQConfig) GetConfig() map[string]any {
 		cfg["timeout"] = c.Timeout.String()
 	}
 
+	for key, value := range map[string]string{
+		keyMemoryUsedWarning:  c.MemoryUsedWarning,
+		keyMemoryUsedCritical: c.MemoryUsedCritical,
+		keyDiskFreeWarning:    c.DiskFreeWarning,
+		keyDiskFreeCritical:   c.DiskFreeCritical,
+	} {
+		if value != "" {
+			cfg[key] = value
+		}
+	}
+
 	return cfg
 }
 
@@ -201,6 +305,105 @@ func (c *RabbitMQConfig) Validate() error {
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
 		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String())
+	}
+
+	return c.validateThresholds()
+}
+
+// validateThresholds parses and cross-checks the four threshold keys:
+//   - a threshold requires management mode (AMQP has no view of node
+//     resources);
+//   - disk keys reject a `%` value (enforced by parseThreshold);
+//   - when both tiers of the same resource are set AND share a unit kind
+//     (both percentages or both byte sizes), enforce the tier ordering.
+//     Mixed units (e.g. "70%" vs "1.8GiB") are accepted without
+//     cross-checking, since there's no common scale to compare them on.
+func (c *RabbitMQConfig) validateThresholds() error {
+	fields := []struct {
+		key          string
+		raw          string
+		allowPercent bool
+	}{
+		{keyMemoryUsedWarning, c.MemoryUsedWarning, true},
+		{keyMemoryUsedCritical, c.MemoryUsedCritical, true},
+		{keyDiskFreeWarning, c.DiskFreeWarning, false},
+		{keyDiskFreeCritical, c.DiskFreeCritical, false},
+	}
+
+	effectiveMode := c.Mode
+	if effectiveMode == "" {
+		effectiveMode = defaultMode
+	}
+
+	for _, f := range fields {
+		if f.raw == "" {
+			continue
+		}
+
+		if effectiveMode != ModeManagement {
+			return checkerdef.NewConfigErrorf(f.key, "requires mode %q, got %q", ModeManagement, effectiveMode)
+		}
+
+		if _, err := parseThreshold(f.key, f.raw, f.allowPercent); err != nil {
+			return err
+		}
+	}
+
+	if err := c.validateTierOrder(
+		keyMemoryUsedWarning, c.MemoryUsedWarning, keyMemoryUsedCritical, c.MemoryUsedCritical, true, false,
+	); err != nil {
+		return err
+	}
+
+	return c.validateTierOrder(
+		keyDiskFreeWarning, c.DiskFreeWarning, keyDiskFreeCritical, c.DiskFreeCritical, false, true,
+	)
+}
+
+// validateTierOrder enforces the ordering between a warning and a critical
+// tier of the same resource, when both are set and share a unit kind.
+// wantWarningLower requires warning < critical (memory: a ceiling, so the
+// critical breach point is the bigger number); false requires
+// warning > critical (disk: a floor, so the critical breach point is the
+// smaller number).
+func (c *RabbitMQConfig) validateTierOrder(
+	warningKey, warningRaw, criticalKey, criticalRaw string, allowPercent, wantWarningLower bool,
+) error {
+	if warningRaw == "" || criticalRaw == "" {
+		return nil
+	}
+
+	warning, err := parseThreshold(warningKey, warningRaw, allowPercent)
+	if err != nil {
+		return err
+	}
+
+	critical, err := parseThreshold(criticalKey, criticalRaw, allowPercent)
+	if err != nil {
+		return err
+	}
+
+	if warning.isPercent != critical.isPercent {
+		return nil
+	}
+
+	var warningLessThanCritical bool
+	if warning.isPercent {
+		warningLessThanCritical = warning.percent < critical.percent
+	} else {
+		warningLessThanCritical = warning.bytes < critical.bytes
+	}
+
+	if wantWarningLower && !warningLessThanCritical {
+		return checkerdef.NewConfigErrorf(
+			criticalKey, "must be greater than %s (%s), got %s", warningKey, warning.raw, critical.raw,
+		)
+	}
+
+	if !wantWarningLower && warningLessThanCritical {
+		return checkerdef.NewConfigErrorf(
+			criticalKey, "must be less than %s (%s), got %s", warningKey, warning.raw, critical.raw,
+		)
 	}
 
 	return nil
