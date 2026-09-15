@@ -395,6 +395,28 @@ func TestApplyFileStorageEnv(t *testing.T) {
 	r.Equal("minio123", cfg.S3SecretKey)
 }
 
+// TestLoad_DockerImageEnvVars proves the three env vars the published Docker
+// image sets by default (SP_DB_TYPE, SP_DB_DIR, SP_FILESTORAGE_LOCAL_ROOT)
+// actually land on the config through a full Load(), the same path the
+// binary uses at startup. SP_DB_TYPE/SP_DB_DIR are single-word koanf leaves
+// covered by the generic env auto-loader; SP_FILESTORAGE_LOCAL_ROOT goes
+// through the manual applyFileStorageEnv reader (see TestApplyFileStorageEnv
+// above). This test is the regression guard for the image defaults
+// themselves (Dockerfile's ENV block), not just the readers in isolation.
+func TestLoad_DockerImageEnvVars(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_DB_TYPE", "sqlite")
+	t.Setenv("SP_DB_DIR", "/data")
+	t.Setenv("SP_FILESTORAGE_LOCAL_ROOT", "/data/files")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(DatabaseTypeSQLite, cfg.Database.Type)
+	r.Equal("/data", cfg.Database.Dir)
+	r.Equal("/data/files", cfg.FileStorage.LocalRoot)
+}
+
 // TestApplyProfilerEnv confirms SP_PROFILER_BLOCK_RATE / _MUTEX_FRACTION land on
 // the snake_case-tagged ProfilerConfig fields despite koanf's env
 // underscore→dot collapse. Uses t.Setenv, which is incompatible with t.Parallel.
