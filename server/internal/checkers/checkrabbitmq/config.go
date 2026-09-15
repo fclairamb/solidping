@@ -84,7 +84,8 @@ func parseThreshold(key, raw string, allowPercent bool) (*threshold, error) {
 	if strings.HasSuffix(raw, "%") {
 		if !allowPercent {
 			return nil, checkerdef.NewConfigErrorf(
-				key, "cannot be a percentage: the management API exposes no total disk size to be a percentage of; use a byte size (e.g. %q)", "10GiB",
+				key, "cannot be a percentage: the management API exposes no total disk size "+
+					"to be a percentage of; use a byte size (e.g. %q)", "10GiB",
 			)
 		}
 
@@ -106,6 +107,39 @@ func parseThreshold(key, raw string, allowPercent bool) (*threshold, error) {
 	}
 
 	return &threshold{raw: raw, bytes: bytesVal}, nil
+}
+
+// compareThresholds returns -1/0/1 for warning </==/> critical. Callers must
+// ensure both thresholds share a unit kind (both percent or both bytes)
+// first — comparing across kinds is meaningless and is rejected upstream.
+func compareThresholds(warning, critical *threshold) int {
+	if warning.isPercent {
+		return compareInts(warning.percent, critical.percent)
+	}
+
+	return compareUints(warning.bytes, critical.bytes)
+}
+
+func compareInts(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareUints(a, b uint64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // FromMap populates the configuration from a map.
@@ -335,28 +369,28 @@ func (c *RabbitMQConfig) validateThresholds() error {
 		effectiveMode = defaultMode
 	}
 
-	for _, f := range fields {
-		if f.raw == "" {
+	for i := range fields {
+		if fields[i].raw == "" {
 			continue
 		}
 
 		if effectiveMode != ModeManagement {
-			return checkerdef.NewConfigErrorf(f.key, "requires mode %q, got %q", ModeManagement, effectiveMode)
+			return checkerdef.NewConfigErrorf(fields[i].key, "requires mode %q, got %q", ModeManagement, effectiveMode)
 		}
 
-		if _, err := parseThreshold(f.key, f.raw, f.allowPercent); err != nil {
+		if _, err := parseThreshold(fields[i].key, fields[i].raw, fields[i].allowPercent); err != nil {
 			return err
 		}
 	}
 
 	if err := c.validateTierOrder(
-		keyMemoryUsedWarning, c.MemoryUsedWarning, keyMemoryUsedCritical, c.MemoryUsedCritical, true, false,
+		keyMemoryUsedWarning, c.MemoryUsedWarning, keyMemoryUsedCritical, c.MemoryUsedCritical, true, true,
 	); err != nil {
 		return err
 	}
 
 	return c.validateTierOrder(
-		keyDiskFreeWarning, c.DiskFreeWarning, keyDiskFreeCritical, c.DiskFreeCritical, false, true,
+		keyDiskFreeWarning, c.DiskFreeWarning, keyDiskFreeCritical, c.DiskFreeCritical, false, false,
 	)
 }
 
@@ -387,20 +421,18 @@ func (c *RabbitMQConfig) validateTierOrder(
 		return nil
 	}
 
-	var warningLessThanCritical bool
-	if warning.isPercent {
-		warningLessThanCritical = warning.percent < critical.percent
-	} else {
-		warningLessThanCritical = warning.bytes < critical.bytes
-	}
+	// cmp < 0 means warning < critical, cmp == 0 means equal, cmp > 0 means
+	// warning > critical. Both directions require a STRICT inequality, so
+	// equal tiers are always rejected.
+	cmp := compareThresholds(warning, critical)
 
-	if wantWarningLower && !warningLessThanCritical {
+	if wantWarningLower && cmp >= 0 {
 		return checkerdef.NewConfigErrorf(
 			criticalKey, "must be greater than %s (%s), got %s", warningKey, warning.raw, critical.raw,
 		)
 	}
 
-	if !wantWarningLower && warningLessThanCritical {
+	if !wantWarningLower && cmp <= 0 {
 		return checkerdef.NewConfigErrorf(
 			criticalKey, "must be less than %s (%s), got %s", warningKey, warning.raw, critical.raw,
 		)
