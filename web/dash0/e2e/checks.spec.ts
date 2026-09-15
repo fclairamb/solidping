@@ -718,6 +718,108 @@ test.describe("Checks", () => {
     });
   });
 
+  test("TCP check form round-trips an escaped payload and a regex expectation", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Select TCP type
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /^TCP/i }).click();
+
+    const checkName = `E2E TCP payload ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-host-input").fill("redis.example.internal");
+    await page.getByTestId("check-port-input").fill("6379");
+
+    // The payload section is collapsed until opened — it is optional config.
+    await page.getByTestId("check-payload-section").click();
+    await expect(page.getByTestId("check-send-data-input")).toBeVisible();
+
+    // A NEW check defaults Send to Escaped, which is the only way a textarea
+    // can express the CRLF a line protocol needs.
+    await expect(page.getByTestId("check-send-encoding-select")).toContainText(
+      "Escaped",
+    );
+    await page.getByTestId("check-send-data-input").fill(String.raw`PING\r\n`);
+
+    // Switch the expectation to regex mode, which writes expect_pattern.
+    await page.getByTestId("check-expect-mode-select").click();
+    await page.getByRole("option", { name: "Matches regex" }).click();
+    await page.getByTestId("check-expect-input").fill(String.raw`^\+PONG`);
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-tcp-payload-form.png",
+      fullPage: true,
+    });
+
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // Reopen for edit: every field must round-trip.
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" })
+      .click();
+    await page.waitForURL(/\/edit/);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-host-input")).toHaveValue(
+      "redis.example.internal",
+    );
+    await expect(page.getByTestId("check-port-input")).toHaveValue("6379");
+    // A stored payload carries its encoding back, and the section opens itself
+    // because it holds non-default values.
+    await expect(page.getByTestId("check-send-data-input")).toHaveValue(
+      String.raw`PING\r\n`,
+    );
+    await expect(page.getByTestId("check-send-encoding-select")).toContainText(
+      "Escaped",
+    );
+    await expect(page.getByTestId("check-expect-mode-select")).toContainText(
+      "Matches regex",
+    );
+    await expect(page.getByTestId("check-expect-input")).toHaveValue(
+      String.raw`^\+PONG`,
+    );
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-tcp-payload-edit.png",
+      fullPage: true,
+    });
+
+    // Switching the expect mode must DELETE the other key, not leave both
+    // behind — the omit-to-clear half of the ownedKeys contract.
+    await page.getByTestId("check-expect-mode-select").click();
+    await page.getByRole("option", { name: "Contains" }).click();
+    await page.getByTestId("check-expect-input").fill("+PONG");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" })
+      .click();
+    await page.waitForURL(/\/edit/);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-expect-mode-select")).toContainText(
+      "Contains",
+    );
+    await expect(page.getByTestId("check-expect-input")).toHaveValue("+PONG");
+  });
+
   test("IMAP check form auto-toggles TLS when port 993 is entered, and round-trips on edit", async ({
     authenticatedPage,
   }) => {
