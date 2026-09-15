@@ -267,3 +267,57 @@ gh api -X PATCH repos/fclairamb/solidping/code-scanning/alerts/<n> \
   drafted in Proposal A3. Comfortably above the UI's current 12-month usage
   with headroom for any future ask; the exact number matters less than a
   bound existing at all.
+
+## Implementation Plan
+
+**Scope of this pass: section A (code changes) only.** Section B (the
+`gh api -X PATCH .../code-scanning/alerts/<n>` dismissals) is deliberately
+**out of scope** here: the spec's own Acceptance says the dismissals happen
+"after the batch lands on `main` and CodeQL has re-run", so they cannot be
+performed from an unpushed branch without risking a dismissal that hides an
+alert a code change was supposed to remove. No `gh api` call is made by this
+pass, and no live alert state is touched.
+
+1. **A1 — session cookie hardening.** Move `isTLS` out of
+   `statuspagelock` into `httpx.IsTLS(*http.Request) bool` (carrying the
+   `X-Forwarded-Proto` rationale in its doc comment); `statuspagelock`
+   delegates to it. `setAccessTokenCookie` and `clearAuthCookie` grow a
+   `*http.Request` parameter and set `HttpOnly: true`,
+   `SameSite: http.SameSiteLaxMode`, `Secure: httpx.IsTLS(req)`. All ~17 call
+   sites updated.
+2. **A2 — redact URLs in chat-command logs.** New
+   `checkhttp.RedactURL(string) string` wrapping `(*url.URL).Redacted()`,
+   returning the input unchanged when it does not parse. Used at the four
+   Slack / Teams / Discord `checks add` log sites. Confirm
+   `stringConfigValue` (checkhttp/config.go) cannot carry the credential into
+   the wrapped `err`.
+3. **A3 — bound two user-driven allocations.** `/fake?slowResponse=`: cap
+   `bytes` at 64 KiB and `iterations × bytes` at 1 MiB, rejecting with
+   `ErrSlowResponseBytes`; document on the `/fake` wiki page. SLO history
+   `months`: clamp at 36 with a 400 above, documented in the OpenAPI
+   description of the parameter.
+4. **A4 — drop the support-inbox capacity hints** in `ListThreads` /
+   `ListMessages` (the handlers already rebuild a non-nil `out` slice, so the
+   JSON shape is unchanged).
+5. **A5 — escape the backslash first** in `escapeMarkdownAltText`
+   (`/[\\[\]]/g`), with a `foo\]bar` unit case.
+6. **A6 — SSH `verifyFingerprint` compares inside the `HostKeyCallback`**,
+   returning a typed mismatch error; the captured fingerprint is still
+   reported. Operator-visible status and message are unchanged.
+7. **A7 — SFTP optional host-key pin.** `host_key_fingerprint` on
+   `SFTPConfig` (+ `FromMap`, `GetConfig`, `Validate`), verified inside the
+   callback using `checkssh.Fingerprint`; the observed fingerprint is always
+   written to `output.host_key_fingerprint`, pinned or not. Wired through the
+   dash0 SFTP form and the check-types doc page.
+8. **A8 — `/fake?redirectTo=` becomes a same-origin-or-relative check**,
+   replacing the private-prefix blocklist.
+9. **A9 — deterministic e2e fixtures.** `uniqueStamp()` in `e2e/fixtures.ts`
+   backed by `crypto.randomUUID()`, used at every `Math.random()` site under
+   `e2e/`; the 2FA QR test asserts on `new URL(req.url()).origin` rather than
+   a `qrserver.com` substring.
+
+Tests: `RedactURL` (userinfo stripped / garbage passthrough), the
+`slowResponse` and `months` ceilings (OK at the bound, 400 above), the
+Markdown backslash case, an SSH mismatch refused at the handshake, the three
+SFTP pin cases (match / mismatch / unset-with-fingerprint-in-output), and the
+`/fake` redirect accept/refuse matrix.
