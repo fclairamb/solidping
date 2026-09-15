@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
@@ -139,7 +140,8 @@ func checksAdd(ctx context.Context, svc *Service, cmd *Command) (*CommandRespons
 
 	result, err := svc.CreateCheck(ctx, cmd.GuildID, target)
 	if err != nil {
-		slog.ErrorContext(ctx, "Discord: failed to create check", "url", target, "error", err)
+		slog.ErrorContext(ctx, "Discord: failed to create check",
+			"url", checkhttp.RedactURL(target), "error", err)
 
 		return ephemeral("Failed to create check: " + err.Error()), nil
 	}
