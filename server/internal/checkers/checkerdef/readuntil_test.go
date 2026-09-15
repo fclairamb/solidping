@@ -93,6 +93,30 @@ func TestReadUntilChunkReadsOnce(t *testing.T) {
 	r.Equal("first", string(res.Data))
 }
 
+// A criterion-less read that happens to FILL the buffer is still a chunk, not
+// a cap failure: the caller asked for no match, so "no match in the first N
+// bytes" would be a nonsense verdict. This is the regression that reordering
+// the cap and `match == nil` exits fixed — a bare `read({ maxBytes: 16 })` on a
+// chatty peer, and a UDP datagram longer than `maxBytes`, both land here.
+func TestReadUntilChunkTruncatesAtLimit(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	client, server := readUntilPipe(t)
+
+	go func() {
+		_, _ = server.Write(bytes.Repeat([]byte("x"), 256))
+	}()
+
+	res := checkerdef.ReadUntil(client, time.Now().Add(2*time.Second), nil, 16)
+
+	r.Equal(checkerdef.ReadUntilChunk, res.Outcome)
+	r.NoError(res.Err)
+	r.Len(res.Data, 16)
+	r.Equal(16, res.Received)
+	r.Equal(1, res.Reads)
+}
+
 // A peer that closes mid-conversation stops the loop with io.EOF and the
 // partial buffer intact — that partial is what a caller reports.
 func TestReadUntilStopsOnEOF(t *testing.T) {
