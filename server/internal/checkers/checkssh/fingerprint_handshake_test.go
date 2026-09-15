@@ -88,9 +88,12 @@ func startFakeSSHServer(t *testing.T) *fakeSSHServer {
 	t.Cleanup(func() { _ = listener.Close() })
 
 	// The banner probe the checker runs first needs the server to be reachable.
+	dialer := &net.Dialer{Timeout: time.Second}
+	address := net.JoinHostPort(srv.host, strconv.Itoa(srv.port))
+
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		probe, dialErr := net.DialTimeout("tcp", net.JoinHostPort(srv.host, strconv.Itoa(srv.port)), time.Second)
+		probe, dialErr := dialer.DialContext(t.Context(), "tcp", address)
 		if dialErr == nil {
 			_ = probe.Close()
 
@@ -138,7 +141,7 @@ func TestVerifyFingerprintRefusesAtTheHandshake(t *testing.T) {
 	result, err = checker.Execute(t.Context(), srv.config(wrong))
 	r.NoError(err)
 
-	// Operator-visible behaviour is unchanged: still down, still quoting both
+	// Operator-visible behavior is unchanged: still down, still quoting both
 	// fingerprints.
 	r.Equal(checkerdef.StatusDown, result.Status)
 

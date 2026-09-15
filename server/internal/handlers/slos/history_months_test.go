@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -55,7 +56,7 @@ func TestSLOHistoryMonthsCeiling(t *testing.T) {
 	r := require.New(t)
 
 	router, dbSvc, org := newSLOHistoryRouter(t)
-	checkUID := seedCheckFor(t, dbSvc, org.UID, "api")
+	checkUID := seedCheckFor(t, dbSvc, org.UID, "history-api")
 
 	rec := postSLO(t, router, map[string]any{"name": "API uptime", "checkUid": checkUID})
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
@@ -78,11 +79,11 @@ func TestSLOHistoryMonthsCeiling(t *testing.T) {
 	// Positive controls: the dashboard's 12 and the exact ceiling both work.
 	r.Equal(http.StatusOK, history("12").Code)
 
-	atCeiling := history(fmt.Sprint(slos.MaxHistoryMonths))
+	atCeiling := history(strconv.Itoa(slos.MaxHistoryMonths))
 	r.Equal(http.StatusOK, atCeiling.Code, atCeiling.Body.String())
 
 	for _, over := range []string{
-		fmt.Sprint(slos.MaxHistoryMonths + 1),
+		strconv.Itoa(slos.MaxHistoryMonths + 1),
 		"1000",
 		"2147483647",
 	} {

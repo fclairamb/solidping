@@ -110,30 +110,12 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		authMethods = append(authMethods, ssh.PublicKeys(signer))
 	}
 
-	// The observed host key is ALWAYS reported, pinned or not, so an operator
-	// can read it off a passing check and paste it into host_key_fingerprint.
-	// With a pin set, the comparison happens inside the callback (mirroring
-	// checkssh.verifyFingerprint) so the handshake itself refuses an
-	// unexpected key; with no pin the callback still cannot reject anything —
-	// these are reachability checks against a host the operator owns.
 	var observedFingerprint string
-
-	hostKeyCallback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
-		observedFingerprint = checkssh.Fingerprint(key)
-		output[outputKeyHostKeyFingerprint] = observedFingerprint
-
-		if cfg.HostKeyFingerprint != "" && observedFingerprint != cfg.HostKeyFingerprint {
-			return fmt.Errorf("%w: got %s, expected %s",
-				errHostKeyMismatch, observedFingerprint, cfg.HostKeyFingerprint)
-		}
-
-		return nil
-	}
 
 	sshConfig := &ssh.ClientConfig{
 		User:            cfg.Username,
 		Auth:            authMethods,
-		HostKeyCallback: hostKeyCallback,
+		HostKeyCallback: hostKeyCallback(cfg.HostKeyFingerprint, output, &observedFingerprint),
 		Timeout:         timeout,
 	}
 
@@ -238,6 +220,27 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Metrics:  metrics,
 		Output:   output,
 	}, nil
+}
+
+// hostKeyCallback builds the SSH host key callback for an SFTP check.
+//
+// The observed key is ALWAYS recorded in the output, pinned or not, so an
+// operator can read it off a passing check and paste it into
+// host_key_fingerprint. With `pin` set the comparison happens INSIDE the
+// callback (mirroring checkssh.verifyFingerprint) so the handshake itself
+// refuses an unexpected key; with no pin the callback accepts anything, which
+// is what a reachability probe against a host the operator owns needs.
+func hostKeyCallback(pin string, output map[string]any, observed *string) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		*observed = checkssh.Fingerprint(key)
+		output[outputKeyHostKeyFingerprint] = *observed
+
+		if pin != "" && *observed != pin {
+			return fmt.Errorf("%w: got %s, expected %s", errHostKeyMismatch, *observed, pin)
+		}
+
+		return nil
+	}
 }
 
 func mergeOutput(base, extra map[string]any) map[string]any {
