@@ -754,17 +754,52 @@ kafka://hostname:9092
 
 ### RabbitMQ {#rabbitmq}
 
-Monitor RabbitMQ message queue connectivity.
+Monitor RabbitMQ, in one of two modes.
 
-**URL Format:**
-```
-amqp://user:password@hostname:5672
-```
+**AMQP mode** (the default) connects over the AMQP protocol itself and,
+optionally, inspects a queue's depth and consumer count:
 
 | Option | Description | Example |
 |--------|-------------|---------|
-| URL | AMQP connection string | `amqp://guest:guest@rabbitmq:5672` |
+| Host | RabbitMQ hostname | `rabbitmq.example.com` |
+| Port | AMQP port | `5672` |
+| Username / Password | AMQP credentials | `guest` / `guest` |
+| Virtual Host | AMQP vhost | `/` |
+| Queue | Queue to inspect (optional) | `my-queue` |
+| TLS | Connect over `amqps://` | |
 | Timeout | Connection timeout | `10s` |
+
+**Management mode** talks to RabbitMQ's HTTP management API instead. It keeps
+the same backward-compatible up/down probe (`GET /api/health/checks/alarms`
+— down the moment RabbitMQ's own resource alarm is already active and
+blocking publishers), and adds an early-warning layer on top: it also reads
+each node's memory and disk figures from `GET /api/nodes` and can grade them
+against two-tier warning/critical thresholds — so a check can page *before*
+RabbitMQ's own watermark trips, not only once it already has.
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| Host | RabbitMQ hostname | `rabbitmq.example.com` |
+| Management Port | Management API port | `15672` |
+| Username / Password | Management API credentials | `guest` / `guest` |
+| Memory used warning/critical | Ceiling on memory used: a percentage of RabbitMQ's high watermark, or a byte size | `80%`, `1.5GiB` |
+| Disk free warning/critical | Floor on free disk: a byte size only | `10GiB` |
+| Timeout | Connection timeout | `10s` |
+
+Memory accepts a percentage because RabbitMQ reports both `mem_used` and the
+high watermark (`mem_limit`) per node, so "80% of the watermark" is a
+computable ratio. Disk accepts a byte size only: the management API reports
+`disk_free` and the low watermark but never the volume's total size, so
+there is no denominator to compute a percentage of.
+
+In a cluster, the worst node decides the check's status: a critical breach on
+any node fails the check, a warning breach (with no critical breach anywhere)
+puts it in the amber warning state, which counts as up and never opens an
+incident. Metrics are recorded on every management-mode execution, with or
+without thresholds configured, so a check gains memory/disk history for free.
+
+Thresholds are only accepted in management mode — AMQP has no visibility
+into a node's resource usage.
 
 ### MQTT {#mqtt}
 
