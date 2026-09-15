@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 import { generateTotp } from "./totp-utils";
 
 // Login-time 2FA verification. This flow was broken from day one: the client
@@ -17,7 +17,7 @@ test.describe("Login with 2FA", () => {
   // pattern) because enabling 2FA on the shared test@test.com user would
   // lock every other spec out of its login.
   async function seedEnrolledUser(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `login-2fa-${stamp}@unknown.example`;
 
     const createUserResp = await page.request.post(
@@ -37,7 +37,7 @@ test.describe("Login with 2FA", () => {
     expect(loginResp.status()).toBe(200);
     const login = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `l2f-${stamp.toString(36)}`;
+    const orgSlug = `l2f-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${login.accessToken}` },
       data: { name: `Login 2FA Co ${stamp}`, slug: orgSlug },

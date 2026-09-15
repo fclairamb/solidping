@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-23-04: a fresh database seeds admin@solidping.io / solidpass as
 // a superadmin, and both halves of that pair are published in a public
@@ -14,7 +14,7 @@ test.describe("Forced password change", () => {
   const OLD_PASSWORD = "Seeded-Pass-123!";
 
   async function seedFlaggedUser(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `forced-rot-${stamp}@unknown.example`;
 
     const createResp = await page.request.post(`${API_BASE}/api/v1/test/users`, {

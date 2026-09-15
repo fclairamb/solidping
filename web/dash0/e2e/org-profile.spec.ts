@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-08-12: an owner edits the organization's profile — name, URL
 // slug and logo — from the settings page. Renaming lands the user
@@ -9,7 +9,7 @@ import { test, expect, API_BASE } from "./fixtures";
 // rename here cannot disturb the shared `test` fixture org.
 test.describe("Organization profile", () => {
   async function seedOwnedOrg(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `profile-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -31,7 +31,7 @@ test.describe("Organization profile", () => {
 
     const session = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `prof-${stamp.toString(36)}`;
+    const orgSlug = `prof-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${session.accessToken}` },
       data: { name: `Profile Co ${stamp}`, slug: orgSlug },
@@ -292,7 +292,7 @@ test.describe("Organization profile", () => {
   }) => {
     const { orgSlug, ownerToken } = await seedOwnedOrg(page);
 
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const adminEmail = `profile-admin-${stamp}@unknown.example`;
     const adminPassword = "Strong-Pass-123!";
 

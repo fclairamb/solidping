@@ -1,4 +1,4 @@
-import { test, expect, API_BASE, type Page, DASH_BASE } from "./fixtures";
+import { test, expect, API_BASE, type Page, DASH_BASE, uniqueStamp } from "./fixtures";
 
 // Covers the empty-state onboarding hero (EmptyStateOnboarding, rendered on
 // /orgs/$org when the org has zero checks) and specifically the 2026-07-11
@@ -269,7 +269,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
   test.describe("quick-create redirect (needs a real empty org)", () => {
     /** Creates a fresh org with zero checks, authenticated as its owner. */
     async function seedEmptyOrg(page: Page): Promise<string> {
-      const stamp = Date.now() + Math.floor(Math.random() * 1000);
+      const stamp = uniqueStamp();
       const email = `quickcreate-${stamp}@unknown.example`;
       const password = "Strong-Pass-123!";
 
@@ -291,7 +291,7 @@ test.describe("Empty-state onboarding (zero-checks dashboard hero)", () => {
       expect(loginResp.status()).toBe(200);
       const session = (await loginResp.json()) as { accessToken: string };
 
-      const slug = `qc-${stamp.toString(36)}`;
+      const slug = `qc-${stamp}`;
       const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
         headers: { Authorization: `Bearer ${session.accessToken}` },
         data: { name: `Acme Quick Create ${stamp}`, slug },
