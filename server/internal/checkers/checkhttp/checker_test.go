@@ -441,13 +441,13 @@ func TestHTTPConfig_RoundTrip_QueryMethod(t *testing.T) {
 	r.NoError(cfg.FromMap(map[string]any{
 		"url":    "http://example.com",
 		"method": "QUERY",
-		"body":   `{"query": "test"}`,
+		"body":   "search-term=widgets",
 	}))
 	r.Equal("QUERY", cfg.Method)
 
 	result := cfg.GetConfig()
 	r.Equal("QUERY", result["method"])
-	r.Equal(`{"query": "test"}`, result["body"])
+	r.Equal("search-term=widgets", result["body"])
 }
 
 func TestHTTPChecker_Type(t *testing.T) {
@@ -1795,64 +1795,35 @@ func TestHTTPChecker_Execute_QueryMethodRedirect(t *testing.T) {
 		version.UserAgent = version.DefaultUserAgent()
 	}
 
-	const requestBody = `{"query": "test"}`
-
-	newQueryRedirectServers := func(t *testing.T) (final, redirector *httptest.Server, finalHit *bool, finalMethod, finalBody *string) {
-		t.Helper()
-
-		hit := false
-		method := ""
-		body := ""
-
-		final = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			hit = true
-			method = r.Method
-
-			b, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Fatalf("failed to read final request body: %v", err)
-			}
-			body = string(b)
-
-			w.WriteHeader(http.StatusOK)
-		}))
-		t.Cleanup(final.Close)
-
-		redirector = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, final.URL, http.StatusTemporaryRedirect)
-		}))
-		t.Cleanup(redirector.Close)
-
-		return final, redirector, &hit, &method, &body
-	}
+	const requestBody = "search-term=widgets"
 
 	t.Run("307 re-sends QUERY with the body", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		_, redirector, finalHit, finalMethod, finalBody := newQueryRedirectServers(t)
+		servers := newQueryRedirectServers(t)
 
 		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
-			URL:    redirector.URL,
+			URL:    servers.redirector.URL,
 			Method: "QUERY",
 			Body:   requestBody,
 		})
 		r.NoError(err)
 		r.Equal(checkerdef.StatusUp, result.Status)
-		r.True(*finalHit, "the final destination must have been reached")
-		r.Equal("QUERY", *finalMethod)
-		r.Equal(requestBody, *finalBody)
+		r.True(*servers.finalHit, "the final destination must have been reached")
+		r.Equal("QUERY", *servers.finalMethod)
+		r.Equal(requestBody, *servers.finalBody)
 	})
 
 	t.Run("followRedirects false stops at the 307", func(t *testing.T) {
 		t.Parallel()
 
 		r := require.New(t)
-		_, redirector, finalHit, _, _ := newQueryRedirectServers(t)
+		servers := newQueryRedirectServers(t)
 
 		noFollow := false
 		result, err := (&HTTPChecker{}).Execute(context.Background(), &HTTPConfig{
-			URL:             redirector.URL,
+			URL:             servers.redirector.URL,
 			Method:          "QUERY",
 			Body:            requestBody,
 			FollowRedirects: &noFollow,
@@ -1861,8 +1832,54 @@ func TestHTTPChecker_Execute_QueryMethodRedirect(t *testing.T) {
 		r.NoError(err)
 		r.Equal(checkerdef.StatusUp, result.Status)
 		r.Equal(http.StatusTemporaryRedirect, result.Output[checkerdef.OutputKeyStatusCode])
-		r.False(*finalHit, "the redirect target must not have been reached")
+		r.False(*servers.finalHit, "the redirect target must not have been reached")
 	})
+}
+
+// queryRedirectServers bundles a QUERY-redirect server pair with pointers that
+// capture whether/how the final destination was hit, so subtests can assert
+// on them after Execute returns.
+type queryRedirectServers struct {
+	redirector             *httptest.Server
+	finalHit               *bool
+	finalMethod, finalBody *string
+}
+
+// newQueryRedirectServers builds a fresh final destination + 307-redirector
+// pair. The final destination captures the method and body it actually
+// received, so a test can confirm both survived the redirect.
+func newQueryRedirectServers(t *testing.T) queryRedirectServers {
+	t.Helper()
+
+	hit := false
+	method := ""
+	body := ""
+
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		method = r.Method
+
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read final request body: %v", err)
+		}
+		body = string(b)
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(final.Close)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, final.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirector.Close)
+
+	return queryRedirectServers{
+		redirector:  redirector,
+		finalHit:    &hit,
+		finalMethod: &method,
+		finalBody:   &body,
+	}
 }
 
 // jsonPathStatusIsOK builds the assertion used across the read-gate tests:
