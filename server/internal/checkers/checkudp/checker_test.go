@@ -23,7 +23,7 @@ const localhost = "127.0.0.1"
 func udpEcho(t *testing.T, handle func(conn net.PacketConn, from net.Addr, payload []byte)) int {
 	t.Helper()
 
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	conn, err := (&net.ListenConfig{}).ListenPacket(t.Context(), "udp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = conn.Close() })

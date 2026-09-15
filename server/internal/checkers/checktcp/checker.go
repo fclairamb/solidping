@@ -176,7 +176,7 @@ func (c *TCPChecker) executeDirect(
 // already-resolved `ip:port` in the former case and the raw configured
 // `host:port` in the latter (remote-side resolution).
 //
-//nolint:funlen,cyclop,gocognit // TCP connection requires comprehensive logic
+//nolint:funlen // TCP connection requires comprehensive logic
 func (c *TCPChecker) connect(
 	ctx context.Context,
 	dialer checkerdef.ContextDialer,
