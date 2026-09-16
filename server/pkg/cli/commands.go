@@ -484,12 +484,24 @@ func GetCommands() []*cli.Command {
 					Description: "Loads a JSON or YAML export document and upserts each check by slug. " +
 						"This never deletes: a check removed from the file simply stays untouched. Always " +
 						"start from a fresh `sp checks export` before hand-editing, and use `sp apply --prune` " +
-						"instead if you need delete-by-absence.",
+						"instead if you need delete-by-absence.\n\n" +
+						"With --from, <file> is a third-party source file instead of a SolidPing export: " +
+						"today only `uptime-kuma-db` (a Kuma kuma.db SQLite file, read locally and never " +
+						"uploaded) is supported. Unlike the plain import, --from previews by default — pass " +
+						"--apply to write.",
 					ArgsUsage: "<file>",
 					Flags: []cli.Flag{
 						&cli.BoolFlag{
 							Name:  "dry-run",
-							Usage: "Preview created/updated counts without mutating",
+							Usage: "Preview created/updated counts without mutating (default when --from is not set)",
+						},
+						&cli.StringFlag{
+							Name:  flagFrom,
+							Usage: "Convert from a third-party source instead of a SolidPing export document: uptime-kuma-db",
+						},
+						&cli.BoolFlag{
+							Name:  "apply",
+							Usage: "With --from, write the converted checks instead of only previewing them",
 						},
 					},
 					Action: checksImportAction,
