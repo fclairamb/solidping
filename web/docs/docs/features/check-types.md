@@ -1433,6 +1433,10 @@ Run through SSH tunnel** in the dashboard. This covers the classic bastion use
 cases (a database or broker on a private network): `http`, `tcp`, `ssl`,
 `websocket`, `grpc`, `postgresql`, `mysql`, `mssql`, `oracle`,
 `clickhouse`, `redis`, `mongodb`, `rabbitmq`, `kafka`, `mqtt`, `smtp`, `imap`, `pop3`, and `ftp`.
+A [`js` check](./javascript-checks.md#running-through-an-ssh-tunnel) can tunnel
+too: its `http.*` and socket handles are dialed through the bastion, but a
+sub-check of an unlisted type or `browser.open()` is refused rather than run
+from the worker's own network.
 
 UDP- and ICMP-based types (`icmp`, `udp`, `ntp`, `snmp`, `dns`, `dnsbl`, `sip`,
 `a2s`) cannot tunnel — an SSH `direct-tcpip` forward is TCP only. The dashboard

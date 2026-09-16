@@ -45,6 +45,7 @@ that used to work.
 | `env` | map of string → string, ≤ 50 entries | Dashboard form, API, `sp`, config-as-code | Public, plaintext — see below |
 | `secrets` | map of string → string, ≤ 50 entries | Dashboard form, API, `sp`, config-as-code | Encrypted, write-only in the form — see below |
 | `timeout` | duration string, ≤ `30s` | API, `sp`, config-as-code | Defaults to `30s`. The one field with **no** dashboard control |
+| `tunnelCheckUid` | uid of an `ssh` check | Dashboard form (Advanced), API, `sp`, config-as-code | Runs the script's `http.*`, `http.session()`, and `tcp`/`udp`/`websocket` handles through that bastion — see below |
 
 **The dashboard form edits `script`, `env`, and `secrets`.** Only `timeout` has
 no field in the `js` check form — it is set through the REST API, the `sp`
@@ -94,6 +95,22 @@ and `${env:MY_VAR}` — so a tracked manifest can carry
   "secrets": { "PASSWORD": "${param:sso-password}" }
 }
 ```
+
+### Running through an SSH tunnel
+
+A `js` check can carry a `tunnelCheckUid` [like any other tunnel-capable
+type](./ssh-tunnels.md). Once set, three rules apply:
+
+- `http.*`, `http.session()`, and the `tcp`/`udp`/`websocket` handles are
+  dialed through the bastion — the hostname is resolved on the far side, not
+  by the worker, and a tunneled `http.<method>()` response gains
+  `tunneled: true` (`udp.open()` is still refused: UDP cannot be tunneled).
+- A sub-check of a type that itself does **not** support tunneling
+  (`solidping.udp(...)`, `solidping.icmp(...)`, `solidping.dns(...)`, …)
+  is refused with an error result rather than silently run from the
+  worker's own network.
+- `browser.open()` throws: Chrome has its own network stack and cannot be
+  routed through the tunnel.
 
 ## Result contract {#result-contract}
 
@@ -230,6 +247,7 @@ next. For a flow that needs cookies across calls, see
 | `url` | The final URL, after any redirects that were followed |
 | `redirects` | The chain that was walked: `[{statusCode, location}]`, empty when nothing was followed |
 | `duration` | Milliseconds |
+| `tunneled` | `true` when the check has a `tunnelCheckUid` and the request was dialed through it — present only when true, so an untunneled response's shape is unchanged. See [Running through an SSH tunnel](#running-through-an-ssh-tunnel) |
 | `error` | Present **instead of** every field above when the request could not even be made (DNS failure, connection refused, …) — always check `resp.error` before reading `resp.statusCode` |
 
 ```js
@@ -848,6 +866,7 @@ type: js
 name: Login smoke test
 period: 5m
 config:
+  tunnelCheckUid: 8f2c1a6e-3b4d-4e5f-9a1b-2c3d4e5f6a7b # the bastion's ssh check uid; omit if reachable directly
   script: |
     var login = http.post(env.BASE_URL + "/login", {
       headers: { "Content-Type": "application/json" },

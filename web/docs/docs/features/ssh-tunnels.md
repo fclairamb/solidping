@@ -69,6 +69,26 @@ check connects in plaintext through the tunnel — use explicit TLS (`AUTH TLS`)
 if you need the control channel encrypted end to end.
 :::
 
+- **Scripting:** `js`
+
+:::note JavaScript checks
+`js` scripts get three rules when the check is tunneled:
+
+- `http.*`, `http.session()`, and the `tcp`/`udp`/`websocket` handles from
+  [`javascript-checks.md`](./javascript-checks.md) are dialed through the
+  bastion, same as any other tunneled type (`udp.open()` is still refused —
+  UDP cannot be tunneled, tunneled or not).
+- A sub-check of a type **not** in the table above (`solidping.udp(...)`,
+  `solidping.icmp(...)`, `solidping.dns(...)`, …) is **refused** rather than
+  silently run from the worker's own network — a script must not be able to
+  believe it probed through the bastion when it did not.
+- `browser.open()` is **refused**: Chrome has its own network stack and
+  cannot be routed through the tunnel.
+
+See [JavaScript checks](./javascript-checks.md#running-through-an-ssh-tunnel)
+for the details.
+:::
+
 ## Host-key verification is required
 
 An SSH check may be used as a tunnel **only if its `expected_fingerprint` is
