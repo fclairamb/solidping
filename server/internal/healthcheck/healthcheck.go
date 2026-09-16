@@ -7,6 +7,7 @@ package healthcheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,13 +23,18 @@ const DefaultTimeout = 3 * time.Second
 // the signal an orchestrator wants from this probe.
 const healthPath = "/api/mgmt/health"
 
+// errUnhealthy wraps a non-200 response so Check's error is a static,
+// wrapped sentinel (err113) rather than an ad-hoc dynamic one, while still
+// carrying the actual status code via %w/%d formatting at the call site.
+var errUnhealthy = errors.New("healthcheck: unexpected status")
+
 // URLFromListen derives the loopback health-check URL from a server listen
 // address such as ":4000", "0.0.0.0:4000" or "localhost:4000" (the shape of
 // config.Config.Server.Listen / SP_SERVER_LISTEN). Only the port is used —
 // the probe always targets 127.0.0.1 since it runs inside the same
 // container/process group as the server it checks.
 func URLFromListen(listen string) string {
-	port := listen
+	var port string
 
 	if _, p, err := net.SplitHostPort(listen); err == nil {
 		port = p
@@ -59,7 +65,7 @@ func Check(ctx context.Context, url string, timeout time.Duration) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("healthcheck returned status %d", resp.StatusCode)
+		return fmt.Errorf("%w: %d", errUnhealthy, resp.StatusCode)
 	}
 
 	return nil
