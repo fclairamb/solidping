@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE, DASH_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE, uniqueStamp } from "./fixtures";
 
 // The backend serializes discovery scans per org (409 DISCOVERY_ALREADY_RUNNING
 // while any plan or chunk job is live), so a test that starts a scan must wait
@@ -49,23 +49,26 @@ test.describe("Network Discovery", () => {
     await page.waitForURL((url) => !url.pathname.includes("login"));
   });
 
-  test("discovery sidebar link is visible for admin", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test`);
-    const sidebar = page.getByTestId("app-sidebar");
-    await expect(sidebar).toBeVisible();
-    // Discovery link should appear in the sidebar.
-    const discoveryLink = page.getByRole("link", { name: /discovery/i });
-    await expect(discoveryLink).toBeVisible();
+  test("discovery tab is visible under Organization for admin", async ({ page }) => {
+    // Discovery lives under the Organization tab row now (spec
+    // 2026-09-16-09), guarded by the same admin-only layout as every other
+    // organization tab — the test user is an admin of "test", so it's
+    // reachable the same way as the other tabs.
+    await page.goto(`${DASH_BASE}/orgs/test/organization`);
+    const tabNav = page.getByTestId("tab-nav");
+    await expect(tabNav).toBeVisible();
+    const discoveryTab = tabNav.getByRole("link", { name: /discovery/i });
+    await expect(discoveryTab).toBeVisible();
   });
 
   test("can navigate to discovery index", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /new scan|start new scan/i })).toBeVisible();
   });
 
   test("the discover-via-Freebox dropdown is removed from the index", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     // The standalone Freebox launcher dropdown no longer exists; the unified
     // "Start new scan" flow owns the Freebox path now.
@@ -75,7 +78,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("source filter is visible on the scans list", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     // The source filter is a combobox (Radix Select) labelled "Filter by source".
     await expect(
       page.getByRole("combobox", { name: /filter by source/i }),
@@ -83,14 +86,14 @@ test.describe("Network Discovery", () => {
   });
 
   test("can navigate to new scan form", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await expect(page.getByLabel(/cidr/i)).toBeVisible();
     await expect(page.getByRole("checkbox")).toBeVisible();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
   });
 
   test("new scan form defaults to the LAN method with CIDR fields visible", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // The scan-method select defaults to LAN.
     const methodSelect = page.getByRole("combobox", { name: /scan method/i });
     await expect(methodSelect).toBeVisible();
@@ -100,7 +103,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("Freebox method option is hidden when no granted channel exists", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // Open the scan-method select; the test org has no granted Freebox channel,
     // so only the LAN option is offered.
     await page.getByRole("combobox", { name: /scan method/i }).click();
@@ -109,14 +112,14 @@ test.describe("Network Discovery", () => {
   });
 
   test("start scan button is disabled without confirmation", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     // Confirmation not checked — submit should be disabled.
     await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
   });
 
   test("start scan button enables after confirmation", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
@@ -131,7 +134,7 @@ test.describe("Network Discovery", () => {
 
     // Create a scan through the form; on success it navigates to the detail page.
     await waitForScanQuiescence(page);
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /start scan/i }).click();
@@ -143,7 +146,7 @@ test.describe("Network Discovery", () => {
     await expect(page.getByText(jobUid)).toBeVisible();
 
     // Back on the index, the table must render without throwing.
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     const table = page.getByRole("table");
     await expect(table).toBeVisible();
@@ -155,7 +158,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("scan list no longer shows the bogus IP Address column", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     // The first column header used to be "IP Address" while rendering the scan
     // UID — it has been removed. The header row should not contain it.
@@ -165,14 +168,17 @@ test.describe("Network Discovery", () => {
     }
   });
 
-  test("discovery page header uses the Network breadcrumb crumb", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
-    // The breadcrumb (in the header bar) carries the discovery label, matching
-    // the sidebar entry. There are two "Discovery" texts (sidebar + breadcrumb).
+  test("discovery breadcrumb reads Organization > Discovery", async ({ page }) => {
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(
       page.getByRole("heading", { name: /network discovery/i }),
     ).toBeVisible();
-    await expect(page.locator("header").getByText(/discovery/i)).toBeVisible();
+    // The breadcrumb (in the header bar) now reads Organization > Discovery —
+    // discovery is a tab under Organization (spec 2026-09-16-09), not its own
+    // top-level breadcrumb branch.
+    const header = page.locator("header");
+    await expect(header.getByText(/organization/i)).toBeVisible();
+    await expect(header.getByText(/discovery/i)).toBeVisible();
   });
 
   // Fan-out: a range larger than a /20 (here a /18 → 4 bounded chunks) is now
@@ -180,7 +186,7 @@ test.describe("Network Discovery", () => {
   // page renders the chunk-progress indicator.
   test("large range fans out into chunks and can be stopped mid-scan", async ({ page }) => {
     await waitForScanQuiescence(page);
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // 10.10.0.0/18 = 16384 addresses → 4 chunks of /20.
     await page.fill("textarea", "10.10.0.0/18");
     await page.getByRole("checkbox").check();
@@ -207,14 +213,14 @@ test.describe("Network Discovery", () => {
 
     // The new-scan form re-arms: its Start button is gated only by the confirm
     // checkbox, not by a sticky client-side guard.
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
   test("entering a /8 CIDR shows the large-range warning with host and chunk estimate", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // 10.0.0.0/8 = 16,777,216 addresses → 4096 chunks.
     await page.fill("textarea", "10.0.0.0/8");
 
@@ -242,7 +248,7 @@ test.describe("Network Discovery", () => {
   test("detail header places the back arrow in the right cluster and labels refresh on desktop", async ({
     page,
   }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // The back arrow is rendered (ghost icon button with aria-label "Back").
@@ -273,7 +279,7 @@ test.describe("Network Discovery", () => {
     // Narrow the viewport below the Tailwind `sm` (640px) breakpoint.
     await page.setViewportSize({ width: 390, height: 800 });
 
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // The Refresh button is still present (accessible via its aria-label) but
@@ -287,7 +293,7 @@ test.describe("Network Discovery", () => {
   // The seeded scan renders its suggested checks GROUPED under 127.0.0.1, with a
   // group header carrying the source badge and per-check rows beneath.
   test("scan detail renders discovered checks grouped by host", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // A group card for 127.0.0.1 is shown.
@@ -302,7 +308,7 @@ test.describe("Network Discovery", () => {
 
   // The group header offers "select all in group", which arms the Promote button.
   test("selecting a whole group enables the Promote action", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/${SEEDED_SCAN_UID}`);
     await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     const promoteButton = page.getByRole("button", { name: /promote selected/i });
@@ -323,7 +329,7 @@ test.describe("Network Discovery", () => {
   // and selecting it reveals the Docker-endpoint textarea prefilled with the
   // local socket. The test org has no Docker dependency for this form-level check.
   test("container method is offered and reveals the host textarea", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await expect(page.getByRole("combobox", { name: /scan method/i })).toBeVisible();
 
     // Open the method select and pick Containers.
@@ -339,7 +345,7 @@ test.describe("Network Discovery", () => {
   });
 
   test("container scan start button arms only after confirmation", async ({ page }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await page.getByRole("combobox", { name: /scan method/i }).click();
     await page.getByRole("option", { name: /containers/i }).click();
 
@@ -352,7 +358,7 @@ test.describe("Network Discovery", () => {
   test("Kubernetes method option is hidden when no cluster connection exists", async ({
     page,
   }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // Open the scan-method select; the test org has no kubernetes cluster
     // connection, so the Kubernetes option is not offered (capability-gated).
     await page.getByRole("combobox", { name: /scan method/i }).click();
@@ -367,7 +373,7 @@ test.describe("Network Discovery", () => {
   test("source filter includes the registry sources on the scans list", async ({
     page,
   }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     // The source filter is registry-driven; opening it shows the kubernetes
     // source (registered by the kubernetes discovery type) alongside the rest.
     await page.getByRole("combobox", { name: /filter by source/i }).click();
@@ -386,7 +392,7 @@ test.describe("Network Discovery", () => {
     // Mobile width: the button is present (by accessible name) but its text label
     // is hidden.
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(
       page.getByRole("heading", { name: /network discovery/i }),
     ).toBeVisible();
@@ -410,14 +416,14 @@ test.describe("Network Discovery", () => {
     // first — this test used to flake with 409 DISCOVERY_ALREADY_RUNNING while
     // the stopped /18 fan-out's chunks were still draining.
     await waitForScanQuiescence(page);
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: /start scan/i }).click();
     await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
 
     // Back on the index, click the first body row — the whole row is clickable.
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(page.getByRole("table")).toBeVisible();
     const firstRow = page.locator("tbody tr").first();
     await expect(firstRow).toBeVisible();
@@ -434,7 +440,7 @@ test.describe("Network Discovery", () => {
   test("scan list has no View-checks link and no CIDRs column header", async ({
     page,
   }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery`);
     await expect(
       page.getByRole("heading", { name: /network discovery/i }),
     ).toBeVisible();
@@ -459,5 +465,185 @@ test.describe("Network Discovery", () => {
     ).toBeVisible();
     // Breadcrumb mirrors the page title.
     await expect(page.locator("header").getByText(/my pages/i)).toBeVisible();
+  });
+});
+
+// Spec 2026-09-16-09: discovery moved from a top-level /orgs/$org/discovery
+// route to /orgs/$org/organization/discovery, which also gave it the admin
+// route guard it never had (the sidebar merely hid the link; a non-admin
+// typing the URL used to get the full page). This block covers both halves:
+// the legacy URLs still work (redirect, search params preserved), and the
+// new URL genuinely refuses a non-admin — not just "the sidebar doesn't show
+// it".
+test.describe("Discovery legacy redirects and the organization route guard", () => {
+  const SEEDED_SCAN_UID = "00000000-0000-0000-0000-000000000007";
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`${DASH_BASE}/orgs/test/login`);
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+    await page.waitForURL((url) => !url.pathname.includes("login"));
+  });
+
+  test("legacy /discovery redirects to /organization/discovery", async ({ page }) => {
+    await page.goto(`${DASH_BASE}/orgs/test/discovery`);
+    await page.waitForURL(/\/organization\/discovery$/);
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+  });
+
+  test("legacy /discovery/new redirects and preserves ?method=kubernetes", async ({
+    page,
+  }) => {
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/new?method=kubernetes`);
+    await page.waitForURL(/\/organization\/discovery\/new\?method=kubernetes$/);
+    // The kubernetes sub-form actually renders — proves the search param
+    // survived the redirect, not just the base path.
+    await expect(
+      page.getByRole("combobox", { name: /scan method/i }),
+    ).toHaveText(/kubernetes/i);
+  });
+
+  test("legacy /discovery/$jobUid redirects to /organization/discovery/$jobUid", async ({
+    page,
+  }) => {
+    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await page.waitForURL(
+      new RegExp(`/organization/discovery/${SEEDED_SCAN_UID}$`),
+    );
+    await expect(
+      page.getByRole("heading", { name: /scan details/i }),
+    ).toBeVisible();
+  });
+});
+
+test.describe("A non-admin member cannot reach organization/discovery", () => {
+  // seedOwnedOrg creates a user, logs them in, and creates an org through the
+  // real POST /api/v1/orgs — same technique as org-members-admin-gate.spec.ts.
+  async function seedOwnedOrg(page: Page) {
+    const stamp = uniqueStamp();
+    const email = `disco-owner-${stamp}@unknown.example`;
+    const password = "Strong-Pass-123!";
+
+    const createUserResp = await page.request.post(
+      `${API_BASE}/api/v1/test/users`,
+      { data: { email, password, name: "Disco Owner" } },
+    );
+    if (createUserResp.status() !== 201) {
+      test.skip(
+        true,
+        `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${createUserResp.status()}`,
+      );
+    }
+
+    const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { email, password },
+    });
+    expect(loginResp.status()).toBe(200);
+    const session = (await loginResp.json()) as { accessToken: string };
+
+    const orgSlug = `disco-${stamp}`;
+    const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      data: { name: `Disco Co ${stamp}`, slug: orgSlug },
+    });
+    expect(createOrgResp.status()).toBe(201);
+    const org = (await createOrgResp.json()) as {
+      slug: string;
+      accessToken: string;
+    };
+
+    return { orgSlug, ownerToken: org.accessToken };
+  }
+
+  // seedNonAdmin adds a plain "user" role member (NOT admin/owner, and NOT a
+  // viewer either — the point of this spec is that discovery is closed to
+  // every non-admin, not merely locked to writes) and returns their session.
+  async function seedNonAdmin(page: Page, orgSlug: string, ownerToken: string) {
+    const stamp = uniqueStamp();
+    const email = `disco-user-${stamp}@unknown.example`;
+    const password = "Strong-Pass-123!";
+
+    const createResp = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+      data: { email, password, name: "Disco User" },
+    });
+    if (createResp.status() !== 201) {
+      test.skip(true, "test user-seed endpoint unavailable");
+    }
+
+    const addResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/${orgSlug}/members`,
+      {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        data: { email, role: "user" },
+      },
+    );
+    expect(addResp.status()).toBe(201);
+
+    const login = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { org: orgSlug, email, password },
+    });
+    expect(login.status()).toBe(200);
+    const session = (await login.json()) as {
+      accessToken: string;
+      refreshToken?: string;
+      expiresIn?: number;
+    };
+
+    return session;
+  }
+
+  test("a non-admin member hitting /organization/discovery directly is redirected to the org home", async ({
+    page,
+  }) => {
+    const { orgSlug, ownerToken } = await seedOwnedOrg(page);
+    const session = await seedNonAdmin(page, orgSlug, ownerToken);
+
+    // Swap the browser session to the non-admin — same technique as
+    // org-members-admin-gate.spec.ts's cross-role check.
+    await page.addInitScript(
+      ({ accessToken, refreshToken, expiresIn, slug }) => {
+        localStorage.setItem("solidping_session_token", accessToken as string);
+        if (refreshToken) {
+          localStorage.setItem(
+            "solidping_refresh_token",
+            refreshToken as string,
+          );
+        }
+        if (expiresIn) {
+          localStorage.setItem(
+            "solidping_expires_at",
+            String(Date.now() + Number(expiresIn) * 1000),
+          );
+          localStorage.setItem("solidping_expires_in", String(expiresIn));
+        }
+        localStorage.setItem("solidping_org", slug as string);
+      },
+      {
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken ?? "",
+        expiresIn: session.expiresIn ?? 0,
+        slug: orgSlug,
+      },
+    );
+
+    // This is the guard that did not exist before spec 2026-09-16-09: the old
+    // top-level /orgs/:org/discovery route rendered unconditionally for any
+    // member (only the write actions 403'd server-side). Reaching the new URL
+    // directly — bypassing any nav entirely — must bounce out of /organization.
+    await page.goto(`orgs/${orgSlug}/organization/discovery`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page).toHaveURL(
+      new RegExp(`/orgs/${orgSlug}(?!/organization)(/)?$`),
+    );
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toHaveCount(0);
+
+    // Positive control: the redirect is about the role, not a broken page.
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   });
 });

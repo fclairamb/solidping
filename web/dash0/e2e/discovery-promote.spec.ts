@@ -17,7 +17,7 @@ test.describe("Discovery host promotion", () => {
 
   test("promotes a seeded suggested check end-to-end", async ({ page }) => {
     // Open the seeded scan detail.
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/${SCAN_UID}`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/${SCAN_UID}`);
 
     // The seeded host renders as a group card listing its suggested checks.
     const group = page

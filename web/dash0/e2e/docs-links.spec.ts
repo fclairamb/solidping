@@ -94,11 +94,12 @@ test.describe("Docs links", () => {
   test("discovery list renders a docs link to discovery", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
-    // Discovery is only in the sidebar for org admins; the test user is an
-    // admin of the "test" org (server/test/testdata/testdata.go), so it's
-    // reachable the same way as the other sidebar-driven cases here.
-    await page.getByTestId("app-sidebar").getByRole("link", { name: "Discovery" }).click();
-    await page.waitForURL(/\/discovery/);
+    // Discovery lives under the Organization tab row now (spec
+    // 2026-09-16-09), admin-only end to end; the test user is an admin of the
+    // "test" org (server/test/testdata/testdata.go), so it's reachable.
+    // Navigated to directly rather than via the sidebar, which still points
+    // at the legacy (redirecting) URL until spec 07 removes the entry.
+    await page.goto("orgs/test/organization/discovery");
     await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
