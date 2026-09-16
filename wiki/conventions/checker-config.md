@@ -461,8 +461,12 @@ strictly typed — `SELECT 1` is a UInt8, not text). Output includes
 | `tls` | bool | O | false | Use TLS (amqps://) |
 | `mode` | string | O | `amqp` | Check mode: `amqp` or `management` |
 | `managementPort` | int | O | 15672 | Management API port (for `management` mode). Validation: 1-65535 |
-| `queue` | string | O | | Queue name to verify |
-| `timeout` | duration | O | 10s | Connection timeout (max: 60s) |
+| `queue` | string | O | | Queue name to verify (`amqp` mode only) |
+| `memoryUsedWarning` | string | O | | `management` mode only. Warning ceiling on memory used: a percentage of RabbitMQ's high watermark (`"80%"`) or a byte size (`"1.5GiB"`) |
+| `memoryUsedCritical` | string | O | | `management` mode only. Critical ceiling on memory used, same accepted forms as `memoryUsedWarning`. When both tiers share a unit kind, `memoryUsedWarning` must be < `memoryUsedCritical` |
+| `diskFreeWarning` | string | O | | `management` mode only. Warning floor on free disk: a byte size only (`"20GiB"`) — the management API exposes no total disk size, so a percentage form is rejected |
+| `diskFreeCritical` | string | O | | `management` mode only. Critical floor on free disk, same accepted form as `diskFreeWarning`. When both tiers are set, `diskFreeWarning` must be > `diskFreeCritical` |
+| `timeout` | duration | O | 10s | Connection timeout (max: 30s) |
 
 ---
 
