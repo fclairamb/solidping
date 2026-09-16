@@ -134,3 +134,53 @@ work, not this one.
 LAN/K8s options and the one-scan-per-org rule, but **never states that discovery is
 admin-only** — which is part of why the nav entry read as mysterious. Add that, and update the
 navigation instructions to "Organization → Discovery".
+
+## Implementation Plan
+
+1. **A1 — re-home the route files.** Create `organization.discovery.tsx` (thin `<Outlet/>`
+   layout, mirrors `organization.private-locations.tsx` / `organization.report-schedules.tsx` —
+   needed because three siblings share the `discovery` prefix under `organization`),
+   `organization.discovery.index.tsx` (content of `discovery.index.tsx`, internal links
+   repointed to the new paths), `organization.discovery.new.tsx` (content of
+   `discovery.new.tsx`, same), `organization.discovery.$jobUid.tsx` (thin layout, content of
+   `discovery.$jobUid.tsx`), `organization.discovery.$jobUid.index.tsx` (content of
+   `discovery.$jobUid.index.tsx`, back-link repointed). No new admin guard is written —
+   `organization.tsx`'s existing `if (!user?.isAdmin) { navigate(...); return null; }` covers it.
+2. **A2 — tabs + mobile.** Add the Discovery tab to `organization.tsx`'s `tabs` array, after
+   Private locations / before Uptime reports. `TabNav` already renders `overflow-x-auto` on its
+   `<nav>`, so ten tabs on a 375px viewport scroll horizontally instead of overflowing — verified
+   by reading the component; no code change needed there.
+3. **A3 — breadcrumbs.** `orgs/$org.tsx`'s `Breadcrumbs` component has a bespoke top-level
+   `isDiscovery` branch (matches `/orgs/$org/discovery`) that must move: remove that branch and
+   the `isDiscovery` flag, add `"/orgs/$org/organization/discovery": "discovery"` to
+   `ORG_SECTION_LABELS`, and extend the `isOrganization` branch's deep-leaf handling (same shape
+   as `reportSchedules`' `/new` and `/$uid`) to cover `organization/discovery/new` and
+   `organization/discovery/$jobUid`. Reuses the existing `nav:discovery` i18n key — no locale
+   file edited.
+4. **B — legacy redirects.** Replace the bodies of `discovery.index.tsx`, `discovery.new.tsx`
+   (preserving `?method=` via `validateSearch` + passing `search` through) and
+   `discovery.$jobUid.index.tsx` (preserving `jobUid`) with a
+   `beforeLoad: () => { throw redirect(...) }`, mirroring `organization.index.tsx` /
+   `account.index.tsx`. `discovery.tsx` and `discovery.$jobUid.tsx` stay untouched pass-through
+   layouts (still needed so their children resolve).
+5. **C — backend (optional).** Change the one line registering `orgDiscovery` in `server.go`
+   from a bare `api.NewGroup(...)` to the `orgGroup(...)` helper, after confirming (by reading
+   `RequireOrgWrite`/`requireOrgRole` and `viewer_write_guard_route_table_test.go`) that every
+   write route still answers 403 with `base.ErrorCodeForbidden` for both a viewer and a
+   non-admin member — only the denial message text changes for viewers, which the structural
+   test already tolerates as either bucket. Verify with `make test` before committing.
+6. **D — nav.** Do not touch `AppSidebar.tsx`, `CommandMenu.tsx`, or any `nav.json` — out of
+   scope for this spec, owned by spec 07.
+7. **Tests.** Update `discovery.spec.ts` (repoint every direct navigation at
+   `/orgs/$org/organization/discovery/**`; replace the sidebar-only assertion with one that the
+   Discovery tab appears under Organization; fix the stale "two Discovery texts" comment),
+   `discovery-promote.spec.ts` and `discovery-scan-method.spec.ts` (URL updates),
+   `docs-links.spec.ts` (navigate directly to the new path instead of via the sidebar). Add a new
+   redirect-coverage spec: legacy `/discovery`, `/discovery/new` (incl. `?method=kubernetes`),
+   `/discovery/$jobUid` all land on the `organization/discovery` equivalents; and a non-admin
+   member hitting `/orgs/$org/organization/discovery` directly is bounced to the org home.
+8. **Docs.** `web/docs/docs/features/discovery.md`: state discovery is admin-only, update the
+   nav path to Organization → Discovery.
+9. **Gate.** `make build-dash0`, `bun run lint` (scoped: no new errors vs. base per the dash0
+   CLAUDE.md debt note), scoped e2e run on a side-car, `make build-backend lint-back test` if C
+   is done, then commit `chore: all checks passing for discovery into organization`.
