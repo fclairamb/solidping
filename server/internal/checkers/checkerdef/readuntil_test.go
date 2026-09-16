@@ -14,10 +14,10 @@ import (
 
 // readUntilPipe gives the test one end of an in-memory connection and a
 // goroutine-free way to stuff bytes into the other.
-func readUntilPipe(t *testing.T) (client, server net.Conn) {
+func readUntilPipe(t *testing.T) (net.Conn, net.Conn) {
 	t.Helper()
 
-	client, server = net.Pipe()
+	client, server := net.Pipe()
 
 	t.Cleanup(func() {
 		_ = client.Close()

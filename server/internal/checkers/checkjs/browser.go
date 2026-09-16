@@ -180,7 +180,7 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		}
 
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
-			ctx, cancel, err := r.pageCallContext(opts)
+			ctx, cancel, err := r.callContext(opts)
 			if err != nil {
 				return nil, err
 			}
@@ -391,12 +391,16 @@ func (r *jsRuntime) pageAction(run func(session BrowserSession) (map[string]any,
 // with no session behind it.
 var errPageClosed = errors.New("no browser page is open")
 
-// pageCallContext applies a per-call `timeout` option, with the same rule the
+// callContext applies a per-call `timeout` option, with the same rule the
 // `http.*` options use: a duration string or a number of milliseconds, clamped
 // to the script's remaining time and never widening it. With no option the
 // call simply runs on the execution context — which is what makes a `waitFor`
-// on a selector that never appears end at the CHECK's timeout.
-func (r *jsRuntime) pageCallContext(opts map[string]any) (context.Context, context.CancelFunc, error) {
+// on a selector that never appears, or a socket `read()` on a silent peer, end
+// at the CHECK's timeout.
+//
+// Shared by the `browser` page methods and the `tcp`/`udp`/`websocket` handles:
+// "a per-call timeout is a clamp, never an extension" is one rule, in one place.
+func (r *jsRuntime) callContext(opts map[string]any) (context.Context, context.CancelFunc, error) {
 	if opts == nil {
 		return r.execCtx, func() {}, nil
 	}
