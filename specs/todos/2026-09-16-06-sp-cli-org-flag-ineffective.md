@@ -106,3 +106,92 @@ everywhere in the reproduction.
 This affects every `sp` subcommand that talks to a non-`"default"` org — every user of a
 multi-org instance, or anyone whose org isn't literally named `default`, is currently unable to
 target their org via `sp` at all. Worth a dedicated, careful fix rather than a quick patch.
+
+## Implementation Plan
+
+### Confirmed root cause (read `urfave/cli/v3@v3.12.0` source directly, `go env GOMODCACHE`)
+
+Both suspects in the Problem section are real and independent; either one alone would break
+the repro, and they stack.
+
+**Suspect 1 confirmed** — `flag_impl.go`'s `FlagBase.IsSet()` returns `f.hasBeenSet`, which is
+only flipped to `true` when the value actually comes from a CLI arg / env / config source
+(`flag_impl.go:154,213`), never for the flag's static `Value` default. So `cmd.String("org")`
+being `!= ""` is a meaningless test when the flag's own `Value` default
+(`defaults.Organization = "default"`) is non-empty — it's true on every invocation, flag passed
+or not. `cmd.IsSet("org")` is the correct, and available, distinguishing check. Same story for
+`--url` (`defaults.ServerURL = "http://localhost:4000"`, also non-empty).
+
+**Suspect 2 confirmed, and it's the dominant bug** — `command.go`'s flag resolution:
+- `Command.lookupFlag(name)` (`command.go:408`) walks `cmd.Lineage()` (self → parent →
+  grandparent → …) and returns the **first** `Flag` object found by name — this is what
+  `cmd.String()`/`cmd.IsSet()`/`cmd.Value()` all go through.
+- `FlagBase.Local` (`flag_impl.go:66`, doc: "whether the flag needs to be applied to
+  subcommands as well") defaults to `false` — i.e. **every flag is persistent/inherited by
+  default** in urfave/cli v3, no `Persistent: true` needed. `command_parse.go:32-70`
+  (`parseFlags`) walks every ancestor and copies each non-`Local` ancestor flag into the
+  current command's `appliedFlags`, **but only if the current command doesn't already declare
+  a flag of that same name itself** (`command_parse.go:56-58`: `if cmd.lFlag(name) != nil {
+  applyPersistentFlag = false }`).
+- `GetGlobalFlags()` (`pkg/cli/flags.go`) is a plain function returning a **freshly allocated**
+  `[]cli.Flag` slice — a new `*cli.StringFlag{Name: "org", ...}` object — on every call. It is
+  called once for the root command (`cmd/sp/main.go:24`) and again, independently, for nearly
+  every command-group node (`auth`, `server`, `checks`, `results`, `incidents`, …, 28 call
+  sites across `commands.go` plus one each in `orgs.go`, `files.go`, `params.go`,
+  `email_suppressions.go`, `invitations.go`, `membership_requests.go`, `entitlements.go`, plus
+  2 leaf commands — `checks diff` and `apply` — that do `append(GetGlobalFlags(), ...)`).
+- Net effect: when a group node (e.g. `checks`) redeclares its own `org` flag object, that
+  object — **unset, defaulted to `"default"`** — is what `cmd.lFlag("org")` finds on `checks`,
+  which (a) blocks the root's parsed, actually-set `org` flag from propagating past `checks`
+  in `appliedFlags`, and (b) is itself the object every descendant's `lookupFlag("org")`
+  resolves to (it's nearer in `Lineage()` than root). A leaf like `checks list` doesn't
+  redeclare `org` itself, so it finds `checks`'s shadow flag, not root's. This holds regardless
+  of whether `--org test` was typed before or after `checks` on the command line — the shadow
+  flag on `checks` is never the one urfave/cli actually parsed the value into.
+
+So `cmd.IsSet("org")` alone is **not** sufficient — it would correctly say "not set" per the
+above, but `cfg.Org` would still never receive an explicitly-passed `--org test` either, because
+the value landed on the *root's* flag object, and a leaf command whose lineage passes through a
+shadowing intermediate node never reaches it. The fix must remove the duplicate declarations,
+not just patch the override check.
+
+### Fix
+
+1. `pkg/cli/context.go` (`NewCLIContext`): replace both non-empty-string checks with
+   `cmd.IsSet(...)`:
+   - `if cmd.IsSet(flagURL) { cfg.URL = cmd.String(flagURL) }`
+   - `if cmd.IsSet("org") { cfg.Org = cmd.String("org") }`
+2. Make `GetGlobalFlags()` single-source: keep the one call in `cmd/sp/main.go` (root
+   `Command.Flags`), and delete every other call site so no node in the tree ever redeclares
+   `config`/`url`/`org`/`output`/`json`/`verbose`. Persistence is the v3 default (`Local:
+   false`), so removing the shadow declarations is enough — no `Persistent: true` needed.
+   - `commands.go`: remove `Flags: GetGlobalFlags(),` from the 26 group-level `*cli.Command`
+     literals that have it (`auth`, `server`, `checks`, `results`, `incidents`, `channels`,
+     `events`, `tokens`, `members`, `jobs`, `check-jobs`, `system`, `discovery`, `heartbeat`,
+     `status-pages`, `status-updates`, `maintenance-windows`, `check-groups`, `severities`,
+     `labels`, `regions`, `check-types`, `oncall`, `notifications`, `notification-routes`,
+     `notification-contacts`, `escalation-policies`); change the 2
+     `append(GetGlobalFlags(), <extra>...)` leaf sites (`checks diff`, `apply`) to just
+     `<extra>` (a plain `[]cli.Flag{...}` of their own flags).
+   - `orgs.go`, `files.go`, `params.go`, `email_suppressions.go`, `invitations.go`,
+     `membership_requests.go`, `entitlements.go`: remove their single
+     `Flags: GetGlobalFlags(),` line each.
+3. Run `make fmt` after each mechanical removal pass to fix struct-literal alignment.
+
+### Tests (`pkg/cli/context_test.go`, new file)
+
+1. `TestNewCLIContext_ConfigOrgUsedWhenFlagNotPassed` — write a temp config file with
+   `"org": "acme"`, build a `*cli.Command` with `GetGlobalFlags()` and no args beyond
+   `--config <path>`, call `NewCLIContext` directly, assert `cfg.Config.Org == "acme"`.
+2. `TestNewCLIContext_DefaultOrgWhenNothingSet` — temp config file with no `org` key (or a
+   nonexistent config path), assert `cfg.Config.Org == defaults.Organization` (`"default"`).
+3. `TestNewCLIContext_ExplicitFlagOverridesConfig` — temp config file with `"org": "acme"`,
+   parse `--config <path> --org test`, assert `cfg.Config.Org == "test"`.
+4. `TestCLI_OrgFlagPropagatesThroughCommandTree` (end-to-end) — build a small 3-level command
+   tree (`root` → group → leaf, mirroring the real shape) with `GetGlobalFlags()` declared
+   **only** on `root`, an `Action` on the leaf that calls `NewCLIContext(cmd)` and stashes the
+   resulting `Org` in a captured variable; run `root.Run(ctx, []string{"root", "--org", "test",
+   "group", "leaf"})`; assert the captured org is `"test"`. Add a second run of the same tree
+   with the flag redeclared on the intermediate `group` node (reproducing the pre-fix shape) to
+   document the regression this guards against, asserting it would NOT see `"test"` — proving
+   the test actually exercises the propagation mechanism and isn't vacuously true.
