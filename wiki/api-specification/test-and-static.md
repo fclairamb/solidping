@@ -12,6 +12,20 @@ per-IP rate limit (see `server/internal/app/server.go`).
 ### GET /api/v1/fake
 Fake API endpoint for testing. Auth: public (always available, rate-limited)
 
+Two bounds on this endpoint exist because it is public and unauthenticated,
+and both reject with `400` rather than clamping:
+
+- **`slowResponse=<iterations>,<bytes>,<delay>`** — `iterations` ≤ 100,
+  `delay` ≤ 5000 ms, and (spec 2026-09-15-05) `bytes` ≤ **64 KiB** per chunk
+  with `iterations × bytes` ≤ **1 MiB** in total. The chunk is allocated once
+  per iteration, so an unbounded `bytes` was a one-request OOM against the
+  instance.
+- **`redirectTo=<target>`** — only a relative path (`/path`, never `//host`)
+  or an absolute URL whose scheme and host match the request's own origin.
+  `/fake` lives on the production domain, so an arbitrary target would make it
+  an open redirect; redirect-following checks are exercised against this same
+  host.
+
 Every other endpoint below is only available when `SP_RUNMODE=test` — outside
 test mode they 404, same as any unregistered route.
 

@@ -136,6 +136,11 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// (spec 2026-09-12-06 §3).
 	defer runtime.closeBrowser()
 
+	// Same rule for every socket the script opened: a script that returns
+	// early, throws or is interrupted never leaks a TCP/UDP/WebSocket
+	// connection (spec 2026-09-15-06 §3).
+	defer runtime.closeSockets()
+
 	// Set up interrupt for timeout
 	go func() {
 		<-ctx.Done()
@@ -241,6 +246,55 @@ type jsRuntime struct {
 	// (see attachScreenshot).
 	screenshot   checkbrowser.Capture
 	screenshotAt time.Time
+
+	// sockets holds one disposer per connection the script opened through the
+	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
+	// closeSockets() over it, so nothing leaks whatever the script did.
+	sockets []func()
+	// socketCount is the per-execution CONNECTION budget (maxSocketConnections),
+	// counted at open and never given back by a close: a closed connection is
+	// one this script already spent.
+	socketCount atomic.Int32
+	// socketActions is the read/write budget (maxSocketActions), counted
+	// SEPARATELY from subCheckCount for the same reason browserActions is —
+	// see the comment on maxBrowserActions.
+	socketActions atomic.Int32
+	// payloadUsed is the shared byte pool socket reads draw from. See
+	// remainingPayload.
+	payloadUsed atomic.Int64
+}
+
+// remainingPayload is what is left of the execution's single maxHTTPBody-byte
+// payload pool.
+//
+// Socket reads SPEND from this pool (a `read()` that accumulates 700 KiB leaves
+// 324 KiB), and an HTTP response body is capped at whatever remains — so the
+// 1 MiB in the Limits table is genuinely ONE number rather than one per
+// transport. HTTP bodies deliberately do NOT spend: a script that never touches
+// a socket keeps exactly the per-request 1 MiB cap it has always had.
+func (r *jsRuntime) remainingPayload() int64 {
+	remaining := int64(maxHTTPBody) - r.payloadUsed.Load()
+	if remaining < 0 {
+		return 0
+	}
+
+	return remaining
+}
+
+// spendPayload draws n bytes from the shared pool.
+func (r *jsRuntime) spendPayload(n int) {
+	if n > 0 {
+		r.payloadUsed.Add(int64(n))
+	}
+}
+
+// closeSockets disposes every connection the script opened, in open order.
+// Each disposer is idempotent, so a script that closed its own handles costs
+// nothing here.
+func (r *jsRuntime) closeSockets() {
+	for _, dispose := range r.sockets {
+		dispose()
+	}
 }
 
 // newJSRuntime creates a new jsRuntime with the given context and config.
@@ -262,6 +316,9 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerHTTP()
 	r.registerBase64()
 	r.registerBrowser()
+	r.registerTCP()
+	r.registerUDP()
+	r.registerWebSocket()
 }
 
 // registerEnv exposes config.Env as a read-only "env" object.
@@ -476,6 +533,25 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 			jsKeyOutput: map[string]any{
 				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is disabled on this server",
 			},
+		}
+	}
+
+	// A tunneled script cannot let a sub-check of a type that itself lacks
+	// SupportsTunnel probe from the WORKER's own network while the script
+	// believes it is running behind the bastion — that silent local probing is
+	// the security property this refusal exists to prevent. Types that do
+	// declare SupportsTunnel need nothing here: they already read the dialer
+	// off r.execCtx themselves. Uses the API's own sentence
+	// (handlers/checks/tunnel.go) so the message is familiar wherever it
+	// appears.
+	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
+		if meta := checkerdef.GetCheckTypeMeta(checkType); meta == nil || !meta.SupportsTunnel {
+			return map[string]any{
+				jsKeyStatus: logLevelError,
+				jsKeyOutput: map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr),
+				},
+			}
 		}
 	}
 
@@ -735,6 +811,14 @@ func (r *jsRuntime) httpRequest(
 	client := &http.Client{
 		Timeout:       opts.timeout,
 		CheckRedirect: redirectPolicy(&opts, &redirects),
+		// nil when untunneled and no IP version is pinned (js does not declare
+		// SupportsIPVersion), which keeps http.DefaultTransport and its pooled
+		// connections byte-for-byte as before this feature. When a dialer is
+		// present the transport hands the raw host:port to it — no local
+		// resolution — exactly like the http and prometheus checkers.
+		Transport: checkerdef.BuildHTTPTransport(
+			checkerdef.TunnelDialerFrom(r.execCtx), false, checkerdef.IPVersionFrom(r.execCtx),
+		),
 	}
 
 	if jar != nil {
@@ -752,8 +836,10 @@ func (r *jsRuntime) httpRequest(
 
 	duration := time.Since(start)
 
-	// Read body capped at 1MB
-	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxHTTPBody)))
+	// Read body capped at 1MB — minus whatever socket reads already drew from
+	// the shared payload pool, so the documented 1 MiB is one number for the
+	// whole execution rather than one per transport.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, r.remainingPayload()))
 	if err != nil {
 		return map[string]any{
 			jsKeyStatusCode:           resp.StatusCode,
@@ -762,7 +848,7 @@ func (r *jsRuntime) httpRequest(
 		}
 	}
 
-	return map[string]any{
+	result := map[string]any{
 		jsKeyStatusCode: resp.StatusCode,
 		"body":          string(body),
 		"headers":       responseHeaders(resp),
@@ -770,6 +856,13 @@ func (r *jsRuntime) httpRequest(
 		"redirects":     redirects,
 		jsKeyDuration:   duration.Milliseconds(),
 	}
+
+	// Present only when true, so an untunneled response's shape is unchanged.
+	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
+		result[jsKeyTunneled] = true
+	}
+
+	return result
 }
 
 // redirectPolicy builds the client's CheckRedirect: it records the chain and

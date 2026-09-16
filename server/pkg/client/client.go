@@ -674,13 +674,15 @@ func (c *SolidPingClient) RawPutCheckBySlug(
 
 // rawRequestBytes is rawRequest's sibling for sending a pre-serialized body
 // (e.g. a hand-authored YAML manifest) with an explicit Content-Type. The
-// decoded response (if any) is written into out.
+// decoded response (if any) is written into out. Every caller POSTs — the
+// import/apply/convert/validate family has no other verb — so the method is
+// not a parameter.
 func (c *SolidPingClient) rawRequestBytes(
-	ctx context.Context, method, path, contentType string, body []byte, out any,
+	ctx context.Context, path, contentType string, body []byte, out any,
 ) error {
 	url := strings.TrimRight(c.config.BaseURL, "/") + path
 
-	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -792,7 +794,7 @@ func (c *SolidPingClient) ValidateChecks(
 	}
 
 	var result json.RawMessage
-	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
+	if err := c.rawRequestBytes(ctx, path, contentType, body, &result); err != nil {
 		return nil, err
 	}
 
@@ -812,7 +814,7 @@ func (c *SolidPingClient) ImportChecks(
 	}
 
 	var result json.RawMessage
-	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
+	if err := c.rawRequestBytes(ctx, path, contentType, body, &result); err != nil {
 		return nil, err
 	}
 
@@ -848,7 +850,30 @@ func (c *SolidPingClient) ApplyChecks(
 	}
 
 	var result json.RawMessage
-	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
+	if err := c.rawRequestBytes(ctx, path, contentType, body, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ConvertChecks posts a third-party monitoring export (Gatus config, Uptime
+// Kuma backup JSON, an UptimeRobot API dump, …) to the convert endpoint,
+// which converts it to SolidPing's export format and immediately feeds it
+// through the same apply/dry-run path ImportChecks and ApplyChecks use.
+// source selects the converter (e.g. "uptime-kuma"); body is sent unmodified
+// with Content-Type: application/json, matching what every converter accepts.
+// dryRun previews without mutating.
+func (c *SolidPingClient) ConvertChecks(
+	ctx context.Context, org, source string, body []byte, dryRun bool,
+) (json.RawMessage, error) {
+	path := fmt.Sprintf("/api/v1/orgs/%s/checks/import/convert?source=%s", org, url.QueryEscape(source))
+	if dryRun {
+		path += "&dryRun=true"
+	}
+
+	var result json.RawMessage
+	if err := c.rawRequestBytes(ctx, path, "application/json", body, &result); err != nil {
 		return nil, err
 	}
 

@@ -279,13 +279,20 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map(
-                (m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ),
-              )}
+              {[
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "QUERY",
+                "DELETE",
+                "HEAD",
+                "OPTIONS",
+              ].map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Input

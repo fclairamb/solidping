@@ -22,6 +22,26 @@ Or use PowerShell:
 Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-windows-amd64.exe" -OutFile "solidping.exe"
 ```
 
+### Verify the checksum (recommended)
+
+Every release also publishes `solidping-checksums.txt`, covering all five
+published binaries:
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/solidping-checksums.txt" -OutFile "solidping-checksums.txt"
+
+# The checksums file lists the sha256 for each platform's binary — find the
+# solidping-windows-amd64.exe line and compare it to the hash below.
+Get-FileHash solidping.exe -Algorithm SHA256
+Get-Content solidping-checksums.txt | Select-String "solidping-windows-amd64.exe"
+```
+
+:::note
+`postgres-embedded` (the bundled PostgreSQL supervisor available on Linux and
+macOS) is not available on Windows — use `sqlite` or an external `postgres`
+database instead, as covered above and below.
+:::
+
 ## Running
 
 ### Quick Start with SQLite

@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 )
 
 // handleCommand routes commands to their specific handlers (HTTP transport entry point).
@@ -158,7 +160,7 @@ func (h *Handler) createCheckAndReply(
 		}
 
 		slog.ErrorContext(ctx, "Failed to create check",
-			"url", normalizedURL,
+			"url", checkhttp.RedactURL(normalizedURL),
 			"team_id", cmd.TeamID,
 			"error", err,
 		)

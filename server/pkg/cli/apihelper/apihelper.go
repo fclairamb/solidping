@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -354,7 +353,7 @@ func (h *Helper) promptForCredentials(ctx context.Context) (*TokenData, error) {
 
 	// Prompt for password (hidden input)
 	fmt.Fprint(os.Stderr, "Password: ")
-	passwordBytes, err := term.ReadPassword(syscall.Stdin)
+	passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read password: %w", err)
 	}

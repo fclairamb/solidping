@@ -32,10 +32,10 @@ const (
 	outcomeError       = "error"
 )
 
-// okReply is what an accepted beat is answered with. Two bytes: on UDP it can
-// never exceed the datagram that triggered it (a valid beat is dozens of bytes
-// at minimum), so the listener is not an amplification vector.
-const okReply = "OK"
+// okReply is what an accepted beat is answered with. Three bytes: on UDP it
+// can never exceed the datagram that triggered it (a valid beat is dozens of
+// bytes at minimum), so the listener is not an amplification vector.
+const okReply = "OK\n"
 
 // errLineTooLong closes a TCP connection whose sender exceeded MaxLineBytes.
 // It never reaches the wire — the connection is simply closed.
@@ -441,7 +441,7 @@ func (s *Server) serveLine(ctx context.Context, conn net.Conn, budget *connBudge
 
 	prommetrics.HeartbeatPushBeats.WithLabelValues(TransportTCP, outcomeAccepted).Inc()
 
-	if err := writeAll(conn, []byte(okReply+"\n")); err != nil {
+	if err := writeAll(conn, []byte(okReply)); err != nil {
 		return false
 	}
 

@@ -33,9 +33,14 @@ export function escapeHtmlAttribute(value: string): string {
  * Escapes text for use as Markdown alt text inside `![...]()`. A bare `[`
  * or `]` would otherwise prematurely close the alt-text brackets and
  * corrupt the link syntax.
+ *
+ * The backslash is part of the character class, and it has to be: escaping
+ * only the brackets turned `foo\]bar` into `foo\\]bar` — an escaped
+ * backslash followed by a *live* `]` that closes the alt text early. One pass
+ * over `[\\[\]]` escapes each of the three characters exactly once.
  */
 export function escapeMarkdownAltText(value: string): string {
-  return value.replace(/[[\]]/g, "\\$&");
+  return value.replace(/[\\[\]]/g, "\\$&");
 }
 
 export interface StatusPageBadgeEmbedSnippets {

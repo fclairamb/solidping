@@ -267,7 +267,10 @@ func TestFakeAPI_Redirect(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(t.Context(),
 		http.MethodGet,
-		"/api/v1/fake?redirectTo=https://example.com&redirectStatus=301&period=1",
+		// httptest.NewRequest gives the request Host "example.com" over plain
+		// HTTP, so this absolute URL is the request's OWN origin — the only
+		// absolute shape /fake accepts since spec 2026-09-15-05.
+		"/api/v1/fake?redirectTo=http://example.com/next&redirectStatus=301&period=1",
 		nil,
 	)
 	w := httptest.NewRecorder()
@@ -279,7 +282,7 @@ func TestFakeAPI_Redirect(t *testing.T) {
 
 	// Redirect should only happen when state is "up"
 	if w.Code == http.StatusMovedPermanently {
-		r.Equal("https://example.com", w.Header().Get("Location"))
+		r.Equal("http://example.com/next", w.Header().Get("Location"))
 	}
 }
 
@@ -288,7 +291,7 @@ func TestFakeAPI_InvalidRedirectURL(t *testing.T) {
 	r := require.New(t)
 	handler := &Handler{}
 
-	// Try to redirect to localhost (should be blocked)
+	// Try to redirect to another origin (should be blocked)
 	req := httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/api/v1/fake?redirectTo=http://localhost:8080&period=1", nil,
 	)
@@ -302,7 +305,7 @@ func TestFakeAPI_InvalidRedirectURL(t *testing.T) {
 	// Should return error if state is "up", otherwise normal response
 	if w.Code == http.StatusBadRequest {
 		body := w.Body.String()
-		r.Contains(body, "internal/private")
+		r.Contains(body, "relative path or an absolute URL on this origin")
 	}
 }
 

@@ -71,6 +71,11 @@ const (
 	// "json_path_assertions" output key. Named so tests assert the same
 	// string the checker emits.
 	errJSONAssertionFailed = "JSON assertion failed"
+
+	// methodQuery is the IETF QUERY method (draft-ietf-httpbis-safe-method-w-body):
+	// a safe, idempotent verb that carries a request body, like a cacheable POST.
+	// net/http has no http.MethodQuery constant, so it is defined here.
+	methodQuery = "QUERY"
 )
 
 // HTTPChecker implements the Checker interface for HTTP checks.
@@ -130,6 +135,7 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 			http.MethodHead:    true,
 			http.MethodOptions: true,
 			http.MethodPatch:   true,
+			methodQuery:        true,
 		}
 
 		method := strings.ToUpper(cfg.Method)

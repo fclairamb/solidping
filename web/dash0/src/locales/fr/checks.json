@@ -966,6 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",
+    "sftpFingerprintHelp": "\u00c9pingle la cl\u00e9 d'h\u00f4te du serveur. Laisser vide pour accepter n'importe quelle cl\u00e9 \u2014 l'empreinte pr\u00e9sent\u00e9e par le serveur est toujours report\u00e9e dans la sortie du check, pour pouvoir la recopier ici ensuite.",
     "fingerprintHelpPrefix": "Vérifie l'identité du serveur à chaque contrôle, et est requis pour utiliser ce contrôle comme",
     "tunnelBastionLabel": "Passer par un tunnel SSH",
     "fingerprintHelpSuffix": "bastion pour d'autres contrôles. Obtenez-la avec",
@@ -973,7 +974,18 @@
     "privateKeyEncrypted": "(chiffrée — saisissez une nouvelle clé pour remplacer)",
     "passwordOverridesPrivateKey": "Si un mot de passe et une clé privée sont tous deux définis, le mot de passe est utilisé.",
     "password": "Mot de passe",
-    "usernameOptionalAnonymous": "Nom d'utilisateur (optionnel, par défaut : anonymous)"
+    "usernameOptionalAnonymous": "Nom d'utilisateur (optionnel, par défaut : anonymous)",
+    "payloadReply": "Charge utile et réponse",
+    "payloadReplySummary": "Envoyer une charge utile et attendre une réponse correspondante",
+    "sendOptional": "Envoyer (facultatif)",
+    "expectOptional": "Attendre (facultatif)",
+    "expectModeContains": "Contient",
+    "expectModeRegex": "Correspond à une regex",
+    "encoding_text": "Texte",
+    "encoding_escaped": "Échappé",
+    "encoding_hex": "Hexa",
+    "payloadHelp": "Définissez une attente pour prouver que le service répond, et pas seulement que le port est ouvert.",
+    "payloadHelpUdp": "Sans attente, ce check ne peut détecter qu'un port injoignable."
   },
   "prometheus": {
     "mode": "Mode",
@@ -1010,6 +1022,17 @@
     "requestHeaders": "En-têtes de requête",
     "requestHeadersHelp": "Pour les endpoints derrière une authentification bearer ou basique.",
     "addHeader": "Ajouter un en-tête"
+  },
+  "rabbitmq": {
+    "mode": "Mode",
+    "modeAmqp": "AMQP",
+    "modeManagement": "API de management",
+    "memoryWarning": "Avertissement mémoire",
+    "memoryCritical": "Mémoire critique",
+    "memoryThresholdHelp": "Un pourcentage du seuil haut de RabbitMQ (par ex. 80%) ou une taille absolue (par ex. 1.5GiB).",
+    "diskWarning": "Avertissement disque libre",
+    "diskCritical": "Disque libre critique",
+    "diskThresholdHelp": "Une taille absolue uniquement (par ex. 10GiB) — l'API de management n'expose pas la taille totale du disque, un pourcentage ne peut donc pas être calculé."
   },
   "snmp": {
     "oid": "OID",

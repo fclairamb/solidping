@@ -1,5 +1,5 @@
 import { test as base, expect, type Page } from "@playwright/test";
-import { test, API_BASE } from "./fixtures";
+import { test, API_BASE, uniqueStamp } from "./fixtures";
 
 /**
  * Spec 2026-09-08-01 §C — landing on an org you cannot use is no longer a dead
@@ -38,7 +38,7 @@ const FOREIGN_ORG = "not-my-org";
  * @returns the slug of the single org this session belongs to.
  */
 async function seedOrdinaryMember(page: Page): Promise<string> {
-  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const stamp = uniqueStamp();
   const email = `accessible-org-${stamp}@unknown.example`;
   const password = "Strong-Pass-123!";
 

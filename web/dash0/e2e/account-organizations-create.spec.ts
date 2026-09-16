@@ -1,4 +1,4 @@
-import { test, expect, API_BASE } from "./fixtures";
+import { test, expect, API_BASE, uniqueStamp } from "./fixtures";
 
 // Spec 2026-08-09-05: a user who already belongs to an org had no UI path to
 // create another one — only /no-org, reachable exclusively by a zero-org
@@ -10,7 +10,7 @@ import { test, expect, API_BASE } from "./fixtures";
 // user, so nothing here disturbs the shared `test` fixture org.
 test.describe("Account > Organizations", () => {
   async function seedUserWithOrg(page: import("@playwright/test").Page) {
-    const stamp = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp = uniqueStamp();
     const email = `acct-orgs-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -31,7 +31,7 @@ test.describe("Account > Organizations", () => {
     expect(loginResp.status()).toBe(200);
     const login = (await loginResp.json()) as { accessToken: string };
 
-    const orgSlug = `ao1-${stamp.toString(36)}`;
+    const orgSlug = `ao1-${stamp}`;
     const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${login.accessToken}` },
       data: { name: `Acct Orgs Co ${stamp}`, slug: orgSlug },
@@ -109,7 +109,7 @@ test.describe("Account > Organizations", () => {
     );
 
     const newOrgName = `Acct Orgs Second ${stamp}`;
-    const newOrgSlug = `ao2-${stamp.toString(36)}`;
+    const newOrgSlug = `ao2-${stamp}`;
 
     await page.locator("#orgName").fill(newOrgName);
     await page.getByTestId("no-org-advanced-toggle").click();
@@ -187,8 +187,8 @@ test.describe("Account > Organizations", () => {
 
     // A second org for the same user, created via the API with org1's
     // token — mirrors a user who already has two memberships.
-    const stamp2 = Date.now() + Math.floor(Math.random() * 1000);
-    const org2Slug = `ao3-${stamp2.toString(36)}`;
+    const stamp2 = uniqueStamp();
+    const org2Slug = `ao3-${stamp2}`;
     const createOrg2Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${org.accessToken}` },
       data: { name: `Acct Orgs Third ${stamp2}`, slug: org2Slug },
@@ -223,8 +223,8 @@ test.describe("Account > Organizations", () => {
     // A second org the same user owns (admin-capable), created via org1's
     // token — mirrors the "switching orgs" test above. This is the
     // non-current row that must switch-then-navigate to its settings.
-    const stamp2 = Date.now() + Math.floor(Math.random() * 1000);
-    const org2Slug = `ao4-${stamp2.toString(36)}`;
+    const stamp2 = uniqueStamp();
+    const org2Slug = `ao4-${stamp2}`;
     const createOrg2Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${org.accessToken}` },
       data: { name: `Acct Orgs Owner2 ${stamp2}`, slug: org2Slug },
@@ -234,7 +234,7 @@ test.describe("Account > Organizations", () => {
     // A third org owned by a DIFFERENT user, who adds our primary user as a
     // plain "user" role member — the negative-control row: not admin-capable,
     // so it must render no Settings button at all.
-    const stamp3 = Date.now() + Math.floor(Math.random() * 1000);
+    const stamp3 = uniqueStamp();
     const otherEmail = `acct-orgs-other-${stamp3}@unknown.example`;
     const otherPassword = "Strong-Pass-123!";
     const createOtherResp = await page.request.post(
@@ -251,7 +251,7 @@ test.describe("Account > Organizations", () => {
     expect(otherLoginResp.status()).toBe(200);
     const otherLogin = (await otherLoginResp.json()) as { accessToken: string };
 
-    const org3Slug = `ao5-${stamp3.toString(36)}`;
+    const org3Slug = `ao5-${stamp3}`;
     const createOrg3Resp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
       headers: { Authorization: `Bearer ${otherLogin.accessToken}` },
       data: { name: `Acct Orgs Member Co ${stamp3}`, slug: org3Slug },

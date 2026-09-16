@@ -3,9 +3,7 @@ package checkudp
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -16,8 +14,6 @@ import (
 
 const (
 	defaultTimeout       = 5 * time.Second
-	maxReadSize          = 4 * 1024
-	maxOutputDataSize    = 1024
 	microsecondsPerMilli = 1000.0
 )
 
@@ -50,6 +46,12 @@ func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
 		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
+	}
+
+	// A bad encoding or an uncompilable `expect_pattern` is a VALIDATION_ERROR
+	// on save, never a check that errors forever at runtime.
+	if err := cfg.exchangeFields().Validate(); err != nil {
+		return err
 	}
 
 	// Auto-generate name and slug from host if not provided
@@ -130,16 +132,35 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 }
 
 // connect performs the actual UDP operation.
-//
-//nolint:funlen,nestif // UDP connection logic requires comprehensive handling
 func (c *UDPChecker) connect(
 	ctx context.Context,
 	targetIP net.IP,
 	cfg *UDPConfig,
 	timeout time.Duration,
 ) checkerdef.Result {
+	// One deadline for the whole exchange — dial, write and the wait for the
+	// reply — rather than `now + timeout` re-armed at each stage.
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	deadline, hasDeadline := ctxWithTimeout.Deadline()
+	if !hasDeadline {
+		deadline = time.Now().Add(timeout)
+	}
+
+	exchange, exchangeErr := checkerdef.NewExchange(
+		cfg.SendData, cfg.SendEncoding,
+		cfg.ExpectData, cfg.ExpectEncoding,
+		cfg.ExpectPattern, timeout, deadline,
+	)
+	if exchangeErr != nil {
+		return checkerdef.Result{
+			Status: checkerdef.StatusError,
+			Output: map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("invalid payload configuration: %v", exchangeErr),
+			},
+		}
+	}
 
 	target := net.JoinHostPort(targetIP.String(), strconv.Itoa(cfg.Port))
 
@@ -165,71 +186,11 @@ func (c *UDPChecker) connect(
 	metrics := map[string]any{}
 	output := map[string]any{}
 
-	// Send data if specified
-	if cfg.SendData != "" {
-		if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
-			return checkerdef.Result{
-				Status:  checkerdef.StatusError,
-				Metrics: metrics,
-				Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to set write deadline: %v", err)},
-			}
-		}
-
-		bytesSent, writeErr := conn.Write([]byte(cfg.SendData))
-		if writeErr != nil {
-			return checkerdef.Result{
-				Status:  checkerdef.StatusDown,
-				Metrics: metrics,
-				Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to send data: %v", writeErr)},
-			}
-		}
-
-		metrics["bytes_sent"] = bytesSent
-	}
-
-	// Read response if send_data or expect_data is set
-	if cfg.SendData != "" || cfg.ExpectData != "" {
-		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-			return checkerdef.Result{
-				Status:  checkerdef.StatusError,
-				Metrics: metrics,
-				Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to set read deadline: %v", err)},
-			}
-		}
-
-		buf := make([]byte, maxReadSize)
-
-		bytesRead, readErr := conn.Read(buf)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			if cfg.ExpectData != "" {
-				return checkerdef.Result{
-					Status:  checkerdef.StatusDown,
-					Metrics: metrics,
-					Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to read response: %v", readErr)},
-				}
-			}
-		} else {
-			metrics["bytes_received"] = bytesRead
-
-			receivedData := string(buf[:bytesRead])
-			if bytesRead > maxOutputDataSize {
-				receivedData = string(buf[:maxOutputDataSize])
-			}
-
-			output["received_data"] = receivedData
-
-			// Validate expected data
-			if cfg.ExpectData != "" && !strings.Contains(receivedData, cfg.ExpectData) {
-				return checkerdef.Result{
-					Status:  checkerdef.StatusDown,
-					Metrics: metrics,
-					Output: map[string]any{
-						checkerdef.OutputKeyError: fmt.Sprintf("expected data not found: '%s'", cfg.ExpectData),
-						"received_data":           receivedData,
-					},
-				}
-			}
-		}
+	// Send the payload, then read datagrams until the expectation is satisfied.
+	// Each Read is one datagram; they accumulate in the same buffer, so a reply
+	// split across two datagrams matches exactly like a split TCP segment does.
+	if failure := exchange.Run(conn, metrics, output); failure != nil {
+		return *failure
 	}
 
 	return checkerdef.Result{

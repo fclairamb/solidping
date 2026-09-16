@@ -66,6 +66,7 @@ export const SCOPE_LABELS: Record<string, string> = {
   email: "Email",
   webpush: "Web push",
   sms: "SMS",
+  docker: "Docker image",
 };
 
 /** The distinct sub-slug of a `#279` / `#282` PR reference found in a bullet. */

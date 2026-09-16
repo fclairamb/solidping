@@ -11,12 +11,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useCreateCheck } from "@/api/hooks";
 import { ApiError } from "@/api/client";
 import { DASH_BASE } from "@/lib/base-path";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   carryOverTarget,
   normalizeTarget,
   validateTarget,
 } from "@/lib/quick-check-target";
+import { suggestQuickTarget } from "@/lib/quick-target-suggestion";
 import { shouldFocusOnMount } from "@/lib/mount-focus";
+import { captureEvent } from "@/lib/analytics";
 
 type QuickType = "http" | "icmp" | "ssl";
 
@@ -77,8 +80,15 @@ const QUICK_DEFS: Record<
 export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
   const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [tab, setTab] = useState<QuickType>("http");
-  const [value, setValue] = useState("");
+  // Spec 2026-09-16-01: someone signing up as alice@acme.com almost
+  // certainly wants to watch acme.com. `suggestion` is derived once from the
+  // signed-in user's email and never recomputed — the initial `value` is
+  // seeded from it, but nothing re-applies it later, so a user who clears the
+  // field keeps it cleared.
+  const suggestion = suggestQuickTarget(user?.email);
+  const [value, setValue] = useState(() => suggestion ?? "");
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const createCheck = useCreateCheck(org);
@@ -86,6 +96,10 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
 
   const def = QUICK_DEFS[tab];
   const Icon = def.icon;
+  // Whether the field still holds the untouched suggestion verbatim. Derived
+  // rather than tracked in state: once the user edits or clears the field,
+  // `value` no longer equals `suggestion` and this naturally flips to false.
+  const untouched = suggestion !== null && value === suggestion;
 
   // Spec 2026-09-12-04, defect 1: the chips were the most prominent thing on
   // the screen and clicking them produced no visible consequence. A caret in
@@ -126,6 +140,9 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
     }
 
     const target = normalizeTarget(tab, value);
+    // Captured from the pre-submit value/suggestion, before setValue("")
+    // below clears the field.
+    const targetSource = untouched ? "suggested" : "typed";
 
     try {
       const created = await createCheck.mutateAsync({
@@ -133,6 +150,10 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
         type: tab,
         config: { [def.field]: target },
       });
+      // Spec 2026-09-16-01: measures whether the pre-filled suggestion moves
+      // the signup → first-check rate. Never includes the target itself —
+      // it's a customer hostname.
+      captureEvent("quick_check_created", { checkType: tab, targetSource });
       setValue("");
       // Refresh checks so the list (and this hero, once the user navigates
       // back to the dashboard) reflect the new check.
@@ -218,6 +239,15 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
               onChange={(e) => {
                 setValue(e.target.value);
                 setError(null);
+              }}
+              // Select the whole untouched suggestion on focus, so typing
+              // replaces it instead of appending to it. Covers all three ways
+              // focus arrives: conditional mount focus, unconditional
+              // chip-click focus, and a touch tap (which has no mount focus
+              // at all). Once the user has edited the value, `untouched` is
+              // false and focus behaves normally.
+              onFocus={(e) => {
+                if (untouched) e.currentTarget.select();
               }}
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? "quick-input-error" : undefined}
