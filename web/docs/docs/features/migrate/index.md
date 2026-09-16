@@ -17,7 +17,7 @@ with its type, interval, target and thresholds intact.
 |---|---|---|
 | Gatus | `config.yaml` | [Migrate from Gatus](./from-gatus.md) |
 | Better Stack | An API token | [Migrate from Better Stack](./from-better-stack.md) |
-| Uptime Kuma | A 1.x backup JSON | [Migrate from Uptime Kuma](./from-uptime-kuma.md) |
+| Uptime Kuma | The `sp` CLI reads your `kuma.db` (2.x), or a 1.x backup JSON | [Migrate from Uptime Kuma](./from-uptime-kuma.md) |
 | UptimeRobot | The API v2 `getMonitors` JSON | [Migrate from UptimeRobot](./from-uptimerobot.md) |
 
 ## Recommended: let an AI agent do the translation
