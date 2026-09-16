@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/envcheck"
+	"github.com/fclairamb/solidping/server/internal/healthcheck"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	"github.com/fclairamb/solidping/server/internal/procwatch"
@@ -52,6 +53,12 @@ func main() {
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
 				Action: serve,
+			},
+			{
+				Name: "healthcheck",
+				Usage: "Probe the local server's /api/mgmt/health endpoint and exit 0/1 accordingly " +
+					"(used as the Dockerfile HEALTHCHECK — the runtime image is distroless, no shell/curl)",
+				Action: healthcheckAction,
 			},
 			{
 				Name:   "migrate",
@@ -279,6 +286,30 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// healthcheckAction implements the `solidping healthcheck` subcommand: it
+// loads the config just enough to know the server's listen port, then GETs
+// the local /api/mgmt/health endpoint. Exit 0 on HTTP 200, exit 1 otherwise
+// (transport error, timeout, or a non-200 status such as the 503 the server
+// returns during its graceful-shutdown window). This is the whole point of
+// the subcommand: the final image is distroless, so nothing inside the
+// container can run `curl` for a Docker/Kubernetes healthcheck.
+func healthcheckAction(ctx context.Context, _ *cli.Command) error {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.ErrorContext(ctx, "healthcheck: failed to load configuration", "error", err)
+		return cli.Exit(err.Error(), 1)
+	}
+
+	url := healthcheck.URLFromListen(cfg.Server.Listen)
+
+	if checkErr := healthcheck.Check(ctx, url, healthcheck.DefaultTimeout); checkErr != nil {
+		slog.ErrorContext(ctx, "healthcheck failed", "error", checkErr, "url", url)
+		return cli.Exit(checkErr.Error(), 1)
+	}
+
+	return nil
 }
 
 // watchParent wires the opt-in parent-death watch (SP_EXIT_WITH_PARENT): the
