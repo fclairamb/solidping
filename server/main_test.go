@@ -6,42 +6,62 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v3"
-
-	spCli "github.com/fclairamb/solidping/server/pkg/cli"
 )
 
-// buildClientFlagTestRoot mirrors the production `solidping` root's shape
-// for the pkg/cli-reusing "client" subtree: DefaultCommand set on the root,
-// pkg/cli's global flags (config/url/org/output/json/verbose) declared only
-// once - at the root - and "client" (and everything under it) declaring
-// none of its own, relying on urfave/cli v3's default flag persistence to
-// carry them down. This is the exact shape main.go now uses; a synthetic
-// tree keeps the test independent of pkg/cli's real leaf actions (which
-// hit the network).
-func buildClientFlagTestRoot(leafAction cli.ActionFunc) *cli.Command {
-	leaf := &cli.Command{Name: "leaf", Action: leafAction}
-	group := &cli.Command{Name: "group", Commands: []*cli.Command{leaf}}
-	client := &cli.Command{Name: "client", Commands: []*cli.Command{group}}
-
-	return &cli.Command{
-		Name:           "solidping",
-		DefaultCommand: "serve",
-		Flags:          spCli.GetGlobalFlags(),
-		Commands: []*cli.Command{
-			{
-				Name:   "serve",
-				Action: func(context.Context, *cli.Command) error { return nil },
-			},
-			client,
-		},
+// findSubcommand returns the direct child of cmd with the given name, or
+// nil.
+func findSubcommand(cmd *cli.Command, name string) *cli.Command {
+	for _, c := range cmd.Commands {
+		if c.Name == name {
+			return c
+		}
 	}
+	return nil
+}
+
+// orgCapture records what a leaf Action observed for the "org" flag.
+type orgCapture struct {
+	org   string
+	isSet bool
+}
+
+// captureOrgFlag returns the REAL "solidping" command tree - exactly what
+// main() builds via buildRootCommand(), Flags/Commands/DefaultCommand and
+// all - with the real "client checks list" leaf's Action swapped for a stub
+// that records the resolved --org flag instead of making a network call.
+// Every node up to and including "list" keeps its production Flags field
+// untouched, so a future edit to buildRootCommand() that reintroduces a
+// flag on "client" or a sibling (the exact regression the completeness
+// audit flagged - a synthetic mirror tree wouldn't catch that) makes these
+// tests exercise the actual bug.
+func captureOrgFlag(t *testing.T) (*cli.Command, *orgCapture) {
+	t.Helper()
+
+	root := buildRootCommand()
+
+	client := findSubcommand(root, "client")
+	require.NotNil(t, client, `root command tree must have a "client" node`)
+
+	checks := findSubcommand(client, "checks")
+	require.NotNil(t, checks, `"client" must have a "checks" node`)
+
+	list := findSubcommand(checks, "list")
+	require.NotNil(t, list, `"checks" must have a "list" node`)
+
+	capture := &orgCapture{}
+	list.Action = func(_ context.Context, c *cli.Command) error {
+		capture.org = c.String("org")
+		capture.isSet = c.IsSet("org")
+		return nil
+	}
+
+	return root, capture
 }
 
 // TestClientOrgFlag_BeforeClient covers the gap the completeness audit
-// found: with DefaultCommand set on the "solidping" root and no Flags
-// declared on "client" (the fix - see buildClientFlagTestRoot doc), an
-// --org positioned before "client" must still reach a leaf Action under it.
-// Before this fix, GetGlobalFlags() was declared only on "client" itself,
+// found: with DefaultCommand set on the "solidping" root, an --org
+// positioned before "client" must still reach a leaf Action under it.
+// Before the fix, GetGlobalFlags() was declared only on "client" itself,
 // which the root (having no Flags of its own) could not recognize: v3
 // passes an unrecognized flag ahead of the first subcommand through as a
 // positional arg when DefaultCommand is set, so --org silently never
@@ -50,19 +70,12 @@ func TestClientOrgFlag_BeforeClient(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	var org string
-	var isSet bool
+	root, capture := captureOrgFlag(t)
 
-	root := buildClientFlagTestRoot(func(_ context.Context, c *cli.Command) error {
-		org = c.String("org")
-		isSet = c.IsSet("org")
-		return nil
-	})
-
-	err := root.Run(context.Background(), []string{"solidping", "--org", "test", "client", "group", "leaf"})
+	err := root.Run(context.Background(), []string{"solidping", "--org", "test", "client", "checks", "list"})
 	r.NoError(err)
-	r.True(isSet)
-	r.Equal("test", org)
+	r.True(capture.isSet)
+	r.Equal("test", capture.org)
 }
 
 // TestClientOrgFlag_AfterClient covers the position that already worked
@@ -72,19 +85,12 @@ func TestClientOrgFlag_AfterClient(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	var org string
-	var isSet bool
+	root, capture := captureOrgFlag(t)
 
-	root := buildClientFlagTestRoot(func(_ context.Context, c *cli.Command) error {
-		org = c.String("org")
-		isSet = c.IsSet("org")
-		return nil
-	})
-
-	err := root.Run(context.Background(), []string{"solidping", "client", "--org", "test", "group", "leaf"})
+	err := root.Run(context.Background(), []string{"solidping", "client", "--org", "test", "checks", "list"})
 	r.NoError(err)
-	r.True(isSet)
-	r.Equal("test", org)
+	r.True(capture.isSet)
+	r.Equal("test", capture.org)
 }
 
 // TestClientOrgFlag_AfterLeafGroup covers --org positioned at the deepest
@@ -93,19 +99,12 @@ func TestClientOrgFlag_AfterLeafGroup(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	var org string
-	var isSet bool
+	root, capture := captureOrgFlag(t)
 
-	root := buildClientFlagTestRoot(func(_ context.Context, c *cli.Command) error {
-		org = c.String("org")
-		isSet = c.IsSet("org")
-		return nil
-	})
-
-	err := root.Run(context.Background(), []string{"solidping", "client", "group", "--org", "test", "leaf"})
+	err := root.Run(context.Background(), []string{"solidping", "client", "checks", "--org", "test", "list"})
 	r.NoError(err)
-	r.True(isSet)
-	r.Equal("test", org)
+	r.True(capture.isSet)
+	r.Equal("test", capture.org)
 }
 
 // TestClientOrgFlag_NotSetFallsBackToDefault confirms the baseline: with no
@@ -116,17 +115,10 @@ func TestClientOrgFlag_NotSetFallsBackToDefault(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	var org string
-	var isSet bool
+	root, capture := captureOrgFlag(t)
 
-	root := buildClientFlagTestRoot(func(_ context.Context, c *cli.Command) error {
-		org = c.String("org")
-		isSet = c.IsSet("org")
-		return nil
-	})
-
-	err := root.Run(context.Background(), []string{"solidping", "client", "group", "leaf"})
+	err := root.Run(context.Background(), []string{"solidping", "client", "checks", "list"})
 	r.NoError(err)
-	r.False(isSet)
-	r.Equal("default", org)
+	r.False(capture.isSet)
+	r.Equal("default", capture.org)
 }

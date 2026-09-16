@@ -44,7 +44,21 @@ func main() {
 	logLevel := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
 	setupLogger(logLevel, config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
-	cmd := &cli.Command{
+	cmd := buildRootCommand()
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		slog.Error("Application failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+// buildRootCommand builds the "solidping" binary's command tree. Pulled out
+// of main() so tests can exercise the REAL tree (flags, structure, command
+// nesting) through urfave/cli v3's actual Run()/parsing, rather than only a
+// hand-built mirror of its shape. Must stay free of side effects (no I/O,
+// no os.Exit) so it's safe to call from a test.
+func buildRootCommand() *cli.Command {
+	return &cli.Command{
 		Name:           "solidping",
 		Usage:          "SolidPing monitoring service",
 		DefaultCommand: "serve",
@@ -103,11 +117,6 @@ func main() {
 			},
 			devCommand(),
 		},
-	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		slog.Error("Application failed", "error", err)
-		os.Exit(1)
 	}
 }
 
