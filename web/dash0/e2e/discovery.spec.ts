@@ -499,11 +499,15 @@ test.describe("Discovery legacy redirects and the organization route guard", () 
   }) => {
     await page.goto(`${DASH_BASE}/orgs/test/discovery/new?method=kubernetes`);
     await page.waitForURL(/\/organization\/discovery\/new\?method=kubernetes$/);
-    // The kubernetes sub-form actually renders — proves the search param
-    // survived the redirect, not just the base path.
+    // The test org has no kubernetes cluster connection, so "Kubernetes" is
+    // not a selectable option in the scan-method dropdown (see "Kubernetes
+    // method option is hidden..." above) — the trigger renders blank. The
+    // kubernetes sub-form is driven directly by local state seeded from the
+    // URL, though, so its cluster picker still renders: that proves the
+    // ?method= param survived the redirect, not just the base path.
     await expect(
-      page.getByRole("combobox", { name: /scan method/i }),
-    ).toHaveText(/kubernetes/i);
+      page.getByLabel(/select kubernetes cluster/i),
+    ).toBeVisible();
   });
 
   test("legacy /discovery/$jobUid redirects to /organization/discovery/$jobUid", async ({
