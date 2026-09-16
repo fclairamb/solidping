@@ -825,6 +825,95 @@ export async function beat(page: Page, ms = 1200): Promise<void> {
 }
 
 /**
+ * The very first sign-in on a brand-new install, rotation and all, on camera.
+ *
+ * This is the beat the published cut never had. Every fresh default-mode
+ * database seeds `admin@solidping.io` with `MustChangePassword = true`
+ * (`server/internal/jobs/jobtypes/job_startup.go`), so the forced rotation
+ * screen is *the first thing* every new install shows — and the pipeline used
+ * to satisfy it over the API, off camera, before a single frame was recorded
+ * ({@link apiLogin}). Filming it means doing it in the opposite order: drive
+ * the real form first, and only bootstrap over the API once the account is
+ * through.
+ *
+ * Deliberately **not** tolerant of a database that has already been rotated.
+ * The whole claim of the segment is "this is what a first run looks like", and
+ * a rerun against a used database would silently film a plain login instead.
+ * Delete the side-car's database directory and run again.
+ *
+ * Leaves {@link effectivePassword} on the rotated value, so a later
+ * {@link uiLogin} in the same run types something that still works.
+ */
+export async function uiFirstLogin(page: Page): Promise<void> {
+  await page.goto(`orgs/${BOOTSTRAP_ORG}/login`);
+  await page.waitForLoadState("networkidle");
+  await page
+    .getByTestId("login-title")
+    .waitFor({ state: "visible", timeout: 15000 });
+
+  // Clap: t = 0 for the cue timeline, trimmed away in post. See uiLogin below.
+  await beginCueTimeline(page);
+  await focus(page, null, { label: "login" });
+  await page.waitForTimeout(700);
+
+  await typeHuman(page, page.getByTestId("login-email"), BOOTSTRAP_EMAIL);
+  await page.waitForTimeout(220);
+  await typeHuman(page, page.getByTestId("login-password"), SEEDED_PASSWORD, {
+    minDelayMs: 26,
+    maxDelayMs: 44,
+  });
+  await page.waitForTimeout(320);
+  await clickOn(page, page.getByTestId("login-submit"));
+
+  const rotationCard = page.getByTestId("forced-password-change");
+  try {
+    await rotationCard.waitFor({ state: "visible", timeout: 15000 });
+  } catch {
+    throw new Error(
+      "The forced password-rotation screen never appeared after signing in as " +
+        `${BOOTSTRAP_EMAIL}. This recording has to be filmed against a FRESH ` +
+        "database — a fresh default-mode install flags the seeded admin with " +
+        "must_change_password, and an already-rotated database does not. Delete " +
+        "the side-car's database (its SP_DB_DIR, or drop its Postgres database) " +
+        "and re-run.",
+    );
+  }
+
+  if (ROTATED_PASSWORD === SEEDED_PASSWORD) {
+    throw new Error(
+      "SHOWCASE_ROTATED_PASSWORD is identical to SHOWCASE_PASSWORD, and " +
+        "POST /auth/change-password refuses a new password equal to the current " +
+        "one. Set it to something else.",
+    );
+  }
+
+  await focus(page, rotationCard, { zoom: 1.3, label: "rotation" });
+  await page.waitForTimeout(1500);
+
+  const fast = { minDelayMs: 24, maxDelayMs: 40 };
+  await typeHuman(page, page.getByTestId("forced-password-current"), SEEDED_PASSWORD, fast);
+  await typeHuman(page, page.getByTestId("forced-password-new"), ROTATED_PASSWORD, fast);
+  await typeHuman(page, page.getByTestId("forced-password-confirm"), ROTATED_PASSWORD, fast);
+  await page.waitForTimeout(420);
+
+  await focus(page, null, { label: "rotation-done" });
+  await clickOn(page, page.getByTestId("forced-password-submit"));
+
+  // The page hard-reloads itself onto the dashboard once the rotation lands.
+  await page.waitForURL((url) => !url.pathname.includes("change-password"), {
+    timeout: 20000,
+  });
+  await page.waitForLoadState("networkidle");
+
+  effectivePassword = ROTATED_PASSWORD;
+  console.log(
+    `showcase: ${BOOTSTRAP_EMAIL} was rotated onto SHOWCASE_ROTATED_PASSWORD ` +
+      `("${ROTATED_PASSWORD}") through the UI, on camera. It STAYS on that ` +
+      "password — the server refuses to take the seeded one back.",
+  );
+}
+
+/**
  * Logs in through the real form, into the showcase org.
  *
  * Types {@link effectivePassword}, not the seeded constant: when the server
