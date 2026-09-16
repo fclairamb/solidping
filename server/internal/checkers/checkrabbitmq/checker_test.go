@@ -258,5 +258,8 @@ func TestExecuteManagement_ZeroMemLimitWithPercentThresholdDoesNotPanic(t *testi
 			"memoryUsedCritical": "90%",
 		})
 		r.Equal(checkerdef.StatusUp, result.Status)
+		// The mem_limit-unavailable note must surface even though the
+		// overall status stayed Up (nothing to put in the error field).
+		r.NotEmpty(result.Output["notes"])
 	})
 }
