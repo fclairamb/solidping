@@ -1,7 +1,7 @@
 .PHONY: docker-build build build-backend build-dash0 build-status0 build-docs copy-dash0 copy-status0 copy-docs \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-postgres test-slow test-scenario test-dash0 test-docs lint lint-back lint-dash0 fmt deps migrate help sync-brand-assets build-favicons \
-	showcase \
+	showcase showcase-terminal showcase-cut \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
 .DEFAULT_GOAL := build
@@ -376,12 +376,20 @@ test-docs: ## Run docs site unit tests (mirrors the CI step)
 	@cd $(DOCS_DIR) && bun run test:unit
 	@echo "Docs unit tests complete"
 
-showcase: ## Regenerate the docs showcase media (screenshots + AV1 video) from the real dash0 UI
+showcase: ## Regenerate the showcase media (terminal + dashboard cut, stills, README GIF)
+	@echo "Filming the terminal segment (needs docker and vhs)..."
+	@cd $(DASH0_DIR) && bun run showcase/terminal.ts
 	@echo "Recording showcase media (needs a running SolidPing server)..."
 	@cd $(DASH0_DIR) && bunx playwright test --config=showcase/playwright.config.ts
-	@echo "Post-processing (trim + AV1 re-encode)..."
+	@echo "Post-processing (stitch + label + AV1/H.264/GIF)..."
 	@cd $(DASH0_DIR) && bun run showcase/postprocess.ts
-	@echo "Showcase media written to web/docs/static/showcase/ — commit the changed assets."
+	@echo "Showcase media written to web/docs/static/showcase/ and res/screenshots/ — commit the changed assets."
+
+showcase-terminal: ## Re-film only the terminal segment of the showcase cut
+	@cd $(DASH0_DIR) && bun run showcase/terminal.ts
+
+showcase-cut: ## Re-cut the showcase media from the takes already in showcase/output/
+	@cd $(DASH0_DIR) && bun run showcase/postprocess.ts
 
 lint-back: ## Run backend linter
 	@echo "Running backend linter..."
