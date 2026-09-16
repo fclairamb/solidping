@@ -38,7 +38,6 @@ func filesCommand() *cli.Command {
 		Name:    "files",
 		Aliases: []string{"file"},
 		Usage:   "Manage stored files",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:  flagList,

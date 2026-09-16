@@ -12,7 +12,6 @@ func GetCommands() []*cli.Command {
 		{
 			Name:  "auth",
 			Usage: "Authentication commands",
-			Flags: GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name: "login",
@@ -127,7 +126,6 @@ func GetCommands() []*cli.Command {
 		{
 			Name:  "server",
 			Usage: "Server management commands",
-			Flags: GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:   "health",
@@ -166,7 +164,6 @@ func GetCommands() []*cli.Command {
 			Name:    "checks",
 			Aliases: []string{flagCheck},
 			Usage:   "Manage health checks",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -515,12 +512,12 @@ func GetCommands() []*cli.Command {
 						"delete or unmanaged. Exit 0 = no drift, 1 = drift, >=2 = error. " +
 						"--text falls back to a textual diff of the file against a fresh export, which is " +
 						"also what happens automatically when the caller cannot plan (plans are admin-only).",
-					Flags: append(GetGlobalFlags(),
+					Flags: []cli.Flag{
 						&cli.BoolFlag{
 							Name:  "text",
 							Usage: "Render a textual unified diff instead of the server's reconcile plan",
 						},
-					),
+					},
 					Action: checksDiffAction,
 				},
 			},
@@ -529,7 +526,7 @@ func GetCommands() []*cli.Command {
 			Name:      "apply",
 			Usage:     "Reconcile checks against a declarative manifest (config-as-code, admin-only)",
 			ArgsUsage: "<manifest>",
-			Flags: append(GetGlobalFlags(),
+			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:    flagFile,
 					Aliases: []string{"f"},
@@ -552,14 +549,13 @@ func GetCommands() []*cli.Command {
 					Aliases: []string{"y"},
 					Usage:   "Skip the confirmation prompt and apply immediately",
 				},
-			),
+			},
 			Action: applyAction,
 		},
 		{
 			Name:    "results",
 			Aliases: []string{"result"},
 			Usage:   "View check results",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -623,7 +619,6 @@ func GetCommands() []*cli.Command {
 			Name:    "incidents",
 			Aliases: []string{"incident"},
 			Usage:   "Manage incidents",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -734,7 +729,6 @@ func GetCommands() []*cli.Command {
 			Name:    "channels",
 			Aliases: []string{"channel"},
 			Usage:   "Manage notification channels (integrations)",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -839,7 +833,6 @@ func GetCommands() []*cli.Command {
 			Name:    flagEvents,
 			Aliases: []string{"event"},
 			Usage:   "View audit events",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -875,7 +868,6 @@ func GetCommands() []*cli.Command {
 			Name:    "tokens",
 			Aliases: []string{flagToken},
 			Usage:   "Manage personal access tokens",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -916,7 +908,6 @@ func GetCommands() []*cli.Command {
 			Name:    "members",
 			Aliases: []string{"member"},
 			Usage:   "Manage organization members",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:   flagList,
@@ -967,7 +958,6 @@ func GetCommands() []*cli.Command {
 			Name:    "jobs",
 			Aliases: []string{"job"},
 			Usage:   "Manage background jobs",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -1051,7 +1041,6 @@ func GetCommands() []*cli.Command {
 			Name:    "check-jobs",
 			Aliases: []string{"check-job", "cj"},
 			Usage:   "Inspect the check-schedule (check_jobs) table",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:   flagList,
@@ -1071,7 +1060,6 @@ func GetCommands() []*cli.Command {
 			Name:    "system",
 			Aliases: []string{"sys"},
 			Usage:   "Manage system parameters and inspect jobs across all orgs",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:   flagList,
@@ -1198,7 +1186,6 @@ func GetCommands() []*cli.Command {
 			Name:    "discovery",
 			Aliases: []string{"discover"},
 			Usage:   "Network discovery scans and suggested checks",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:   "types",
@@ -1291,7 +1278,6 @@ func GetCommands() []*cli.Command {
 			Name:    "heartbeat",
 			Aliases: []string{"hb"},
 			Usage:   "Heartbeat ingestion for cron-style checks",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:      "send",
@@ -1319,7 +1305,6 @@ func GetCommands() []*cli.Command {
 			Name:    "status-pages",
 			Aliases: []string{"status-page"},
 			Usage:   "Manage public status pages",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:   flagList,
@@ -1530,7 +1515,6 @@ func GetCommands() []*cli.Command {
 			Name:    "status-updates",
 			Aliases: []string{"status-update"},
 			Usage:   "Manage status/incident updates posted to status pages",
-			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
 					Name:  flagList,
@@ -1624,7 +1608,6 @@ func maintenanceWindowsCommand() *cli.Command {
 		Name:    "maintenance-windows",
 		Aliases: []string{"maintenance-window", "mw"},
 		Usage:   "Manage scheduled maintenance windows",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:  flagList,
@@ -1706,7 +1689,6 @@ func checkGroupsCommand() *cli.Command {
 		Name:    "check-groups",
 		Aliases: []string{"check-group"},
 		Usage:   "Manage check groups",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -1759,7 +1741,6 @@ func severitiesCommand() *cli.Command {
 		Name:    "severities",
 		Aliases: []string{"severity"},
 		Usage:   "Manage severities (channel-set bundles)",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -1814,7 +1795,6 @@ func labelsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "labels",
 		Usage: "List organization label keys and values",
-		Flags: GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:  flagList,
@@ -1835,7 +1815,6 @@ func regionsCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "regions",
 		Usage: "List available monitoring regions",
-		Flags: GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -1852,7 +1831,6 @@ func checkTypesCommand() *cli.Command {
 		Name:    "check-types",
 		Aliases: []string{"check-type"},
 		Usage:   "Inspect the check type catalog and sample configurations",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -1893,7 +1871,6 @@ func oncallCommand() *cli.Command {
 		Name:    "oncall",
 		Aliases: []string{"on-call", "on-call-schedules"},
 		Usage:   "Manage on-call schedules, overrides, and iCal feeds",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -2022,7 +1999,6 @@ func notificationsCommand() *cli.Command {
 		Name:    "notifications",
 		Aliases: []string{"notification", "notif"},
 		Usage:   "Inspect notification deliveries (org, incident, user, or self scope)",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name: flagList,
@@ -2058,7 +2034,6 @@ func notificationRoutesCommand() *cli.Command {
 		Name:    "notification-routes",
 		Aliases: []string{"notification-route"},
 		Usage:   "Manage your own notification routes",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -2093,7 +2068,6 @@ func notificationContactsCommand() *cli.Command {
 		Name:    "notification-contacts",
 		Aliases: []string{"notification-contact"},
 		Usage:   "Manage your own notification contacts",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
@@ -2131,7 +2105,6 @@ func escalationPoliciesCommand() *cli.Command {
 		Name:    "escalation-policies",
 		Aliases: []string{"escalation-policy", "escalation"},
 		Usage:   "Manage escalation policies",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,

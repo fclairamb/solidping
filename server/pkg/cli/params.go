@@ -228,7 +228,6 @@ func paramsCommand() *cli.Command {
 		Name:    "params",
 		Aliases: []string{"param", "parameters"},
 		Usage:   "Manage the organization parameters a check config references as ${param:KEY}",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,

@@ -23,7 +23,6 @@ func emailSuppressionsCommand() *cli.Command {
 		Name:    "email-suppressions",
 		Aliases: []string{"email-suppression", "suppressions"},
 		Usage:   "Manage the per-recipient email suppression list",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,
