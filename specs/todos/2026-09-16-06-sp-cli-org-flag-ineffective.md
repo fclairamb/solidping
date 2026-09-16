@@ -195,3 +195,42 @@ not just patch the override check.
    with the flag redeclared on the intermediate `group` node (reproducing the pre-fix shape) to
    document the regression this guards against, asserting it would NOT see `"test"` — proving
    the test actually exercises the propagation mechanism and isn't vacuously true.
+
+### Addendum — a second, unaudited call site (`server/main.go`), found by the coordinator's audit
+
+The enumeration above only covered `pkg/cli/*.go`. `pkg/cli` is also reused by a **second**
+entry point: the `solidping` server binary's own command tree (`server/main.go`) registers a
+`client` node — `solidping client <cmd>` — whose `Flags` was `spCli.GetGlobalFlags()` and whose
+`Commands` was `spCli.GetCommands()`. This is architecturally distinct from `cmd/sp` in one way
+that matters: the `solidping` root command sets `DefaultCommand: "serve"` and, pre-fix, declared
+no `Flags` of its own.
+
+That combination reproduces a **different** failure mode from the shadowing bug above — not a
+same-named flag shadowing an ancestor's, but v3's explicit `DefaultCommand` fallback
+(`command_parse.go:206-210`, fixing upstream issue #2249): when a command with `DefaultCommand`
+set encounters a flag it doesn't recognize *before* the first subcommand name, v3 passes that
+flag and everything after it through as **positional arguments** rather than erroring or
+continuing to look for a subcommand. Since the `solidping` root declared no flags of its own,
+`solidping --org test client checks list` never even reached the `client` node's flags — `--org`,
+`test`, `client`, `checks`, `list` all became positional args handed to the default `serve`
+command. `solidping client --org test checks list` (flag at-or-after `client`) worked correctly,
+because by the time parsing reaches `client`, `client` itself declared the flags directly and
+there's no unrecognized-flag/`DefaultCommand` interaction at that level.
+
+**Fix**: apply the exact same single-declaration principle one level up — move
+`Flags: spCli.GetGlobalFlags()` from the `client` node to the `solidping` root `Command` in
+`server/main.go`, and remove it from `client`. The root already accepts subcommands
+(`serve`, `healthcheck`, `migrate`, `encrypt-credentials`, `dev`, `client`); none of those
+declare a flag named `config`/`url`/`org`/`output`/`json`/`verbose`, so there's no shadowing
+risk, and v3's default persistence (`FlagBase.Local == false`) carries the root's now-recognized
+`--org`/`--url`/etc. down through `client` and every `pkg/cli` node beneath it, exactly as it
+does for `cmd/sp`. Verified manually (`go run .` against a disposable config, no live server
+needed — the outbound login request body shows the resolved org) in all three flag positions:
+before `client`, right after `client`, and after the leaf command. Regression tests added in
+`server/main_test.go` using a synthetic root→client→group→leaf tree (avoids exercising
+`pkg/cli`'s real network-calling actions) that mirrors the production shape exactly.
+
+This means the fix commit's "no node in the tree redeclares config/url/org/output/json/verbose"
+claim, as originally written, was accurate only for the `cmd/sp` binary's command tree, not for
+`solidping client`'s. The `server/main.go` change closes that gap; both entry points now
+single-source these flags at their own respective root.

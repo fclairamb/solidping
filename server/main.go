@@ -48,6 +48,18 @@ func main() {
 		Name:           "solidping",
 		Usage:          "SolidPing monitoring service",
 		DefaultCommand: "serve",
+		// The pkg/cli client flags (config/url/org/output/json/verbose) are
+		// declared here, at the root, rather than on the "client" node below.
+		// urfave/cli v3 flags are persistent/inherited by default, but only
+		// down to a node that doesn't redeclare the same name itself - and
+		// with DefaultCommand set, an unrecognized flag ahead of the first
+		// subcommand is passed through as a positional arg rather than
+		// erroring, so a --org declared only on "client" would silently not
+		// reach `solidping --org test client ...` (only the flag-after-
+		// "client" form would work). Declaring once, at the root, matches
+		// pkg/cli's own single-declaration fix and keeps --org/--url valid in
+		// any position for every command that reuses pkg/cli.
+		Flags: spCli.GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   "serve",
@@ -76,7 +88,6 @@ func main() {
 			{
 				Name:     "client",
 				Usage:    "Client commands for managing SolidPing remotely",
-				Flags:    spCli.GetGlobalFlags(),
 				Commands: spCli.GetCommands(),
 			},
 			{
