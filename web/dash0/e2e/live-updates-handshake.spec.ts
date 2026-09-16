@@ -210,7 +210,7 @@ test.describe("Live updates handshake", () => {
     //
     // So: one regular user, TWO orgs of their own, a token for the second, a
     // failing switch-org, and a navigation to the first.
-    const stamp = Date.now();
+    const stamp = uniqueStamp();
     const email = `wrong-org-${stamp}@unknown.example`;
     const password = "Strong-Pass-123!";
 
@@ -250,8 +250,12 @@ test.describe("Live updates handshake", () => {
 
     // Org A is the one the URL will name; org B is the one the token is scoped
     // to. The user is a genuine member (owner) of both.
-    const orgA = `visitedorg-${stamp}`;
-    const orgB = `tokenorg-${stamp}`;
+    // Keep both slugs short: orgslug.MaxLen is 20, and `stamp` alone is 12
+    // characters, so the prefix has at most 7 left (hyphen included). A longer
+    // pair ("visitedorg-", "tokenorg-") makes POST /orgs answer 422 on every
+    // run, which reads as a handshake failure rather than as a bad fixture.
+    const orgA = `visit-${stamp}`;
+    const orgB = `token-${stamp}`;
     await createOrg(orgA, `Visited Org ${stamp}`);
     const orgBSession = await createOrg(orgB, `Token Org ${stamp}`);
     expect(orgBSession.accessToken).toBeTruthy();
