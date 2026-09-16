@@ -1094,13 +1094,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// ping URL immediately (400 for non-heartbeat checks).
 	orgChecks.POST("/:checkUid/rotate-token", checksHandler.RotateHeartbeatToken)
 
-	// Network discovery routes (authentication + org access required)
+	// Network discovery routes. Registered through orgGroup (rather than a
+	// bare api.NewGroup, as before spec 2026-09-16-09) so the viewer-role
+	// write floor (RequireOrgWrite) applies structurally here too, same as
+	// every other org route — the in-handler isAdmin() checks on the write
+	// endpoints stay on top of it unchanged.
 	discoverySvc := discovery.NewService(
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
 	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
-	orgDiscovery := api.NewGroup("/orgs/:org/discovery").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgDiscovery := orgGroup("/orgs/:org/discovery")
 	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes
