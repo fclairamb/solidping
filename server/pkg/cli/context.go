@@ -52,14 +52,18 @@ func NewCLIContext(cmd *cli.Command) (*Context, error) {
 		}
 	}
 
-	// Override URL if provided via flag
-	if url := cmd.String(flagURL); url != "" {
-		cfg.URL = url
+	// Override URL if explicitly provided via flag. The flag's own default
+	// (defaults.ServerURL) is non-empty, so a plain non-empty check can never
+	// tell "not passed" from "passed the default value" - it would clobber a
+	// config-file URL on every invocation. cmd.IsSet distinguishes them correctly.
+	if cmd.IsSet(flagURL) {
+		cfg.URL = cmd.String(flagURL)
 	}
 
-	// Override org if provided via flag
-	if org := cmd.String("org"); org != "" {
-		cfg.Org = org
+	// Same reasoning for org: only an explicitly-passed --org should win over
+	// the config file's Org.
+	if cmd.IsSet("org") {
+		cfg.Org = cmd.String("org")
 	}
 
 	// Get token path
