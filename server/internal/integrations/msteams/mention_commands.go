@@ -95,7 +95,7 @@ func (h *Handler) handleChecksAdd(ctx context.Context, activity *Activity, cmd *
 	result, err := h.svc.CreateCheckWithOptions(ctx, activity.TenantID(), target, slug, period)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to create check from Teams mention",
-			"url", checkhttp.RedactURL(target), "tenant_id", activity.TenantID(), "error", err)
+			"url", checkhttp.RedactURL(target), "tenant_id", activity.TenantID(), "error", "create check failed")
 
 		return h.replyError(ctx, activity, "Failed to create check: "+err.Error())
 	}
