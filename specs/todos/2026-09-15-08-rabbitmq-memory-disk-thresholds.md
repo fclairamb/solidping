@@ -173,3 +173,47 @@ ignores the tunnel dialer that AMQP mode honours, even though the type is
 declared `SupportsTunnel: true`
 ([checkerdef/types.go:371](server/internal/checkers/checkerdef/types.go:371)).
 A tunneled management-mode check goes direct today. Worth its own spec.
+
+## Implementation Plan
+
+1. **Config** (`config.go`): add `MemoryUsedWarning/Critical`, `DiskFreeWarning/Critical`
+   string fields + map keys. Add a small internal `threshold` value type
+   (`{raw string; isPercent bool; percent int; bytes uint64}`) and a
+   `parseThreshold(key, raw string, allowPercent bool) (*threshold, error)` helper using
+   `strings.HasSuffix(raw, "%")` → int 1-100, else `humanize.ParseBytes`. Promote
+   `go-humanize` to a direct dependency (`go mod tidy` after first use). Wire into
+   `FromMap`/`GetConfig` (store/echo the raw string) and `Validate`:
+   - reject `%` on disk keys with a message naming why (no total disk size);
+   - reject any threshold key when `mode` (effective) isn't `management`;
+   - ordering: same-kind (both percent or both bytes) tiers only —
+     `memoryUsedWarning < memoryUsedCritical`, `diskFreeWarning > diskFreeCritical`.
+2. **Checker execution** (`checker.go`): factor `executeManagement` into (a) the existing
+   alarms probe (unchanged), (b) a new `fetchNodes` HTTP call to `/api/nodes`, (c)
+   `evaluateNodes` (per running node: percent/byte comparisons, worst-node selection,
+   metrics, human message via `humanize.IBytes`). Combine: final status = alarms status
+   when it is not Up (backward compatible, dominates); otherwise the node-threshold
+   status (Up, unless thresholds configured and breached, or `/api/nodes` failed while
+   thresholds are configured, which forces Down). Metrics are attempted on every
+   management execution regardless of thresholds. `mem_limit <= 0` skips the percent
+   comparison for that node only, noted in per-node output, and defaults
+   `mem_used_percent` to 0 for the metric.
+3. **Backend tests**: new `config_test.go` (table-driven parse/validate: percent vs
+   bytes, invalid strings, `%` on disk rejected, ordering per unit kind, mode gate) and
+   new `checker_test.go` (`httptest.Server` faking both endpoints: under-threshold Up,
+   warning, critical with human message, 3-node cluster worst-node-wins, `/api/nodes`
+   403 with/without thresholds, `mem_limit: 0` no-panic positive control).
+4. **dash0 form** (`database.tsx`): add `mode` Select (amqp/management, mirroring
+   `infra.tsx`'s Prometheus mode select) + `managementPort` input, plus the 4 threshold
+   inputs shown only in management mode (hide `queue` there). Extend `ownedKeys`. New
+   locale keys in `en/de/es/fr` `checks.json` under a `rabbitmq` namespace. Unit test
+   `rabbitmq.test.ts` (or extend `database.test.ts`) for `fromConfig`/`toConfig`
+   round-trip, modeled on `prometheus.test.ts`.
+5. **Samples/docs/changelog**: management-mode sample with thresholds in `samples.go`;
+   fix the `checker-config.md` rabbitmq timeout max (60s → 30s) and add the 4 new keys;
+   rewrite the `check-types.md` RabbitMQ section for the two modes + threshold story;
+   add a CHANGELOG `## Unreleased` bullet.
+6. **e2e**: new/extended Playwright spec modeled on
+   `check-domain-thresholds-and-long-period.spec.ts` — create a management-mode
+   RabbitMQ check with all 4 thresholds through the form, reload, assert round-trip.
+7. QA gate: `make build-backend lint-back test`, `make build-dash0` + `bun run lint`
+   scoped to touched files, `make build-docs`.
