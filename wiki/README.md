@@ -105,6 +105,7 @@ Operational procedures for diagnosing the running system.
 ## Distribution
 
 - [distribution/casaos.md](distribution/casaos.md) — CasaOS/ZimaOS app store listing (`deploy/casaos/solidping/`): upstream `IceWhaleTech/CasaOS-AppStore` PR mechanics, the `x-casaos` metadata shape, and the per-release version/changelog bump recipe
+- [distribution/yunohost.md](distribution/yunohost.md) — YunoHost native package (`solidping_ynh`, an external repo, not created yet): catalog/`package_check` route, who merges the autoupdate bot's PRs, and why renaming the `solidping-linux-*` release assets silently breaks the package
 
 ## Research
 
