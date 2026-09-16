@@ -263,6 +263,19 @@ function AddSectionDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          {/*
+            Membership comes FIRST, above name and slug: what a section
+            contains is the decision, its name is only a label for that
+            decision. Burying the picker under the text fields is how the two
+            dynamic modes stayed invisible to users who shipped a page with
+            the manual default (spec 2026-09-16-11).
+          */}
+          <SectionMembership
+            org={org}
+            value={membership}
+            onChange={setMembership}
+            visibility={visibility}
+          />
           <div className="space-y-2">
             <Label>{t("statusPages:sections.name")}</Label>
             <Input
@@ -285,12 +298,6 @@ function AddSectionDialog({
               placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
-          <SectionMembership
-            org={org}
-            value={membership}
-            onChange={setMembership}
-            visibility={visibility}
-          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -370,6 +377,19 @@ function EditSectionDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          {/*
+            Membership comes FIRST, above name and slug: what a section
+            contains is the decision, its name is only a label for that
+            decision. Burying the picker under the text fields is how the two
+            dynamic modes stayed invisible to users who shipped a page with
+            the manual default (spec 2026-09-16-11).
+          */}
+          <SectionMembership
+            org={org}
+            value={membership}
+            onChange={setMembership}
+            visibility={visibility}
+          />
           <div className="space-y-2">
             <Label>{t("statusPages:sections.name")}</Label>
             <Input
@@ -386,12 +406,6 @@ function EditSectionDialog({
               placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
-          <SectionMembership
-            org={org}
-            value={membership}
-            onChange={setMembership}
-            visibility={visibility}
-          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

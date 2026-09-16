@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { LabelInput } from "@/components/shared/label-input";
+import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import {
@@ -126,9 +127,32 @@ export function SectionMembership({
           aria-label={t("sections.membership.title")}
           className="w-full"
         />
-        <p className="text-xs text-muted-foreground">
-          {t(`sections.membership.hint.${value.mode}`)}
-        </p>
+        {/*
+          Every mode gets its line, not just the selected one. A user who never
+          reads past the default cannot discover that the other two exist, and
+          that is exactly how a shipped feature (dynamic sections) stayed
+          invisible: the control was there, the consequence of each option was
+          not. The active line is emphasized; the other two stay muted so the
+          block reads as a legend rather than three competing hints.
+        */}
+        <div className="space-y-1" data-testid="section-membership-hints">
+          {options.map((option) => (
+            <p
+              key={option.value}
+              data-testid={`section-membership-hint-${option.value}`}
+              className={cn(
+                "text-xs",
+                option.value === value.mode
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              <span className="font-medium">{option.label}</span>
+              {" — "}
+              {t(`sections.membership.hint.${option.value}`)}
+            </p>
+          ))}
+        </div>
       </div>
 
       {value.mode === "labels" && (
