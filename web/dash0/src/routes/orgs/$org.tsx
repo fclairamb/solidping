@@ -20,7 +20,6 @@ import {
   Calendar,
   CalendarClock,
   ChevronRight,
-  GitBranch,
   Globe,
   LayoutDashboard,
   ListChecks,
@@ -202,7 +201,6 @@ function Breadcrumbs({ org }: { org: string }) {
   const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/integrations"));
   const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
-  const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
   const isJobs = matches.some((m) => m.routeId.startsWith("/orgs/$org/jobs"));
   const isCheckJobDetail = routeIds.has("/orgs/$org/jobs/check/$checkJobUid");
@@ -835,15 +833,6 @@ function Breadcrumbs({ org }: { org: string }) {
           </>
         )}
       </>
-    );
-  }
-
-  if (isDependencies) {
-    return (
-      <span className={activeClass}>
-        <GitBranch className={iconClass} />
-        {t("dependencies")}
-      </span>
     );
   }
 
