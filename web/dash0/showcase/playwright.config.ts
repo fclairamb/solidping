@@ -19,7 +19,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Requires a running SolidPing server. Point it somewhere other than the
  * default with the same `E2E_BASE_URL` convention the e2e suite uses, e.g.
  *
- *   E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
+ *   E2E_BASE_URL=http://localhost:4321/d/ make showcase
  */
 export default defineConfig({
   testDir: "./specs",
@@ -41,7 +41,11 @@ export default defineConfig({
   outputDir: "./output/run",
 
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/",
+    // `/d`, not `/dash0`: the dashboard's base path moved (see
+    // `src/lib/base-path.ts`), and the e2e config's default moved with it while
+    // this one did not — a bare `make showcase` against :4000 was landing on a
+    // 404 until spec 2026-09-16-05.
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4000/d/",
 
     ...devices["Desktop Chrome"],
 

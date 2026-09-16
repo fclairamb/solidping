@@ -25,9 +25,11 @@ incidents and on-call escalation — in a single Go binary.
 
 <div align="center">
 
-### Create an HTTP check, start to finish — 18 seconds
+### From `docker run` to the first result
 
-<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/create-http-check.gif" alt="Creating an HTTP check in SolidPing, from the new-check form to the first result" width="800">
+<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/setup-to-first-result.gif" alt="SolidPing from the first sign-in to the first results: the forced password change on a new install, creating an HTTP check against https://solidping.io/api/mgmt/health, and its first response times plotted from two regions" width="800">
+
+<sub>The full cut, <code>docker run</code> included, is <a href="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/setup-to-first-result.mp4">the same recording as video</a>. Both are regenerated from the live dashboard with <code>make showcase</code> — nothing here is a mock-up.</sub>
 
 </div>
 
