@@ -1,5 +1,10 @@
 # Stage 1a: Dash0 Build
-FROM node:24-alpine AS dash0-builder
+#
+# Pinned to --platform=$BUILDPLATFORM: this stage only produces static
+# assets (no native code), so it must run natively on the build host rather
+# than under QEMU emulation for the target platform (see backend-builder
+# below for the stage that actually varies per target).
+FROM --platform=$BUILDPLATFORM node:24-alpine AS dash0-builder
 
 # Install bun
 RUN apk add --no-cache curl unzip bash && \
@@ -20,8 +25,8 @@ COPY web/dash0/ ./
 # Build dash0
 RUN bun run build
 
-# Stage 1b: Status0 Build
-FROM node:24-alpine AS status0-builder
+# Stage 1b: Status0 Build (static assets — see dash0-builder above)
+FROM --platform=$BUILDPLATFORM node:24-alpine AS status0-builder
 
 # Install bun
 RUN apk add --no-cache curl unzip bash && \
@@ -42,8 +47,8 @@ COPY web/status0/ ./
 # Build status0
 RUN bun run build
 
-# Stage 1c: Docs Build (Docusaurus, incl. generated API reference)
-FROM node:24-alpine AS docs-builder
+# Stage 1c: Docs Build (Docusaurus, incl. generated API reference — static assets, see dash0-builder above)
+FROM --platform=$BUILDPLATFORM node:24-alpine AS docs-builder
 
 # Install bun
 RUN apk add --no-cache curl unzip bash && \
@@ -75,18 +80,22 @@ COPY web/docs/ ./
 RUN bun run build
 
 # Stage 2: Backend Build
-FROM golang:1.27.1-trixie AS backend-builder
+#
+# Pinned to --platform=$BUILDPLATFORM: the Go toolchain itself always runs
+# natively on the build host, and cross-compiles the OUTPUT binary for
+# TARGETOS/TARGETARCH via the CGO_ENABLED=0 build below (no QEMU emulation
+# needed for the compiler, unlike a CGO build would require).
+FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS backend-builder
 
 # Build arguments for version information
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG GIT_TIME=unknown
 
-# Install build dependencies for CGO (needed for SQLite)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Set by buildx to the platform requested via `--platform` on the final
+# image (e.g. "linux" / "arm64"), independent of the build host.
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /build
 
@@ -105,9 +114,12 @@ COPY --from=dash0-builder /build/dash0/dist ./internal/app/dash0res
 COPY --from=status0-builder /build/status0/dist ./internal/app/status0res
 COPY --from=docs-builder /build/web/docs/build ./internal/app/docsres
 
-# Build the backend binary with version information
-# CGO is needed for SQLite support
-RUN CGO_ENABLED=1 go build \
+# Build the backend binary with version information. CGO is NOT needed: the
+# shipped SQLite driver is pure-Go modernc
+# (internal/db/sqlitedriver/sqlitedriver.go), so this cross-compiles cleanly
+# for GOOS/GOARCH without a C toolchain or QEMU emulation — the same way the
+# release binaries (ci.yml) and the sp CLI image already build.
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
     -ldflags "\
       -X 'github.com/fclairamb/solidping/server/internal/version.Version=${VERSION}' \
       -X 'github.com/fclairamb/solidping/server/internal/version.Commit=${COMMIT}' \
@@ -143,6 +155,13 @@ VOLUME /data
 
 # Expose default port
 EXPOSE 4000
+
+# The image has no shell/curl (distroless), so the probe is the binary
+# itself calling its own /api/mgmt/health over loopback
+# (internal/healthcheck). 503 during the graceful-shutdown window makes the
+# container report unhealthy before it stops, which is the wanted signal.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["/app/solidping", "healthcheck"]
 
 # Set entrypoint
 ENTRYPOINT ["/app/solidping", "serve"]
