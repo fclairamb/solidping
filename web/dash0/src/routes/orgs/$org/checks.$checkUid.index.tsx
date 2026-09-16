@@ -1258,9 +1258,9 @@ function CheckDetailPage() {
               aria-label={t("checks:detail.badges") ?? "Badges"}
             >
               <Link
-                to="/orgs/$org/badges"
-                params={{ org }}
-                search={{ check: check.slug ?? checkUid }}
+                to="/orgs/$org/checks/$checkUid/badges"
+                params={{ org, checkUid }}
+                search={{}}
               >
                 <BadgeCheck className="h-4 w-4 lg:mr-2" />
                 <span className="hidden lg:inline">

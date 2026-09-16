@@ -144,6 +144,7 @@ import { Route as OrgsOrgOnCallUidEditRouteImport } from './routes/orgs/$org/on-
 import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
+import { Route as OrgsOrgChecksCheckUidBadgesRouteImport } from './routes/orgs/$org/checks.$checkUid.badges'
 import { Route as OrgsOrgCheckGroupsUidEditRouteImport } from './routes/orgs/$org/check-groups.$uid.edit'
 import { Route as OrgsOrgAccountOrganizationsNewRouteImport } from './routes/orgs/$org/account.organizations.new'
 import { Route as OrgsOrgStatusPagesStatusPageUidIncidentsUidRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.incidents.$uid'
@@ -877,6 +878,12 @@ const OrgsOrgChecksCheckUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgChecksCheckUidRoute,
   } as any)
+const OrgsOrgChecksCheckUidBadgesRoute =
+  OrgsOrgChecksCheckUidBadgesRouteImport.update({
+    id: '/badges',
+    path: '/badges',
+    getParentRoute: () => OrgsOrgChecksCheckUidRoute,
+  } as any)
 const OrgsOrgCheckGroupsUidEditRoute =
   OrgsOrgCheckGroupsUidEditRouteImport.update({
     id: '/check-groups/$uid/edit',
@@ -1036,6 +1043,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/account/organizations/new': typeof OrgsOrgAccountOrganizationsNewRoute
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
+  '/orgs/$org/checks/$checkUid/badges': typeof OrgsOrgChecksCheckUidBadgesRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
@@ -1155,6 +1163,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/test': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/account/organizations/new': typeof OrgsOrgAccountOrganizationsNewRoute
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
+  '/orgs/$org/checks/$checkUid/badges': typeof OrgsOrgChecksCheckUidBadgesRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
@@ -1300,6 +1309,7 @@ export interface FileRoutesById {
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/account/organizations/new': typeof OrgsOrgAccountOrganizationsNewRoute
   '/orgs/$org/check-groups/$uid/edit': typeof OrgsOrgCheckGroupsUidEditRoute
+  '/orgs/$org/checks/$checkUid/badges': typeof OrgsOrgChecksCheckUidBadgesRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
   '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
@@ -1446,6 +1456,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/'
     | '/orgs/$org/account/organizations/new'
     | '/orgs/$org/check-groups/$uid/edit'
+    | '/orgs/$org/checks/$checkUid/badges'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
@@ -1565,6 +1576,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test'
     | '/orgs/$org/account/organizations/new'
     | '/orgs/$org/check-groups/$uid/edit'
+    | '/orgs/$org/checks/$checkUid/badges'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
@@ -1709,6 +1721,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/'
     | '/orgs/$org/account/organizations/new'
     | '/orgs/$org/check-groups/$uid/edit'
+    | '/orgs/$org/checks/$checkUid/badges'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
     | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
@@ -2702,6 +2715,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksCheckUidEditRouteImport
       parentRoute: typeof OrgsOrgChecksCheckUidRoute
     }
+    '/orgs/$org/checks/$checkUid/badges': {
+      id: '/orgs/$org/checks/$checkUid/badges'
+      path: '/badges'
+      fullPath: '/orgs/$org/checks/$checkUid/badges'
+      preLoaderRoute: typeof OrgsOrgChecksCheckUidBadgesRouteImport
+      parentRoute: typeof OrgsOrgChecksCheckUidRoute
+    }
     '/orgs/$org/check-groups/$uid/edit': {
       id: '/orgs/$org/check-groups/$uid/edit'
       path: '/check-groups/$uid/edit'
@@ -2801,12 +2821,14 @@ const OrgsOrgAccountRouteWithChildren = OrgsOrgAccountRoute._addFileChildren(
 )
 
 interface OrgsOrgChecksCheckUidRouteChildren {
+  OrgsOrgChecksCheckUidBadgesRoute: typeof OrgsOrgChecksCheckUidBadgesRoute
   OrgsOrgChecksCheckUidEditRoute: typeof OrgsOrgChecksCheckUidEditRoute
   OrgsOrgChecksCheckUidIndexRoute: typeof OrgsOrgChecksCheckUidIndexRoute
   OrgsOrgChecksCheckUidResultsResultUidRoute: typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 
 const OrgsOrgChecksCheckUidRouteChildren: OrgsOrgChecksCheckUidRouteChildren = {
+  OrgsOrgChecksCheckUidBadgesRoute: OrgsOrgChecksCheckUidBadgesRoute,
   OrgsOrgChecksCheckUidEditRoute: OrgsOrgChecksCheckUidEditRoute,
   OrgsOrgChecksCheckUidIndexRoute: OrgsOrgChecksCheckUidIndexRoute,
   OrgsOrgChecksCheckUidResultsResultUidRoute:

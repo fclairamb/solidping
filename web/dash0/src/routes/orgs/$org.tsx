@@ -412,6 +412,10 @@ function Breadcrumbs({ org }: { org: string }) {
     const isCheckResult = routeIds.has(
       "/orgs/$org/checks/$checkUid/results/$resultUid",
     );
+    // The badge builder is a child of the check it belongs to (spec
+    // 2026-09-16-08), so it reads as "Checks › <check> › Badges" instead of
+    // the old org-level crumb.
+    const isCheckBadges = routeIds.has("/orgs/$org/checks/$checkUid/badges");
     const isNewCheck = routeIds.has("/orgs/$org/checks/new");
     // Scheduling is a sibling page of the list (no checkUid), so it needs its
     // own leaf crumb — without it the page rendered a bare, non-clickable
@@ -444,7 +448,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {checkUid && (
           <>
             <BreadcrumbSeparator />
-            {isCheckEdit || isCheckResult ? (
+            {isCheckEdit || isCheckResult || isCheckBadges ? (
               <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }} className={linkClass}>
                 {checkName}
               </Link>
@@ -457,6 +461,15 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{t("edit")}</span>
+          </>
+        )}
+        {isCheckBadges && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass} data-testid="badge-breadcrumb">
+              <BadgeCheck className={iconClass} />
+              {t("badges")}
+            </span>
           </>
         )}
         {isCheckResult && (
@@ -706,16 +719,6 @@ function Breadcrumbs({ org }: { org: string }) {
           </>
         )}
       </>
-    );
-  }
-
-  const isBadges = routeIds.has("/orgs/$org/badges");
-  if (isBadges) {
-    return (
-      <span className={activeClass}>
-        <BadgeCheck className={iconClass} />
-        {t("badges")}
-      </span>
     );
   }
 
