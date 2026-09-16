@@ -59,7 +59,6 @@ import { Route as OrgsOrgIntegrationsIndexRouteImport } from './routes/orgs/$org
 import { Route as OrgsOrgIncidentsIndexRouteImport } from './routes/orgs/$org/incidents.index'
 import { Route as OrgsOrgEscalationPoliciesIndexRouteImport } from './routes/orgs/$org/escalation-policies.index'
 import { Route as OrgsOrgDiscoveryIndexRouteImport } from './routes/orgs/$org/discovery.index'
-import { Route as OrgsOrgDependenciesIndexRouteImport } from './routes/orgs/$org/dependencies.index'
 import { Route as OrgsOrgChecksIndexRouteImport } from './routes/orgs/$org/checks.index'
 import { Route as OrgsOrgAccountIndexRouteImport } from './routes/orgs/$org/account.index'
 import { Route as OrgsOrgTestTemplatesRouteImport } from './routes/orgs/$org/test.templates'
@@ -416,12 +415,6 @@ const OrgsOrgDiscoveryIndexRoute = OrgsOrgDiscoveryIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgDiscoveryRoute,
 } as any)
-const OrgsOrgDependenciesIndexRoute =
-  OrgsOrgDependenciesIndexRouteImport.update({
-    id: '/dependencies/',
-    path: '/dependencies/',
-    getParentRoute: () => OrgsOrgRoute,
-  } as any)
 const OrgsOrgChecksIndexRoute = OrgsOrgChecksIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -1063,7 +1056,6 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
   '/orgs/$org/account/': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
-  '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/discovery/': typeof OrgsOrgDiscoveryIndexRoute
   '/orgs/$org/escalation-policies/': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
@@ -1187,7 +1179,6 @@ export interface FileRoutesByTo {
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
   '/orgs/$org/account': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksIndexRoute
-  '/orgs/$org/dependencies': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/discovery': typeof OrgsOrgDiscoveryIndexRoute
   '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsIndexRoute
@@ -1337,7 +1328,6 @@ export interface FileRoutesById {
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
   '/orgs/$org/account/': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
-  '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/discovery/': typeof OrgsOrgDiscoveryIndexRoute
   '/orgs/$org/escalation-policies/': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
@@ -1489,7 +1479,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/templates'
     | '/orgs/$org/account/'
     | '/orgs/$org/checks/'
-    | '/orgs/$org/dependencies/'
     | '/orgs/$org/discovery/'
     | '/orgs/$org/escalation-policies/'
     | '/orgs/$org/incidents/'
@@ -1613,7 +1602,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/templates'
     | '/orgs/$org/account'
     | '/orgs/$org/checks'
-    | '/orgs/$org/dependencies'
     | '/orgs/$org/discovery'
     | '/orgs/$org/escalation-policies'
     | '/orgs/$org/incidents'
@@ -1762,7 +1750,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/templates'
     | '/orgs/$org/account/'
     | '/orgs/$org/checks/'
-    | '/orgs/$org/dependencies/'
     | '/orgs/$org/discovery/'
     | '/orgs/$org/escalation-policies/'
     | '/orgs/$org/incidents/'
@@ -2180,13 +2167,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/discovery/'
       preLoaderRoute: typeof OrgsOrgDiscoveryIndexRouteImport
       parentRoute: typeof OrgsOrgDiscoveryRoute
-    }
-    '/orgs/$org/dependencies/': {
-      id: '/orgs/$org/dependencies/'
-      path: '/dependencies'
-      fullPath: '/orgs/$org/dependencies/'
-      preLoaderRoute: typeof OrgsOrgDependenciesIndexRouteImport
-      parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/checks/': {
       id: '/orgs/$org/checks/'
@@ -3435,7 +3415,6 @@ interface OrgsOrgRouteChildren {
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
   OrgsOrgNotificationsNotificationUidRoute: typeof OrgsOrgNotificationsNotificationUidRoute
   OrgsOrgOauthConsentRoute: typeof OrgsOrgOauthConsentRoute
-  OrgsOrgDependenciesIndexRoute: typeof OrgsOrgDependenciesIndexRoute
   OrgsOrgCheckGroupsUidEditRoute: typeof OrgsOrgCheckGroupsUidEditRoute
 }
 
@@ -3466,7 +3445,6 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgNotificationsNotificationUidRoute:
     OrgsOrgNotificationsNotificationUidRoute,
   OrgsOrgOauthConsentRoute: OrgsOrgOauthConsentRoute,
-  OrgsOrgDependenciesIndexRoute: OrgsOrgDependenciesIndexRoute,
   OrgsOrgCheckGroupsUidEditRoute: OrgsOrgCheckGroupsUidEditRoute,
 }
 

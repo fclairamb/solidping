@@ -119,22 +119,6 @@ test.describe("Docs links", () => {
     await expect(docsLink).toHaveAttribute("href", "/docs/features/events");
   });
 
-  test("dependencies graph renders a docs link to the incidents grouping section", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.getByTestId("app-sidebar").getByRole("link", { name: "Dependencies" }).click();
-    await page.waitForURL(/\/dependencies/);
-    await page.waitForLoadState("networkidle");
-
-    const docsLink = page.getByTestId("docs-link");
-    await expect(docsLink).toBeVisible();
-    await expect(docsLink).toHaveAttribute(
-      "href",
-      "/docs/features/incidents#group-incidents-correlated-outages",
-    );
-  });
 
   // The check detail page's docs link is per-type, not the generic
   // check-types page: whichever protocol a check monitors, its reference

@@ -72,25 +72,6 @@ async function createEscalationPolicy(page: Page, token: string, name: string) {
 }
 
 test.describe("Listing pages share the checks-page chrome", () => {
-  test("dependencies header + toolbar + bordered table", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    await page.goto("orgs/test/dependencies");
-    await page.waitForLoadState("networkidle");
-
-    const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toBeVisible();
-    await expect(h1).toHaveClass(/text-2xl/);
-
-    // Filter input is wrapped with the search-icon prefix (pl-9)
-    const filter = page.getByTestId("dependencies-filter");
-    await expect(filter).toBeVisible();
-    await expect(filter).toHaveClass(/pl-9/);
-
-    // Refresh button present in the toolbar
-    await expect(page.getByTestId("dependencies-refresh")).toBeVisible();
-  });
 
   test("on-call uses bordered table with row navigation", async ({
     authenticatedPage,
