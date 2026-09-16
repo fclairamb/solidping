@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dop251/goja"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -973,4 +974,47 @@ return {
 	r.Contains(result.Output["encodingError"], "unknown encoding")
 	r.Contains(result.Output["patternError"], "invalid pattern")
 	r.Contains(result.Output["conflictError"], `one of "bytes", "until" or "pattern"`)
+}
+
+// expiredNotYetCancelledContext is the skew window the execution-deadline check
+// has to survive: the deadline has passed, but the context's own timer has not
+// marked it done yet. A blocked socket read stops on ITS deadline — a different
+// clock — so it can land in exactly this state.
+type expiredNotYetCancelledContext struct{}
+
+func (expiredNotYetCancelledContext) Deadline() (time.Time, bool) {
+	return time.Now().Add(-time.Millisecond), true
+}
+
+func (expiredNotYetCancelledContext) Done() <-chan struct{} { return nil }
+
+func (expiredNotYetCancelledContext) Err() error { return nil }
+
+func (expiredNotYetCancelledContext) Value(any) any { return nil }
+
+// TestExecutionDeadlinePanicsOnClockSkew: past the execution deadline is the
+// check's budget running out, even when ctx.Err() has not caught up. Reporting
+// it as a per-call timeout value would let the script keep running and return
+// `up` — which is the CI flake this guards.
+func TestExecutionDeadlinePanicsOnClockSkew(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	runtime := &jsRuntime{execCtx: expiredNotYetCancelledContext{}, vm: goja.New()}
+
+	r.Panics(runtime.panicOnExecutionDeadline)
+}
+
+// The positive control: inside the budget, the same call is a no-op — otherwise
+// the test above would pass with a check that always panics.
+func TestExecutionDeadlineDoesNotPanicInsideTheBudget(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+
+	runtime := &jsRuntime{execCtx: ctx, vm: goja.New()}
+
+	r.NotPanics(runtime.panicOnExecutionDeadline)
 }

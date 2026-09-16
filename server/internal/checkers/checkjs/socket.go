@@ -767,8 +767,18 @@ func (h *socketHandle) classifyReadStop(fields map[string]any, result checkerdef
 // blocked" into the same panic sleep raises, so resultFor reports `timeout`.
 // A per-call `timeout` option expiring is NOT this: that is a value.
 func (r *jsRuntime) panicOnExecutionDeadline() {
-	if r.execCtx.Err() != nil {
-		panic(r.vm.NewGoError(r.execCtx.Err()))
+	if err := r.execCtx.Err(); err != nil {
+		panic(r.vm.NewGoError(err))
+	}
+
+	// The socket read deadline and the context's own timer are two independent
+	// clocks armed at the same instant: a read can stop ON the execution
+	// deadline a hair before the context marks itself done, which would report
+	// the check's own budget running out as an ordinary per-call timeout VALUE
+	// and let the script carry on. Reaching the deadline is the fact that
+	// matters, so compare against it rather than waiting for the timer.
+	if deadline, ok := r.execCtx.Deadline(); ok && !time.Now().Before(deadline) {
+		panic(r.vm.NewGoError(context.DeadlineExceeded))
 	}
 }
 
