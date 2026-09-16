@@ -114,6 +114,11 @@ RUN CGO_ENABLED=1 go build \
       -X 'github.com/fclairamb/solidping/server/internal/version.GitTime=${GIT_TIME}'" \
     -o /solidping .
 
+# The final stage is distroless and has no shell, so /data/files can't be
+# created there. Create it here and copy it across with the right ownership
+# (see the final stage) so a fresh named volume seeds correctly.
+RUN mkdir -p /data/files
+
 # Stage 3: Final Runtime Image
 FROM gcr.io/distroless/base-debian13:nonroot
 
@@ -121,6 +126,20 @@ WORKDIR /app
 
 # Copy the compiled binary
 COPY --from=backend-builder /solidping /app/solidping
+
+# Seed /data (database + uploads) owned by the nonroot user (65532:65532) so
+# a fresh named volume, which Docker populates from the image directory's
+# content and ownership, is writable on first run.
+COPY --from=backend-builder --chown=65532:65532 /data /data
+
+# The image is self-contained by default: SQLite database and uploads live
+# under /data, so `docker run -v solidping-data:/data ...` is enough. Every
+# value can still be overridden with -e (SP_DB_TYPE=postgres + SP_DB_URL for
+# Postgres, for example).
+ENV SP_DB_TYPE=sqlite \
+    SP_DB_DIR=/data \
+    SP_FILESTORAGE_LOCAL_ROOT=/data/files
+VOLUME /data
 
 # Expose default port
 EXPOSE 4000
