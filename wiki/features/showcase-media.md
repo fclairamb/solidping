@@ -283,7 +283,7 @@ they match the run log line for line.
   that floor ever drops, the plan will decline the time-lapse on its own
 - **Time-lapse decision:** the 13.4 s between the `detail-page` and `chart` cues
   is published at **4×** with "4× speed" burned into the top-right corner for
-  exactly that stretch. Three **cuts** (untagged, because nothing is on screen
+  exactly that stretch. Two **cuts** (untagged, because nothing is on screen
   during them) remove the post-rotation reload and the API bootstrap; two more
   were offered and declined by the plan as too short (0.42 s and 0.10 s round
   trips), which is the machinery working as intended
