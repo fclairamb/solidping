@@ -102,6 +102,10 @@ Operational procedures for diagnosing the running system.
 - [slack/manifest-prod.json](slack/manifest-prod.json) — Slack app manifest for production
 - [discord/README.md](discord/README.md) — Discord bot operator setup: application/bot creation, the exact permissions requested and why Manage Threads is needed, the privileged `MESSAGE_CONTENT` intent and its 100-guild review threshold, the two inbound transports (HTTPS interactions + Gateway), Ed25519 verification, guild→org mapping and comment ingestion
 
+## Distribution
+
+- [distribution/casaos.md](distribution/casaos.md) — CasaOS/ZimaOS app store listing (`deploy/casaos/solidping/`): upstream `IceWhaleTech/CasaOS-AppStore` PR mechanics, the `x-casaos` metadata shape, and the per-release version/changelog bump recipe
+
 ## Research
 
 - [research/alerting-patterns.md](research/alerting-patterns.md) — Monitoring & alerting design ideas distilled from BetterStack and Hyperping research; input for future specs (May 2026)
