@@ -69,9 +69,21 @@ test.describe("Docs links", () => {
 
   test("badges page renders a docs link to status-badges", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
+    const token = await getAuthToken(page);
 
-    await page.getByTestId("app-sidebar").getByRole("link", { name: "Badges" }).click();
-    await page.waitForURL(/\/badges/);
+    // The badge builder lives under the check it belongs to (spec
+    // 2026-09-16-08), so it is reached from a check, not from the sidebar.
+    const check = await createCheck(
+      page,
+      token,
+      "http",
+      `E2E Docs Badges ${Date.now()}`,
+      { url: "https://example.com/docs-badges" },
+    );
+    await page.goto(`orgs/test/checks/${check.uid}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("Badges").click();
+    await page.waitForURL(/\/checks\/[^/]+\/badges/);
     await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");

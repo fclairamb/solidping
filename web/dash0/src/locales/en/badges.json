@@ -16,7 +16,7 @@
   "refresh": "Refresh",
   "selectCheckPrompt": "Select a check to preview and generate badges",
   "checkNotFoundTitle": "Check not found",
-  "checkNotFound": "We couldn't find the check from this link. It may have been deleted or renamed. Pick a check above to continue.",
+  "checkNotFound": "We couldn't find this check. It may have been deleted or renamed. Go back to the check list to pick another one.",
   "downloadFailed": "Failed to download badge",
   "downloadSvg": "SVG",
   "downloadPng": "PNG",

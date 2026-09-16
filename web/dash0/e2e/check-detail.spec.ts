@@ -962,10 +962,14 @@ test.describe("Check Detail Page", () => {
     await expect(moreActions).toBeHidden();
 
     // Each inline action shows its icon + label. The Badges button is an
-    // asChild <Link> (anchor) pointing at the badges builder with ?check=<slug>.
+    // asChild <Link> (anchor) pointing at this check's own badge builder
+    // (spec 2026-09-16-08) — no search param, the check is in the path.
     const badgesLink = page.getByLabel("Badges");
     await expect(badgesLink).toBeVisible();
-    await expect(badgesLink).toHaveAttribute("href", /\/orgs\/test\/badges\?check=/);
+    await expect(badgesLink).toHaveAttribute(
+      "href",
+      /\/orgs\/test\/checks\/[^/]+\/badges$/,
+    );
     await expect(badgesLink.getByText("Badges")).toBeVisible();
     await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
     await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
