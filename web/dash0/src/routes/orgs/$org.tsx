@@ -25,7 +25,6 @@ import {
   LayoutDashboard,
   ListChecks,
   Megaphone,
-  Network,
   Palette,
   Server,
   Target,
@@ -176,6 +175,7 @@ const ORG_SECTION_LABELS: Record<string, string> = {
   "/orgs/$org/organization/requests": "requests",
   "/orgs/$org/organization/usage": "usage",
   "/orgs/$org/organization/private-locations": "privateLocations",
+  "/orgs/$org/organization/discovery": "discovery",
   "/orgs/$org/organization/report-schedules": "reportSchedules",
   "/orgs/$org/organization/ai": "ai",
   "/orgs/$org/organization/settings": "settings",
@@ -204,7 +204,6 @@ function Breadcrumbs({ org }: { org: string }) {
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
-  const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
   const isJobs = matches.some((m) => m.routeId.startsWith("/orgs/$org/jobs"));
   const isCheckJobDetail = routeIds.has("/orgs/$org/jobs/check/$checkJobUid");
   const isBackgroundJobDetail = routeIds.has("/orgs/$org/jobs/$jobUid");
@@ -581,15 +580,26 @@ function Breadcrumbs({ org }: { org: string }) {
     const isReportScheduleNew = routeIds.has(
       "/orgs/$org/organization/report-schedules/new",
     );
+    const isDiscoveryNew = routeIds.has("/orgs/$org/organization/discovery/new");
+    // Discovery's scan-detail leaf carries its job uid in `jobUid`, not `uid`
+    // — gated on sectionKey so it never fires while some other organization
+    // sub-route happens to be rendered with a `jobUid` in scope.
+    const discoveryJobUid = sectionKey === "discovery" ? params.jobUid : undefined;
     const hasDeepLeaf =
-      isPrivateLocationsRegister || isReportScheduleNew || isReportScheduleDetail;
+      isPrivateLocationsRegister ||
+      isReportScheduleNew ||
+      isReportScheduleDetail ||
+      isDiscoveryNew ||
+      !!discoveryJobUid;
     const reportScheduleTitle = reportSchedule?.name || params.uid?.slice(0, 8);
     const sectionPath =
       sectionKey === "privateLocations"
         ? "/orgs/$org/organization/private-locations"
         : sectionKey === "reportSchedules"
           ? "/orgs/$org/organization/report-schedules"
-          : null;
+          : sectionKey === "discovery"
+            ? "/orgs/$org/organization/discovery"
+            : null;
 
     return (
       <>
@@ -624,6 +634,18 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{reportScheduleTitle}</span>
+          </>
+        )}
+        {isDiscoveryNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {discoveryJobUid && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{discoveryJobUid.slice(0, 8)}</span>
           </>
         )}
       </>
@@ -831,34 +853,6 @@ function Breadcrumbs({ org }: { org: string }) {
         <Palette className={iconClass} />
         {t("designReference")}
       </span>
-    );
-  }
-
-  if (isDiscovery) {
-    const jobUid = params.jobUid;
-    const isNew = routeIds.has("/orgs/$org/discovery/new");
-    const isRoot = !jobUid && !isNew;
-
-    return (
-      <>
-        {isRoot ? (
-          <span className={activeClass}><Network className={iconClass} />{t("discovery")}</span>
-        ) : (
-          <Link to="/orgs/$org/discovery" params={{ org }} className={linkClass}><Network className={iconClass} />{t("discovery")}</Link>
-        )}
-        {isNew && (
-          <>
-            <BreadcrumbSeparator />
-            <span className={activeClass}>{t("new")}</span>
-          </>
-        )}
-        {jobUid && (
-          <>
-            <BreadcrumbSeparator />
-            <span className={activeClass}>{jobUid.slice(0, 8)}</span>
-          </>
-        )}
-      </>
     );
   }
 

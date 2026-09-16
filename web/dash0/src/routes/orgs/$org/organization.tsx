@@ -34,6 +34,10 @@ function OrganizationLayout() {
       path: "/orgs/$org/organization/private-locations",
     },
     {
+      label: t("nav:discovery", "Discovery"),
+      path: "/orgs/$org/organization/discovery",
+    },
+    {
       label: t("nav:reportSchedules", "Uptime reports"),
       path: "/orgs/$org/organization/report-schedules",
     },
