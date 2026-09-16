@@ -966,7 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",
-    "sftpFingerprintHelp": "Pins the server's host key. Leave it empty to accept any key \u2014 the fingerprint the server presented is always reported in the check output, so you can copy it here afterwards.",
+    "sftpFingerprintHelp": "Pins the server's host key. Leave it empty to accept any key — the fingerprint the server presented is always reported in the check output, so you can copy it here afterwards.",
     "fingerprintHelpPrefix": "Verifies the server's identity on every check, and is required to use this check as a",
     "tunnelBastionLabel": "Run through SSH tunnel",
     "fingerprintHelpSuffix": "bastion for other checks. Get it with",
@@ -1076,5 +1076,25 @@
     "issuer": "Issuer",
     "notAfter": "Expires",
     "daysRemaining": "Days left"
+  },
+  "publish": {
+    "title": "Publish on a status page",
+    "description": "Add this check to a status page you already have, or create a new one.",
+    "add": "Add",
+    "addFailed": "Could not add this check to that section.",
+    "added": "Added to \"{{section}}\" on {{page}}.",
+    "alreadyTitle": "Already on a status page",
+    "sectionAlready": "Already here",
+    "noSections": "This page has no sections yet.",
+    "noStatusPages": "You have no status page yet. Create one to publish this check.",
+    "createNew": "Create a new status page",
+    "via": {
+      "direct": "{{page}} — in the \"{{section}}\" section.",
+      "group": "{{page}} — in \"{{section}}\", through its check group. The group is published as a single component, so this check is already covered by it.",
+      "selector": "{{page}} — in \"{{section}}\", through that section's membership rule. Checks matching the rule are added automatically."
+    },
+    "postCreateOn": "Published on {{page}}, in the \"{{section}}\" section.",
+    "postCreateNone": "Not on any status page yet.",
+    "postCreateAction": "Publish it"
   }
 }

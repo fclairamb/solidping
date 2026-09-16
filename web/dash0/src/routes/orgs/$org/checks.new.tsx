@@ -10,6 +10,7 @@ import {
 } from "@/api/hooks";
 import { apiFetch } from "@/api/client";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
+import { fetchCheckPublications } from "@/lib/check-publication";
 import { isDemoReadOnlyError } from "@/lib/demo";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
@@ -261,6 +262,50 @@ function CheckNewPage() {
         if (isDemoSession) {
           toast.info(tOrg("org:demo.checkExpires"), { duration: 10000 });
         }
+
+        // One non-blocking line about publication (spec 2026-09-16-11). "When I
+        // add a new check, I also need to go into the Status page and add the
+        // check there" is a complaint about silence: the product never says
+        // whether the thing just created is visible to anyone. It says so now —
+        // and when it is not, the link is one click, not a hunt.
+        //
+        // Deliberately fire-and-forget and deliberately swallowed on failure:
+        // the check IS created, and a status-page lookup that errors must never
+        // turn a successful create into something that looks like a failure.
+        // Skipped for a demo session, which already has its own toast queue and
+        // cannot write to a status page anyway.
+        if (!isDemoSession) {
+          void fetchCheckPublications(org, {
+            uid: check.uid,
+            checkGroupUid: check.checkGroupUid ?? data.checkGroupUid,
+            labels: check.labels ?? data.labels,
+          })
+            .then((publications) => {
+              const first = publications[0];
+              if (first) {
+                toast.info(
+                  t("publish.postCreateOn", {
+                    page: first.pageName,
+                    section: first.sectionName,
+                  }),
+                );
+                return;
+              }
+              toast.info(t("publish.postCreateNone"), {
+                action: {
+                  label: t("publish.postCreateAction"),
+                  onClick: () =>
+                    navigate({
+                      to: "/orgs/$org/checks/$checkUid",
+                      params: { org, checkUid: check.uid },
+                      search: { publish: true },
+                    }),
+                },
+              });
+            })
+            .catch(() => {});
+        }
+
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: check.uid },

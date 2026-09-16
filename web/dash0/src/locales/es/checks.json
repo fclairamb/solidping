@@ -966,7 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",
-    "sftpFingerprintHelp": "Fija la clave del host del servidor. D\u00e9jalo vac\u00edo para aceptar cualquier clave: la huella que presenta el servidor siempre aparece en la salida de la comprobaci\u00f3n, para poder copiarla aqu\u00ed despu\u00e9s.",
+    "sftpFingerprintHelp": "Fija la clave del host del servidor. Déjalo vacío para aceptar cualquier clave: la huella que presenta el servidor siempre aparece en la salida de la comprobación, para poder copiarla aquí después.",
     "fingerprintHelpPrefix": "Verifica la identidad del servidor en cada comprobación, y es necesario para usar esta comprobación como",
     "tunnelBastionLabel": "Ejecutar a través de un túnel SSH",
     "fingerprintHelpSuffix": "bastión para otras comprobaciones. Obténgala con",
@@ -1076,5 +1076,25 @@
     "issuer": "Emisor",
     "notAfter": "Caducidad",
     "daysRemaining": "Días restantes"
+  },
+  "publish": {
+    "title": "Publicar en una página de estado",
+    "description": "Añade este control a una página de estado existente o crea una nueva.",
+    "add": "Añadir",
+    "addFailed": "No se pudo añadir este control a esa sección.",
+    "added": "Añadido a «{{section}}» en {{page}}.",
+    "alreadyTitle": "Ya está en una página de estado",
+    "sectionAlready": "Ya está aquí",
+    "noSections": "Esta página todavía no tiene secciones.",
+    "noStatusPages": "Aún no tienes ninguna página de estado. Crea una para publicar este control.",
+    "createNew": "Crear una página de estado",
+    "via": {
+      "direct": "{{page}} — en la sección «{{section}}».",
+      "group": "{{page}} — en «{{section}}», a través de su grupo de controles. El grupo se publica como un único componente, así que este control ya está incluido.",
+      "selector": "{{page}} — en «{{section}}», a través de la regla de pertenencia de esa sección. Los controles que coinciden se añaden automáticamente."
+    },
+    "postCreateOn": "Publicado en {{page}}, en la sección «{{section}}».",
+    "postCreateNone": "Todavía no está en ninguna página de estado.",
+    "postCreateAction": "Publicarlo"
   }
 }

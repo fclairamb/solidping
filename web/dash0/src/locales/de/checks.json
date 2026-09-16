@@ -966,7 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",
-    "sftpFingerprintHelp": "Fixiert den Host-Schl\u00fcssel des Servers. Leer lassen, um jeden Schl\u00fcssel zu akzeptieren \u2014 der vom Server vorgelegte Fingerabdruck steht immer in der Pr\u00fcfausgabe und kann von dort hierher kopiert werden.",
+    "sftpFingerprintHelp": "Fixiert den Host-Schlüssel des Servers. Leer lassen, um jeden Schlüssel zu akzeptieren — der vom Server vorgelegte Fingerabdruck steht immer in der Prüfausgabe und kann von dort hierher kopiert werden.",
     "fingerprintHelpPrefix": "Überprüft die Identität des Servers bei jeder Prüfung und ist erforderlich, um diese Prüfung als",
     "tunnelBastionLabel": "Über SSH-Tunnel ausführen",
     "fingerprintHelpSuffix": "Bastion für andere Prüfungen zu verwenden. Ermitteln Sie ihn mit",
@@ -1076,5 +1076,25 @@
     "issuer": "Aussteller",
     "notAfter": "Läuft ab",
     "daysRemaining": "Verbleibende Tage"
+  },
+  "publish": {
+    "title": "Auf einer Statusseite veröffentlichen",
+    "description": "Fügen Sie diesen Check einer vorhandenen Statusseite hinzu oder erstellen Sie eine neue.",
+    "add": "Hinzufügen",
+    "addFailed": "Dieser Check konnte dem Abschnitt nicht hinzugefügt werden.",
+    "added": "Zu „{{section}}“ auf {{page}} hinzugefügt.",
+    "alreadyTitle": "Bereits auf einer Statusseite",
+    "sectionAlready": "Bereits vorhanden",
+    "noSections": "Diese Seite hat noch keine Abschnitte.",
+    "noStatusPages": "Sie haben noch keine Statusseite. Erstellen Sie eine, um diesen Check zu veröffentlichen.",
+    "createNew": "Neue Statusseite erstellen",
+    "via": {
+      "direct": "{{page}} — im Abschnitt „{{section}}“.",
+      "group": "{{page}} — in „{{section}}“, über seine Check-Gruppe. Die Gruppe wird als eine einzige Komponente veröffentlicht, dieser Check ist damit bereits abgedeckt.",
+      "selector": "{{page}} — in „{{section}}“, über die Zuordnungsregel dieses Abschnitts. Passende Checks werden automatisch hinzugefügt."
+    },
+    "postCreateOn": "Veröffentlicht auf {{page}}, im Abschnitt „{{section}}“.",
+    "postCreateNone": "Noch auf keiner Statusseite.",
+    "postCreateAction": "Jetzt veröffentlichen"
   }
 }

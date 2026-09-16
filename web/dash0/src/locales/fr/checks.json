@@ -966,7 +966,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",
-    "sftpFingerprintHelp": "\u00c9pingle la cl\u00e9 d'h\u00f4te du serveur. Laisser vide pour accepter n'importe quelle cl\u00e9 \u2014 l'empreinte pr\u00e9sent\u00e9e par le serveur est toujours report\u00e9e dans la sortie du check, pour pouvoir la recopier ici ensuite.",
+    "sftpFingerprintHelp": "Épingle la clé d'hôte du serveur. Laisser vide pour accepter n'importe quelle clé — l'empreinte présentée par le serveur est toujours reportée dans la sortie du check, pour pouvoir la recopier ici ensuite.",
     "fingerprintHelpPrefix": "Vérifie l'identité du serveur à chaque contrôle, et est requis pour utiliser ce contrôle comme",
     "tunnelBastionLabel": "Passer par un tunnel SSH",
     "fingerprintHelpSuffix": "bastion pour d'autres contrôles. Obtenez-la avec",
@@ -1076,5 +1076,25 @@
     "issuer": "Émetteur",
     "notAfter": "Expiration",
     "daysRemaining": "Jours restants"
+  },
+  "publish": {
+    "title": "Publier sur une page de statut",
+    "description": "Ajoutez ce contrôle à une page de statut existante, ou créez-en une nouvelle.",
+    "add": "Ajouter",
+    "addFailed": "Impossible d'ajouter ce contrôle à cette section.",
+    "added": "Ajouté à « {{section}} » sur {{page}}.",
+    "alreadyTitle": "Déjà sur une page de statut",
+    "sectionAlready": "Déjà présent",
+    "noSections": "Cette page n'a encore aucune section.",
+    "noStatusPages": "Vous n'avez encore aucune page de statut. Créez-en une pour publier ce contrôle.",
+    "createNew": "Créer une page de statut",
+    "via": {
+      "direct": "{{page}} — dans la section « {{section}} ».",
+      "group": "{{page}} — dans « {{section}} », via son groupe de contrôles. Le groupe est publié comme un seul composant, ce contrôle y est donc déjà inclus.",
+      "selector": "{{page}} — dans « {{section}} », via la règle d'appartenance de cette section. Les contrôles correspondants y sont ajoutés automatiquement."
+    },
+    "postCreateOn": "Publié sur {{page}}, dans la section « {{section}} ».",
+    "postCreateNone": "Sur aucune page de statut pour l'instant.",
+    "postCreateAction": "Le publier"
   }
 }
