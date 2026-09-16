@@ -38,8 +38,9 @@ Enter
 # of the SCROLLBACK, not the viewport — so it keeps matching against the opening
 # prompt until it times out. `Wait+Line` reads one line on the same broken
 # offset and behaves the same way. The image boots to "Starting HTTP server" in
-# a shade over two seconds, so this holds past it and cuts while the line is
-# still on screen with the check workers starting up underneath it.
+# roughly four seconds while vhs is screenshotting every frame beside it, so
+# this holds past that and cuts while the line is still on screen with the check
+# workers starting up underneath it.
 #
 # terminal.ts checks the container's own log afterwards and fails the render if
 # the server never got there — if that fires on a slower machine, lengthen this
