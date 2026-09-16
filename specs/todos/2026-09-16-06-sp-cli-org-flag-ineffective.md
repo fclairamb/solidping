@@ -226,9 +226,15 @@ risk, and v3's default persistence (`FlagBase.Local == false`) carries the root'
 `--org`/`--url`/etc. down through `client` and every `pkg/cli` node beneath it, exactly as it
 does for `cmd/sp`. Verified manually (`go run .` against a disposable config, no live server
 needed — the outbound login request body shows the resolved org) in all three flag positions:
-before `client`, right after `client`, and after the leaf command. Regression tests added in
-`server/main_test.go` using a synthetic root→client→group→leaf tree (avoids exercising
-`pkg/cli`'s real network-calling actions) that mirrors the production shape exactly.
+before `client`, right after `client`, and after the leaf command. The command-tree
+construction inline in `func main()` was extracted into a side-effect-free
+`buildRootCommand()`, called by both `main()` and `server/main_test.go`, so the
+`TestClientOrgFlag_*` regression tests walk down to the real `client` → `checks` → `list`
+leaf and swap out only that leaf's `Action` (to capture the resolved org without a network
+call) — every `Flags`/`Commands`/`DefaultCommand` on the path is exactly what production
+ships, not a hand-fabricated mirror. Verified non-vacuous by temporarily reintroducing the
+bug (redeclaring `Flags` on `client`) and confirming `TestClientOrgFlag_BeforeClient` fails,
+then reverting.
 
 This means the fix commit's "no node in the tree redeclares config/url/org/output/json/verbose"
 claim, as originally written, was accurate only for the `cmd/sp` binary's command tree, not for
