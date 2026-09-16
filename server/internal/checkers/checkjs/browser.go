@@ -39,6 +39,8 @@ var (
 		"a page is already open: a script may open one browser page per execution")
 	errBrowserTypeDisabled = errors.New(
 		`check type "browser" is disabled on this server`)
+	errBrowserUnderTunnel = errors.New(
+		"browser cannot run through an SSH tunnel")
 )
 
 // BrowserSession is the slice of checkbrowser.Session the `browser` bindings
@@ -119,6 +121,15 @@ func (r *jsRuntime) openPage() (*goja.Object, error) {
 	// paths and is not widened here.
 	if TypeEnabled != nil && !TypeEnabled(checkerdef.CheckTypeBrowser) {
 		return nil, errBrowserTypeDisabled
+	}
+
+	// Chrome has its own network stack and cannot be routed through a
+	// ContextDialer, so a tunneled script must not be allowed to believe its
+	// browsing went through the bastion. This is a configuration conflict, not
+	// a target verdict, so it throws like the gate above — before the browser
+	// session (and its slot/allocation cost) is touched at all.
+	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
+		return nil, errBrowserUnderTunnel
 	}
 
 	session, err := OpenBrowser(r.execCtx)
