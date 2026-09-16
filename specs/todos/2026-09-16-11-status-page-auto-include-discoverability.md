@@ -152,3 +152,78 @@ section to "all checks" or to a label — and that the fact he had to ask means 
 discoverable enough, which is being fixed. Point him at the `public=true` label pattern; it is the
 better answer for a page he intends to show customers, because it keeps publication an opt-in
 decision per check.
+
+---
+
+## Implementation Plan
+
+Frontend + docs only; no backend change is needed — the selector machinery, the
+resource XOR and the `GET /status-pages/{uid}?with=sections` payload (which already
+reconciles on view and flags `managedBySelector`) provide everything the UI needs.
+
+### A — make the membership choice visible (`section-membership.tsx`)
+
+- Move `<SectionMembership>` **above** the name/slug fields in both
+  `AddSectionDialog` and `EditSectionDialog`
+  (`status-pages.$statusPageUid.index.tsx`).
+- Render a one-line description for **all three** modes, not just the selected
+  one, so the two dynamic modes are legible before they are chosen. The active
+  line is emphasized; the other two stay muted. Reuses the existing
+  `sections.membership.hint.*` keys, so no new copy for the descriptions
+  themselves.
+- `manual` stays the default, unchanged. The public-disclosure warning stays
+  exactly as it is.
+
+### B — publish dialog on the check detail page
+
+- New `lib/check-publication.ts`: a pure `findCheckPublications(check, pages)`
+  returning one entry per placement with a `via: "direct" | "group" | "selector"`
+  discriminator, plus `fetchCheckPublications(org, check)` for the imperative
+  (post-create) caller. Detection order: a resource row targeting the check
+  (`managedBySelector` ⇒ `selector`, else `direct`), a resource row targeting the
+  check's group ⇒ `group`, and finally a section `selector` that matches the
+  check's labels (or `{all:true}`) but has not been reconciled yet ⇒ `selector`.
+- New `components/checks/publish-on-status-page-dialog.tsx`: lists every status
+  page with its sections; a section the check already reaches is shown as such
+  and offers no add button; everything else gets an "Add" button calling
+  `useCreateResource(org, pageUid, sectionUid)`. A "Create a new status page"
+  footer link keeps today's `/status-pages/new?checkUid=` behaviour.
+- `checks.$checkUid.index.tsx`: the `publish-status-page-link` `<Link>` becomes
+  the dialog trigger (same icon, same label, same testid so the trigger stays
+  findable). The existing `status-page-from-check` e2e is updated to step
+  through the dialog's create option.
+- The route gains a `publish` search param that opens the dialog on mount, so
+  the post-create toast in C can deep-link straight into it.
+
+### C — one line after a check is created
+
+- `checks.new.tsx`: after the create succeeds and the navigation is issued, call
+  `fetchCheckPublications` and fire a single non-blocking `toast` — either
+  "Appears on {{page}} via the '{{section}}' section" or "Not on any status page"
+  with an action that navigates to `…/checks/$checkUid?publish=true`. Failure to
+  resolve publication is swallowed: it must never turn a successful create into
+  an error. No picker is added to the form.
+
+### D — docs (`web/docs/docs/features/status-pages.md`)
+
+- A short **"A new check isn't showing up"** troubleshooting block near the top
+  naming the three membership modes and pointing down to the dynamic-sections
+  section.
+- A side-by-side of the two mechanisms that sound interchangeable: publishing a
+  **group** as one rolled-up component vs a **label selector** that lists each
+  matching check individually.
+
+### Locales
+
+Every new string gets `en/fr/es/de` keys (`statusPages.json` for the dialog,
+`checks.json` for the post-create line), enforced by `locale-parity.test.ts`.
+
+### Tests
+
+- E2E `status-page-auto-include.spec.ts`: (1) an `all` section plus a check
+  created afterwards appears on the public page with no further action;
+  (2) the publish dialog adds a check to an existing page's section;
+  (3) a check published only through its group is reported already-published and
+  offered no duplicate.
+- `status-page-from-check.spec.ts` updated for the new dialog step.
+- `bun run test:unit` for the locale parity of the new keys.
