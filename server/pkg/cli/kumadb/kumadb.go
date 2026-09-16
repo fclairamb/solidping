@@ -236,7 +236,8 @@ func checkSQLiteHeader(path string) error {
 	}
 
 	if string(header) != sqliteHeaderMagic {
-		return fmt.Errorf("%w: %s", ErrNotSQLite, path)
+		return fmt.Errorf("%w: %s (if this Kuma instance runs on MariaDB/MySQL instead of SQLite, "+
+			"there is no kuma.db to read — this importer does not support that setup)", ErrNotSQLite, path)
 	}
 
 	return nil
