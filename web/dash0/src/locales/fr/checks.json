@@ -1023,6 +1023,17 @@
     "requestHeadersHelp": "Pour les endpoints derrière une authentification bearer ou basique.",
     "addHeader": "Ajouter un en-tête"
   },
+  "rabbitmq": {
+    "mode": "Mode",
+    "modeAmqp": "AMQP",
+    "modeManagement": "API de management",
+    "memoryWarning": "Avertissement mémoire",
+    "memoryCritical": "Mémoire critique",
+    "memoryThresholdHelp": "Un pourcentage du seuil haut de RabbitMQ (par ex. 80%) ou une taille absolue (par ex. 1.5GiB).",
+    "diskWarning": "Avertissement disque libre",
+    "diskCritical": "Disque libre critique",
+    "diskThresholdHelp": "Une taille absolue uniquement (par ex. 10GiB) — l'API de management n'expose pas la taille totale du disque, un pourcentage ne peut donc pas être calculé."
+  },
   "snmp": {
     "oid": "OID",
     "communityOptional": "Communauté (optionnel, par défaut : public)",
