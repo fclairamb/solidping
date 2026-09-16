@@ -10,19 +10,24 @@
  * `segment-plan.test.ts` pins its guarantees without ffmpeg, a browser or a
  * recording — see `bun run test:unit`.
  *
- * ## Why a time-lapse exists at all
+ * ## The two kinds of edit, and why they are not the same
  *
  * The detail page has to be held for at least one full check interval before
- * the chart plots two points a genuine interval apart (see
- * `MIN_DETAIL_DWELL_MS` in the recording spec). Publishing that hold in real
- * time would spend a third of the cut watching nothing move. So the stretch
- * between two named cues can be played faster — with a tag burned in over
- * exactly that stretch, because a demo that silently speeds up the boring part
- * is a demo that lies about how fast the product is.
+ * the chart plots two points a genuine interval apart (see the dwell in the
+ * recording spec). Publishing that hold in real time would spend a third of the
+ * cut watching a chart not move. So that stretch is played **faster**, with a
+ * tag burned in over exactly it — a demo that silently speeds up the boring
+ * part is a demo that lies about how fast the product is.
  *
- * When the filmed interval is short enough that the hold is already brief, the
- * plan reports back that it did not bother, with the reason, and the cut is
- * real time from end to end.
+ * Other stretches show nothing at all: a page reloading itself after the
+ * password rotation, the pipeline provisioning its org over the API. Speeding
+ * those up would only put a tag on screen to announce that nothing is happening
+ * faster, so they are **cut** instead — ordinary film grammar, and no claim is
+ * made that needs qualifying.
+ *
+ * Every edit is conditional on the take: when the gap it names turns out to be
+ * short (a faster check interval, a quicker machine), the plan reports that it
+ * did not bother, with the reason, and that footage plays in real time.
  */
 
 /** A cue, as `postprocess.ts` sees it after shifting onto the trimmed timeline. */
@@ -44,16 +49,33 @@ export interface Segment {
   tag?: string;
 }
 
-/** A request to compress the stretch between two cues. */
-export interface TimelapseSpec {
-  fromLabel: string;
-  toLabel: string;
-  speed: number;
-  /** Below this span the compression is not worth a tag on screen. */
-  minSpanS: number;
-  /** What to burn in over the sped-up stretch, e.g. "3× speed". */
-  tag: string;
-}
+/**
+ * One edit between two named cues.
+ *
+ * `"speed"` plays the stretch faster and burns a tag over exactly it.
+ * `"cut"` removes it outright — the right answer for a stretch that shows
+ * nothing at all (a page reloading, the pipeline provisioning an org over the
+ * API), where speeding up a static frame would only put a tag on screen to
+ * announce that nothing is happening faster.
+ */
+export type EditSpec =
+  | {
+      kind: "speed";
+      fromLabel: string;
+      toLabel: string;
+      speed: number;
+      /** Below this span the compression is not worth a tag on screen. */
+      minSpanS: number;
+      /** What to burn in over the sped-up stretch, e.g. "3× speed". */
+      tag: string;
+    }
+  | {
+      kind: "cut";
+      fromLabel: string;
+      toLabel: string;
+      /** Below this span the join is not worth the risk of a visible jump. */
+      minSpanS: number;
+    };
 
 export interface SegmentPlan {
   segments: Segment[];
@@ -61,8 +83,10 @@ export interface SegmentPlan {
   sourceDuration: number;
   /** Length once every segment has been played at its own speed. */
   outputDuration: number;
-  /** Whether the time-lapse happened, and why — this goes in the run log. */
-  timelapse: { applied: boolean; reason: string };
+  /** One line per edit, applied or not, for the run log. */
+  notes: string[];
+  /** How many edits actually changed the cut. */
+  applied: number;
 }
 
 function findCue(cues: PlanCue[], label: string): PlanCue | undefined {
@@ -75,72 +99,105 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/** An edit resolved against a real take. */
+interface ResolvedEdit {
+  spec: EditSpec;
+  start: number;
+  end: number;
+}
+
 /**
  * Builds the plan.
  *
- * Every refusal to apply the time-lapse is a *plan with a reason*, never a
- * throw: a take whose choreography changed should still produce a publishable
- * cut, with the run log saying what it did instead.
+ * Every refusal to apply an edit is a *note*, never a throw: a take whose
+ * choreography changed should still produce a publishable cut, with the run log
+ * saying what it did instead. (Captions are the opposite — a missing caption
+ * cue does throw, in `buildLabelWindows`, because it would silently publish a
+ * cut that says less than it should.)
  */
 export function buildSegmentPlan(input: {
   cues: PlanCue[];
   sourceDuration: number;
-  timelapse?: TimelapseSpec;
+  edits?: EditSpec[];
 }): SegmentPlan {
-  const { cues, sourceDuration, timelapse } = input;
-
-  const whole = (reason: string): SegmentPlan => ({
-    segments: [{ start: 0, end: sourceDuration, speed: 1 }],
-    sourceDuration,
-    outputDuration: sourceDuration,
-    timelapse: { applied: false, reason },
-  });
+  const { cues, sourceDuration, edits = [] } = input;
+  const notes: string[] = [];
 
   if (!(sourceDuration > 0)) {
     return {
       segments: [],
       sourceDuration: 0,
       outputDuration: 0,
-      timelapse: { applied: false, reason: "the take is empty" },
+      notes: ["the take is empty"],
+      applied: 0,
     };
   }
 
-  if (!timelapse) return whole("not requested");
+  const resolved: ResolvedEdit[] = [];
+  for (const spec of edits) {
+    const from = findCue(cues, spec.fromLabel);
+    const to = findCue(cues, spec.toLabel);
+    if (!from || !to) {
+      const missing = [from ? null : spec.fromLabel, to ? null : spec.toLabel]
+        .filter(Boolean)
+        .join(" and ");
+      notes.push(`skipped ${describe(spec)}: the take has no ${missing} cue`);
+      continue;
+    }
 
-  const from = findCue(cues, timelapse.fromLabel);
-  const to = findCue(cues, timelapse.toLabel);
-  if (!from || !to) {
-    const missing = [
-      from ? null : timelapse.fromLabel,
-      to ? null : timelapse.toLabel,
-    ]
-      .filter(Boolean)
-      .join(" and ");
+    const start = clamp(from.t, 0, sourceDuration);
+    const end = clamp(to.t, 0, sourceDuration);
+    const span = end - start;
+    if (span < spec.minSpanS) {
+      notes.push(
+        `skipped ${describe(spec)}: the gap is ${span.toFixed(2)}s, under the ` +
+          `${spec.minSpanS.toFixed(2)}s worth editing`,
+      );
+      continue;
+    }
+    if (spec.kind === "speed" && !(spec.speed > 1)) {
+      notes.push(
+        `skipped ${describe(spec)}: a speed of ${spec.speed}× compresses nothing`,
+      );
+      continue;
+    }
 
-    return whole(`the take has no ${missing} cue`);
+    const clash = resolved.find((other) => start < other.end && end > other.start);
+    if (clash) {
+      notes.push(
+        `skipped ${describe(spec)}: it overlaps ${describe(clash.spec)}, and ` +
+          "two edits over the same footage cannot both be honoured",
+      );
+      continue;
+    }
+
+    resolved.push({ spec, start, end });
+    notes.push(`applied ${describe(spec)} over ${span.toFixed(2)}s`);
   }
 
-  const start = clamp(from.t, 0, sourceDuration);
-  const end = clamp(to.t, 0, sourceDuration);
-  const span = end - start;
-  if (span < timelapse.minSpanS) {
-    return whole(
-      `the ${timelapse.fromLabel} → ${timelapse.toLabel} gap is ` +
-        `${span.toFixed(2)}s, under the ${timelapse.minSpanS.toFixed(2)}s that ` +
-        "would be worth compressing",
-    );
-  }
-
-  if (!(timelapse.speed > 1)) {
-    return whole(`a speed of ${timelapse.speed}× would compress nothing`);
-  }
+  resolved.sort((a, b) => a.start - b.start);
 
   const segments: Segment[] = [];
-  if (start > 0) segments.push({ start: 0, end: start, speed: 1 });
-  segments.push({ start, end, speed: timelapse.speed, tag: timelapse.tag });
-  if (end < sourceDuration) {
-    segments.push({ start: end, end: sourceDuration, speed: 1 });
+  let cursor = 0;
+  for (const edit of resolved) {
+    if (edit.start > cursor) {
+      segments.push({ start: cursor, end: edit.start, speed: 1 });
+    }
+    if (edit.spec.kind === "speed") {
+      segments.push({
+        start: edit.start,
+        end: edit.end,
+        speed: edit.spec.speed,
+        tag: edit.spec.tag,
+      });
+    }
+    cursor = edit.end;
   }
+  if (cursor < sourceDuration) {
+    segments.push({ start: cursor, end: sourceDuration, speed: 1 });
+  }
+
+  if (notes.length === 0) notes.push("no edits requested — real time throughout");
 
   return {
     segments,
@@ -149,13 +206,15 @@ export function buildSegmentPlan(input: {
       (total, seg) => total + (seg.end - seg.start) / seg.speed,
       0,
     ),
-    timelapse: {
-      applied: true,
-      reason:
-        `${span.toFixed(2)}s between ${timelapse.fromLabel} and ` +
-        `${timelapse.toLabel} played at ${timelapse.speed}×`,
-    },
+    notes,
+    applied: resolved.length,
   };
+}
+
+function describe(spec: EditSpec): string {
+  const span = `${spec.fromLabel} → ${spec.toLabel}`;
+
+  return spec.kind === "speed" ? `${spec.speed}× over ${span}` : `the cut at ${span}`;
 }
 
 /**

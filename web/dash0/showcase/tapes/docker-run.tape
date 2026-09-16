@@ -24,11 +24,11 @@ Set Width 1280
 Set Height 800
 Set Padding 24
 Set Framerate 25
-Set TypingSpeed 28ms
+Set TypingSpeed 22ms
 
-Sleep 500ms
+Sleep 300ms
 Type "docker run -p 4000:4000 -v solidping-data:/data ghcr.io/fclairamb/solidping"
-Sleep 400ms
+Sleep 350ms
 Enter
 
 # A fixed hold, NOT `Wait+Screen /Starting HTTP server/`.
@@ -44,6 +44,6 @@ Enter
 # terminal.ts checks the container's own log afterwards and fails the render if
 # the server never got there — if that fires on a slower machine, lengthen this
 # Sleep rather than reaching for Wait.
-Sleep 5s
+Sleep 5600ms
 Ctrl+C
-Sleep 700ms
+Sleep 600ms

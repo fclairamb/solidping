@@ -6,9 +6,9 @@ import {
   buildSpeedFilters,
   buildSpeedTagWindows,
   mapSourceToOutput,
+  type EditSpec,
   type PlanCue,
   type SegmentPlan,
-  type TimelapseSpec,
 } from "./segment-plan";
 
 /** The cue list the committed choreography produces, times in seconds. */
@@ -21,12 +21,20 @@ const cues: PlanCue[] = [
   { t: 33.0, label: "chart" },
 ];
 
-const timelapse: TimelapseSpec = {
+const timelapse: EditSpec = {
+  kind: "speed",
   fromLabel: "detail-page",
   toLabel: "chart",
   speed: 3,
   minSpanS: 9,
   tag: "3×",
+};
+
+const bootstrapCut: EditSpec = {
+  kind: "cut",
+  fromLabel: "form-loaded",
+  toLabel: "detail-page",
+  minSpanS: 2,
 };
 
 describe("buildSegmentPlan", () => {
@@ -35,13 +43,13 @@ describe("buildSegmentPlan", () => {
 
     expect(plan.segments).toEqual([{ start: 0, end: 40, speed: 1 }]);
     expect(plan.outputDuration).toBe(40);
-    expect(plan.timelapse.applied).toBe(false);
+    expect(plan.applied).toBe(0);
   });
 
   it("compresses the stretch between the two cues and keeps the rest real time", () => {
-    const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+    const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
 
-    expect(plan.timelapse.applied).toBe(true);
+    expect(plan.applied).toBe(1);
     expect(plan.segments).toEqual([
       { start: 0, end: 20, speed: 1 },
       { start: 20, end: 33, speed: 3, tag: "3×" },
@@ -52,7 +60,7 @@ describe("buildSegmentPlan", () => {
   });
 
   it("only tags the segment it actually sped up", () => {
-    const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+    const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
     const tagged = plan.segments.filter((segment) => segment.tag);
 
     expect(tagged).toHaveLength(1);
@@ -71,11 +79,11 @@ describe("buildSegmentPlan", () => {
     const plan = buildSegmentPlan({
       cues: short,
       sourceDuration: 30,
-      timelapse,
+      edits: [timelapse],
     });
 
-    expect(plan.timelapse.applied).toBe(false);
-    expect(plan.timelapse.reason).toContain("4.00s");
+    expect(plan.applied).toBe(0);
+    expect(plan.notes.join(" ")).toContain("4.00s");
     expect(plan.segments).toEqual([{ start: 0, end: 30, speed: 1 }]);
   });
 
@@ -83,11 +91,11 @@ describe("buildSegmentPlan", () => {
     const plan = buildSegmentPlan({
       cues: [{ t: 20, label: "detail-page" }],
       sourceDuration: 40,
-      timelapse,
+      edits: [timelapse],
     });
 
-    expect(plan.timelapse.applied).toBe(false);
-    expect(plan.timelapse.reason).toContain("chart");
+    expect(plan.applied).toBe(0);
+    expect(plan.notes.join(" ")).toContain("chart");
   });
 
   it("clamps a cue that sits past the end of the trimmed take", () => {
@@ -97,7 +105,7 @@ describe("buildSegmentPlan", () => {
         { t: 99, label: "chart" },
       ],
       sourceDuration: 40,
-      timelapse,
+      edits: [timelapse],
     });
 
     expect(plan.segments[plan.segments.length - 1].end).toBe(40);
@@ -108,7 +116,7 @@ describe("buildSegmentPlan", () => {
   });
 
   it("covers the source exactly once, with no gap and no overlap", () => {
-    const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+    const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
 
     expect(plan.segments[0].start).toBe(0);
     expect(plan.segments[plan.segments.length - 1].end).toBe(40);
@@ -118,7 +126,7 @@ describe("buildSegmentPlan", () => {
   });
 
   it("returns an empty plan for an empty take", () => {
-    const plan = buildSegmentPlan({ cues, sourceDuration: 0, timelapse });
+    const plan = buildSegmentPlan({ cues, sourceDuration: 0, edits: [timelapse] });
 
     expect(plan.segments).toEqual([]);
     expect(plan.outputDuration).toBe(0);
@@ -126,7 +134,7 @@ describe("buildSegmentPlan", () => {
 });
 
 describe("mapSourceToOutput", () => {
-  const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+  const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
 
   it("is the identity before the compressed stretch", () => {
     expect(mapSourceToOutput(plan, 0)).toBe(0);
@@ -158,7 +166,7 @@ describe("mapSourceToOutput", () => {
 });
 
 describe("buildLabelWindows", () => {
-  const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+  const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
   const specs = [
     { atCue: null, text: "Run it", holdS: 3 },
     { atCue: "login", text: "First login", holdS: 3 },
@@ -241,7 +249,7 @@ describe("buildLabelWindows", () => {
 
 describe("buildSpeedTagWindows", () => {
   it("covers exactly the sped-up stretch on the output timeline", () => {
-    const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+    const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
     const tags = buildSpeedTagWindows(plan, 7);
 
     expect(tags).toHaveLength(1);
@@ -265,7 +273,7 @@ describe("buildSpeedFilters", () => {
   });
 
   it("splits, retimes and re-concatenates every segment", () => {
-    const plan = buildSegmentPlan({ cues, sourceDuration: 40, timelapse });
+    const plan = buildSegmentPlan({ cues, sourceDuration: 40, edits: [timelapse] });
     const filters = buildSpeedFilters(plan, {
       inLabel: "b",
       outLabel: "bv",
@@ -371,11 +379,106 @@ describe("the plan a short-interval take produces", () => {
     const plan: SegmentPlan = buildSegmentPlan({
       cues: brief,
       sourceDuration: 34,
-      timelapse,
+      edits: [timelapse],
     });
 
-    expect(plan.timelapse.applied).toBe(false);
+    expect(plan.applied).toBe(0);
     expect(plan.outputDuration).toBe(34);
     expect(buildSpeedTagWindows(plan, 7)).toEqual([]);
+  });
+});
+
+describe("a cut edit", () => {
+  it("removes the stretch entirely, with no tag to explain it", () => {
+    const plan = buildSegmentPlan({
+      cues,
+      sourceDuration: 40,
+      edits: [bootstrapCut],
+    });
+
+    expect(plan.applied).toBe(1);
+    expect(plan.segments).toEqual([
+      { start: 0, end: 12, speed: 1 },
+      { start: 20, end: 40, speed: 1 },
+    ]);
+    expect(plan.outputDuration).toBe(32);
+    expect(plan.segments.some((segment) => segment.tag)).toBe(false);
+  });
+
+  it("joins the two sides at one instant on the output timeline", () => {
+    const plan = buildSegmentPlan({
+      cues,
+      sourceDuration: 40,
+      edits: [bootstrapCut],
+    });
+
+    // Everything inside the removed stretch lands on the join.
+    expect(mapSourceToOutput(plan, 12)).toBe(12);
+    expect(mapSourceToOutput(plan, 16)).toBe(12);
+    expect(mapSourceToOutput(plan, 20)).toBe(12);
+    expect(mapSourceToOutput(plan, 21)).toBe(13);
+  });
+
+  it("combines with a speed edit elsewhere in the take", () => {
+    const plan = buildSegmentPlan({
+      cues,
+      sourceDuration: 40,
+      edits: [bootstrapCut, timelapse],
+    });
+
+    expect(plan.applied).toBe(2);
+    expect(plan.segments).toEqual([
+      { start: 0, end: 12, speed: 1 },
+      { start: 20, end: 33, speed: 3, tag: "3×" },
+      { start: 33, end: 40, speed: 1 },
+    ]);
+    // 12 + 13/3 + 7
+    expect(plan.outputDuration).toBeCloseTo(23.333, 3);
+  });
+
+  it("orders edits by where they fall, not by how they were listed", () => {
+    const plan = buildSegmentPlan({
+      cues,
+      sourceDuration: 40,
+      edits: [timelapse, bootstrapCut],
+    });
+
+    expect(plan.segments[0]).toEqual({ start: 0, end: 12, speed: 1 });
+    expect(plan.segments[1].speed).toBe(3);
+  });
+
+  it("refuses the second of two edits over the same footage", () => {
+    const overlapping: EditSpec = {
+      kind: "cut",
+      fromLabel: "checks-list",
+      toLabel: "detail-page",
+      minSpanS: 1,
+    };
+    const plan = buildSegmentPlan({
+      cues,
+      sourceDuration: 40,
+      edits: [bootstrapCut, overlapping],
+    });
+
+    expect(plan.applied).toBe(1);
+    expect(plan.notes.join(" ")).toContain("overlaps");
+  });
+
+  it("captions after a cut sit where the footage actually landed", () => {
+    const plan = buildSegmentPlan({
+      cues,
+      sourceDuration: 40,
+      edits: [bootstrapCut],
+    });
+    const windows = buildLabelWindows({
+      plan,
+      cues,
+      labels: [{ atCue: "detail-page", text: "Results", holdS: 3 }],
+      offsetS: 7,
+      outputDuration: 7 + plan.outputDuration,
+    });
+
+    // detail-page is at source t=20, but 8 s were cut out before it.
+    expect(windows[0].start).toBe(19);
   });
 });

@@ -854,7 +854,7 @@ export async function uiFirstLogin(page: Page): Promise<void> {
   // Clap: t = 0 for the cue timeline, trimmed away in post. See uiLogin below.
   await beginCueTimeline(page);
   await focus(page, null, { label: "login" });
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(400);
 
   await typeHuman(page, page.getByTestId("login-email"), BOOTSTRAP_EMAIL);
   await page.waitForTimeout(220);
@@ -864,6 +864,10 @@ export async function uiFirstLogin(page: Page): Promise<void> {
   });
   await page.waitForTimeout(320);
   await clickOn(page, page.getByTestId("login-submit"));
+
+  // The sign-in round trip is dead air; `postprocess.ts` cuts from here to the
+  // rotation screen.
+  await focus(page, null, { label: "signing-in" });
 
   const rotationCard = page.getByTestId("forced-password-change");
   try {
@@ -888,7 +892,7 @@ export async function uiFirstLogin(page: Page): Promise<void> {
   }
 
   await focus(page, rotationCard, { zoom: 1.3, label: "rotation" });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1100);
 
   const fast = { minDelayMs: 24, maxDelayMs: 40 };
   await typeHuman(page, page.getByTestId("forced-password-current"), SEEDED_PASSWORD, fast);
@@ -904,6 +908,11 @@ export async function uiFirstLogin(page: Page): Promise<void> {
     timeout: 20000,
   });
   await page.waitForLoadState("networkidle");
+
+  // The dashboard of a brand-new install. The reload that got here is several
+  // seconds of nothing, which `postprocess.ts` cuts out between the
+  // `rotation-done` and `dashboard` cues.
+  await focus(page, null, { label: "dashboard" });
 
   effectivePassword = ROTATED_PASSWORD;
   console.log(

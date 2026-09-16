@@ -330,8 +330,37 @@ async function main(): Promise<void> {
 
   // Pull ahead of the render: a cold pull is minutes of progress bars, and the
   // segment is about how fast the server comes up, not about the download.
-  console.log(`terminal:  pulling    ${target.image}`);
-  docker(["pull", target.image], "docker pull");
+  //
+  // SHOWCASE_DOCKER_PULL=0 films the image already carrying that name locally
+  // instead. The reason that exists: `:latest` is published amd64-only until
+  // the arm64 build of spec 2026-09-15-09 reaches a release, and filming it
+  // under emulation on an Apple-silicon machine is both slow enough to miss the
+  // hold and noisy enough to put an emulation-only "slow SQL query" wall of DDL
+  // on camera. Building the image from the working tree
+  // (`docker build -t ghcr.io/fclairamb/solidping .`) and filming that shows
+  // the same code the browser segment is filmed against, natively.
+  if (process.env.SHOWCASE_DOCKER_PULL === "0") {
+    const id = (
+      spawnSync("docker", ["image", "inspect", target.image, "--format", "{{.Id}}"], {
+        encoding: "utf8",
+      }).stdout ?? ""
+    ).trim();
+    if (!id) {
+      fail(
+        `SHOWCASE_DOCKER_PULL=0 asks to film the local "${target.image}", but ` +
+          "there is no such image on this machine. Build it " +
+          `(\`docker build -t ${target.image} .\` from the repo root) or drop ` +
+          "the variable to pull the published one.",
+      );
+    }
+    console.log(
+      `terminal:  filming    the LOCAL ${target.image} (${id.slice(7, 19)}), ` +
+        "not the published image — SHOWCASE_DOCKER_PULL=0",
+    );
+  } else {
+    console.log(`terminal:  pulling    ${target.image}`);
+    docker(["pull", target.image], "docker pull");
+  }
 
   const platform = platformOverride(target.image);
   if (platform) {

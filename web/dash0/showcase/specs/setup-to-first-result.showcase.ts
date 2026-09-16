@@ -95,11 +95,15 @@ test("setup to first result", async ({ page }, testInfo) => {
   //    forced rotation screen, and the dashboard behind it. Nothing has
   //    touched the API yet, which is exactly why the rotation is on camera.
   await uiFirstLogin(page);
-  await beat(page, 900);
+  await beat(page, 1200);
 
   // 2. Only now bootstrap: provision (or wipe clean) the dedicated org and
   //    stage the demo data, so the only content that ever reaches the camera
   //    from here on is content this pipeline put there.
+  // Everything between this cue and `checks-list` is the pipeline provisioning
+  // its org over the API while the dashboard sits still — `postprocess.ts` cuts
+  // it out rather than publishing it or speeding it up.
+  await focus(page, null, { label: "bootstrap" });
   const bootstrapToken = await apiLogin(page);
   const token = await ensureCleanShowcaseOrg(page, bootstrapToken);
 
@@ -117,7 +121,7 @@ test("setup to first result", async ({ page }, testInfo) => {
     const newCheckButton = page.getByTestId("new-check-button");
     await expect(newCheckButton).toBeVisible();
     await focus(page, null, { label: "checks-list" });
-    await beat(page, 1600);
+    await beat(page, 1100);
     await still(page, "01-checks-list");
 
     // 4. "New check" — stays on the full frame. The click changes route, and
@@ -127,7 +131,7 @@ test("setup to first result", async ({ page }, testInfo) => {
     const typeSelect = page.getByTestId("check-type-select");
     await expect(typeSelect).toBeVisible();
     await focus(page, null, { label: "form-loaded" });
-    await beat(page, 1200);
+    await beat(page, 800);
 
     // 5. No check-type step. The form already opens on HTTP
     //    (`initialType = initialData?.type || "http"` in check-form.tsx), so
@@ -146,11 +150,17 @@ test("setup to first result", async ({ page }, testInfo) => {
     const nameInput = page.getByTestId("check-name-input");
     await focus(page, [urlInput, nameInput], { zoom: 1.5, label: "url-and-name" });
     await clickOn(page, urlInput);
-    await typeHuman(page, urlInput, FEATURED_CHECK.url);
-    await beat(page, 500);
+    await typeHuman(page, urlInput, FEATURED_CHECK.url, {
+      minDelayMs: 28,
+      maxDelayMs: 46,
+    });
+    await beat(page, 350);
     await clickOn(page, nameInput);
-    await typeHuman(page, nameInput, FEATURED_CHECK.name);
-    await beat(page, 800);
+    await typeHuman(page, nameInput, FEATURED_CHECK.name, {
+      minDelayMs: 28,
+      maxDelayMs: 46,
+    });
+    await beat(page, 550);
 
     // 7. Interval — the fastest one on offer, so a second result lands while
     //    the camera is still on the detail page without holding eleven seconds
@@ -165,7 +175,7 @@ test("setup to first result", async ({ page }, testInfo) => {
     await expect(periodSelect).toBeVisible();
     await focus(page, periodSelect, { zoom: 1.35, label: "interval" });
     await clickOn(page, periodSelect);
-    await beat(page, 500);
+    await beat(page, 400);
 
     let chosenInterval: { label: string; seconds: number } | null = null;
     for (const candidate of PREFERRED_INTERVALS) {
@@ -185,7 +195,7 @@ test("setup to first result", async ({ page }, testInfo) => {
         "maxChecksPerMinute entitlement",
     ).not.toBeNull();
     console.log(`showcase: filming a ${chosenInterval?.label} interval`);
-    await beat(page, 600);
+    await beat(page, 450);
 
     // 8. Regions — tick every offered region so the check runs from everywhere.
     //    The picker only renders when the server offers more than one region
@@ -205,14 +215,14 @@ test("setup to first result", async ({ page }, testInfo) => {
       const box = region.getByRole("checkbox");
       if ((await box.getAttribute("data-state")) !== "checked") {
         await clickOn(page, region, { durationMs: 260 });
-        await beat(page, 320);
+        await beat(page, 260);
       }
     }
 
     // 9. Full frame for the still and for the save — never zoom across a route
     //    change.
     await focus(page, null, { label: "form-complete" });
-    await beat(page, 1200);
+    await beat(page, 900);
     await still(page, "02-check-form-filled");
 
     // 10. Scroll down to the submit button, then save → land on the check
@@ -231,11 +241,14 @@ test("setup to first result", async ({ page }, testInfo) => {
         behavior: "smooth",
       }),
     );
-    await beat(page, 800);
+    await beat(page, 600);
     await submitButton.scrollIntoViewIfNeeded();
     await expect(submitButton).toBeInViewport();
-    await beat(page, 400);
+    await beat(page, 300);
     await clickOn(page, submitButton);
+    // Saving and loading the detail page is another wait with nothing to see —
+    // cut out between this cue and `detail-page`.
+    await focus(page, null, { label: "saving" });
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 20000 });
     await page.waitForLoadState("networkidle");
     const detailArrivedAt = Date.now();
@@ -244,7 +257,7 @@ test("setup to first result", async ({ page }, testInfo) => {
     //     successfully" toast to expire, so the published still is not a
     //     screenshot of a notification sitting on top of the search box.
     await focus(page, null, { label: "detail-page" });
-    await beat(page, 3000);
+    await beat(page, 2200);
 
     // 12. Hold past one FULL period before the still is taken, so the two
     //     plotted points are a genuine interval apart (see
@@ -263,7 +276,7 @@ test("setup to first result", async ({ page }, testInfo) => {
     await expect
       .poll(() => resultRows.count(), { timeout: 60_000, intervals: [500] })
       .toBeGreaterThanOrEqual(2);
-    await beat(page, 1000);
+    await beat(page, 800);
     await still(page, "03-check-detail");
 
     // 14. A slow Ken-Burns push-in toward the status / response-time area, then
@@ -274,9 +287,9 @@ test("setup to first result", async ({ page }, testInfo) => {
       transitionMs: 2400,
       label: "chart",
     });
-    await beat(page, 2800);
-    await focus(page, null, { transitionMs: 1200, label: "loop-out" });
-    await beat(page, 1400);
+    await beat(page, 2200);
+    await focus(page, null, { transitionMs: 1100, label: "loop-out" });
+    await beat(page, 1000);
   } finally {
     // The cue list is worth keeping even when the take failed — it is how you
     // find out whether the framing or the flow was the problem.

@@ -55,7 +55,7 @@ import {
   type LabelSpec,
   type LabelWindow,
   type OverlayWindow,
-  type TimelapseSpec,
+  type EditSpec,
 } from "./segment-plan";
 import { renderLabelImages } from "./labels";
 
@@ -66,6 +66,7 @@ const stillsDir = path.join(outputDir, "stills");
 const cuesDir = path.join(outputDir, "cues");
 const labelsDir = path.join(outputDir, "labels");
 const masterFile = path.join(outputDir, "master.mp4");
+const gifMasterFile = path.join(outputDir, "gif-master.mp4");
 const terminalSegment = path.join(outputDir, "terminal", "docker-run.mp4");
 const publishDir = path.resolve(showcaseDir, "../../docs/static/showcase");
 const screenshotsDir = path.resolve(showcaseDir, "../../../res/screenshots");
@@ -128,27 +129,73 @@ const TRIM_PAD = 0.25;
 const CUE_OFFSET_S = Number(process.env.SHOWCASE_CUE_OFFSET_MS ?? 0) / 1000;
 
 /**
- * When the dwell on the detail page is long enough to be boring, compress it
- * and say so on screen.
+ * The edit list: what gets compressed, what gets cut, and what plays straight.
  *
- * At a 5-second check interval the honest dwell is about 7 s and this never
- * fires — which is the preferred outcome and why the recording asks for the
- * fastest interval on offer. It exists for the take filmed against a server
- * whose entitlement floor is 10 seconds, where the dwell is 12 s and a third of
- * the cut would otherwise be a chart not moving.
+ * Every entry is conditional on the take actually containing that gap, so a
+ * faster machine or a faster check interval simply means the footage plays in
+ * real time and the run log says so.
+ *
+ * - **The cuts** remove stretches where nothing is on screen to see: two
+ *   request round trips (signing in, saving the check), the app hard-reloading
+ *   itself after the rotation, and the seconds the pipeline spends provisioning
+ *   its org over the API while the dashboard sits still. None of that is the
+ *   product, and a jump cut needs no apology.
+ * - **The speed-up** is the dwell on the detail page, which exists so the two
+ *   plotted results are a genuine interval apart. That one is *tagged*: it is
+ *   product footage played faster, and an untagged speed-up would misrepresent
+ *   how fast the check reports. The form's floor is a 10-second interval
+ *   (`globalMinPeriodSeconds` in `check-form.tsx`), so the honest dwell is ~12 s
+ *   and this fires on every take today; a 5-second interval would leave it
+ *   under `minSpanS` and the plan would decline it on its own.
  */
-const TIMELAPSE: TimelapseSpec = {
-  fromLabel: "detail-page",
-  toLabel: "chart",
-  speed: 3,
-  minSpanS: Number(process.env.SHOWCASE_TIMELAPSE_MIN_S ?? 9),
-  tag: "3× speed",
-};
+const EDITS: EditSpec[] = [
+  {
+    kind: "cut",
+    fromLabel: "signing-in",
+    toLabel: "rotation",
+    minSpanS: 1,
+  },
+  {
+    kind: "cut",
+    fromLabel: "rotation-done",
+    toLabel: "dashboard",
+    minSpanS: 1.2,
+  },
+  {
+    kind: "cut",
+    fromLabel: "bootstrap",
+    toLabel: "checks-list",
+    minSpanS: 1.2,
+  },
+  {
+    kind: "cut",
+    fromLabel: "saving",
+    toLabel: "detail-page",
+    minSpanS: 1,
+  },
+  {
+    kind: "speed",
+    fromLabel: "detail-page",
+    toLabel: "chart",
+    speed: Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4),
+    minSpanS: Number(process.env.SHOWCASE_TIMELAPSE_MIN_S ?? 9),
+    tag: `${Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4)}× speed`,
+  },
+];
 
 /** Where a lower third sits in the frame. */
 const LABEL_X = "56";
 const LABEL_Y = "H-h-64";
 const LABEL_FADE_S = 0.28;
+
+/**
+ * Where a speed tag sits: top right, deliberately nowhere near the lower
+ * thirds. The two can overlap in time — the results caption starts exactly
+ * where the sped-up stretch does — and stacking them in the same corner drew
+ * one caption straight over the other.
+ */
+const TAG_X = "W-w-56";
+const TAG_Y = "56";
 
 /** How long each lower third stays up, in seconds. */
 const LABEL_HOLD_S = 3.2;
@@ -157,9 +204,11 @@ const LABEL_HOLD_S = 3.2;
 const GIF_WIDTH = 800;
 const GIF_BUDGET_BYTES = 2.5 * 1024 * 1024;
 const GIF_ATTEMPTS = [
-  { fps: 12, colors: 192, truncate: false },
   { fps: 10, colors: 160, truncate: false },
-  { fps: 10, colors: 128, truncate: true },
+  { fps: 8, colors: 128, truncate: false },
+  { fps: 6, colors: 128, truncate: false },
+  { fps: 5, colors: 96, truncate: false },
+  { fps: 5, colors: 96, truncate: true },
 ];
 
 class PipelineError extends Error {}
@@ -687,40 +736,42 @@ interface GifResult {
 /**
  * Writes the README GIF, two-pass, under budget.
  *
- * GitHub renders a GIF inline in a README and will not play an `<video>`, so
- * this is the asset most people actually see. It is also the one that used to
- * be copied in by hand and rot on its own — the point of deriving it here.
+ * GitHub renders a GIF inline in a README and will not play a `<video>`, so this
+ * is the asset most people actually see. It is also the one that used to be
+ * copied in by hand and rot on its own — the point of deriving it here.
  *
- * The ladder trades frame rate, then colours, and only then length: a GIF that
- * stops before the results is worth less than a slightly coarser one, so
- * truncation is the last resort rather than the first. When it happens, the
- * alt text has to say so — the run log prints the sentence to use.
+ * Fed from the **GIF master** (dashboard only, no camera move), for the reason
+ * measured where that master is built. The ladder then trades frame rate, then
+ * colours, and only then length: a GIF that stops before the results is worth
+ * less than a slightly coarser one, so truncation is the last resort rather
+ * than the first. When it happens, the alt text has to say so.
  */
-function publishGif(cutEndForSegments123: number): GifResult {
+function publishGif(sourceFile: string, truncateAtS: number): GifResult {
   const file = path.join(screenshotsDir, README_GIF);
   const palette = path.join(outputDir, "gif-palette.png");
   mkdirSync(screenshotsDir, { recursive: true });
 
   let last: GifResult | null = null;
   for (const attempt of GIF_ATTEMPTS) {
-    const truncatedAtS = attempt.truncate ? cutEndForSegments123 : null;
+    const truncatedAtS = attempt.truncate ? truncateAtS : null;
     const trim = truncatedAtS ? ["-to", truncatedAtS.toFixed(3)] : [];
     const chain = `fps=${attempt.fps},scale=${GIF_WIDTH}:-1:flags=lanczos`;
 
     rmSync(palette, { force: true });
     run(
       "ffmpeg",
-      ["-hide_banner", "-loglevel", "error", "-y", "-i", masterFile, ...trim,
-        "-vf", `${chain},palettegen=max_colors=${attempt.colors}`, palette],
+      ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceFile, ...trim,
+        "-vf", `${chain},palettegen=max_colors=${attempt.colors}:stats_mode=diff`, palette],
       "GIF palette",
     );
 
     rmSync(file, { force: true });
     run(
       "ffmpeg",
-      ["-hide_banner", "-loglevel", "error", "-y", "-i", masterFile, ...trim,
+      ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceFile, ...trim,
         "-i", palette,
-        "-lavfi", `${chain}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3`,
+        "-lavfi",
+        `${chain}[x];[x][1:v]paletteuse=dither=none:diff_mode=rectangle`,
         "-loop", "0", file],
       "GIF encode",
     );
@@ -833,12 +884,11 @@ async function main(): Promise<void> {
   const plan = buildSegmentPlan({
     cues: planCues,
     sourceDuration: browserDuration,
-    timelapse: TIMELAPSE,
+    edits: EDITS,
   });
-  console.log(
-    `showcase: time-lapse ${plan.timelapse.applied ? "applied" : "not applied"} ` +
-      `— ${plan.timelapse.reason}`,
-  );
+  for (const note of plan.notes) {
+    console.log(`showcase: edit       ${note}`);
+  }
 
   const offsetS = Math.max(0, terminalInfo.duration - XFADE_S);
   const outputDuration = offsetS + plan.outputDuration;
@@ -852,85 +902,137 @@ async function main(): Promise<void> {
     );
   }
 
-  const captions: LabelWindow[] = [
-    ...buildLabelWindows({
-      plan,
-      cues: planCues,
-      labels: labelSpecs(hasRegions),
-      offsetS,
-      outputDuration,
-    }),
-    ...buildSpeedTagWindows(plan, offsetS),
-  ];
+  const lowerThirds: LabelWindow[] = buildLabelWindows({
+    plan,
+    cues: planCues,
+    labels: labelSpecs(hasRegions),
+    offsetS,
+    outputDuration,
+  });
+  const speedTags: LabelWindow[] = buildSpeedTagWindows(plan, offsetS);
+  const captions = [...lowerThirds, ...speedTags];
+
   const images = await renderLabelImages(
     captions.map((caption) => caption.text),
     labelsDir,
   );
-  const overlayWindows: OverlayWindow[] = captions.map((caption) => {
+  const place = (caption: LabelWindow, x: string, y: string): OverlayWindow => {
     const image = images.get(caption.text);
     if (!image) fail(`No caption image was rendered for "${caption.text}".`);
 
-    return { ...caption, file: image.file, x: LABEL_X, y: LABEL_Y };
-  });
+    return { ...caption, file: image.file, x, y };
+  };
+  const overlayWindows: OverlayWindow[] = [
+    ...lowerThirds.map((caption) => place(caption, LABEL_X, LABEL_Y)),
+    ...speedTags.map((caption) => place(caption, TAG_X, TAG_Y)),
+  ];
 
-  // ---- the master ---------------------------------------------------------
+  // ---- the masters --------------------------------------------------------
+  //
+  // Two, because the GIF is a different medium with a different constraint.
+  // Measured on this cut at 800 px / 6 fps: the terminal segment costs ~55 KB
+  // per GIF frame (a scrolling log changes every pixel of every frame) against
+  // ~3 KB for the dashboard, and the camera move nearly doubles the rest for
+  // the same reason. Included, they put the README GIF at 6 MB even at 5 fps
+  // and 96 colours. So the GIF is rendered from the dashboard take alone, with
+  // the camera move left off — and README.md's alt text says that is what it
+  // shows. Everything else comes from the full master.
 
-  const camera = buildCameraFilter(series, source);
   const speed = buildSpeedFilters(plan, {
     inLabel: "cam",
     outLabel: "browser",
     fps: OUTPUT_FPS,
   });
-  const overlay = buildOverlayPlan(overlayWindows, {
-    // 0 = the browser take, 1 = the terminal segment.
-    firstInput: 2,
-    baseLabel: "joined",
-    outLabel: "cut",
-    fadeS: LABEL_FADE_S,
-    fps: OUTPUT_FPS,
-  });
 
-  const graph = [
-    `[0:v]${camera}[cam]`,
-    ...(speed ?? ["[cam]null[browser]"]),
-    `[1:v]fps=${OUTPUT_FPS},scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:` +
-      `force_original_aspect_ratio=decrease,` +
-      `pad=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:(ow-iw)/2:(oh-ih)/2,` +
-      "setsar=1,format=yuv420p[terminal]",
-    `[terminal][browser]xfade=transition=fade:duration=${XFADE_S}:` +
-      `offset=${offsetS.toFixed(3)}[joined]`,
-    ...overlay.filters,
-  ].join(";");
+  /** Assembles one master and returns its measured duration. */
+  const assemble = (opts: {
+    output: string;
+    camera: boolean;
+    terminal: boolean;
+    captions: OverlayWindow[];
+    what: string;
+  }): number => {
+    // With no terminal segment in front, the browser take starts at zero, so
+    // every caption slides back by the offset the join would have added.
+    const shift = opts.terminal ? 0 : -offsetS;
+    const shifted = opts.captions
+      .map((caption) => ({
+        ...caption,
+        start: caption.start + shift,
+        end: caption.end + shift,
+      }))
+      .filter((caption) => caption.end > 0)
+      .map((caption) => ({ ...caption, start: Math.max(0, caption.start) }));
+
+    const firstInput = opts.terminal ? 2 : 1;
+    const overlay = buildOverlayPlan(shifted, {
+      firstInput,
+      baseLabel: opts.terminal ? "joined" : "browsertb",
+      outLabel: "cut",
+      fadeS: LABEL_FADE_S,
+      fps: OUTPUT_FPS,
+    });
+
+    // `settb=AVTB` on both sides of the xfade is load-bearing: `trim`/`setpts`
+    // leave the browser branch on ffmpeg's microsecond timebase while the
+    // terminal branch keeps 1/25 from `fps`, and xfade refuses two inputs whose
+    // timebases disagree ("First input link main timebase do not match").
+    const graph = [
+      `[0:v]${buildCameraFilter(opts.camera ? series : null, source)}[cam]`,
+      ...(speed ?? ["[cam]null[browser]"]),
+      "[browser]settb=AVTB,setsar=1,format=yuv420p[browsertb]",
+      ...(opts.terminal
+        ? [
+            `[1:v]fps=${OUTPUT_FPS},scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:` +
+              "force_original_aspect_ratio=decrease," +
+              `pad=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:(ow-iw)/2:(oh-ih)/2,` +
+              "setsar=1,format=yuv420p,settb=AVTB[terminal]",
+            `[terminal][browsertb]xfade=transition=fade:duration=${XFADE_S}:` +
+              `offset=${offsetS.toFixed(3)}[joined]`,
+          ]
+        : []),
+      ...overlay.filters,
+    ].join(";");
+
+    rmSync(opts.output, { force: true });
+    run(
+      "ffmpeg",
+      [
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-ss", window.start.toFixed(3),
+        "-to", window.end.toFixed(3),
+        "-i", recording,
+        ...(opts.terminal ? ["-i", terminal] : []),
+        ...overlay.inputs.flatMap((input) => [
+          "-loop", "1",
+          "-t", input.durationS.toFixed(3),
+          "-i", input.file,
+        ]),
+        "-filter_complex", graph,
+        "-map", "[cut]",
+        "-an",
+        ...MASTER_ARGS,
+        "-pix_fmt", "yuv420p",
+        opts.output,
+      ],
+      opts.what,
+    );
+
+    return probeVideo(opts.output).duration;
+  };
 
   mkdirSync(outputDir, { recursive: true });
-  rmSync(masterFile, { force: true });
-  run(
-    "ffmpeg",
-    [
-      "-hide_banner", "-loglevel", "error", "-y",
-      "-ss", window.start.toFixed(3),
-      "-to", window.end.toFixed(3),
-      "-i", recording,
-      "-i", terminal,
-      ...overlay.inputs.flatMap((input) => [
-        "-loop", "1",
-        "-t", input.durationS.toFixed(3),
-        "-i", input.file,
-      ]),
-      "-filter_complex", graph,
-      "-map", "[cut]",
-      "-an",
-      ...MASTER_ARGS,
-      "-pix_fmt", "yuv420p",
-      masterFile,
-    ],
-    "master assembly",
-  );
 
-  const master = probeVideo(masterFile);
+  const masterDuration = assemble({
+    output: masterFile,
+    camera: true,
+    terminal: true,
+    captions: overlayWindows,
+    what: "master assembly",
+  });
   console.log(
     `showcase: master     ${path.relative(showcaseDir, masterFile)} ` +
-      `(${master.duration.toFixed(2)}s = ${terminalInfo.duration.toFixed(2)}s ` +
+      `(${masterDuration.toFixed(2)}s = ${terminalInfo.duration.toFixed(2)}s ` +
       `terminal + ${plan.outputDuration.toFixed(2)}s browser − ` +
       `${XFADE_S.toFixed(2)}s crossfade)`,
   );
@@ -938,6 +1040,18 @@ async function main(): Promise<void> {
     `showcase: captions   ${captions
       .map((c) => `"${c.text}" ${c.start.toFixed(1)}–${c.end.toFixed(1)}s`)
       .join(", ")}`,
+  );
+
+  const gifMasterDuration = assemble({
+    output: gifMasterFile,
+    camera: false,
+    terminal: false,
+    captions: overlayWindows,
+    what: "GIF master assembly",
+  });
+  console.log(
+    `showcase: gif master ${path.relative(showcaseDir, gifMasterFile)} ` +
+      `(${gifMasterDuration.toFixed(2)}s, dashboard only, no camera move)`,
   );
 
   // ---- everything published derives from that master ----------------------
@@ -963,13 +1077,14 @@ async function main(): Promise<void> {
     `showcase: wrote      ${path.relative(process.cwd(), readmeMp4)} (${humanSize(readmeMp4)}, H.264)`,
   );
 
-  // Segments 1–3 end where the detail page begins, which is the truncation
-  // point the GIF ladder falls back to.
+  // The GIF's last-resort rung stops where the detail page begins — the same
+  // beat, measured on the GIF master's own timeline (which has no terminal
+  // segment in front of it, so everything sits `offsetS` earlier).
   const detailCue = planCues.find((cue) => cue.label === "detail-page");
-  const segments123End = detailCue
-    ? offsetS + mapSourceToOutput(plan, detailCue.t)
-    : outputDuration;
-  const gif = publishGif(segments123End);
+  const gifTruncateAt = detailCue
+    ? mapSourceToOutput(plan, detailCue.t)
+    : gifMasterDuration;
+  const gif = publishGif(gifMasterFile, gifTruncateAt);
   console.log(
     `showcase: wrote      ${path.relative(process.cwd(), gif.file)} ` +
       `(${humanSize(gif.file)}, ${GIF_WIDTH}px, ${gif.fps} fps, ${gif.colors} colours` +
@@ -978,8 +1093,7 @@ async function main(): Promise<void> {
   if (gif.truncatedAtS) {
     console.warn(
       "showcase: WARNING   the GIF had to stop before the results beat to fit " +
-        "its budget. Its alt text in README.md must say so — e.g. \"…from " +
-        "`docker run` to the filled-in check form\".",
+        "its budget. Its alt text in README.md must say so.",
     );
   }
 
