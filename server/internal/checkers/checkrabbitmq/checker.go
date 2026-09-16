@@ -4,6 +4,8 @@ package checkrabbitmq
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
@@ -224,7 +227,402 @@ func (c *RabbitMQChecker) executeManagement(
 		"mode":                   ModeManagement,
 	}
 
-	return c.doManagementRequest(ctx, cfg, mgmtPort, start, output)
+	alarms, err := c.doManagementRequest(ctx, cfg, mgmtPort, start, mergeOutput(output, nil))
+	if err != nil {
+		return alarms, err
+	}
+
+	return c.applyNodeThresholds(ctx, cfg, mgmtPort, start, alarms), nil
+}
+
+// applyNodeThresholds fetches /api/nodes (every management-mode execution,
+// thresholds configured or not) and layers the memory/disk evaluation on top
+// of the alarms-probe result:
+//   - the alarms probe stays authoritative for an already-active resource
+//     alarm — a non-Up alarms status always wins;
+//   - otherwise, the node-threshold evaluation decides (Up unless a
+//     threshold is configured and breached, or the /api/nodes call itself
+//     failed while thresholds are configured, which is treated as Down since
+//     the thresholds can no longer be verified).
+//
+// Metrics (mem/disk gauges, nodes_running/nodes_total) are recorded whenever
+// the nodes fetch succeeds, independent of whether any threshold is set, so
+// existing checks gain history for free.
+func (c *RabbitMQChecker) applyNodeThresholds(
+	ctx context.Context,
+	cfg *RabbitMQConfig,
+	mgmtPort int,
+	start time.Time,
+	alarms *checkerdef.Result,
+) *checkerdef.Result {
+	memWarn, memCrit, diskWarn, diskCrit := cfg.resolveThresholds()
+	thresholdsConfigured := memWarn != nil || memCrit != nil || diskWarn != nil || diskCrit != nil
+
+	nodes, err := fetchNodes(ctx, cfg, mgmtPort)
+
+	output := mergeOutput(alarms.Output, nil)
+	metrics := make(map[string]any, len(alarms.Metrics))
+
+	for k, v := range alarms.Metrics {
+		metrics[k] = v
+	}
+
+	nodeStatus := checkerdef.StatusUp
+
+	var breachMessage string
+
+	switch {
+	case err != nil:
+		output["nodes_error"] = err.Error()
+
+		if thresholdsConfigured {
+			nodeStatus = checkerdef.StatusDown
+			breachMessage = "cannot evaluate memory/disk thresholds: " + err.Error()
+		}
+	default:
+		running := runningNodes(nodes)
+		output["nodes"] = nodeOutputs(running)
+
+		if len(running) > 0 {
+			evals := make([]nodeEval, 0, len(running))
+			for i := range running {
+				evals = append(evals, evaluateNode(running[i], memWarn, memCrit, diskWarn, diskCrit))
+			}
+
+			worst := worstEval(evals)
+			nodeStatus = worst.status
+			breachMessage = strings.Join(worst.reasons, "; ")
+
+			metrics["mem_used_bytes"] = float64(worst.node.MemUsed)
+			metrics["mem_limit_bytes"] = float64(worst.node.MemLimit)
+			metrics["mem_used_percent"] = worst.memPercent
+			metrics["disk_free_bytes"] = float64(worst.node.DiskFree)
+			metrics["disk_free_limit_bytes"] = float64(worst.node.DiskFreeLimit)
+			metrics["nodes_running"] = float64(len(running))
+			metrics["nodes_total"] = float64(len(nodes))
+		}
+	}
+
+	status := alarms.Status
+	if status == checkerdef.StatusUp {
+		status = nodeStatus
+	}
+
+	if status != checkerdef.StatusUp && output[checkerdef.OutputKeyError] == nil && breachMessage != "" {
+		output[checkerdef.OutputKeyError] = breachMessage
+	}
+
+	return &checkerdef.Result{
+		Status:   status,
+		Duration: time.Since(start),
+		Metrics:  metrics,
+		Output:   output,
+	}
+}
+
+// resolveThresholds parses the four threshold keys, ignoring parse errors:
+// Validate() is responsible for rejecting a bad value before a config is ever
+// persisted, so a parse failure here would mean the config was never
+// validated — treat the threshold as unset rather than panicking or failing
+// the check for a config problem this code path cannot report cleanly.
+func (c *RabbitMQConfig) resolveThresholds() (*threshold, *threshold, *threshold, *threshold) {
+	var memWarn, memCrit, diskWarn, diskCrit *threshold
+
+	if c.MemoryUsedWarning != "" {
+		memWarn, _ = parseThreshold(keyMemoryUsedWarning, c.MemoryUsedWarning, true)
+	}
+
+	if c.MemoryUsedCritical != "" {
+		memCrit, _ = parseThreshold(keyMemoryUsedCritical, c.MemoryUsedCritical, true)
+	}
+
+	if c.DiskFreeWarning != "" {
+		diskWarn, _ = parseThreshold(keyDiskFreeWarning, c.DiskFreeWarning, false)
+	}
+
+	if c.DiskFreeCritical != "" {
+		diskCrit, _ = parseThreshold(keyDiskFreeCritical, c.DiskFreeCritical, false)
+	}
+
+	return memWarn, memCrit, diskWarn, diskCrit
+}
+
+// nodeInfo is the subset of RabbitMQ's `GET /api/nodes` response this check
+// reads. Field names confirmed against the RabbitMQ management HTTP API
+// (management API docs / `rabbitmqctl node_health_check` overview): each
+// node object carries `running`, `mem_used`, `mem_limit`, `mem_alarm`,
+// `disk_free`, `disk_free_limit`, `disk_free_alarm` alongside many other
+// stats this check does not need.
+//
+//nolint:tagliatelle // JSON tags must match the RabbitMQ management API field names
+type nodeInfo struct {
+	Name          string `json:"name"`
+	Running       bool   `json:"running"`
+	MemUsed       int64  `json:"mem_used"`
+	MemLimit      int64  `json:"mem_limit"`
+	MemAlarm      bool   `json:"mem_alarm"`
+	DiskFree      int64  `json:"disk_free"`
+	DiskFreeLimit int64  `json:"disk_free_limit"`
+	DiskFreeAlarm bool   `json:"disk_free_alarm"`
+}
+
+// errNodesRequestFailed wraps a non-200 /api/nodes response into a static,
+// wrapped error (err113) while still naming the actual status/body.
+var errNodesRequestFailed = errors.New("management API request failed")
+
+// fetchNodes calls GET /api/nodes with the same credentials/timeout budget
+// as the alarms probe.
+func fetchNodes(ctx context.Context, cfg *RabbitMQConfig, mgmtPort int) ([]nodeInfo, error) {
+	scheme := "http"
+	if cfg.TLS {
+		scheme = "https"
+	}
+
+	nodesURL := fmt.Sprintf("%s://%s:%d/api/nodes", scheme, cfg.Host, mgmtPort)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, nodesURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.SetBasicAuth(cfg.Username, cfg.Password)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: status %d: %s", errNodesRequestFailed, resp.StatusCode, string(body))
+	}
+
+	var nodes []nodeInfo
+	if err := json.Unmarshal(body, &nodes); err != nil {
+		return nil, fmt.Errorf("failed to parse /api/nodes response: %w", err)
+	}
+
+	return nodes, nil
+}
+
+// runningNodes filters to the nodes RabbitMQ reports as running — a
+// non-running node has no meaningful mem/disk figures to evaluate.
+func runningNodes(nodes []nodeInfo) []nodeInfo {
+	running := make([]nodeInfo, 0, len(nodes))
+
+	for i := range nodes {
+		if nodes[i].Running {
+			running = append(running, nodes[i])
+		}
+	}
+
+	return running
+}
+
+// nodeOutputs renders the raw per-node fields for the result output.
+func nodeOutputs(nodes []nodeInfo) []map[string]any {
+	out := make([]map[string]any, 0, len(nodes))
+
+	for i := range nodes {
+		n := &nodes[i]
+		out = append(out, map[string]any{
+			"name":            n.Name,
+			"mem_used":        n.MemUsed,
+			"mem_limit":       n.MemLimit,
+			"mem_alarm":       n.MemAlarm,
+			"disk_free":       n.DiskFree,
+			"disk_free_limit": n.DiskFreeLimit,
+			"disk_free_alarm": n.DiskFreeAlarm,
+		})
+	}
+
+	return out
+}
+
+const (
+	tierWarning  = "warning"
+	tierCritical = "critical"
+
+	percentScale = 100.0
+)
+
+// nodeEval is one node's threshold evaluation.
+type nodeEval struct {
+	node         nodeInfo
+	status       checkerdef.Status
+	reasons      []string
+	memPercent   float64
+	memPercentOK bool
+}
+
+// evaluateNode grades a single node against the configured thresholds. It is
+// safe to call with every threshold nil (no thresholds configured): every
+// comparison is then a no-op and the node reports StatusUp, but memPercent is
+// still computed so an unconfigured check's "worst node" selection reflects
+// genuine memory/disk pressure rather than an arbitrary node.
+func evaluateNode(node nodeInfo, memWarn, memCrit, diskWarn, diskCrit *threshold) nodeEval {
+	eval := nodeEval{node: node, status: checkerdef.StatusUp}
+
+	if node.MemLimit > 0 {
+		eval.memPercentOK = true
+		eval.memPercent = float64(node.MemUsed) / float64(node.MemLimit) * percentScale
+	} else if isPercentThreshold(memWarn) || isPercentThreshold(memCrit) {
+		eval.reasons = append(eval.reasons,
+			node.Name+": mem_limit is not reported, skipping the memory percent threshold")
+	}
+
+	memUsed := nonNegative(node.MemUsed)
+	diskFree := nonNegative(node.DiskFree)
+
+	if breach, ok := ceilingBreach(memUsed, node.MemLimit, memCrit); ok && breach {
+		eval.status = checkerdef.StatusDown
+		eval.reasons = append(eval.reasons,
+			memMessage(node.Name, memUsed, node.MemLimit, tierCritical, memCrit, eval.memPercentOK, eval.memPercent))
+	} else if breach, ok := ceilingBreach(memUsed, node.MemLimit, memWarn); ok && breach {
+		eval.status = worseStatus(eval.status, checkerdef.StatusWarning)
+		eval.reasons = append(eval.reasons,
+			memMessage(node.Name, memUsed, node.MemLimit, tierWarning, memWarn, eval.memPercentOK, eval.memPercent))
+	}
+
+	if floorBreach(diskFree, diskCrit) {
+		eval.status = checkerdef.StatusDown
+		eval.reasons = append(eval.reasons, diskMessage(node.Name, diskFree, tierCritical, diskCrit))
+	} else if floorBreach(diskFree, diskWarn) {
+		eval.status = worseStatus(eval.status, checkerdef.StatusWarning)
+		eval.reasons = append(eval.reasons, diskMessage(node.Name, diskFree, tierWarning, diskWarn))
+	}
+
+	return eval
+}
+
+// worstEval picks the node the check status/metrics should be based on: the
+// worst graded status first, then (ties, or nothing configured) the node
+// under the most memory pressure, then the node with the least free disk,
+// then node name for full determinism.
+func worstEval(evals []nodeEval) nodeEval {
+	worst := &evals[0]
+
+	for i := 1; i < len(evals); i++ {
+		if isWorseEval(&evals[i], worst) {
+			worst = &evals[i]
+		}
+	}
+
+	return *worst
+}
+
+func isWorseEval(evalA, evalB *nodeEval) bool {
+	rankA, rankB := statusRank(evalA.status), statusRank(evalB.status)
+	if rankA != rankB {
+		return rankA > rankB
+	}
+
+	if evalA.memPercentOK && evalB.memPercentOK && evalA.memPercent != evalB.memPercent {
+		return evalA.memPercent > evalB.memPercent
+	}
+
+	if evalA.node.DiskFree != evalB.node.DiskFree {
+		return evalA.node.DiskFree < evalB.node.DiskFree
+	}
+
+	return evalA.node.Name < evalB.node.Name
+}
+
+// statusRank orders the three statuses this feature ever assigns a node,
+// worst last. checkerdef.Status.Severity() cannot be reused here: it ranks
+// StatusWarning level with StatusUp (by design, for availability), while
+// this feature needs Warning to sit strictly between Up and Down.
+//
+//nolint:exhaustive // evaluateNode only ever produces Up/Warning/Down; every other status ranks as Up.
+func statusRank(s checkerdef.Status) int {
+	switch s {
+	case checkerdef.StatusDown:
+		return 2
+	case checkerdef.StatusWarning:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func worseStatus(a, b checkerdef.Status) checkerdef.Status {
+	if statusRank(b) > statusRank(a) {
+		return b
+	}
+
+	return a
+}
+
+func isPercentThreshold(t *threshold) bool {
+	return t != nil && t.isPercent
+}
+
+// nonNegative clamps a management-API counter to a safe uint64: RabbitMQ
+// never reports a negative byte count, but a malformed/unexpected value must
+// not underflow into a huge uint64 and manufacture a false breach.
+func nonNegative(v int64) uint64 {
+	if v < 0 {
+		return 0
+	}
+
+	return uint64(v)
+}
+
+// ceilingBreach reports whether `used` breaches a ceiling threshold (a
+// percentage of `limit`, or an absolute byte count) — the shape memory
+// thresholds take. ok is false when the comparison could not be made (a
+// percent threshold with a non-positive limit); the caller must not treat
+// that as "not breached".
+func ceilingBreach(used uint64, limit int64, thr *threshold) (bool, bool) {
+	if thr == nil {
+		return false, true
+	}
+
+	if thr.isPercent {
+		if limit <= 0 {
+			return false, false
+		}
+
+		pct := float64(used) / float64(limit) * percentScale
+
+		return pct >= float64(thr.percent), true
+	}
+
+	return used >= thr.bytes, true
+}
+
+// floorBreach reports whether `free` breaches a floor threshold (bytes
+// only) — the shape disk thresholds take: breach when free <= threshold.
+func floorBreach(free uint64, thr *threshold) bool {
+	if thr == nil {
+		return false
+	}
+
+	return free <= thr.bytes
+}
+
+func memMessage(
+	nodeName string, used uint64, limit int64, tier string, thr *threshold, percentOK bool, percent float64,
+) string {
+	usedStr := humanize.IBytes(used)
+
+	if thr.isPercent && percentOK {
+		return fmt.Sprintf(
+			"memory used %s is %.0f%% of the %s high watermark on %s (%s threshold %s)",
+			usedStr, percent, humanize.IBytes(nonNegative(limit)), nodeName, tier, thr.raw,
+		)
+	}
+
+	return fmt.Sprintf("memory used %s on %s breaches the %s threshold %s", usedStr, nodeName, tier, thr.raw)
+}
+
+func diskMessage(nodeName string, free uint64, tier string, thr *threshold) string {
+	return fmt.Sprintf(
+		"disk free %s on %s is below the %s threshold %s", humanize.IBytes(free), nodeName, tier, thr.raw,
+	)
 }
 
 func (c *RabbitMQChecker) doManagementRequest(
