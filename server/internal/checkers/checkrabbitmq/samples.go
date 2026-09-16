@@ -6,6 +6,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// sampleGuestCredential is RabbitMQ's well-known default account, reused
+// across every sample config below.
+const sampleGuestCredential = "guest"
+
 // GetSampleConfigs returns sample RabbitMQ check configurations.
 func (c *RabbitMQChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	return []checkerdef.CheckSpec{
@@ -16,8 +20,8 @@ func (c *RabbitMQChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []ch
 			Config: (&RabbitMQConfig{
 				Host:     "localhost",
 				Port:     defaultPort,
-				Username: "guest",
-				Password: "guest",
+				Username: sampleGuestCredential,
+				Password: sampleGuestCredential,
 			}).GetConfig(),
 		},
 		{
@@ -26,8 +30,8 @@ func (c *RabbitMQChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []ch
 			Period: 5 * time.Minute,
 			Config: (&RabbitMQConfig{
 				Host:               "localhost",
-				Username:           "guest",
-				Password:           "guest",
+				Username:           sampleGuestCredential,
+				Password:           sampleGuestCredential,
 				Mode:               ModeManagement,
 				ManagementPort:     defaultManagementPort,
 				MemoryUsedWarning:  "70%",
