@@ -129,3 +129,64 @@ stay as they are.
 He wrote it as a question ("…instead of its own page, no?"), so the reply should confirm rather
 than just announce: yes, and the API route was already `/checks/:check/badges/:components` — the
 dashboard was the only part that pretended badges were an org-level feature.
+
+## Implementation Plan
+
+### Step 1 — new child route (Proposal A)
+
+1. Create `web/dash0/src/routes/orgs/$org/checks.$checkUid.badges.tsx`, route id
+   `/orgs/$org/checks/$checkUid/badges` (a sibling of `checks.$checkUid.index.tsx` under the
+   existing `checks.$checkUid.tsx` `<Outlet/>` layout).
+2. Move the whole builder body over from `badges.tsx`: `BadgePreview`, `CopyButton`,
+   `componentDefs`, `parseComponentsString`, `hasRowToken`, the period/style/width/minWidth/label
+   controls, and `updateSearch`'s default-stripping — unchanged.
+3. `validateSearch` keeps `components`, `period`, `style`, `label`, `minWidth`, `width` with
+   identical normalization; the `check` key is dropped.
+4. The check is resolved from the path param with `useCheck(org, checkUid)`. Loading → skeleton;
+   resolved → builder; not found / error → the `badge-check-not-found` alert, which is now the
+   route's own 404 instead of a "bad ?check=" notice. The `CheckPicker` and the
+   "select a check" empty state are gone.
+5. The `badge-back-to-check` link is deleted; the crumb trail comes from `Breadcrumbs` in
+   `routes/orgs/$org.tsx` — extend its `isChecks` branch with a `Badges` leaf
+   (`BadgeCheck` icon, `nav:badges`, already present in all four locale bundles) and make the
+   check-name crumb a link on that route. Delete the now-unreachable `isBadges` branch.
+6. `PageHeader` keeps `docsHref="/docs/features/status-badges"`.
+
+### Step 2 — legacy route becomes a redirect (Proposal B)
+
+1. Rewrite `web/dash0/src/routes/orgs/$org/badges.tsx` down to a redirect-only route. Keep
+   `validateSearch` permissive enough to carry `check` plus every builder param through.
+2. No `?check=` → `beforeLoad` throws `redirect({ to: "/orgs/$org/checks" })` (synchronous, no
+   fetch needed).
+3. `?check=<slug|uid>` → a tiny component resolves it with `useCheck(org, search.check)` (the
+   same hook the old page used, so a check outside the list's first page still resolves) and
+   `navigate({ replace: true })`s to `/orgs/$org/checks/<uid>/badges` carrying every other
+   search param. An unresolvable identifier redirects with the raw value as `$checkUid`, so the
+   new route's 404 is the single owner of that state.
+4. No second copy of the builder anywhere.
+
+### Step 3 — entry point (Proposal C)
+
+Point the check-detail toolbar **Badges** button at
+`/orgs/$org/checks/$checkUid/badges` with `search={{}}`, same toolbar slot between **Clone** and
+**Publish on a status page**. `AppSidebar.tsx`, `CommandMenu.tsx` and `locales/*/nav.json` are
+owned by spec `07` and are not touched here. The status-page badge (Proposal D) is not touched
+either.
+
+### Step 4 — tests
+
+1. `e2e/badges.spec.ts`: navigate via check detail → **Badges** (or straight to the new path);
+   delete the sidebar-navigation, check-selection and live-search/picker cases; convert the two
+   deep-link cases into legacy-redirect assertions (slug and uid); keep the not-found case as the
+   new route's 404; replace the two back-link cases with breadcrumb assertions.
+2. `e2e/check-detail.spec.ts`: the Badges `href` assertion becomes the new path.
+3. `e2e/docs-links.spec.ts`: reach the badges page through a check instead of the sidebar.
+4. Backend `badges/service_test.go` stays untouched — this is frontend-only.
+
+### Step 5 — docs + gate
+
+Update the navigation sentence in `web/docs/docs/features/status-badges.md` ("open a check, then
+**Badges**"); URL/param tables and embed snippets are unchanged because the public badge URL
+shape is unchanged. Gate: `make build-dash0`, `cd web/dash0 && bun run lint`, `bun run
+typecheck:e2e`, `make build-docs`, and the three affected Playwright files against a disposable
+side-car server.
