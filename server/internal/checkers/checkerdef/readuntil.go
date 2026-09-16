@@ -21,7 +21,9 @@ const (
 	// fired, the connection was reset. Err carries it, Data the partial buffer.
 	ReadUntilStopped
 	// ReadUntilChunk is the `match == nil` ending: exactly one read was
-	// performed and whatever the kernel handed over is in Data.
+	// performed and whatever the kernel handed over is in Data, truncated to
+	// the caller's limit. Filling the buffer exactly is NOT a cap failure here
+	// — a caller that asked for no match cannot be told it did not find one.
 	ReadUntilChunk
 	// ReadUntilDeadlineFailed means the read deadline could not even be armed —
 	// our own failure, not the target's. Err carries it and nothing was read.
@@ -55,10 +57,15 @@ type ReadUntilResult struct {
 // returned, which is both the `send_data`-with-no-expectation diagnostic read
 // and a JS `c.read()` with no criteria.
 //
-// The ordering of the three exits is load-bearing and deliberately preserved
-// from the loop this was extracted from: a read that both satisfies the match
-// AND errors counts as matched, and one that errors while filling the buffer to
-// the cap counts as stopped rather than capped.
+// The ordering of the exits is load-bearing: a read that both satisfies the
+// match AND errors counts as matched, and one that errors while filling the
+// buffer to the cap counts as stopped rather than capped.
+//
+// `match == nil` is checked BEFORE the cap, and that ordering is the whole
+// correctness of the no-criteria case: a caller that asked for no match cannot
+// be told "no match in the first N bytes" because its one read happened to fill
+// the buffer exactly. It is ReadUntilChunk — a truncated success — whether the
+// read returned one byte or `limit` of them.
 func ReadUntil(conn net.Conn, deadline time.Time, match func([]byte) bool, limit int) ReadUntilResult {
 	res := ReadUntilResult{}
 
@@ -100,14 +107,14 @@ func ReadUntil(conn net.Conn, deadline time.Time, match func([]byte) bool, limit
 			return res
 		}
 
-		if len(buf) >= limit {
-			res.Outcome = ReadUntilCapped
+		if match == nil {
+			res.Outcome = ReadUntilChunk
 
 			return res
 		}
 
-		if match == nil {
-			res.Outcome = ReadUntilChunk
+		if len(buf) >= limit {
+			res.Outcome = ReadUntilCapped
 
 			return res
 		}

@@ -2,6 +2,7 @@ package checkjs
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -209,6 +210,88 @@ return { status: chunk.ok ? "up" : "down", output: { data: chunk.data, bytes: ch
 
 	r.Equal("up", result.Status.String(), "output: %#v", result.Output)
 	r.Equal("hello", result.Output["data"])
+}
+
+// A bare read that FILLS maxBytes is a truncated success, not a cap failure:
+// the script asked for no match, so "no match in the first 16 bytes" would be a
+// nonsense verdict on a call that returned exactly what it promised — "the next
+// chunk the kernel hands over".
+func TestSocketBareReadTruncatesAtMaxBytes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fixture := startTCPFixture(t, func(conn net.Conn) {
+		_, _ = conn.Write(bytes.Repeat([]byte("x"), 4096))
+
+		buf := make([]byte, 1)
+		_, _ = conn.Read(buf)
+	})
+
+	result := runSocketScript(t, `
+var c = tcp.connect("`+fixture.addr()+`");
+var chunk = c.read({ maxBytes: 16, timeout: "5s" });
+c.close();
+return {
+  status: "up",
+  output: { ok: chunk.ok, bytes: chunk.bytes, data: chunk.data, error: chunk.error, eof: chunk.eof },
+};
+`, 15*time.Second)
+
+	r.Equal(true, result.Output["ok"], "output: %#v", result.Output)
+	r.InDelta(16, result.Output["bytes"], 0.001)
+	r.Equal(strings.Repeat("x", 16), result.Output["data"])
+	r.Equal(false, result.Output["eof"])
+	r.Nil(result.Output["error"])
+}
+
+// startUDPBigReplier answers every datagram with `size` bytes, so a receive
+// with a smaller maxBytes has something real to truncate.
+func startUDPBigReplier(t *testing.T, size int) net.PacketConn {
+	t.Helper()
+
+	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0") //nolint:noctx // loopback test fixture
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = packetConn.Close() })
+
+	reply := bytes.Repeat([]byte{0xAB}, size)
+
+	go func() {
+		buf := make([]byte, 2048)
+
+		for {
+			_, addr, readErr := packetConn.ReadFrom(buf)
+			if readErr != nil {
+				return
+			}
+
+			_, _ = packetConn.WriteTo(reply, addr)
+		}
+	}()
+
+	return packetConn
+}
+
+// §1's promise for UDP: "a datagram longer than maxBytes is truncated and
+// `bytes` reports what was kept". Truncated, not refused.
+func TestSocketUDPReceiveTruncatesLongDatagram(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	replier := startUDPBigReplier(t, 1024)
+
+	result := runSocketScript(t, `
+var u = udp.open("`+replier.LocalAddr().String()+`");
+u.send("01");
+var reply = u.receive({ timeout: "3s", encoding: "hex", maxBytes: 512 });
+u.close();
+return { status: "up", output: { ok: reply.ok, bytes: reply.bytes, hexLength: reply.data.length, error: reply.error } };
+`, 15*time.Second)
+
+	r.Equal(true, result.Output["ok"], "output: %#v", result.Output)
+	r.InDelta(512, result.Output["bytes"], 0.001)
+	r.InDelta(1024, result.Output["hexLength"], 0.001)
+	r.Nil(result.Output["error"])
 }
 
 // makeTestCertificate mints a self-signed key+cert pair for the loopback TLS

@@ -521,7 +521,8 @@ string.
 | Connections (`tcp` + `udp` + `websocket` combined) | 5 per execution, counted at `connect`/`open` **whether or not earlier ones were closed** |
 | Socket actions (`write`/`read`/`send`/`receive`; `close()` is free) | 200 per execution, counted **separately** from the 20-call budget |
 | Console output | 16 KB |
-| HTTP response body, `page.text()`, `page.evaluate()`, bytes read across all socket handles | 1 MB (one shared pool — a socket read spends it, and the next HTTP body gets what is left) |
+| HTTP response body, `page.text()`, `page.evaluate()` | 1 MB (one shared cap) |
+| Bytes read across all socket handles | 1 MB per execution — a socket read **spends** it, and the next HTTP response body is capped at whatever is left |
 | Bytes per `read` / `receive` | 64 KiB by default via `maxBytes`, ceiling 1 MB |
 | Bytes per `write` / `send` | 64 KiB |
 | `env` / `secrets` entries | 50 each |

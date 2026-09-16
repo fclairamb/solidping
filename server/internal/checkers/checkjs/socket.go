@@ -701,7 +701,10 @@ func (h *socketHandle) read(opts map[string]any) map[string]any {
 	start := time.Now()
 	result := checkerdef.ReadUntil(h.conn, deadline, parsed.match, limit)
 
-	h.runtime.spendPayload(len(result.Data))
+	// Charged on what came OFF THE WIRE, not on what survived the cap: the
+	// budget is "bytes read", and charging only retained bytes would let a
+	// script pull unlimited data through repeatedly-capped small reads.
+	h.runtime.spendPayload(result.Received)
 
 	fields := map[string]any{
 		jsKeyData:     encodeReadData(result.Data, parsed.encoding),
