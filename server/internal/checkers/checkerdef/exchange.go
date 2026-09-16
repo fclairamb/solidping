@@ -97,7 +97,9 @@ func (e *Exchange) Matches(buf []byte) bool {
 // Over UDP each Read is one datagram; datagrams accumulate in the same buffer
 // and are matched the same way, so a reply split across two datagrams works.
 //
-// One loop with four documented exits; splitting it would hide the contract.
+// The loop itself lives in ReadUntil, shared with the JS runtime's socket
+// handles; what stays here is the only part that is an Exchange's business —
+// what each of the loop's exits MEANS for a check's verdict.
 func (e *Exchange) Run(conn net.Conn, metrics, output map[string]any) *Result {
 	if len(e.Send) > 0 {
 		if failure := e.write(conn, metrics, output); failure != nil {
@@ -110,62 +112,40 @@ func (e *Exchange) Run(conn net.Conn, metrics, output map[string]any) *Result {
 		return nil
 	}
 
-	if err := conn.SetReadDeadline(e.Deadline); err != nil {
-		output[OutputKeyError] = fmt.Sprintf("failed to set read deadline: %v", err)
+	// No expectation means the old `send_data`-only semantics: ONE best-effort
+	// read for diagnostics, and no failure on silence. That is exactly
+	// ReadUntil's `match == nil` mode.
+	var match func([]byte) bool
+	if e.HasExpectation() {
+		match = e.Matches
+	}
+
+	read := ReadUntil(conn, e.Deadline, match, MaxExchangeReadSize)
+
+	if read.Outcome == ReadUntilDeadlineFailed {
+		output[OutputKeyError] = fmt.Sprintf("failed to set read deadline: %v", read.Err)
 
 		return &Result{Status: StatusError, Metrics: metrics, Output: output}
 	}
 
-	buf := make([]byte, 0, MaxExchangeReadSize)
-	chunk := make([]byte, MaxExchangeReadSize)
-	received := 0
-	reads := 0
+	e.report(metrics, output, read.Data, read.Received, read.Reads)
 
-	for {
-		n, err := conn.Read(chunk)
-		if n > 0 {
-			reads++
-			received += n
+	if !e.HasExpectation() {
+		return nil
+	}
 
-			if room := MaxExchangeReadSize - len(buf); n > room {
-				n = room
-			}
+	switch read.Outcome {
+	case ReadUntilMatched:
+		return nil
+	case ReadUntilCapped:
+		output[OutputKeyError] = fmt.Sprintf(
+			"no match in the first %d bytes of the reply", MaxExchangeReadSize)
 
-			buf = append(buf, chunk[:n]...)
-		}
-
-		if e.HasExpectation() && e.Matches(buf) {
-			e.report(metrics, output, buf, received, reads)
-
-			return nil
-		}
-
-		if err != nil {
-			e.report(metrics, output, buf, received, reads)
-
-			return e.readFailure(err, metrics, output, received)
-		}
-
-		if len(buf) >= MaxExchangeReadSize {
-			e.report(metrics, output, buf, received, reads)
-
-			if !e.HasExpectation() {
-				return nil
-			}
-
-			output[OutputKeyError] = fmt.Sprintf(
-				"no match in the first %d bytes of the reply", MaxExchangeReadSize)
-
-			return &Result{Status: StatusDown, Metrics: metrics, Output: output}
-		}
-
-		// `send_data` with no expectation keeps its old semantics: one
-		// best-effort read for diagnostics, and no failure on silence.
-		if !e.HasExpectation() {
-			e.report(metrics, output, buf, received, reads)
-
-			return nil
-		}
+		return &Result{Status: StatusDown, Metrics: metrics, Output: output}
+	case ReadUntilStopped, ReadUntilChunk, ReadUntilDeadlineFailed:
+		return e.readFailure(read.Err, metrics, output, read.Received)
+	default:
+		return e.readFailure(read.Err, metrics, output, read.Received)
 	}
 }
 
