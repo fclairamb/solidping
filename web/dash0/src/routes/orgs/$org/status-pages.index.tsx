@@ -400,21 +400,6 @@ function StatusPagesIndexPage() {
           <p className="mx-auto max-w-sm text-xs text-muted-foreground">
             {t("statusPages:noStatusPagesHint")}
           </p>
-          {!isDemoSession && (
-            <Button
-              variant="outline"
-              onClick={handleWandCreate}
-              disabled={!allChecksLoaded || wandPending}
-              data-testid="wand-create-status-page-empty"
-            >
-              {!allChecksLoaded || wandPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Wand2 className="h-4 w-4 mr-2" />
-              )}
-              {t("statusPages:wand.createForMe")}
-            </Button>
-          )}
         </div>
       )}
 
