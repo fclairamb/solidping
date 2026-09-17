@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} hard",
     "summarySoftDeps_one": "{{count}} soft",
     "summarySoftDeps_other": "{{count}} soft",
-    "regionsIpv6Hint": "This check is pinned to IPv6. Regions whose live workers report IPv6 egress are listed first — the others stay selectable, and a region marked “IPv6 unknown” has simply not reported yet."
+    "regionsIpv6Hint": "This check is pinned to IPv6. Regions whose live workers report IPv6 egress are listed first — the others stay selectable, and a region marked “IPv6 unknown” has simply not reported yet.",
+    "groupEmptyHint": "You have no groups yet. A group is an exclusive bucket for related checks — it drives escalation, incident correlation and status-page rollups. Create one to get started."
   },
   "types": {
     "http": "HTTP",
@@ -1113,5 +1114,9 @@
     "postCreateOn": "Published on {{page}}, in the \"{{section}}\" section.",
     "postCreateNone": "Not on any status page yet.",
     "postCreateAction": "Publish it"
+  },
+  "noGroupsYet": {
+    "title": "No check groups yet",
+    "description": "A group gathers related checks into one exclusive bucket — it drives escalation, incident correlation and status-page rollups. Create one with the New group button above."
   }
 }

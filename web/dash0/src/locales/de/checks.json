@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} fest",
     "summarySoftDeps_one": "{{count}} weich",
     "summarySoftDeps_other": "{{count}} weich",
-    "regionsIpv6Hint": "Diese Prüfung ist auf IPv6 festgelegt. Regionen, deren aktive Worker IPv6-Egress melden, werden zuerst aufgeführt — die anderen bleiben auswählbar, und eine mit „IPv6 unbekannt“ markierte Region hat einfach noch nicht gemeldet."
+    "regionsIpv6Hint": "Diese Prüfung ist auf IPv6 festgelegt. Regionen, deren aktive Worker IPv6-Egress melden, werden zuerst aufgeführt — die anderen bleiben auswählbar, und eine mit „IPv6 unbekannt“ markierte Region hat einfach noch nicht gemeldet.",
+    "groupEmptyHint": "Sie haben noch keine Gruppen. Eine Gruppe ist ein exklusiver Behälter für zusammengehörige Checks — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine an, um zu beginnen."
   },
   "types": {
     "http": "HTTP",
@@ -1113,5 +1114,9 @@
     "postCreateOn": "Veröffentlicht auf {{page}}, im Abschnitt „{{section}}“.",
     "postCreateNone": "Noch auf keiner Statusseite.",
     "postCreateAction": "Jetzt veröffentlichen"
+  },
+  "noGroupsYet": {
+    "title": "Noch keine Check-Gruppen",
+    "description": "Eine Gruppe fasst zusammengehörige Checks in einem exklusiven Behälter zusammen — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine über die Schaltfläche Neue Gruppe oben an."
   }
 }

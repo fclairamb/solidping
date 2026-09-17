@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} fuertes",
     "summarySoftDeps_one": "{{count}} suave",
     "summarySoftDeps_other": "{{count}} suaves",
-    "regionsIpv6Hint": "Esta comprobación está fijada a IPv6. Las regiones cuyos workers activos informan salida IPv6 se listan primero — las demás siguen siendo seleccionables, y una región marcada como «IPv6 desconocido» simplemente aún no ha informado."
+    "regionsIpv6Hint": "Esta comprobación está fijada a IPv6. Las regiones cuyos workers activos informan salida IPv6 se listan primero — las demás siguen siendo seleccionables, y una región marcada como «IPv6 desconocido» simplemente aún no ha informado.",
+    "groupEmptyHint": "Todavía no tienes grupos. Un grupo es un contenedor exclusivo de checks relacionados: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno para empezar."
   },
   "types": {
     "http": "HTTP",
@@ -1113,5 +1114,9 @@
     "postCreateOn": "Publicado en {{page}}, en la sección «{{section}}».",
     "postCreateNone": "Todavía no está en ninguna página de estado.",
     "postCreateAction": "Publicarlo"
+  },
+  "noGroupsYet": {
+    "title": "Aún no hay grupos de checks",
+    "description": "Un grupo reúne checks relacionados en un contenedor exclusivo: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno con el botón Nuevo grupo de arriba."
   }
 }

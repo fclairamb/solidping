@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} fortes",
     "summarySoftDeps_one": "{{count}} faible",
     "summarySoftDeps_other": "{{count}} faibles",
-    "regionsIpv6Hint": "Ce contrôle est fixé à IPv6. Les régions dont les workers actifs signalent une sortie IPv6 sont listées en premier — les autres restent sélectionnables, et une région marquée « IPv6 inconnu » n'a simplement pas encore fait de rapport."
+    "regionsIpv6Hint": "Ce contrôle est fixé à IPv6. Les régions dont les workers actifs signalent une sortie IPv6 sont listées en premier — les autres restent sélectionnables, et une région marquée « IPv6 inconnu » n'a simplement pas encore fait de rapport.",
+    "groupEmptyHint": "Vous n'avez pas encore de groupe. Un groupe est un ensemble exclusif de checks liés : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un pour commencer."
   },
   "types": {
     "http": "HTTP",
@@ -1113,5 +1114,9 @@
     "postCreateOn": "Publié sur {{page}}, dans la section « {{section}} ».",
     "postCreateNone": "Sur aucune page de statut pour l'instant.",
     "postCreateAction": "Le publier"
+  },
+  "noGroupsYet": {
+    "title": "Aucun groupe de checks",
+    "description": "Un groupe rassemble des checks liés dans un ensemble exclusif : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un avec le bouton Nouveau groupe ci-dessus."
   }
 }

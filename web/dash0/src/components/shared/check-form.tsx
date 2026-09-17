@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search } from "lucide-react";
 import {
   useCheckValidationResult,
   getFieldError,
@@ -49,6 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LabelInput } from "@/components/shared/label-input";
+import { NewCheckGroupDialog } from "@/components/shared/new-check-group-dialog";
 import { DocsLink } from "@/components/shared/docs-link";
 import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { CheckTypeIcon } from "@/components/shared/check-type-identity";
@@ -437,6 +438,8 @@ export function CheckForm({
   const [slug, setSlug] = useState(initialData?.slug || "");
   const slugError = validateSlug(slug);
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
+  // Inline "create a group" dialog, opened from the group field itself.
+  const [showNewGroup, setShowNewGroup] = useState(false);
   // Escalation policy assignment: "" = inherit (group → org default → none),
   // a UID = that policy. PATCH semantics: send the UID to set, "" to clear.
   const [escalationPolicyUid, setEscalationPolicyUid] = useState(
@@ -1077,7 +1080,11 @@ export function CheckForm({
   ]
     .filter(Boolean)
     .join(" · ") || t("form.advancedDefaultSummary");
-  const showGroup = (checkGroups?.length ?? 0) > 0;
+  // The group field used to be hidden while an organization had no groups
+  // (`showGroup`), which meant a new user never met the feature: no groups, no
+  // field, no way to learn groups exist (spec 2026-09-16-13). It now always
+  // renders, and says what a group is when there are none yet.
+  const hasNoGroups = (checkGroups?.length ?? 0) === 0;
 
   // A section opens on load when it holds non-default values OR is the target of
   // a `?section=<id>` deep-link (which the mount effect above also scrolls to).
@@ -1626,18 +1633,46 @@ export function CheckForm({
                 <p className="text-xs text-muted-foreground">{t("form.labelsHint")}</p>
               </div>
 
-              {showGroup && (
-                <div className="space-y-2">
-                  <Label htmlFor="group">{t("form.groupOptional")}</Label>
+              <div className="space-y-2" data-testid="check-group-field">
+                <Label htmlFor="group">{t("form.groupOptional")}</Label>
+                <div className="flex items-center gap-2">
                   <Select value={checkGroupUid || "none"} onValueChange={(v) => setCheckGroupUid(v === "none" ? "" : v)}>
-                    <SelectTrigger data-testid="check-group-select"><SelectValue placeholder={t("form.noGroup")} /></SelectTrigger>
+                    <SelectTrigger className="flex-1" data-testid="check-group-select"><SelectValue placeholder={t("form.noGroup")} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">{t("form.noGroup")}</SelectItem>
                       {checkGroups?.map((g) => (<SelectItem key={g.uid} value={g.uid}>{g.name}</SelectItem>))}
                     </SelectContent>
                   </Select>
+                  {/* Creating a group is a write the demo allowlist refuses, so
+                      a demo session gets the field without the dead button. */}
+                  {!user?.isDemo && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowNewGroup(true)}
+                      data-testid="check-form-new-group-button"
+                    >
+                      <FolderPlus className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">{t("newGroup")}</span>
+                    </Button>
+                  )}
                 </div>
-              )}
+                {hasNoGroups && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="check-group-empty-hint"
+                  >
+                    {t("form.groupEmptyHint")}
+                  </p>
+                )}
+              </div>
+
+              <NewCheckGroupDialog
+                org={org}
+                open={showNewGroup}
+                onOpenChange={setShowNewGroup}
+                onCreated={(group) => setCheckGroupUid(group.uid)}
+              />
           </CollapsibleSection>
 
           <CollapsibleSection
