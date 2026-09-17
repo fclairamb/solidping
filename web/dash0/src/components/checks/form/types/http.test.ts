@@ -27,6 +27,7 @@ function baseState(overrides: Partial<HttpState> = {}): HttpState {
     authDirty: false,
     headersDirty: false,
     jsonPathAssertions: null,
+    bodyAssertions: null,
     body: "",
     headers: [],
     ...overrides,
@@ -53,7 +54,7 @@ function saveUntouched(stored: CheckConfig): CheckConfig {
 }
 
 describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
-  it("defaults to [\"200\"] when neither status key is present", () => {
+  it('defaults to ["200"] when neither status key is present', () => {
     const state = httpModule.fromConfig({ url: "https://example.com" });
     expect(state.expectedStatusCodes).toEqual(["200"]);
   });
@@ -108,7 +109,7 @@ describe("httpModule.fromConfig — expectedStatusCodes seeding", () => {
 });
 
 describe("httpModule.toConfig — expectedStatusCodes serialization", () => {
-  it("omits both status keys for the default [\"200\"]", () => {
+  it('omits both status keys for the default ["200"]', () => {
     const { config } = httpModule.toConfig(baseState());
     expect(config).not.toHaveProperty("expectedStatusCodes");
     expect(config).not.toHaveProperty("expectedStatus");
@@ -365,7 +366,7 @@ describe("unmodeled config keys survive an untouched save", () => {
     expected_status: 200,
     followRedirects: false,
     body_expect: "access_token",
-    body_pattern: "\"expires_in\":\\s*\\d+",
+    body_pattern: '"expires_in":\\s*\\d+',
     headers_pattern: { "content-type": "^application/json" },
     jsonPathAssertions: {
       type: "assertion",
@@ -394,12 +395,10 @@ describe("unmodeled config keys survive an untouched save", () => {
     const submitted = saveUntouched(stored);
     // 200 is the implicit default, so neither key needs to be written — what
     // must never happen is a DIFFERENT effective status.
-    const effective =
-      submitted.expectedStatusCodes ??
+    const effective = submitted.expectedStatusCodes ??
       submitted.expected_status_codes ??
       submitted.expectedStatus ??
-      submitted.expected_status ??
-      ["200"];
+      submitted.expected_status ?? ["200"];
     expect(effective).toEqual(["200"]);
   });
 
@@ -523,7 +522,9 @@ describe("unmodeled config keys survive an untouched save", () => {
     // is selected — so deleting the gate fails this test.
     const source = { type: "http" as const, config: stored };
     const tcp = checkTypeRegistry.tcp;
-    const { config } = tcp.toConfig(tcp.fromConfig({ host: "a.dev", port: 22 }));
+    const { config } = tcp.toConfig(
+      tcp.fromConfig({ host: "a.dev", port: 22 }),
+    );
     const submitted = assembleSubmittedConfig({
       initialConfig: passthroughConfigFor(source, "tcp"),
       ownedKeys: tcp.ownedKeys,
@@ -726,7 +727,8 @@ describe("a stored key is seeded from the spelling it is stored under", () => {
 describe("every registered module declares the config keys it writes", () => {
   const modules = new Map<string, CheckTypeModule>();
   for (const [type, mod] of Object.entries(checkTypeRegistry)) {
-    if (!modules.has(mod.types.join(","))) modules.set(mod.types.join(","), mod);
+    if (!modules.has(mod.types.join(",")))
+      modules.set(mod.types.join(","), mod);
     expect(mod.types).toContain(type);
   }
 
@@ -781,7 +783,9 @@ describe("every registered module declares the config keys it writes", () => {
 
     // …and the real module is clean, so the control above is not passing
     // merely because the audit reports `secrets` for everyone.
-    expect(undeclaredKeysFor(jsModule as unknown as CheckTypeModule)).toEqual([]);
+    expect(undeclaredKeysFor(jsModule as unknown as CheckTypeModule)).toEqual(
+      [],
+    );
   });
 
   it("declares ownedKeys for every module that models any config", () => {
@@ -793,7 +797,148 @@ describe("every registered module declares the config keys it writes", () => {
         expect(mod.ownedKeys).toEqual([]);
         continue;
       }
-      expect(mod.ownedKeys.length, `${name} declares no ownedKeys`).toBeGreaterThan(0);
+      expect(
+        mod.ownedKeys.length,
+        `${name} declares no ownedKeys`,
+      ).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("httpModule — bodyAssertions round-trip", () => {
+  // A body assertion carries no `path`: its subject is the whole response
+  // body. `ignoreCase` is the flag the feature exists for.
+  const leaf: AssertionNode = {
+    type: "assertion",
+    operator: "eq",
+    value: "Healthy",
+    ignoreCase: true,
+  };
+  const group: AssertionNode = {
+    type: "or",
+    children: [
+      leaf,
+      {
+        type: "assertion",
+        operator: "eq",
+        value: "Degraded",
+        ignoreCase: true,
+      },
+    ],
+  };
+
+  it("fromConfig defaults to null when absent", () => {
+    const state = httpModule.fromConfig({ url: "https://acme.com/health" });
+    expect(state.bodyAssertions).toBeNull();
+  });
+
+  it("fromConfig seeds from the canonical camelCase key", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/health",
+      bodyAssertions: leaf,
+    });
+    expect(state.bodyAssertions).toEqual(leaf);
+  });
+
+  it("fromConfig accepts the snake_case alias the server also resolves", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/health",
+      body_assertions: leaf,
+    });
+    expect(state.bodyAssertions).toEqual(leaf);
+  });
+
+  it("fromConfig seeds a group tree unchanged", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/health",
+      bodyAssertions: group,
+    });
+    expect(state.bodyAssertions).toEqual(group);
+  });
+
+  it("toConfig omits the key when null (default)", () => {
+    const { config } = httpModule.toConfig(baseState());
+    expect(config).not.toHaveProperty("bodyAssertions");
+    expect(config).not.toHaveProperty("body_assertions");
+  });
+
+  it("toConfig writes the canonical camelCase key when present", () => {
+    const { config } = httpModule.toConfig(baseState({ bodyAssertions: leaf }));
+    expect(config.bodyAssertions).toEqual(leaf);
+    expect(config).not.toHaveProperty("body_assertions");
+  });
+
+  it("round-trips ignoreCase through an edit-and-save with no changes", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/health",
+      bodyAssertions: leaf,
+    });
+    const { config } = httpModule.toConfig(state);
+    const restored = httpModule.fromConfig(config).bodyAssertions;
+    expect(restored).toEqual(leaf);
+    expect(restored?.ignoreCase).toBe(true);
+  });
+
+  it("round-trips a group tree unchanged", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/health",
+      bodyAssertions: group,
+    });
+    const { config } = httpModule.toConfig(state);
+    expect(httpModule.fromConfig(config).bodyAssertions).toEqual(group);
+  });
+
+  // This is the failure mode spec 2026-09-11-01 is about: a key the module
+  // does not own is re-layered by the passthrough, so clearing it in the form
+  // has no effect. bodyAssertions is a MODELED key — declaring both spellings
+  // in ownedKeys is what makes clearing it actually stick.
+  it("declares both spellings in ownedKeys so clearing it sticks", () => {
+    expect(httpModule.ownedKeys).toContain("bodyAssertions");
+    expect(httpModule.ownedKeys).toContain("body_assertions");
+  });
+
+  it("saving an untouched check preserves the assertion", () => {
+    const saved = saveUntouched({
+      url: "https://acme.com/health",
+      bodyAssertions: leaf,
+    });
+    expect(saved.bodyAssertions).toEqual(leaf);
+  });
+
+  it("clearing the assertion drops the key instead of resurrecting it", () => {
+    const state = httpModule.fromConfig({
+      url: "https://acme.com/health",
+      bodyAssertions: leaf,
+    });
+    const { config } = httpModule.toConfig({ ...state, bodyAssertions: null });
+    const submitted = {
+      ...passthroughConfigFor(httpModule, {
+        url: "https://acme.com/health",
+        bodyAssertions: leaf,
+      }),
+      ...config,
+    };
+    expect(submitted).not.toHaveProperty("bodyAssertions");
+    expect(submitted).not.toHaveProperty("body_assertions");
+  });
+
+  // The five legacy flat matchers stay unmodeled on purpose, so they must keep
+  // surviving a save through the passthrough (spec item A.7).
+  it("leaves the legacy body_* matchers untouched through a save", () => {
+    const saved = saveUntouched({
+      url: "https://acme.com/health",
+      body_expect: "HEALTHY",
+      body_reject: "panic",
+      body_pattern: "^HEAL",
+      body_pattern_reject: "stack trace",
+      headers_pattern: { "Content-Type": "text/plain" },
+      bodyAssertions: leaf,
+    });
+    expect(saved.body_expect).toBe("HEALTHY");
+    expect(saved.body_reject).toBe("panic");
+    expect(saved.body_pattern).toBe("^HEAL");
+    expect(saved.body_pattern_reject).toBe("stack trace");
+    expect(saved.headers_pattern).toEqual({ "Content-Type": "text/plain" });
+    expect(saved.bodyAssertions).toEqual(leaf);
   });
 });

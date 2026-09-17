@@ -9,21 +9,28 @@ export interface AssertionResult {
   operator?: string;
   expected?: string;
   actual?: string;
+  ignoreCase?: boolean;
   error?: string;
   children?: AssertionResult[];
 }
 
 interface JsonAssertionResultsProps {
   result: AssertionResult;
+  // Heading for the block. Defaults to the JSONPath wording; body assertions
+  // pass their own, since the same evaluator output backs both.
+  titleKey?: string;
 }
 
-export function JsonAssertionResults({ result }: JsonAssertionResultsProps) {
+export function JsonAssertionResults({
+  result,
+  titleKey = "jsonAssertions",
+}: JsonAssertionResultsProps) {
   const { t } = useTranslation("checks");
 
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-sm font-medium">
-        <span>{t("jsonAssertions")}</span>
+        <span>{t(titleKey)}</span>
         <PassBadge pass={result.pass} />
       </div>
       <div className="pl-2">
@@ -34,20 +41,38 @@ export function JsonAssertionResults({ result }: JsonAssertionResultsProps) {
 }
 
 function ResultNode({ result }: { result: AssertionResult }) {
+  const { t } = useTranslation("checks");
+
   if (result.type === "assertion") {
     return (
-      <div className="flex items-center gap-2 text-xs py-0.5">
+      <div className="flex items-start gap-2 text-xs py-0.5 flex-wrap">
         <StatusIcon pass={result.pass} />
-        <code className="text-muted-foreground">{result.path}</code>
-        <span className="text-muted-foreground">{result.operator}</span>
+        {/* A body assertion has no path — its subject is the whole body. */}
+        {result.path ? (
+          <code className="text-muted-foreground">{result.path}</code>
+        ) : (
+          <span className="text-muted-foreground">
+            {t("assertionSubjectBody", "response body")}
+          </span>
+        )}
+        <span className="text-muted-foreground">
+          {t(`assertionOperators.${result.operator}`, result.operator ?? "")}
+        </span>
         {result.expected && (
           <span className="text-muted-foreground">
             &quot;{result.expected}&quot;
           </span>
         )}
         {result.actual !== undefined && (
-          <span className={result.pass ? "text-green-600" : "text-red-600"}>
+          <span
+            className={`break-all ${result.pass ? "text-green-600" : "text-red-600"}`}
+          >
             = &quot;{result.actual}&quot;
+          </span>
+        )}
+        {result.ignoreCase && (
+          <span className="text-muted-foreground italic">
+            {t("assertionIgnoreCase", "Ignore case")}
           </span>
         )}
         {result.error && (

@@ -109,6 +109,8 @@ import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
+  BodyAssertionResultCard,
+  BODY_ASSERTION_RESULT_OUTPUT_KEY,
 } from "@/components/checks/json-assertion-result-card";
 import {
   ResponseTimeChart,
@@ -913,7 +915,8 @@ function CheckDetailPage() {
   // we also pull `output` and badge the evaluations. Deliberately NOT widened
   // for other types: nothing else in this table needs the payload, and the
   // chart-window query (which fetches far more rows) is untouched.
-  const isPassiveCheckType = check?.type === "heartbeat" || check?.type === "email";
+  const isPassiveCheckType =
+    check?.type === "heartbeat" || check?.type === "email";
 
   const { data: results } = useResults(org, {
     checkUid,
@@ -1706,6 +1709,7 @@ function CheckDetailPage() {
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
+                              key !== BODY_ASSERTION_RESULT_OUTPUT_KEY &&
                               // Bookkeeping a passive evaluation row stamps on
                               // itself (spec 2026-09-02-04). "evaluation: true"
                               // and a bare uid are noise here; the badge on the
@@ -1768,6 +1772,14 @@ function CheckDetailPage() {
 
       {check.type === "http" && (
         <JsonAssertionResultCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "http" && (
+        <BodyAssertionResultCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }
@@ -1965,7 +1977,10 @@ function CheckDetailPage() {
                                     setRegion(slug);
                                   }}
                                 >
-                                  {regionDisplayLabel(regionsData?.regions, slug)}
+                                  {regionDisplayLabel(
+                                    regionsData?.regions,
+                                    slug,
+                                  )}
                                 </button>
                               );
                             })()

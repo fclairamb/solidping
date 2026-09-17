@@ -62,6 +62,7 @@ import {
 } from "@/lib/http-status";
 import {
   JsonAssertionEditor,
+  BodyAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import {
@@ -5686,6 +5687,12 @@ function TokenChipsInputSection() {
 
 function JsonAssertionEditorSection() {
   const [empty, setEmpty] = useState<AssertionNode | null>(null);
+  const [body, setBody] = useState<AssertionNode | null>({
+    type: "assertion",
+    operator: "eq",
+    value: "Healthy",
+    ignoreCase: true,
+  });
   const [single, setSingle] = useState<AssertionNode | null>({
     type: "assertion",
     path: "$.status",
@@ -5704,10 +5711,10 @@ function JsonAssertionEditorSection() {
     <Section
       id="json-assertion-editor"
       title="JSON assertion editor"
-      description="Recursive editor for the HTTP checker's JSONPath assertion AST — a leaf tests one JSONPath expression against an operator (eq/neq/gt/gte/lt/lte/contains/regex/exists/not_exists), and and/or group nodes nest arbitrarily. value is a required (string) argument, or an empty ready state before the first field is filled in; onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
+      description="Recursive editor for the HTTP checker's assertion AST — a leaf tests one subject against an operator, and and/or group nodes nest arbitrarily. One component serves both editors: showPath + the full operator list gives the JSONPath editor, while BodyAssertionEditor hides the path input and narrows the operators to the five that are meaningful against a raw response body (eq/neq/contains/not_contains/regex). Every textual leaf carries an Ignore case checkbox wired to ignoreCase. testIdPrefix keeps two editors on one form from colliding. onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ JsonAssertionEditor }"} from
+        import {"{ JsonAssertionEditor, BodyAssertionEditor }"} from
         "@/components/checks/json-assertion-editor"
       </p>
       <div className="grid gap-4 max-w-2xl">
@@ -5722,6 +5729,12 @@ function JsonAssertionEditorSection() {
         <div className="space-y-2">
           <Label>AND group with two assertions</Label>
           <JsonAssertionEditor value={group} onChange={setGroup} />
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Body assertion — no path input, narrowed operators, ignore case on
+          </Label>
+          <BodyAssertionEditor value={body} onChange={setBody} />
         </div>
       </div>
     </Section>
