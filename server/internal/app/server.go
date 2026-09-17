@@ -975,7 +975,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// the spec-mandated 405 (we don't serve server-initiated SSE streams).
 	mcpGroup.GET("", s.mcpHandler.HandleGet)
 	mcpAuthed := mcpGroup.Use(authMiddleware.RequireMCPAuth)
-	mcpAuthed.POST("", s.mcpHandler.Handle)
+	// POST is behind the same RequireMCPAuth, with one hole punched in it:
+	// a credential-free `initialize` / `notifications/initialized` is served
+	// so MCP directories can introspect the server (spec 2026-09-16-15).
+	// Every other method — tools/list, resources/list, every tools/call —
+	// still answers 401 NO_TOKEN. See mcp.AllowAnonymousHandshake.
+	mcpGroup.Use(mcp.AllowAnonymousHandshake(authMiddleware.RequireMCPAuth)).
+		POST("", s.mcpHandler.Handle)
 	mcpAuthed.DELETE("", s.mcpHandler.HandleDelete)
 
 	// OAuth 2.1 authorization server for the MCP resource (spec
