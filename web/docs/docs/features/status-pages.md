@@ -389,6 +389,40 @@ A status page shows two different things, and it is worth keeping them apart:
 - **incidents** — the narrative. A title, a state, and an append-only list of
   updates explaining what is going on.
 
+### Page, publication, update
+
+Three things in this family have similar names and mean different things. The
+whole section below reads more easily once they are apart:
+
+| Term | What it is | Where you edit it |
+|---|---|---|
+| **Status page** | the public site itself — its components, branding, domain and settings | **Status pages** |
+| **Incident publication** | one public incident on that page: a customer-readable title, a public state, and the thread of updates under it | **Status pages → the page → the incident** |
+| **Status update** | one post on the timeline | **Updates & notices**, or from inside a publication |
+
+**A publication is not the incident.** The operational incident is the internal
+record: it carries acknowledgement and snooze metadata, an auto-generated
+internal title and raw probe diagnostics, none of which may ever reach a
+customer. The publication is the overlay that says "this incident is visible on
+this status page, under this customer-readable title, in this state". A
+publication can also exist with no incident behind it at all — that is what you
+get when you write one by hand.
+
+**An update is one post.** It always belongs to a status page. When it is
+threaded under a publication it is one entry in that incident's timeline, and
+the list on **Updates & notices** links back to the publication it belongs to.
+An update can equally stand alone: a `maintenance` notice or an `info`
+announcement has no incident behind it and links nowhere. Updates written by
+the auto-publish pipeline have no author; ones you write do.
+
+**The public state vocabulary is deliberately its own.** A publication walks
+`investigating → identified → monitoring → resolved`, which is the vocabulary
+customers already read on the timeline. The internal incident is simply active
+or resolved. The two are kept separate on purpose: moving a publication to
+`monitoring` is a statement to your customers, not a change to the operational
+record, and a resolved incident whose publication is still `investigating` is a
+real (and visible) state you can be in.
+
 Before this feature, only the grid was automatic: a check going down turned a
 dot red and said nothing else. If nobody was awake to write an update, visitors
 saw a red dot with no explanation. Incidents fix that.
