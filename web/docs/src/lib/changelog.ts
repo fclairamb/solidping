@@ -32,6 +32,8 @@ export const SCOPE_LABELS: Record<string, string> = {
   sftp: "SFTP checks",
   api: "API",
   openapi: "API",
+  mcp: "MCP",
+  tlsedge: "TLS edge",
   auth: "Authentication",
   checks: "Checks",
   incidents: "Incidents",
