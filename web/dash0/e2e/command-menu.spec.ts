@@ -523,7 +523,7 @@ test.describe("Command Menu (Cmd+K)", () => {
 
     // Spec 2026-08-20-07: the palette had drifted from AppSidebar and was
     // missing these four entries.
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Updates" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "Updates & notices" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Maintenance" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "SLOs" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "My pages" })).toBeVisible();
