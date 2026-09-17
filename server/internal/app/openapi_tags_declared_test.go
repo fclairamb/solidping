@@ -43,7 +43,8 @@ func loadOpenAPITags(t *testing.T) openAPITagIndex {
 
 // operationTags returns the distinct tag names referenced by operations, and
 // the number of operations carrying no tag at all.
-func operationTags(spec openAPITagIndex) (tags []string, untagged int) {
+func operationTags(spec openAPITagIndex) ([]string, int) {
+	untagged := 0
 	seen := map[string]bool{}
 
 	for _, methods := range spec.Paths {
@@ -68,6 +69,7 @@ func operationTags(spec openAPITagIndex) (tags []string, untagged int) {
 		}
 	}
 
+	tags := make([]string, 0, len(seen))
 	for tag := range seen {
 		tags = append(tags, tag)
 	}
