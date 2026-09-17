@@ -8,6 +8,18 @@
 
 ### Bug Fixes
 
+* **docs:** **the API reference is reachable at `/docs/api`, and its 275 endpoints are
+  grouped by topic instead of being one flat alphabetical wall.** The generated landing
+  page lived at `/docs/api/solidping-api`, a slug of the spec title, so the obvious URL
+  returned a 404, and so did the "API reference" link on the dashboard's API tokens page.
+  It is now at `/docs/api`. The endpoint list is now 31 tag groups (Checks, Incidents,
+  Status Pages, On-Call Schedules, and so on), each with its own landing page written from
+  the tag's description. The nine multi-word tags read as "Maintenance Windows" rather
+  than "MaintenanceWindows", in the reference sidebar and in the `/openapi` Swagger
+  explorer alike. The License block rendered as an empty heading and now links to
+  AGPL-3.0. Every operation page kept its URL, so existing links and bookmarks still work
+  ([#391](https://github.com/fclairamb/solidping/issues/391))
+  ([9089dcb](https://github.com/fclairamb/solidping/commit/9089dcb8f274c10eea3b63084495ea48353b9e20))
 * **deps:** update github.com/dop251/goja digest to 793a2a6 ([#388](https://github.com/fclairamb/solidping/issues/388)) ([1c81ebe](https://github.com/fclairamb/solidping/commit/1c81ebe12cede1b3269b637cfac6a4cf326d10b3))
 * **deps:** update module google.golang.org/grpc to v1.84.0 ([#392](https://github.com/fclairamb/solidping/issues/392)) ([0bddd78](https://github.com/fclairamb/solidping/commit/0bddd78fd160debd35d8670ffb3049b2463ff329))
 
