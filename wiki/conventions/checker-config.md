@@ -52,9 +52,51 @@ keeps its own IPv4-preference loop.
 | `body_pattern_reject` | string | O | | Regex pattern that must NOT match in response body |
 | `headers_pattern` | map[string]string | O | | Map of header name to regex pattern; all must match |
 | `json_path_assertions` | object | O | | AST-based JSONPath assertions (see below) |
+| `bodyAssertions` | object | O | | AST-based assertions on the raw response body as TEXT (see below). Read fallback: `body_assertions` |
 | `verifySsl` | bool | O | true | Verify the TLS certificate. `false` skips verification (`InsecureSkipVerify`) and marks the result with `tls_verify_skipped: true`. Read fallback: `verify_ssl` |
 | `followRedirects` | bool | O | true | Follow HTTP redirects (up to 10). `false` stops at the first response, so status/body/header assertions run against the redirect itself (e.g. `expectedStatus: 301` + `headersPattern.Location`). Read fallback: `follow_redirects` |
 | `capture_failure_response` | bool | O | false | Keep what the probe received when the check FAILS, as incident diagnostics (spec 2026-08-20-01). See below. Read fallback: `captureFailureResponse` |
+
+**Body assertions** (`bodyAssertions`):
+
+The same `AssertionNode` AST as `json_path_assertions`, with `path` ignored and
+the raw response body as the subject. This is what does **exact** equality on a
+`text/plain` endpoint — `body_expect` is a substring match, so
+`body_expect: HEALTHY` also matches a body of `UNHEALTHY` and reports a dead
+service as up.
+
+```jsonc
+{
+  "bodyAssertions": {
+    "type": "assertion",
+    "operator": "eq",
+    "value": "Healthy",
+    "ignoreCase": true
+  }
+}
+```
+
+- Operators: `eq`, `neq`, `contains`, `not_contains`, `regex`, plus `and` / `or`
+  group nodes with `children`. `exists`, `not_exists` and the numeric
+  comparisons are **rejected** with a `VALIDATION_ERROR`: a raw body always
+  exists, so accepting them would build an assertion that can never fail.
+- **Whitespace rule:** `eq` and `neq` compare against `strings.TrimSpace(body)`;
+  `contains`, `not_contains` and `regex` see the body verbatim. A text/plain
+  health endpoint almost always emits a trailing newline, and `eq "HEALTHY"`
+  failing against `"HEALTHY\n"` would be a permanent support ticket.
+- `bodyAssertions` is in `bodyDrivesAssertions` (checker.go). **Every new
+  body-reading key must be**, or the body is never read and the assertion fails
+  open — see spec 2026-08-20-04.
+- A failed assertion attaches the evaluated tree to the result output under
+  `body_assertions`, carrying `expected` and `actual` (truncated to 256 runes).
+
+**`ignoreCase`** (on any assertion node, JSONPath or body):
+
+Folds case for `eq`, `neq`, `contains` and `not_contains`, and compiles `regex`
+with `syntax.FoldCase`. The regex path uses the parse-time flag rather than a
+`"(?i)"` string prefix, so a pattern carrying its own inline flag group — or an
+explicit `(?-i)` the author wants honored — is not corrupted. Omitted at its
+`false` default.
 
 **Failure-response capture** (`capture_failure_response`):
 
