@@ -1,4 +1,3 @@
-//nolint:usestdlibvars // Test files use standard Go test patterns
 package checkhttp
 
 import (
@@ -28,6 +27,9 @@ func newTextBodyServer(t *testing.T, body string) *httptest.Server {
 	return server
 }
 
+// naming the expected word at each call site.
+//
+//nolint:unparam // value is deliberately a parameter: the tests read better
 func bodyEq(value string, ignoreCase bool) *AssertionNode {
 	return &AssertionNode{
 		Type:       NodeTypeAssertion,
@@ -334,7 +336,6 @@ func TestHTTPChecker_Validate_BodyAssertions(t *testing.T) {
 
 	specFor := func(node *AssertionNode) *checkerdef.CheckSpec {
 		return &checkerdef.CheckSpec{
-
 			Config: (&HTTPConfig{
 				URL:            "https://acme.com/health",
 				BodyAssertions: node,
@@ -551,7 +552,7 @@ func TestHTTPConfig_LegacyBodyMatchers_StillWork(t *testing.T) {
 	server := newTextBodyServer(t, "UNHEALTHY")
 	result := runCheck(t, &HTTPConfig{URL: server.URL, BodyExpect: "HEALTHY"})
 	r.Equal(checkerdef.StatusUp, result.Status,
-		"body_expect stays a substring match — unchanged behaviour")
+		"body_expect stays a substring match — unchanged behavior")
 
 	result = runCheck(t, &HTTPConfig{URL: server.URL, BodyExpect: "DEGRADED"})
 	r.Equal(checkerdef.StatusDown, result.Status)

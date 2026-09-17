@@ -429,17 +429,17 @@ func parseAssertionNode(raw any) (*AssertionNode, error) {
 // the plain map[string]any shape FromMap can parse again — the round-trip
 // GetConfig -> FromMap depends on.
 func assertionToMap(node *AssertionNode) (any, bool) {
-	b, err := json.Marshal(node)
+	encoded, err := json.Marshal(node)
 	if err != nil {
 		return nil, false
 	}
 
-	var m any
-	if err := json.Unmarshal(b, &m); err != nil {
+	var decoded any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		return nil, false
 	}
 
-	return m, true
+	return decoded, true
 }
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
