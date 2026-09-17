@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: SolidPing API
   description: Multi-protocol monitoring and health checking API
-  version: 1.0.0
+  version: "0.1"
   contact:
     name: Florent Clairambault - https://github.com/fclairamb/solidping/issues
   license:
