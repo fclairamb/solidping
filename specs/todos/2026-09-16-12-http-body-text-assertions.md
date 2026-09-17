@@ -228,3 +228,98 @@ He should be told three things: the exact-match + ignore-case assertion is being
 his case is a good one; that `body_expect`/`body_pattern` exist today as a workaround but are
 substring/regex and unavailable in the UI, so he should wait rather than hand-edit YAML; and
 that the docs page that mentions `body_match` was wrong, which is on us.
+
+## Implementation Plan
+
+### A. Backend (`server/internal/checkers/checkhttp`)
+
+1. `jsonpath.go` — add `IgnoreCase bool` (`ignoreCase`) to `AssertionNode` and thread it
+   through:
+   - `compareValues(operator, actual, expected string, ignoreCase bool)`: `eq`/`neq` via
+     `strings.EqualFold`, `contains`/`not_contains` via a folded `strings.Contains`.
+   - `regex` via a new `compileAssertionRegex(pattern, ignoreCase)` that parses with
+     `regexp/syntax` using `syntax.Perl|syntax.FoldCase` — a parse-time flag, never a
+     `"(?i)"` string prefix, so an anchored pattern or one carrying its own `(?i)`/`(?-i)`
+     group is not corrupted.
+   - Add the missing `not_contains` operator to `compareValues` and `validateLeaf` (it is
+     a real gap for JSONPath too, and required for body assertions).
+   - `IgnoreCase` also reaches existing JSONPath assertions — `$.status eq "ok"` can now
+     match `"OK"`.
+
+2. New `bodyassertions.go` — `EvaluateBody(body string) AssertionResult` and
+   `ValidateBody() error` on `AssertionNode`, sharing the same AST and the same
+   `compareValues`:
+   - Allowed operators: `eq`, `neq`, `contains`, `not_contains`, `regex`, plus `and`/`or`
+     groups. `exists`, `not_exists` and the four numeric operators are **rejected** by
+     `ValidateBody` with a clear error (never silently accepted).
+   - `Path` is ignored for body assertions and is not required.
+   - **Whitespace rule: `eq`/`neq` compare against `strings.TrimSpace(body)`;
+     `contains`/`not_contains`/`regex` see the body verbatim.** Documented in the field
+     help text, the wiki and the public docs.
+   - `Actual` is truncated to 256 runes so a 10 MB body cannot bloat the result output.
+
+3. `config.go` — `BodyAssertions *AssertionNode` with `json:"bodyAssertions"`, parsed in
+   `FromMap` (`bodyAssertions` / `body_assertions` via `resolveKey`), emitted in
+   `GetConfig` as camelCase `bodyAssertions`. `parseAssertionNode` learns `ignoreCase` /
+   `ignore_case`.
+
+4. `checker.go`:
+   - **`bodyDrivesAssertions` (checker.go:466) gains `cfg.BodyAssertions != nil`** — the
+     fail-open trap. Covered by a dedicated negative-control test.
+   - `Validate` calls `cfg.BodyAssertions.ValidateBody()`, surfacing a `VALIDATION_ERROR`
+     on `bodyAssertions`.
+   - Evaluation runs next to the JSONPath block; on failure the result carries the
+     evaluated tree under the `body_assertions` output key, with expected AND actual.
+
+5. `samples.go` — an "ASP.NET Core health endpoint" sample using `bodyAssertions` +
+   `ignoreCase`, which is also what MCP's `get_check_type_samples` teaches.
+
+6. No migration: assertions live inside the existing `config` JSONB/TEXT column, and
+   `check_jobs.config` is a denormalized copy of the same blob. Verified, nothing to add
+   on either Postgres or SQLite.
+
+7. `body_expect` / `body_reject` / `body_pattern` / `body_pattern_reject` /
+   `headers_pattern` keep working unchanged; importers are untouched (spec A.7).
+
+8. Remove the dead `"body_contains"` key in `tunnel_test.go:55`.
+
+### B. Frontend (`web/dash0`)
+
+1. Generalize `json-assertion-editor.tsx` (no fork): new optional props `showPath`
+   (default true), `operators` (default the JSONPath list) and `testIdPrefix` (default
+   `json-assertion`). A body assertion row is the same component with the path input
+   hidden and the operator list narrowed.
+2. Per-leaf **Ignore case** checkbox wired to `ignoreCase`, in both editors.
+3. Operator labels translated (`assertionOperators.*`) in all four locales.
+4. `bodyAssertions` added to `HttpState`, `fromConfig`, `toConfig`, `httpOptionsSummary`
+   and — critically — `httpModule.ownedKeys` (both spellings), so it round-trips as a
+   modeled key instead of relying on the unmodeled passthrough.
+5. A "Body assertions" section in the HTTP form next to JSON assertions, with help text
+   stating the trim rule and the ASP.NET health example.
+6. Results: `json-assertion-results.tsx` takes a `title`; a new
+   `BodyAssertionResultCard` renders the `body_assertions` output key on the check detail
+   page and the key is filtered out of the raw output dump.
+7. `design-reference.tsx` gains the body-assertion variant next to the existing one.
+
+### C. Docs
+
+1. `web/docs/docs/features/check-types.md` — delete the fictitious `body_match:` example
+   and add a "Response assertions" section (status codes, body assertions with the
+   ASP.NET example, JSONPath assertions, header matcher).
+2. `wiki/conventions/checker-config.md` — `bodyAssertions` and `ignoreCase`.
+3. OpenAPI left as-is (`config` stays free-form, per spec C.4).
+
+### D. Tests
+
+- Table-driven `checkhttp` tests: every body operator × `ignoreCase` on/off, including
+  `"Healthy"` / `"HEALTHY\n"` / `"Unhealthy"` against `eq "HEALTHY"` + `ignoreCase` →
+  up, up, **down**.
+- **Negative control for the read gate**: a check with ONLY `bodyAssertions` against a
+  body that must fail asserts `down`. This fails if `bodyDrivesAssertions` is not
+  extended.
+- Validation tests: numeric and `exists`/`not_exists` operators rejected on a body
+  assertion.
+- Round-trip `FromMap(GetConfig(cfg))` preserving `bodyAssertions` + `ignoreCase`.
+- Regression: `body_expect` and friends still work and still round-trip.
+- `http.test.ts` round-trip unit tests for `bodyAssertions` + locale parity.
+- Playwright `web/dash0/e2e/check-http-body-assertions.spec.ts`.
