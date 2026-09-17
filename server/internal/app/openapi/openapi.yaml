@@ -7,6 +7,7 @@ info:
     name: Florent Clairambault - https://github.com/fclairamb/solidping/issues
   license:
     name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
 
 servers:
   - url: https://solidping.io
@@ -79,6 +80,10 @@ tags:
     description: Org-scoped file storage metadata and content
   - name: EmailSuppressions
     description: Per-recipient email suppression (unsubscribe) list
+  - name: StatusPages
+    description: Public status pages, their sections, resources, incidents and subscribers
+  - name: StatusUpdates
+    description: Status page incident updates published to subscribers
 
 paths:
   # Management APIs
