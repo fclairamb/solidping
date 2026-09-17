@@ -98,6 +98,16 @@ type HTTPConfig struct {
 	// JSONPath assertions (AST-based validation of JSON response bodies)
 	JSONPathAssertions *AssertionNode `json:"json_path_assertions,omitempty"` //nolint:tagliatelle // API uses snake_case
 
+	// BodyAssertions validates the raw response body as TEXT, using the same
+	// AST as JSONPathAssertions with Path ignored. This is what does exact
+	// equality (optionally case-insensitive) on a text/plain endpoint, which
+	// no `body_*` key can: body_expect is a substring match, so
+	// `body_expect: HEALTHY` also matches a body of "UNHEALTHY".
+	//
+	// camelCase only — it is a new key with no stored snake_case history to
+	// carry, unlike the body_* matchers above.
+	BodyAssertions *AssertionNode `json:"bodyAssertions,omitempty"`
+
 	// VerifySsl controls TLS certificate verification. nil (the vast majority
 	// of stored configs) means "unset", which behaves like true — today's
 	// hardcoded behavior. Only an explicit false disables verification, so
@@ -316,6 +326,18 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.JSONPathAssertions = node
 	}
 
+	// Extract BodyAssertions (optional). Canonical spelling is camelCase; the
+	// snake_case alias is accepted on read so a config-as-code file written in
+	// the repo's older style still parses.
+	if v, key, ok := resolveKey(configMap, "bodyAssertions", "body_assertions"); ok {
+		node, err := parseAssertionNode(v)
+		if err != nil {
+			return checkerdef.NewConfigError(key, err.Error())
+		}
+
+		c.BodyAssertions = node
+	}
+
 	// Extract VerifySsl (optional). Presence-aware: only an explicit boolean
 	// value overrides the true default, so a value must be parsed into a
 	// pointer rather than a plain bool.
@@ -383,6 +405,12 @@ func parseAssertionNode(raw any) (*AssertionNode, error) {
 		node.Value = value
 	}
 
+	if v, _, ok := resolveKey(nodeMap, "ignoreCase", "ignore_case"); ok {
+		if ignoreCase, ok := v.(bool); ok {
+			node.IgnoreCase = ignoreCase
+		}
+	}
+
 	if children, ok := nodeMap["children"].([]any); ok {
 		node.Children = make([]AssertionNode, 0, len(children))
 		for _, child := range children {
@@ -395,6 +423,23 @@ func parseAssertionNode(raw any) (*AssertionNode, error) {
 	}
 
 	return node, nil
+}
+
+// assertionToMap serializes an assertion tree through JSON so it comes back as
+// the plain map[string]any shape FromMap can parse again — the round-trip
+// GetConfig -> FromMap depends on.
+func assertionToMap(node *AssertionNode) (any, bool) {
+	b, err := json.Marshal(node)
+	if err != nil {
+		return nil, false
+	}
+
+	var m any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, false
+	}
+
+	return m, true
 }
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
@@ -463,11 +508,14 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 
 	if c.JSONPathAssertions != nil {
 		// Serialize via JSON to produce map[string]any so that FromMap can parse it back.
-		if b, err := json.Marshal(c.JSONPathAssertions); err == nil {
-			var m any
-			if err := json.Unmarshal(b, &m); err == nil {
-				cfg["jsonPathAssertions"] = m
-			}
+		if m, ok := assertionToMap(c.JSONPathAssertions); ok {
+			cfg["jsonPathAssertions"] = m
+		}
+	}
+
+	if c.BodyAssertions != nil {
+		if m, ok := assertionToMap(c.BodyAssertions); ok {
+			cfg["bodyAssertions"] = m
 		}
 	}
 

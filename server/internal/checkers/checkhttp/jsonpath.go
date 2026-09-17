@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"strconv"
 	"strings"
 
@@ -11,13 +12,17 @@ import (
 )
 
 const (
-	opGte       = "gte"
-	opLte       = "lte"
-	opNeq       = "neq"
-	opContains  = "contains"
-	opRegex     = "regex"
-	opExists    = "exists"
-	opNotExists = "not_exists"
+	opEq          = "eq"
+	opGt          = "gt"
+	opGte         = "gte"
+	opLt          = "lt"
+	opLte         = "lte"
+	opNeq         = "neq"
+	opContains    = "contains"
+	opNotContains = "not_contains"
+	opRegex       = "regex"
+	opExists      = "exists"
+	opNotExists   = "not_exists"
 
 	errPathNotFound = "path not found"
 )
@@ -35,12 +40,21 @@ const (
 )
 
 // AssertionNode represents a node in the assertion AST.
+//
+// The same AST serves two subjects: a parsed JSON document (Evaluate, driven by
+// Path) and the raw response body as a string (EvaluateBody, which ignores
+// Path entirely — see bodyassertions.go).
 type AssertionNode struct {
 	Type     AssertionNodeType `json:"type"`
 	Path     string            `json:"path,omitempty"`
 	Operator string            `json:"operator,omitempty"`
 	Value    string            `json:"value,omitempty"`
-	Children []AssertionNode   `json:"children,omitempty"`
+	// IgnoreCase folds case for the string operators (eq, neq, contains,
+	// not_contains) and compiles `regex` with the case-folding flag. It
+	// applies to JSONPath and body assertions alike. Omitted at its false
+	// default so an untouched config never gains the key.
+	IgnoreCase bool            `json:"ignoreCase,omitempty"`
+	Children   []AssertionNode `json:"children,omitempty"`
 }
 
 // AssertionResult represents the evaluation result of an assertion node.
@@ -52,7 +66,10 @@ type AssertionResult struct {
 	Expected string            `json:"expected,omitempty"`
 	Actual   string            `json:"actual,omitempty"`
 	Error    string            `json:"error,omitempty"`
-	Children []AssertionResult `json:"children,omitempty"`
+	// IgnoreCase echoes the node's flag so the UI can explain why
+	// "HEALTHY" matched "Healthy".
+	IgnoreCase bool              `json:"ignoreCase,omitempty"`
+	Children   []AssertionResult `json:"children,omitempty"`
 }
 
 // Evaluate recursively evaluates the assertion AST against parsed JSON data.
@@ -71,10 +88,11 @@ func (n *AssertionNode) Evaluate(data any) AssertionResult {
 
 func (n *AssertionNode) evaluateLeaf(data any) AssertionResult {
 	result := AssertionResult{
-		Type:     NodeTypeAssertion,
-		Path:     n.Path,
-		Operator: n.Operator,
-		Expected: n.Value,
+		Type:       NodeTypeAssertion,
+		Path:       n.Path,
+		Operator:   n.Operator,
+		Expected:   n.Value,
+		IgnoreCase: n.IgnoreCase,
 	}
 
 	// Parse JSONPath
@@ -114,7 +132,7 @@ func (n *AssertionNode) evaluateLeaf(data any) AssertionResult {
 	actual := fmt.Sprintf("%v", results[0])
 	result.Actual = actual
 
-	result.Pass = compareValues(n.Operator, actual, n.Value)
+	result.Pass = compareValues(n.Operator, actual, n.Value, n.IgnoreCase)
 	return result
 }
 
@@ -154,25 +172,64 @@ func (n *AssertionNode) evaluateOr(data any) AssertionResult {
 	return result
 }
 
-func compareValues(operator, actual, expected string) bool {
+func compareValues(operator, actual, expected string, ignoreCase bool) bool {
 	switch operator {
-	case "eq":
-		return actual == expected
+	case opEq:
+		return stringsEqual(actual, expected, ignoreCase)
 	case opNeq:
-		return actual != expected
+		return !stringsEqual(actual, expected, ignoreCase)
 	case opContains:
-		return strings.Contains(actual, expected)
+		return stringsContain(actual, expected, ignoreCase)
+	case opNotContains:
+		return !stringsContain(actual, expected, ignoreCase)
 	case opRegex:
-		re, err := regexp.Compile(expected)
+		re, err := compileAssertionRegex(expected, ignoreCase)
 		if err != nil {
 			return false
 		}
 		return re.MatchString(actual)
-	case "gt", opGte, "lt", opLte:
+	case opGt, opGte, opLt, opLte:
 		return compareNumeric(operator, actual, expected)
 	default:
 		return false
 	}
+}
+
+func stringsEqual(actual, expected string, ignoreCase bool) bool {
+	if ignoreCase {
+		return strings.EqualFold(actual, expected)
+	}
+
+	return actual == expected
+}
+
+func stringsContain(actual, expected string, ignoreCase bool) bool {
+	if ignoreCase {
+		return strings.Contains(strings.ToLower(actual), strings.ToLower(expected))
+	}
+
+	return strings.Contains(actual, expected)
+}
+
+// compileAssertionRegex compiles an assertion pattern, optionally case-folded.
+//
+// Case folding is applied as a PARSE-TIME FLAG (syntax.FoldCase), never by
+// concatenating a `(?i)` prefix onto the pattern string. The prefix trick
+// mangles any pattern that carries its own inline flag group or that the user
+// meant to scope with `(?-i)`, and it silently changes the meaning of a
+// pattern beginning with a flag group of its own. Parsing with the flag lets
+// an inline `(?-i)` turn folding back off exactly where the author asked.
+func compileAssertionRegex(pattern string, ignoreCase bool) (*regexp.Regexp, error) {
+	if !ignoreCase {
+		return regexp.Compile(pattern)
+	}
+
+	parsed, err := syntax.Parse(pattern, syntax.Perl|syntax.FoldCase)
+	if err != nil {
+		return nil, err
+	}
+
+	return regexp.Compile(parsed.String())
 }
 
 func compareNumeric(operator, actual, expected string) bool {
@@ -187,11 +244,11 @@ func compareNumeric(operator, actual, expected string) bool {
 	}
 
 	switch operator {
-	case "gt":
+	case opGt:
 		return actualFloat > expectedFloat
 	case opGte:
 		return actualFloat >= expectedFloat
-	case "lt":
+	case opLt:
 		return actualFloat < expectedFloat
 	case opLte:
 		return actualFloat <= expectedFloat
@@ -228,9 +285,9 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	validOps := map[string]bool{
-		"eq": true, opNeq: true, "gt": true, opGte: true,
-		"lt": true, opLte: true, opContains: true, opRegex: true,
-		opExists: true, opNotExists: true,
+		opEq: true, opNeq: true, opGt: true, opGte: true,
+		opLt: true, opLte: true, opContains: true, opNotContains: true,
+		opRegex: true, opExists: true, opNotExists: true,
 	}
 
 	if !validOps[n.Operator] {
@@ -243,7 +300,7 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	// Numeric operators must have parseable value
-	if n.Operator == "gt" || n.Operator == opGte || n.Operator == "lt" || n.Operator == opLte {
+	if isNumericOperator(n.Operator) {
 		if _, err := strconv.ParseFloat(n.Value, 64); err != nil {
 			return fmt.Errorf("%w: %s", errNumericValueRequired, n.Operator)
 		}
@@ -251,12 +308,22 @@ func (n *AssertionNode) validateLeaf() error {
 
 	// Regex must compile
 	if n.Operator == opRegex {
-		if _, err := regexp.Compile(n.Value); err != nil {
+		if _, err := compileAssertionRegex(n.Value, n.IgnoreCase); err != nil {
 			return fmt.Errorf("%w: %w", errInvalidRegex, err)
 		}
 	}
 
 	return nil
+}
+
+// isNumericOperator reports whether the operator compares two numbers.
+func isNumericOperator(operator string) bool {
+	switch operator {
+	case opGt, opGte, opLt, opLte:
+		return true
+	default:
+		return false
+	}
 }
 
 func (n *AssertionNode) validateGroup() error {
