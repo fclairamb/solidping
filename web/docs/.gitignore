@@ -20,9 +20,11 @@ yarn-debug.log*
 yarn-error.log*
 
 # Generated OpenAPI reference — regenerated at build from
-# ../../server/internal/app/openapi/openapi.yaml. The category label is kept.
-/docs/api/*
-!/docs/api/_category_.json
+# ../../server/internal/app/openapi/openapi.yaml. Nothing in here is tracked:
+# `gen-api-docs` runs cleanApiDocs first, which unlinks every *.json in the
+# directory, so a checked-in _category_.json would be deleted on every build and
+# leave the working tree dirty. The sidebar category is declared in sidebars.ts.
+/docs/api/
 
 # Generated changelog page — regenerated at build from ../../CHANGELOG.md,
 # see scripts/gen-changelog.ts.
