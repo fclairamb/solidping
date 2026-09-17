@@ -288,10 +288,23 @@ run-test: build ## Build and run the application in test mode
 DEVLOOP_LOG_FLAGS := -log-dir $(CURDIR)/$(LOG_DIR)
 DEVLOOP_PROCS := -proc "dash0:$(CURDIR)/$(DASH0_DIR):bun run dev" -proc "status0:$(CURDIR)/$(STATUS0_DIR):bun run dev"
 
-dev: kill ## Run backend, dash0 and status0 in development mode
-	@echo "Running application in development mode..."
+# The live demo (demo org, demo user, seeded catalog, cleanup sweep) is ON by
+# default in development, so `make dev` shows the same login page and banner a
+# visitor to the public demo gets, instead of a surface nobody sees locally
+# until it breaks in production. Turn it off for a run with `make dev DEMO=false`
+# (or export DEMO=false).
+#
+# Safe against local data: the cleanup sweep only ever deletes checks created by
+# the demo USER inside an org carrying the demo.enabled flag, so a `default` org
+# is never swept (server/internal/jobs/jobtypes/job_demo_cleanup.go). dev-test
+# is not listed below because test run mode already forces the demo on.
+DEMO ?= true
+
+dev: kill ## Run backend, dash0 and status0 in development mode (demo on; DEMO=false to disable)
+	@echo "Running application in development mode (demo: $(DEMO))..."
 	@cd $(BACK_DIR) && SP_REDIRECTS="/d:localhost:5174/d,/s:localhost:5175/s" SP_PROFILER_ENABLED=true \
 		SP_DB_MIGRATION_GUARD_MODE=warn \
+		SP_DEMO_ENABLED=$(DEMO) \
 		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
@@ -422,9 +435,9 @@ dev-docs: ## Start docs (Docusaurus) dev server on :3000
 	@echo "Starting docs dev server..."
 	@cd $(DOCS_DIR) && bun run gen-api-docs && bun run start
 
-dev-backend: ## Start backend development server (hot reload via cmd/devloop, rotating log)
-	@echo "Starting backend dev server..."
-	@cd $(BACK_DIR) && go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS)
+dev-backend: ## Start backend development server (hot reload via cmd/devloop, rotating log; demo on)
+	@echo "Starting backend dev server (demo: $(DEMO))..."
+	@cd $(BACK_DIR) && SP_DEMO_ENABLED=$(DEMO) go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS)
 
 deps: ## Install all dependencies
 	@echo "Installing backend dependencies..."
