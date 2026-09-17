@@ -13,6 +13,8 @@ import (
 // server, so the Updates & notices list had no way to tell a post threaded
 // under a published incident from a standalone maintenance notice.
 func TestToResponse_ThreadsPublicationUID(t *testing.T) {
+	t.Parallel()
+
 	pubUID := "pub-uid-1"
 	update := &models.StatusUpdate{
 		UID:                    "update-uid-1",
@@ -32,6 +34,8 @@ func TestToResponse_ThreadsPublicationUID(t *testing.T) {
 // maintenance notice threads under nothing, and a non-nil pointer here would
 // make the list render a link to a publication that does not exist.
 func TestToResponse_StandaloneHasNoPublicationUID(t *testing.T) {
+	t.Parallel()
+
 	update := &models.StatusUpdate{
 		UID:           "update-uid-2",
 		StatusPageUID: "page-uid-1",
