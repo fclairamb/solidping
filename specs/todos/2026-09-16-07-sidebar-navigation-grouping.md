@@ -199,3 +199,59 @@ Tell him the sidebar is being grouped, roughly along the lines he sketched, and 
 was a bad pun on *paging* — it is his own alert history, and it is being renamed. Worth adding
 that Cmd-K opens a search over every page and check, since he was hunting for Organization by
 eye.
+
+## Implementation Plan
+
+1. **Locales** (`web/dash0/src/locales/{en,fr,de,es}/nav.json`)
+   - Add a `groups` object with four keys: `monitoring`, `alerting`, `publicStatus`,
+     `administration`, translated in all four locales.
+   - Rename the key `myPages` → `myAlerts` in all four locales; `en` value becomes
+     `"My alerts"` (fr/de/es keep their existing wording, which already says "alerts").
+   - `common.json → myNotifications.title`: `en` only says "My pages"; fix it to
+     "My alerts". fr/de/es already read as alerts.
+   - `statusUpdates` values are left byte-identical (spec `14` owns them).
+
+2. **`AppSidebar.tsx`** — replace the flat `navItems` array with
+   `navGroups: { labelKey, gate?, items }[]`:
+   - `Monitoring`: Dashboard, Checks, Incidents, Events, SLOs.
+   - `Alerting`: Integrations, On-call, Escalation policies, My alerts.
+   - `Public status`: Status pages, Status updates, Maintenance.
+   - `Administration` (per-item gates): Organization (`isAdmin`, `Building`,
+     `/orgs/$org/organization`), Jobs (`isSuperAdmin`).
+   - Drop Badges, Dependencies and Discovery entries entirely. Dropping
+     Dependencies is what removes the stale `/orgs/$org/dependencies` route
+     literal and makes `tsc -b` green again.
+   - Render with a nested map over `navGroups` → `SidebarGroup` /
+     `SidebarGroupLabel` / `SidebarGroupContent` / `SidebarMenu`, preserving the
+     existing `isActive` comparison and the `tooltip` prop (the collapsed rail's
+     only label).
+   - Gates are evaluated per item and per group; a group whose items are all
+     gated out renders nothing at all (no orphan label).
+   - The avatar-dropdown Organization entry stays.
+
+3. **`CommandMenu.tsx`** — delete the `dependencies` and `badges` page entries and
+   rename `myPages` → `myAlerts`. Palette grouping (`GroupKey`) is left as-is.
+
+4. **`routes/orgs/$org.tsx`** — breadcrumb `t("myPages")` → `t("myAlerts")`.
+
+5. **`routes/orgs/$org/jobs.tsx`** — route guard `!user?.isAdmin` →
+   `!user?.isSuperAdmin`, and rewrite the stale `admin-only` comment. Backend gates
+   are deliberately untouched.
+
+6. **`routes/orgs/$org/jobs.index.tsx`** — the scope toggle's `user?.isSuperAdmin`
+   check is now always true behind the route guard; drop it and leave a comment
+   saying why.
+
+7. **E2E**
+   - `docs-links.spec.ts`: the Discovery case navigates through the Organization
+     section instead of a direct `page.goto`, and loses the "pending spec 07"
+     comment; the Jobs case's comment is corrected to say super admin.
+   - `jobs.spec.ts`: "Jobs sidebar link is visible for admin" → super admin, plus a
+     NEW case proving an org admin who is not a super admin sees no Jobs link and
+     is redirected off `/jobs`.
+   - `sidebar.spec.ts`: NEW cases for the four group labels, Organization present
+     for an admin / absent for a non-admin, and the collapsed rail still listing
+     every item with the group labels hidden.
+
+8. **Gate**: `make build-dash0`, `bun run lint`, `bun run test:unit`, and the
+   touched E2E files against a side-car test server.
