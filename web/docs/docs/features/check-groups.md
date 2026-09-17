@@ -111,5 +111,37 @@ curl -X POST http://localhost:4000/api/v1/orgs/default/check-groups \
   -d '{"name":"Payments API","slug":"payments-api","description":"Everything behind checkout"}'
 ```
 
-Assign a check to a group by setting its `checkGroupUid` when you create or update the
-check.
+## Assigning a check to a group
+
+There are four ways, and they all write the same field:
+
+- **The check form.** Open a check (or create one) and pick a group in the
+  **Group** field. The field is always there — if you have no groups yet, it says
+  so and offers to create one on the spot.
+- **A prefilled new-check link.** `/orgs/<org>/checks/new?group=<slug>` opens the
+  form with that group already selected — handy from a runbook or a wiki page.
+- **The Change group row action** on the checks list, for a check that already
+  exists.
+- **The API**, by setting `checkGroupUid` on create or update. Config-as-code
+  documents carry the same field.
+
+## Groups vs labels
+
+A check belongs to **one group** and carries **any number of
+[labels](./labels.md)**. Use a group for "what this check is part of" — it
+drives escalation, incident correlation and status-page rollups. Use labels for
+"how I want to slice the list" — they filter, and they can select checks onto a
+status page.
+
+| | Check groups | [Labels](./labels.md) |
+|---|---|---|
+| How many per check | 0 or 1 — exclusive | any number |
+| Shape | a named entity: name, slug, description, sort order | free `key=value` pairs |
+| Organizes the checks list | yes — the list is paginated and rendered group by group | no — filter only |
+| Escalation policy | a group can carry one that its members inherit | never |
+| Incident correlation | yes — a group's incidents are shown together | no |
+| Status pages | publish a whole group as one component | select checks into a section by label |
+| SLOs, maintenance windows | can be scoped to a group | no |
+
+They are not alternatives. A check typically lives in one group *and* carries
+several labels — see [Labels](./labels.md) for the tagging side.

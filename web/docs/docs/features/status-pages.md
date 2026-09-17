@@ -134,11 +134,18 @@ Internal checks are never matched by either rule.
 
 ### Recommended: label opt-in
 
-Prefer **By label** with a label you control, such as `public=true`:
+Prefer **By label** with a label you control, such as `public=true`
+(see [Labels](./labels.md)):
 
 ```bash
-sp checks update payments-api --label public=true
+curl -X PATCH http://localhost:4000/api/v1/orgs/default/checks/payments-api \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"labels": {"public": "true"}}'
 ```
+
+You can also set it in the check form's **Labels** field, or in a
+[config-as-code](./config-as-code.md) document.
 
 This inverts the risk. With **All checks**, every check you create is published
 unless you remember to stop it. With a label, a check is private until someone
