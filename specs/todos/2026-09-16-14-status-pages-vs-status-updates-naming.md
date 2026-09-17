@@ -133,3 +133,51 @@ Give him the distinction in three lines — page = the site, publication = one p
 its own lifecycle, update = one post on the timeline (which can also be standalone maintenance or
 an announcement) — and tell him the nav label is being changed because the shared "Status" prefix
 is the whole problem.
+
+## Implementation Plan
+
+Scope adjudication: part **C** (moving the item into the status-pages section) is
+**deferred to spec `07`**, which owns `AppSidebar.tsx` / `CommandMenu.tsx` and lands after
+this one. This spec does **A**, **B** and **D** only, and touches
+`web/dash0/src/locales/*/nav.json` for exactly one key value (`statusUpdates`).
+
+### A — rename the nav item and the page it opens
+
+- Label chosen: **"Updates & notices"** (does not begin with "Status", so the adjacent-row
+  prefix collision disappears).
+  - `en` — `Updates & notices`
+  - `fr` — `Mises à jour et avis`
+  - `de` — `Meldungen & Hinweise`
+  - `es` — `Avisos y novedades`
+- Applied to `nav.statusUpdates` (value only, no structural edit) and to
+  `statusUpdates.title` so the nav row and the page `<h1>` agree.
+- The page's neighbouring copy is realigned to the same vocabulary:
+  `newStatusUpdate`, `editStatusUpdate`, `noStatusUpdates`, `noStatusUpdatesHint`,
+  `noMatch`. Nothing in the database, the API or the route paths is renamed.
+
+### B — say what the page is, and link a threaded update to its publication
+
+- `statusUpdates.subtitle` becomes the relationship sentence from the Proposal.
+- The row grows a link to its publication when `incidentPublicationUid` is set, pointing at
+  `/orgs/$org/status-pages/$statusPageUid/incidents/$uid`. Standalone updates
+  (maintenance, info) render no link at all.
+- The pointer is not on the wire today: `StatusUpdateResponse` omits
+  `IncidentPublicationUID`. One additive, read-only field is added to the response DTO and
+  to `openapi.yaml`, plus the matching optional property on the dash0 `StatusUpdate`
+  interface. This is an addition, not a rename.
+
+### D — document the three-way distinction
+
+A new section in `web/docs/docs/features/status-pages.md` covering page vs publication vs
+update, the threading relationship, the standalone kinds, and why the public state
+vocabulary is deliberately separate from `models.IncidentState`. Prose lifted from the
+model doc comments.
+
+### Tests
+
+- `bun run test:unit` — locale parity over the changed/added keys.
+- `web/dash0/e2e/status-updates.spec.ts` — updated for the new labels, plus a threaded
+  update that shows the publication link and a standalone update that shows none
+  (negative control).
+- `web/dash0/e2e/command-menu.spec.ts` — palette entry text updated.
+- `make build-docs`.
