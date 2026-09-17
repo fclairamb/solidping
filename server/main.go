@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/envcheck"
+	"github.com/fclairamb/solidping/server/internal/healthcheck"
 	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	"github.com/fclairamb/solidping/server/internal/procwatch"
@@ -43,15 +44,47 @@ func main() {
 	logLevel := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
 	setupLogger(logLevel, config.ParseLogFormat(os.Getenv("SP_LOG_FORMAT")))
 
-	cmd := &cli.Command{
+	cmd := buildRootCommand()
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		slog.Error("Application failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+// buildRootCommand builds the "solidping" binary's command tree. Pulled out
+// of main() so tests can exercise the REAL tree (flags, structure, command
+// nesting) through urfave/cli v3's actual Run()/parsing, rather than only a
+// hand-built mirror of its shape. Must stay free of side effects (no I/O,
+// no os.Exit) so it's safe to call from a test.
+func buildRootCommand() *cli.Command {
+	return &cli.Command{
 		Name:           "solidping",
 		Usage:          "SolidPing monitoring service",
 		DefaultCommand: "serve",
+		// The pkg/cli client flags (config/url/org/output/json/verbose) are
+		// declared here, at the root, rather than on the "client" node below.
+		// urfave/cli v3 flags are persistent/inherited by default, but only
+		// down to a node that doesn't redeclare the same name itself - and
+		// with DefaultCommand set, an unrecognized flag ahead of the first
+		// subcommand is passed through as a positional arg rather than
+		// erroring, so a --org declared only on "client" would silently not
+		// reach `solidping --org test client ...` (only the flag-after-
+		// "client" form would work). Declaring once, at the root, matches
+		// pkg/cli's own single-declaration fix and keeps --org/--url valid in
+		// any position for every command that reuses pkg/cli.
+		Flags: spCli.GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   "serve",
 				Usage:  "Start the HTTP server",
 				Action: serve,
+			},
+			{
+				Name: "healthcheck",
+				Usage: "Probe the local server's /api/mgmt/health endpoint and exit 0/1 accordingly " +
+					"(used as the Dockerfile HEALTHCHECK — the runtime image is distroless, no shell/curl)",
+				Action: healthcheckAction,
 			},
 			{
 				Name:   "migrate",
@@ -69,7 +102,6 @@ func main() {
 			{
 				Name:     "client",
 				Usage:    "Client commands for managing SolidPing remotely",
-				Flags:    spCli.GetGlobalFlags(),
 				Commands: spCli.GetCommands(),
 			},
 			{
@@ -85,11 +117,6 @@ func main() {
 			},
 			devCommand(),
 		},
-	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		slog.Error("Application failed", "error", err)
-		os.Exit(1)
 	}
 }
 
@@ -279,6 +306,30 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return err
+}
+
+// healthcheckAction implements the `solidping healthcheck` subcommand: it
+// loads the config just enough to know the server's listen port, then GETs
+// the local /api/mgmt/health endpoint. Exit 0 on HTTP 200, exit 1 otherwise
+// (transport error, timeout, or a non-200 status such as the 503 the server
+// returns during its graceful-shutdown window). This is the whole point of
+// the subcommand: the final image is distroless, so nothing inside the
+// container can run `curl` for a Docker/Kubernetes healthcheck.
+func healthcheckAction(ctx context.Context, _ *cli.Command) error {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.ErrorContext(ctx, "healthcheck: failed to load configuration", "error", err)
+		return cli.Exit(err.Error(), 1)
+	}
+
+	url := healthcheck.URLFromListen(cfg.Server.Listen)
+
+	if checkErr := healthcheck.Check(ctx, url, healthcheck.DefaultTimeout); checkErr != nil {
+		slog.ErrorContext(ctx, "healthcheck failed", "error", checkErr, "url", url)
+		return cli.Exit(checkErr.Error(), 1)
+	}
+
+	return nil
 }
 
 // watchParent wires the opt-in parent-death watch (SP_EXIT_WITH_PARENT): the

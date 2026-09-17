@@ -1,5 +1,7 @@
-# Binary
-solidping
+# Binary. Anchored to the repo root — unanchored it also matched
+# deploy/casaos/solidping/, the CasaOS store entry folder, silently hiding it
+# from every `git add`.
+/solidping
 bin/
 
 # Private stuff

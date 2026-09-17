@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} fuertes",
     "summarySoftDeps_one": "{{count}} suave",
     "summarySoftDeps_other": "{{count}} suaves",
-    "regionsIpv6Hint": "Esta comprobación está fijada a IPv6. Las regiones cuyos workers activos informan salida IPv6 se listan primero — las demás siguen siendo seleccionables, y una región marcada como «IPv6 desconocido» simplemente aún no ha informado."
+    "regionsIpv6Hint": "Esta comprobación está fijada a IPv6. Las regiones cuyos workers activos informan salida IPv6 se listan primero — las demás siguen siendo seleccionables, y una región marcada como «IPv6 desconocido» simplemente aún no ha informado.",
+    "groupEmptyHint": "Todavía no tienes grupos. Un grupo es un contenedor exclusivo de checks relacionados: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno para empezar."
   },
   "types": {
     "http": "HTTP",
@@ -703,6 +704,23 @@
   },
   "jsonAssertions": "Aserciones JSON",
   "jsonAssertionsDescription": "Valida campos del cuerpo de la respuesta JSON mediante una expresión JSONPath.",
+  "bodyAssertions": "Aserciones sobre el cuerpo",
+  "bodyAssertionsDescription": "Valida el cuerpo de la respuesta como texto plano. «igual a» compara el cuerpo completo sin espacios al principio ni al final, de modo que un endpoint de salud de ASP.NET Core que devuelve «Healthy\\n» coincide con igual a «Healthy» con Ignorar mayúsculas activado. «contiene», «no contiene» y «coincide con la regex» ven el cuerpo tal cual.",
+  "assertionIgnoreCase": "Ignorar mayúsculas",
+  "assertionSubjectBody": "cuerpo de la respuesta",
+  "assertionOperators": {
+    "eq": "igual a",
+    "neq": "distinto de",
+    "gt": "mayor que",
+    "gte": "mayor o igual que",
+    "lt": "menor que",
+    "lte": "menor o igual que",
+    "contains": "contiene",
+    "not_contains": "no contiene",
+    "regex": "coincide con la regex",
+    "exists": "existe",
+    "not_exists": "no existe"
+  },
   "addJsonAssertion": "Añadir aserción",
   "addGroup": "Añadir grupo",
   "jsonPath": "JSONPath",
@@ -966,7 +984,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",
-    "sftpFingerprintHelp": "Fija la clave del host del servidor. D\u00e9jalo vac\u00edo para aceptar cualquier clave: la huella que presenta el servidor siempre aparece en la salida de la comprobaci\u00f3n, para poder copiarla aqu\u00ed despu\u00e9s.",
+    "sftpFingerprintHelp": "Fija la clave del host del servidor. Déjalo vacío para aceptar cualquier clave: la huella que presenta el servidor siempre aparece en la salida de la comprobación, para poder copiarla aquí después.",
     "fingerprintHelpPrefix": "Verifica la identidad del servidor en cada comprobación, y es necesario para usar esta comprobación como",
     "tunnelBastionLabel": "Ejecutar a través de un túnel SSH",
     "fingerprintHelpSuffix": "bastión para otras comprobaciones. Obténgala con",
@@ -1076,5 +1094,29 @@
     "issuer": "Emisor",
     "notAfter": "Caducidad",
     "daysRemaining": "Días restantes"
+  },
+  "publish": {
+    "title": "Publicar en una página de estado",
+    "description": "Añade este control a una página de estado existente o crea una nueva.",
+    "add": "Añadir",
+    "addFailed": "No se pudo añadir este control a esa sección.",
+    "added": "Añadido a «{{section}}» en {{page}}.",
+    "alreadyTitle": "Ya está en una página de estado",
+    "sectionAlready": "Ya está aquí",
+    "noSections": "Esta página todavía no tiene secciones.",
+    "noStatusPages": "Aún no tienes ninguna página de estado. Crea una para publicar este control.",
+    "createNew": "Crear una página de estado",
+    "via": {
+      "direct": "{{page}} — en la sección «{{section}}».",
+      "group": "{{page}} — en «{{section}}», a través de su grupo de controles. El grupo se publica como un único componente, así que este control ya está incluido.",
+      "selector": "{{page}} — en «{{section}}», a través de la regla de pertenencia de esa sección. Los controles que coinciden se añaden automáticamente."
+    },
+    "postCreateOn": "Publicado en {{page}}, en la sección «{{section}}».",
+    "postCreateNone": "Todavía no está en ninguna página de estado.",
+    "postCreateAction": "Publicarlo"
+  },
+  "noGroupsYet": {
+    "title": "Aún no hay grupos de checks",
+    "description": "Un grupo reúne checks relacionados en un contenedor exclusivo: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno con el botón Nuevo grupo de arriba."
   }
 }

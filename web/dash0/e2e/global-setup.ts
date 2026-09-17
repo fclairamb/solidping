@@ -197,6 +197,27 @@ export default async function globalSetup(): Promise<void> {
         SP_DB_RESET: "true",
         SP_DB_TYPE: "postgres",
         SP_DB_URL: POSTGRES_TEST_DB_URL,
+        // The three settings below exist ONLY to keep this locally-started
+        // server in parity with the one CI starts (.github/workflows/ci.yml,
+        // "Start solidping server"). Without them the suite is red locally and
+        // green in CI, which reads as "the batch broke something" and sends you
+        // hunting through application code for a harness gap.
+        //
+        // Rate limiting off: magic-wand.spec.ts's ">100 checks" case creates
+        // checks in bulk and asserts every response is 201. Against a
+        // rate-limited server it gets a 429 instead — a convincing false
+        // failure that looks like a product regression in the wand.
+        SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0",
+        SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0",
+        // Self-registration is off unless auth.registration_email_pattern is
+        // set, and systemconfig applies its DB overlay ONCE at process boot —
+        // PUT-ing the parameter at runtime does not take effect. Specs driving
+        // the real register -> confirm flow (confirm-registration-no-org) need
+        // it set before the server starts, so its own header comment says.
+        // Note this is NOT bound by koanf's env loader (which collapses every
+        // underscore to a dot); it works because systemconfig declares this
+        // exact EnvVar.
+        SP_AUTH_REGISTRATION_EMAIL_PATTERN: ".*",
         // Belt and braces for the case no teardown can cover: if this
         // Playwright process is killed outright, the server would otherwise be
         // reparented to PID 1 and keep running against a database we are about

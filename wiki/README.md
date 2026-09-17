@@ -56,7 +56,7 @@ the relevant code.
 - [features/credentials-encryption.md](features/credentials-encryption.md) — Secrets at rest: the KEK/per-org-DEK envelope layers, how the wrapped DEK is stored in `parameters` (`encryption.dek`), the process-lifetime DEK cache and the cold-process failure it can hide, plus the diagnosis table for "credentials could not be decrypted".
 - [features/deported-agents.md](features/deported-agents.md) — Deported agents / private locations: customer-hosted check workers, outbound WebSocket protocol, Ed25519 enrollment & reconnect, age-sealed credentials the server cannot decrypt, private-region security boundary, and a competitor comparison.
 - [features/browser-monitoring.md](features/browser-monitoring.md) — Headless-Chrome (chromedp) checks: when to pick browser over http, execution model, capabilities & limits, worker requirements, security model.
-- [features/showcase-media.md](features/showcase-media.md) — Regenerable product screenshots & video: the `web/dash0/showcase/` Playwright pipeline, `make showcase`, AV1 post-processing, which assets are committed, where they're surfaced, and the marketing (`solidping-website`) hand-off.
+- [features/showcase-media.md](features/showcase-media.md) — Regenerable product screenshots, video and README GIF: the `web/dash0/showcase/` pipeline (`vhs` terminal segment + Playwright dashboard take), `make showcase`, the two-node side-car that puts regions on camera, the cut/time-lapse edit rules, which assets are committed, and the marketing (`solidping-website`) hand-off.
 - [features/config-as-code.md](features/config-as-code.md) — Declarative checks: export → edit → `sp apply` loop, the `solidping-managed` scope, reconcile plan (create/update/delete/unmanaged/rename), `${env:}`/`${param:}` secret references, prune + deletion cap, admin gating.
 - [features/platform-watchdog.md](features/platform-watchdog.md) — The hourly `platform_watchdog` job: how the platform reports on ITSELF. Three independent detectors (dark region with assigned work, fleet execution collapse, frozen active incidents), transition-based anti-flood, delivery through the operators' own notification routes, and the out-of-band `solidping_watchdog_*` gauges.
 - [features/email-dark-mode.md](features/email-dark-mode.md) — How transactional email renders in a dark inbox: the per-client support matrix, the `light only` pin (why it stays), the designed `prefers-color-scheme` palette in `base.html`, the `?colorScheme=dark` preview, and the still-open, human-gated Gmail un-pin decision plus its device-matrix template.
@@ -101,6 +101,11 @@ Operational procedures for diagnosing the running system.
 - [slack/manifest-dev.json](slack/manifest-dev.json) — Slack app manifest for development
 - [slack/manifest-prod.json](slack/manifest-prod.json) — Slack app manifest for production
 - [discord/README.md](discord/README.md) — Discord bot operator setup: application/bot creation, the exact permissions requested and why Manage Threads is needed, the privileged `MESSAGE_CONTENT` intent and its 100-guild review threshold, the two inbound transports (HTTPS interactions + Gateway), Ed25519 verification, guild→org mapping and comment ingestion
+
+## Distribution
+
+- [distribution/casaos.md](distribution/casaos.md) — CasaOS/ZimaOS app store listing (`deploy/casaos/solidping/`): upstream `IceWhaleTech/CasaOS-AppStore` PR mechanics, the `x-casaos` metadata shape, and the per-release version/changelog bump recipe
+- [distribution/yunohost.md](distribution/yunohost.md) — YunoHost native package (`solidping_ynh`, an external repo, not created yet): catalog/`package_check` route, who merges the autoupdate bot's PRs, and why renaming the `solidping-linux-*` release assets silently breaks the package
 
 ## Research
 

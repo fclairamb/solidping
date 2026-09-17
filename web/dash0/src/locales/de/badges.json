@@ -16,7 +16,7 @@
   "refresh": "Aktualisieren",
   "selectCheckPrompt": "Wählen Sie eine Prüfung, um eine Vorschau zu sehen und Abzeichen zu erstellen",
   "checkNotFoundTitle": "Prüfung nicht gefunden",
-  "checkNotFound": "Die Prüfung aus diesem Link wurde nicht gefunden. Möglicherweise wurde sie gelöscht oder umbenannt. Wählen Sie oben eine Prüfung aus, um fortzufahren.",
+  "checkNotFound": "Diese Prüfung wurde nicht gefunden. Möglicherweise wurde sie gelöscht oder umbenannt. Kehren Sie zur Prüfungsliste zurück, um eine andere auszuwählen.",
   "downloadFailed": "Herunterladen des Abzeichens fehlgeschlagen",
   "downloadSvg": "SVG",
   "downloadPng": "PNG",

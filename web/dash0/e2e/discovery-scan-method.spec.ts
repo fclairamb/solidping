@@ -36,7 +36,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
   test("selecting a scan method writes it to the URL (?method=)", async ({
     page,
   }) => {
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new`);
     // Defaults to LAN — CIDR fields shown, no method param needed.
     await expect(page.getByLabel(/cidr/i)).toBeVisible();
 
@@ -53,7 +53,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
     page,
   }) => {
     // The form honors the URL param with no clicks (bookmarkable / refresh-safe).
-    await page.goto(`${DASH_BASE}/orgs/test/discovery/new?method=container`);
+    await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new?method=container`);
     await expect(page.getByLabel(/container host/i)).toBeVisible();
     await expect(
       page.getByRole("combobox", { name: /scan method/i }),
@@ -81,7 +81,7 @@ test.describe("Discovery scan-method routing + kubernetes enablement (local-only
 
     try {
       // 2. Deep-link straight to the Kubernetes scan method.
-      await page.goto(`${DASH_BASE}/orgs/test/discovery/new?method=kubernetes`);
+      await page.goto(`${DASH_BASE}/orgs/test/organization/discovery/new?method=kubernetes`);
 
       // Regression: the kubernetes sub-form must render so a cluster is
       // selectable (the screenshot bug showed no cluster field at all).

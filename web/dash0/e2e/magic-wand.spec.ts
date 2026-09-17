@@ -421,6 +421,34 @@ test.describe("Magic wand defaults", () => {
     );
   });
 
+  // The status-pages list used to carry TWO wand buttons: one in the header and
+  // a second inside the "No status pages configured yet" empty state. The empty
+  // state's copy already tells you to create your first page, and the header
+  // wand is on screen at the same time, so the second button was a duplicate of
+  // an action the user could already see. Removed on request; this pins it.
+  test("status pages LIST: the empty state offers no wand of its own", async ({
+    page,
+  }) => {
+    const { orgSlug } = await seedOrg(page, 2);
+
+    await page.goto(`orgs/${orgSlug}/status-pages`);
+    await page.waitForLoadState("networkidle");
+
+    // Positive control: a freshly seeded org really is on the empty state, so
+    // the absence assertion below is about the button and not about landing on
+    // a blank page, an error, or a list that happens to have pages in it.
+    await expect(
+      page.getByText("No status pages configured yet"),
+    ).toBeVisible();
+
+    // The header wand is untouched — the feature still exists, one button.
+    await expect(page.getByTestId("wand-create-status-page")).toBeVisible();
+
+    await expect(
+      page.getByTestId("wand-create-status-page-empty"),
+    ).toHaveCount(0);
+  });
+
   test("status pages LIST wand: creates a page outright with every check and the create-form defaults", async ({
     page,
   }) => {

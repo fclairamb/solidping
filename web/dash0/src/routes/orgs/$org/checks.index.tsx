@@ -1723,6 +1723,31 @@ function ChecksIndexPage() {
                 />
               ))}
 
+            {/* An organization with checks but no groups never meets the
+                feature otherwise: the sections above render nothing, and the
+                only trace of groups is a toolbar button (spec 2026-09-16-13).
+                Follows the design reference's empty-state pattern — no CTA
+                here, the create action already lives once in the page header. */}
+            {(groups?.length ?? 0) === 0 &&
+              !isFiltering &&
+              !checksStreaming &&
+              ungroupedChecks.length > 0 && (
+                <div
+                  className="space-y-3 rounded-xl border bg-card p-8 text-center shadow-card"
+                  data-testid="no-groups-empty-state"
+                >
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                    <FolderPlus className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground">
+                    {t("noGroupsYet.title")}
+                  </p>
+                  <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+                    {t("noGroupsYet.description")}
+                  </p>
+                </div>
+              )}
+
             <UngroupedChecksSection
               org={org}
               checks={ungroupedChecks}
@@ -1741,9 +1766,6 @@ function ChecksIndexPage() {
               )}
             </div>
 
-            {(!groups || groups.length === 0) && (
-              <NoChecksPlaceholder search={debouncedSearch} />
-            )}
           </div>
         )
       ) : checksError && hostBuckets.length === 0 ? (
@@ -2140,10 +2162,3 @@ function ChecksIndexPage() {
   );
 }
 
-function NoChecksPlaceholder({ search }: { search: string }) {
-  // This renders when there are no groups. The UngroupedChecksSection handles
-  // showing ungrouped checks, so this only appears when there's nothing at all.
-  if (search) return null;
-
-  return null; // UngroupedChecksSection will handle the empty state
-}

@@ -43,7 +43,6 @@ func entitlementsCommand() *cli.Command {
 		Name:    "entitlements",
 		Aliases: []string{"entitlement", "ent"},
 		Usage:   "Manage per-organization entitlement limits",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:  flagGet,

@@ -1,23 +1,31 @@
 /**
- * Showcase post-processing.
+ * Showcase post-processing: the edit.
  *
- * Playwright emits VP8 `.webm` recordings into `showcase/output/run/`, now at
- * 2560×1600 (deviceScaleFactor 2). This script:
+ * Two sources go in — the `vhs` terminal render from `terminal.ts` and the
+ * Playwright take of the dashboard — and one cut comes out, published four
+ * ways. The steps:
  *
- *  1. finds the recording of the create-HTTP-check flow,
- *  2. detects and trims the dead (frozen) frames at its head and tail,
- *  3. reads the cue list the recording wrote alongside it and turns it into a
+ *  1. find the recording of the setup-to-first-result flow,
+ *  2. detect and trim the dead (frozen) frames at its head and tail,
+ *  3. read the cue list the recording wrote alongside it and turn it into a
  *     **camera move** — an ffmpeg `zoompan` that pushes in and back out over
  *     footage that was itself never zoomed,
- *  4. scales the result down to the published 1280×800 and encodes it twice:
- *     **AV1** (`libsvtav1`, tiny) and **H.264** (`libx264`, plays everywhere),
- *  5. downscales the 2× still frames to 1280×800 and copies them, with the
- *     video, into `web/docs/static/showcase/` — which is what gets committed.
+ *  4. turn the same cue list into a **segment plan** (`segment-plan.ts`):
+ *     which stretches play in real time, which — if any — are compressed, and
+ *     when each burned-in lower third is on screen,
+ *  5. join the terminal segment to the browser one with a short `xfade`, burn
+ *     the captions in, and write one **master** at 1280×800,
+ *  6. derive everything published from that master: **AV1** (`libsvtav1`,
+ *     tiny) and **H.264** (`libx264`, plays everywhere) into
+ *     `web/docs/static/showcase/`, plus the README **GIF** and the three
+ *     stills into `res/screenshots/` — which is what stops those from being
+ *     hand-copied, as they were until spec 2026-09-16-05.
  *
- * Raw `.webm` intermediates, cue lists and everything else under
+ * Raw `.webm` intermediates, vhs frames, cue lists and everything else under
  * `showcase/output/` stay git-ignored.
  *
- * Run via `make showcase` (which runs the Playwright recording first).
+ * Run via `make showcase` (which runs the terminal render and the Playwright
+ * recording first).
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -37,34 +45,63 @@ import {
   type CueFile,
   type CueSeries,
 } from "./crop-window";
+import {
+  buildLabelWindows,
+  buildOverlayPlan,
+  buildSegmentPlan,
+  buildSpeedFilters,
+  buildSpeedTagWindows,
+  mapSourceToOutput,
+  type LabelSpec,
+  type LabelWindow,
+  type OverlayWindow,
+  type EditSpec,
+} from "./segment-plan";
+import { renderLabelImages } from "./labels";
 
 const showcaseDir = path.dirname(fileURLToPath(import.meta.url));
 const outputDir = path.join(showcaseDir, "output");
 const runDir = path.join(outputDir, "run");
 const stillsDir = path.join(outputDir, "stills");
 const cuesDir = path.join(outputDir, "cues");
+const labelsDir = path.join(outputDir, "labels");
+const masterFile = path.join(outputDir, "master.mp4");
+const gifMasterFile = path.join(outputDir, "gif-master.mp4");
+const terminalSegment = path.join(outputDir, "terminal", "docker-run.mp4");
 const publishDir = path.resolve(showcaseDir, "../../docs/static/showcase");
-
-/** Stills that the docs Tour page embeds — only these get published. */
-const PUBLISHED_STILLS = [
-  "01-checks-list.png",
-  "02-check-form-filled.png",
-  "03-check-detail.png",
-];
+const screenshotsDir = path.resolve(showcaseDir, "../../../res/screenshots");
 
 /**
- * The two encodes of the same cut.
- *
- * AV1 keeps its original filename because the docs page and the marketing site
- * already point at it. The H.264 twin exists because Safari decodes AV1 only on
- * Apple-silicon machines with the hardware decoder: without a fallback a slice
- * of visitors gets the `<video>` element's error text, and a demo that does not
- * play is worse than no demo.
+ * Stills the docs Tour page embeds, and the name each one takes in
+ * `res/screenshots/` — the README's table links those by their own filenames.
  */
-const PUBLISHED_VIDEO_AV1 = "create-http-check.mp4";
-const PUBLISHED_VIDEO_H264 = "create-http-check.h264.mp4";
+const PUBLISHED_STILLS = [
+  { still: "01-checks-list.png", readme: "checks-list.png" },
+  { still: "02-check-form-filled.png", readme: "check-form.png" },
+  { still: "03-check-detail.png", readme: "check-detail.png" },
+];
 
-/** Published frame size. The recording is 2× this; the zoom crops into it. */
+/** The published cut, twice. */
+const PUBLISHED_VIDEO_AV1 = "setup-to-first-result.mp4";
+const PUBLISHED_VIDEO_H264 = "setup-to-first-result.h264.mp4";
+
+/** What the README embeds, written here rather than copied by hand. */
+const README_GIF = "setup-to-first-result.gif";
+const README_MP4 = "setup-to-first-result.mp4";
+
+/**
+ * Assets the previous cut left behind. Removed on every run: two cuts of the
+ * same flow is exactly the rot this pipeline exists to prevent, and the spec
+ * that introduced `setup-to-first-result` retired `create-http-check`.
+ */
+const RETIRED = [
+  path.join(publishDir, "create-http-check.mp4"),
+  path.join(publishDir, "create-http-check.h264.mp4"),
+  path.join(screenshotsDir, "create-http-check.gif"),
+  path.join(screenshotsDir, "create-http-check.mp4"),
+];
+
+/** Published frame size. */
 const PUBLISHED_WIDTH = 1280;
 const PUBLISHED_HEIGHT = 800;
 
@@ -75,18 +112,104 @@ const PUBLISHED_HEIGHT = 800;
  */
 const OUTPUT_FPS = 25;
 
+/** How long the terminal segment dissolves into the browser one, in seconds. */
+const XFADE_S = 0.4;
+
 /**
  * Which take to publish. `make showcase` runs every `*.showcase.ts`, and the
  * SMS opt-in capture records a video too — picking "the newest .webm" would
  * publish that one as the tour video.
  */
-const RECORDING_MATCH = "create-http-check";
+const RECORDING_MATCH = "setup-to-first-result";
 
 /** Seconds of context kept around the trimmed region so it doesn't feel abrupt. */
 const TRIM_PAD = 0.25;
 
 /** Hand alignment knob for a run whose cue timeline drifted. */
 const CUE_OFFSET_S = Number(process.env.SHOWCASE_CUE_OFFSET_MS ?? 0) / 1000;
+
+/**
+ * The edit list: what gets compressed, what gets cut, and what plays straight.
+ *
+ * Every entry is conditional on the take actually containing that gap, so a
+ * faster machine or a faster check interval simply means the footage plays in
+ * real time and the run log says so.
+ *
+ * - **The cuts** remove stretches where nothing is on screen to see: two
+ *   request round trips (signing in, saving the check), the app hard-reloading
+ *   itself after the rotation, and the seconds the pipeline spends provisioning
+ *   its org over the API while the dashboard sits still. None of that is the
+ *   product, and a jump cut needs no apology.
+ * - **The speed-up** is the dwell on the detail page, which exists so the two
+ *   plotted results are a genuine interval apart. That one is *tagged*: it is
+ *   product footage played faster, and an untagged speed-up would misrepresent
+ *   how fast the check reports. The form's floor is a 10-second interval
+ *   (`globalMinPeriodSeconds` in `check-form.tsx`), so the honest dwell is ~12 s
+ *   and this fires on every take today; a 5-second interval would leave it
+ *   under `minSpanS` and the plan would decline it on its own.
+ */
+const EDITS: EditSpec[] = [
+  {
+    kind: "cut",
+    fromLabel: "signing-in",
+    toLabel: "rotation",
+    minSpanS: 1,
+  },
+  {
+    kind: "cut",
+    fromLabel: "rotation-done",
+    toLabel: "dashboard",
+    minSpanS: 1.2,
+  },
+  {
+    kind: "cut",
+    fromLabel: "bootstrap",
+    toLabel: "checks-list",
+    minSpanS: 1.2,
+  },
+  {
+    kind: "cut",
+    fromLabel: "saving",
+    toLabel: "detail-page",
+    minSpanS: 1,
+  },
+  {
+    kind: "speed",
+    fromLabel: "detail-page",
+    toLabel: "chart",
+    speed: Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4),
+    minSpanS: Number(process.env.SHOWCASE_TIMELAPSE_MIN_S ?? 9),
+    tag: `${Number(process.env.SHOWCASE_TIMELAPSE_SPEED ?? 4)}× speed`,
+  },
+];
+
+/** Where a lower third sits in the frame. */
+const LABEL_X = "56";
+const LABEL_Y = "H-h-64";
+const LABEL_FADE_S = 0.28;
+
+/**
+ * Where a speed tag sits: top right, deliberately nowhere near the lower
+ * thirds. The two can overlap in time — the results caption starts exactly
+ * where the sped-up stretch does — and stacking them in the same corner drew
+ * one caption straight over the other.
+ */
+const TAG_X = "W-w-56";
+const TAG_Y = "56";
+
+/** How long each lower third stays up, in seconds. */
+const LABEL_HOLD_S = 3.2;
+
+/** GIF budget and the ladder of compromises that gets under it. */
+const GIF_WIDTH = 800;
+const GIF_BUDGET_BYTES = 2.5 * 1024 * 1024;
+const GIF_ATTEMPTS = [
+  { fps: 10, colors: 160, truncate: false },
+  { fps: 8, colors: 128, truncate: false },
+  { fps: 6, colors: 128, truncate: false },
+  { fps: 5, colors: 96, truncate: false },
+  { fps: 5, colors: 96, truncate: true },
+];
 
 class PipelineError extends Error {}
 
@@ -113,6 +236,7 @@ function run(
       `${what} failed (exit ${res.status}):\n${(res.stderr ?? "").slice(-4000)}`,
     );
   }
+
   return { stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
@@ -132,7 +256,13 @@ function missingFfmpegMessage(bin: string): string {
   ].join("\n");
 }
 
-/** Fails early and clearly if ffmpeg exists but lacks an encoder we need. */
+/**
+ * Fails early and clearly if ffmpeg exists but lacks an encoder we need.
+ *
+ * Note what is deliberately NOT required: `drawtext`. Homebrew's current bottle
+ * is built without libfreetype, so the captions are rasterised in the browser
+ * and composited with `overlay` instead — see `labels.ts`.
+ */
 function assertEncoders(): void {
   const { stdout } = run("ffmpeg", ["-hide_banner", "-encoders"], "ffmpeg -encoders");
   const missing = ["libsvtav1", "libx264"].filter((e) => !stdout.includes(e));
@@ -161,7 +291,7 @@ function findRecording(): string {
   if (!existsSync(runDir)) {
     fail(
       `No Playwright output at ${runDir}. Run the recording first — ` +
-        "`make showcase` does both steps.",
+        "`make showcase` does every step.",
     );
   }
   const found: string[] = [];
@@ -194,7 +324,23 @@ function findRecording(): string {
         "than failing, so this stops here.",
     );
   }
+
   return match;
+}
+
+function requireTerminalSegment(): string {
+  if (!existsSync(terminalSegment)) {
+    fail(
+      `No terminal segment at ${path.relative(showcaseDir, terminalSegment)}. ` +
+        "It is the first six seconds of the cut — `docker run` to the server " +
+        "coming up — and publishing without it would put the viewer back on an " +
+        "already-running dashboard, which is exactly what this cut replaced.\n\n" +
+        "Render it with:\n\n  bun run showcase/terminal.ts\n\n" +
+        "`make showcase` does it as its first step.",
+    );
+  }
+
+  return terminalSegment;
 }
 
 interface VideoInfo {
@@ -221,6 +367,7 @@ function probeVideo(file: string): VideoInfo {
   );
   const read = (key: string): number => {
     const match = stdout.match(new RegExp(`^${key}=(.+)$`, "m"));
+
     return match ? Number(match[1]) : NaN;
   };
   const info = {
@@ -234,6 +381,7 @@ function probeVideo(file: string): VideoInfo {
   if (!Number.isFinite(info.width) || !Number.isFinite(info.height)) {
     fail(`Could not read the frame size of ${file} (ffprobe said "${stdout.trim()}")`);
   }
+
   return info;
 }
 
@@ -283,6 +431,7 @@ function detectFreezes(file: string): Freeze[] {
       freezes[freezes.length - 1].end = Number(end[1]);
     }
   }
+
   return freezes;
 }
 
@@ -324,6 +473,7 @@ function detectClapper(file: string, duration: number): number | null {
     // the very end of the file is something else entirely.
     if (end < Math.min(duration - 1, 20)) return end;
   }
+
   return null;
 }
 
@@ -377,16 +527,13 @@ function trimWindow(
   if (!(end > start + 0.5)) {
     return { start: 0, end: duration, anchor, anchorSource };
   }
+
   return { start, end, anchor, anchorSource };
 }
 
 /**
  * Loads the cue list the recording wrote next to itself, with its times mapped
  * onto the *trimmed* timeline the filter graph will see.
- *
- * Cue times are recorded relative to the first page paint. That paint is what
- * ends the opening freeze, so `window.anchor` is the same instant expressed in
- * source seconds — the one landmark both halves of the pipeline can see.
  */
 function readCueFile(recording: string): CueFile | null {
   const name = path.basename(path.dirname(recording));
@@ -415,6 +562,7 @@ const DEFAULT_TRANSITION_S = 0.6;
 function lastCueEnd(file: CueFile, window: TrimWindow): number {
   return file.cues.reduce((latest, cue) => {
     const transition = (cue.transitionMs ?? DEFAULT_TRANSITION_S * 1000) / 1000;
+
     return Math.max(latest, window.anchor + cue.t + transition);
   }, 0);
 }
@@ -434,12 +582,14 @@ function extendForCues(
 ): TrimWindow {
   const needed = Math.min(duration, lastCueEnd(file, window) + 0.4);
   if (needed <= window.end) return window;
+
   return { ...window, end: needed };
 }
 
 /** Maps cue times onto the trimmed timeline the filter graph will see. */
 function shiftCues(file: CueFile, window: TrimWindow): CueFile {
   const shift = window.anchor + CUE_OFFSET_S - window.start;
+
   return {
     ...file,
     cues: file.cues.map((cue) => ({ ...cue, t: cue.t + shift })),
@@ -447,14 +597,14 @@ function shiftCues(file: CueFile, window: TrimWindow): CueFile {
 }
 
 /**
- * The filter chain: force CFR, apply the camera move, land on 1280×800.
+ * The camera move, as a filter chain over the browser take.
  *
  * `zoompan` rather than a `crop` with expression-driven `w`/`h`, because a crop
  * whose output size changes per frame forces a filter-link reconfiguration
  * ffmpeg does not handle reliably mid-stream. See `crop-window.ts` for the
  * coordinate mapping.
  */
-function buildVideoFilter(series: CueSeries | null, source: VideoInfo): string {
+function buildCameraFilter(series: CueSeries | null, source: VideoInfo): string {
   const parts = [`fps=${OUTPUT_FPS}`];
   if (series && !isIdentitySeries(series)) {
     const exprs = buildZoompanExpressions(series, `on/${OUTPUT_FPS}`);
@@ -463,44 +613,13 @@ function buildVideoFilter(series: CueSeries | null, source: VideoInfo): string {
         `s=${source.width}x${source.height}:fps=${OUTPUT_FPS}`,
     );
   }
-  parts.push(`scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:flags=lanczos`);
-  return parts.join(",");
-}
-
-function encode(
-  input: string,
-  output: string,
-  window: TrimWindow,
-  filter: string,
-  codecArgs: string[],
-  what: string,
-): void {
-  rmSync(output, { force: true });
-  run(
-    "ffmpeg",
-    [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-ss",
-      window.start.toFixed(3),
-      "-to",
-      window.end.toFixed(3),
-      "-i",
-      input,
-      "-an",
-      "-vf",
-      filter,
-      ...codecArgs,
-      "-pix_fmt",
-      "yuv420p",
-      "-movflags",
-      "+faststart",
-      output,
-    ],
-    what,
+  parts.push(
+    `scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:flags=lanczos`,
+    "setsar=1",
+    "format=yuv420p",
   );
+
+  return parts.join(",");
 }
 
 const AV1_ARGS = ["-c:v", "libsvtav1", "-crf", "34", "-preset", "6", "-g", "240"];
@@ -526,22 +645,66 @@ const H264_ARGS = [
   "high",
 ];
 
+/** Near-lossless intermediate: everything published is re-encoded from this. */
+const MASTER_ARGS = [
+  "-c:v",
+  "libx264",
+  "-crf",
+  "14",
+  "-preset",
+  "veryfast",
+  "-tune",
+  "animation",
+];
+
 function humanSize(file: string): string {
   const bytes = statSync(file).size;
+
   return bytes < 1024 * 1024
     ? `${Math.round(bytes / 1024)} KB`
     : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+/** Re-encodes the master into a published file, no filtering. */
+function transcode(
+  output: string,
+  codecArgs: string[],
+  what: string,
+  trimTo?: number,
+): void {
+  rmSync(output, { force: true });
+  run(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      masterFile,
+      ...(trimTo ? ["-to", trimTo.toFixed(3)] : []),
+      "-an",
+      ...codecArgs,
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      output,
+    ],
+    what,
+  );
+}
+
 /**
  * Publishes a still at the documented 1280×800.
  *
- * The recording now screenshots at 2×, so the raw stills are 2560×1600. Spec
+ * The recording screenshots at 2×, so the raw stills are 2560×1600. Spec
  * 2026-09-05-03 decided the published catalog stays at 1×; both sizes are
  * printed so the decision can be re-checked against real numbers rather than
  * re-argued.
  */
 function publishStill(src: string, dst: string): string {
+  mkdirSync(path.dirname(dst), { recursive: true });
   rmSync(dst, { force: true });
   run(
     "ffmpeg",
@@ -558,12 +721,110 @@ function publishStill(src: string, dst: string): string {
     ],
     `still downscale (${path.basename(src)})`,
   );
+
   return `${humanSize(dst)} at ${PUBLISHED_WIDTH}×${PUBLISHED_HEIGHT}, ` +
     `${humanSize(src)} at source resolution`;
 }
 
-function main(): void {
+interface GifResult {
+  file: string;
+  truncatedAtS: number | null;
+  fps: number;
+  colors: number;
+}
+
+/**
+ * Writes the README GIF, two-pass, under budget.
+ *
+ * GitHub renders a GIF inline in a README and will not play a `<video>`, so this
+ * is the asset most people actually see. It is also the one that used to be
+ * copied in by hand and rot on its own — the point of deriving it here.
+ *
+ * Fed from the **GIF master** (dashboard only, no camera move), for the reason
+ * measured where that master is built. The ladder then trades frame rate, then
+ * colours, and only then length: a GIF that stops before the results is worth
+ * less than a slightly coarser one, so truncation is the last resort rather
+ * than the first. When it happens, the alt text has to say so.
+ */
+function publishGif(sourceFile: string, truncateAtS: number): GifResult {
+  const file = path.join(screenshotsDir, README_GIF);
+  const palette = path.join(outputDir, "gif-palette.png");
+  mkdirSync(screenshotsDir, { recursive: true });
+
+  let last: GifResult | null = null;
+  for (const attempt of GIF_ATTEMPTS) {
+    const truncatedAtS = attempt.truncate ? truncateAtS : null;
+    const trim = truncatedAtS ? ["-to", truncatedAtS.toFixed(3)] : [];
+    const chain = `fps=${attempt.fps},scale=${GIF_WIDTH}:-1:flags=lanczos`;
+
+    rmSync(palette, { force: true });
+    run(
+      "ffmpeg",
+      ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceFile, ...trim,
+        "-vf", `${chain},palettegen=max_colors=${attempt.colors}:stats_mode=diff`, palette],
+      "GIF palette",
+    );
+
+    rmSync(file, { force: true });
+    run(
+      "ffmpeg",
+      ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceFile, ...trim,
+        "-i", palette,
+        "-lavfi",
+        `${chain}[x];[x][1:v]paletteuse=dither=none:diff_mode=rectangle`,
+        "-loop", "0", file],
+      "GIF encode",
+    );
+
+    last = { file, truncatedAtS, fps: attempt.fps, colors: attempt.colors };
+    if (statSync(file).size <= GIF_BUDGET_BYTES) {
+      rmSync(palette, { force: true });
+
+      return last;
+    }
+    console.log(
+      `showcase: gif        ${humanSize(file)} at ${attempt.fps} fps / ` +
+        `${attempt.colors} colours is over the ` +
+        `${(GIF_BUDGET_BYTES / 1024 / 1024).toFixed(1)} MB budget — trying harder`,
+    );
+  }
+
+  rmSync(palette, { force: true });
+  console.warn(
+    `showcase: WARNING   the README GIF is ${humanSize(file)}, over the ` +
+      `${(GIF_BUDGET_BYTES / 1024 / 1024).toFixed(1)} MB budget even at the ` +
+      "coarsest setting. Shorten the cut or drop the width.",
+  );
+
+  return last as GifResult;
+}
+
+/**
+ * The captions, in order.
+ *
+ * The last one is written from what the take actually contains: a cut filmed
+ * against a single-node server has no `regions` cue, and claiming "two regions"
+ * over footage that shows one picker-less form would be a lie burned into a
+ * published asset.
+ */
+function labelSpecs(hasRegions: boolean): LabelSpec[] {
+  return [
+    { atCue: null, text: "Run it", holdS: LABEL_HOLD_S },
+    { atCue: "login", text: "First login", holdS: LABEL_HOLD_S },
+    { atCue: "checks-list", text: "First check", holdS: LABEL_HOLD_S },
+    {
+      atCue: "detail-page",
+      text: hasRegions ? "Results from two regions" : "First results",
+      holdS: LABEL_HOLD_S,
+    },
+  ];
+}
+
+async function main(): Promise<void> {
   assertEncoders();
+
+  const terminal = requireTerminalSegment();
+  const terminalInfo = probeVideo(terminal);
 
   const recording = findRecording();
   const source = probeVideo(recording);
@@ -572,6 +833,10 @@ function main(): void {
   let window = trimWindow(detectFreezes(recording), source.duration, clapper);
   if (rawCues) window = extendForCues(window, rawCues, source.duration);
 
+  console.log(
+    `showcase: terminal   ${path.relative(showcaseDir, terminal)} ` +
+      `(${terminalInfo.duration.toFixed(2)}s, ${terminalInfo.width}×${terminalInfo.height})`,
+  );
   console.log(
     `showcase: source     ${path.relative(showcaseDir, recording)} ` +
       `(${source.duration.toFixed(2)}s, ${source.width}×${source.height})`,
@@ -593,13 +858,14 @@ function main(): void {
         `${CUE_OFFSET_S ? `, offset ${CUE_OFFSET_S.toFixed(3)}s` : ""})`,
     );
   } else {
-    console.log(
-      "showcase: cues       none found — publishing the full frame throughout. " +
-        "(Expected a file under output/cues/; the recording writes one.)",
+    fail(
+      `No cue file found for this take (expected one under ${cuesDir}). The ` +
+        "burned-in captions are anchored to cues, so a cut cannot be assembled " +
+        "without one — check that the recording reached its writeCues() call.",
     );
   }
 
-  if (cues && window.anchorSource !== "clapper") {
+  if (window.anchorSource !== "clapper") {
     console.warn(
       "showcase: WARNING   no sync clapper found in the footage, so the cue " +
         `timeline was anchored on the ${window.anchorSource} instead. The zooms ` +
@@ -608,32 +874,244 @@ function main(): void {
     );
   }
 
-  const filter = buildVideoFilter(series, source);
+  // ---- the edit -----------------------------------------------------------
+
+  const planCues = (cues as CueFile).cues.map((cue) => ({
+    t: cue.t,
+    label: cue.label,
+  }));
+  const browserDuration = window.end - window.start;
+  const plan = buildSegmentPlan({
+    cues: planCues,
+    sourceDuration: browserDuration,
+    edits: EDITS,
+  });
+  for (const note of plan.notes) {
+    console.log(`showcase: edit       ${note}`);
+  }
+
+  const offsetS = Math.max(0, terminalInfo.duration - XFADE_S);
+  const outputDuration = offsetS + plan.outputDuration;
+  const hasRegions = planCues.some((cue) => cue.label === "regions");
+  if (!hasRegions) {
+    console.warn(
+      "showcase: WARNING   this take has no `regions` cue, so it was filmed " +
+        "against a server offering a single region and the multi-region beat " +
+        "is missing. The results caption says so rather than claiming two. See " +
+        "the two-node side-car recipe in showcase/README.md.",
+    );
+  }
+
+  const lowerThirds: LabelWindow[] = buildLabelWindows({
+    plan,
+    cues: planCues,
+    labels: labelSpecs(hasRegions),
+    offsetS,
+    outputDuration,
+  });
+  const speedTags: LabelWindow[] = buildSpeedTagWindows(plan, offsetS);
+  const captions = [...lowerThirds, ...speedTags];
+
+  const images = await renderLabelImages(
+    captions.map((caption) => caption.text),
+    labelsDir,
+  );
+  const place = (caption: LabelWindow, x: string, y: string): OverlayWindow => {
+    const image = images.get(caption.text);
+    if (!image) fail(`No caption image was rendered for "${caption.text}".`);
+
+    return { ...caption, file: image.file, x, y };
+  };
+  const overlayWindows: OverlayWindow[] = [
+    ...lowerThirds.map((caption) => place(caption, LABEL_X, LABEL_Y)),
+    ...speedTags.map((caption) => place(caption, TAG_X, TAG_Y)),
+  ];
+
+  // ---- the masters --------------------------------------------------------
+  //
+  // Two, because the GIF is a different medium with a different constraint.
+  // Measured on this cut at 800 px / 6 fps: the terminal segment costs ~55 KB
+  // per GIF frame (a scrolling log changes every pixel of every frame) against
+  // ~3 KB for the dashboard, and the camera move nearly doubles the rest for
+  // the same reason. Included, they put the README GIF at 6 MB even at 5 fps
+  // and 96 colours. So the GIF is rendered from the dashboard take alone, with
+  // the camera move left off — and README.md's alt text says that is what it
+  // shows. Everything else comes from the full master.
+
+  const speed = buildSpeedFilters(plan, {
+    inLabel: "cam",
+    outLabel: "browser",
+    fps: OUTPUT_FPS,
+  });
+
+  /** Assembles one master and returns its measured duration. */
+  const assemble = (opts: {
+    output: string;
+    camera: boolean;
+    terminal: boolean;
+    captions: OverlayWindow[];
+    what: string;
+  }): number => {
+    // With no terminal segment in front, the browser take starts at zero, so
+    // every caption slides back by the offset the join would have added.
+    const shift = opts.terminal ? 0 : -offsetS;
+    const shifted = opts.captions
+      .map((caption) => ({
+        ...caption,
+        start: caption.start + shift,
+        end: caption.end + shift,
+      }))
+      .filter((caption) => caption.end > 0)
+      .map((caption) => ({ ...caption, start: Math.max(0, caption.start) }));
+
+    const firstInput = opts.terminal ? 2 : 1;
+    const overlay = buildOverlayPlan(shifted, {
+      firstInput,
+      baseLabel: opts.terminal ? "joined" : "browsertb",
+      outLabel: "cut",
+      fadeS: LABEL_FADE_S,
+      fps: OUTPUT_FPS,
+    });
+
+    // `settb=AVTB` on both sides of the xfade is load-bearing: `trim`/`setpts`
+    // leave the browser branch on ffmpeg's microsecond timebase while the
+    // terminal branch keeps 1/25 from `fps`, and xfade refuses two inputs whose
+    // timebases disagree ("First input link main timebase do not match").
+    const graph = [
+      `[0:v]${buildCameraFilter(opts.camera ? series : null, source)}[cam]`,
+      ...(speed ?? ["[cam]null[browser]"]),
+      "[browser]settb=AVTB,setsar=1,format=yuv420p[browsertb]",
+      ...(opts.terminal
+        ? [
+            `[1:v]fps=${OUTPUT_FPS},scale=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:` +
+              "force_original_aspect_ratio=decrease," +
+              `pad=${PUBLISHED_WIDTH}:${PUBLISHED_HEIGHT}:(ow-iw)/2:(oh-ih)/2,` +
+              "setsar=1,format=yuv420p,settb=AVTB[terminal]",
+            `[terminal][browsertb]xfade=transition=fade:duration=${XFADE_S}:` +
+              `offset=${offsetS.toFixed(3)}[joined]`,
+          ]
+        : []),
+      ...overlay.filters,
+    ].join(";");
+
+    rmSync(opts.output, { force: true });
+    run(
+      "ffmpeg",
+      [
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-ss", window.start.toFixed(3),
+        "-to", window.end.toFixed(3),
+        "-i", recording,
+        ...(opts.terminal ? ["-i", terminal] : []),
+        ...overlay.inputs.flatMap((input) => [
+          "-loop", "1",
+          "-t", input.durationS.toFixed(3),
+          "-i", input.file,
+        ]),
+        "-filter_complex", graph,
+        "-map", "[cut]",
+        "-an",
+        ...MASTER_ARGS,
+        "-pix_fmt", "yuv420p",
+        opts.output,
+      ],
+      opts.what,
+    );
+
+    return probeVideo(opts.output).duration;
+  };
+
+  mkdirSync(outputDir, { recursive: true });
+
+  const masterDuration = assemble({
+    output: masterFile,
+    camera: true,
+    terminal: true,
+    captions: overlayWindows,
+    what: "master assembly",
+  });
+  console.log(
+    `showcase: master     ${path.relative(showcaseDir, masterFile)} ` +
+      `(${masterDuration.toFixed(2)}s = ${terminalInfo.duration.toFixed(2)}s ` +
+      `terminal + ${plan.outputDuration.toFixed(2)}s browser − ` +
+      `${XFADE_S.toFixed(2)}s crossfade)`,
+  );
+  console.log(
+    `showcase: captions   ${captions
+      .map((c) => `"${c.text}" ${c.start.toFixed(1)}–${c.end.toFixed(1)}s`)
+      .join(", ")}`,
+  );
+
+  const gifMasterDuration = assemble({
+    output: gifMasterFile,
+    camera: false,
+    terminal: false,
+    captions: overlayWindows,
+    what: "GIF master assembly",
+  });
+  console.log(
+    `showcase: gif master ${path.relative(showcaseDir, gifMasterFile)} ` +
+      `(${gifMasterDuration.toFixed(2)}s, dashboard only, no camera move)`,
+  );
+
+  // ---- everything published derives from that master ----------------------
 
   mkdirSync(publishDir, { recursive: true });
 
   const av1Out = path.join(publishDir, PUBLISHED_VIDEO_AV1);
-  encode(recording, av1Out, window, filter, AV1_ARGS, "AV1 re-encode (libsvtav1)");
+  transcode(av1Out, AV1_ARGS, "AV1 re-encode (libsvtav1)");
   console.log(
     `showcase: wrote      ${path.relative(process.cwd(), av1Out)} (${humanSize(av1Out)}, AV1)`,
   );
 
   const h264Out = path.join(publishDir, PUBLISHED_VIDEO_H264);
-  encode(recording, h264Out, window, filter, H264_ARGS, "H.264 re-encode (libx264)");
+  transcode(h264Out, H264_ARGS, "H.264 re-encode (libx264)");
   console.log(
     `showcase: wrote      ${path.relative(process.cwd(), h264Out)} (${humanSize(h264Out)}, H.264)`,
   );
 
+  const readmeMp4 = path.join(screenshotsDir, README_MP4);
+  mkdirSync(screenshotsDir, { recursive: true });
+  transcode(readmeMp4, H264_ARGS, "README H.264 re-encode");
+  console.log(
+    `showcase: wrote      ${path.relative(process.cwd(), readmeMp4)} (${humanSize(readmeMp4)}, H.264)`,
+  );
+
+  // The GIF's last-resort rung stops where the detail page begins — the same
+  // beat, measured on the GIF master's own timeline (which has no terminal
+  // segment in front of it, so everything sits `offsetS` earlier).
+  const detailCue = planCues.find((cue) => cue.label === "detail-page");
+  const gifTruncateAt = detailCue
+    ? mapSourceToOutput(plan, detailCue.t)
+    : gifMasterDuration;
+  const gif = publishGif(gifMasterFile, gifTruncateAt);
+  console.log(
+    `showcase: wrote      ${path.relative(process.cwd(), gif.file)} ` +
+      `(${humanSize(gif.file)}, ${GIF_WIDTH}px, ${gif.fps} fps, ${gif.colors} colours` +
+      `${gif.truncatedAtS ? `, TRUNCATED at ${gif.truncatedAtS.toFixed(1)}s` : ""})`,
+  );
+  if (gif.truncatedAtS) {
+    console.warn(
+      "showcase: WARNING   the GIF had to stop before the results beat to fit " +
+        "its budget. Its alt text in README.md must say so.",
+    );
+  }
+
   const missing: string[] = [];
-  for (const name of PUBLISHED_STILLS) {
-    const src = path.join(stillsDir, name);
+  for (const { still, readme } of PUBLISHED_STILLS) {
+    const src = path.join(stillsDir, still);
     if (!existsSync(src)) {
-      missing.push(name);
+      missing.push(still);
       continue;
     }
-    const dst = path.join(publishDir, name);
+    const dst = path.join(publishDir, still);
     console.log(
       `showcase: wrote      ${path.relative(process.cwd(), dst)} (${publishStill(src, dst)})`,
+    );
+    const readmeDst = path.join(screenshotsDir, readme);
+    publishStill(src, readmeDst);
+    console.log(
+      `showcase: wrote      ${path.relative(process.cwd(), readmeDst)} (${humanSize(readmeDst)})`,
     );
   }
   if (missing.length > 0) {
@@ -643,15 +1121,25 @@ function main(): void {
     );
   }
 
-  console.log("showcase: done. Commit the assets under web/docs/static/showcase/.");
+  for (const retired of RETIRED) {
+    if (existsSync(retired)) {
+      rmSync(retired, { force: true });
+      console.log(
+        `showcase: removed    ${path.relative(process.cwd(), retired)} (retired cut)`,
+      );
+    }
+  }
+
+  console.log(
+    "showcase: done. Commit the assets under web/docs/static/showcase/ and " +
+      "res/screenshots/.",
+  );
 }
 
-try {
-  main();
-} catch (err) {
+main().catch((err: unknown) => {
   if (err instanceof PipelineError) {
     console.error(`\nshowcase: ${err.message}\n`);
     process.exit(1);
   }
   throw err;
-}
+});

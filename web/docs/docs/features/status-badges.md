@@ -7,10 +7,10 @@ title: Status Badges
 
 A status badge is a small SVG image showing one check's live status —
 embeddable in a GitHub README, a wiki page, or your own site, the same way
-[the status page badge](status-pages.md#badge) reflects a whole page. Build
-one under **Badges** in the dashboard (`/orgs/:org/badges`): pick a check,
-toggle the pieces you want, and copy the URL, Markdown, or HTML snippet — or
-download the SVG/PNG directly.
+[the status page badge](status-pages.md#badge) reflects a whole page. A badge
+belongs to a check, so the builder lives under the check: open a check, then
+**Badges** (`/orgs/:org/checks/:check/badges`). Toggle the pieces you want, and
+copy the URL, Markdown, or HTML snippet — or download the SVG/PNG directly.
 
 ## Components
 

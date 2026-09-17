@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} fest",
     "summarySoftDeps_one": "{{count}} weich",
     "summarySoftDeps_other": "{{count}} weich",
-    "regionsIpv6Hint": "Diese Prüfung ist auf IPv6 festgelegt. Regionen, deren aktive Worker IPv6-Egress melden, werden zuerst aufgeführt — die anderen bleiben auswählbar, und eine mit „IPv6 unbekannt“ markierte Region hat einfach noch nicht gemeldet."
+    "regionsIpv6Hint": "Diese Prüfung ist auf IPv6 festgelegt. Regionen, deren aktive Worker IPv6-Egress melden, werden zuerst aufgeführt — die anderen bleiben auswählbar, und eine mit „IPv6 unbekannt“ markierte Region hat einfach noch nicht gemeldet.",
+    "groupEmptyHint": "Sie haben noch keine Gruppen. Eine Gruppe ist ein exklusiver Behälter für zusammengehörige Checks — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine an, um zu beginnen."
   },
   "types": {
     "http": "HTTP",
@@ -703,6 +704,23 @@
   },
   "jsonAssertions": "JSON-Assertions",
   "jsonAssertionsDescription": "Prüft Felder im JSON-Antwortkörper anhand eines JSONPath-Ausdrucks.",
+  "bodyAssertions": "Body-Assertions",
+  "bodyAssertionsDescription": "Prüft den Antwortkörper als reinen Text. „gleich“ vergleicht den gesamten Körper ohne führende und nachfolgende Leerzeichen, sodass ein ASP.NET-Core-Health-Endpunkt mit „Healthy\\n“ bei aktivem Groß-/Kleinschreibung ignorieren auf gleich „Healthy“ passt. „enthält“, „enthält nicht“ und „passt auf Regex“ sehen den Körper unverändert.",
+  "assertionIgnoreCase": "Groß-/Kleinschreibung ignorieren",
+  "assertionSubjectBody": "Antwortkörper",
+  "assertionOperators": {
+    "eq": "gleich",
+    "neq": "ungleich",
+    "gt": "größer als",
+    "gte": "größer oder gleich",
+    "lt": "kleiner als",
+    "lte": "kleiner oder gleich",
+    "contains": "enthält",
+    "not_contains": "enthält nicht",
+    "regex": "passt auf Regex",
+    "exists": "existiert",
+    "not_exists": "existiert nicht"
+  },
   "addJsonAssertion": "Assertion hinzufügen",
   "addGroup": "Gruppe hinzufügen",
   "jsonPath": "JSONPath",
@@ -966,7 +984,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",
-    "sftpFingerprintHelp": "Fixiert den Host-Schl\u00fcssel des Servers. Leer lassen, um jeden Schl\u00fcssel zu akzeptieren \u2014 der vom Server vorgelegte Fingerabdruck steht immer in der Pr\u00fcfausgabe und kann von dort hierher kopiert werden.",
+    "sftpFingerprintHelp": "Fixiert den Host-Schlüssel des Servers. Leer lassen, um jeden Schlüssel zu akzeptieren — der vom Server vorgelegte Fingerabdruck steht immer in der Prüfausgabe und kann von dort hierher kopiert werden.",
     "fingerprintHelpPrefix": "Überprüft die Identität des Servers bei jeder Prüfung und ist erforderlich, um diese Prüfung als",
     "tunnelBastionLabel": "Über SSH-Tunnel ausführen",
     "fingerprintHelpSuffix": "Bastion für andere Prüfungen zu verwenden. Ermitteln Sie ihn mit",
@@ -1076,5 +1094,29 @@
     "issuer": "Aussteller",
     "notAfter": "Läuft ab",
     "daysRemaining": "Verbleibende Tage"
+  },
+  "publish": {
+    "title": "Auf einer Statusseite veröffentlichen",
+    "description": "Fügen Sie diesen Check einer vorhandenen Statusseite hinzu oder erstellen Sie eine neue.",
+    "add": "Hinzufügen",
+    "addFailed": "Dieser Check konnte dem Abschnitt nicht hinzugefügt werden.",
+    "added": "Zu „{{section}}“ auf {{page}} hinzugefügt.",
+    "alreadyTitle": "Bereits auf einer Statusseite",
+    "sectionAlready": "Bereits vorhanden",
+    "noSections": "Diese Seite hat noch keine Abschnitte.",
+    "noStatusPages": "Sie haben noch keine Statusseite. Erstellen Sie eine, um diesen Check zu veröffentlichen.",
+    "createNew": "Neue Statusseite erstellen",
+    "via": {
+      "direct": "{{page}} — im Abschnitt „{{section}}“.",
+      "group": "{{page}} — in „{{section}}“, über seine Check-Gruppe. Die Gruppe wird als eine einzige Komponente veröffentlicht, dieser Check ist damit bereits abgedeckt.",
+      "selector": "{{page}} — in „{{section}}“, über die Zuordnungsregel dieses Abschnitts. Passende Checks werden automatisch hinzugefügt."
+    },
+    "postCreateOn": "Veröffentlicht auf {{page}}, im Abschnitt „{{section}}“.",
+    "postCreateNone": "Noch auf keiner Statusseite.",
+    "postCreateAction": "Jetzt veröffentlichen"
+  },
+  "noGroupsYet": {
+    "title": "Noch keine Check-Gruppen",
+    "description": "Eine Gruppe fasst zusammengehörige Checks in einem exklusiven Behälter zusammen — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine über die Schaltfläche Neue Gruppe oben an."
   }
 }

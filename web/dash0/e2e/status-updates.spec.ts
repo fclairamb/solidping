@@ -7,14 +7,14 @@ test.describe("Status Updates", () => {
     const page = authenticatedPage;
 
     // Navigate via sidebar
-    await page.getByRole("link", { name: "Status updates" }).click();
+    await page.getByRole("link", { name: "Updates & notices" }).click();
     await page.waitForURL(/\/status-updates/);
     await page.waitForLoadState("networkidle");
 
     // Verify we're on the list page
     expect(page.url()).toContain("/status-updates");
     await expect(
-      page.getByRole("heading", { name: "Status updates" }),
+      page.getByRole("heading", { name: "Updates & notices" }),
     ).toBeVisible();
 
     // Both filter selects must render — a regression in Radix SelectItem value="" crashes before this
@@ -26,11 +26,11 @@ test.describe("Status Updates", () => {
       fullPage: true,
     });
 
-    // The "New Status Update" button shows its label at all widths (aligned
+    // The "New update" button shows its label at all widths (aligned
     // with the status-pages "New Status Page" button) — not hidden on mobile.
     const newUpdateButton = page.getByTestId("status-updates-new");
     await expect(newUpdateButton).toBeVisible();
-    await expect(newUpdateButton).toContainText("New Status Update");
+    await expect(newUpdateButton).toContainText("New update");
 
     // Navigate to create page
     await newUpdateButton.click();
@@ -38,7 +38,7 @@ test.describe("Status Updates", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(
-      page.getByRole("heading", { name: "New status update" }),
+      page.getByRole("heading", { name: "New update" }),
     ).toBeVisible();
 
     await page.screenshot({
@@ -120,7 +120,7 @@ test.describe("Status Updates", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(
-      page.getByRole("heading", { name: "Edit status update" }),
+      page.getByRole("heading", { name: "Edit update" }),
     ).toBeVisible();
     // Title should be pre-filled
     await expect(page.getByTestId("status-update-form-title")).toHaveValue(

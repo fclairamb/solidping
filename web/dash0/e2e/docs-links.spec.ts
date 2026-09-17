@@ -69,9 +69,21 @@ test.describe("Docs links", () => {
 
   test("badges page renders a docs link to status-badges", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
+    const token = await getAuthToken(page);
 
-    await page.getByTestId("app-sidebar").getByRole("link", { name: "Badges" }).click();
-    await page.waitForURL(/\/badges/);
+    // The badge builder lives under the check it belongs to (spec
+    // 2026-09-16-08), so it is reached from a check, not from the sidebar.
+    const check = await createCheck(
+      page,
+      token,
+      "http",
+      `E2E Docs Badges ${Date.now()}`,
+      { url: "https://example.com/docs-badges" },
+    );
+    await page.goto(`orgs/test/checks/${check.uid}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("Badges").click();
+    await page.waitForURL(/\/checks\/[^/]+\/badges/);
     await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
@@ -82,11 +94,21 @@ test.describe("Docs links", () => {
   test("discovery list renders a docs link to discovery", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
-    // Discovery is only in the sidebar for org admins; the test user is an
-    // admin of the "test" org (server/test/testdata/testdata.go), so it's
-    // reachable the same way as the other sidebar-driven cases here.
-    await page.getByTestId("app-sidebar").getByRole("link", { name: "Discovery" }).click();
-    await page.waitForURL(/\/discovery/);
+    // Discovery lives under the Organization tab row now (spec 2026-09-16-09),
+    // admin-only end to end; the test user is an admin of the "test" org
+    // (server/test/testdata/testdata.go), so it is reachable the way a user
+    // reaches it: the Administration group's Organization entry in the sidebar
+    // (spec 2026-09-16-07), then the Discovery tab.
+    await page
+      .getByTestId("app-sidebar")
+      // `exact` matters: the sidebar header's accessible name carries the org
+      // name, "Test Organization".
+      .getByRole("link", { name: "Organization", exact: true })
+      .click();
+    const tabNav = page.getByTestId("tab-nav");
+    await expect(tabNav).toBeVisible();
+    await tabNav.getByRole("link", { name: /discovery/i }).click();
+    await page.waitForURL(/\/organization\/discovery/);
     await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
@@ -106,22 +128,6 @@ test.describe("Docs links", () => {
     await expect(docsLink).toHaveAttribute("href", "/docs/features/events");
   });
 
-  test("dependencies graph renders a docs link to the incidents grouping section", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.getByTestId("app-sidebar").getByRole("link", { name: "Dependencies" }).click();
-    await page.waitForURL(/\/dependencies/);
-    await page.waitForLoadState("networkidle");
-
-    const docsLink = page.getByTestId("docs-link");
-    await expect(docsLink).toBeVisible();
-    await expect(docsLink).toHaveAttribute(
-      "href",
-      "/docs/features/incidents#group-incidents-correlated-outages",
-    );
-  });
 
   // The check detail page's docs link is per-type, not the generic
   // check-types page: whichever protocol a check monitors, its reference
@@ -188,6 +194,10 @@ test.describe("Docs links", () => {
     // Jobs has no matching docs page (spec: "Pages with no matching docs ...
     // simply don't pass docsHref") — its layout carries no docsHref prop, so
     // no DocsLink should render anywhere on the page.
+    //
+    // The sidebar entry is super-admin-only since spec 2026-09-16-07. The
+    // test user (test@test.com) IS a super admin in test mode
+    // (server/test/testdata/testdata.go), so the link is there for them.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Jobs" }).click();
     await page.waitForURL(/\/jobs/);
     await page.waitForLoadState("networkidle");

@@ -23,6 +23,7 @@ import {
 import { getFieldError } from "@/hooks/use-check-validation";
 import {
   JsonAssertionEditor,
+  BodyAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import type { CheckTypeModule } from "./index";
@@ -68,6 +69,11 @@ export interface HttpState {
   // secret field, so the server's PATCH-merge drops any public key missing
   // from the submitted config — see toConfig below).
   jsonPathAssertions: AssertionNode | null;
+  // The plain-text body assertion AST, or null when none is configured. Same
+  // shape and same omit-to-clear rules as jsonPathAssertions above; the
+  // difference is the subject — the raw response body rather than a JSONPath
+  // query result — so leaves carry no `path`.
+  bodyAssertions: AssertionNode | null;
   // Request body. Public, round-trips on GET, so no dirty flag: written
   // whenever non-empty, cleared by emptying the textarea. Deliberately written
   // even when the method is GET/HEAD (where the editor is hidden) so switching
@@ -118,6 +124,16 @@ function seedJsonPathAssertions(config: CheckConfig): AssertionNode | null {
   return raw as AssertionNode;
 }
 
+// seedBodyAssertions is the same seeding for the body-assertion tree. The
+// server emits only `bodyAssertions`; the snake_case alias is read too because
+// FromMap accepts it, so a config-as-code file spelled that way must not lose
+// its assertion the first time the form saves the check.
+function seedBodyAssertions(config: CheckConfig): AssertionNode | null {
+  const raw = config.bodyAssertions ?? config.body_assertions;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as AssertionNode;
+}
+
 // seedHeaderRows turns a config header map into editor rows, tolerating a
 // missing or malformed value the same lenient way the rest of the seeding does.
 function seedHeaderRows(raw: unknown): { key: string; value: string }[] {
@@ -131,7 +147,9 @@ function seedHeaderRows(raw: unknown): { key: string; value: string }[] {
 function fromConfig(config: CheckConfig): HttpState {
   const rawHeaders = config.secretHeaders;
   const hasHeaders =
-    !!rawHeaders && typeof rawHeaders === "object" && !Array.isArray(rawHeaders);
+    !!rawHeaders &&
+    typeof rawHeaders === "object" &&
+    !Array.isArray(rawHeaders);
   const secretHeaders = hasHeaders
     ? Object.entries(rawHeaders as Record<string, string>).map(
         ([key, value]) => ({ key, value }),
@@ -149,8 +167,7 @@ function fromConfig(config: CheckConfig): HttpState {
   // then omitted as the default — silently turning TLS verification back ON on
   // the next UI save. Same class of loss as the keys this spec is named after,
   // except this one weakens a security control.
-  const verifySsl =
-    (config.verifySsl ?? config.verify_ssl) !== false;
+  const verifySsl = (config.verifySsl ?? config.verify_ssl) !== false;
   const followRedirects =
     (config.followRedirects ?? config.follow_redirects) !== false;
   // Canonical key is snake_case (the server accepts the camelCase alias on
@@ -170,6 +187,7 @@ function fromConfig(config: CheckConfig): HttpState {
     followRedirects,
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
+    bodyAssertions: seedBodyAssertions(config),
     body: getConfigField(config, "body"),
     headers: seedHeaderRows(config.headers),
     // Seeding matters three ways: a legacy row's username is public and comes
@@ -181,7 +199,10 @@ function fromConfig(config: CheckConfig): HttpState {
   };
 }
 
-function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors } {
+function toConfig(state: HttpState): {
+  config: CheckConfig;
+  errors: FieldErrors;
+} {
   const cfg: CheckConfig = {};
   if (state.url) cfg.url = state.url;
   if (state.method && state.method !== "GET") cfg.method = state.method;
@@ -228,6 +249,12 @@ function toConfig(state: HttpState): { config: CheckConfig; errors: FieldErrors 
   // the submitted config rather than preserving it.
   if (state.jsonPathAssertions) {
     cfg.jsonPathAssertions = state.jsonPathAssertions;
+  }
+  // Same omit-to-clear rule, under the canonical camelCase key the server
+  // emits. `bodyAssertions` is in ownedKeys, so it is a MODELED key: the
+  // passthrough will not resurrect a value this form just cleared.
+  if (state.bodyAssertions) {
+    cfg.bodyAssertions = state.bodyAssertions;
   }
   // Same omit-to-clear rule as jsonPathAssertions: both are public keys that
   // round-trip on GET, so writing them only when non-empty is what lets the
@@ -319,7 +346,9 @@ function Fields({ state, onChange, errors }: CheckTypeFieldsProps<HttpState>) {
         <TokenChipsInput
           id="expectedStatusCodes"
           value={state.expectedStatusCodes}
-          onChange={(codes) => onChange({ ...state, expectedStatusCodes: codes })}
+          onChange={(codes) =>
+            onChange({ ...state, expectedStatusCodes: codes })
+          }
           validate={isValidStatusPattern}
           normalize={normalizeStatusPattern}
           placeholder="200"
@@ -365,14 +394,20 @@ export function HttpAuthFields({
       <div className="space-y-2">
         <div className="flex gap-4">
           <div className="space-y-2 flex-1">
-            <Label htmlFor="username">{t("http.usernameOptionalBasicAuth")}</Label>
+            <Label htmlFor="username">
+              {t("http.usernameOptionalBasicAuth")}
+            </Label>
             <Input
               id="username"
               type="text"
               placeholder="user"
               value={state.username}
               onChange={(e) =>
-                onChange({ ...state, username: e.target.value, authDirty: true })
+                onChange({
+                  ...state,
+                  username: e.target.value,
+                  authDirty: true,
+                })
               }
               data-testid="check-username-input"
             />
@@ -384,18 +419,23 @@ export function HttpAuthFields({
               type="password"
               value={state.password}
               onChange={(e) =>
-                onChange({ ...state, password: e.target.value, authDirty: true })
+                onChange({
+                  ...state,
+                  password: e.target.value,
+                  authDirty: true,
+                })
               }
               data-testid="check-password-input"
             />
           </div>
         </div>
         {configPrivateKeys?.includes("basicAuth") && !state.authDirty && (
-          <p className="text-xs text-muted-foreground" data-testid="basic-auth-encrypted">
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="basic-auth-encrypted"
+          >
             <span className="font-mono tracking-widest">••••</span>{" "}
-            <span className="italic">
-              {t("http.encryptedEnterNewValues")}
-            </span>
+            <span className="italic">{t("http.encryptedEnterNewValues")}</span>
           </p>
         )}
       </div>
@@ -424,7 +464,11 @@ export function HttpAuthFields({
               onChange={(e) => {
                 const updated = [...secretHeaders];
                 updated[idx] = { ...updated[idx], key: e.target.value };
-                onChange({ ...state, secretHeaders: updated, headersDirty: true });
+                onChange({
+                  ...state,
+                  secretHeaders: updated,
+                  headersDirty: true,
+                });
               }}
               className="flex-1"
               data-testid={`secret-header-key-${idx}`}
@@ -436,7 +480,11 @@ export function HttpAuthFields({
               onChange={(e) => {
                 const updated = [...secretHeaders];
                 updated[idx] = { ...updated[idx], value: e.target.value };
-                onChange({ ...state, secretHeaders: updated, headersDirty: true });
+                onChange({
+                  ...state,
+                  secretHeaders: updated,
+                  headersDirty: true,
+                });
               }}
               className="flex-1"
               data-testid={`secret-header-value-${idx}`}
@@ -499,7 +547,9 @@ export function HttpOptionsFields({
           onCheckedChange={(verifySsl) => onChange({ ...state, verifySsl })}
           data-testid="check-verify-ssl-switch"
         />
-        <Label htmlFor="http-verify-ssl">{t("form.verifyTlsCertificate")}</Label>
+        <Label htmlFor="http-verify-ssl">
+          {t("form.verifyTlsCertificate")}
+        </Label>
       </div>
       {!state.verifySsl && (
         <p
@@ -518,7 +568,9 @@ export function HttpOptionsFields({
           }
           data-testid="check-follow-redirects-switch"
         />
-        <Label htmlFor="http-follow-redirects">{t("http.followRedirects")}</Label>
+        <Label htmlFor="http-follow-redirects">
+          {t("http.followRedirects")}
+        </Label>
       </div>
       {!state.followRedirects && (
         <p className="text-xs text-muted-foreground">
@@ -610,6 +662,18 @@ export function HttpOptionsFields({
           }
         />
       </div>
+      <div className="space-y-2 border-t pt-3">
+        <div>
+          <Label>{t("bodyAssertions")}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {t("bodyAssertionsDescription")}
+          </p>
+        </div>
+        <BodyAssertionEditor
+          value={state.bodyAssertions}
+          onChange={(bodyAssertions) => onChange({ ...state, bodyAssertions })}
+        />
+      </div>
     </div>
   );
 }
@@ -625,6 +689,7 @@ export function httpOptionsSummary(state: HttpState): {
   if (!state.followRedirects) parts.push("redirects not followed");
   if (state.captureFailureResponse) parts.push("failure response captured");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
+  if (state.bodyAssertions) parts.push("body assertions");
   if (state.body) parts.push("request body");
   const headerCount = state.headers.filter((h) => h.key).length;
   if (headerCount > 0)
@@ -658,6 +723,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "captureFailureResponse",
     "jsonPathAssertions",
     "json_path_assertions",
+    "bodyAssertions",
+    "body_assertions",
     "body",
     "headers",
   ],

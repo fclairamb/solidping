@@ -15,15 +15,40 @@ them up). Full details: [`web/dash0/showcase/README.md`](../../web/dash0/showcas
 Run it with:
 
 ```bash
-# Disposable side-car server. Use one — the pipeline writes to whatever server
-# it is pointed at, and the org it creates is permanent (see below).
-# DEFAULT run mode on purpose — see "Nothing on camera is a fixture" below.
-mkdir -p /tmp/showcase-db
+# Two nodes, one throwaway Postgres database, two regions — the recipe the
+# committed cut uses, because a single node hides the region picker.
+PGPASSWORD=postgres psql -h localhost -p 55432 -U postgres \
+  -c "DROP DATABASE IF EXISTS solidping_showcase" \
+  -c "CREATE DATABASE solidping_showcase"
+export SP_DB_TYPE=postgres
+export SP_DB_URL='postgres://postgres:postgres@localhost:55432/solidping_showcase?sslmode=disable'
+PORT=4321 SP_NODE_NAME=showcase-eu SP_NODE_REGION=eu-west \
+  SP_REGIONS='[{"slug":"eu-west","emoji":"🇪🇺","name":"EU West"},{"slug":"us-east","emoji":"🇺🇸","name":"US East"}]' \
+  ./solidping serve &
+PORT=4322 SP_NODE_NAME=showcase-us SP_NODE_ROLE=checks SP_NODE_REGION=us-east \
+  ./solidping serve &
+E2E_BASE_URL=http://localhost:4321/d/ make showcase
+
+# Single node, SQLite — the fallback. Faster, but NO regions beat.
+rm -rf /tmp/showcase-db && mkdir -p /tmp/showcase-db
 PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
 E2E_BASE_URL=http://localhost:4321/d/ make showcase
 ```
 
-**`SP_DB_DIR` is load-bearing.** The SQLite file is written to
+**Regions come from `SP_REGIONS`, not from the workers.** It is the JSON seed
+for the `regions` system parameter (`server/internal/app/regions_seed.go`); a
+worker's `SP_NODE_REGION` only *picks* one of those definitions, and a worker
+whose region is not defined refuses to start. `SP_NODE_NAME` is not optional
+either: worker identity is derived from the hostname, so two nodes on one
+machine would otherwise register as the same worker.
+
+**The database must be genuinely fresh.** Since spec 2026-09-16-05 the take
+films the forced password rotation, which only a never-used default-mode
+database imposes. A rerun against a used one fails with an actionable error
+rather than quietly filming a plain sign-in — drop and recreate the database
+between runs.
+
+**In the SQLite fallback, `SP_DB_DIR` is load-bearing.** The SQLite file is written to
 `$SP_DB_DIR/solidping.db` and `SP_DB_DIR` defaults to `.`, so a side-car started
 without it lands on the repo-root `./solidping.db` — the dev database this
 recipe exists to protect. `SP_DB_URL` does *not* substitute: it is the
@@ -92,26 +117,73 @@ regeneration can come later, once the recorded flows have proven stable.
 
 ## What it produces
 
-1. A Playwright recording (`video: "on"`, fixed 1280×800 viewport, light
-   theme) of the canonical **create an HTTP check** flow: checks list → New
-   check → name + URL → interval → (regions, if offered) → save → check detail
-   page — no check-type step, because the form already opens on HTTP and
-   picking it filmed a no-op — driven with a painted cursor, eased travel and
-   character-by-character typing rather than `fill()` and bare clicks.
+1. A **`vhs` render of the terminal** (`web/dash0/showcase/tapes/docker-run.tape`,
+   driven by `terminal.ts`): the published `docker run` one-liner typed out and
+   the shipped image booting on an empty volume, held past its "Starting HTTP
+   server" line. Real image, real boot, real log. The script refuses to run when
+   the host port or the named volume is already taken, and removes exactly what
+   it created afterwards.
+2. A Playwright recording (`video: "on"`, fixed 1280×800 viewport, light theme)
+   of **setup to first result**: the first sign-in with the seeded credentials,
+   the **forced password rotation** a fresh install imposes, then checks list →
+   New check → name + URL → interval → regions → save → check detail page — no
+   check-type step, because the form already opens on HTTP and picking it filmed
+   a no-op — driven with a painted cursor, eased travel and character-by-character
+   typing rather than `fill()` and bare clicks.
+
+   > **Ordering is the whole trick for the rotation.** The pipeline used to
+   > satisfy the rotation over the API before a single frame was recorded, which
+   > is why the first screen every new install shows had never been on camera.
+   > `uiFirstLogin()` now drives it through the real form, and `apiLogin()` /
+   > `ensureCleanShowcaseOrg()` only run afterwards.
 
    > **The regions beat is conditional.** `check-form.tsx` renders the region
    > picker only when `availableRegions.length > 1`, and the showcase spec
    > gates the beat — cue included — on `regionCount > 0`. A single-node
-   > side-car (the recommended way to record) offers exactly one region, so
-   > the run silently omits the step and its cue list runs `interval` →
-   > `form-complete`. That is expected rather than a bug, and it is what the
-   > **currently committed cut** shows: no regions beat. Recording one means
-   > filming against a server with at least two regions configured.
-2. Named still frames captured during the same run (at 2×, published at 1×).
-3. Post-processing: head/tail trimmed, a **camera move** applied from the
-   recording's cue list, then encoded twice — **AV1** (`libsvtav1`, tiny) and
-   **H.264** (`libx264`, so Safari without an AV1 hardware decoder still
-   plays it).
+   > side-car offers exactly one region, so the run silently omits the step;
+   > `postprocess.ts` warns and writes "First results" instead of "Results from
+   > two regions", so the caption can never claim something the footage does not
+   > show. The two-node recipe above is what the committed cut used.
+3. Named still frames captured during the same run (at 2×, published at 1×).
+4. Post-processing: head/tail trimmed, a **camera move** applied from the
+   recording's cue list, a **segment plan** applied (below), the two segments
+   joined with a 400 ms `xfade`, four lower thirds burned in, and then one
+   master from which everything published is derived — **AV1** (`libsvtav1`,
+   tiny), **H.264** (`libx264`, so Safari without an AV1 hardware decoder still
+   plays it), the README **GIF**, and the stills.
+
+### The edit: cuts, one tagged speed-up, and nothing else
+
+`segment-plan.ts` is the pure, unit-tested half of the edit — cue labels in,
+`[start, end, speed, tag]` out, plus the caption windows and the ffmpeg filter
+strings.
+
+- **Cuts** remove stretches with nothing on screen: the app hard-reloading
+  itself after the rotation, the org being provisioned over the API, a slow
+  request round trip. Ordinary film grammar, no tag needed.
+- **One speed-up, always tagged.** The dwell on the detail page exists so the
+  chart plots two results a genuine interval apart. The check form's floor is a
+  **10-second** interval (`globalMinPeriodSeconds` in `check-form.tsx` — 5 s is
+  never offered, whatever the entitlement says), so that dwell is ~12 s and is
+  published at 4× with "4× speed" burned into the top-right corner **for exactly
+  that stretch**. If the floor ever drops to 5 s the dwell falls under
+  `SHOWCASE_TIMELAPSE_MIN_S` and the plan declines the edit on its own.
+- Every edit is conditional on the gap it names being long enough; the run log
+  prints one line per edit, applied or skipped, with the reason.
+
+### Why `drawtext` is not used, and why the GIF is a different render
+
+Homebrew's current ffmpeg bottle is built **without libfreetype**, so `drawtext`
+does not exist on the machine that regenerates this media. The captions are
+rasterised in the Chromium that Playwright already ships (`labels.ts`) and
+composited with `overlay`.
+
+The README GIF comes from a **second master: the dashboard take only, with the
+camera move off**. Measured at 800 px / 6 fps, the terminal segment costs ~55 KB
+per GIF frame (a scrolling log changes every pixel of every frame) against ~3 KB
+for the dashboard, and the camera move nearly doubles the rest. With both in,
+the GIF was 6 MB at 5 fps / 96 colours; without them it is 2.3 MB at 10 fps /
+160 colours.
 
 Pipeline scratch (`web/dash0/showcase/output/`, including the raw `.webm`
 intermediates and the cue lists) is git-ignored. Only the post-processed assets
@@ -155,15 +227,26 @@ content it ghosts, doubling half-typed characters and the text caret.
 
 | Path | What |
 |---|---|
-| `web/docs/static/showcase/create-http-check.mp4` | AV1 recording of the HTTP-check creation flow |
-| `web/docs/static/showcase/create-http-check.h264.mp4` | The same cut in H.264, for browsers without AV1 |
+| `web/docs/static/showcase/setup-to-first-result.mp4` | AV1 recording of the whole flow |
+| `web/docs/static/showcase/setup-to-first-result.h264.mp4` | The same cut in H.264, for browsers without AV1 |
 | `web/docs/static/showcase/01-checks-list.png` | Checks list |
 | `web/docs/static/showcase/02-check-form-filled.png` | New-check form, filled in |
 | `web/docs/static/showcase/03-check-detail.png` | Check detail page |
+| `res/screenshots/setup-to-first-result.gif` | What GitHub renders at the top of the root README |
+| `res/screenshots/setup-to-first-result.mp4` | The H.264 cut, linked beside the GIF |
+| `res/screenshots/checks-list.png`, `check-form.png`, `check-detail.png` | The root README's screenshot table |
 
-They ship inside the embedded `web/docs` build (no CDN, no extra infra) and are
-served at `/docs/showcase/<file>` on every host — e.g.
-<https://solidping.io/docs/showcase/create-http-check.mp4>.
+The `web/docs/static/showcase/` files ship inside the embedded `web/docs` build
+(no CDN, no extra infra) and are served at `/docs/showcase/<file>` on every
+host — e.g. <https://solidping.io/docs/showcase/setup-to-first-result.mp4>.
+The `res/screenshots/` ones are read straight off `raw.githubusercontent.com`
+by the README.
+
+**Every one of them is now written by `postprocess.ts`.** Until spec
+2026-09-16-05 the `res/screenshots/` half was hand-copied (commit `bed9a99d8`),
+which is precisely how a committed asset drifts away from the pipeline that
+exists to keep it fresh. The retired `create-http-check.*` files are deleted on
+every run so there is only ever one cut to maintain.
 
 Keep the catalog deliberately small: only assets that a published page actually
 embeds. If it ever grows big enough to bloat the repo, moving to a CDN is a
@@ -176,38 +259,76 @@ from the binaries. Update this block whenever `make showcase` is re-run and the
 output is committed. Sizes are KiB/MiB — the units `postprocess.ts` prints, so
 they match the run log line for line.
 
-- **Date:** 2026-09-05 (spec `2026-09-05-03-showcase-video-refresh-zoom-cursor`,
-  re-cut the same day for the tighter flow described below)
-- **App version on camera:** `v0.23.0-19-g1b4d3a74d` (sidebar footer of the
+- **Date:** 2026-09-16 (spec `2026-09-16-05-showcase-setup-video` — the first
+  cut that films the setup itself, and the first with a regions beat)
+- **App version on camera:** `v0.28.2-133-g909218c24` (sidebar footer of the
   stills)
+- **Side-car used:** the **two-node Postgres** recipe above — node A
+  (`api,jobs,checks`, `eu-west`, :4321) and node B (`checks`, `us-east`) sharing
+  a throwaway `solidping_showcase` database on the dev Postgres (:55432), with
+  `SP_REGIONS` declaring 🇪🇺 EU West and 🇺🇸 US East. That is what makes the
+  region picker render and puts two series on the detail page's chart
+- **Terminal segment:** `docker run -p 4000:4000 -v solidping-data:/data
+  ghcr.io/fclairamb/solidping`, held past `Starting HTTP server`. Filmed against
+  an image **built from the working tree** and tagged with the published name
+  (`SHOWCASE_DOCKER_PULL=0`): `:latest` is still amd64-only, and under emulation
+  on Apple silicon it boots too slowly for the hold and prints an emulation-only
+  "slow SQL query" wall of DDL on camera. Re-film against the published image
+  once the arm64 build ships
 - **Filmed check:** `GET https://solidping.io/api/mgmt/health`, named
-  "Production API", at a **10-second** interval
-- **Video:** 33.48 s, 1280×800, 25 fps, 837 frames
-- **Encodes:** `create-http-check.mp4` — AV1 (`libsvtav1`), 1 385 992 B
-  (1.32 MB); `create-http-check.h264.mp4` — H.264 (`libx264`), 1 147 976 B
-  (1.09 MB)
+  "Production API", at a **10-second** interval from **both** regions
+- **Interval decision:** 5 seconds was asked for first and is **not on offer** —
+  `globalMinPeriodSeconds` in `check-form.tsx` is 10, independent of the org's
+  rate entitlement. So the dwell is ~12 s and the time-lapse below applies. If
+  that floor ever drops, the plan will decline the time-lapse on its own
+- **Time-lapse decision:** the 13.4 s between the `detail-page` and `chart` cues
+  is published at **4×** with "4× speed" burned into the top-right corner for
+  exactly that stretch. Two **cuts** (untagged, because nothing is on screen
+  during them) remove the post-rotation reload and the API bootstrap; two more
+  were offered and declined by the plan as too short (0.42 s and 0.10 s round
+  trips), which is the machinery working as intended
+- **Video:** 37.92 s, 1280×800, 25 fps, 948 frames — inside the 30–38 s the spec
+  asked for, with the terminal segment at 8.52 s of it
+- **Encodes:** `setup-to-first-result.mp4` — AV1 (`libsvtav1`), 3 194 274 B
+  (3.05 MB); `setup-to-first-result.h264.mp4` — H.264 (`libx264`), 2 052 260 B
+  (1.96 MB)
+- **README GIF:** 2 459 187 B (2.35 MB), 800×500, 10 fps, 160 colours, full
+  length, no truncation — rendered from the **GIF master** (dashboard only, no
+  camera move) for the reasons measured above
 - **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 177 KB,
-  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 198 KB
-- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 259 KB / 239 KB /
-  282 KB — two of the three above the ~250 KB bar, which is why the 1× versions
-  are the ones published
-- **8 cue points, max zoom 1.50×.** Two beats are deliberately absent: there is
+  `02-check-form-filled.png` 166 KB, `03-check-detail.png` 209 KB
+- **Stills, originals (2×, 2560×1600, git-ignored scratch):** 259 KB / 246 KB /
+  309 KB — still above the ~250 KB bar that keeps the 1× versions published
+- **16 cue points, max zoom 1.50×.** Two beats are deliberately absent: there is
   **no check-type step** (the form opens on HTTP, so picking it filmed "HTTP" →
   "HTTP") and **no push-in on the New check button** (that click changes route,
   and a zoom that snaps straight back out for the navigation reads as a glitch)
-- **No regions beat**, for the reason given under "What it produces": the run
-  was filmed against a single-node side-car, so the cue list runs `interval` →
-  `form-complete`
-- **The detail page is held for at least `MIN_DETAIL_DWELL_MS` (11 s) and until
-  two results have landed.** The dwell is what makes the chart meaningful:
-  waiting only for a second result is not enough, because the scheduler aligns
-  runs to wall-clock boundaries, so the tick after the creation run can land a
-  second or two later and the chart then plots two points across a two-second
-  window. Dwelling past the 10-second interval guarantees a real interval
-  between them
+- **The regions beat is present** — the form shows both regions ticked with an
+  automatic 5 s spread, and the detail page's chart plots EU West and US East as
+  separate series with a per-region selector above them. This is the first
+  committed cut where that is true
+- **The detail page is held for one full interval plus 2.5 s, and until two
+  results have landed.** The dwell is what makes the chart meaningful: waiting
+  only for a second result is not enough, because the scheduler aligns runs to
+  wall-clock boundaries, so the tick after the creation run can land a second or
+  two later and the chart then plots two points across a two-second window
 - **`minterpolate` (50 fps frame interpolation): tried, rejected.** On screen
   content it ghosts — half-typed characters and the text caret double on every
   synthesised frame. The cut stays at its native 25 fps
+
+### Two tool notes worth keeping
+
+- **vhs 0.12.0 cannot encode on a modern Go toolchain.** Its evaluator cancels
+  the context in `teardown()` and then passes that same context to `Render()`,
+  where the ffmpeg call is an `exec.CommandContext`; since Go 1.20 `Cmd.Start`
+  refuses an already-cancelled context, so it writes nothing and exits 0. The
+  tape asks for a PNG frame directory instead (moved into place from a `defer`)
+  and `terminal.ts` encodes it. Its `Wait+Screen` is separately unusable on
+  scrolled output — `Buffer()` reads absolute buffer lines `0..rows`, i.e. the
+  top of the scrollback — so the tape holds on a timer and the run is verified
+  against the container's own log afterwards.
+- **Homebrew's ffmpeg has no `drawtext`** (built without libfreetype), which is
+  why the captions are browser-rendered PNGs composited with `overlay`.
 
 ## Where they are surfaced
 
@@ -241,5 +362,10 @@ the media (that repo was deliberately out of scope):
    `web/docs/docs/tour.mdx` — otherwise Safari without an AV1 hardware decoder
    shows fallback text where the demo should be;
 2. the caption hard-codes *"A 18-second setup"* (`src/pages/index.tsx`). The
-   duration moves with every re-cut — this one is ~28 s — so it must not name
+   duration moves with every re-cut — this one is 37.9 s — so it must not name
    one.
+
+**Both are still owed** as of spec 2026-09-16-05, which re-cut the media again
+and deliberately did not touch `../solidping-website`: that repo still ships a
+single AV1 `src=` and still names a duration. It now also points at retired
+filenames — `create-http-check.*` no longer exists here.

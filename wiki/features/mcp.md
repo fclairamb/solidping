@@ -10,7 +10,8 @@ isolation as the REST API.
 
 Mounted at `/api/v1/mcp`
 ([`server/internal/app/server.go`](../../server/internal/app/server.go)).
-JSON-RPC traffic goes over **POST**, behind `RequireMCPAuth`. The transport
+JSON-RPC traffic goes over **POST**, behind `RequireMCPAuth` — with one hole
+punched in it for the handshake, see *Anonymous handshake* below. The transport
 is **MCP Streamable HTTP** (the spec's HTTP+SSE binding); requests carry a
 JSON-RPC envelope and the server responds with either a single JSON-RPC
 reply or an SSE stream depending on the request type.
@@ -40,9 +41,43 @@ Protocol negotiation per MCP spec: if the client requests a version we
 support, we echo it back; otherwise we return our latest. The client
 is responsible for disconnecting if it can't speak what we returned.
 
+## Anonymous handshake
+
+`initialize` and `notifications/initialized` are served with **no credentials**
+(spec 2026-09-16-15). MCP directories probe a server by sending `initialize`;
+answering 401 made the listing fail, and handing a directory a real bearer token
+was the worse trade. What the handshake returns — the negotiated protocol
+version, three static capability flags, `ServerInfo{"solidping", …}` — is public
+and identical for every caller, so it fingerprints no tenant.
+
+The hole is deliberately narrow
+([`mcp/anonymous.go`](../../server/internal/mcp/anonymous.go)):
+
+- The gate wraps `RequireMCPAuth` rather than replacing it. It peeks the body
+  (capped at 64 KiB, then restored byte-for-byte) and lets the request through
+  only when the body is a **single JSON-RPC object** whose `method` matches one
+  of the two handshake names **exactly** — no prefix, no case folding. A batch
+  (`[{initialize},{tools/list}]`), two concatenated objects, an oversized body,
+  or `initialize_and_dump` all fall through to `RequireMCPAuth` and get the
+  usual 401 + `WWW-Authenticate` challenge.
+- A caller that presents any credential always goes through `RequireMCPAuth`,
+  so a stale token still gets the challenge that starts OAuth discovery instead
+  of silently degrading to an anonymous answer.
+- The anonymous handshake mints **no session** and sets no `Mcp-Session-Id`:
+  nothing is left behind for a later unauthenticated call to reuse, and a probe
+  loop cannot grow the session map.
+- `Handler.handleAnonymous` re-checks the method independently of the routing,
+  so a method added to `dispatch` later cannot become anonymously reachable by
+  accident.
+
+Tests: [`internal/mcp/anonymous_test.go`](../../server/internal/mcp/anonymous_test.go)
+(gate + handler) and
+[`internal/app/mcp_anonymous_test.go`](../../server/internal/app/mcp_anonymous_test.go)
+(the real router end to end).
+
 ## Authentication & scopes
 
-MCP requests carry the same JWT or PAT as any other API call. Sessions
+Every other MCP request carries the same JWT or PAT as any other API call. Sessions
 inherit the org from the token; the `orgSlug` is implicit.
 
 Two custom scopes gate access:
@@ -132,7 +167,7 @@ review.
 
 ## Sessions
 
-Each successful `initialize` call mints a session ID
+Each successful **authenticated** `initialize` call mints a session ID
 (`session.id`). Subsequent calls echo it in the `Mcp-Session-Id`
 header. Sessions carry the negotiated protocol version, the client
 info, the org slug, and timestamps.

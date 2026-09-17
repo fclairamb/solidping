@@ -27,7 +27,6 @@ func orgsCommand() *cli.Command {
 		Name:    "orgs",
 		Aliases: []string{"org"},
 		Usage:   "Manage organizations",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:  cmdCreate,

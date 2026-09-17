@@ -5797,6 +5797,11 @@ export interface StatusUpdate {
   sectionUid?: string;
   checkUid?: string;
   incidentUid?: string;
+  /**
+   * Set when the post is threaded under an incident publication on the page;
+   * absent when it stands alone (maintenance, info). Read-only.
+   */
+  incidentPublicationUid?: string;
   title: string;
   bodyMarkdown: string;
   linkUrl?: string;

@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Copy,
   Eye,
+  FolderPlus,
   Info,
   Building2,
   KeyRound,
@@ -53,6 +54,7 @@ import {
 } from "@/components/shared/check-type-identity";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
+import { NewCheckGroupDialog } from "@/components/shared/new-check-group-dialog";
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { CommentBody } from "@/components/shared/comment-body";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
@@ -62,6 +64,7 @@ import {
 } from "@/lib/http-status";
 import {
   JsonAssertionEditor,
+  BodyAssertionEditor,
   type AssertionNode,
 } from "@/components/checks/json-assertion-editor";
 import {
@@ -262,6 +265,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "faceted-filter", label: "Faceted filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
   { id: "check-group-picker", label: "Check group picker" },
+  { id: "new-check-group-dialog", label: "New check group dialog" },
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "clickable-status-banner", label: "Clickable status banner" },
@@ -321,6 +325,7 @@ function DesignReferencePage() {
       <FacetedFilterSection />
       <CheckMultiPickerSection />
       <CheckGroupPickerSection />
+      <NewCheckGroupDialogSection />
       <TokenChipsInputSection />
       <JsonAssertionEditorSection />
       <KpiTileSection />
@@ -5630,6 +5635,40 @@ function CheckGroupPickerSection() {
   );
 }
 
+function NewCheckGroupDialogSection() {
+  const { org } = Route.useParams();
+  const [open, setOpen] = useState(false);
+  const [created, setCreated] = useState<string | undefined>();
+
+  return (
+    <Section
+      id="new-check-group-dialog"
+      title="New check group dialog"
+      description="The create-a-group dialog, extracted from the checks list so a form that OFFERS a group can also let you make one without leaving the page. Name + optional slug (auto-derived from the name until you touch it), 409-on-slug surfaced inline on the field rather than as a toast. Pair it with a field whose empty state explains the concept — the check form's Group field is the reference use: it used to hide itself while an org had no groups, which is exactly how a feature stays undiscovered."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ NewCheckGroupDialog }"} from
+        "@/components/shared/new-check-group-dialog"
+      </p>
+      <div className="max-w-2xl space-y-2">
+        <Button variant="outline" onClick={() => setOpen(true)}>
+          <FolderPlus className="mr-2 h-4 w-4" />
+          New group
+        </Button>
+        {created && (
+          <p className="text-xs text-muted-foreground">Created: {created}</p>
+        )}
+        <NewCheckGroupDialog
+          org={org}
+          open={open}
+          onOpenChange={setOpen}
+          onCreated={(group) => setCreated(group.name)}
+        />
+      </div>
+    </Section>
+  );
+}
+
 function TokenChipsInputSection() {
   const [valid, setValid] = useState<string[]>(["ops@example.com"]);
   const [withInvalid, setWithInvalid] = useState<string[]>([
@@ -5686,6 +5725,12 @@ function TokenChipsInputSection() {
 
 function JsonAssertionEditorSection() {
   const [empty, setEmpty] = useState<AssertionNode | null>(null);
+  const [body, setBody] = useState<AssertionNode | null>({
+    type: "assertion",
+    operator: "eq",
+    value: "Healthy",
+    ignoreCase: true,
+  });
   const [single, setSingle] = useState<AssertionNode | null>({
     type: "assertion",
     path: "$.status",
@@ -5704,10 +5749,10 @@ function JsonAssertionEditorSection() {
     <Section
       id="json-assertion-editor"
       title="JSON assertion editor"
-      description="Recursive editor for the HTTP checker's JSONPath assertion AST — a leaf tests one JSONPath expression against an operator (eq/neq/gt/gte/lt/lte/contains/regex/exists/not_exists), and and/or group nodes nest arbitrarily. value is a required (string) argument, or an empty ready state before the first field is filled in; onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
+      description="Recursive editor for the HTTP checker's assertion AST — a leaf tests one subject against an operator, and and/or group nodes nest arbitrarily. One component serves both editors: showPath + the full operator list gives the JSONPath editor, while BodyAssertionEditor hides the path input and narrows the operators to the five that are meaningful against a raw response body (eq/neq/contains/not_contains/regex). Every textual leaf carries an Ignore case checkbox wired to ignoreCase. testIdPrefix keeps two editors on one form from colliding. onChange(null) clears the whole tree. Used in the HTTP check form's Advanced section; JsonAssertionResults (not shown here) renders the matching evaluation result on a failed check."
     >
       <p className="text-xs text-muted-foreground">
-        import {"{ JsonAssertionEditor }"} from
+        import {"{ JsonAssertionEditor, BodyAssertionEditor }"} from
         "@/components/checks/json-assertion-editor"
       </p>
       <div className="grid gap-4 max-w-2xl">
@@ -5722,6 +5767,12 @@ function JsonAssertionEditorSection() {
         <div className="space-y-2">
           <Label>AND group with two assertions</Label>
           <JsonAssertionEditor value={group} onChange={setGroup} />
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Body assertion — no path input, narrowed operators, ignore case on
+          </Label>
+          <BodyAssertionEditor value={body} onChange={setBody} />
         </div>
       </div>
     </Section>

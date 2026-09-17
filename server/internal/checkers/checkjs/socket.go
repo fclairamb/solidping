@@ -771,15 +771,33 @@ func (r *jsRuntime) panicOnExecutionDeadline() {
 		panic(r.vm.NewGoError(err))
 	}
 
-	// The socket read deadline and the context's own timer are two independent
-	// clocks armed at the same instant: a read can stop ON the execution
-	// deadline a hair before the context marks itself done, which would report
-	// the check's own budget running out as an ordinary per-call timeout VALUE
-	// and let the script carry on. Reaching the deadline is the fact that
-	// matters, so compare against it rather than waiting for the timer.
-	if deadline, ok := r.execCtx.Deadline(); ok && !time.Now().Before(deadline) {
+	if r.executionDeadlineReached() {
 		panic(r.vm.NewGoError(context.DeadlineExceeded))
 	}
+}
+
+// executionDeadlineReached reports whether the check's budget is spent, by the
+// CLOCK rather than by the context's timer having fired.
+//
+// The socket read deadline and the context's own timer are two independent
+// clocks armed at the same instant: a read can stop ON the execution deadline a
+// hair before the context marks itself done, which would report the check's own
+// budget running out as an ordinary per-call timeout VALUE and let the script
+// carry on. Reaching the deadline is the fact that matters, so compare against
+// it rather than waiting for the timer.
+//
+// It is shared with resultFor deliberately. Until it was, the two halves
+// disagreed about what "deadline reached" means: this path panicked on the
+// clock while resultFor classified on `execCtx.Err()`. Go delivers timers late
+// under load, so a panic could unwind and be classified while `Err()` was still
+// nil, and the check's own budget expiring got reported as
+// `script error: GoError: context deadline exceeded` instead of `timeout`.
+// That is TestSocketExecutionDeadlineIsATimeout, which passed locally and failed
+// on a loaded CI runner. One predicate, one answer.
+func (r *jsRuntime) executionDeadlineReached() bool {
+	deadline, ok := r.execCtx.Deadline()
+
+	return ok && !time.Now().Before(deadline)
 }
 
 // encodeReadData renders received bytes for JS. Default `text` passes them

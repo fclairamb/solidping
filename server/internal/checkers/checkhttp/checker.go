@@ -72,6 +72,16 @@ const (
 	// string the checker emits.
 	errJSONAssertionFailed = "JSON assertion failed"
 
+	// errBodyAssertionFailed is the output message for a violated
+	// `bodyAssertions` tree; the evaluated tree rides along under the
+	// outputKeyBodyAssertions key, carrying what was expected AND what the
+	// body actually was, so a check that went down is debuggable.
+	errBodyAssertionFailed = "Body assertion failed"
+
+	// outputKeyBodyAssertions is the Output key the evaluated body-assertion
+	// tree is attached to on failure. The dashboard renders it by this name.
+	outputKeyBodyAssertions = "body_assertions"
+
 	// methodQuery is the IETF QUERY method (draft-ietf-httpbis-safe-method-w-body):
 	// a safe, idempotent verb that carries a request body, like a cacheable POST.
 	// net/http has no http.MethodQuery constant, so it is defined here.
@@ -188,6 +198,15 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 	if cfg.JSONPathAssertions != nil {
 		if err := cfg.JSONPathAssertions.Validate(); err != nil {
 			return checkerdef.NewConfigError("json_path_assertions", err.Error())
+		}
+	}
+
+	// Validate body assertions. ValidateBody is deliberately NOT Validate:
+	// it requires no Path and rejects the operators that cannot fail against
+	// a raw body (exists/not_exists and the numeric comparisons).
+	if cfg.BodyAssertions != nil {
+		if err := cfg.BodyAssertions.ValidateBody(); err != nil {
+			return checkerdef.NewConfigError("bodyAssertions", err.Error())
 		}
 	}
 
@@ -465,7 +484,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// forgetting it fails open, silently, exactly as that bug did.
 	bodyDrivesAssertions := cfg.BodyExpect != "" || cfg.BodyReject != "" ||
 		cfg.BodyPattern != "" || cfg.BodyPatternReject != "" ||
-		cfg.JSONPathAssertions != nil
+		cfg.JSONPathAssertions != nil || cfg.BodyAssertions != nil
 
 	// The capture needs the same bytes, so they are read once and shared — the
 	// whole point of this feature is that the failing response is ALREADY in
@@ -640,6 +659,25 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 					checkerdef.OutputKeyMethod:     method,
 				}), nil
 			}
+		}
+	}
+
+	// Apply body (plain text) assertions.
+	//
+	// No `respBody != ""` guard here, unlike the JSONPath block below: an
+	// EMPTY body is a perfectly meaningful subject for a text assertion
+	// (`eq "OK"` against an empty response must FAIL, not be skipped), and a
+	// skip would be exactly the fail-open shape spec 2026-08-20-04 was about.
+	if cfg.BodyAssertions != nil {
+		assertionResult := cfg.BodyAssertions.EvaluateBody(respBody)
+		if !assertionResult.Pass {
+			return failed(map[string]any{
+				checkerdef.OutputKeyError:      errBodyAssertionFailed,
+				checkerdef.OutputKeyURL:        cfg.URL,
+				checkerdef.OutputKeyStatusCode: resp.StatusCode,
+				checkerdef.OutputKeyMethod:     method,
+				outputKeyBodyAssertions:        assertionResult,
+			}), nil
 		}
 	}
 

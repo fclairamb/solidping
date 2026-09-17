@@ -5,8 +5,8 @@ import type { Page } from "@playwright/test";
 // to take three separate manual create flows (page, then section, then
 // resource), with no entry point from the check itself. This exercises the
 // collapsed flow end to end: from the check detail page, "Publish on a
-// status page" pre-fills a create form that lands the check straight into
-// the page's default section — verified both in the dashboard and on the
+// status page" reaches a create form (now via the publish dialog, spec
+// 2026-09-16-11) that lands the check straight into the page's default section — verified both in the dashboard and on the
 // PUBLIC page.
 
 async function getAuthToken(page: Page): Promise<string> {
@@ -65,9 +65,16 @@ test.describe("Publish a check on a status page", () => {
       await page.goto(`orgs/test/checks/${check.uid}`);
       await page.waitForLoadState("networkidle");
 
-      const publishLink = page.getByTestId("publish-status-page-link");
-      await expect(publishLink).toBeVisible();
-      await publishLink.click();
+      const publishButton = page.getByTestId("publish-status-page-link");
+      await expect(publishButton).toBeVisible();
+      await publishButton.click();
+
+      // Since spec 2026-09-16-11 the button opens a dialog that can also reach
+      // EXISTING pages; creating a new one is one option inside it, and it is
+      // the option this test is about.
+      const createLink = page.getByTestId("publish-create-status-page");
+      await expect(createLink).toBeVisible({ timeout: 15000 });
+      await createLink.click();
 
       await page.waitForURL(/\/status-pages\/new\?checkUid=/);
       await page.waitForLoadState("networkidle");

@@ -37,7 +37,7 @@ https://api.example.com/health
 | Expected Status | Status code to expect | `200`, `2XX` (wildcard) |
 | Headers | Custom request headers | `Authorization: Bearer token` |
 | Body | Request body (for POST/PUT/PATCH/QUERY) | `{"key": "value"}` |
-| Body Match | Pattern to match in response | `"status": "ok"` |
+| Response assertions | Assert on the response body — see [Response assertions](#response-assertions) below | `bodyAssertions`, `json_path_assertions`, `body_expect` |
 | SSH tunnel | Dial through an [SSH check's bastion](./ssh-tunnels.md) | An `ssh` check with `expected_fingerprint` set |
 | Basic Auth | Username and password — stored encrypted at rest | `user:password` |
 | Custom User-Agent | Override the default user-agent | `SolidPing/1.0` |
@@ -76,7 +76,7 @@ headers:
   Authorization: Bearer your-token
   Accept: application/json
 expected_status: 200
-body_match: '"users":'
+body_expect: '"users":'
 
 # POST request
 url: https://api.example.com/webhook
@@ -85,7 +85,106 @@ headers:
   Content-Type: application/json
 body: '{"test": true}'
 expected_status: 200
+
+# ASP.NET Core health endpoint — a bare word as text/plain
+url: https://api.acme.com/health
+method: GET
+expected_status_codes: ["2XX"]
+bodyAssertions:
+  type: assertion
+  operator: eq
+  value: Healthy
+  ignoreCase: true
 ```
+
+#### Response assertions {#response-assertions}
+
+A check that only looks at the status code reports a **degraded** service as up:
+plenty of health endpoints answer `200` while telling you, in the body, that
+they are unwell. Three assertion families cover that, and they can be combined
+on one check — all of them must pass for the check to be up.
+
+##### Body assertions (`bodyAssertions`)
+
+Treats the response body as plain text. This is the one to reach for on a
+`text/plain` endpoint, and the only one that does **exact** equality.
+
+```yaml
+url: https://api.acme.com/DictionaryApi/health
+expected_status_codes: ["2XX"]
+bodyAssertions:
+  type: assertion
+  operator: eq
+  value: Healthy
+  ignoreCase: true
+```
+
+| Field | Description |
+|---|---|
+| `type` | `assertion` for a single test, or `and` / `or` for a group with `children` |
+| `operator` | `eq`, `neq`, `contains`, `not_contains`, `regex` |
+| `value` | What to compare the body against |
+| `ignoreCase` | `true` compares without regard to case (and folds the regex) |
+
+**Whitespace:** `eq` and `neq` compare against the body with leading and
+trailing whitespace removed, so an endpoint returning `"Healthy
+"` still
+matches `eq: Healthy`. `contains`, `not_contains` and `regex` see the body
+exactly as it arrived.
+
+`exists`, `not_exists` and the numeric comparisons are rejected here: a raw
+body always exists, so accepting them would build an assertion that can never
+fail.
+
+Groups nest, so "healthy or degraded, but never containing a stack trace" is:
+
+```yaml
+bodyAssertions:
+  type: and
+  children:
+    - type: or
+      children:
+        - { type: assertion, operator: eq, value: Healthy, ignoreCase: true }
+        - { type: assertion, operator: eq, value: Degraded, ignoreCase: true }
+    - { type: assertion, operator: not_contains, value: "at System." }
+```
+
+##### JSONPath assertions (`json_path_assertions`)
+
+Parses the body as JSON and tests one value plucked out of it with a
+[JSONPath](https://goessner.net/articles/JsonPath/) expression. Same node
+shape, plus a `path`, and with the full operator list: `eq`, `neq`, `gt`,
+`gte`, `lt`, `lte`, `contains`, `not_contains`, `regex`, `exists`,
+`not_exists`. `ignoreCase` applies to the textual ones.
+
+```yaml
+url: https://status.acme.com/api/v2/status.json
+expected_status_codes: ["2XX"]
+json_path_assertions:
+  type: and
+  children:
+    - { type: assertion, path: "$.status.indicator", operator: eq, value: none }
+    - { type: assertion, path: "$.uptime", operator: gt, value: "0" }
+```
+
+A body that is not valid JSON fails the check rather than being skipped.
+
+##### The flat matchers
+
+Older, simpler and still supported. They are what the importers map foreign
+conditions onto, so they are not going anywhere.
+
+| Key | Meaning |
+|---|---|
+| `body_expect` | Substring that must appear in the body |
+| `body_reject` | Substring that must **not** appear |
+| `body_pattern` | [RE2](https://github.com/google/re2/wiki/Syntax) regex the body must match |
+| `body_pattern_reject` | RE2 regex the body must **not** match |
+| `headers_pattern` | Map of response header name to an RE2 regex; every one must match |
+
+`body_expect` is a **substring** match, which is why `bodyAssertions` exists:
+`body_expect: HEALTHY` also matches a body of `UNHEALTHY`, and reports a dead
+service as up.
 
 ### TCP {#tcp}
 

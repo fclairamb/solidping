@@ -272,19 +272,16 @@ func (h *Handler) Handle(writer http.ResponseWriter, req *http.Request) error {
 		return nil
 	}
 
-	// Extract org slug from authenticated claims
-	claims, ok := middleware.GetClaimsFromContext(req.Context())
-	if !ok {
-		return writeJSON(writer, http.StatusUnauthorized,
-			errorResponse(nil, CodeInvalidRequest, "Authentication required"))
-	}
+	// Extract org slug from authenticated claims. An unauthenticated request
+	// only reaches this handler when AllowAnonymousHandshake let it through,
+	// i.e. for the handshake methods; the method check below is the second,
+	// independent layer of that decision — it does not trust the routing.
+	claims, authenticated := middleware.GetClaimsFromContext(req.Context())
 
-	if !hasMCPAccess(claims) {
+	if authenticated && !hasMCPAccess(claims) {
 		return writeJSON(writer, http.StatusForbidden,
 			errorResponse(nil, CodeForbidden, "Token lacks mcp or mcp:read scope"))
 	}
-
-	orgSlug := claims.OrgSlug
 
 	var rpcReq Request
 	if err := json.NewDecoder(req.Body).Decode(&rpcReq); err != nil {
@@ -297,12 +294,42 @@ func (h *Handler) Handle(writer http.ResponseWriter, req *http.Request) error {
 			errorResponse(rpcReq.ID, CodeInvalidRequest, "Invalid JSON-RPC version"))
 	}
 
-	resp, statusCode := h.dispatch(req.Context(), &rpcReq, orgSlug, claims, writer)
+	if !authenticated {
+		return h.handleAnonymous(writer, req, &rpcReq)
+	}
+
+	resp, statusCode := h.dispatch(req.Context(), &rpcReq, claims.OrgSlug, claims, writer)
 	if resp == nil {
 		return nil
 	}
 
 	return writeJSON(writer, statusCode, resp)
+}
+
+// handleAnonymous serves the credential-free MCP handshake and refuses
+// everything else with 401.
+//
+// It deliberately does NOT go through dispatch: the anonymous surface is an
+// explicit two-entry switch, so a method added to dispatch later cannot become
+// anonymously reachable by accident. There is no org here — nothing this path
+// answers is org-derived.
+func (h *Handler) handleAnonymous(writer http.ResponseWriter, req *http.Request, rpcReq *Request) error {
+	switch rpcReq.Method {
+	case methodInitialize:
+		resp, statusCode := h.handleInitialize(req.Context(), rpcReq, "", writer, false)
+		if resp == nil {
+			return nil
+		}
+
+		return writeJSON(writer, statusCode, resp)
+	case methodInitialized:
+		writer.WriteHeader(http.StatusAccepted)
+
+		return nil
+	default:
+		return writeJSON(writer, http.StatusUnauthorized,
+			errorResponse(rpcReq.ID, CodeInvalidRequest, "Authentication required"))
+	}
 }
 
 func (h *Handler) dispatch(
@@ -311,7 +338,7 @@ func (h *Handler) dispatch(
 ) (*Response, int) {
 	switch req.Method {
 	case methodInitialize:
-		return h.handleInitialize(ctx, req, orgSlug, writer)
+		return h.handleInitialize(ctx, req, orgSlug, writer, true)
 	case methodInitialized:
 		writer.WriteHeader(http.StatusAccepted)
 		return nil, 0
@@ -336,8 +363,13 @@ func (h *Handler) dispatch(
 	}
 }
 
+// handleInitialize answers the MCP handshake. withSession is false on the
+// anonymous path: an unauthenticated probe gets the same protocol version,
+// capability flags and ServerInfo as anyone else, but mints no session and no
+// `Mcp-Session-Id`. Nothing anonymous may therefore leave state behind for a
+// later call to reuse, and a probe loop cannot grow the session map.
 func (h *Handler) handleInitialize(
-	ctx context.Context, req *Request, orgSlug string, writer http.ResponseWriter,
+	ctx context.Context, req *Request, orgSlug string, writer http.ResponseWriter, withSession bool,
 ) (*Response, int) {
 	var params InitializeParams
 	if req.Params != nil {
@@ -354,18 +386,20 @@ func (h *Handler) handleInitialize(
 			"serverReturned", negotiated)
 	}
 
-	sessionID := uuid.New().String()
-	now := time.Now()
-	h.sessions.Store(sessionID, &session{
-		id:              sessionID,
-		protocolVersion: negotiated,
-		clientInfo:      params.ClientInfo,
-		orgSlug:         orgSlug,
-		createdAt:       now,
-		lastUsed:        now,
-	})
+	if withSession {
+		sessionID := uuid.New().String()
+		now := time.Now()
+		h.sessions.Store(sessionID, &session{
+			id:              sessionID,
+			protocolVersion: negotiated,
+			clientInfo:      params.ClientInfo,
+			orgSlug:         orgSlug,
+			createdAt:       now,
+			lastUsed:        now,
+		})
 
-	writer.Header().Set("Mcp-Session-Id", sessionID)
+		writer.Header().Set("Mcp-Session-Id", sessionID)
+	}
 
 	resp := successResponse(req.ID, InitializeResult{
 		ProtocolVersion: negotiated,

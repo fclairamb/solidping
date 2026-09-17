@@ -9,11 +9,8 @@ import {
   AlertTriangle,
   Calendar,
   CalendarClock,
-  GitBranch,
   Globe,
-  BadgeCheck,
   LogOut,
-  Network,
   Palette,
   ChevronUp,
   User2,
@@ -30,6 +27,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -52,76 +50,97 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
 
-const navItems = [
+// The sidebar is grouped into labelled sections (spec 2026-09-16-07): a flat
+// list of 14 entries gave a first-time user nothing to orient by. This stays a
+// DATA structure — the next reshuffle must be a data edit, not a JSX edit.
+//
+// `gate` narrows who sees a group or an item; a group whose items are all
+// gated out renders nothing at all, label included.
+type NavGate = "isAdmin" | "isSuperAdmin";
+
+interface NavItem {
+  titleKey: string;
+  path:
+    | "/orgs/$org"
+    | "/orgs/$org/checks"
+    | "/orgs/$org/incidents"
+    | "/orgs/$org/events"
+    | "/orgs/$org/slos"
+    | "/orgs/$org/integrations"
+    | "/orgs/$org/on-call"
+    | "/orgs/$org/escalation-policies"
+    | "/orgs/$org/me/notifications"
+    | "/orgs/$org/status-pages"
+    | "/orgs/$org/status-updates"
+    | "/orgs/$org/maintenance-windows"
+    | "/orgs/$org/organization"
+    | "/orgs/$org/jobs";
+  icon: typeof LayoutDashboard;
+  gate?: NavGate;
+  /** Extra search params the link must carry (Jobs defaults to its jobs tab). */
+  search?: Record<string, string>;
+}
+
+interface NavGroup {
+  labelKey: string;
+  gate?: NavGate;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
   {
-    titleKey: "dashboard",
-    path: "/orgs/$org" as const,
-    icon: LayoutDashboard,
+    labelKey: "groups.monitoring",
+    items: [
+      { titleKey: "dashboard", path: "/orgs/$org", icon: LayoutDashboard },
+      { titleKey: "checks", path: "/orgs/$org/checks", icon: ListChecks },
+      { titleKey: "incidents", path: "/orgs/$org/incidents", icon: AlertTriangle },
+      { titleKey: "events", path: "/orgs/$org/events", icon: Calendar },
+      { titleKey: "slos", path: "/orgs/$org/slos", icon: Target },
+    ],
   },
   {
-    titleKey: "checks",
-    path: "/orgs/$org/checks" as const,
-    icon: ListChecks,
+    labelKey: "groups.alerting",
+    items: [
+      { titleKey: "integrations", path: "/orgs/$org/integrations", icon: Bell },
+      { titleKey: "onCall", path: "/orgs/$org/on-call", icon: CalendarClock },
+      {
+        titleKey: "escalationPolicies",
+        path: "/orgs/$org/escalation-policies",
+        icon: ArrowUpRight,
+      },
+      { titleKey: "myAlerts", path: "/orgs/$org/me/notifications", icon: BellRing },
+    ],
   },
   {
-    titleKey: "incidents",
-    path: "/orgs/$org/incidents" as const,
-    icon: AlertTriangle,
+    labelKey: "groups.publicStatus",
+    items: [
+      { titleKey: "statusPages", path: "/orgs/$org/status-pages", icon: Globe },
+      { titleKey: "statusUpdates", path: "/orgs/$org/status-updates", icon: MessageSquare },
+      { titleKey: "maintenanceWindows", path: "/orgs/$org/maintenance-windows", icon: Wrench },
+    ],
   },
   {
-    titleKey: "dependencies",
-    path: "/orgs/$org/dependencies" as const,
-    icon: GitBranch,
-  },
-  {
-    titleKey: "onCall",
-    path: "/orgs/$org/on-call" as const,
-    icon: CalendarClock,
-  },
-  {
-    titleKey: "escalationPolicies",
-    path: "/orgs/$org/escalation-policies" as const,
-    icon: ArrowUpRight,
-  },
-  {
-    titleKey: "events",
-    path: "/orgs/$org/events" as const,
-    icon: Calendar,
-  },
-  {
-    titleKey: "integrations",
-    path: "/orgs/$org/integrations" as const,
-    icon: Bell,
-  },
-  {
-    titleKey: "statusPages",
-    path: "/orgs/$org/status-pages" as const,
-    icon: Globe,
-  },
-  {
-    titleKey: "statusUpdates",
-    path: "/orgs/$org/status-updates" as const,
-    icon: MessageSquare,
-  },
-  {
-    titleKey: "maintenanceWindows",
-    path: "/orgs/$org/maintenance-windows" as const,
-    icon: Wrench,
-  },
-  {
-    titleKey: "slos",
-    path: "/orgs/$org/slos" as const,
-    icon: Target,
-  },
-  {
-    titleKey: "badges",
-    path: "/orgs/$org/badges" as const,
-    icon: BadgeCheck,
-  },
-  {
-    titleKey: "myPages",
-    path: "/orgs/$org/me/notifications" as const,
-    icon: BellRing,
+    labelKey: "groups.administration",
+    items: [
+      // Organization had exactly one entry point before this spec — an item in
+      // the avatar dropdown, which stays. Two doors to an admin-only page is
+      // not clutter; one hidden door was the bug.
+      {
+        titleKey: "organization",
+        path: "/orgs/$org/organization",
+        icon: Building,
+        gate: "isAdmin",
+      },
+      // Jobs is super-admin-only in the UI. The BACKEND gates are deliberately
+      // unchanged — see the route guard in routes/orgs/$org/jobs.tsx.
+      {
+        titleKey: "jobs",
+        path: "/orgs/$org/jobs",
+        icon: Workflow,
+        gate: "isSuperAdmin",
+        search: { tab: "jobs" },
+      },
+    ],
   },
 ];
 
@@ -149,6 +168,11 @@ export function AppSidebar() {
   const org = (params as { org?: string }).org || "test";
   const { data: versionData } = useVersion();
   const isTestMode = versionData?.runMode === "test";
+
+  const passes = (gate?: NavGate) => {
+    if (!gate) return true;
+    return gate === "isSuperAdmin" ? !!user?.isSuperAdmin : !!user?.isAdmin;
+  };
 
   const currentOrg = organizations.find((o) => o.slug === org);
   const currentOrgName = currentOrg?.name;
@@ -198,62 +222,41 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const itemPath = item.path.replace("$org", org);
-                const title = tNav(item.titleKey);
-                return (
-                  <SidebarMenuItem key={item.titleKey}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location.pathname === itemPath}
-                      tooltip={title}
-                    >
-                      <Link to={item.path} params={{ org }}>
-                        <item.icon />
-                        <span>{title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {user?.isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location.pathname.startsWith(`/orgs/${org}/discovery`)}
-                    tooltip={tNav("discovery")}
-                  >
-                    <Link to="/orgs/$org/discovery" params={{ org }}>
-                      <Network />
-                      <span>{tNav("discovery")}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location.pathname.startsWith(`/orgs/${org}/jobs`)}
-                    tooltip={tNav("jobs")}
-                  >
-                    <Link to="/orgs/$org/jobs" params={{ org }} search={{ tab: "jobs" }}>
-                      <Workflow />
-                      <span>{tNav("jobs")}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        {navGroups.map((group) => {
+          const items = group.items.filter((item) => passes(item.gate));
+          if (!passes(group.gate) || items.length === 0) {
+            return null;
+          }
+          return (
+            <SidebarGroup key={group.labelKey}>
+              {/* SidebarGroupLabel already collapses itself away on the icon
+                  rail; the per-item `tooltip` below is what labels items there. */}
+              <SidebarGroupLabel>{tNav(group.labelKey)}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {items.map((item) => {
+                    const itemPath = item.path.replace("$org", org);
+                    const title = tNav(item.titleKey);
+                    return (
+                      <SidebarMenuItem key={item.titleKey}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.pathname === itemPath}
+                          tooltip={title}
+                        >
+                          <Link to={item.path} params={{ org }} search={item.search}>
+                            <item.icon />
+                            <span>{title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
         {isTestMode && (
           <SidebarGroup>
             <SidebarGroupContent>

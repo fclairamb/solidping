@@ -975,7 +975,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// the spec-mandated 405 (we don't serve server-initiated SSE streams).
 	mcpGroup.GET("", s.mcpHandler.HandleGet)
 	mcpAuthed := mcpGroup.Use(authMiddleware.RequireMCPAuth)
-	mcpAuthed.POST("", s.mcpHandler.Handle)
+	// POST is behind the same RequireMCPAuth, with one hole punched in it:
+	// a credential-free `initialize` / `notifications/initialized` is served
+	// so MCP directories can introspect the server (spec 2026-09-16-15).
+	// Every other method — tools/list, resources/list, every tools/call —
+	// still answers 401 NO_TOKEN. See mcp.AllowAnonymousHandshake.
+	mcpGroup.Use(mcp.AllowAnonymousHandshake(authMiddleware.RequireMCPAuth)).
+		POST("", s.mcpHandler.Handle)
 	mcpAuthed.DELETE("", s.mcpHandler.HandleDelete)
 
 	// OAuth 2.1 authorization server for the MCP resource (spec
@@ -1094,13 +1100,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// ping URL immediately (400 for non-heartbeat checks).
 	orgChecks.POST("/:checkUid/rotate-token", checksHandler.RotateHeartbeatToken)
 
-	// Network discovery routes (authentication + org access required)
+	// Network discovery routes. Registered through orgGroup (rather than a
+	// bare api.NewGroup, as before spec 2026-09-16-09) so the viewer-role
+	// write floor (RequireOrgWrite) applies structurally here too, same as
+	// every other org route — the in-handler isAdmin() checks on the write
+	// endpoints stay on top of it unchanged.
 	discoverySvc := discovery.NewService(
 		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
 	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
-	orgDiscovery := api.NewGroup("/orgs/:org/discovery").
-		Use(orgSlugRedirect.Middleware, authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgDiscovery := orgGroup("/orgs/:org/discovery")
 	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes

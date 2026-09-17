@@ -544,6 +544,24 @@ func extractToken(request *http.Request) string {
 	return parts[1]
 }
 
+// PresentsCredentials reports whether the request carries anything that looks
+// like a credential — an `Authorization` header of any shape, or the auth
+// cookie. It is deliberately broader than extractToken: a malformed or
+// unsupported Authorization header still counts as "this caller is trying to
+// authenticate", so a gate that offers an anonymous path (see
+// mcp.AllowAnonymousHandshake) hands such a request to the real
+// authentication middleware and lets it answer 401, instead of quietly
+// serving it as anonymous.
+func PresentsCredentials(request *http.Request) bool {
+	if request.Header.Get("Authorization") != "" {
+		return true
+	}
+
+	_, err := request.Cookie(CookieAuthToken)
+
+	return err == nil
+}
+
 // GetUserFromContext retrieves the authenticated user from the context.
 func GetUserFromContext(ctx context.Context) (*models.User, bool) {
 	user, userOK := ctx.Value(base.ContextKeyUser).(*models.User)

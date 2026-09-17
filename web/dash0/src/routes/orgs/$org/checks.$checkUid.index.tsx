@@ -100,6 +100,7 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
+import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
@@ -108,6 +109,8 @@ import { isEvaluationOutput } from "@/components/checks/evaluation-card";
 import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
+  BodyAssertionResultCard,
+  BODY_ASSERTION_RESULT_OUTPUT_KEY,
 } from "@/components/checks/json-assertion-result-card";
 import {
   ResponseTimeChart,
@@ -147,6 +150,12 @@ interface CheckDetailSearch {
   graphFrom?: number;
   graphTo?: number;
   graphSelected?: string;
+  /**
+   * Opens the "Publish on a status page" dialog on mount. Deep-linked from the
+   * post-create line on `checks/new` (spec 2026-09-16-11), so the one moment a
+   * user wonders where their new check went is one click from the answer.
+   */
+  publish?: boolean;
 }
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
@@ -177,6 +186,10 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       typeof search.graphSelected === "string" && search.graphSelected !== ""
         ? search.graphSelected
         : undefined,
+    // Same coercion story as graphFull above: the default parser has already
+    // turned "true" into a boolean by the time this runs.
+    publish:
+      search.publish === true || search.publish === "true" ? true : undefined,
   }),
   component: CheckDetailPage,
 });
@@ -726,11 +739,19 @@ function EmailEndpoint({
 function CheckDetailPage() {
   const { t } = useTranslation(["checks", "common"]);
   const { org, checkUid } = Route.useParams();
-  const { graphPeriod, graphFull, region, graphFrom, graphTo, graphSelected } =
-    Route.useSearch();
+  const {
+    graphPeriod,
+    graphFull,
+    region,
+    graphFrom,
+    graphTo,
+    graphSelected,
+    publish,
+  } = Route.useSearch();
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(publish === true);
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
@@ -894,7 +915,8 @@ function CheckDetailPage() {
   // we also pull `output` and badge the evaluations. Deliberately NOT widened
   // for other types: nothing else in this table needs the payload, and the
   // chart-window query (which fetches far more rows) is untouched.
-  const isPassiveCheckType = check?.type === "heartbeat" || check?.type === "email";
+  const isPassiveCheckType =
+    check?.type === "heartbeat" || check?.type === "email";
 
   const { data: results } = useResults(org, {
     checkUid,
@@ -1258,9 +1280,9 @@ function CheckDetailPage() {
               aria-label={t("checks:detail.badges") ?? "Badges"}
             >
               <Link
-                to="/orgs/$org/badges"
-                params={{ org }}
-                search={{ check: check.slug ?? checkUid }}
+                to="/orgs/$org/checks/$checkUid/badges"
+                params={{ org, checkUid }}
+                search={{}}
               >
                 <BadgeCheck className="h-4 w-4 lg:mr-2" />
                 <span className="hidden lg:inline">
@@ -1268,8 +1290,14 @@ function CheckDetailPage() {
                 </span>
               </Link>
             </Button>
+            {/*
+              Opens a dialog rather than navigating straight to the CREATE-a-
+              page form: for an operator who already has a status page, that
+              navigation answered "add this check to my page" by offering a
+              second page (spec 2026-09-16-11). The testid is unchanged so the
+              affordance stays the same one to look for.
+            */}
             <Button
-              asChild
               variant="outline"
               size="icon"
               className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
@@ -1277,18 +1305,13 @@ function CheckDetailPage() {
                 t("checks:detail.publishOnStatusPage") ??
                 "Publish on a status page"
               }
+              onClick={() => setPublishOpen(true)}
+              data-testid="publish-status-page-link"
             >
-              <Link
-                to="/orgs/$org/status-pages/new"
-                params={{ org }}
-                search={{ checkUid }}
-                data-testid="publish-status-page-link"
-              >
-                <Globe className="h-4 w-4 lg:mr-2" />
-                <span className="hidden lg:inline">
-                  {t("checks:detail.publishOnStatusPage")}
-                </span>
-              </Link>
+              <Globe className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">
+                {t("checks:detail.publishOnStatusPage")}
+              </span>
             </Button>
             <Button
               variant="outline"
@@ -1352,6 +1375,15 @@ function CheckDetailPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          {/* Triggerless, controlled publish dialog — also opened by the
+              `?publish=true` deep link from the post-create line. */}
+          <PublishOnStatusPageDialog
+            org={org}
+            check={check}
+            open={publishOpen}
+            onOpenChange={setPublishOpen}
+          />
         </div>
       </div>
 
@@ -1677,6 +1709,7 @@ function CheckDetailPage() {
                               key !== "soonestExpiring" &&
                               key !== IP_VERSION_OUTPUT_KEY &&
                               key !== JSON_ASSERTION_RESULT_OUTPUT_KEY &&
+                              key !== BODY_ASSERTION_RESULT_OUTPUT_KEY &&
                               // Bookkeeping a passive evaluation row stamps on
                               // itself (spec 2026-09-02-04). "evaluation: true"
                               // and a bare uid are noise here; the badge on the
@@ -1739,6 +1772,14 @@ function CheckDetailPage() {
 
       {check.type === "http" && (
         <JsonAssertionResultCard
+          output={
+            check.lastResult?.output as Record<string, unknown> | undefined
+          }
+        />
+      )}
+
+      {check.type === "http" && (
+        <BodyAssertionResultCard
           output={
             check.lastResult?.output as Record<string, unknown> | undefined
           }
@@ -1936,7 +1977,10 @@ function CheckDetailPage() {
                                     setRegion(slug);
                                   }}
                                 >
-                                  {regionDisplayLabel(regionsData?.regions, slug)}
+                                  {regionDisplayLabel(
+                                    regionsData?.regions,
+                                    slug,
+                                  )}
                                 </button>
                               );
                             })()

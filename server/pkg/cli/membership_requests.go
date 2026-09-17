@@ -37,7 +37,6 @@ func membershipRequestsCommand() *cli.Command {
 		Name:    "membership-requests",
 		Aliases: []string{"membership-request", "mr"},
 		Usage:   "Request to join an organization and manage those requests",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:      "request",

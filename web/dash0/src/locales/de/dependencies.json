@@ -33,17 +33,6 @@
   "pickCheck": "Prüfung auswählen…",
   "searchChecks": "Prüfungen suchen…",
   "noMatches": "Keine Treffer.",
-  "list": {
-    "title": "Abhängigkeitsgraph",
-    "subtitle": "Alle gerichteten Abhängigkeiten zwischen Prüfungen in dieser Organisation.",
-    "empty": "Noch keine Abhängigkeiten in dieser Organisation.",
-    "noMatch": "Keine Abhängigkeiten entsprechen Ihrem Filter",
-    "filter": "Nach Prüfungsname filtern",
-    "parent": "Elternteil",
-    "child": "Kind",
-    "kind": "Art",
-    "description": "Beschreibung"
-  },
   "warnings": {
     "confirmationMargin": {
       "title": "Bestätigt schneller, als {{parent}} erkennen kann",

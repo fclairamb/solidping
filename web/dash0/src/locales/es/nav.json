@@ -9,12 +9,12 @@
   "events": "Eventos",
   "integrations": "Integraciones",
   "statusPages": "Páginas de estado",
-  "statusUpdates": "Actualizaciones de estado",
+  "statusUpdates": "Avisos y novedades",
   "maintenanceWindows": "Mantenimiento",
   "badges": "Insignias",
   "discovery": "Descubrimiento",
   "jobs": "Tareas",
-  "myPages": "Mis alertas",
+  "myAlerts": "Mis alertas",
   "testTools": "Herramientas de prueba",
   "designReference": "Referencia de diseño",
   "new": "Nuevo",
@@ -168,5 +168,11 @@
   "audit": "Auditoría",
   "promote": "Promover",
   "sessions": "Sesiones",
-  "parameters": "Parámetros"
+  "parameters": "Parámetros",
+  "groups": {
+    "monitoring": "Supervisión",
+    "alerting": "Alertas",
+    "publicStatus": "Estado público",
+    "administration": "Administración"
+  }
 }

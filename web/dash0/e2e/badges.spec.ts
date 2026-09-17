@@ -46,21 +46,32 @@ async function createExtraChecks(
   }
 }
 
+// The badge builder is a child of the check it belongs to (spec
+// 2026-09-16-08): /orgs/:org/checks/:checkUid/badges. `badgesUrl` builds that
+// path; the legacy org-level /badges?check= URL survives only as a redirect,
+// which the "legacy redirect" cases below pin.
+function badgesUrl(checkId: string, query = ""): string {
+  return `${DASH_BASE}/orgs/test/checks/${checkId}/badges${query}`;
+}
+
 test.describe("Badges", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("should display the badges page and navigate via sidebar", async ({
+  test("opens from the check detail Badges button, with no check picker", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Entry ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
 
-    // Navigate via sidebar
-    await page
-      .getByTestId("app-sidebar")
-      .getByRole("link", { name: "Badges" })
-      .click();
+    // The builder is reached from the check it belongs to, not from a global
+    // sidebar entry.
+    await page.goto(`${DASH_BASE}/orgs/test/checks/${check.uid}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByLabel("Badges").click();
 
-    await page.waitForURL(/\/badges/);
+    await page.waitForURL(`**${badgesUrl(check.uid)}`);
     await page.waitForLoadState("networkidle");
 
     // Verify page heading
@@ -68,8 +79,12 @@ test.describe("Badges", () => {
       page.getByRole("heading", { name: "Badges", exact: true })
     ).toBeVisible();
 
-    // Verify configuration panel is visible
-    await expect(page.getByTestId("badge-check-select")).toBeVisible();
+    // The check comes from the path — there is no picker to select one, and no
+    // "select a check" empty state.
+    await expect(page.getByTestId("badge-check-select")).toHaveCount(0);
+    await expect(
+      page.getByText("Select a check to preview and generate badges")
+    ).toHaveCount(0);
 
     // Verify component checkboxes are present (format select is gone)
     await expect(page.getByTestId("badge-component-status")).toBeVisible();
@@ -84,16 +99,11 @@ test.describe("Badges", () => {
     // Status is checked by default
     await expect(page.getByTestId("badge-component-status")).toBeChecked();
 
-    // Verify placeholder text when no check is selected
-    await expect(
-      page.getByText("Select a check to preview and generate badges")
-    ).toBeVisible();
-
     // Download card must NOT exist
     await expect(page.getByText("Download the badge in different formats")).not.toBeVisible();
   });
 
-  test("should select a check and show preview with download buttons in header", async ({
+  test("shows the preview with download buttons in the header", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -101,30 +111,13 @@ test.describe("Badges", () => {
     const checkName = `Badge E2E ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    // Navigate to badges page
-    await page.goto(`${DASH_BASE}/orgs/test/badges`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-
-    // Select the check via the live-search picker: open, type, pick.
-    await page.getByTestId("badge-check-select").click();
-    await page.getByPlaceholder("Search checks").fill(checkName);
-    await page.getByTestId(`check-picker-option-${check.slug}`).click();
-
-    // Verify check was selected
-    await expect(page.getByTestId("badge-check-select")).toContainText(
-      checkName,
-      { timeout: 5000 }
-    );
 
     // Verify preview appears
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
     });
-
-    // Verify URL updated with check param (slug preferred over uid)
-    const url = new URL(page.url());
-    const checkParam = url.searchParams.get("check");
-    expect(checkParam).toBe(check.slug || check.uid);
 
     // Verify embed codes appear
     await expect(page.getByTestId("badge-embed-url")).toBeVisible();
@@ -141,7 +134,7 @@ test.describe("Badges", () => {
     // Verify embed URL contains the check identifier and default components
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain("/badges/status");
-    expect(urlText).toContain("/orgs/test/checks/");
+    expect(urlText).toContain(`/orgs/test/checks/${check.slug || check.uid}/`);
   });
 
   test("should toggle Availability checkbox on and update preview URL", async ({
@@ -152,7 +145,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Avail ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -184,7 +177,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Fallback ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -207,7 +200,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Rows ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     const img = page.getByTestId("badge-preview-img");
     await expect(img).toBeVisible({ timeout: 10000 });
@@ -242,7 +235,7 @@ test.describe("Badges", () => {
     const checkName = `Badge No Bar ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -267,7 +260,7 @@ test.describe("Badges", () => {
     const checkName = `Badge DL SVG ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -287,7 +280,7 @@ test.describe("Badges", () => {
     const checkName = `Badge DL PNG ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -307,7 +300,7 @@ test.describe("Badges", () => {
     const checkName = `Badge No Card ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -325,7 +318,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Period Vis ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -354,19 +347,15 @@ test.describe("Badges", () => {
     const token = await getAuthToken(page);
     const checkName = `Badge Restore ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
-    const slug = check.slug;
 
     // Navigate directly with all params in URL
     await page.goto(
-      `${DASH_BASE}/orgs/test/badges?check=${slug}&components=availability&period=7d&style=flat-square&label=My+Badge`
+      badgesUrl(
+        check.uid,
+        "?components=availability&period=7d&style=flat-square&label=My+Badge"
+      )
     );
     await page.waitForLoadState("networkidle");
-
-    // Verify check is pre-selected
-    await expect(page.getByTestId("badge-check-select")).toContainText(
-      checkName,
-      { timeout: 10000 }
-    );
 
     // Availability should be checked
     await expect(page.getByTestId("badge-component-availability")).toBeChecked();
@@ -402,7 +391,7 @@ test.describe("Badges", () => {
     const checkName = `Badge Label ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -431,7 +420,7 @@ test.describe("Badges", () => {
 
     // Navigate with non-default components
     await page.goto(
-      `${DASH_BASE}/orgs/test/badges?check=${check.slug}&components=availability&period=7d&style=flat-square`
+      badgesUrl(check.uid, "?components=availability&period=7d&style=flat-square")
     );
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
@@ -452,8 +441,10 @@ test.describe("Badges", () => {
     // style should be stripped from URL (it's the default)
     expect(new URL(page.url()).searchParams.has("style")).toBe(false);
 
-    // check param should remain
-    expect(new URL(page.url()).searchParams.get("check")).toBe(check.slug);
+    // The check stays in the path — it is not a search param any more.
+    expect(new URL(page.url()).pathname).toBe(
+      `${DASH_BASE}/orgs/test/checks/${check.uid}/badges`
+    );
   });
 
   test("width input updates badge URL after blur", async ({
@@ -465,9 +456,7 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     // Enable uptime-bar so the width input is visible
-    await page.goto(
-      `${DASH_BASE}/orgs/test/badges?check=${check.slug}&components=status,uptime-bar`
-    );
+    await page.goto(badgesUrl(check.uid, "?components=status,uptime-bar"));
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
@@ -496,40 +485,34 @@ test.describe("Badges", () => {
       .toBe("500");
   });
 
-  test("back-to-check link is shown for the selected check and navigates to it", async ({
+  test("breadcrumb reads Checks > check > Badges and the check crumb links back", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
-    const checkName = `Badge Back Link ${Date.now()}`;
+    const checkName = `Badge Crumb ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${check.slug}`);
+    await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
 
-    // Link is visible, shows the check name, and uses the back arrow.
-    const backLink = page.getByTestId("badge-back-to-check");
-    await expect(backLink).toBeVisible();
-    await expect(backLink).toHaveText(checkName);
+    const header = page.locator("header");
 
-    // Clicking navigates to the canonical check detail route keyed on uid.
-    await backLink.click();
+    // The leaf crumb names this page (the old ad-hoc back-link is gone).
+    await expect(page.getByTestId("badge-back-to-check")).toHaveCount(0);
+    await expect(header.getByTestId("badge-breadcrumb")).toBeVisible();
+
+    // The section crumb links back to the list...
+    await expect(header.getByRole("link", { name: /^checks$/i })).toBeVisible();
+
+    // ...and the check crumb links back to the check it belongs to.
+    const checkCrumb = header.getByRole("link", { name: checkName });
+    await expect(checkCrumb).toBeVisible();
+    await checkCrumb.click();
     await page.waitForURL(`**${DASH_BASE}/orgs/test/checks/${check.uid}`);
     expect(new URL(page.url()).pathname).toBe(
       `${DASH_BASE}/orgs/test/checks/${check.uid}`
     );
-  });
-
-  test("back-to-check link is absent when no check is selected", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-
-    await page.goto(`${DASH_BASE}/orgs/test/badges`);
-    await page.waitForLoadState("networkidle");
-
-    // No check selected → the back link must not exist.
-    await expect(page.getByTestId("badge-back-to-check")).toHaveCount(0);
   });
 
   test("downloads SVG of a multi-row badge", async ({ authenticatedPage }) => {
@@ -539,7 +522,7 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(
-      `${DASH_BASE}/orgs/test/badges?check=${check.slug}&components=status,uptime-bar,response-time-graph`
+      badgesUrl(check.uid, "?components=status,uptime-bar,response-time-graph")
     );
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
@@ -556,45 +539,46 @@ test.describe("Badges", () => {
     expect(download.suggestedFilename()).toContain(".svg");
   });
 
-  test("deep-link by slug resolves a check beyond the first list page", async ({
+  test("legacy /badges?check=<slug> redirects to the check's builder", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
 
     // Create the target FIRST, then 25 newer checks so the target sorts past
-    // index 20 (created_at DESC) and is absent from the first list page (20).
+    // index 20 (created_at DESC) and is absent from the first list page (20) —
+    // the redirect resolves the slug with a direct fetch, not a list lookup.
     const targetName = `Badge OOP Slug ${Date.now()}`;
     const target = await createCheck(page, token, targetName);
     await createExtraChecks(page, token, `OOP Slug ${Date.now()}`, 25);
 
-    // Deep-link by slug to the out-of-page check.
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${target.slug}`);
+    // The legacy URL, with builder params that must survive the redirect.
+    await page.goto(
+      `${DASH_BASE}/orgs/test/badges?check=${target.slug}&components=availability&period=7d`
+    );
+    await page.waitForURL(`**${badgesUrl(target.uid)}*`, { timeout: 15000 });
     await page.waitForLoadState("networkidle");
 
-    // The preview + embed URL render — the "select a check" prompt is NOT shown.
+    // The slug resolved to the canonical uid path...
+    expect(new URL(page.url()).pathname).toBe(
+      `${DASH_BASE}/orgs/test/checks/${target.uid}/badges`
+    );
+    // ...and every other search param came along.
+    const params = new URL(page.url()).searchParams;
+    expect(params.get("components")).toBe("availability");
+    expect(params.get("period")).toBe("7d");
+    expect(params.has("check")).toBe(false);
+
+    // The builder renders for the resolved check.
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByTestId("badge-embed-url")).toBeVisible();
-    await expect(
-      page.getByText("Select a check to preview and generate badges")
-    ).not.toBeVisible();
     await expect(page.getByTestId("badge-check-not-found")).toHaveCount(0);
-
-    // The embed URL points at the target check's identifier.
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain(`/checks/${target.slug}/badges/`);
-
-    // The picker trigger shows the deep-linked check's name (resolved via the
-    // direct check fetch, not the picker's own search results).
-    await expect(page.getByTestId("badge-check-select")).toContainText(
-      targetName,
-      { timeout: 5000 }
-    );
   });
 
-  test("deep-link by uid resolves a check beyond the first list page", async ({
+  test("legacy /badges?check=<uid> redirects to the check's builder", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -604,91 +588,67 @@ test.describe("Badges", () => {
     const target = await createCheck(page, token, targetName);
     await createExtraChecks(page, token, `OOP Uid ${Date.now()}`, 25);
 
-    // Deep-link by uid resolves identically to the slug case.
+    // A uid deep link resolves identically to the slug case.
     await page.goto(`${DASH_BASE}/orgs/test/badges?check=${target.uid}`);
+    await page.waitForURL(`**${badgesUrl(target.uid)}`, { timeout: 15000 });
     await page.waitForLoadState("networkidle");
 
+    expect(new URL(page.url()).pathname).toBe(
+      `${DASH_BASE}/orgs/test/checks/${target.uid}/badges`
+    );
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
     });
-    await expect(
-      page.getByText("Select a check to preview and generate badges")
-    ).not.toBeVisible();
     await expect(page.getByTestId("badge-check-not-found")).toHaveCount(0);
-
-    // Dropdown trigger shows the resolved check's name.
-    await expect(page.getByTestId("badge-check-select")).toContainText(
-      targetName,
-      { timeout: 5000 }
-    );
   });
 
-  test("live search filters checks server-side and selects one beyond the first page", async ({
+  test("legacy /badges with no check lands on the check list", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    const token = await getAuthToken(page);
-
-    // Create the target FIRST, then 25 newer checks so the target sorts past
-    // the picker's initial (empty-query) result page of 25 (created_at DESC).
-    const marker = Date.now();
-    const targetName = `Badge LiveSearch Needle ${marker}`;
-    const target = await createCheck(page, token, targetName);
-    await createExtraChecks(page, token, `LiveSearch ${marker}`, 25);
 
     await page.goto(`${DASH_BASE}/orgs/test/badges`);
+    await page.waitForURL(`**${DASH_BASE}/orgs/test/checks`, { timeout: 15000 });
     await page.waitForLoadState("networkidle");
 
-    // Open the picker: the initial result page shows the newer fillers only.
-    await page.getByTestId("badge-check-select").click();
-    await expect(
-      page.locator('[data-testid^="check-picker-option-"]').first()
-    ).toBeVisible({ timeout: 10000 });
-    await expect(
-      page.getByTestId(`check-picker-option-${target.slug}`)
-    ).toHaveCount(0);
-
-    // Type part of the target's name → the server-side filtered match appears.
-    await page.getByPlaceholder("Search checks").fill(`Needle ${marker}`);
-    const option = page.getByTestId(`check-picker-option-${target.slug}`);
-    await expect(option).toBeVisible({ timeout: 10000 });
-    await option.click();
-
-    // The trigger shows the picked check's name and ?check=<slug> lands in the URL.
-    await expect(page.getByTestId("badge-check-select")).toContainText(
-      targetName,
-      { timeout: 10000 }
-    );
-    await expect
-      .poll(() => new URL(page.url()).searchParams.get("check"), {
-        timeout: 5000,
-      })
-      .toBe(target.slug || target.uid);
-
-    // The badge preview renders and the embed URL points at the target check.
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
-      timeout: 10000,
-    });
-    const urlText = await page.getByTestId("badge-embed-url").textContent();
-    expect(urlText).toContain(`/checks/${target.slug || target.uid}/badges/`);
+    expect(new URL(page.url()).pathname).toBe(`${DASH_BASE}/orgs/test/checks`);
+    // No builder is rendered by the legacy route — it only redirects.
+    await expect(page.getByTestId("badge-component-status")).toHaveCount(0);
   });
 
-  test("unknown check param shows a not-found notice, not a blank pane", async ({
+  test("unknown check in the path shows a not-found notice, not a blank pane", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
 
-    await page.goto(`${DASH_BASE}/orgs/test/badges?check=does-not-exist-${Date.now()}`);
+    const missing = `does-not-exist-${Date.now()}`;
+    await page.goto(badgesUrl(missing));
     await page.waitForLoadState("networkidle");
 
-    // The not-found alert is shown; no preview and no redirect away from /badges.
+    // The route's 404: the not-found alert, no preview, and no redirect away.
     await expect(page.getByTestId("badge-check-not-found")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.getByTestId("badge-preview-img")).toHaveCount(0);
-    await expect(
-      page.getByText("Select a check to preview and generate badges")
-    ).not.toBeVisible();
-    expect(new URL(page.url()).pathname).toBe(`${DASH_BASE}/orgs/test/badges`);
+    expect(new URL(page.url()).pathname).toBe(
+      `${DASH_BASE}/orgs/test/checks/${missing}/badges`
+    );
+  });
+
+  test("legacy /badges with an unknown check forwards to the route's 404", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const missing = `does-not-exist-${Date.now()}`;
+    await page.goto(`${DASH_BASE}/orgs/test/badges?check=${missing}`);
+    await page.waitForURL(`**${badgesUrl(missing)}`, { timeout: 15000 });
+    await page.waitForLoadState("networkidle");
+
+    // One not-found state, owned by the builder route — the legacy URL has
+    // none of its own.
+    await expect(page.getByTestId("badge-check-not-found")).toBeVisible({
+      timeout: 10000,
+    });
   });
 });

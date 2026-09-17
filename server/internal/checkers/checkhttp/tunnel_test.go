@@ -51,8 +51,8 @@ func TestExecuteThroughTunnel(t *testing.T) {
 	checker := &checkhttp.HTTPChecker{}
 	config := &checkhttp.HTTPConfig{}
 	r.NoError(config.FromMap(map[string]any{
-		"url":           "http://" + tunnelHost + "/",
-		"body_contains": "private-service-ok",
+		"url":         "http://" + tunnelHost + "/",
+		"body_expect": "private-service-ok",
 	}))
 
 	ctx := checkerdef.WithTunnelDialer(t.Context(), dialer)

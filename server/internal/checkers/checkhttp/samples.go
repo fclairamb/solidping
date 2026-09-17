@@ -220,6 +220,32 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 			}).GetConfig(),
 		},
 		{
+			// Demonstrates bodyAssertions on a text/plain endpoint: the
+			// ASP.NET Core health-check convention, where MapHealthChecks
+			// returns a bare "Healthy" / "Degraded" / "Unhealthy" word with a
+			// 200 for the first two. Asserting only the status code reports a
+			// DEGRADED service as up, and `body_expect: HEALTHY` would match
+			// "UNHEALTHY" — exact equality is the only correct matcher here.
+			//
+			// ignoreCase covers both the framework's "Healthy" and a custom
+			// writer's "HEALTHY"; eq trims surrounding whitespace, so a
+			// trailing newline does not break the check.
+			Name:   "ASP.NET Core health endpoint",
+			Slug:   "http-aspnet-health",
+			Period: time.Minute,
+			Config: (&HTTPConfig{
+				URL:                 "https://api.acme.com/health",
+				Method:              methodGET,
+				ExpectedStatusCodes: []string{statusCodePattern2XX},
+				BodyAssertions: &AssertionNode{
+					Type:       NodeTypeAssertion,
+					Operator:   "eq",
+					Value:      "Healthy",
+					IgnoreCase: true,
+				},
+			}).GetConfig(),
+		},
+		{
 			// Demonstrates followRedirects: false — httpbin.org/status/301
 			// always responds with a bare 301 and no Location header, so
 			// asserting expectedStatus: 301 here only passes when the

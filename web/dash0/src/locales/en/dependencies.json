@@ -33,17 +33,6 @@
   "pickCheck": "Pick a check…",
   "searchChecks": "Search checks…",
   "noMatches": "No matches.",
-  "list": {
-    "title": "Dependency graph",
-    "subtitle": "All directed dependencies between checks in this organization.",
-    "empty": "No dependencies in this organization yet.",
-    "noMatch": "No dependencies match your filter",
-    "filter": "Filter by check name",
-    "parent": "Parent",
-    "child": "Child",
-    "kind": "Kind",
-    "description": "Description"
-  },
   "warnings": {
     "confirmationMargin": {
       "title": "Confirms faster than {{parent}} can detect",

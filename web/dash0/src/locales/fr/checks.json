@@ -331,7 +331,8 @@
     "summaryHardDeps_other": "{{count}} fortes",
     "summarySoftDeps_one": "{{count}} faible",
     "summarySoftDeps_other": "{{count}} faibles",
-    "regionsIpv6Hint": "Ce contrôle est fixé à IPv6. Les régions dont les workers actifs signalent une sortie IPv6 sont listées en premier — les autres restent sélectionnables, et une région marquée « IPv6 inconnu » n'a simplement pas encore fait de rapport."
+    "regionsIpv6Hint": "Ce contrôle est fixé à IPv6. Les régions dont les workers actifs signalent une sortie IPv6 sont listées en premier — les autres restent sélectionnables, et une région marquée « IPv6 inconnu » n'a simplement pas encore fait de rapport.",
+    "groupEmptyHint": "Vous n'avez pas encore de groupe. Un groupe est un ensemble exclusif de checks liés : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un pour commencer."
   },
   "types": {
     "http": "HTTP",
@@ -747,6 +748,23 @@
   },
   "jsonAssertions": "Assertions JSON",
   "jsonAssertionsDescription": "Valide des champs du corps de la réponse JSON via une expression JSONPath.",
+  "bodyAssertions": "Assertions sur le corps",
+  "bodyAssertionsDescription": "Valide le corps de la réponse en texte brut. « égal à » compare le corps entier, espaces de début et de fin supprimés : un endpoint de santé ASP.NET Core renvoyant « Healthy\\n » correspond donc à égal à « Healthy » avec Ignorer la casse. « contient », « ne contient pas » et « correspond à la regex » voient le corps tel quel.",
+  "assertionIgnoreCase": "Ignorer la casse",
+  "assertionSubjectBody": "corps de la réponse",
+  "assertionOperators": {
+    "eq": "égal à",
+    "neq": "différent de",
+    "gt": "supérieur à",
+    "gte": "supérieur ou égal à",
+    "lt": "inférieur à",
+    "lte": "inférieur ou égal à",
+    "contains": "contient",
+    "not_contains": "ne contient pas",
+    "regex": "correspond à la regex",
+    "exists": "existe",
+    "not_exists": "n'existe pas"
+  },
   "addJsonAssertion": "Ajouter une assertion",
   "addGroup": "Ajouter un groupe",
   "jsonPath": "JSONPath",
@@ -966,7 +984,7 @@
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",
-    "sftpFingerprintHelp": "\u00c9pingle la cl\u00e9 d'h\u00f4te du serveur. Laisser vide pour accepter n'importe quelle cl\u00e9 \u2014 l'empreinte pr\u00e9sent\u00e9e par le serveur est toujours report\u00e9e dans la sortie du check, pour pouvoir la recopier ici ensuite.",
+    "sftpFingerprintHelp": "Épingle la clé d'hôte du serveur. Laisser vide pour accepter n'importe quelle clé — l'empreinte présentée par le serveur est toujours reportée dans la sortie du check, pour pouvoir la recopier ici ensuite.",
     "fingerprintHelpPrefix": "Vérifie l'identité du serveur à chaque contrôle, et est requis pour utiliser ce contrôle comme",
     "tunnelBastionLabel": "Passer par un tunnel SSH",
     "fingerprintHelpSuffix": "bastion pour d'autres contrôles. Obtenez-la avec",
@@ -1076,5 +1094,29 @@
     "issuer": "Émetteur",
     "notAfter": "Expiration",
     "daysRemaining": "Jours restants"
+  },
+  "publish": {
+    "title": "Publier sur une page de statut",
+    "description": "Ajoutez ce contrôle à une page de statut existante, ou créez-en une nouvelle.",
+    "add": "Ajouter",
+    "addFailed": "Impossible d'ajouter ce contrôle à cette section.",
+    "added": "Ajouté à « {{section}} » sur {{page}}.",
+    "alreadyTitle": "Déjà sur une page de statut",
+    "sectionAlready": "Déjà présent",
+    "noSections": "Cette page n'a encore aucune section.",
+    "noStatusPages": "Vous n'avez encore aucune page de statut. Créez-en une pour publier ce contrôle.",
+    "createNew": "Créer une page de statut",
+    "via": {
+      "direct": "{{page}} — dans la section « {{section}} ».",
+      "group": "{{page}} — dans « {{section}} », via son groupe de contrôles. Le groupe est publié comme un seul composant, ce contrôle y est donc déjà inclus.",
+      "selector": "{{page}} — dans « {{section}} », via la règle d'appartenance de cette section. Les contrôles correspondants y sont ajoutés automatiquement."
+    },
+    "postCreateOn": "Publié sur {{page}}, dans la section « {{section}} ».",
+    "postCreateNone": "Sur aucune page de statut pour l'instant.",
+    "postCreateAction": "Le publier"
+  },
+  "noGroupsYet": {
+    "title": "Aucun groupe de checks",
+    "description": "Un groupe rassemble des checks liés dans un ensemble exclusif : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un avec le bouton Nouveau groupe ci-dessus."
   }
 }

@@ -7,7 +7,13 @@ title: Network Discovery
 
 Discovery scans a network for monitorable hosts and turns what it finds into
 suggested checks — a faster start than adding checks one at a time. Find it
-under **Discovery** in the dashboard (`/orgs/:org/discovery`).
+under **Organization → Discovery** in the dashboard
+(`/orgs/:org/organization/discovery`).
+
+Discovery is **admin-only**: starting a scan, promoting a discovered check,
+cancelling a scan and dismissing findings all require an organization admin
+(or owner). Other members can't reach the page at all — it lives under the
+Organization section, which is admin-only end to end.
 
 Only **one scan can run per organization at a time**; starting a new one while
 another is still running or pending is rejected until you stop or wait for

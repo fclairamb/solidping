@@ -16,7 +16,7 @@
   "refresh": "Actualiser",
   "selectCheckPrompt": "Sélectionnez une vérification pour prévisualiser et générer les badges",
   "checkNotFoundTitle": "Vérification introuvable",
-  "checkNotFound": "Nous n'avons pas trouvé la vérification de ce lien. Elle a peut-être été supprimée ou renommée. Choisissez une vérification ci-dessus pour continuer.",
+  "checkNotFound": "Nous n'avons pas trouvé cette vérification. Elle a peut-être été supprimée ou renommée. Revenez à la liste des vérifications pour en choisir une autre.",
   "downloadFailed": "Échec du téléchargement du badge",
   "downloadSvg": "SVG",
   "downloadPng": "PNG",

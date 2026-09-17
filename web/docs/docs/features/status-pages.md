@@ -18,6 +18,36 @@ Status pages provide a real-time view of your monitored services. Each organizat
 - Recent incident history
 - Locale-aware date and time formatting
 
+## A new check isn't showing up
+
+You created a check and the status page still doesn't list it. Nothing is
+broken: a section decides what it contains, and there are three ways it can
+decide.
+
+| The section's membership mode | What happens to a check created later |
+|---|---|
+| **Manual** (the default) | Nothing. You add each component yourself. |
+| **All checks** | It appears on its own, as soon as it exists. |
+| **By label** | It appears on its own, if it carries all of the rule's labels. |
+
+Every section that already exists is **manual**, because auto-inclusion is never
+applied to a page you did not ask for it on — on a public page it is a
+disclosure decision, not a convenience.
+
+Two ways to fix it:
+
+- **Add this one check.** On the check's page, click **Publish on a status
+  page** and pick the section. If the check is already published — directly,
+  through its check group, or through a membership rule — the dialog says so
+  instead of adding it twice.
+- **Stop doing it by hand.** Open the status page, edit the section, and set
+  **Membership** to *All checks* or *By label*. From then on, matching checks
+  appear by themselves. See [Dynamic sections](#dynamic-sections).
+
+On a public page, prefer **By label** with an opt-in label such as
+`public=true`: *All checks* publishes every future check the moment it is
+created, including scratch checks named after internal hostnames.
+
 ## Structure
 
 A status page is organized into **sections** and **resources**:
@@ -104,11 +134,18 @@ Internal checks are never matched by either rule.
 
 ### Recommended: label opt-in
 
-Prefer **By label** with a label you control, such as `public=true`:
+Prefer **By label** with a label you control, such as `public=true`
+(see [Labels](./labels.md)):
 
 ```bash
-sp checks update payments-api --label public=true
+curl -X PATCH http://localhost:4000/api/v1/orgs/default/checks/payments-api \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"labels": {"public": "true"}}'
 ```
+
+You can also set it in the check form's **Labels** field, or in a
+[config-as-code](./config-as-code.md) document.
 
 This inverts the risk. With **All checks**, every check you create is published
 unless you remember to stop it. With a label, a check is private until someone
@@ -156,6 +193,37 @@ Private and password-protected pages carry no such risk, and no warning.
 Two things keep the page honest: a rule is re-applied immediately after any
 check is created, updated or deleted, and re-applied again when the page is
 viewed, so a component can never quietly go missing.
+
+### Publishing "a whole group": two mechanisms, not one
+
+"Show everything in that group" has two answers in SolidPing, and they are not
+interchangeable — they differ in what a visitor sees. A membership rule only
+ever adds **individual checks**; it never adopts a group.
+
+| | **Group component** | **Label rule** |
+|---|---|---|
+| What you configure | A resource targeting a check **group** | A section whose membership is **By label** |
+| What the page shows | **One** component for the whole group | **One component per matching check** |
+| Member names, types, count | Never published | Published, one row each |
+| Status | Rolled up: degraded when some members are down | Each check's own status, side by side |
+| Availability | Weighted average across members | Per check |
+| Response-time chart | None | One per check |
+| A new check joins | Appears inside the roll-up as soon as it joins the group | Appears as a new row as soon as it carries the labels |
+| Removing one | Move the check out of the group | Remove the label from the check |
+
+Pick the **group component** when the group is an implementation detail — four
+probes against one host, say — and the public page should show one service.
+Pick the **label rule** when each matching check is a service your visitors
+recognize by name and want to see the status of individually.
+
+They compose — a page can carry a hand-curated section of group components and a
+dynamic section of labelled checks — but they do not know about each other. A
+rule deduplicates against **individual** check components anywhere on the page,
+and against other rules; it does **not** look inside a group component. So a
+check that is both a member of a published group and matched by a label rule is
+published twice: once folded into the group's roll-up, once as its own row. If
+that is not what you want, drop the label on the member checks you publish
+through the group.
 
 ### Via the API
 
@@ -320,6 +388,40 @@ A status page shows two different things, and it is worth keeping them apart:
   on its own;
 - **incidents** — the narrative. A title, a state, and an append-only list of
   updates explaining what is going on.
+
+### Page, publication, update
+
+Three things in this family have similar names and mean different things. The
+whole section below reads more easily once they are apart:
+
+| Term | What it is | Where you edit it |
+|---|---|---|
+| **Status page** | the public site itself — its components, branding, domain and settings | **Status pages** |
+| **Incident publication** | one public incident on that page: a customer-readable title, a public state, and the thread of updates under it | **Status pages → the page → the incident** |
+| **Status update** | one post on the timeline | **Updates & notices**, or from inside a publication |
+
+**A publication is not the incident.** The operational incident is the internal
+record: it carries acknowledgement and snooze metadata, an auto-generated
+internal title and raw probe diagnostics, none of which may ever reach a
+customer. The publication is the overlay that says "this incident is visible on
+this status page, under this customer-readable title, in this state". A
+publication can also exist with no incident behind it at all — that is what you
+get when you write one by hand.
+
+**An update is one post.** It always belongs to a status page. When it is
+threaded under a publication it is one entry in that incident's timeline, and
+the list on **Updates & notices** links back to the publication it belongs to.
+An update can equally stand alone: a `maintenance` notice or an `info`
+announcement has no incident behind it and links nowhere. Updates written by
+the auto-publish pipeline have no author; ones you write do.
+
+**The public state vocabulary is deliberately its own.** A publication walks
+`investigating → identified → monitoring → resolved`, which is the vocabulary
+customers already read on the timeline. The internal incident is simply active
+or resolved. The two are kept separate on purpose: moving a publication to
+`monitoring` is a statement to your customers, not a change to the operational
+record, and a resolved incident whose publication is still `investigating` is a
+real (and visible) state you can be in.
 
 Before this feature, only the grid was automatic: a check going down turned a
 dot red and said nothing else. If nobody was awake to write an update, visitors

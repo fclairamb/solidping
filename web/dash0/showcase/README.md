@@ -1,11 +1,18 @@
 # Showcase media pipeline
 
-Drives the **real dash0 UI** with Playwright and produces the screenshots and
-screen recording embedded in the docs [Tour page](../../docs/docs/tour.mdx).
+Produces every published picture of SolidPing: the screen recording on the docs
+[Tour page](../../docs/docs/tour.mdx), the GIF at the top of the root
+[`README.md`](../../../README.md), and the three stills both of them embed.
+
+Two sources go in — a `vhs` render of the published `docker run` one-liner
+actually booting the shipped image, and a Playwright take driving the **real
+dash0 UI** — and one cut comes out, published as AV1, H.264, a GIF and three
+PNGs.
 
 The point is that the media is **regenerable**: when the UI changes, re-run the
 pipeline instead of hand-recapturing, so the published assets can never quietly
-rot.
+rot. Nothing under `res/screenshots/` is hand-copied any more — spec
+2026-09-16-05 moved that last manual step into `postprocess.ts`.
 
 ## This is not a test suite
 
@@ -19,10 +26,11 @@ The showcase project lives outside `web/dash0/e2e/` on purpose:
 There is **no CI job and no scheduled regeneration**. It is a manual
 `make showcase` only.
 
-The one part of it that *is* covered by CI is `crop-window.ts`, the pure
-cue-list → crop-window generator: `bun run test:unit` picks up
-`showcase/**/*.test.ts`. Everything else needs a browser and ffmpeg, so it is
-checked by looking at the output.
+The parts of it that *are* covered by CI are the pure ones — `crop-window.ts`
+(cue list → crop window), `segment-plan.ts` (cue list → segments, captions and
+filter strings) and `tape.ts` (the terminal tape's own guarantees):
+`bun run test:unit` picks up `showcase/**/*.test.ts`. Everything else needs a
+browser, Docker and ffmpeg, so it is checked by looking at the output.
 
 ## The recording org — nothing on camera is a test fixture
 
@@ -59,10 +67,13 @@ Since spec 2026-08-23-04 a **fresh default-mode database seeds
 the session it returns reaches only `POST /auth/change-password`,
 `GET /auth/me` and `POST /auth/logout`; everything else answers
 `403 PASSWORD_CHANGE_REQUIRED` (`server/internal/middleware/auth.go`). Between
-2026-08-25 and this change that silently broke the side-car recipe below: the
-run died on its very next call, `POST /api/v1/orgs`.
+2026-08-25 and spec 2026-09-05-03 that silently broke the side-car recipe below:
+the run died on its very next call, `POST /api/v1/orgs`.
 
-`apiLogin()` now handles it:
+**Since spec 2026-09-16-05 the rotation is the second beat of the published
+cut** — `uiFirstLogin()` drives it through the real form, and the API bootstrap
+only runs afterwards. `apiLogin()` still handles the rotation for the SMS
+capture and for a rerun, and it is what the notes below describe:
 
 - it detects the flag (on the login response, double-checked against
   `GET /auth/me`) and rotates the password to `SHOWCASE_ROTATED_PASSWORD`;
@@ -71,32 +82,105 @@ run died on its very next call, `POST /api/v1/orgs`.
   with `400 VALIDATION_ERROR` ("new password must be different from the current
   one", pinned by `server/internal/handlers/auth/change_password_handler_test.go`).
   That is why the default is `showcase-rotated-pass` and not `solidpass`;
-- a rerun against a database this pipeline already rotated works: the seeded
-  password is tried first, and the rotated one on a `401`.
+- a rerun against a database this pipeline already rotated works *for
+  `apiLogin()`*: the seeded password is tried first, and the rotated one on a
+  `401`. **`uiFirstLogin()` deliberately does not do this** — it needs the
+  rotation screen to actually appear, so it fails with an actionable error
+  instead of quietly filming a plain sign-in. The main take therefore wants a
+  genuinely fresh database every time.
 
 Both facts are logged on every run, so nobody has to read this file to find out
 why their side-car's admin password changed. If you point the pipeline at a
 server you care about, that password change is permanent — one more reason to
 use the disposable side-car.
 
-## Running it
+## Prerequisites
 
-Needs a running SolidPing server and `ffmpeg` on `PATH`, built with **both**
-`libsvtav1` (AV1) and `libx264` (the H.264 fallback):
+- a running SolidPing server (see the side-car recipes below);
+- **`ffmpeg`** on `PATH`, built with **both** `libsvtav1` (AV1) and `libx264`
+  (the H.264 fallback);
+- **`vhs`**, for the terminal segment;
+- **Docker**, because that segment runs the published image for real.
 
 ```bash
-brew install ffmpeg                  # macOS
-sudo apt-get install -y ffmpeg       # Debian/Ubuntu
+brew install ffmpeg vhs                        # macOS
+sudo apt-get install -y ffmpeg                 # Debian/Ubuntu
+go install github.com/charmbracelet/vhs@latest # any platform, then put
+                                               # $(go env GOPATH)/bin on PATH
 ```
+
+`drawtext` is deliberately **not** required: Homebrew's current ffmpeg bottle is
+built without libfreetype, so the burned-in captions are drawn in the browser
+Playwright already ships and composited with `overlay` (`labels.ts`).
+
+## Running it
 
 Against a **disposable side-car server** — the recommended way, for data-safety
 reasons as much as to leave a `make dev` loop on :4000 alone (see the warning
 below). Note: **default** run mode, no `SP_RUNMODE=test`:
 
 ```bash
-mkdir -p /tmp/showcase-db
+rm -rf /tmp/showcase-db && mkdir -p /tmp/showcase-db
 PORT=4321 SP_DB_TYPE=sqlite SP_DB_DIR=/tmp/showcase-db ./solidping serve &
-E2E_BASE_URL=http://localhost:4321/dash0/ make showcase
+E2E_BASE_URL=http://localhost:4321/d/ make showcase
+```
+
+**This single-node recipe is the fallback, not the one the committed cut uses.**
+A single node offers one region, the check form hides its region picker below
+two (`availableRegions.length > 1` in `check-form.tsx`), and the multi-region
+beat — the headline difference from Uptime Kuma — never reaches the camera. Use
+the two-node recipe below unless you only need a quick re-cut.
+
+Note the **`rm -rf`**: the take now films the forced password rotation, which a
+fresh default-mode database imposes and an already-used one does not. Recording
+against a database this pipeline has run against before fails with an
+actionable error rather than quietly filming a plain login.
+
+### The two-node recipe — the one that puts regions on camera
+
+Two nodes sharing one Postgres database, in two regions, both declared through
+`SP_REGIONS` (the JSON seed for the `regions` system parameter,
+`server/internal/app/regions_seed.go` — a worker's own `SP_NODE_REGION` does not
+create a region definition, it only picks one). Postgres because two processes
+must share a database, on the dev instance from `docker-compose.yml` (port
+`55432`) but in a **throwaway database of its own**:
+
+```bash
+# A database this pipeline owns and can drop. NOT the dev `solidping` one.
+PGPASSWORD=postgres psql -h localhost -p 55432 -U postgres \
+  -c "DROP DATABASE IF EXISTS solidping_showcase" \
+  -c "CREATE DATABASE solidping_showcase"
+
+export SP_DB_TYPE=postgres
+export SP_DB_URL='postgres://postgres:postgres@localhost:55432/solidping_showcase?sslmode=disable'
+
+# Node A: the API, the jobs, and a check worker in eu-west. It is the one that
+# seeds the region definitions, so start it first.
+PORT=4321 SP_NODE_NAME=showcase-eu SP_NODE_REGION=eu-west \
+  SP_REGIONS='[{"slug":"eu-west","emoji":"🇪🇺","name":"EU West"},{"slug":"us-east","emoji":"🇺🇸","name":"US East"}]' \
+  ./solidping serve &
+
+# Node B: a check worker only, in us-east.
+PORT=4322 SP_NODE_NAME=showcase-us SP_NODE_ROLE=checks SP_NODE_REGION=us-east \
+  ./solidping serve &
+
+curl -s localhost:4321/api/v1/regions   # expect two entries before recording
+
+E2E_BASE_URL=http://localhost:4321/d/ make showcase
+```
+
+`SP_NODE_NAME` is not optional here: a worker's identity is derived from the
+hostname, and two nodes on one machine would otherwise register as the same
+worker. `SP_NODE_REGION` **is** required for the `checks` role
+(`ErrRegionRequiredForChecks`), and every worker's region must exist in
+`SP_REGIONS` or the node refuses to start.
+
+Afterwards, stop both nodes and drop the database — it is throwaway by design:
+
+```bash
+pkill -f "solidping serve"
+PGPASSWORD=postgres psql -h localhost -p 55432 -U postgres \
+  -c "DROP DATABASE IF EXISTS solidping_showcase"
 ```
 
 `SP_DB_DIR` is the knob that actually isolates the database — the SQLite file
@@ -114,6 +198,10 @@ Against whatever is on :4000:
 ```bash
 make showcase
 ```
+
+Two narrower entry points exist for iterating: `make showcase-terminal`
+re-films only the `docker run` segment, and `make showcase-cut` re-runs the edit
+over takes already in `showcase/output/` without recording anything.
 
 > ### ⚠️ What a run leaves behind in the target database
 >
@@ -144,7 +232,7 @@ Useful knobs:
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `E2E_BASE_URL` | `http://localhost:4000/dash0/` | Server to record against (same convention as the e2e suite) |
+| `E2E_BASE_URL` | `http://localhost:4000/d/` | Server to record against (same convention as the e2e suite) |
 | `SHOWCASE_BOOTSTRAP_ORG` / `SHOWCASE_EMAIL` / `SHOWCASE_PASSWORD` | `default` / `admin@solidping.io` / `solidpass` | Account used to bootstrap; also the identity that appears on camera |
 | `SHOWCASE_ROTATED_PASSWORD` | `showcase-rotated-pass` | Password the account is rotated onto when the server forces a rotation, and **stays on**. Must differ from `SHOWCASE_PASSWORD` and be ≥ 8 characters |
 | `SHOWCASE_ORG` / `SHOWCASE_ORG_NAME` | `northwind` / `Northwind Systems` | The org that gets provisioned and filmed |
@@ -154,15 +242,60 @@ Useful knobs:
 | `SHOWCASE_SLOW_MO` | `0` | Playwright `slowMo`. Escape hatch only — it delays *every* input step, including each step of the eased cursor travel |
 | `SHOWCASE_CLAPPER_MS` | `320` | How long the black sync clapper covers the frame |
 | `SHOWCASE_CUE_OFFSET_MS` | `0` | Nudge the whole zoom timeline earlier/later if a run drifted |
+| `SHOWCASE_DOCKER_PULL` | `1` | `0` films the image already tagged `ghcr.io/fclairamb/solidping` locally instead of pulling — see "The terminal segment" below |
+| `SHOWCASE_TIMELAPSE_SPEED` | `4` | How fast the dwell on the detail page is played, and what the burned-in tag says |
+| `SHOWCASE_TIMELAPSE_MIN_S` | `9` | Below this, the dwell is published in real time and the tag never appears |
 
 ## What it does
 
-1. `specs/create-http-check.showcase.ts` bootstraps and cleans the showcase org
-   (above), seeds realistic demo checks ("Marketing site", "Docs site",
-   "Checkout API") through the REST API, logs in through the real form, then
-   drives the create-check flow on camera: checks list → **New check** → name
-   + target URL → interval → (regions, if offered) → save → check detail page.
-   Named still frames are written as it goes. The org is emptied afterwards.
+1. **`terminal.ts` films the terminal** (`make showcase-terminal`). It renders
+   `tapes/docker-run.tape` with `vhs`: the published one-liner typed out, the
+   shipped image booting on an empty volume, held past its "Starting HTTP
+   server" line. Everything on camera is real.
+
+   It refuses to start when the host port the tape publishes is already in use
+   or when the named volume already exists — the first would make the command
+   fail on camera, the second would film a second boot rather than a first —
+   and it removes exactly what it created afterwards: the container that
+   appeared during the render, and the volume.
+
+   > **Why the tape asks vhs for PNG frames rather than an .mp4.** vhs 0.12.0
+   > cannot encode on a modern Go toolchain: its evaluator calls `teardown()`,
+   > which cancels the context, and then hands that same context to `Render()`,
+   > where the ffmpeg command is an `exec.CommandContext`. Since Go 1.20
+   > `Cmd.Start` refuses an already-cancelled context, so ffmpeg never runs —
+   > vhs prints "Creating …mp4", logs an empty line where the encoder output
+   > should be, and exits 0 having written nothing. `Output <dir>/` sidesteps
+   > it: the frame directory is moved into place from a `defer`. `terminal.ts`
+   > then composites vhs's text and cursor layers itself, which also pins the
+   > segment to the pipeline's own frame size and rate.
+
+   > **Why the hold is a fixed `Sleep` and not `Wait+Screen`.** vhs's `Wait`
+   > cannot see scrolled output: `Buffer()` reads
+   > `term.buffer.active.getLine(0..rows)`, which after the first scroll is the
+   > top of the *scrollback*, not the viewport, so it matches against the
+   > opening prompt until it times out. The tape holds on a timer instead, and
+   > `terminal.ts` checks the container's own log afterwards — a render where
+   > the server never reached "Starting HTTP server" fails rather than
+   > publishing a segment that does not show the thing it promises.
+
+   > **`SHOWCASE_DOCKER_PULL=0`.** `:latest` is published amd64-only until the
+   > arm64 build of spec 2026-09-15-09 reaches a release. Filmed under emulation
+   > on an Apple-silicon machine it boots slowly enough to miss the hold and
+   > puts an emulation-only "slow SQL query" wall of DDL on camera, so the
+   > committed cut was filmed against an image built from the working tree
+   > (`docker build -t ghcr.io/fclairamb/solidping .`) with this variable set.
+   > That overwrites the local tag — `docker pull ghcr.io/fclairamb/solidping`
+   > puts the published image back.
+
+2. **`specs/setup-to-first-result.showcase.ts` films the dashboard.** It signs
+   in through the real form with the seeded credentials, goes through the
+   **forced password rotation** a fresh install imposes, lands on the dashboard,
+   and only *then* bootstraps over the API (that ordering is the point — the
+   rotation used to be satisfied before any frame was recorded, which is why it
+   had never been on camera). Then: checks list → **New check** → name + target
+   URL → interval → regions → save → check detail page, with named still frames
+   written along the way. The org is emptied afterwards.
 
    > **There is deliberately no check-type step.** The form defaults to HTTP
    > (`initialType = initialData?.type || "http"`, `check-form.tsx`), so
@@ -172,16 +305,61 @@ Useful knobs:
 
    > **The regions beat only fires against a server that offers more than one
    > region.** The form renders the region picker only when
-   > `availableRegions.length > 1` (`web/dash0/src/components/shared/check-form.tsx`),
-   > and the spec gates the whole beat — cue included — on `regionCount > 0`.
-   > A single-node side-car offers one region, so it silently records no
-   > regions step and the cue list goes straight from `interval` to
-   > `form-complete`. That is expected, not a bug: **the currently committed cut
-   > has no regions beat.** If you want one on camera, film against a server
-   > with at least two regions configured.
-2. `postprocess.ts` finds that recording (by spec name — the SMS capture below
-   records a video too), trims it, applies the camera move, and encodes it as
-   **AV1** *and* **H.264** into `web/docs/static/showcase/`.
+   > `availableRegions.length > 1`
+   > (`web/dash0/src/components/shared/check-form.tsx`), and the spec gates the
+   > whole beat — cue included — on `regionCount > 0`. A single-node side-car
+   > offers one region and silently records no regions step; `postprocess.ts`
+   > notices, warns, and writes "First results" instead of "Results from two
+   > regions" so the caption cannot claim something the footage does not show.
+   > Use the two-node recipe above.
+
+3. **`postprocess.ts` cuts it together** (`make showcase-cut`): trims the take
+   at the clapper, applies the camera move, applies the **segment plan**
+   (below), joins the terminal segment to the dashboard one with a 400 ms
+   `xfade`, burns in the four lower thirds, and writes one master — from which
+   the AV1, the H.264, the README GIF and the three stills are all derived.
+
+### The edit: what is cut, what is sped up, and what is neither
+
+The cut is assembled from a **segment plan** (`segment-plan.ts`, pure and
+unit-tested) built from the recording's own cue labels:
+
+- **Cuts.** Stretches where nothing is on screen — the app hard-reloading
+  itself after the rotation, the seconds the pipeline spends provisioning its
+  org over the API, a slow request round trip — are removed outright. Ordinary
+  film grammar; no claim is made that needs qualifying.
+- **One speed-up, always tagged.** The dwell on the detail page exists so the
+  chart plots two results a genuine interval apart; the check form's floor is a
+  10-second interval (`globalMinPeriodSeconds` in `check-form.tsx`), so that
+  dwell is around twelve seconds. It is played at `SHOWCASE_TIMELAPSE_SPEED`
+  with the speed burned into the top-right corner **for exactly that stretch**.
+  A demo that quietly speeds up its slow part lies about how fast the product
+  is; one that says "4× speed" does not.
+- **Everything else is real time.** Every edit is conditional on the gap it
+  names actually being long enough, so a faster machine or a faster interval
+  simply publishes the footage as filmed — the run log prints one line per
+  edit, applied or skipped, with the reason.
+
+### The four lower thirds
+
+"Run it", "First login", "First check" and "Results from two regions" are PNGs
+rasterised in Chromium (`labels.ts`) and composited with `overlay`, each faded
+in and out through its alpha channel. Two guarantees are pinned by the unit
+tests: every caption appears **exactly once**, and never two at a time. A
+caption whose cue is missing from the take is a hard failure — publishing a cut
+that silently says less than it should is worse than failing the run.
+
+### Why the README GIF is not the same cut
+
+The GIF comes from a **second master: the dashboard take only, with the camera
+move left off**. Measured on this cut at 800 px / 6 fps, the terminal segment
+costs about **55 KB per GIF frame** — a scrolling log changes every pixel of
+every frame, which is the one thing GIF cannot compress — against about 3 KB
+for the dashboard, and the camera move nearly doubles the rest for the same
+reason. With both included the README GIF was 6 MB at 5 fps and 96 colours.
+Without them it is 2.3 MB at 10 fps and 160 colours, and the `docker run` beat
+lives in the mp4 that the README links beside it. The alt text says what the
+GIF shows.
 
 ### Making it look like a demo rather than a screen capture
 
@@ -260,12 +438,18 @@ every synthesised frame. The recording stays at its native 25 fps.
 
 | Path | Committed? | What |
 |---|---|---|
-| `showcase/output/` | **no** (git-ignored) | Raw `.webm`, cue lists, 2× stills, all pipeline scratch |
-| `web/docs/static/showcase/create-http-check.mp4` | yes | Trimmed AV1 recording |
-| `web/docs/static/showcase/create-http-check.h264.mp4` | yes | Same cut in H.264, for browsers without AV1 |
+| `showcase/output/` | **no** (git-ignored) | Raw `.webm`, vhs frames, cue lists, caption PNGs, both masters, all pipeline scratch |
+| `web/docs/static/showcase/setup-to-first-result.mp4` | yes | The cut, AV1 |
+| `web/docs/static/showcase/setup-to-first-result.h264.mp4` | yes | The same cut in H.264, for browsers without AV1 |
 | `web/docs/static/showcase/0*.png` | yes | Stills embedded in the Tour page |
+| `res/screenshots/setup-to-first-result.gif` | yes | What GitHub renders at the top of the root README |
+| `res/screenshots/setup-to-first-result.mp4` | yes | The H.264 cut, linked from the same place |
+| `res/screenshots/check*.png`, `checks-list.png` | yes | The root README's screenshot table |
 
-Keep the committed catalog small — only assets the Tour page actually embeds.
+Everything in both directories is written by `postprocess.ts`. Nothing there is
+copied by hand — that was the state until spec 2026-09-16-05, and it is exactly
+how a committed asset rots. Keep the catalog small all the same: only assets a
+published page actually embeds.
 
 ## Marketing hand-off
 
@@ -276,16 +460,16 @@ yet — this note is the hand-off, and this repo does not touch it.
 
 Committed asset paths in this repo (`solidping`):
 
-- `web/docs/static/showcase/create-http-check.mp4` — AV1 screen recording of
-  the HTTP-check creation flow
-- `web/docs/static/showcase/create-http-check.h264.mp4` — **new**, the H.264
-  twin of the same cut
+- `web/docs/static/showcase/setup-to-first-result.mp4` — AV1 recording of the
+  whole flow, `docker run` to the first results
+- `web/docs/static/showcase/setup-to-first-result.h264.mp4` — the H.264 twin of
+  the same cut
 - `web/docs/static/showcase/01-checks-list.png`
 - `web/docs/static/showcase/02-check-form-filled.png`
 - `web/docs/static/showcase/03-check-detail.png`
 
 Served (from the embedded docs build) at `/docs/showcase/<file>`, e.g.
-<https://solidping.io/docs/showcase/create-http-check.mp4>.
+<https://solidping.io/docs/showcase/setup-to-first-result.mp4>.
 
 **To do in `../solidping-website` when it picks these up:**
 
@@ -296,7 +480,11 @@ Served (from the embedded docs build) at `/docs/showcase/<file>`, e.g.
    decoder shows the fallback text instead of the demo.
 3. Stop hard-coding *"A 18-second setup"* in the caption
    (`src/pages/index.tsx`). The duration changes with every re-cut — this one is
-   ~28 s — so the caption must not name one.
+   37.9 s — so the caption must not name one.
+
+All three are still owed as of spec 2026-09-16-05: that repo ships a single AV1
+`src=` (`src/pages/index.tsx`) and still names a duration. This repo does not
+touch it.
 
 Regenerate with `make showcase` from the `solidping` repo root. See also
 [`wiki/features/showcase-media.md`](../../../wiki/features/showcase-media.md).

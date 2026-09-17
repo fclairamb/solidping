@@ -9,12 +9,12 @@
   "events": "Events",
   "integrations": "Integrations",
   "statusPages": "Status Pages",
-  "statusUpdates": "Status Updates",
+  "statusUpdates": "Updates & notices",
   "maintenanceWindows": "Maintenance",
   "badges": "Badges",
   "discovery": "Discovery",
   "jobs": "Jobs",
-  "myPages": "My pages",
+  "myAlerts": "My alerts",
   "testTools": "Test Tools",
   "designReference": "Design Reference",
   "new": "New",
@@ -168,5 +168,11 @@
   "slos": "SLOs",
   "reportSchedules": "Uptime reports",
   "audit": "Audit",
-  "parameters": "Parameters"
+  "parameters": "Parameters",
+  "groups": {
+    "monitoring": "Monitoring",
+    "alerting": "Alerting",
+    "publicStatus": "Public status",
+    "administration": "Administration"
+  }
 }

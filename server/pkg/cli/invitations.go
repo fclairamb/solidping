@@ -37,7 +37,6 @@ func invitationsCommand() *cli.Command {
 		Name:    "invitations",
 		Aliases: []string{"invitation", "invite"},
 		Usage:   "Manage organization invitations",
-		Flags:   GetGlobalFlags(),
 		Commands: []*cli.Command{
 			{
 				Name:   flagList,

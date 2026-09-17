@@ -33,17 +33,6 @@
   "pickCheck": "Elegir una verificación…",
   "searchChecks": "Buscar verificaciones…",
   "noMatches": "Sin coincidencias.",
-  "list": {
-    "title": "Grafo de dependencias",
-    "subtitle": "Todas las dependencias dirigidas entre verificaciones de esta organización.",
-    "empty": "Aún no hay dependencias en esta organización.",
-    "noMatch": "Ninguna dependencia coincide con tu filtro",
-    "filter": "Filtrar por nombre de verificación",
-    "parent": "Padre",
-    "child": "Hijo",
-    "kind": "Tipo",
-    "description": "Descripción"
-  },
   "warnings": {
     "confirmationMargin": {
       "title": "Confirma más rápido de lo que {{parent}} puede detectar",

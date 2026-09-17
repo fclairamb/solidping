@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -103,6 +104,24 @@ function StatusUpdateRow({
         >
           {update.title}
         </Link>
+        {/* A threaded post points back at the publication it hangs under. A
+            standalone post (maintenance, info) has no publication, so it gets
+            no link rather than a dead one. */}
+        {update.incidentPublicationUid && (
+          <Link
+            to="/orgs/$org/status-pages/$statusPageUid/incidents/$uid"
+            params={{
+              org,
+              statusPageUid: update.statusPageUid,
+              uid: update.incidentPublicationUid,
+            }}
+            className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-primary hover:underline transition-colors"
+            data-testid="status-update-row-publication"
+          >
+            <Link2 className="h-3 w-3 shrink-0" />
+            {t("statusUpdates:partOfPublication")}
+          </Link>
+        )}
       </TableCell>
       <TableCell>
         <KindBadge kind={update.kind} />
