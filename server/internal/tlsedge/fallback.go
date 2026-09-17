@@ -259,9 +259,23 @@ func (l *fallbackListener) handle(ctx context.Context, conn net.Conn) {
 // deliverLocal queues a connection for Accept, closing it if the listener shut
 // down in the meantime.
 func (l *fallbackListener) deliverLocal(conn net.Conn) {
+	// Recorded BEFORE the handoff, which is what `forward` already does (it
+	// records before the splice can carry a byte back). Once the connection is
+	// on the channel, Accept can answer it and the client can read a complete
+	// response, so a counter bumped after the send is observable LATE: a test
+	// — or an operator — that sees the response and then reads the counter can
+	// legitimately see zero. That is what made
+	// TestFallbackListenerRoutesByHost/an_unparseable_head_stays_local flaky on
+	// a loaded runner, expecting 1 and getting 0.
+	//
+	// Both paths now record the DECISION rather than its completion, which is
+	// also what the metric means. The only cost is that a connection decided
+	// local and then dropped by an in-flight shutdown still counts as local,
+	// which is the same bound `forward` already accepts.
+	l.record(outcomeLocal)
+
 	select {
 	case l.conns <- conn:
-		l.record(outcomeLocal)
 	case <-l.done:
 		_ = conn.Close()
 	}
