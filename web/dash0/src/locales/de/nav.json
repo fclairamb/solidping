@@ -14,7 +14,7 @@
   "badges": "Abzeichen",
   "discovery": "Entdeckung",
   "jobs": "Jobs",
-  "myPages": "Meine Benachrichtigungen",
+  "myAlerts": "Meine Benachrichtigungen",
   "testTools": "Testwerkzeuge",
   "designReference": "Design-Referenz",
   "new": "Neu",
@@ -168,5 +168,11 @@
   "audit": "Audit",
   "promote": "Befördern",
   "sessions": "Sitzungen",
-  "parameters": "Parameter"
+  "parameters": "Parameter",
+  "groups": {
+    "monitoring": "Überwachung",
+    "alerting": "Alarmierung",
+    "publicStatus": "Öffentlicher Status",
+    "administration": "Administration"
+  }
 }

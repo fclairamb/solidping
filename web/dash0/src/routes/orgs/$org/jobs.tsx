@@ -6,9 +6,15 @@ export const Route = createFileRoute("/orgs/$org/jobs")({
   component: JobsLayout,
 });
 
-// JobsLayout guards the admin-only Jobs section. Mirrors the organization
-// layout: once auth has loaded, a non-admin is sent back to the org home with
+// JobsLayout guards the super-admin-only Jobs section (spec 2026-09-16-07:
+// queue internals are noise for a first-time org admin, so the sidebar entry
+// and this page are scoped to `isSuperAdmin`). Mirrors the organization
+// layout: once auth has loaded, anyone else is sent back to the org home with
 // `replace` (403, never a redirect loop — per wiki/conventions/frontend-errors).
+//
+// The BACKEND gates stay `RequireOrgAdmin` on purpose — see the spec. This is
+// a dashboard-clutter change, not an API-privilege change, and tightening the
+// server would break `sp jobs` / `sp check-jobs` for org admins.
 function JobsLayout() {
   const { org } = Route.useParams();
   const { user, isLoading } = useAuth();
@@ -18,7 +24,7 @@ function JobsLayout() {
     return null;
   }
 
-  if (!user?.isAdmin) {
+  if (!user?.isSuperAdmin) {
     navigate({ to: "/orgs/$org", params: { org }, replace: true });
     return null;
   }

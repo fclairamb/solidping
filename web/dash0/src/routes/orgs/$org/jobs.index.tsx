@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Activity, RefreshCw, Workflow } from "lucide-react";
 
-import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Badge } from "@/components/ui/badge";
@@ -130,7 +129,6 @@ function formatPeriod(seconds: number): string {
 function JobsIndexPage() {
   const { t } = useTranslation("jobs");
   const { org } = Route.useParams();
-  const { user } = useAuth();
   const { tab, allOrgs: allOrgsSearch, status, type } = Route.useSearch();
   const navigate = useNavigate();
 
@@ -201,24 +199,26 @@ function JobsIndexPage() {
         className="flex-wrap"
         actions={
           <div className="flex items-center gap-2">
-            {user?.isSuperAdmin && (
-              <SegmentedControl
-                value={allOrgs ? "all" : "this"}
-                onValueChange={(next) => setAllOrgs(next === "all")}
-                options={[
-                  {
-                    value: "this",
-                    label: t("scope.thisOrg"),
-                    testId: "scope-this-org",
-                  },
-                  {
-                    value: "all",
-                    label: t("scope.allOrgs"),
-                    testId: "scope-all-orgs",
-                  },
-                ]}
-              />
-            )}
+            {/* No `isSuperAdmin` check here: the whole Jobs section is
+                super-admin-only since spec 2026-09-16-07, so the guard in
+                jobs.tsx has already run and a redundant check would be a
+                condition that can never be false. */}
+            <SegmentedControl
+              value={allOrgs ? "all" : "this"}
+              onValueChange={(next) => setAllOrgs(next === "all")}
+              options={[
+                {
+                  value: "this",
+                  label: t("scope.thisOrg"),
+                  testId: "scope-this-org",
+                },
+                {
+                  value: "all",
+                  label: t("scope.allOrgs"),
+                  testId: "scope-all-orgs",
+                },
+              ]}
+            />
             <Button
               variant="outline"
               onClick={refresh}

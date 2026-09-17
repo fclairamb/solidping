@@ -988,7 +988,7 @@ function Breadcrumbs({ org }: { org: string }) {
     return (
       <span className={activeClass}>
         <BellRing className={iconClass} />
-        {t("myPages")}
+        {t("myAlerts")}
       </span>
     );
   }

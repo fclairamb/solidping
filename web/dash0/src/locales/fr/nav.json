@@ -14,7 +14,7 @@
   "badges": "Badges",
   "discovery": "Découverte",
   "jobs": "Tâches",
-  "myPages": "Mes alertes",
+  "myAlerts": "Mes alertes",
   "testTools": "Outils de test",
   "designReference": "Référence design",
   "new": "Nouveau",
@@ -168,5 +168,11 @@
   "slos": "SLO",
   "reportSchedules": "Rapports de dispo.",
   "audit": "Audit",
-  "parameters": "Paramètres"
+  "parameters": "Paramètres",
+  "groups": {
+    "monitoring": "Supervision",
+    "alerting": "Alertes",
+    "publicStatus": "Statut public",
+    "administration": "Administration"
+  }
 }
