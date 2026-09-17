@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"math/big"
 	"net"
 	"net/http"
@@ -1017,4 +1018,65 @@ func TestExecutionDeadlineDoesNotPanicInsideTheBudget(t *testing.T) {
 	runtime := &jsRuntime{execCtx: ctx, vm: goja.New()}
 
 	r.NotPanics(runtime.panicOnExecutionDeadline)
+}
+
+// lateTimerCtx is the race TestSocketExecutionDeadlineIsATimeout hits on a
+// loaded runner, made deterministic: its deadline has passed, but its timer has
+// not fired yet, so Err() is still nil. Go delivers timers late under load, so
+// this state is real rather than theoretical — it is just too narrow to hit on
+// demand with a real context.
+type lateTimerCtx struct {
+	//nolint:containedctx // Embedded deliberately: this IS a context, wrapping one to override Deadline/Err.
+	context.Context
+
+	deadline time.Time
+}
+
+func (c lateTimerCtx) Deadline() (time.Time, bool) { return c.deadline, true }
+func (lateTimerCtx) Err() error                    { return nil }
+
+// errDeadlineFromGoja is what goja hands resultFor after recovering the panic
+// the socket layer raises when the check's budget is spent.
+var errDeadlineFromGoja = errors.New("GoError: context deadline exceeded")
+
+// TestExecutionDeadlineIsATimeoutEvenBeforeTheTimerFires pins the fix for that
+// race. A blocked socket call panics on the CLOCK passing the deadline, a hair
+// before the context marks itself done; classifying on execCtx.Err() alone then
+// reported the check's own budget expiring as
+// `script error: GoError: context deadline exceeded` instead of `timeout`.
+func TestExecutionDeadlineIsATimeoutEvenBeforeTheTimerFires(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	runtime := &jsRuntime{
+		vm:     goja.New(),
+		config: &JSConfig{},
+		execCtx: lateTimerCtx{
+			Context:  context.Background(),
+			deadline: time.Now().Add(-time.Millisecond),
+		},
+	}
+
+	// The shape goja hands resultFor once it has recovered the panic the socket
+	// layer raises (vm.NewGoError(context.DeadlineExceeded)).
+	err := errDeadlineFromGoja
+
+	result := runtime.resultFor(nil, err, time.Second, time.Second)
+
+	r.Equal(
+		checkerdef.StatusTimeout.String(), result.Status.String(),
+		"a spent budget is a timeout even before the context timer fires; output: %#v",
+		result.Output,
+	)
+
+	// Positive control: the same runtime with time left on the clock still
+	// reports a thrown error as an error, so the assertion above is about the
+	// deadline and not about resultFor calling everything a timeout.
+	runtime.execCtx = lateTimerCtx{
+		Context:  context.Background(),
+		deadline: time.Now().Add(time.Hour),
+	}
+
+	live := runtime.resultFor(nil, err, time.Second, time.Second)
+	r.Equal(checkerdef.StatusError.String(), live.Status.String(), "output: %#v", live.Output)
 }

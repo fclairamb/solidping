@@ -197,7 +197,14 @@ func (r *jsRuntime) resultFor(
 	// report `timeout` or `up` depending on scheduling — the exact
 	// nondeterminism spec 2026-09-12-06 §3 rules out ("the result is
 	// timeout"). The budget is spent either way, so the budget decides.
-	if errors.Is(r.execCtx.Err(), context.DeadlineExceeded) {
+	//
+	// `executionDeadlineReached` rather than `execCtx.Err()` alone: a blocked
+	// socket call panics the instant the CLOCK passes the deadline, which is a
+	// hair before the context's timer fires. Classifying on `Err()` only meant
+	// that panic could land here while `Err()` was still nil, turning the
+	// budget expiring into `script error: GoError: context deadline exceeded`.
+	if errors.Is(r.execCtx.Err(), context.DeadlineExceeded) ||
+		r.executionDeadlineReached() {
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: duration,
