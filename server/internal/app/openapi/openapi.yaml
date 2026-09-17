@@ -50,11 +50,11 @@ tags:
       number with no org to attribute it to, and a message from a stranger must
       not be dropped for lack of one. organizationUid/userUid on a thread are
       attribution hints for the operator, never an access boundary.
-  - name: MaintenanceWindows
+  - name: Maintenance Windows
     description: Scheduled maintenance windows and their check coverage
   - name: SLOs
     description: Service-level objectives, error budgets, and scheduled uptime reports
-  - name: CheckGroups
+  - name: Check Groups
     description: Check group management
   - name: Severities
     description: Severity primitives (channel-set bundles)
@@ -62,27 +62,27 @@ tags:
     description: Label key/value autocomplete
   - name: Regions
     description: Available monitoring regions
-  - name: CheckTypes
+  - name: Check Types
     description: Check type catalog and sample configurations
-  - name: OnCallSchedules
+  - name: On-Call Schedules
     description: On-call schedules, overrides, rotation preview, and iCal feeds
-  - name: EscalationPolicies
+  - name: Escalation Policies
     description: Escalation policies with ordered steps and targets
   - name: Organizations
     description: Organization creation and settings
   - name: Invitations
     description: Organization invitations
-  - name: MembershipRequests
+  - name: Membership Requests
     description: Requests to join an organization (requester and admin sides)
   - name: Entitlements
     description: Per-organization entitlement limits and audit log
   - name: Files
     description: Org-scoped file storage metadata and content
-  - name: EmailSuppressions
+  - name: Email Suppressions
     description: Per-recipient email suppression (unsubscribe) list
-  - name: StatusPages
+  - name: Status Pages
     description: Public status pages, their sections, resources, incidents and subscribers
-  - name: StatusUpdates
+  - name: Status Updates
     description: Status page incident updates published to subscribers
 
 paths:
@@ -1985,7 +1985,7 @@ paths:
   # is never leaked.
   /api/v1/status-pages/{org}:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: View an organization's default public status page
       description: >-
         Renders the same payload as GET /api/v1/status-pages/{org}/{slug},
@@ -2009,7 +2009,7 @@ paths:
 
   /api/v1/status-pages/{org}/{slug}:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: View a public status page
       description: >-
         Full public rendering of a status page: sections, per-resource live
@@ -2048,7 +2048,7 @@ paths:
 
   /api/v1/status-pages/{org}/{slug}/summary:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Lightweight status summary for a status page
       description: >-
         Cheap "is it up?" companion to the full page view: overall status,
@@ -2083,7 +2083,7 @@ paths:
 
   /api/v1/status-pages/{org}/{slug}/badge:
     get:
-      tags: [StatusPages, Badges]
+      tags: [Status Pages, Badges]
       summary: SVG badge for a status page's overall status
       description: >-
         Public SVG badge (shields.io style) reflecting the page-level rollup
@@ -2139,7 +2139,7 @@ paths:
 
   /embed/v1/widget.js:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Embeddable live status widget script
       description: >-
         Self-contained JavaScript (IIFE) that renders a live status pill on a
@@ -2170,7 +2170,7 @@ paths:
 
   /api/v1/status-pages/{org}/{slug}/incidents:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Public incident history for a status page
       description: >-
         The customer-facing incidents published on this page (spec
@@ -2217,7 +2217,7 @@ paths:
 
   /api/v1/status-pages/{org}/{slug}/feed.xml:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Atom feed of a status page's status-update timeline
       description: >-
         Public Atom/RSS feed of the page's recent status updates (incident
@@ -2251,7 +2251,7 @@ paths:
   # unauthenticated by design: the password IS the credential.
   /api/v1/status-pages/{org}/{slug}/unlock:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Unlock a password-protected status page
       description: >-
         Verifies the page password and, on success, sets the unlock cookie
@@ -2316,7 +2316,7 @@ paths:
 
   /api/v1/status-pages/{org}/unlock:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Unlock an organization's password-protected default status page
       description: >-
         Same as POST /api/v1/status-pages/{org}/{slug}/unlock, resolved to the
@@ -4764,7 +4764,7 @@ paths:
   # Status page APIs
   /api/v1/orgs/{org}/status-pages:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: List status pages
       operationId: listStatusPages
       security:
@@ -4783,7 +4783,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Create a status page
       operationId: createStatusPage
       security:
@@ -4812,7 +4812,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Get a status page
       operationId: getStatusPage
       security:
@@ -4837,7 +4837,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Update a status page
       operationId: updateStatusPage
       security:
@@ -4865,7 +4865,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Delete a status page
       operationId: deleteStatusPage
       security:
@@ -4883,7 +4883,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/kiosk-token:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Mint or regenerate a status page's kiosk (TV mode) token
       description: >-
         Mints the page's single kiosk token — a long-lived, revocable, per-page
@@ -4923,7 +4923,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Revoke a status page's kiosk token
       description: >-
         Clears the stored hash. Any screen still presenting the old token falls
@@ -4947,7 +4947,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/custom-domain/verify:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Verify a status page's custom domain
       description: >-
         Resolves the domain's CNAME and compares it against the expected target
@@ -4979,7 +4979,7 @@ paths:
 
   /api/v1/public/custom-domains/allowed:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Edge-TLS custom-domain check (public)
       description: >-
         Returns 204 when the queried domain currently resolves to a verified,
@@ -5003,7 +5003,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: List sections of a status page
       operationId: listStatusPageSections
       security:
@@ -5023,7 +5023,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Create a section
       operationId: createStatusPageSection
       security:
@@ -5053,7 +5053,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/reorder:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Reorder the sections of a status page
       operationId: reorderStatusPageSections
       security:
@@ -5079,7 +5079,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Get a section
       operationId: getStatusPageSection
       security:
@@ -5100,7 +5100,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Update a section
       operationId: updateStatusPageSection
       security:
@@ -5129,7 +5129,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Delete a section
       operationId: deleteStatusPageSection
       security:
@@ -5148,7 +5148,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: List resources of a section
       operationId: listStatusPageResources
       security:
@@ -5169,7 +5169,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Add a check as a resource to a section
       operationId: createStatusPageResource
       security:
@@ -5200,7 +5200,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources/reorder:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Reorder the resources of a section
       operationId: reorderStatusPageResources
       security:
@@ -5227,7 +5227,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/sections/{sectionUid}/resources/{resourceUid}:
     patch:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Update a resource
       operationId: updateStatusPageResource
       security:
@@ -5257,7 +5257,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Remove a resource from a section
       operationId: deleteStatusPageResource
       security:
@@ -5277,7 +5277,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: List subscribers of a status page
       operationId: listStatusPageSubscribers
       security:
@@ -5298,7 +5298,7 @@ paths:
           $ref: "#/components/responses/NotFound"
 
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Subscribe an email address to a status page
       description: >-
         PUBLIC, unauthenticated. Double opt-in: a confirmation email is sent and
@@ -5346,7 +5346,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/endpoints:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Register a webhook or Slack delivery for a status page
       description: >-
         AUTHENTICATED, operator-side. Creates a subscription that delivers to a
@@ -5401,7 +5401,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/subscribers/{uid}:
     delete:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Remove a subscriber from a status page
       operationId: removeStatusPageSubscriber
       security:
@@ -5421,7 +5421,7 @@ paths:
   # Incident publication APIs (spec 2026-08-19-08)
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: List the incident publications on a status page
       operationId: listStatusPageIncidents
       security:
@@ -5471,7 +5471,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Publish a hand-written incident on a status page
       operationId: createStatusPageIncident
       security:
@@ -5501,7 +5501,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}:
     get:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Get one incident publication with its narrative
       operationId: getStatusPageIncident
       security:
@@ -5522,7 +5522,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Edit a publication's title, severity or state
       operationId: updateStatusPageIncident
       security:
@@ -5551,7 +5551,7 @@ paths:
 
   /api/v1/orgs/{org}/status-pages/{statusPageUid}/incidents/{uid}/updates:
     post:
-      tags: [StatusPages]
+      tags: [Status Pages]
       summary: Append a narrative update to a published incident
       operationId: createStatusPageIncidentUpdate
       security:
@@ -5650,7 +5650,7 @@ paths:
   # Status update APIs
   /api/v1/orgs/{org}/status-updates:
     get:
-      tags: [StatusUpdates]
+      tags: [Status Updates]
       summary: List status updates
       operationId: listStatusUpdates
       security:
@@ -5701,7 +5701,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [StatusUpdates]
+      tags: [Status Updates]
       summary: Create a status update
       operationId: createStatusUpdate
       security:
@@ -5730,7 +5730,7 @@ paths:
 
   /api/v1/orgs/{org}/status-updates/{uid}:
     get:
-      tags: [StatusUpdates]
+      tags: [Status Updates]
       summary: Get a status update
       operationId: getStatusUpdate
       security:
@@ -5750,7 +5750,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [StatusUpdates]
+      tags: [Status Updates]
       summary: Update a status update
       operationId: updateStatusUpdate
       security:
@@ -5778,7 +5778,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [StatusUpdates]
+      tags: [Status Updates]
       summary: Delete a status update
       operationId: deleteStatusUpdate
       security:
@@ -6243,7 +6243,7 @@ paths:
 
   /api/v1/orgs/{org}/maintenance-windows:
     get:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: List maintenance windows
       operationId: listMaintenanceWindows
       security:
@@ -6272,7 +6272,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: Create a maintenance window
       operationId: createMaintenanceWindow
       security:
@@ -6301,7 +6301,7 @@ paths:
 
   /api/v1/orgs/{org}/maintenance-windows/{uid}:
     get:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: Get a maintenance window
       operationId: getMaintenanceWindow
       security:
@@ -6321,7 +6321,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: Update a maintenance window
       operationId: updateMaintenanceWindow
       security:
@@ -6349,7 +6349,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: Delete a maintenance window
       operationId: deleteMaintenanceWindow
       security:
@@ -6367,7 +6367,7 @@ paths:
 
   /api/v1/orgs/{org}/maintenance-windows/{uid}/checks:
     get:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: List the checks covered by a maintenance window
       operationId: listMaintenanceWindowChecks
       security:
@@ -6387,7 +6387,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     put:
-      tags: [MaintenanceWindows]
+      tags: [Maintenance Windows]
       summary: Set the checks covered by a maintenance window
       operationId: setMaintenanceWindowChecks
       security:
@@ -6413,7 +6413,7 @@ paths:
 
   /api/v1/orgs/{org}/check-groups:
     get:
-      tags: [CheckGroups]
+      tags: [Check Groups]
       summary: List check groups
       operationId: listCheckGroups
       security:
@@ -6432,7 +6432,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [CheckGroups]
+      tags: [Check Groups]
       summary: Create a check group
       operationId: createCheckGroup
       security:
@@ -6461,7 +6461,7 @@ paths:
 
   /api/v1/orgs/{org}/check-groups/{uid}:
     get:
-      tags: [CheckGroups]
+      tags: [Check Groups]
       summary: Get a check group
       operationId: getCheckGroup
       security:
@@ -6481,7 +6481,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [CheckGroups]
+      tags: [Check Groups]
       summary: Update a check group
       operationId: updateCheckGroup
       security:
@@ -6509,7 +6509,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [CheckGroups]
+      tags: [Check Groups]
       summary: Delete a check group
       operationId: deleteCheckGroup
       security:
@@ -6707,7 +6707,7 @@ paths:
 
   /api/v1/check-types:
     get:
-      tags: [CheckTypes]
+      tags: [Check Types]
       summary: List check types with server-level activation status
       operationId: listCheckTypes
       responses:
@@ -6720,7 +6720,7 @@ paths:
 
   /api/v1/check-types/samples:
     get:
-      tags: [CheckTypes]
+      tags: [Check Types]
       summary: List sample configurations grouped by check type
       operationId: listCheckTypeSamples
       parameters:
@@ -6739,7 +6739,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules:
     get:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: List on-call schedules
       operationId: listOncallSchedules
       security:
@@ -6758,7 +6758,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Create an on-call schedule
       operationId: createOncallSchedule
       security:
@@ -6787,7 +6787,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}:
     get:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Get an on-call schedule
       operationId: getOncallSchedule
       security:
@@ -6807,7 +6807,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Update an on-call schedule
       operationId: updateOncallSchedule
       security:
@@ -6835,7 +6835,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Delete an on-call schedule
       operationId: deleteOncallSchedule
       security:
@@ -6853,7 +6853,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}/preview:
     get:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Preview the on-call rotation over a window
       operationId: previewOncallSchedule
       security:
@@ -6888,7 +6888,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}/overrides:
     get:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: List overrides on an on-call schedule
       operationId: listOncallOverrides
       security:
@@ -6922,7 +6922,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Create an override on an on-call schedule
       operationId: createOncallOverride
       security:
@@ -6952,7 +6952,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}/overrides/{overrideUid}:
     delete:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Delete an override
       operationId: deleteOncallOverride
       security:
@@ -6971,7 +6971,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/enable:
     post:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Enable the iCal feed for an on-call schedule
       operationId: enableOncallIcalFeed
       security:
@@ -6993,7 +6993,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/disable:
     post:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Disable the iCal feed for an on-call schedule
       operationId: disableOncallIcalFeed
       security:
@@ -7011,7 +7011,7 @@ paths:
 
   /api/v1/orgs/{org}/on-call-schedules/{uid}/ical-feed/rotate:
     post:
-      tags: [OnCallSchedules]
+      tags: [On-Call Schedules]
       summary: Rotate the iCal feed secret for an on-call schedule
       operationId: rotateOncallIcalFeed
       security:
@@ -7033,7 +7033,7 @@ paths:
 
   /api/v1/orgs/{org}/escalation-policies:
     get:
-      tags: [EscalationPolicies]
+      tags: [Escalation Policies]
       summary: List escalation policies
       operationId: listEscalationPolicies
       security:
@@ -7052,7 +7052,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     post:
-      tags: [EscalationPolicies]
+      tags: [Escalation Policies]
       summary: Create an escalation policy
       operationId: createEscalationPolicy
       security:
@@ -7081,7 +7081,7 @@ paths:
 
   /api/v1/orgs/{org}/escalation-policies/{uid}:
     get:
-      tags: [EscalationPolicies]
+      tags: [Escalation Policies]
       summary: Get an escalation policy
       operationId: getEscalationPolicy
       security:
@@ -7101,7 +7101,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [EscalationPolicies]
+      tags: [Escalation Policies]
       summary: Update an escalation policy
       operationId: updateEscalationPolicy
       security:
@@ -7129,7 +7129,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [EscalationPolicies]
+      tags: [Escalation Policies]
       summary: Delete an escalation policy
       operationId: deleteEscalationPolicy
       security:
@@ -7628,7 +7628,7 @@ paths:
   # Membership request APIs (requester side)
   /api/v1/auth/membership-requests:
     get:
-      tags: [MembershipRequests]
+      tags: [Membership Requests]
       summary: List the caller's own membership requests
       operationId: listMyMembershipRequests
       security:
@@ -7643,7 +7643,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [MembershipRequests]
+      tags: [Membership Requests]
       summary: Request to join an organization
       operationId: createMembershipRequest
       security:
@@ -7672,7 +7672,7 @@ paths:
 
   /api/v1/auth/membership-requests/{uid}:
     delete:
-      tags: [MembershipRequests]
+      tags: [Membership Requests]
       summary: Cancel one of the caller's membership requests
       operationId: cancelMembershipRequest
       security:
@@ -7690,7 +7690,7 @@ paths:
   # Membership request APIs (org-admin side)
   /api/v1/orgs/{org}/membership-requests:
     get:
-      tags: [MembershipRequests]
+      tags: [Membership Requests]
       summary: List an organization's membership requests
       operationId: listOrgMembershipRequests
       security:
@@ -7720,7 +7720,7 @@ paths:
 
   /api/v1/orgs/{org}/membership-requests/{uid}/approve:
     post:
-      tags: [MembershipRequests]
+      tags: [Membership Requests]
       summary: Approve a membership request
       operationId: approveMembershipRequest
       security:
@@ -7748,7 +7748,7 @@ paths:
 
   /api/v1/orgs/{org}/membership-requests/{uid}/reject:
     post:
-      tags: [MembershipRequests]
+      tags: [Membership Requests]
       summary: Reject a membership request
       operationId: rejectMembershipRequest
       security:
@@ -8163,7 +8163,7 @@ paths:
   # Email suppression APIs (per-recipient unsubscribe list)
   /api/v1/orgs/{org}/email-suppressions:
     get:
-      tags: [EmailSuppressions]
+      tags: [Email Suppressions]
       summary: List email suppressions
       operationId: listEmailSuppressions
       security:
@@ -8186,7 +8186,7 @@ paths:
 
   /api/v1/orgs/{org}/email-suppressions/{uid}:
     delete:
-      tags: [EmailSuppressions]
+      tags: [Email Suppressions]
       summary: Remove an email suppression (re-subscribe)
       operationId: deleteEmailSuppression
       security:
