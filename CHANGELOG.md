@@ -3,6 +3,14 @@
 ## Unreleased
 
 
+## [0.29.1](https://github.com/fclairamb/solidping/compare/v0.29.0...v0.29.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **deps:** update github.com/dop251/goja digest to 793a2a6 ([#388](https://github.com/fclairamb/solidping/issues/388)) ([1c81ebe](https://github.com/fclairamb/solidping/commit/1c81ebe12cede1b3269b637cfac6a4cf326d10b3))
+* **deps:** update module google.golang.org/grpc to v1.84.0 ([#392](https://github.com/fclairamb/solidping/issues/392)) ([0bddd78](https://github.com/fclairamb/solidping/commit/0bddd78fd160debd35d8670ffb3049b2463ff329))
+
 ## [0.29.0](https://github.com/fclairamb/solidping/compare/v0.28.2...v0.29.0) (2026-09-17)
 
 
