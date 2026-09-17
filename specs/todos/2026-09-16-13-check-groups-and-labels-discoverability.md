@@ -136,3 +136,53 @@ drives escalation and status-page rollups, created from the button on the Checks
 free `key=value` tags for filtering and for selecting checks onto a status page. Then admit the
 real problem — the group field is hidden until you already have a group, so there was no way for
 him to find it.
+
+## Implementation Plan
+
+### A. `web/docs/docs/features/labels.md` (new)
+
+`sidebar_position: 25` — 24 (`javascript-checks.md`) is the current maximum, so 25 collides
+with nothing. Content: what a label is, the `key=value` shape and its limits (key ≤50, value
+≤200, `server/internal/db/models/check.go:498-505`), how filtering ANDs across pairs
+(`ListChecksFilter.Labels`, `check.go:548`), the `GET /orgs/:org/labels` autocomplete
+endpoint, the `public=true` opt-in convention that status-page dynamic sections rely on
+(`web/docs/docs/features/status-pages.md:118-131`), and how to set labels from
+config-as-code and the CLI.
+
+### B. "Groups vs labels" in both pages
+
+The spec's one-sentence version leads the section; the comparison table follows; each page
+links to the other. In `check-groups.md` the closing "set its `checkGroupUid`" paragraph is
+replaced by the four real UI paths (check form group field, `?group=<slug>` prefilled new-check
+link, the "Change group" row action, and the API).
+
+### C. `check-form.tsx` — stop hiding the group field
+
+Delete the `showGroup` guard at `:1080` and render the group field unconditionally. Keep the
+raw `Select` (testid `check-group-select`): four existing e2e specs drive it, it needs an
+explicit "No group" entry for a nullable FK, and `CheckGroupPicker` is a search popover built
+for the status-page editor's long resource lists — a handful of groups does not need search.
+When the org has no groups the field renders with a one-line explanation of what a group is
+and an inline **New group** dialog (name + optional slug, `useCreateCheckGroup`) that selects
+the freshly created group on success.
+
+### D. Make groups visible on the checks list
+
+The header trigger is already a labelled "New group" button (`checks.index.tsx:1527`,
+`data-testid="new-group-button"`), so the remaining work is the empty state:
+`NoChecksPlaceholder` is a no-op that always returns `null`. Replace it with a real
+"no groups yet" card following the shipped empty-state pattern from the design reference
+(card surface, muted icon circle, title, one-line hint, **no CTA** — the create action already
+lives once in the page header), rendered when the org has checks but zero groups and no
+search/filter is active. No nav entry is added.
+
+### Locales
+
+New keys in all four of `en`/`fr`/`es`/`de` (`checks.json`), enforced by
+`locale-parity.test.ts`.
+
+### Tests
+
+Two new e2e cases in `web/dash0/e2e/check-groups.spec.ts`: (1) in an org with zero groups the
+check form still renders the group field with its empty state, (2) a group created from the
+checks-list empty state can immediately take a check.
