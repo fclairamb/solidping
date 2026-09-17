@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Copy,
   Eye,
+  FolderPlus,
   Info,
   Building2,
   KeyRound,
@@ -53,6 +54,7 @@ import {
 } from "@/components/shared/check-type-identity";
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { CheckGroupPicker } from "@/components/shared/check-group-picker";
+import { NewCheckGroupDialog } from "@/components/shared/new-check-group-dialog";
 import { RecipientsInput } from "@/components/shared/recipients-input";
 import { CommentBody } from "@/components/shared/comment-body";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
@@ -263,6 +265,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "faceted-filter", label: "Faceted filter" },
   { id: "check-multi-picker", label: "Check multi-picker" },
   { id: "check-group-picker", label: "Check group picker" },
+  { id: "new-check-group-dialog", label: "New check group dialog" },
   { id: "token-chips-input", label: "Token chips input" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "clickable-status-banner", label: "Clickable status banner" },
@@ -322,6 +325,7 @@ function DesignReferencePage() {
       <FacetedFilterSection />
       <CheckMultiPickerSection />
       <CheckGroupPickerSection />
+      <NewCheckGroupDialogSection />
       <TokenChipsInputSection />
       <JsonAssertionEditorSection />
       <KpiTileSection />
@@ -5626,6 +5630,40 @@ function CheckGroupPickerSection() {
             }}
           />
         </div>
+      </div>
+    </Section>
+  );
+}
+
+function NewCheckGroupDialogSection() {
+  const { org } = Route.useParams();
+  const [open, setOpen] = useState(false);
+  const [created, setCreated] = useState<string | undefined>();
+
+  return (
+    <Section
+      id="new-check-group-dialog"
+      title="New check group dialog"
+      description="The create-a-group dialog, extracted from the checks list so a form that OFFERS a group can also let you make one without leaving the page. Name + optional slug (auto-derived from the name until you touch it), 409-on-slug surfaced inline on the field rather than as a toast. Pair it with a field whose empty state explains the concept — the check form's Group field is the reference use: it used to hide itself while an org had no groups, which is exactly how a feature stays undiscovered."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ NewCheckGroupDialog }"} from
+        "@/components/shared/new-check-group-dialog"
+      </p>
+      <div className="max-w-2xl space-y-2">
+        <Button variant="outline" onClick={() => setOpen(true)}>
+          <FolderPlus className="mr-2 h-4 w-4" />
+          New group
+        </Button>
+        {created && (
+          <p className="text-xs text-muted-foreground">Created: {created}</p>
+        )}
+        <NewCheckGroupDialog
+          org={org}
+          open={open}
+          onOpenChange={setOpen}
+          onCreated={(group) => setCreated(group.name)}
+        />
       </div>
     </Section>
   );
