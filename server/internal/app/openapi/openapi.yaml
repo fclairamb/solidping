@@ -13110,6 +13110,14 @@ components:
         incidentUid:
           type: string
           format: uuid
+        incidentPublicationUid:
+          type: string
+          format: uuid
+          readOnly: true
+          description: >-
+            Set when the update is threaded under an incident publication on the
+            status page. Absent for a standalone post (maintenance, info).
+            Assigned by the publication pipeline; ignored on write.
         title:
           type: string
         bodyMarkdown:

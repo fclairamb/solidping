@@ -105,19 +105,24 @@ func (s *Service) SetSubscriberNotifier(n SubscriberNotifier) {
 
 // StatusUpdateResponse represents a status update in API responses.
 type StatusUpdateResponse struct {
-	UID           string    `json:"uid"`
-	StatusPageUID string    `json:"statusPageUid"`
-	SectionUID    *string   `json:"sectionUid,omitempty"`
-	CheckUID      *string   `json:"checkUid,omitempty"`
-	IncidentUID   *string   `json:"incidentUid,omitempty"`
-	Title         string    `json:"title"`
-	BodyMarkdown  string    `json:"bodyMarkdown"`
-	LinkURL       *string   `json:"linkUrl,omitempty"`
-	Kind          string    `json:"kind"`
-	PublishedAt   time.Time `json:"publishedAt"`
-	AuthorUID     *string   `json:"authorUid,omitempty"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	UID           string  `json:"uid"`
+	StatusPageUID string  `json:"statusPageUid"`
+	SectionUID    *string `json:"sectionUid,omitempty"`
+	CheckUID      *string `json:"checkUid,omitempty"`
+	IncidentUID   *string `json:"incidentUid,omitempty"`
+	// IncidentPublicationUID is the thread pointer: set when this post hangs
+	// under a publication on the page, absent when the post stands alone (a
+	// maintenance notice, an announcement). Read-only — it is assigned by the
+	// publication pipeline, never by a client write.
+	IncidentPublicationUID *string   `json:"incidentPublicationUid,omitempty"`
+	Title                  string    `json:"title"`
+	BodyMarkdown           string    `json:"bodyMarkdown"`
+	LinkURL                *string   `json:"linkUrl,omitempty"`
+	Kind                   string    `json:"kind"`
+	PublishedAt            time.Time `json:"publishedAt"`
+	AuthorUID              *string   `json:"authorUid,omitempty"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
 }
 
 // CreateStatusUpdateRequest represents a request to create a status update.
@@ -174,19 +179,20 @@ type ListStatusUpdatesOptions struct {
 
 func toResponse(update *models.StatusUpdate) StatusUpdateResponse {
 	return StatusUpdateResponse{
-		UID:           update.UID,
-		StatusPageUID: update.StatusPageUID,
-		SectionUID:    update.SectionUID,
-		CheckUID:      update.CheckUID,
-		IncidentUID:   update.IncidentUID,
-		Title:         update.Title,
-		BodyMarkdown:  update.BodyMarkdown,
-		LinkURL:       update.LinkURL,
-		Kind:          string(update.Kind),
-		PublishedAt:   update.PublishedAt,
-		AuthorUID:     update.AuthorUID,
-		CreatedAt:     update.CreatedAt,
-		UpdatedAt:     update.UpdatedAt,
+		UID:                    update.UID,
+		StatusPageUID:          update.StatusPageUID,
+		SectionUID:             update.SectionUID,
+		CheckUID:               update.CheckUID,
+		IncidentUID:            update.IncidentUID,
+		IncidentPublicationUID: update.IncidentPublicationUID,
+		Title:                  update.Title,
+		BodyMarkdown:           update.BodyMarkdown,
+		LinkURL:                update.LinkURL,
+		Kind:                   string(update.Kind),
+		PublishedAt:            update.PublishedAt,
+		AuthorUID:              update.AuthorUID,
+		CreatedAt:              update.CreatedAt,
+		UpdatedAt:              update.UpdatedAt,
 	}
 }
 
