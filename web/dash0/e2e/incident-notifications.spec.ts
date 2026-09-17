@@ -92,7 +92,7 @@ test.describe("Incident notifications", () => {
     await expect(row.getByText("Incident Created")).toBeVisible();
   });
 
-  test("My pages route loads", async ({ authenticatedPage }) => {
+  test("My alerts route loads", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
     await page.goto(`${DASH_BASE}/orgs/test/me/notifications`);
@@ -102,7 +102,7 @@ test.describe("Incident notifications", () => {
 
     // The header uses the canonical boxed PageHeader: a level-1 heading with
     // the text-2xl font-semibold treatment.
-    const h1 = page.getByRole("heading", { level: 1, name: "My pages" });
+    const h1 = page.getByRole("heading", { level: 1, name: "My alerts" });
     await expect(h1).toBeVisible();
     await expect(h1).toHaveClass(/text-2xl/);
     await expect(h1).toHaveClass(/font-semibold/);
@@ -111,14 +111,14 @@ test.describe("Incident notifications", () => {
     ).toBeVisible();
   });
 
-  test("My pages sidebar entry navigates to the correct page", async ({
+  test("My alerts sidebar entry navigates to the correct page", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
 
     await page
       .getByTestId("app-sidebar")
-      .getByRole("link", { name: /my pages/i })
+      .getByRole("link", { name: /my alerts/i })
       .click();
 
     await page.waitForURL(/\/me\/notifications/);

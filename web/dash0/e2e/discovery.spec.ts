@@ -457,14 +457,14 @@ test.describe("Network Discovery", () => {
     }
   });
 
-  test("notifications page renders the My pages header", async ({ page }) => {
+  test("notifications page renders the My alerts header", async ({ page }) => {
     await page.goto(`${DASH_BASE}/orgs/test/me/notifications`);
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /my pages/i }),
+      page.getByRole("heading", { name: /my alerts/i }),
     ).toBeVisible();
     // Breadcrumb mirrors the page title.
-    await expect(page.locator("header").getByText(/my pages/i)).toBeVisible();
+    await expect(page.locator("header").getByText(/my alerts/i)).toBeVisible();
   });
 });
 

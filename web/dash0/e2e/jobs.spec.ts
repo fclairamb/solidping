@@ -1,11 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { DASH_BASE } from "./fixtures";
+import { API_BASE, DASH_BASE, uniqueStamp } from "./fixtures";
 
-// Admin Jobs observability page (spec 2026-06-15-05).
-// The test user (test@test.com) is an org admin AND super-admin in test mode,
-// so the admin-gated page, the super-admin scope toggle, and the Org column
-// are all exercisable here.
-test.describe("Admin Jobs page", () => {
+// Super-admin Jobs observability page (spec 2026-06-15-05; scoped from
+// `isAdmin` to `isSuperAdmin` by spec 2026-09-16-07 — queue internals were
+// clutter in a first-time org admin's sidebar).
+// The test user (test@test.com) is a super admin in test mode
+// (server/test/testdata/testdata.go), so the gated page, the scope toggle and
+// the Org column are all exercisable here.
+test.describe("Super-admin Jobs page", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(`${DASH_BASE}/orgs/test/login`);
     await page.getByTestId("login-email").fill("test@test.com");
@@ -14,7 +16,7 @@ test.describe("Admin Jobs page", () => {
     await page.waitForURL((url) => !url.pathname.includes("login"));
   });
 
-  test("Jobs sidebar link is visible for admin", async ({ page }) => {
+  test("Jobs sidebar link is visible for a super admin", async ({ page }) => {
     await page.goto(`${DASH_BASE}/orgs/test`);
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
@@ -104,6 +106,72 @@ test.describe("Admin Jobs page", () => {
     await expect(
       page.locator("thead").getByText(/^org$/i).first(),
     ).toBeVisible({ timeout: 10000 });
+  });
+
+  test("an org admin who is not a super admin gets no Jobs link and no Jobs page", async ({
+    page,
+  }) => {
+    // The behaviour spec 2026-09-16-07 introduced, and the one nothing covered
+    // before: `isAdmin` is no longer enough. A brand-new org's OWNER is an
+    // admin of that org and is not a super admin, which is exactly the shape
+    // of a self-hoster's first user beyond the seeded one.
+    const stamp = uniqueStamp();
+    const email = `acme-orgadmin-${stamp}@unknown.example`;
+    const password = "Strong-Pass-123!";
+
+    const createUserResp = await page.request.post(
+      `${API_BASE}/api/v1/test/users`,
+      { data: { email, password, name: "Acme Org Admin" } },
+    );
+    if (createUserResp.status() !== 201) {
+      test.skip(
+        true,
+        `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${createUserResp.status()}`,
+      );
+    }
+
+    const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { email, password },
+    });
+    expect(loginResp.status()).toBe(200);
+    const session = (await loginResp.json()) as { accessToken: string };
+
+    const orgSlug = `acme-${stamp}`;
+    const createOrgResp = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+      data: { name: `Acme Jobs ${stamp}`, slug: orgSlug },
+    });
+    expect(createOrgResp.status()).toBe(201);
+    const org = (await createOrgResp.json()) as { accessToken: string };
+
+    // Swap the browser out of the seeded super admin's session (the
+    // beforeEach above) and into this org admin's — same technique as
+    // org-owner-delete.spec.ts, and it survives the reloads below.
+    await page.addInitScript(
+      ({ accessToken, slug }) => {
+        localStorage.setItem("solidping_session_token", accessToken);
+        localStorage.removeItem("solidping_refresh_token");
+        localStorage.removeItem("solidping_expires_at");
+        localStorage.removeItem("solidping_expires_in");
+        localStorage.setItem("solidping_org", slug);
+      },
+      { accessToken: org.accessToken, slug: orgSlug },
+    );
+
+    await page.goto(`${DASH_BASE}/orgs/${orgSlug}`);
+    const sidebar = page.getByTestId("app-sidebar");
+    await expect(sidebar).toBeVisible();
+    // Organization IS there — they are an admin (spec 2026-09-16-07 §B) …
+    await expect(
+      sidebar.getByRole("link", { name: "Organization", exact: true }),
+    ).toBeVisible();
+    // … but Jobs is not: that one needs super admin.
+    await expect(sidebar.getByRole("link", { name: /^jobs$/i })).toHaveCount(0);
+
+    // And the route guard agrees — a deep link bounces back to the org home.
+    await page.goto(`${DASH_BASE}/orgs/${orgSlug}/jobs`);
+    await page.waitForURL((url) => !url.pathname.includes("/jobs"));
+    expect(page.url()).toContain(`/orgs/${orgSlug}`);
   });
 
   test("non-admin route guard redirects to org home", async ({ page }) => {

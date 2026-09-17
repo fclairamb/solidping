@@ -201,7 +201,18 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Events" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "Badges" })).toBeVisible();
+    // Badges and Dependencies left the palette with their sidebar entries
+    // (spec 2026-09-16-07): the badge builder moved under its check and the
+    // org-wide dependencies page is gone. Scoped to the Pages GROUP on
+    // purpose — the palette also lists seeded check entities, and other specs
+    // leave behind checks with "Badges" in their name.
+    const pagesGroup = page
+      .locator("[cmdk-group]")
+      .filter({ has: page.locator("[cmdk-group-heading]", { hasText: /^Pages$/ }) });
+    await expect(pagesGroup.locator("[cmdk-item]").filter({ hasText: "Badges" })).toHaveCount(0);
+    await expect(
+      pagesGroup.locator("[cmdk-item]").filter({ hasText: "Dependencies" }),
+    ).toHaveCount(0);
 
     // Verify Account group. The group heading itself reads "Account", same as
     // the new section-landing entry's title, so scope the heading assertion
@@ -526,7 +537,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Updates & notices" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Maintenance" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "SLOs" })).toBeVisible();
-    await expect(page.locator('[cmdk-item]').filter({ hasText: "My pages" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "My alerts" })).toBeVisible();
 
     // "On call" already existed — must render exactly once, never duplicated.
     await expect(page.locator('[cmdk-item]').filter({ hasText: "On-call" })).toHaveCount(1);

@@ -94,12 +94,21 @@ test.describe("Docs links", () => {
   test("discovery list renders a docs link to discovery", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
-    // Discovery lives under the Organization tab row now (spec
-    // 2026-09-16-09), admin-only end to end; the test user is an admin of the
-    // "test" org (server/test/testdata/testdata.go), so it's reachable.
-    // Navigated to directly rather than via the sidebar, which still points
-    // at the legacy (redirecting) URL until spec 07 removes the entry.
-    await page.goto("orgs/test/organization/discovery");
+    // Discovery lives under the Organization tab row now (spec 2026-09-16-09),
+    // admin-only end to end; the test user is an admin of the "test" org
+    // (server/test/testdata/testdata.go), so it is reachable the way a user
+    // reaches it: the Administration group's Organization entry in the sidebar
+    // (spec 2026-09-16-07), then the Discovery tab.
+    await page
+      .getByTestId("app-sidebar")
+      // `exact` matters: the sidebar header's accessible name carries the org
+      // name, "Test Organization".
+      .getByRole("link", { name: "Organization", exact: true })
+      .click();
+    const tabNav = page.getByTestId("tab-nav");
+    await expect(tabNav).toBeVisible();
+    await tabNav.getByRole("link", { name: /discovery/i }).click();
+    await page.waitForURL(/\/organization\/discovery/);
     await page.waitForLoadState("networkidle");
 
     const docsLink = page.getByTestId("docs-link");
@@ -185,6 +194,10 @@ test.describe("Docs links", () => {
     // Jobs has no matching docs page (spec: "Pages with no matching docs ...
     // simply don't pass docsHref") — its layout carries no docsHref prop, so
     // no DocsLink should render anywhere on the page.
+    //
+    // The sidebar entry is super-admin-only since spec 2026-09-16-07. The
+    // test user (test@test.com) IS a super admin in test mode
+    // (server/test/testdata/testdata.go), so the link is there for them.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Jobs" }).click();
     await page.waitForURL(/\/jobs/);
     await page.waitForLoadState("networkidle");
