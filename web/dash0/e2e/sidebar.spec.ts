@@ -271,6 +271,9 @@ test.describe("Sidebar navigation groups", () => {
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
 
+    const expandedBox = await sidebar.boundingBox();
+    expect(expandedBox).not.toBeNull();
+
     // AppSidebar renders the default `collapsible="offcanvas"`, so the icon
     // rail is not reachable by clicking the trigger. Drive the exact data
     // attributes the shipped CSS keys off instead — this asserts the real
@@ -283,20 +286,55 @@ test.describe("Sidebar navigation groups", () => {
       group?.setAttribute("data-collapsible", "icon");
     }, "app-sidebar");
 
-    // Labels fade away …
+    // The container really is the narrow rail now — everything below is
+    // measured against it, so if this width never shrank the containment
+    // assertions would be vacuous.
+    // The width is animated (`transition-[left,right,width] duration-200`), so
+    // wait for it to SETTLE at --sidebar-width-icon (3rem). Sampling the box
+    // straight after the attribute flip catches a mid-animation ~170px and
+    // makes every containment check below far looser than the real rail.
+    await expect(sidebar).toHaveCSS("width", "48px");
+
+    const rail = await sidebar.boundingBox();
+    expect(rail).not.toBeNull();
+    expect(rail!.width).toBeLessThan(expandedBox!.width);
+    const railWidth = rail!.width;
+
+    // Labels fade away — BOTH halves of the rule, because `opacity: 0` alone
+    // would leave each label still occupying its `h-8` of vertical space and
+    // pushing the items below it down the rail.
     for (const label of GROUP_LABELS) {
-      const label_ = sidebar.locator('[data-sidebar="group-label"]', { hasText: label });
-      await expect(label_).toHaveCSS("opacity", "0");
+      const groupLabel = sidebar.locator('[data-sidebar="group-label"]', { hasText: label });
+      await expect(groupLabel).toHaveCSS("opacity", "0");
+      await expect(groupLabel).toHaveCSS("margin-top", "-32px");
+      await expect(groupLabel).toHaveCSS("height", "32px");
     }
 
-    // … and every item survives, with a real box to click on.
+    // … and every item survives, visible and INSIDE the rail. A bounding box
+    // is returned for clipped and off-screen elements too, so "not null" would
+    // pass even with the items shoved out of the 3rem container: the check
+    // that matters is that each item's box sits within the rail's bounds,
+    // horizontally and vertically.
     for (const item of MEMBER_ITEMS) {
       const link = sidebar.getByRole("link", { name: item, exact: true });
-      await expect(link).toHaveCount(1);
+      await expect(link).toBeVisible();
+
       const box = await link.boundingBox();
       expect(box, `${item} has no box on the icon rail`).not.toBeNull();
-      expect(box!.width).toBeGreaterThan(0);
-      expect(box!.height).toBeGreaterThan(0);
+      expect(box!.width, `${item} has no width on the icon rail`).toBeGreaterThan(0);
+      expect(box!.height, `${item} has no height on the icon rail`).toBeGreaterThan(0);
+
+      // Allow a pixel of rounding slack on each edge, nothing more.
+      expect(box!.x, `${item} starts left of the rail`).toBeGreaterThanOrEqual(rail!.x - 1);
+      expect(
+        box!.x + box!.width,
+        `${item} overflows the ${railWidth}px rail horizontally`,
+      ).toBeLessThanOrEqual(rail!.x + railWidth + 1);
+      expect(box!.y, `${item} sits above the rail`).toBeGreaterThanOrEqual(rail!.y - 1);
+      expect(
+        box!.y + box!.height,
+        `${item} is pushed below the bottom of the rail`,
+      ).toBeLessThanOrEqual(rail!.y + rail!.height + 1);
     }
   });
 });
