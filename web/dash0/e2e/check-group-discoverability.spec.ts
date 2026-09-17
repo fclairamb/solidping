@@ -159,6 +159,12 @@ test.describe("Check group discoverability", () => {
     });
     // ...and the empty-state hint is gone now that a group exists.
     await expect(page.getByTestId("check-group-empty-hint")).toHaveCount(0);
+    // The rendered label alone would not catch a Radix Select that answers its
+    // own reset ("") over the fresh selection — the field mirrors the state.
+    await expect(page.getByTestId("check-group-field")).not.toHaveAttribute(
+      "data-group-uid",
+      "",
+    );
 
     await page.getByTestId("check-submit-button").click();
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 15000 });

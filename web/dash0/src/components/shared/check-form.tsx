@@ -440,6 +440,12 @@ export function CheckForm({
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
   // Inline "create a group" dialog, opened from the group field itself.
   const [showNewGroup, setShowNewGroup] = useState(false);
+  // A group created from that dialog is held here as well as invalidated in the
+  // query cache: the list this form renders arrives as a PROP from the route,
+  // so waiting for the parent's refetch would leave the freshly created (and
+  // freshly selected) group with no matching option — and a Radix Select with
+  // an unmatched value renders its placeholder, i.e. "No group".
+  const [inlineGroups, setInlineGroups] = useState<CheckGroup[]>([]);
   // Escalation policy assignment: "" = inherit (group → org default → none),
   // a UID = that policy. PATCH semantics: send the UID to set, "" to clear.
   const [escalationPolicyUid, setEscalationPolicyUid] = useState(
@@ -1003,9 +1009,18 @@ export function CheckForm({
     ? authSection.summary(configState, initialData?.configPrivateKeys)
     : { text: "", customized: false };
 
+  const availableGroups = useMemo(() => {
+    const merged = [...(checkGroups ?? [])];
+    for (const group of inlineGroups) {
+      if (!merged.some((g) => g.uid === group.uid)) merged.push(group);
+    }
+
+    return merged;
+  }, [checkGroups, inlineGroups]);
+
   const labelCount = Object.keys(labels).length;
   const groupName = checkGroupUid
-    ? checkGroups?.find((g) => g.uid === checkGroupUid)?.name
+    ? availableGroups.find((g) => g.uid === checkGroupUid)?.name
     : undefined;
   const orgCustomized = labelCount > 0 || !!checkGroupUid;
   const orgSummaryParts: string[] = [];
@@ -1084,7 +1099,7 @@ export function CheckForm({
   // (`showGroup`), which meant a new user never met the feature: no groups, no
   // field, no way to learn groups exist (spec 2026-09-16-13). It now always
   // renders, and says what a group is when there are none yet.
-  const hasNoGroups = (checkGroups?.length ?? 0) === 0;
+  const hasNoGroups = availableGroups.length === 0;
 
   // A section opens on load when it holds non-default values OR is the target of
   // a `?section=<id>` deep-link (which the mount effect above also scrolls to).
@@ -1633,14 +1648,23 @@ export function CheckForm({
                 <p className="text-xs text-muted-foreground">{t("form.labelsHint")}</p>
               </div>
 
-              <div className="space-y-2" data-testid="check-group-field">
+              <div className="space-y-2" data-testid="check-group-field" data-group-uid={checkGroupUid}>
                 <Label htmlFor="group">{t("form.groupOptional")}</Label>
                 <div className="flex items-center gap-2">
-                  <Select value={checkGroupUid || "none"} onValueChange={(v) => setCheckGroupUid(v === "none" ? "" : v)}>
+                  <Select value={checkGroupUid || "none"} onValueChange={(v) => {
+                      // Radix answers "" when the controlled value names an item
+                      // it has not registered yet — which is exactly the frame
+                      // after a group is created inline and selected in the same
+                      // commit. Every real item here carries a non-empty value
+                      // ("none" clears), so "" is only ever that reset signal and
+                      // must not be written back over the fresh selection.
+                      if (v === "") return;
+                      setCheckGroupUid(v === "none" ? "" : v);
+                    }}>
                     <SelectTrigger className="flex-1" data-testid="check-group-select"><SelectValue placeholder={t("form.noGroup")} /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">{t("form.noGroup")}</SelectItem>
-                      {checkGroups?.map((g) => (<SelectItem key={g.uid} value={g.uid}>{g.name}</SelectItem>))}
+                      {availableGroups.map((g) => (<SelectItem key={g.uid} value={g.uid}>{g.name}</SelectItem>))}
                     </SelectContent>
                   </Select>
                   {/* Creating a group is a write the demo allowlist refuses, so
@@ -1671,7 +1695,10 @@ export function CheckForm({
                 org={org}
                 open={showNewGroup}
                 onOpenChange={setShowNewGroup}
-                onCreated={(group) => setCheckGroupUid(group.uid)}
+                onCreated={(group) => {
+                  setInlineGroups((prev) => [...prev, group]);
+                  setCheckGroupUid(group.uid);
+                }}
               />
           </CollapsibleSection>
 
