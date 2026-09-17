@@ -86,6 +86,14 @@ The client then runs a standard OAuth 2.1 authorization-code flow with PKCE, end
 
 ## Authentication & Scopes
 
+Every call needs a token, with one deliberate exception: the MCP **handshake**
+(`initialize` and `notifications/initialized`) is answered without one, so MCP
+directories and client autodiscovery can introspect the server before any login.
+The handshake returns only public facts — the protocol version, the three
+capability flags, and the server name and version — and mints no session.
+Everything else, `tools/list` and `resources/list` included, answers
+`401 NO_TOKEN` without a token.
+
 Whichever path a token arrives by — OAuth consent or a manual PAT (below) — it must carry one of:
 
 | Scope | Access |
