@@ -18,8 +18,8 @@ import (
 // gate do unbounded work, and keeps it from being a way past the gate.
 const maxHandshakeProbeBytes = 64 * 1024
 
-// anonymousMethods is the exhaustive list of JSON-RPC methods that may be
-// served without a token: the MCP handshake and nothing else.
+// isAnonymousMethod reports whether a JSON-RPC method may be served without a
+// token. The two handshake methods are the exhaustive list.
 //
 // `initialize` answers with the protocol version, three static capability
 // flags and ServerInfo{"solidping", …} — public facts, identical for every
@@ -85,8 +85,9 @@ func isAnonymousHandshakeRequest(req *http.Request) bool {
 
 // peekBody reads up to maxHandshakeProbeBytes of req.Body and puts everything
 // it consumed back, so the downstream handler decodes the full original body.
-// complete is false when the body could not be read or is larger than the cap.
-func peekBody(req *http.Request) (body []byte, complete bool) {
+// The second return is false when the body could not be read or is larger than
+// the cap.
+func peekBody(req *http.Request) ([]byte, bool) {
 	original := req.Body
 
 	peeked, err := io.ReadAll(io.LimitReader(original, maxHandshakeProbeBytes+1))

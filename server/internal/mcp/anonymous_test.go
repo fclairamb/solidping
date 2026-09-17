@@ -36,8 +36,12 @@ func gateProbe(t *testing.T, body string, header map[string]string) (*httptest.R
 
 	terminal := func(writer http.ResponseWriter, req *http.Request) error {
 		reached = true
+
 		raw, err := io.ReadAll(req.Body)
-		require.NoError(t, err)
+		if err != nil {
+			return err
+		}
+
 		seen = string(raw)
 		writer.WriteHeader(http.StatusOK)
 
@@ -84,7 +88,10 @@ func TestAllowAnonymousHandshake_RestoresBodyOnTheAuthenticatedPath(t *testing.T
 
 	terminal := func(writer http.ResponseWriter, req *http.Request) error {
 		raw, err := io.ReadAll(req.Body)
-		require.NoError(t, err)
+		if err != nil {
+			return err
+		}
+
 		seen = string(raw)
 		writer.WriteHeader(http.StatusOK)
 
@@ -117,9 +124,12 @@ func TestAllowAnonymousHandshake_OversizedBodyIsRestoredIntact(t *testing.T) {
 
 	var seen string
 
-	terminal := func(writer http.ResponseWriter, req *http.Request) error {
+	terminal := func(_ http.ResponseWriter, req *http.Request) error {
 		raw, err := io.ReadAll(req.Body)
-		require.NoError(t, err)
+		if err != nil {
+			return err
+		}
+
 		seen = string(raw)
 
 		return nil
@@ -198,7 +208,7 @@ func TestAllowAnonymousHandshake_NonPostGoesThroughAuth(t *testing.T) {
 
 	var reached bool
 
-	handler := AllowAnonymousHandshake(denyAll)(func(writer http.ResponseWriter, _ *http.Request) error {
+	handler := AllowAnonymousHandshake(denyAll)(func(_ http.ResponseWriter, _ *http.Request) error {
 		reached = true
 
 		return nil
