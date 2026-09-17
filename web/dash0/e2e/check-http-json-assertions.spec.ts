@@ -79,10 +79,10 @@ test.describe("HTTP check JSONPath assertions", () => {
     await expect(page.getByTestId("json-assertion-editor")).toBeVisible();
 
     await page.getByTestId("json-assertion-path").fill("$.status");
-    await page
-      .getByTestId("json-assertion-operator")
-      .click();
-    await page.getByRole("option", { name: "eq", exact: true }).click();
+    await page.getByTestId("json-assertion-operator").click();
+    // Operator labels are translated (spec 2026-09-16-12) — the select shows
+    // "equals", not the raw "eq" key it used to render.
+    await page.getByRole("option", { name: "equals", exact: true }).click();
     await page.getByTestId("json-assertion-value").fill("ok");
 
     await page.getByTestId("check-submit-button").click();
