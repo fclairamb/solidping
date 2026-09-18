@@ -17,9 +17,19 @@
  *     the captions in, and write one **master** at 1280×800,
  *  6. derive everything published from that master: **AV1** (`libsvtav1`,
  *     tiny) and **H.264** (`libx264`, plays everywhere) into
- *     `web/docs/static/showcase/`, plus the README **GIF** and the three
- *     stills into `res/screenshots/` — which is what stops those from being
- *     hand-copied, as they were until spec 2026-09-16-05.
+ *     `web/docs/static/showcase/`, plus the three stills into
+ *     `res/screenshots/` — which is what stops those from being hand-copied,
+ *     as they were until spec 2026-09-16-05.
+ *
+ * The README's moving image is **not** produced here any more. It used to be a
+ * GIF, because that is the only format GitHub renders inline from a path in the
+ * repo — at the cost of 2.35 MB in every clone, and of showing neither the
+ * `docker run` segment nor the camera move, both of which cost more GIF bytes
+ * than the whole dashboard take. GitHub does play a real `<video>` when the
+ * source is an attachment on its own CDN, so README.md now embeds the H.264 cut
+ * uploaded to a GitHub issue. That upload is manual and the URL is pasted into
+ * README.md by hand: see `README.md` in this directory, "Refreshing the README
+ * video".
  *
  * Raw `.webm` intermediates, vhs frames, cue lists and everything else under
  * `showcase/output/` stay git-ignored.
@@ -51,7 +61,6 @@ import {
   buildSegmentPlan,
   buildSpeedFilters,
   buildSpeedTagWindows,
-  mapSourceToOutput,
   type LabelSpec,
   type LabelWindow,
   type OverlayWindow,
@@ -66,7 +75,6 @@ const stillsDir = path.join(outputDir, "stills");
 const cuesDir = path.join(outputDir, "cues");
 const labelsDir = path.join(outputDir, "labels");
 const masterFile = path.join(outputDir, "master.mp4");
-const gifMasterFile = path.join(outputDir, "gif-master.mp4");
 const terminalSegment = path.join(outputDir, "terminal", "docker-run.mp4");
 const publishDir = path.resolve(showcaseDir, "../../docs/static/showcase");
 const screenshotsDir = path.resolve(showcaseDir, "../../../res/screenshots");
@@ -85,20 +93,23 @@ const PUBLISHED_STILLS = [
 const PUBLISHED_VIDEO_AV1 = "setup-to-first-result.mp4";
 const PUBLISHED_VIDEO_H264 = "setup-to-first-result.h264.mp4";
 
-/** What the README embeds, written here rather than copied by hand. */
-const README_GIF = "setup-to-first-result.gif";
-const README_MP4 = "setup-to-first-result.mp4";
-
 /**
- * Assets the previous cut left behind. Removed on every run: two cuts of the
+ * Assets a previous run left behind. Removed on every run: two cuts of the
  * same flow is exactly the rot this pipeline exists to prevent, and the spec
  * that introduced `setup-to-first-result` retired `create-http-check`.
+ *
+ * The `setup-to-first-result` GIF and MP4 under `res/screenshots/` are on this
+ * list because the README stopped embedding them: it now plays the H.264 cut
+ * from a GitHub attachment URL, so a copy of the same footage in the repo is
+ * 4.3 MB every clone pays for nothing.
  */
 const RETIRED = [
   path.join(publishDir, "create-http-check.mp4"),
   path.join(publishDir, "create-http-check.h264.mp4"),
   path.join(screenshotsDir, "create-http-check.gif"),
   path.join(screenshotsDir, "create-http-check.mp4"),
+  path.join(screenshotsDir, "setup-to-first-result.gif"),
+  path.join(screenshotsDir, "setup-to-first-result.mp4"),
 ];
 
 /** Published frame size. */
@@ -199,17 +210,6 @@ const TAG_Y = "56";
 
 /** How long each lower third stays up, in seconds. */
 const LABEL_HOLD_S = 3.2;
-
-/** GIF budget and the ladder of compromises that gets under it. */
-const GIF_WIDTH = 800;
-const GIF_BUDGET_BYTES = 2.5 * 1024 * 1024;
-const GIF_ATTEMPTS = [
-  { fps: 10, colors: 160, truncate: false },
-  { fps: 8, colors: 128, truncate: false },
-  { fps: 6, colors: 128, truncate: false },
-  { fps: 5, colors: 96, truncate: false },
-  { fps: 5, colors: 96, truncate: true },
-];
 
 class PipelineError extends Error {}
 
@@ -726,79 +726,6 @@ function publishStill(src: string, dst: string): string {
     `${humanSize(src)} at source resolution`;
 }
 
-interface GifResult {
-  file: string;
-  truncatedAtS: number | null;
-  fps: number;
-  colors: number;
-}
-
-/**
- * Writes the README GIF, two-pass, under budget.
- *
- * GitHub renders a GIF inline in a README and will not play a `<video>`, so this
- * is the asset most people actually see. It is also the one that used to be
- * copied in by hand and rot on its own — the point of deriving it here.
- *
- * Fed from the **GIF master** (dashboard only, no camera move), for the reason
- * measured where that master is built. The ladder then trades frame rate, then
- * colours, and only then length: a GIF that stops before the results is worth
- * less than a slightly coarser one, so truncation is the last resort rather
- * than the first. When it happens, the alt text has to say so.
- */
-function publishGif(sourceFile: string, truncateAtS: number): GifResult {
-  const file = path.join(screenshotsDir, README_GIF);
-  const palette = path.join(outputDir, "gif-palette.png");
-  mkdirSync(screenshotsDir, { recursive: true });
-
-  let last: GifResult | null = null;
-  for (const attempt of GIF_ATTEMPTS) {
-    const truncatedAtS = attempt.truncate ? truncateAtS : null;
-    const trim = truncatedAtS ? ["-to", truncatedAtS.toFixed(3)] : [];
-    const chain = `fps=${attempt.fps},scale=${GIF_WIDTH}:-1:flags=lanczos`;
-
-    rmSync(palette, { force: true });
-    run(
-      "ffmpeg",
-      ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceFile, ...trim,
-        "-vf", `${chain},palettegen=max_colors=${attempt.colors}:stats_mode=diff`, palette],
-      "GIF palette",
-    );
-
-    rmSync(file, { force: true });
-    run(
-      "ffmpeg",
-      ["-hide_banner", "-loglevel", "error", "-y", "-i", sourceFile, ...trim,
-        "-i", palette,
-        "-lavfi",
-        `${chain}[x];[x][1:v]paletteuse=dither=none:diff_mode=rectangle`,
-        "-loop", "0", file],
-      "GIF encode",
-    );
-
-    last = { file, truncatedAtS, fps: attempt.fps, colors: attempt.colors };
-    if (statSync(file).size <= GIF_BUDGET_BYTES) {
-      rmSync(palette, { force: true });
-
-      return last;
-    }
-    console.log(
-      `showcase: gif        ${humanSize(file)} at ${attempt.fps} fps / ` +
-        `${attempt.colors} colours is over the ` +
-        `${(GIF_BUDGET_BYTES / 1024 / 1024).toFixed(1)} MB budget — trying harder`,
-    );
-  }
-
-  rmSync(palette, { force: true });
-  console.warn(
-    `showcase: WARNING   the README GIF is ${humanSize(file)}, over the ` +
-      `${(GIF_BUDGET_BYTES / 1024 / 1024).toFixed(1)} MB budget even at the ` +
-      "coarsest setting. Shorten the cut or drop the width.",
-  );
-
-  return last as GifResult;
-}
-
 /**
  * The captions, in order.
  *
@@ -927,16 +854,16 @@ async function main(): Promise<void> {
     ...speedTags.map((caption) => place(caption, TAG_X, TAG_Y)),
   ];
 
-  // ---- the masters --------------------------------------------------------
+  // ---- the master ---------------------------------------------------------
   //
-  // Two, because the GIF is a different medium with a different constraint.
-  // Measured on this cut at 800 px / 6 fps: the terminal segment costs ~55 KB
+  // One, now. There used to be a second, stripped one feeding the README GIF:
+  // measured on this cut at 800 px / 6 fps, the terminal segment costs ~55 KB
   // per GIF frame (a scrolling log changes every pixel of every frame) against
   // ~3 KB for the dashboard, and the camera move nearly doubles the rest for
-  // the same reason. Included, they put the README GIF at 6 MB even at 5 fps
-  // and 96 colours. So the GIF is rendered from the dashboard take alone, with
-  // the camera move left off — and README.md's alt text says that is what it
-  // shows. Everything else comes from the full master.
+  // the same reason, which put the full cut at 6 MB even at 5 fps and 96
+  // colours. Embedding a real video instead of a GIF is what retired that
+  // trade-off: H.264 is unbothered by either, so the README now shows the same
+  // master everything else derives from.
 
   const speed = buildSpeedFilters(plan, {
     inLabel: "cam",
@@ -1042,18 +969,6 @@ async function main(): Promise<void> {
       .join(", ")}`,
   );
 
-  const gifMasterDuration = assemble({
-    output: gifMasterFile,
-    camera: false,
-    terminal: false,
-    captions: overlayWindows,
-    what: "GIF master assembly",
-  });
-  console.log(
-    `showcase: gif master ${path.relative(showcaseDir, gifMasterFile)} ` +
-      `(${gifMasterDuration.toFixed(2)}s, dashboard only, no camera move)`,
-  );
-
   // ---- everything published derives from that master ----------------------
 
   mkdirSync(publishDir, { recursive: true });
@@ -1070,32 +985,7 @@ async function main(): Promise<void> {
     `showcase: wrote      ${path.relative(process.cwd(), h264Out)} (${humanSize(h264Out)}, H.264)`,
   );
 
-  const readmeMp4 = path.join(screenshotsDir, README_MP4);
   mkdirSync(screenshotsDir, { recursive: true });
-  transcode(readmeMp4, H264_ARGS, "README H.264 re-encode");
-  console.log(
-    `showcase: wrote      ${path.relative(process.cwd(), readmeMp4)} (${humanSize(readmeMp4)}, H.264)`,
-  );
-
-  // The GIF's last-resort rung stops where the detail page begins — the same
-  // beat, measured on the GIF master's own timeline (which has no terminal
-  // segment in front of it, so everything sits `offsetS` earlier).
-  const detailCue = planCues.find((cue) => cue.label === "detail-page");
-  const gifTruncateAt = detailCue
-    ? mapSourceToOutput(plan, detailCue.t)
-    : gifMasterDuration;
-  const gif = publishGif(gifMasterFile, gifTruncateAt);
-  console.log(
-    `showcase: wrote      ${path.relative(process.cwd(), gif.file)} ` +
-      `(${humanSize(gif.file)}, ${GIF_WIDTH}px, ${gif.fps} fps, ${gif.colors} colours` +
-      `${gif.truncatedAtS ? `, TRUNCATED at ${gif.truncatedAtS.toFixed(1)}s` : ""})`,
-  );
-  if (gif.truncatedAtS) {
-    console.warn(
-      "showcase: WARNING   the GIF had to stop before the results beat to fit " +
-        "its budget. Its alt text in README.md must say so.",
-    );
-  }
 
   const missing: string[] = [];
   for (const { still, readme } of PUBLISHED_STILLS) {
@@ -1133,6 +1023,16 @@ async function main(): Promise<void> {
   console.log(
     "showcase: done. Commit the assets under web/docs/static/showcase/ and " +
       "res/screenshots/.",
+  );
+  // Repo-relative, not cwd-relative: `make showcase-cut` runs this from
+  // web/dash0, and "../docs/static/showcase/…" is not a path anyone can paste.
+  const repoRoot = path.resolve(showcaseDir, "../../..");
+  console.log(
+    "showcase: README     the video README.md embeds is NOT written by this " +
+      `script. To refresh it, upload ${path.relative(repoRoot, h264Out)} to a ` +
+      "GitHub issue comment, POST the comment, and paste the resulting " +
+      "github.com/user-attachments/assets/… URL into README.md — see " +
+      'web/dash0/showcase/README.md, "Refreshing the README video".',
   );
 }
 

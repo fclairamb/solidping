@@ -1,13 +1,12 @@
 # Showcase media pipeline
 
 Produces every published picture of SolidPing: the screen recording on the docs
-[Tour page](../../docs/docs/tour.mdx), the GIF at the top of the root
+[Tour page](../../docs/docs/tour.mdx), the video at the top of the root
 [`README.md`](../../../README.md), and the three stills both of them embed.
 
 Two sources go in — a `vhs` render of the published `docker run` one-liner
 actually booting the shipped image, and a Playwright take driving the **real
-dash0 UI** — and one cut comes out, published as AV1, H.264, a GIF and three
-PNGs.
+dash0 UI** — and one cut comes out, published as AV1, H.264 and three PNGs.
 
 The point is that the media is **regenerable**: when the UI changes, re-run the
 pipeline instead of hand-recapturing, so the published assets can never quietly
@@ -317,7 +316,7 @@ Useful knobs:
    at the clapper, applies the camera move, applies the **segment plan**
    (below), joins the terminal segment to the dashboard one with a 400 ms
    `xfade`, burns in the four lower thirds, and writes one master — from which
-   the AV1, the H.264, the README GIF and the three stills are all derived.
+   the AV1, the H.264 and the three stills are all derived.
 
 ### The edit: what is cut, what is sped up, and what is neither
 
@@ -349,17 +348,49 @@ tests: every caption appears **exactly once**, and never two at a time. A
 caption whose cue is missing from the take is a hard failure — publishing a cut
 that silently says less than it should is worse than failing the run.
 
-### Why the README GIF is not the same cut
+### Refreshing the README video
 
-The GIF comes from a **second master: the dashboard take only, with the camera
-move left off**. Measured on this cut at 800 px / 6 fps, the terminal segment
-costs about **55 KB per GIF frame** — a scrolling log changes every pixel of
-every frame, which is the one thing GIF cannot compress — against about 3 KB
-for the dashboard, and the camera move nearly doubles the rest for the same
-reason. With both included the README GIF was 6 MB at 5 fps and 96 colours.
-Without them it is 2.3 MB at 10 fps and 160 colours, and the `docker run` beat
-lives in the mp4 that the README links beside it. The alt text says what the
-GIF shows.
+**This is the one step `make showcase` cannot do for you.** Everything else in
+this pipeline is regenerable; the README's player is not, and it needs three
+manual minutes after a re-record.
+
+The root README used to embed a GIF, because a GIF is the only moving format
+GitHub renders inline from a path in the repo. It cost 2.35 MB in every clone
+and it could not show the two most expensive beats: measured at 800 px / 6 fps,
+the terminal segment costs about **55 KB per GIF frame** — a scrolling log
+changes every pixel of every frame, which is the one thing GIF cannot compress
+— against about 3 KB for the dashboard, and the camera move nearly doubles the
+rest for the same reason. The full cut was 6 MB at 5 fps and 96 colours, so the
+GIF was rendered from a second, stripped master with neither.
+
+GitHub does play a real `<video>`, but only when the source is an attachment on
+its own CDN. So the README now embeds the H.264 cut, uploaded once and linked by
+its `user-attachments` URL. H.264 does not care about scrolling logs or camera
+moves, so the README and the Tour page finally show the same 38 seconds.
+
+To refresh it after `make showcase`:
+
+1. Open a GitHub issue or issue comment in this repo and drag
+   `web/docs/static/showcase/setup-to-first-result.h264.mp4` into the body.
+   Only `.mp4`, `.mov` and `.webm` are accepted, H.264 is the safest codec, and
+   the cap is 10 MB on a free plan.
+2. Wait for the upload to finish. The body is replaced by a
+   `https://github.com/user-attachments/assets/<uuid>` URL.
+3. **Post the comment.** An upload that is never posted stays private to the
+   uploader: the URL 404s for everyone else, and the README player is broken for
+   every visitor but you. [Issue #396](https://github.com/fclairamb/solidping/issues/396)
+   exists to hold these — post there and leave it closed.
+4. Paste the URL into `README.md`, on **its own line with a blank line either
+   side**. Inside the centred `<div>` is fine; GitHub renders it as a player
+   there. Do not wrap it in `<video>`, markdown link syntax, or `<img>` — any of
+   those and the sanitizer or the renderer gives you a bare link instead.
+
+The old URL keeps working, so nothing breaks between the re-record and the
+paste. The trade-offs this buys: the video lives on GitHub's CDN rather than in
+the repo, so it is absent from a clone, a fork, a tarball, and from any renderer
+that is not github.com (Docker Hub, pkg.go.dev, an IDE preview). Those see the
+bare URL. The `<sub>` caption under the player carries the description that used
+to be the GIF's alt text, and points at the Tour page as the fallback.
 
 ### Making it look like a demo rather than a screen capture
 
@@ -442,8 +473,7 @@ every synthesised frame. The recording stays at its native 25 fps.
 | `web/docs/static/showcase/setup-to-first-result.mp4` | yes | The cut, AV1 |
 | `web/docs/static/showcase/setup-to-first-result.h264.mp4` | yes | The same cut in H.264, for browsers without AV1 |
 | `web/docs/static/showcase/0*.png` | yes | Stills embedded in the Tour page |
-| `res/screenshots/setup-to-first-result.gif` | yes | What GitHub renders at the top of the root README |
-| `res/screenshots/setup-to-first-result.mp4` | yes | The H.264 cut, linked from the same place |
+| `github.com/user-attachments/assets/…` | **not in the repo** | What GitHub plays at the top of the root README — uploaded by hand, see "Refreshing the README video" |
 | `res/screenshots/check*.png`, `checks-list.png` | yes | The root README's screenshot table |
 
 Everything in both directories is written by `postprocess.ts`. Nothing there is

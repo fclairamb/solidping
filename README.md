@@ -27,9 +27,9 @@ incidents and on-call escalation — in a single Go binary.
 
 ### From `docker run` to the first result
 
-<img src="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/setup-to-first-result.gif" alt="SolidPing from the first sign-in to the first results: the forced password change on a new install, creating an HTTP check against https://solidping.io/api/mgmt/health, and its first response times plotted from two regions" width="800">
+https://github.com/user-attachments/assets/471694b0-b136-4764-86c1-5f85615c45f4
 
-<sub>The full cut, <code>docker run</code> included, is <a href="https://raw.githubusercontent.com/fclairamb/solidping/main/res/screenshots/setup-to-first-result.mp4">the same recording as video</a>. Both are regenerated from the live dashboard with <code>make showcase</code> — nothing here is a mock-up.</sub>
+<sub>The whole thing, start to finish: <code>docker run</code>, the first sign-in and its forced password change, an HTTP check created against <code>https://solidping.io/api/mgmt/health</code>, and its first response times plotted from two regions. Regenerated from the live dashboard with <code>make showcase</code> — nothing here is a mock-up. <a href="https://solidping.io/docs/tour">The same cut plays on the Tour page</a> if the player above does not load.</sub>
 
 </div>
 
