@@ -150,7 +150,8 @@ regeneration can come later, once the recorded flows have proven stable.
    joined with a 400 ms `xfade`, four lower thirds burned in, and then one
    master from which everything published is derived — **AV1** (`libsvtav1`,
    tiny), **H.264** (`libx264`, so Safari without an AV1 hardware decoder still
-   plays it), the README **GIF**, and the stills.
+   plays it), and the stills. The README's player is **not** derived here —
+   see "The README video is uploaded by hand" below.
 
 ### The edit: cuts, one tagged speed-up, and nothing else
 
@@ -171,19 +172,45 @@ strings.
 - Every edit is conditional on the gap it names being long enough; the run log
   prints one line per edit, applied or skipped, with the reason.
 
-### Why `drawtext` is not used, and why the GIF is a different render
+### Why `drawtext` is not used
 
 Homebrew's current ffmpeg bottle is built **without libfreetype**, so `drawtext`
 does not exist on the machine that regenerates this media. The captions are
 rasterised in the Chromium that Playwright already ships (`labels.ts`) and
 composited with `overlay`.
 
-The README GIF comes from a **second master: the dashboard take only, with the
-camera move off**. Measured at 800 px / 6 fps, the terminal segment costs ~55 KB
-per GIF frame (a scrolling log changes every pixel of every frame) against ~3 KB
-for the dashboard, and the camera move nearly doubles the rest. With both in,
-the GIF was 6 MB at 5 fps / 96 colours; without them it is 2.3 MB at 10 fps /
-160 colours.
+### The README video is uploaded by hand
+
+The root README embedded a **GIF** until 2026-09-18, because a GIF is the only
+moving format GitHub renders inline from a path in the repo. It cost 2.35 MB in
+every clone and could not carry the two most expensive beats: measured at
+800 px / 6 fps the terminal segment costs ~55 KB per GIF frame (a scrolling log
+changes every pixel of every frame) against ~3 KB for the dashboard, and the
+camera move nearly doubles the rest. With both in, the GIF was 6 MB at 5 fps /
+96 colours — so it was rendered from a second, stripped master with neither, and
+the README showed less than the Tour page did.
+
+GitHub plays a real `<video>` when, and only when, the source is an attachment
+on its own CDN (`github.com/user-attachments/assets/<uuid>`). A `<video>` tag or
+an `<img>` pointing at a committed `.mp4` is stripped by the sanitizer. So the
+README now embeds the H.264 cut as an attachment, uploaded once to a GitHub
+issue, and both the GIF and the duplicated `res/screenshots/` mp4 left the repo.
+
+Two consequences worth knowing:
+
+- **The upload must be posted.** An attachment that is uploaded but never
+  submitted stays private to the uploader — the URL 404s anonymously, so the
+  README player is broken for every visitor but the person who uploaded it.
+  [Issue #396](https://github.com/fclairamb/solidping/issues/396) is the closed
+  holding issue that anchors the current one; deleting it breaks the README.
+- **It is the one asset `make showcase` cannot refresh.** The pipeline prints a
+  reminder at the end of every run instead. The step is written out in
+  `web/dash0/showcase/README.md`, "Refreshing the README video".
+
+The cost of the trade: the video is no longer in a clone, a fork or a tarball,
+and any renderer that is not github.com (Docker Hub, pkg.go.dev, an IDE preview)
+shows a bare URL. The `<sub>` caption under the player carries what used to be
+the GIF's alt text and points at the Tour page as the fallback.
 
 Pipeline scratch (`web/dash0/showcase/output/`, including the raw `.webm`
 intermediates and the cue lists) is git-ignored. Only the post-processed assets
@@ -232,8 +259,6 @@ content it ghosts, doubling half-typed characters and the text caret.
 | `web/docs/static/showcase/01-checks-list.png` | Checks list |
 | `web/docs/static/showcase/02-check-form-filled.png` | New-check form, filled in |
 | `web/docs/static/showcase/03-check-detail.png` | Check detail page |
-| `res/screenshots/setup-to-first-result.gif` | What GitHub renders at the top of the root README |
-| `res/screenshots/setup-to-first-result.mp4` | The H.264 cut, linked beside the GIF |
 | `res/screenshots/checks-list.png`, `check-form.png`, `check-detail.png` | The root README's screenshot table |
 
 The `web/docs/static/showcase/` files ship inside the embedded `web/docs` build
@@ -292,9 +317,9 @@ they match the run log line for line.
 - **Encodes:** `setup-to-first-result.mp4` — AV1 (`libsvtav1`), 3 194 274 B
   (3.05 MB); `setup-to-first-result.h264.mp4` — H.264 (`libx264`), 2 052 260 B
   (1.96 MB)
-- **README GIF:** 2 459 187 B (2.35 MB), 800×500, 10 fps, 160 colours, full
-  length, no truncation — rendered from the **GIF master** (dashboard only, no
-  camera move) for the reasons measured above
+- **README video:** the same `setup-to-first-result.h264.mp4`, 2 052 260 B,
+  uploaded as a GitHub attachment rather than committed. It replaced a
+  2 459 187 B (2.35 MB) GIF that showed neither the terminal nor the camera move
 - **Stills, published (1×, 1280×800, committed):** `01-checks-list.png` 177 KB,
   `02-check-form-filled.png` 166 KB, `03-check-detail.png` 209 KB
 - **Stills, originals (2×, 2560×1600, git-ignored scratch):** 259 KB / 246 KB /

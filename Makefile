@@ -389,12 +389,12 @@ test-docs: ## Run docs site unit tests (mirrors the CI step)
 	@cd $(DOCS_DIR) && bun run test:unit
 	@echo "Docs unit tests complete"
 
-showcase: ## Regenerate the showcase media (terminal + dashboard cut, stills, README GIF)
+showcase: ## Regenerate the showcase media (terminal + dashboard cut, stills, docs video)
 	@echo "Filming the terminal segment (needs docker and vhs)..."
 	@cd $(DASH0_DIR) && bun run showcase/terminal.ts
 	@echo "Recording showcase media (needs a running SolidPing server)..."
 	@cd $(DASH0_DIR) && bunx playwright test --config=showcase/playwright.config.ts
-	@echo "Post-processing (stitch + label + AV1/H.264/GIF)..."
+	@echo "Post-processing (stitch + label + AV1/H.264)..."
 	@cd $(DASH0_DIR) && bun run showcase/postprocess.ts
 	@echo "Showcase media written to web/docs/static/showcase/ and res/screenshots/ — commit the changed assets."
 
