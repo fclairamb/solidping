@@ -21,7 +21,7 @@ permissions:
 jobs:
   conventional-title:
     name: Conventional commit title
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Validate the PR title
         env:

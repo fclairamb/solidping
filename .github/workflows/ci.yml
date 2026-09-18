@@ -30,7 +30,7 @@ jobs:
   # this must change with it.
   changes:
     name: Detect non-wiki changes
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -93,7 +93,7 @@ jobs:
 
   backend-lint:
     name: Backend Lint & Test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
@@ -174,7 +174,7 @@ jobs:
   # database run never delays the ~2-minute lint/build/short-test feedback.
   backend-postgres:
     name: Backend Postgres Tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     # 20 was extrapolated from a warm laptop (10m19s for internal/db/postgres
@@ -290,7 +290,7 @@ jobs:
 
   dash0:
     name: Dash0 Build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
@@ -342,7 +342,7 @@ jobs:
 
   status0:
     name: Status0 Build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
@@ -396,7 +396,7 @@ jobs:
 
   docs:
     name: Docs Build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [changes]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     defaults:
@@ -434,7 +434,7 @@ jobs:
 
   build:
     name: Build Binary
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [changes, dash0, status0, docs]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) && needs.changes.outputs.code == 'true' }}
     steps:
@@ -514,7 +514,7 @@ jobs:
 
   e2e-tests:
     name: E2E Tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # Main suite + status0 specs + ~5 min for the session-continuity side-car
     # run below (session-continuity.spec.ts waits out real access-token
     # expiries, so it inherently takes longer than a normal spec).
@@ -750,7 +750,7 @@ jobs:
 
   ci:
     name: CI
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [changes, backend-lint, backend-postgres, dash0, status0, docs, build, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
@@ -764,7 +764,7 @@ jobs:
 
   docker:
     name: Build and Push Docker Image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: read
@@ -865,7 +865,7 @@ jobs:
 
   cli-release:
     name: Publish the sp CLI
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
@@ -996,7 +996,7 @@ jobs:
 
   server-release:
     name: Publish the server binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
@@ -1131,7 +1131,7 @@ jobs:
 
   deploy:
     name: Deploy to k8xp
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [docker]
     if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
 
