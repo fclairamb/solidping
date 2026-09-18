@@ -28,7 +28,7 @@ permissions:
 jobs:
   slowtests:
     name: Live network + Docker suites
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     defaults:
       run:
@@ -94,7 +94,7 @@ jobs:
 
   postgres:
     name: Postgres layer (against main)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     defaults:
       run:
