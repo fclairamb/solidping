@@ -5266,8 +5266,12 @@ function KpiTileSection() {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
-<Link to="/orgs/$org/checks" params={{ org }} className="block">
-  <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
+<Link
+  to="/orgs/$org/checks"
+  params={{ org }}
+  className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+>
+  <Card className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
       <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
       <Icon className="h-4 w-4 text-muted-foreground" />
@@ -5282,11 +5286,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
     <Section
       id="kpi-tiles"
       title="KPI tiles"
-      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) — no nested interactive elements inside."
+      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (cursor-pointer, hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) and the wrapping Link carries a focus-visible ring (focus-visible:ring-2 focus-visible:ring-ring) — no nested interactive elements inside."
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link to="/orgs/$org/checks" params={{ org }} className="block">
-          <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
+        <Link
+          to="/orgs/$org/checks"
+          params={{ org }}
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Card className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Monitored

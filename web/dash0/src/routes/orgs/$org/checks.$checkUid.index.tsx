@@ -1417,6 +1417,7 @@ function CheckDetailPage() {
 
       {/* Summary cards */}
       <CheckSummaryCards
+        org={org}
         check={check}
         totalIncidents={incidents?.total ?? incidents?.data?.length ?? 0}
       />
