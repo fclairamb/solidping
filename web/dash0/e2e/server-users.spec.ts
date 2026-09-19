@@ -30,12 +30,22 @@ test.describe("Superadmin user directory", () => {
     await page.goto("orgs/test/server/users");
     await page.waitForLoadState("networkidle");
 
+    // test@test.com is the OLDEST seeded user, ordered created_at DESC — on
+    // a suite with many users created after it, it can be several pages deep
+    // on an unsearched first page. Search for it directly instead of relying
+    // on it happening to land on page 1: that is what proves both that the
+    // row renders AND that search actually finds it.
+    await page.getByTestId("users-search").fill("test@test.com");
+    await page.waitForLoadState("networkidle");
+
     await expect(page.getByTestId("users-table")).toBeVisible();
 
     const row = page.getByRole("row", { name: /test@test\.com/ });
     await expect(row).toBeVisible();
-    // "test" is the seeded org's slug — the badge reads "{slug} · {role}".
-    await expect(row).toContainText("test");
+    // test@test.com belongs to THREE orgs (test, test2, test3), so a bare
+    // "test" substring match would also pass on the test2/test3 badges.
+    // Assert the "test" org's specific badge text ("{slug} · {role}").
+    await expect(row.getByText("test · admin", { exact: true })).toBeVisible();
   });
 
   test("typing a non-matching query empties the table, and clearing it restores the row", async ({
@@ -46,11 +56,18 @@ test.describe("Superadmin user directory", () => {
     await page.goto("orgs/test/server/users");
     await page.waitForLoadState("networkidle");
 
+    const search = page.getByTestId("users-search");
+
+    // Reach the row via search first (see the test above for why an
+    // unsearched first page cannot be relied on to contain it).
+    await search.fill("test@test.com");
+    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("row", { name: /test@test\.com/ }),
     ).toBeVisible();
 
-    const search = page.getByTestId("users-search");
+    // A non-matching query empties the table — the negative control that
+    // proves the row above was found BY the search, not merely present.
     await search.fill("this-query-matches-absolutely-nobody-xyz");
     await page.waitForLoadState("networkidle");
 
@@ -59,9 +76,17 @@ test.describe("Superadmin user directory", () => {
     ).toHaveCount(0);
     await expect(page.getByTestId("users-table")).toHaveCount(0);
 
+    // Clearing the search restores a real table, not just an empty one.
     await search.fill("");
     await page.waitForLoadState("networkidle");
 
+    const table = page.getByTestId("users-table");
+    await expect(table).toBeVisible();
+    await expect(table.getByRole("row")).not.toHaveCount(0);
+
+    // And searching again reaches the same specific row.
+    await search.fill("test@test.com");
+    await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("row", { name: /test@test\.com/ }),
     ).toBeVisible();
