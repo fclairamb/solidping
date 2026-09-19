@@ -2396,6 +2396,10 @@ func (m *mockDBService) MarkUserContactVerified(_ context.Context, _ string, _ t
 	return nil
 }
 
+func (m *mockDBService) SetUserContactDMChannel(_ context.Context, _, _ string) error {
+	return nil
+}
+
 func (m *mockDBService) ClearUserContactVerified(_ context.Context, _ string) error {
 	return nil
 }

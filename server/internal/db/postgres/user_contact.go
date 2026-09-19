@@ -255,6 +255,30 @@ func (s *Service) ClearUserContactVerified(ctx context.Context, uid string) erro
 	return nil
 }
 
+// SetUserContactDMChannel caches the provider-side DM conversation id on a
+// contact. Passing an empty channelID clears the cache, which is what a sender
+// does when Discord answers 404 for a channel it once handed us.
+func (s *Service) SetUserContactDMChannel(ctx context.Context, uid, channelID string) error {
+	now := time.Now()
+
+	query := s.db.NewUpdate().
+		Model((*models.UserContact)(nil)).
+		Where("uid = ?", uid).
+		Set("updated_at = ?", now)
+
+	if channelID == "" {
+		query = query.Set("dm_channel_id = NULL")
+	} else {
+		query = query.Set("dm_channel_id = ?", channelID)
+	}
+
+	if _, err := query.Exec(ctx); err != nil {
+		return fmt.Errorf("set user contact dm channel: %w", err)
+	}
+
+	return nil
+}
+
 // ListUserContactsByTypeValue returns every live contact with the given type
 // and value, across all users and organizations.
 //

@@ -1341,6 +1341,12 @@ type Service interface {
 	// hide the fact that a reconnect is needed.
 	ClearUserContactVerified(ctx context.Context, uid string) error
 
+	// SetUserContactDMChannel caches the provider-side 1:1 conversation id a
+	// contact is reachable through (a Discord DM channel). An empty channelID
+	// clears it, which is how a sender reacts to Discord 404ing a channel it
+	// previously handed us: forget it, re-open on the next send.
+	SetUserContactDMChannel(ctx context.Context, uid, channelID string) error
+
 	// ListUserContactsByTypeValue returns every live contact with the given
 	// type and value, across ALL users and organizations. Inbound provider
 	// callbacks (a Telegram /stop, a block notification) identify the contact

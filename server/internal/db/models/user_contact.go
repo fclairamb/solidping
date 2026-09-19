@@ -33,6 +33,20 @@ const (
 	// created through the generic POST /notification-contacts endpoint, since
 	// nothing there would stop a user typing a stranger's chat id.
 	UserContactTypeTelegram = "telegram"
+	// UserContactTypeDiscord is a Discord user the instance bot can DM. The
+	// stored Value is the Discord user id (a snowflake), never a username or a
+	// `name#1234` tag: both can be changed and reassigned, the snowflake cannot.
+	//
+	// Deliberately NOT in VerifiableContactTypes, for the same reason Telegram is
+	// not: there is no code round-trip to run. The proof is the BINDING itself —
+	// a `discord` contact may only be created from a Discord sign-in already on
+	// file (`user_providers`) or from the OAuth link-mode round trip, so the
+	// snowflake is always one Discord itself vouched belongs to this member. It
+	// follows that a discord contact may never be created through the generic
+	// POST /notification-contacts endpoint: nothing there would stop a user
+	// typing a STRANGER'S snowflake and having that person DMed with our
+	// incidents.
+	UserContactTypeDiscord = "discord"
 )
 
 // VerifiableContactTypes are the contact types that require a code round-trip
@@ -70,9 +84,20 @@ type UserContact struct {
 	// handle belongs to the SAME workspace as the integration about to post:
 	// the same Slack user id in another workspace is a different person, and
 	// pinging them would be worse than not pinging anyone.
-	TeamID     *string    `bun:"team_id"`
-	Label      string     `bun:"label,notnull"`
-	VerifiedAt *time.Time `bun:"verified_at"`
+	TeamID *string `bun:"team_id"`
+	// DMChannelID caches the provider-side 1:1 conversation the contact is
+	// reachable through — for a `discord` contact, the DM channel id that
+	// `POST /users/@me/channels` returns. NULL means "never opened": the next
+	// send opens the DM and caches what it gets back.
+	//
+	// Discord will not accept a message addressed to a user id, only to a
+	// channel id, and the open-DM call is idempotent (the same recipient always
+	// yields the same channel). Caching it therefore removes one rate-limited
+	// round trip from every single page, on the path where latency is the whole
+	// point. A stale id answers 404 and the sender re-opens and re-caches.
+	DMChannelID *string    `bun:"dm_channel_id"`
+	Label       string     `bun:"label,notnull"`
+	VerifiedAt  *time.Time `bun:"verified_at"`
 	// Verification state for contact types that require a code round-trip
 	// (phone). VerifyCodeHash is the SHA-256 hex of the in-flight 6-digit
 	// code; nil when no verification is pending or after a successful confirm.
