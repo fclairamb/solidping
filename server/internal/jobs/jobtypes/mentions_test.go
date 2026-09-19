@@ -151,8 +151,10 @@ func userTarget(uid string, position int) *models.EscalationPolicyTarget {
 	return models.NewEscalationPolicyTarget("", models.EscalationTargetUser, &uid, position)
 }
 
-func scheduleTarget(uid string, position int) *models.EscalationPolicyTarget {
-	return models.NewEscalationPolicyTarget("", models.EscalationTargetSchedule, &uid, position)
+// scheduleTarget builds a schedule target at position 0. Steps in these
+// fixtures hold at most one schedule, so the position is not a parameter.
+func scheduleTarget(uid string) *models.EscalationPolicyTarget {
+	return models.NewEscalationPolicyTarget("", models.EscalationTargetSchedule, &uid, 0)
 }
 
 // TestResolveOnCallMentionsUnionsAndOrders is the positive control: a step
@@ -175,7 +177,7 @@ func TestResolveOnCallMentionsUnionsAndOrders(t *testing.T) {
 	registerOnCall(t, scheduleUID, zoe)
 
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
-		scheduleTarget(scheduleUID, 0),
+		scheduleTarget(scheduleUID),
 		userTarget(adam.UID, 1),
 		// The same human twice (schedule + direct) must collapse to one mention.
 		userTarget(zoe.UID, 2),
@@ -288,7 +290,7 @@ func TestResolveOnCallMentionsSurvivesScheduleFailure(t *testing.T) {
 	registerOnCall(t, "", nil)
 
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
-		scheduleTarget("sched-never-registered", 0),
+		scheduleTarget("sched-never-registered"),
 		userTarget(adam.UID, 1),
 	})
 
@@ -443,7 +445,7 @@ func TestResolveOnCallMentionsFollowsFiredStep(t *testing.T) {
 	// step 1 → Adam (a direct user), step 2 → the on-call schedule (Zoe).
 	steps := fx.attachMultiStepPolicy(ctx, t, [][]*models.EscalationPolicyTarget{
 		{userTarget(adam.UID, 0)},
-		{scheduleTarget(scheduleUID, 0)},
+		{scheduleTarget(scheduleUID)},
 	})
 
 	tests := []struct {
@@ -520,7 +522,7 @@ func TestResolveOnCallMentionsFallsBackToFirstHumanStep(t *testing.T) {
 	connUID := fx.conn.UID
 	steps := fx.attachMultiStepPolicy(ctx, t, [][]*models.EscalationPolicyTarget{
 		{models.NewEscalationPolicyTarget("", models.EscalationTargetConnection, &connUID, 0)},
-		{scheduleTarget(scheduleUID, 0)},
+		{scheduleTarget(scheduleUID)},
 	})
 
 	created := ResolveOnCallMentions(

@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -80,6 +79,6 @@ func TestUserContactTeamIDMigrationsInLockstep(t *testing.T) {
 		r.NoError(err, "the twin migration must exist at %s", path)
 		r.Contains(string(body), "SECTION: user-contact-team-id",
 			"%s must carry the user-contact-team-id section", path)
-		r.True(strings.Contains(string(body), "team_id"), "%s must name the column", path)
+		r.Contains(string(body), "team_id", "%s must name the column", path)
 	}
 }
