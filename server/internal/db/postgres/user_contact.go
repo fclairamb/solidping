@@ -336,7 +336,12 @@ func (s *Service) ReorderRoutes(ctx context.Context, userUID, orgUID string, rou
 	return nil
 }
 
-// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
+// GetSlackChannelForOrg returns the org's Slack channel: the one flagged
+// default, else the oldest. An org may hold several Slack integrations (one
+// per workspace), and every per-user Slack DM — the test button, escalation
+// pages, operator notices — pages through whichever this returns, so an
+// unordered LIMIT 1 meant the DM could land in a different workspace between
+// two calls (spec 2026-09-18-02).
 func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Integration, error) {
 	var channel models.Integration
 
@@ -346,6 +351,7 @@ func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*mo
 		Where("type = ?", models.ConnectionTypeSlack).
 		Where("enabled = true").
 		Where("deleted_at IS NULL").
+		Order("is_default DESC", "created_at ASC").
 		Limit(1).
 		Scan(ctx)
 	if err != nil {
