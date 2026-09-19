@@ -184,3 +184,46 @@ solidping "a good platform" — he went out of his way to report it rather than
 leave. A notification channel that is offered and then fails at the OAuth step
 is worse than one that is absent: it costs the user their time and it is the
 first impression of the product's reliability, from a monitoring tool.
+
+## Implementation Plan
+
+1. **One predicate, on the config type** (`server/internal/config/discord_oauth.go`):
+   - `LoginConfigured()` — `Enabled && ClientID && ClientSecret` (what
+     `providers_available.go:86` already does, now named once).
+   - `BotConfigured()` — `LoginConfigured() && BotToken && PublicKey`.
+   - `MissingBotConfigKeys()` — the `SP_DISCORD_*` env names that are missing,
+     for the boot WARN. All values trimmed.
+   `providers_available.go` switches to `LoginConfigured()`; login behaviour is
+   byte-for-byte the same.
+
+2. **Fail closed at boot** (`server/internal/app/server.go`). Correction to the
+   spec: `server.go:914` is the **login** gate. The bot routes are worse than
+   described — the `/integrations/discord` group and the org-scoped
+   `install-url` route are mounted **unconditionally**, with no gate at all.
+   Both become `if s.config.Discord.BotConfigured()`. One WARN at boot naming
+   the missing keys when `Enabled` is set but the bot is not fully configured.
+   `Service.BuildInstallURL` / `BuildOrgInstallURL` also check `BotConfigured()`
+   so an already-minted route cannot start a round trip either (defence in depth).
+
+3. **Tell the dashboard through the mechanism that already exists**: add
+   `discord: { botEnabled }` to `GET /api/v1/config` (`publicconfig`), mirroring
+   `whatsapp`/`telegram`. dash0 gets `useDiscordBotEnabled()` next to
+   `useTelegramEnabled()`, and the **Install Discord bot** button in
+   `integration-form.tsx` renders only when it is true. The not-connected
+   explainer and the legacy webhook field stay, so a webhook-only org sees no
+   change.
+
+4. **Tests**
+   - `config`: table test over the six field combinations for
+     `LoginConfigured` / `BotConfigured` / `MissingBotConfigKeys`.
+   - `app`: boot-level route-table test over the real `NewServer` +
+     `SetupRoutes` — production state (`Enabled`, `ClientID`, `ClientSecret`,
+     **no** `BotToken`) → `/api/v1/integrations/discord/oauth` and
+     `…/integrations/discord/install-url` answer **404**; same with `PublicKey`
+     empty; positive control: fully configured → they are registered (not 404).
+   - `publicconfig`: `botEnabled` false for the production state, true when full.
+   - dash0 e2e `channels-discord-bot.spec.ts`: stub `/api/v1/config` both ways —
+     button present when `botEnabled`, absent in the production-like state.
+
+5. **Operator runbook** `wiki/runbooks/discord-bot-setup.md` for §3 (paths and
+   steps, no values), linked from `wiki/README.md`.
