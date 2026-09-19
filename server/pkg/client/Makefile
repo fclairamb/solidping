@@ -12,5 +12,5 @@ clean:
 
 install-deps:
 	@echo "Installing oapi-codegen..."
-	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
 	@echo "Dependencies installed!"
