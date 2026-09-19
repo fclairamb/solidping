@@ -6197,9 +6197,25 @@ export interface SlackSuggestion {
   channelUid: string;
 }
 
+/**
+ * How the member appears in the org's Slack CHANNEL alerts — a different
+ * question from "can SolidPing DM me", which the routes answer.
+ *
+ * Read-only: the server resolves it with exactly the precedence the sender
+ * uses (admin mapping, then a Slack DM contact in the same workspace, then a
+ * Slack sign-in on the same team), so the line can never promise a ping the
+ * sender would not deliver.
+ */
+export interface SlackMentionIdentity {
+  linked: boolean;
+  externalId?: string;
+  workspace?: string;
+}
+
 export interface NotificationRoutesResponse {
   data: NotificationRoute[];
   slackSuggestion?: SlackSuggestion;
+  slackMention?: SlackMentionIdentity;
 }
 
 export function useNotificationRoutes(org: string) {

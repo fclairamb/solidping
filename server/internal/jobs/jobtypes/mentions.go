@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/identitylink"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 )
@@ -56,9 +57,16 @@ func integrationWantsMentions(integration *models.Integration) bool {
 }
 
 // ResolveOnCallMentions returns the humans the incident's effective escalation
-// policy would page at step 1 — schedule targets resolved through the on-call
-// resolver, plus direct `user` targets — deduplicated by user uid and ordered
-// by display name so message content is stable and testable.
+// policy is paging — schedule targets resolved through the on-call resolver,
+// plus direct `user` targets — deduplicated by user uid and ordered by display
+// name so message content is stable and testable.
+//
+// stepUID names the escalation step that actually fired, and is the difference
+// between naming the on-call person and naming somebody else. An
+// `incident.escalated` message is posted BECAUSE a particular step paged
+// somebody; resolving step 1 there would confidently name a human who is not
+// being paged, which the escalation resolver's own comment calls worse than no
+// mention at all. `incident.created` passes "" and keeps step 1.
 //
 // It returns nil (no mentions) for every "we don't know" case: mentions off,
 // wrong event type, no policy, no steps, no human targets, or any lookup
@@ -71,6 +79,7 @@ func ResolveOnCallMentions(
 	integration *models.Integration,
 	check *models.Check,
 	eventType string,
+	stepUID string,
 ) []notifications.MentionTarget {
 	if !mentionableEventTypes[eventType] || !integrationWantsMentions(integration) {
 		return nil
@@ -89,7 +98,7 @@ func ResolveOnCallMentions(
 		}
 	}()
 
-	users := resolveStepOneUsers(ctx, jctx, log, check)
+	users := resolveStepUsers(ctx, jctx, log, check, stepUID)
 	if len(users) == 0 {
 		return nil
 	}
@@ -97,10 +106,22 @@ func ResolveOnCallMentions(
 	return buildMentionTargets(ctx, jctx, log, integration, users)
 }
 
-// resolveStepOneUsers walks check → effective policy → first step and returns
-// the distinct humans that step pages, in target order.
-func resolveStepOneUsers(
-	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, check *models.Check,
+// resolveStepUsers walks check → effective policy → the step that fired and
+// returns the distinct humans that step pages, in target order.
+//
+// Two rules beyond "read the step":
+//
+//   - stepUID, when it names a step of THIS policy, selects that step. An
+//     unknown or foreign uid falls back to the lowest-position step rather than
+//     resolving nothing: a stale uid is a reason to say less confidently who is
+//     on call, not a reason to go silent.
+//   - when the fired step names no human at all (a step whose only target is a
+//     Slack connection, the shape the spec was filed about), the remaining
+//     steps are walked in position order and the first one that DOES name a
+//     human is used. Without that, the extremely common "step 1 posts to the
+//     channel, step 2 pages the on-call schedule" policy never names anybody.
+func resolveStepUsers(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, check *models.Check, stepUID string,
 ) []*models.User {
 	policyUID := ResolveEscalationPolicyUID(ctx, jctx.DBService, check)
 	if policyUID == "" {
@@ -112,12 +133,57 @@ func resolveStepOneUsers(
 		return nil
 	}
 
-	first := firstStep(steps)
-	if first == nil {
-		return nil
+	ordered := stepsByPosition(steps)
+
+	for _, step := range orderStepsFrom(ordered, stepUID) {
+		if users := stepUsers(ctx, jctx, log, step); len(users) > 0 {
+			return users
+		}
 	}
 
-	targets, err := jctx.DBService.ListEscalationPolicyTargets(ctx, []string{first.UID})
+	return nil
+}
+
+// stepsByPosition returns the steps sorted by position. The list is normally
+// already ordered, but the mention text must not depend on that.
+func stepsByPosition(steps []*models.EscalationPolicyStep) []*models.EscalationPolicyStep {
+	ordered := make([]*models.EscalationPolicyStep, 0, len(steps))
+
+	for _, step := range steps {
+		if step != nil {
+			ordered = append(ordered, step)
+		}
+	}
+
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Position < ordered[j].Position })
+
+	return ordered
+}
+
+// orderStepsFrom returns the steps to try, in order: the fired step first when
+// stepUID names one, then every step by position (the fired one is harmless to
+// revisit — it already returned no humans, or we never got here).
+func orderStepsFrom(
+	ordered []*models.EscalationPolicyStep, stepUID string,
+) []*models.EscalationPolicyStep {
+	if stepUID == "" {
+		return ordered
+	}
+
+	for _, step := range ordered {
+		if step.UID == stepUID {
+			return append([]*models.EscalationPolicyStep{step}, ordered...)
+		}
+	}
+
+	return ordered
+}
+
+// stepUsers resolves one step's targets to the distinct humans it pages.
+func stepUsers(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, step *models.EscalationPolicyStep,
+) []*models.User {
+	targets, err := jctx.DBService.ListEscalationPolicyTargets(ctx, []string{step.UID})
 	if err != nil || len(targets) == 0 {
 		return nil
 	}
@@ -138,20 +204,6 @@ func resolveStepOneUsers(
 	}
 
 	return users
-}
-
-// firstStep returns the lowest-position step. The list is normally already
-// ordered, but the mention text must not depend on that.
-func firstStep(steps []*models.EscalationPolicyStep) *models.EscalationPolicyStep {
-	var first *models.EscalationPolicyStep
-
-	for _, step := range steps {
-		if first == nil || step.Position < first.Position {
-			first = step
-		}
-	}
-
-	return first
 }
 
 // resolveTargetUser maps one step target to the human it pages, or nil when the
@@ -206,6 +258,17 @@ func mentionResolveTime(jctx *jobdef.JobContext) time.Time {
 // buildMentionTargets attaches each user's identity on this integration, then
 // orders the result by display name. A user with no identity keeps an empty
 // ExternalID: the sender renders their name in plain text and pings nobody.
+//
+// Identity precedence, per user:
+//
+//  1. the `user_integration_identities` row — an admin's explicit mapping, and
+//     the only source that also carries a provider display name;
+//  2. failing that, whatever the member declared for themselves (a `slack_user`
+//     contact, or a Slack sign-in), resolved workspace-scoped by
+//     identitylink.DeclaredSlackIdentity.
+//
+// The order is what makes "an admin mapping always wins" true: a member who
+// declared the wrong handle cannot override the admin's correction.
 func buildMentionTargets(
 	ctx context.Context,
 	jctx *jobdef.JobContext,
@@ -231,6 +294,13 @@ func buildMentionTargets(
 			target.ExternalID = identity.ExternalID
 			if identity.DisplayName != "" {
 				target.DisplayName = identity.DisplayName
+			}
+		}
+
+		if target.ExternalID == "" {
+			if declared := identitylink.DeclaredSlackIdentity(
+				ctx, jctx.DBService, integration, user.UID); declared != nil {
+				target.ExternalID = declared.ExternalID
 			}
 		}
 

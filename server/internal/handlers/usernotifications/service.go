@@ -16,6 +16,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/identitylink"
+	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -33,7 +35,7 @@ var (
 	ErrEmailSenderNotConfigured    = errors.New("email sender not configured")
 	ErrEmailFormatterNotConfigured = errors.New("email formatter not configured")
 	ErrNoSlackChannelForOrg        = errors.New("no Slack channel configured for this organization")
-	ErrSlackClientNotConfigured    = errors.New("slack client not configured")
+	ErrSlackClientNotConfigured    = errors.New("slack app not installed for this organization")
 	ErrWebPushNotConfigured        = errors.New("web push not configured on this server")
 	// ErrSMSDestinationNotAllowed is returned when an SMS on the SERVER's
 	// credentials targets a country outside SP_SMS_ALLOWED_COUNTRIES. Distinct
@@ -79,10 +81,32 @@ type SlackSuggestion struct {
 	ChannelUID    string `json:"channelUid"`
 }
 
+// SlackMentionIdentity tells a member how they will appear in the org's Slack
+// CHANNEL alerts — a different question from "can SolidPing DM me", which is
+// what the routes below answer.
+//
+// Read-only on purpose. The three things that can set it (an admin's mapping, a
+// Slack DM contact, a Slack sign-in) are all reachable elsewhere; what was
+// missing is any way for a member to SEE which of them applied to them, and
+// therefore to know whether an alert will actually ping them.
+type SlackMentionIdentity struct {
+	// Linked is false when nothing identifies this member in the workspace, in
+	// which case a channel alert names them in plain text and pings nobody.
+	Linked bool `json:"linked"`
+	// ExternalID is the Slack user id that would be pinged.
+	ExternalID string `json:"externalId,omitempty"`
+	// Workspace is the Slack workspace name, so a member in two orgs can tell
+	// which one this is about.
+	Workspace string `json:"workspace,omitempty"`
+}
+
 // ListRoutesResponse wraps the list response with the optional Slack suggestion.
 type ListRoutesResponse struct {
 	Data            []*RouteResponse `json:"data"`
 	SlackSuggestion *SlackSuggestion `json:"slackSuggestion,omitempty"`
+	// SlackMention is present only when the org actually has a Slack channel —
+	// there is nothing to say about channel-alert mentions otherwise.
+	SlackMention *SlackMentionIdentity `json:"slackMention,omitempty"`
 }
 
 // CreateContactRequest is the body for POST /notification-contacts.
@@ -215,6 +239,7 @@ func (s *Service) ListRoutes(
 	}
 
 	resp.SlackSuggestion = s.buildSlackSuggestion(ctx, user, orgUID, routes)
+	resp.SlackMention = s.buildSlackMention(ctx, user, orgUID)
 
 	return resp, nil
 }
@@ -271,6 +296,60 @@ func (s *Service) buildSlackSuggestion(
 	}
 }
 
+// buildSlackMention reports how this member is identified in the org's Slack
+// channel alerts, using EXACTLY the precedence the sender uses: the admin's
+// `user_integration_identities` mapping first, then whatever the member
+// declared for themselves. Sharing the resolution is the point — a member must
+// not be told they will be pinged by a rule the sender does not follow.
+func (s *Service) buildSlackMention(
+	ctx context.Context, user *models.User, orgUID string,
+) *SlackMentionIdentity {
+	channel, err := s.db.GetSlackChannelForOrg(ctx, orgUID)
+	if err != nil || channel == nil {
+		return nil
+	}
+
+	mention := &SlackMentionIdentity{}
+
+	if settings, sErr := models.SlackSettingsFromJSONMap(channel.Settings); sErr == nil {
+		mention.Workspace = settings.TeamName
+	}
+
+	identity, err := s.db.GetUserIntegrationIdentity(ctx, channel.UID, user.UID)
+	if err == nil && identity != nil && identity.ExternalID != "" {
+		mention.Linked = true
+		mention.ExternalID = identity.ExternalID
+
+		return mention
+	}
+
+	if declared := identitylink.DeclaredSlackIdentity(ctx, s.db, channel, user.UID); declared != nil {
+		mention.Linked = true
+		mention.ExternalID = declared.ExternalID
+	}
+
+	return mention
+}
+
+// slackTeamIDForOrg returns the team id of the org's bound Slack channel, or
+// nil when there is none (or its settings do not name one). Best-effort by
+// design: a contact with no workspace is usable, just more cautiously.
+func (s *Service) slackTeamIDForOrg(ctx context.Context, orgUID string) *string {
+	channel, err := s.db.GetSlackChannelForOrg(ctx, orgUID)
+	if err != nil || channel == nil {
+		return nil
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(channel.Settings)
+	if err != nil || settings.TeamID == "" {
+		return nil
+	}
+
+	teamID := settings.TeamID
+
+	return &teamID
+}
+
 // CreateContact creates a new contact + route.
 //
 //nolint:cyclop // inherent complexity: upsert + reload + conditional route creation
@@ -307,6 +386,16 @@ func (s *Service) CreateContact(
 	}
 
 	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
+
+	// A Slack user id only identifies a person WITHIN one workspace, so record
+	// which workspace this one came from. The value the dashboard posts comes
+	// from the Slack suggestion, which is built from the org's bound Slack
+	// channel — the same channel resolved here. Left NULL when the org has no
+	// Slack channel to attribute it to: "unknown workspace" is the honest
+	// answer, and the mention resolver treats it as such rather than assuming.
+	if req.Type == models.UserContactTypeSlackUser {
+		contact.TeamID = s.slackTeamIDForOrg(ctx, orgUID)
+	}
 
 	if req.Type == models.UserContactTypeEmail || req.Type == models.UserContactTypeWebPush {
 		// Email is verified by sending; web push is verified by subscribing
@@ -709,6 +798,12 @@ func (s *Service) dispatchTestWhatsApp(ctx context.Context, orgSlug, toNumber st
 }
 
 // dispatchTestSlack sends a test Slack DM for the given user ID.
+//
+// The bot token is resolved here, through the shared helper, because it lives
+// in the connection's encrypted `settings_private` envelope — reading the
+// public settings map straight off the row is what made this button answer
+// "slack client not configured" for a perfectly installed app
+// (spec 2026-09-18-02).
 func (s *Service) dispatchTestSlack(
 	ctx context.Context, orgUID, slackUserID string, slackClient SlackDMSender,
 ) error {
@@ -725,5 +820,14 @@ func (s *Service) dispatchTestSlack(
 		return ErrSlackClientNotConfigured
 	}
 
-	return slackClient.SendDMTest(ctx, slackChannel, slackUserID)
+	token, tokenErr := slackclient.BotToken(ctx, s.creds, slackChannel)
+	if tokenErr != nil {
+		if errors.Is(tokenErr, slackclient.ErrSlackNotConnected) {
+			return ErrSlackClientNotConfigured
+		}
+
+		return fmt.Errorf("resolve slack bot token: %w", tokenErr)
+	}
+
+	return slackClient.SendDMTest(ctx, token, slackUserID)
 }

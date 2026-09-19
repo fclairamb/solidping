@@ -230,7 +230,12 @@ func (s *Service) GetConnectionByGuildID(ctx context.Context, guildID string) (*
 // URL. channelUID/orgSlug are stashed in the state so the callback can update
 // the specific integration the install was triggered from.
 func (s *Service) BuildInstallURL(ctx context.Context, channelUID, orgSlug string) (string, error) {
-	if s.cfg == nil || s.cfg.Discord.ClientID == "" {
+	// The full bot predicate, not just the client id: a URL minted against a
+	// deployment with no bot token or public key sends the user to Discord for
+	// an install that cannot complete. The routes that reach this are not even
+	// mounted when BotConfigured() is false (server.go) — this is the second
+	// lock on the same door, for any in-process caller that bypasses routing.
+	if s.cfg == nil || !s.cfg.Discord.BotConfigured() {
 		return "", ErrBotNotConfigured
 	}
 

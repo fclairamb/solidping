@@ -122,6 +122,11 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		Model(c).
 		On("CONFLICT (user_uid, organization_uid, type, value) DO UPDATE").
 		Set("label = EXCLUDED.label").
+		// A known workspace is never un-learned by a later upsert that does not
+		// carry one: the revive path (re-adding a deleted contact) and the
+		// generic POST both hand us a team-less contact, and clearing the column
+		// would silently demote a verified workspace back to "unknown".
+		Set("team_id = coalesce(EXCLUDED.team_id, \"user_contact\".team_id)").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
 		Returning("uid").
@@ -336,7 +341,12 @@ func (s *Service) ReorderRoutes(ctx context.Context, userUID, orgUID string, rou
 	return nil
 }
 
-// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
+// GetSlackChannelForOrg returns the org's Slack channel: the one flagged
+// default, else the oldest. An org may hold several Slack integrations (one
+// per workspace), and every per-user Slack DM — the test button, escalation
+// pages, operator notices — pages through whichever this returns, so an
+// unordered LIMIT 1 meant the DM could land in a different workspace between
+// two calls (spec 2026-09-18-02).
 func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Integration, error) {
 	var channel models.Integration
 
@@ -346,6 +356,7 @@ func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*mo
 		Where("type = ?", models.ConnectionTypeSlack).
 		Where("enabled = true").
 		Where("deleted_at IS NULL").
+		Order("is_default DESC", "created_at ASC").
 		Limit(1).
 		Scan(ctx)
 	if err != nil {

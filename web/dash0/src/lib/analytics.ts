@@ -86,6 +86,19 @@ export interface DemoPublicConfig {
   password?: string;
 }
 
+/**
+ * Browser-safe Discord BOT capability flag, as returned by GET /api/v1/config.
+ *
+ * Deliberately not about Discord *login*: login needs a client id and secret,
+ * the bot additionally needs a bot token and the application public key, and
+ * production has had the first pair and not the second. The login page reads
+ * GET /api/v1/auth/providers; this flag exists so the integration settings
+ * panel never offers an install this deployment cannot complete.
+ */
+export interface DiscordPublicConfig {
+  botEnabled: boolean;
+}
+
 /** The public config document. Extra keys are ignored. */
 export interface PublicConfig {
   posthog?: PostHogPublicConfig;
@@ -93,6 +106,7 @@ export interface PublicConfig {
   telegram?: TelegramPublicConfig;
   sms?: SMSPublicConfig;
   demo?: DemoPublicConfig;
+  discord?: DiscordPublicConfig;
 }
 
 /**

@@ -55,7 +55,7 @@ func setupInstallService(
 	}
 
 	authService := auth.NewService(dbService, cfg.Auth, cfg, nil, entitlements)
-	svc := NewService(dbService, cfg, authService, nil, nil)
+	svc := NewService(dbService, cfg, authService, nil, nil, nil)
 
 	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

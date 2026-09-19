@@ -421,6 +421,10 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 		ConnectionUID: connectionUID,
 		IncidentUID:   incident.UID,
 		EventType:     string(models.EventTypeIncidentEscalated),
+		// The step that is paging right now — so the channel message names the
+		// humans THIS step pages, not whoever step 1 happens to name.
+		StepUID:     r.config.StepUID,
+		RepeatIndex: r.config.RepeatIndex,
 	})
 	if err != nil {
 		log.WarnContext(ctx, "failed to marshal escalation notification config",
@@ -581,10 +585,22 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 		return 0
 	}
 
-	settings, parseErr := models.SlackSettingsFromJSONMap(slackConn.Settings)
-	if parseErr != nil || settings.AccessToken == "" {
-		log.WarnContext(ctx, "slack access token not configured; skipping route",
-			"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID)
+	// The bot token lives in the connection's encrypted settings_private
+	// envelope, so it can only be read through the shared helper. A failed
+	// decrypt is an operator problem (no master key on this process) and is
+	// logged as such — distinct from a connection that genuinely never
+	// completed its install. Both still skip the route rather than fail the
+	// escalation step.
+	accessToken, tokenErr := slackclient.BotToken(ctx, jctx.Services.Credentials, slackConn)
+	if tokenErr != nil {
+		if errors.Is(tokenErr, slackclient.ErrSlackNotConnected) {
+			log.WarnContext(ctx, "slack access token not configured; skipping route",
+				"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID)
+		} else {
+			log.ErrorContext(ctx, "failed to decrypt slack connection settings; skipping route",
+				"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID,
+				"connectionUID", slackConn.UID, "error", tokenErr)
+		}
 
 		return 0
 	}
@@ -598,7 +614,7 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 	orgSlug := orgSlugForOrg(ctx, jctx, log, incident.OrganizationUID)
 	text := escalationSlackDMMessage(incident, checkName, orgSlug, baseURL)
 
-	if err := postSlackDM(ctx, settings.AccessToken, route.Contact.Value, text); err != nil {
+	if err := postSlackDM(ctx, accessToken, route.Contact.Value, text); err != nil {
 		log.WarnContext(ctx, "failed to send escalation Slack DM",
 			"contactUID", route.Contact.UID,
 			"userUID", route.UserUID,
@@ -1158,7 +1174,7 @@ func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) err
 		return errEmptySlackToken
 	}
 
-	client := slackclient.NewClient(accessToken)
+	client := slackclient.NewClientWithBaseURL(accessToken, slackDMBaseURL)
 
 	msg := &slackclient.MessageResponse{Text: text}
 
@@ -1169,6 +1185,14 @@ func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) err
 
 	return err
 }
+
+// slackDMBaseURL is the Slack Web API root escalation DMs are posted to.
+// A variable rather than a constant purely so a test can point it at an
+// httptest stand-in, mirroring slack.Service.newAPIClient. Never reassigned
+// outside tests.
+//
+//nolint:gochecknoglobals // test seam for the Slack API endpoint
+var slackDMBaseURL = slackclient.SlackAPIBaseURL
 
 // pageSchedule resolves who is on call right now and pages them via
 // email. Empty schedules emit `incident.escalation_failed` (logged) but

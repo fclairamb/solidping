@@ -151,8 +151,10 @@ func userTarget(uid string, position int) *models.EscalationPolicyTarget {
 	return models.NewEscalationPolicyTarget("", models.EscalationTargetUser, &uid, position)
 }
 
-func scheduleTarget(uid string, position int) *models.EscalationPolicyTarget {
-	return models.NewEscalationPolicyTarget("", models.EscalationTargetSchedule, &uid, position)
+// scheduleTarget builds a schedule target at position 0. Steps in these
+// fixtures hold at most one schedule, so the position is not a parameter.
+func scheduleTarget(uid string) *models.EscalationPolicyTarget {
+	return models.NewEscalationPolicyTarget("", models.EscalationTargetSchedule, &uid, 0)
 }
 
 // TestResolveOnCallMentionsUnionsAndOrders is the positive control: a step
@@ -175,14 +177,14 @@ func TestResolveOnCallMentionsUnionsAndOrders(t *testing.T) {
 	registerOnCall(t, scheduleUID, zoe)
 
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
-		scheduleTarget(scheduleUID, 0),
+		scheduleTarget(scheduleUID),
 		userTarget(adam.UID, 1),
 		// The same human twice (schedule + direct) must collapse to one mention.
 		userTarget(zoe.UID, 2),
 	})
 
 	targets := ResolveOnCallMentions(
-		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created")
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", "")
 
 	r.Len(targets, 2)
 	r.Equal("Adam", targets[0].DisplayName)
@@ -204,8 +206,8 @@ func TestResolveOnCallMentionsOffEmitsNothing(t *testing.T) {
 	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.escalated"))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", ""))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.escalated", ""))
 }
 
 // TestResolveOnCallMentionsWithoutIdentityIsPlainText: a member with no
@@ -221,7 +223,7 @@ func TestResolveOnCallMentionsWithoutIdentityIsPlainText(t *testing.T) {
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
 	targets := ResolveOnCallMentions(
-		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created")
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", "")
 
 	r.Len(targets, 1)
 	r.Equal("Adam", targets[0].DisplayName)
@@ -243,10 +245,10 @@ func TestResolveOnCallMentionsSkipsResolvedAndReopened(t *testing.T) {
 
 	// Positive control: the same fixture DOES mention on created.
 	r.Len(ResolveOnCallMentions(
-		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"), 1)
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", ""), 1)
 
 	for _, event := range []string{"incident.resolved", "incident.reopened", "incident.acked"} {
-		r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, event),
+		r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, event, ""),
 			"event %s must never carry mentions", event)
 	}
 }
@@ -260,7 +262,7 @@ func TestResolveOnCallMentionsNoPolicyOrNoHumans(t *testing.T) {
 	fx := newMentionFixture(ctx, t, "mentions-nopolicy", true)
 
 	// No policy at any level.
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", ""))
 
 	// A policy whose only step targets a connection — not a human.
 	connUID := fx.conn.UID
@@ -269,7 +271,7 @@ func TestResolveOnCallMentionsNoPolicyOrNoHumans(t *testing.T) {
 		models.NewEscalationPolicyTarget("", models.EscalationTargetAllAdmins, nil, 1),
 	})
 
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", ""))
 }
 
 // TestResolveOnCallMentionsSurvivesScheduleFailure: an unresolvable schedule
@@ -288,12 +290,12 @@ func TestResolveOnCallMentionsSurvivesScheduleFailure(t *testing.T) {
 	registerOnCall(t, "", nil)
 
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{
-		scheduleTarget("sched-never-registered", 0),
+		scheduleTarget("sched-never-registered"),
 		userTarget(adam.UID, 1),
 	})
 
 	targets := ResolveOnCallMentions(
-		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created")
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", "")
 
 	r.Len(targets, 1)
 	r.Equal("U-ADAM", targets[0].ExternalID)
@@ -316,7 +318,7 @@ func TestResolveOnCallMentionsIgnoresNonSlackIntegrations(t *testing.T) {
 	teams.Settings = models.JSONMap{"mention_on_call": true}
 	r.NoError(fx.dbSvc.CreateChannel(ctx, teams))
 
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), teams, fx.check, "incident.created"))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), teams, fx.check, "incident.created", ""))
 }
 
 // TestResolveOnCallMentionsNilSafe: a missing job context or check must not
@@ -328,9 +330,9 @@ func TestResolveOnCallMentionsNilSafe(t *testing.T) {
 	r := require.New(t)
 	fx := newMentionFixture(ctx, t, "mentions-nilsafe", true)
 
-	r.Nil(ResolveOnCallMentions(ctx, nil, slog.Default(), fx.conn, fx.check, "incident.created"))
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, nil, "incident.created"))
-	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), nil, fx.check, "incident.created"))
+	r.Nil(ResolveOnCallMentions(ctx, nil, slog.Default(), fx.conn, fx.check, "incident.created", ""))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), fx.conn, nil, "incident.created", ""))
+	r.Nil(ResolveOnCallMentions(ctx, fx.jctx, slog.Default(), nil, fx.check, "incident.created", ""))
 }
 
 // renderMentionsForTest renders targets the way the Slack sender does, so the
@@ -372,13 +374,165 @@ func TestResolveOnCallMentionsSurvivesDatabaseFailure(t *testing.T) {
 
 	// Positive control first: with a working database this fixture DOES mention.
 	r.Len(ResolveOnCallMentions(
-		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"), 1)
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", ""), 1)
 
 	// Now break the database underneath it.
 	r.NoError(fx.dbSvc.Close())
 
 	r.NotPanics(func() {
 		r.Nil(ResolveOnCallMentions(
-			ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created"))
+			ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", ""))
 	})
+}
+
+// attachMultiStepPolicy builds a policy with one step per entry of `steps` and
+// points the check at it. Returns the step UIDs in position order, which is
+// what a caller needs to name "the step that fired".
+func (f *mentionFixture) attachMultiStepPolicy(
+	ctx context.Context, t *testing.T, steps [][]*models.EscalationPolicyTarget,
+) []string {
+	t.Helper()
+
+	r := require.New(t)
+
+	policy := models.NewEscalationPolicy(f.org.UID, "multi")
+	r.NoError(f.dbSvc.CreateEscalationPolicy(ctx, policy))
+
+	rows := make([]*models.EscalationPolicyStep, 0, len(steps))
+	targets := make(map[int][]*models.EscalationPolicyTarget, len(steps))
+
+	for i, stepTargets := range steps {
+		rows = append(rows, models.NewEscalationPolicyStep(policy.UID, i, 60))
+		targets[i] = stepTargets
+	}
+
+	r.NoError(f.dbSvc.ReplaceEscalationPolicySteps(ctx, policy.UID, rows, targets))
+
+	f.check.EscalationPolicyUID = &policy.UID
+	r.NoError(f.dbSvc.UpdateCheck(ctx, f.check.UID,
+		&models.CheckUpdate{EscalationPolicyUID: &policy.UID}))
+
+	uids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		uids = append(uids, row.UID)
+	}
+
+	return uids
+}
+
+// TestResolveOnCallMentionsFollowsFiredStep is the heart of §1: an escalation
+// message must name the humans the step that FIRED is paging, not step 1's.
+//
+// The negative control is the "step 1 wins" row: with a human already at step
+// 1 and `stepUid` empty (an `incident.created`), the schedule sitting at step 2
+// is NOT named. Without that row, a resolver that simply concatenated every
+// step would pass every other case here.
+func TestResolveOnCallMentionsFollowsFiredStep(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	fx := newMentionFixture(ctx, t, "mentions-firedstep", true)
+
+	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
+	zoe := fx.addUser(ctx, t, "zoe@acme.test", "Zoe")
+	fx.mapIdentity(ctx, t, adam, "U-ADAM", "Adam")
+	fx.mapIdentity(ctx, t, zoe, "U-ZOE", "Zoe")
+
+	scheduleUID := "sched-firedstep"
+	registerOnCall(t, scheduleUID, zoe)
+
+	// step 1 → Adam (a direct user), step 2 → the on-call schedule (Zoe).
+	steps := fx.attachMultiStepPolicy(ctx, t, [][]*models.EscalationPolicyTarget{
+		{userTarget(adam.UID, 0)},
+		{scheduleTarget(scheduleUID)},
+	})
+
+	tests := []struct {
+		name      string
+		eventType string
+		stepUID   string
+		want      []string
+	}{
+		{
+			name:      "created resolves step 1 and NOT the schedule at step 2",
+			eventType: "incident.created",
+			stepUID:   "",
+			want:      []string{"U-ADAM"},
+		},
+		{
+			name:      "escalated on step 1 names step 1",
+			eventType: "incident.escalated",
+			stepUID:   steps[0],
+			want:      []string{"U-ADAM"},
+		},
+		{
+			name:      "escalated on step 2 names step 2, not step 1",
+			eventType: "incident.escalated",
+			stepUID:   steps[1],
+			want:      []string{"U-ZOE"},
+		},
+		{
+			name:      "a stale step uid degrades to step 1 rather than going silent",
+			eventType: "incident.escalated",
+			stepUID:   "step-from-a-deleted-policy",
+			want:      []string{"U-ADAM"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			targets := ResolveOnCallMentions(
+				ctx, fx.jctx, slog.Default(), fx.conn, fx.check, tc.eventType, tc.stepUID)
+
+			ids := make([]string, 0, len(targets))
+			for i := range targets {
+				ids = append(ids, targets[i].ExternalID)
+			}
+
+			require.Equal(t, tc.want, ids)
+		})
+	}
+
+	// And the whole point of the spec: no policy at all still says nothing.
+	bare := newMentionFixture(ctx, t, "mentions-fired-nopol", true)
+	r.Nil(ResolveOnCallMentions(
+		ctx, bare.jctx, slog.Default(), bare.conn, bare.check, "incident.created", ""))
+}
+
+// TestResolveOnCallMentionsFallsBackToFirstHumanStep is the shape the spec was
+// filed about: step 1 posts to a Slack connection (nobody human), step 2 pages
+// the on-call schedule. An `incident.created` message must still name the
+// person actually on call instead of saying nothing.
+func TestResolveOnCallMentionsFallsBackToFirstHumanStep(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	fx := newMentionFixture(ctx, t, "mentions-humanfb", true)
+
+	zoe := fx.addUser(ctx, t, "zoe@acme.test", "Zoe")
+	fx.mapIdentity(ctx, t, zoe, "U-ZOE", "Zoe")
+
+	scheduleUID := "sched-humanfallback"
+	registerOnCall(t, scheduleUID, zoe)
+
+	connUID := fx.conn.UID
+	steps := fx.attachMultiStepPolicy(ctx, t, [][]*models.EscalationPolicyTarget{
+		{models.NewEscalationPolicyTarget("", models.EscalationTargetConnection, &connUID, 0)},
+		{scheduleTarget(scheduleUID)},
+	})
+
+	created := ResolveOnCallMentions(
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.created", "")
+	r.Len(created, 1)
+	r.Equal("U-ZOE", created[0].ExternalID)
+
+	// Same fallback when the step that fired is itself the human-free one.
+	escalated := ResolveOnCallMentions(
+		ctx, fx.jctx, slog.Default(), fx.conn, fx.check, "incident.escalated", steps[0])
+	r.Len(escalated, 1)
+	r.Equal("U-ZOE", escalated[0].ExternalID)
 }

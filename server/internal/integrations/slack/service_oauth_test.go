@@ -32,7 +32,7 @@ func setupSlackService(t *testing.T) (context.Context, *Service) {
 		Slack:  config.SlackConfig{ClientID: "test-client-id", ClientSecret: "test-client-secret"},
 	}
 
-	svc := NewService(dbService, cfg, nil, nil, nil)
+	svc := NewService(dbService, cfg, nil, nil, nil, nil)
 
 	return ctx, svc
 }

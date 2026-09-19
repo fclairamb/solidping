@@ -896,53 +896,16 @@ func restoreMSTeamsBotServerFields(existing, merged map[string]any) {
 func (s *Service) applySettingsEncryption(
 	ctx context.Context, conn *models.Integration, effective map[string]any,
 ) error {
-	if effective == nil {
-		effective = map[string]any{}
-	}
-
-	secrets := credentials.ConnectionSecretFields(conn.Type)
-	public, private := credentials.SplitConfig(effective, secrets)
-	conn.Settings = models.JSONMap(public)
-
-	if len(private) == 0 {
-		conn.SettingsPrivate = nil
-		conn.SettingsPrivateKeys = nil
-
-		return nil
-	}
-
-	// Secrets are ALWAYS split out of the public `settings` column and stored in
-	// `settings_private`, in every mode — the public column must never carry a
-	// secret value (the leak this fixes). With a master key we store an AES-GCM
-	// envelope; without one, a clearly-marked plaintext envelope (the documented
-	// V1 self-hosted fallback). `settings_private_keys` is set in both modes so
-	// the dashboard renders placeholder pills.
-	var (
-		envelope string
-		err      error
+	sealed, err := credentials.SealConnectionSettings(
+		ctx, s.creds, conn.Type, conn.OrganizationUID, effective,
 	)
-
-	if s.creds.Enabled() {
-		envelope, err = s.creds.EncryptForOrg(ctx, conn.OrganizationUID, private)
-		if err != nil {
-			return fmt.Errorf("encrypt connection settings: %w", err)
-		}
-	} else {
-		envelope, err = credentials.SealPlaintext(private)
-		if err != nil {
-			return fmt.Errorf("seal plaintext connection settings: %w", err)
-		}
-	}
-
-	conn.SettingsPrivate = &envelope
-
-	keysJSON, err := json.Marshal(credentials.SortedKeys(private))
 	if err != nil {
-		return fmt.Errorf("marshal settings private keys: %w", err)
+		return err
 	}
 
-	keysStr := string(keysJSON)
-	conn.SettingsPrivateKeys = &keysStr
+	conn.Settings = models.JSONMap(sealed.Public)
+	conn.SettingsPrivate = sealed.Private
+	conn.SettingsPrivateKeys = sealed.PrivateKeys
 
 	return nil
 }
@@ -953,37 +916,7 @@ func (s *Service) applySettingsEncryption(
 func (s *Service) loadDecryptedSettings(
 	ctx context.Context, conn *models.Integration,
 ) (map[string]any, error) {
-	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
-		out := make(map[string]any, len(conn.Settings))
-		for k, v := range conn.Settings {
-			out[k] = v
-		}
-
-		return out, nil
-	}
-
-	// A plaintext envelope opens with no master key; only AES-GCM / sealed
-	// envelopes require one. Gate the disabled error on that so a no-key
-	// self-hosted PATCH can still read (and preserve) its own secrets.
-	if credentials.RequiresKey(*conn.SettingsPrivate) && !s.creds.Enabled() {
-		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, credentials.ErrDisabled)
-	}
-
-	private, err := s.creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, err)
-	}
-
-	out := make(map[string]any, len(conn.Settings)+len(private))
-	for k, v := range conn.Settings {
-		out[k] = v
-	}
-
-	for k, v := range private {
-		out[k] = v
-	}
-
-	return out, nil
+	return credentials.OpenConnectionSettings(ctx, s.creds, conn)
 }
 
 // StartFreeboxPairingRequest is the body for the start-pairing endpoint.

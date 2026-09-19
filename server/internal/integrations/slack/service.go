@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
@@ -180,6 +181,13 @@ type Service struct {
 	checksService    *checks.Service
 	incidentsService IncidentService
 
+	// creds opens the encrypted `settings_private` envelope the bot token is
+	// stored in, and seals it back on install. Nil is legal — a keyless
+	// deployment stores a plaintext envelope and reads it with no key — but a
+	// nil service can never open a SEALED envelope, which is exactly the
+	// "token disappeared" failure spec 2026-09-18-02 fixes.
+	creds credentials.Service
+
 	// newAPIClient builds the Slack Web API client used for outbound calls.
 	// Tests override it to point at an httptest fake Slack server (mirrors
 	// SlackSocketSupervisor.dialClient).
@@ -254,6 +262,7 @@ func NewService(
 	authService *auth.Service,
 	checksService *checks.Service,
 	incidentsService IncidentService,
+	creds credentials.Service,
 ) *Service {
 	return &Service{
 		db:               dbService,
@@ -261,6 +270,7 @@ func NewService(
 		authService:      authService,
 		checksService:    checksService,
 		incidentsService: incidentsService,
+		creds:            creds,
 		newAPIClient:     NewClient,
 		oauthURL:         SlackOAuthURL,
 		userInfoURL:      SlackAPIBaseURL + "/openid.connect.userInfo",
@@ -631,17 +641,64 @@ func (s *Service) updateExistingChannel(
 		CommentIngestion:  choices.CommentIngestion,
 	}
 
-	settingsMap, err := settings.ToJSONMap()
+	conn, err := s.db.GetChannel(ctx, channelUID)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert settings: %w", err)
+		return "", fmt.Errorf("failed to load channel %s: %w", channelUID, err)
 	}
 
-	update := &models.IntegrationUpdate{Settings: &settingsMap}
-	if err := s.db.UpdateChannel(ctx, channelUID, update); err != nil {
+	sealed, err := s.sealSettings(ctx, conn.OrganizationUID, settings)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.db.UpdateChannel(ctx, channelUID, sealedUpdate(sealed)); err != nil {
 		return "", fmt.Errorf("failed to update channel %s: %w", channelUID, err)
 	}
 
 	return channelUID, nil
+}
+
+// sealSettings converts Slack settings into their storage shape, splitting the
+// bot token out of the public `settings` JSONB into the `settings_private`
+// envelope.
+//
+// The OAuth install path goes through exactly the same split/seal logic as the
+// integrations edit path (spec 2026-09-18-02): before this, a fresh install
+// wrote the token into public settings, the next boot sweep moved it, and
+// every reader that only looked at public settings saw it vanish.
+func (s *Service) sealSettings(
+	ctx context.Context, orgUID string, settings *models.SlackSettings,
+) (*credentials.SealedSettings, error) {
+	settingsMap, err := settings.ToJSONMap()
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert settings: %w", err)
+	}
+
+	sealed, err := credentials.SealConnectionSettings(
+		ctx, s.creds, models.ConnectionTypeSlack, orgUID, settingsMap,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("seal slack settings: %w", err)
+	}
+
+	return sealed, nil
+}
+
+// sealedUpdate builds the IntegrationUpdate that stores sealed settings,
+// clearing the private column when the settings carry no secret at all.
+func sealedUpdate(sealed *credentials.SealedSettings) *models.IntegrationUpdate {
+	public := models.JSONMap(sealed.Public)
+
+	update := &models.IntegrationUpdate{
+		Settings:            &public,
+		SettingsPrivate:     sealed.Private,
+		SettingsPrivateKeys: sealed.PrivateKeys,
+	}
+	if sealed.Private == nil {
+		update.ClearSettingsPrivate = true
+	}
+
+	return update
 }
 
 // IdentitySyncFn re-runs the member identity auto-match for one integration.
@@ -795,16 +852,14 @@ func (s *Service) createOrUpdateConnection(
 		settings.CommentIngestion = choices.CommentIngestion
 	}
 
-	settingsMap, err := settings.ToJSONMap()
+	sealed, err := s.sealSettings(ctx, orgUID, settings)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert settings: %w", err)
+		return "", err
 	}
 
 	if existingConn != nil {
 		// Update existing connection
-		update := &models.IntegrationUpdate{
-			Settings: &settingsMap,
-		}
+		update := sealedUpdate(sealed)
 		name := oauthResp.Team.Name
 		update.Name = &name
 
@@ -817,7 +872,9 @@ func (s *Service) createOrUpdateConnection(
 
 	// Create new connection
 	conn := models.NewIntegration(orgUID, models.ConnectionTypeSlack, oauthResp.Team.Name)
-	conn.Settings = settingsMap
+	conn.Settings = models.JSONMap(sealed.Public)
+	conn.SettingsPrivate = sealed.Private
+	conn.SettingsPrivateKeys = sealed.PrivateKeys
 
 	if err := s.db.CreateChannel(ctx, conn); err != nil {
 		return "", fmt.Errorf("failed to create connection: %w", err)
@@ -1058,12 +1115,12 @@ func (s *Service) GetClient(ctx context.Context, teamID string) (*Client, error)
 		return nil, err
 	}
 
-	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	token, err := BotToken(ctx, s.creds, conn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse settings: %w", err)
+		return nil, err
 	}
 
-	return s.newAPIClient(settings.AccessToken), nil
+	return s.newAPIClient(token), nil
 }
 
 // CreateCheckResult contains the result of creating a check via Slack.
@@ -1128,17 +1185,15 @@ func (s *Service) CreateCheckWithOptions(
 
 // SetDefaultChannel sets the default channel for Slack notifications.
 // If sendWelcome is true, sends a welcome message to the channel.
-//
-//nolint:funlen // Complex due to channel lookup, settings update, and optional welcome message.
 func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID string, sendWelcome bool) error {
 	conn, err := s.GetConnectionByTeamID(ctx, teamID)
 	if err != nil {
 		return err
 	}
 
-	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	settings, err := Settings(ctx, s.creds, conn)
 	if err != nil {
-		return fmt.Errorf("failed to parse settings: %w", err)
+		return err
 	}
 
 	// Get channel name for display (best effort)
@@ -1160,16 +1215,12 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 	settings.ChannelID = channelID
 	settings.ChannelName = channelName
 
-	settingsMap, err := settings.ToJSONMap()
+	sealed, err := s.sealSettings(ctx, conn.OrganizationUID, settings)
 	if err != nil {
-		return fmt.Errorf("failed to convert settings: %w", err)
+		return err
 	}
 
-	update := &models.IntegrationUpdate{
-		Settings: &settingsMap,
-	}
-
-	if err := s.db.UpdateChannel(ctx, conn.UID, update); err != nil {
+	if err := s.db.UpdateChannel(ctx, conn.UID, sealedUpdate(sealed)); err != nil {
 		return fmt.Errorf("failed to update connection: %w", err)
 	}
 
@@ -1287,19 +1338,17 @@ func (s *Service) GetDestinations(
 		return nil, ErrNotSlackChannel
 	}
 
-	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
-	if err != nil {
-		return nil, fmt.Errorf("parse slack settings: %w", err)
-	}
-
 	// Tokenless stubs (e.g. manually-created channels) have no bot token, so any
 	// Slack API call would fail with invalid_auth and surface as a misleading
-	// 502. Reject early so the handler can return a clear "not connected" state.
-	if settings.AccessToken == "" {
-		return nil, ErrSlackNotConnected
+	// 502. BotToken rejects those early with ErrSlackNotConnected so the handler
+	// can return a clear "not connected" state — while a token that merely lives
+	// in the encrypted envelope resolves normally.
+	token, err := BotToken(ctx, s.creds, conn)
+	if err != nil {
+		return nil, err
 	}
 
-	client := s.newAPIClient(settings.AccessToken)
+	client := s.newAPIClient(token)
 
 	// Fetch channels and users in parallel.
 	var (

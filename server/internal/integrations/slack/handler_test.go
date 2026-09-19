@@ -61,7 +61,7 @@ func newInstallURLTestEnv(t *testing.T) *installURLTestEnv {
 
 	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil, nil)
 
-	slackSvc := slack.NewService(dbSvc, cfg, authSvc, nil, nil)
+	slackSvc := slack.NewService(dbSvc, cfg, authSvc, nil, nil, nil)
 	slackHandler := slack.NewHandler(slackSvc, cfg)
 
 	authMw := middleware.NewAuthMiddleware(authSvc, dbSvc, cfg)
@@ -310,7 +310,7 @@ func TestInstall_IgnoresOrgAndChannelUIDQueryParams(t *testing.T) {
 	victimChannel := models.NewIntegration(victimOrg.UID, models.ConnectionTypeSlack, "Victim channel")
 	r.NoError(dbSvc.CreateChannel(ctx, victimChannel))
 
-	slackSvc := slack.NewService(dbSvc, cfg, nil, nil, nil)
+	slackSvc := slack.NewService(dbSvc, cfg, nil, nil, nil, nil)
 	slackHandler := slack.NewHandler(slackSvc, cfg)
 
 	router := httpx.New()

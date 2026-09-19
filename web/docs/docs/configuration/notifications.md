@@ -469,7 +469,15 @@ under **Server → Discord**:
 | Public key | `SP_DISCORD_PUBLIC_KEY` | Verifies Discord's signed interaction requests |
 | Gateway enabled | `SP_DISCORD_GATEWAY_ENABLED` | Turns on the inbound WebSocket |
 
-Two things are worth understanding before you turn the bot on:
+Three things are worth understanding before you turn the bot on:
+
+- **The bot needs all four values, and it fails closed without them.** Discord
+  *login* runs on the client id and secret alone, so it is entirely possible
+  to have sign-in working and no bot at all. When the bot token or the public
+  key is missing, SolidPing does not mount the install routes and the
+  dashboard does not offer the install button — the channel is simply not
+  offered, rather than dead-ending at Discord. One warning naming the missing
+  variables is logged at boot.
 
 - **The public key is not optional.** Discord probes the interactions endpoint
   with deliberately invalid signatures and **deactivates** it if those probes

@@ -117,6 +117,23 @@ type DemoPublicConfig struct {
 	Password string `json:"password,omitempty"`
 }
 
+// DiscordPublicConfig is the browser-safe view of the instance's Discord BOT
+// capability. It is deliberately one boolean and it is deliberately NOT about
+// Discord login — the two halves have different requirements and, in
+// production, different answers: the login provider works on a client id and
+// secret alone, while the bot also needs a bot token and the application's
+// public key. The login page learns about Discord from
+// GET /api/v1/auth/providers; this field exists so the integration settings
+// panel can stop offering an install the deployment cannot complete.
+//
+// BotEnabled is the resolved config.DiscordOAuthConfig.BotConfigured() rule —
+// the same predicate the install routes are mounted on, so the button and the
+// route it calls can never disagree. No client id, token or public key is
+// exposed: the browser only needs to know whether to render the button.
+type DiscordPublicConfig struct {
+	BotEnabled bool `json:"botEnabled"`
+}
+
 // Response is the public config document. Fields are added here as new public
 // flags appear; every one of them must be non-secret and browser-safe.
 type Response struct {
@@ -125,6 +142,7 @@ type Response struct {
 	Telegram TelegramPublicConfig `json:"telegram"`
 	SMS      SMSPublicConfig      `json:"sms"`
 	Demo     DemoPublicConfig     `json:"demo"`
+	Discord  DiscordPublicConfig  `json:"discord"`
 }
 
 // Handler serves the public config document.
@@ -165,6 +183,10 @@ func Build(cfg *config.Config) Response {
 			Enabled:     true,
 			BotUsername: cfg.Telegram.ResolvedBotUsername(),
 		}
+	}
+
+	if cfg != nil && cfg.Discord.BotConfigured() {
+		resp.Discord = DiscordPublicConfig{BotEnabled: true}
 	}
 
 	if cfg != nil && cfg.Demo.Enabled {

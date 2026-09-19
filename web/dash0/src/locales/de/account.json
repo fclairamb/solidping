@@ -229,6 +229,8 @@
       "connected": "Verbunden mit {{workspace}}",
       "available": "Verfügbar in {{workspace}}",
       "unavailable": "Melden Sie sich mit Slack an und lassen Sie eine Administratorin einen Slack-Workspace verbinden, um Warnungen als Direktnachricht zu erhalten.",
+      "mentionedAs": "In Kanal-Benachrichtigungen erwähnt als {{handle}}",
+      "mentionNotLinked": "Nicht verknüpft — Kanal-Benachrichtigungen nennen dich, ohne dich zu pingen. Bitte einen Administrator um die Zuordnung, oder melde dich mit Slack an.",
       "connectButton": "Slack verbinden",
       "added": "Slack-Direktnachrichten hinzugefügt",
       "addFailed": "Slack-Kontakt konnte nicht hinzugefügt werden",
