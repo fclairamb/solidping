@@ -1170,7 +1170,7 @@ func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) err
 		return errEmptySlackToken
 	}
 
-	client := slackclient.NewClient(accessToken)
+	client := slackclient.NewClientWithBaseURL(accessToken, slackDMBaseURL)
 
 	msg := &slackclient.MessageResponse{Text: text}
 
@@ -1181,6 +1181,14 @@ func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) err
 
 	return err
 }
+
+// slackDMBaseURL is the Slack Web API root escalation DMs are posted to.
+// A variable rather than a constant purely so a test can point it at an
+// httptest stand-in, mirroring slack.Service.newAPIClient. Never reassigned
+// outside tests.
+//
+//nolint:gochecknoglobals // test seam for the Slack API endpoint
+var slackDMBaseURL = slackclient.SlackAPIBaseURL
 
 // pageSchedule resolves who is on call right now and pages them via
 // email. Empty schedules emit `incident.escalation_failed` (logged) but
