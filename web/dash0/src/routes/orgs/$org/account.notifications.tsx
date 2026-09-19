@@ -49,6 +49,7 @@ import {
   useIntegrations,
   type NotificationRoute,
   type SlackSuggestion,
+  type SlackMentionIdentity,
 } from "@/api/hooks";
 import { useTelegramEnabled, useWhatsAppEnabled } from "@/api/public-config";
 import {
@@ -553,10 +554,12 @@ function SlackConnectRow({
   org,
   suggestion,
   connectedWorkspace,
+  mention,
 }: {
   org: string;
   suggestion?: SlackSuggestion;
   connectedWorkspace?: string;
+  mention?: SlackMentionIdentity;
 }) {
   const { t } = useTranslation("account");
   const createContact = useCreateNotificationContact(org);
@@ -605,6 +608,27 @@ function SlackConnectRow({
                     "Sign in with Slack, and have an admin connect a Slack workspace, to receive alerts as direct messages.",
                   )}
           </p>
+          {/* How this member appears in CHANNEL alerts — read-only: the three
+              things that can set it (an admin mapping, this Slack DM contact,
+              a Slack sign-in) are all reached elsewhere. What was missing is
+              any way to SEE which of them applied. */}
+          {mention && (
+            <p
+              className="text-xs text-muted-foreground mt-1 break-words"
+              data-testid="slack-mention-status"
+            >
+              {mention.linked
+                ? t("notifications.slack.mentionedAs", {
+                    defaultValue:
+                      "Mentioned in channel alerts as {{handle}}",
+                    handle: `<@${mention.externalId}>`,
+                  })
+                : t(
+                    "notifications.slack.mentionNotLinked",
+                    "Not linked — channel alerts name you without pinging you. Ask an admin to map you, or sign in with Slack.",
+                  )}
+            </p>
+          )}
         </div>
       </div>
       {!connected && suggestion && (
@@ -1024,6 +1048,7 @@ function NotificationsPage() {
             org={org}
             suggestion={data?.slackSuggestion}
             connectedWorkspace={connectedSlackWorkspace}
+            mention={data?.slackMention}
           />
 
           {showAddForm ? (

@@ -229,6 +229,8 @@
       "connected": "Connecté à {{workspace}}",
       "available": "Disponible sur {{workspace}}",
       "unavailable": "Connectez-vous avec Slack, et demandez à un administrateur de relier un espace de travail Slack, pour recevoir les alertes en message direct.",
+      "mentionedAs": "Mentionné dans les alertes du canal en tant que {{handle}}",
+      "mentionNotLinked": "Non lié — les alertes du canal vous nomment sans vous notifier. Demandez à un administrateur de vous associer, ou connectez-vous avec Slack.",
       "connectButton": "Connecter Slack",
       "added": "Notifications Slack ajoutées",
       "addFailed": "Impossible d'ajouter le contact Slack",

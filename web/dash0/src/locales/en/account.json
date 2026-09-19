@@ -229,6 +229,8 @@
       "connected": "Connected to {{workspace}}",
       "available": "Available on {{workspace}}",
       "unavailable": "Sign in with Slack, and have an admin connect a Slack workspace, to receive alerts as direct messages.",
+      "mentionedAs": "Mentioned in channel alerts as {{handle}}",
+      "mentionNotLinked": "Not linked — channel alerts name you without pinging you. Ask an admin to map you, or sign in with Slack.",
       "connectButton": "Connect Slack",
       "added": "Slack DM notifications added",
       "addFailed": "Failed to add Slack DM contact",
