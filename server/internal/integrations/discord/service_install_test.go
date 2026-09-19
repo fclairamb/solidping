@@ -35,11 +35,18 @@ func setupDiscordService(t *testing.T) (context.Context, *Service, *fakeDiscord)
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{BaseURL: "http://localhost:4000"},
+		// A FULLY configured bot — Enabled plus all four values. Anything less
+		// is a deployment where the bot is not offered at all
+		// (config.DiscordOAuthConfig.BotConfigured(), spec 2026-09-19-01), and
+		// a fixture that skipped one of them would be testing a state that no
+		// longer reaches this code.
 		Discord: config.DiscordOAuthConfig{
+			Enabled:      true,
 			ClientID:     "test-client-id",
 			ClientSecret: "test-client-secret",
-			// Obviously-fake token: never a real credential in a fixture.
-			BotToken: "test-bot-token",
+			// Obviously-fake values: never a real credential in a fixture.
+			BotToken:  "test-bot-token",
+			PublicKey: "00112233445566778899aabbccddeeff",
 		},
 	}
 

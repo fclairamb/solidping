@@ -73,17 +73,16 @@ func (c *DiscordOAuthConfig) MissingBotConfigKeys() []string {
 
 	var missing []string
 
-	for _, candidate := range []struct {
-		env   string
-		value string
-	}{
+	candidates := [...][2]string{
 		{EnvDiscordClientID, c.ClientID},
 		{EnvDiscordClientSecret, c.ClientSecret},
 		{EnvDiscordBotToken, c.BotToken},
 		{EnvDiscordPublicKey, c.PublicKey},
-	} {
-		if strings.TrimSpace(candidate.value) == "" {
-			missing = append(missing, candidate.env)
+	}
+
+	for i := range candidates {
+		if strings.TrimSpace(candidates[i][1]) == "" {
+			missing = append(missing, candidates[i][0])
 		}
 	}
 

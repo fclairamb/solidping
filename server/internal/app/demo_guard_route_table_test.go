@@ -40,6 +40,18 @@ func newDemoEnv(t *testing.T) *demoEnv {
 	cfg.Auth.JWTSecret = "demo-guard-secret"
 	cfg.Auth.AccessTokenExpiry = time.Hour
 	cfg.Auth.RefreshTokenExpiry = 24 * time.Hour
+	// A fully configured Discord bot, so the route table this test walks is
+	// the COMPLETE one. Since spec 2026-09-19-01 the bot's routes — the
+	// signature-verified interactions webhook among them — are mounted only
+	// when every Discord value is present, and a demo-guard sweep over a
+	// half-configured instance would silently stop covering them.
+	cfg.Discord = config.DiscordOAuthConfig{
+		Enabled:      true,
+		ClientID:     "demo-guard-discord-id",
+		ClientSecret: "demo-guard-discord-secret",
+		BotToken:     "demo-guard-discord-bot-token",
+		PublicKey:    "00112233445566778899aabbccddeeff",
+	}
 
 	server, err := NewServer(ctx, cfg)
 	r.NoError(err)
