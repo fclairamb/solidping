@@ -3,6 +3,16 @@
 ## Unreleased
 
 
+## [0.29.2](https://github.com/fclairamb/solidping/compare/v0.29.1...v0.29.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/dustin/go-humanize to v1.1.0 ([#394](https://github.com/fclairamb/solidping/issues/394)) ([c91d1dd](https://github.com/fclairamb/solidping/commit/c91d1dd3917a19969791b68bd106204b00cb3bb0))
+* **deps:** update module github.com/go-webauthn/webauthn to v0.18.2 ([#404](https://github.com/fclairamb/solidping/issues/404)) ([cadacf7](https://github.com/fclairamb/solidping/commit/cadacf75c96cea7d1480fa2bb0ab350dfb3c51b8))
+* **deps:** update module github.com/gosnmp/gosnmp to v1.45.0 ([#401](https://github.com/fclairamb/solidping/issues/401)) ([f99928a](https://github.com/fclairamb/solidping/commit/f99928ae814d8c9475fbe7a0dfae660e0e6b247d))
+* repair Slack alerting and fail closed on a half-configured Discord ([#402](https://github.com/fclairamb/solidping/issues/402)) ([4547c61](https://github.com/fclairamb/solidping/commit/4547c61d4843d1c0887aa1a1c5d7bbded7baa3e0))
+
 ## [0.29.1](https://github.com/fclairamb/solidping/compare/v0.29.0...v0.29.1) (2026-09-17)
 
 
