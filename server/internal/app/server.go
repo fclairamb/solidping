@@ -1605,6 +1605,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
 	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
+	// Global user directory (spec 2026-09-19-04): search/page every user
+	// account across every org, read-only. The only prior consumer of
+	// ListUsers was the operator-notifications job; this is the first HTTP
+	// exposure.
+	systemActions.GET("/users", systemHandler.ListUsers)
 	// Fleet-wide agent view (spec 2026-08-05-01): org agents are already
 	// listed per-org, but system agents (kind='system', no owning org) are
 	// otherwise visible nowhere short of querying the DB by hand.
