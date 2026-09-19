@@ -193,11 +193,13 @@ shipping a permanent migration. `014_v0_17_0` is the consolidated v0.17.0
 migration, unrelated to that draft; see the consolidation rule above for why
 reusing the number is safe here and what it costs dev databases.)
 
-**The unreleased migration right now is `018_v0_24_0`** (opened 2026-09-06 by
-spec 2026-09-05-04, the workers.slug leading-digit relaxation). `017_v0_21_0`
-is the last RELEASED migration and v0.23.1 the last released version, so any
-further schema change this cycle is appended to `018` as a new SECTION — do
-not open `019`. Whoever ships or renames it **updates this paragraph**,
+**The unreleased migration right now is `022_v0_30_0`** (opened 2026-09-19 by
+spec 2026-09-19-02, `user_contacts.team_id`). `021_v0_28_0` is the last
+RELEASED migration (it shipped in v0.28.0) and v0.29.1 the last released
+version, so any further schema change this cycle is appended to `022` as a new
+SECTION — do not open `023`. The `v0_30_0` suffix assumes this cycle lands as a
+minor; rename the file (both dialects, both directions) if the batch PR title
+settles it as a patch. Whoever ships or renames it **updates this paragraph**,
 because a stale pointer here is what causes the mistake it is meant to
 prevent.
 

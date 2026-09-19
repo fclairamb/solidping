@@ -215,3 +215,11 @@ accordingly. Discord shares `MentionTarget`; keep its rendering
     handle-less target, plus a byte-identical assertion for a mention-free
     message.
 15. Playwright: the Account → Notifications Slack row states.
+
+### Follow-up left deliberately unbuilt
+
+A check with **no effective escalation policy** still gets no mention, by
+design (§1's "out of scope"): nothing ties an on-call schedule to a check
+except a policy target, so an org with several schedules would be told the
+wrong name. Closing that needs an org-level "default on-call schedule" setting
+— a separate spec, not a widening of this resolver.
