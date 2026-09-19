@@ -148,6 +148,8 @@
     "slackMappingNotFound": "Not found",
     "slackMappingClear": "Clear mapping",
     "slackMappingSetFailed": "Could not save that mapping",
+    "slackMappingNotInWorkspaceList": "Not in the workspace member list",
+    "slackMappingUsersError": "Workspace members could not be loaded: {{reason}}",
     "discordNotConnectedTitle": "Discord server not connected",
     "discordNotConnectedBody": "Install the SolidPing bot to get threads, an Acknowledge button, on-call mentions and inbound comments. Without it, alerts are delivered one-way through the webhook URL below.",
     "discordBotUnavailable": "This instance does not have the Discord bot configured, so it cannot be installed here. Alerts are delivered one-way through the webhook URL below.",
