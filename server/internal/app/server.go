@@ -1946,7 +1946,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	supportinbox.RegisterRoutes(api, authMiddleware, supportinbox.NewHandler(supportService, s.config))
 
 	// Slack integration routes (inbound from Slack - no org auth)
-	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
+	slackService := slack.NewService(
+		s.dbService, s.config, s.authService, checksService, incidentsService, s.services.Credentials,
+	)
 	slackService.SetSupport(supportService)
 	// One line at boot naming how many workspaces still owe a reinstall before
 	// their DMs arrive. Slack does not grant new scopes to existing installs, so

@@ -68,7 +68,7 @@ func TestSlackReplyRoute_RequiresAStoredConnection(t *testing.T) {
 	ctx := t.Context()
 	dbSvc := routeTestDB(t)
 
-	slackSvc := slack.NewService(dbSvc, &config.Config{}, nil, nil, nil)
+	slackSvc := slack.NewService(dbSvc, &config.Config{}, nil, nil, nil, nil)
 	route := slackReplyRoute(slackSvc)
 
 	// No integrations row for this team at all — exactly the observed state.
@@ -220,7 +220,7 @@ func TestRegisterSupportRepliers_RoutesTheChannelsThatNeedIt(t *testing.T) {
 
 	server.registerSupportRepliers(
 		inbox,
-		slack.NewService(dbSvc, cfg, nil, nil, nil),
+		slack.NewService(dbSvc, cfg, nil, nil, nil, nil),
 		discord.NewService(dbSvc, cfg, nil, nil),
 	)
 
