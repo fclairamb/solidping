@@ -47,12 +47,43 @@ async function stubIntegration(
   );
 }
 
+/**
+ * Stubs GET /api/v1/config with a given Discord bot capability.
+ *
+ * The install button now renders ONLY when the instance reports a fully
+ * configured bot, because that is the same predicate the backend mounts the
+ * install routes on. Production had Discord "enabled" with just the client
+ * id/secret pair — enough for login, not for the bot — and the button was
+ * offered anyway, sending users to an install that could not complete
+ * (spec 2026-09-19-01). So every test here has to say which instance it is.
+ */
+async function stubPublicConfig(
+  page: import("@playwright/test").Page,
+  botEnabled: boolean,
+) {
+  await page.route("**/api/v1/config", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        posthog: { enabled: false },
+        whatsapp: { enabled: false },
+        telegram: { enabled: false },
+        sms: { enabled: false, voiceEnabled: false },
+        demo: { enabled: false },
+        discord: { botEnabled },
+      }),
+    });
+  });
+}
+
 test.describe("Discord bot settings panel", () => {
   test("legacy webhook integration keeps its URL and never calls destinations", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
 
+    await stubPublicConfig(page, true);
     await stubIntegration(page, LEGACY_UID, {
       webhook_url: "https://discord.com/api/webhooks/1/acme-legacy",
     });
@@ -96,6 +127,7 @@ test.describe("Discord bot settings panel", () => {
   }) => {
     const page = authenticatedPage;
 
+    await stubPublicConfig(page, true);
     await stubIntegration(page, LEGACY_UID, { webhook_url: "" });
 
     await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
@@ -142,6 +174,7 @@ test.describe("Discord bot settings panel", () => {
   }) => {
     const page = authenticatedPage;
 
+    await stubPublicConfig(page, true);
     await stubIntegration(page, BOT_UID, {
       guild_id: "G-ACME",
       guild_name: "acme",
@@ -198,5 +231,39 @@ test.describe("Discord bot settings panel", () => {
     await combobox.click();
     await page.getByTestId("discord-channel-option-C-GENERAL").click();
     await expect(combobox).toContainText("#general");
+  });
+
+  // The production-like instance: Discord is "enabled", login works, and the
+  // bot has neither a token nor an application public key. Offering the button
+  // here is the bug — it is a round trip to discord.com that dead-ends.
+  test("half-configured instance offers no install button at all", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await stubPublicConfig(page, false);
+    await stubIntegration(page, LEGACY_UID, { webhook_url: "" });
+
+    let installUrlCalled = false;
+    await page.route(
+      "**/api/v1/orgs/test/integrations/discord/install-url",
+      async (route) => {
+        installUrlCalled = true;
+        await route.fulfill({ status: 404, body: "" });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    // The panel still explains itself and still offers the webhook, which is
+    // the only Discord delivery this instance can actually perform.
+    await expect(page.getByTestId("discord-not-connected")).toBeVisible();
+    await expect(
+      page.getByTestId("discord-not-connected"),
+    ).toContainText(/does not have the Discord bot configured/i);
+
+    await expect(page.getByTestId("discord-install")).toHaveCount(0);
+    expect(installUrlCalled).toBe(false);
   });
 });

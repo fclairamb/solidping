@@ -165,6 +165,10 @@ with the permissions the code asks for, plus
 (`SP_BASE_URL` is `https://solidping.io`, and the callback path is built by
 [`installRedirectURI()`](server/internal/integrations/discord/service.go#L263)).
 
+The operator runbook for this is [`wiki/runbooks/discord-bot-setup.md`](wiki/runbooks/discord-bot-setup.md)
+(written as part of this spec): the two portal values, the gopass paths, the
+install-params/scope and redirect-URI changes, and how to verify.
+
 **This is console work and it is a human's**: reading a bot token out of a web
 form is exactly the case where the value must go into gopass by hand, never
 through an agent's context. The same applies to dev.
