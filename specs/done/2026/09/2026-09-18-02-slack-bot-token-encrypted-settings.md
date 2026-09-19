@@ -7,13 +7,13 @@ effort: high
 
 ## Problem
 
-On `https://solidping.k8xp.com/d/orgs/stonal/account/notifications`, pressing the
+On `https://solidping.k8xp.com/d/orgs/acme/account/notifications`, pressing the
 send-test icon on the "Slack DM" route (`U05AL44K9GS`) calls
-`POST /api/v1/orgs/stonal/users/me/notification-routes/<routeUid>/test` and the
+`POST /api/v1/orgs/acme/users/me/notification-routes/<routeUid>/test` and the
 dashboard answers with the toast **"test failed: slack client not configured"**.
 
 The org *does* have a working, installed Slack app. What the dev API returns for
-its only Slack integration (`b69c17d8-…`, name "Stonal", `isDefault: true`):
+its only Slack integration (`b69c17d8-…`, name "Acme", `isDefault: true`):
 
 ```json
 {
@@ -54,7 +54,7 @@ Everything else is broken once the split has happened. Confirmed readers of
 | [`server/internal/handlers/usernotifications/senders.go:70-78`](../../server/internal/handlers/usernotifications/senders.go) `SlackDMSenderAdapter.SendDMTest` | the reported toast `slack client not configured` (`dispatchTestSlack` at [`service.go:712`](../../server/internal/handlers/usernotifications/service.go) already has `s.creds` in hand but passes the raw row down) |
 | [`server/internal/jobs/jobtypes/job_escalation_step.go:584-590`](../../server/internal/jobs/jobtypes/job_escalation_step.go) escalation Slack DM | **real pages are silently dropped** — logs `slack access token not configured; skipping route`, returns 0, the on-call human never gets the DM |
 | [`server/internal/opsnotifywire/wire.go:137-140`](../../server/internal/opsnotifywire/wire.go) `sendSlackDM` | ops-notify DMs answer `errNoSlackToken` |
-| [`server/internal/integrations/slack/service.go:1290-1302`](../../server/internal/integrations/slack/service.go) destinations listing | dashboard channel picker: `GET /orgs/stonal/channels/b69c…/slack/destinations` → **409 `CHANNEL_NOT_CONNECTED` "install the Slack app"** on dev, for an app that is installed |
+| [`server/internal/integrations/slack/service.go:1290-1302`](../../server/internal/integrations/slack/service.go) destinations listing | dashboard channel picker: `GET /orgs/acme/channels/b69c…/slack/destinations` → **409 `CHANNEL_NOT_CONNECTED` "install the Slack app"** on dev, for an app that is installed |
 | [`server/internal/integrations/slack/service.go:1061-1066`](../../server/internal/integrations/slack/service.go) `GetClient` (events, slash commands, interactivity, thread replies) | `newAPIClient("")` → Slack answers `invalid_auth` |
 | [`server/internal/integrations/slack/service.go:1139-1145`](../../server/internal/integrations/slack/service.go) `SetDefaultChannel` | same, welcome message and channel-name lookup fail |
 
