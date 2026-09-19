@@ -495,3 +495,91 @@ func TestSyncIdentitiesDiscordWebhookModeRejected(t *testing.T) {
 	_, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
 	r.ErrorIs(err, integrations.ErrIdentitiesUnsupportedType)
 }
+
+// TestSyncIdentitiesSeedsDeclaredIdentities: a member the workspace lookup
+// cannot place by email is still matched when they declared their own handle —
+// a Slack DM contact in this workspace, or a Slack sign-in on the same team.
+//
+// This is the "the admin table must agree with the sender" rule. The sender
+// already pings these members; without the fallback the table would report
+// "not found" for people who are demonstrably being mentioned, and an admin
+// would go and "fix" a mapping that was never broken.
+//
+// Negative control: a THIRD member whose contact belongs to another workspace
+// stays not found, because a Slack user id only identifies a person within one
+// workspace.
+func TestSyncIdentitiesSeedsDeclaredIdentities(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	fx := newIdentityFixture(ctx, t, "sync-declared")
+
+	// Email lookup finds nobody at all.
+	contactUser := fx.addMember(ctx, t, "contact@acme.test", "Contact Carol")
+	signInUser := fx.addMember(ctx, t, "signin@acme.test", "Sign-in Sam")
+	foreignUser := fx.addMember(ctx, t, "foreign@acme.test", "Foreign Fred")
+
+	team := "T1" // the fixture integration's workspace
+	foreign := "T-ELSEWHERE"
+
+	addContact := func(user *models.User, value string, teamID *string) {
+		contact := models.NewUserContact(
+			user.UID, fx.org.UID, models.UserContactTypeSlackUser, value, "Slack DM")
+		contact.TeamID = teamID
+		r.NoError(fx.dbSvc.UpsertUserContact(ctx, contact))
+		r.NoError(fx.dbSvc.EnsureUserNotificationRoute(ctx, user.UID, fx.org.UID, contact.UID))
+	}
+
+	addContact(contactUser, "U-CONTACT", &team)
+	addContact(foreignUser, "U-FOREIGN", &foreign)
+
+	r.NoError(fx.dbSvc.CreateOrganizationProvider(ctx,
+		models.NewOrganizationProvider(fx.org.UID, models.ProviderTypeSlack, team)))
+	r.NoError(fx.dbSvc.CreateUserProvider(ctx,
+		models.NewUserProvider(signInUser.UID, models.ProviderTypeSlack, "U-SIGNIN")))
+
+	resp, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
+	r.NoError(err)
+
+	r.Equal(integrations.IdentityStatusMatched, entryFor(resp.Data, contactUser.UID).Status)
+	r.Equal("U-CONTACT", entryFor(resp.Data, contactUser.UID).ExternalID)
+	r.Equal(models.IdentitySourceAuto, entryFor(resp.Data, contactUser.UID).Source)
+
+	r.Equal(integrations.IdentityStatusMatched, entryFor(resp.Data, signInUser.UID).Status)
+	r.Equal("U-SIGNIN", entryFor(resp.Data, signInUser.UID).ExternalID)
+
+	r.Equal(integrations.IdentityStatusNotFound, entryFor(resp.Data, foreignUser.UID).Status,
+		"a handle from another workspace must never be adopted")
+	r.Empty(entryFor(resp.Data, foreignUser.UID).ExternalID)
+}
+
+// TestSyncIdentitiesManualBeatsDeclaredIdentity: the admin's explicit mapping
+// still wins over a handle the member declared for themselves.
+func TestSyncIdentitiesManualBeatsDeclaredIdentity(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	fx := newIdentityFixture(ctx, t, "sync-declmanual")
+
+	alice := fx.addMember(ctx, t, "alice@acme.test", "Alice")
+
+	team := "T1"
+	contact := models.NewUserContact(
+		alice.UID, fx.org.UID, models.UserContactTypeSlackUser, "U-SELF", "Slack DM")
+	contact.TeamID = &team
+	r.NoError(fx.dbSvc.UpsertUserContact(ctx, contact))
+	r.NoError(fx.dbSvc.EnsureUserNotificationRoute(ctx, alice.UID, fx.org.UID, contact.UID))
+
+	_, err := fx.svc.SetIdentity(ctx, fx.org.Slug, fx.conn.UID, alice.UID,
+		integrations.SetIdentityRequest{ExternalID: "U-MANUAL", DisplayName: "Alice (manual)"})
+	r.NoError(err)
+
+	resp, err := fx.svc.SyncIdentities(ctx, fx.org.Slug, fx.conn.UID)
+	r.NoError(err)
+
+	entry := entryFor(resp.Data, alice.UID)
+	r.Equal("U-MANUAL", entry.ExternalID)
+	r.Equal(models.IdentitySourceManual, entry.Source)
+}
