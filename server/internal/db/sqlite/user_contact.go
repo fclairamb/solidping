@@ -126,7 +126,7 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		// carry one: the revive path (re-adding a deleted contact) and the
 		// generic POST both hand us a team-less contact, and clearing the column
 		// would silently demote a verified workspace back to "unknown".
-		Set("team_id = coalesce(EXCLUDED.team_id, user_contacts.team_id)").
+		Set("team_id = coalesce(EXCLUDED.team_id, \"user_contact\".team_id)").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
 		Returning("uid").

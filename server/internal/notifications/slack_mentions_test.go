@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestSlackNoMentionsWhenNoneResolved(t *testing.T) {
 	for _, eventType := range []string{"incident.created", "incident.escalated"} {
 		flat := flatten(t, sender, mentionPayload(eventType, nil))
 		r.NotContains(messageText(flat), "<@")
-		r.NotContains(messageText(flat), "you are on call")
+		r.NotContains(messageText(flat), "On call:")
 	}
 }
 
@@ -140,4 +141,93 @@ func TestRenderMentionsEmptyCases(t *testing.T) {
 	// dangling separator.
 	r.Empty(renderMentions([]MentionTarget{{UserUID: "u1"}}))
 	r.Nil(mentionBlock(nil))
+}
+
+// TestRenderMentionsOnCallWording pins §3's wording across 0, 1 and 2 targets
+// and with a handle-less target. The line is a statement to the channel about
+// who is on call, never a sentence addressed to them.
+func TestRenderMentionsOnCallWording(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		targets []MentionTarget
+		want    string
+	}{
+		{
+			name:    "no targets says nothing at all",
+			targets: nil,
+			want:    "",
+		},
+		{
+			name:    "one mapped target",
+			targets: []MentionTarget{{UserUID: "u1", DisplayName: "Adam", ExternalID: "U-ADAM"}},
+			want:    "On call: <@U-ADAM>",
+		},
+		{
+			name: "two mapped targets are comma separated",
+			targets: []MentionTarget{
+				{UserUID: "u1", DisplayName: "Adam", ExternalID: "U-ADAM"},
+				{UserUID: "u2", DisplayName: "Zoe", ExternalID: "U-ZOE"},
+			},
+			want: "On call: <@U-ADAM>, <@U-ZOE>",
+		},
+		{
+			name:    "a target with no handle is named, not addressed",
+			targets: []MentionTarget{{UserUID: "u1", DisplayName: "Alice"}},
+			want:    "On call: Alice",
+		},
+		{
+			name: "mixed: one pinged, one merely named",
+			targets: []MentionTarget{
+				{UserUID: "u1", DisplayName: "Alice"},
+				{UserUID: "u2", DisplayName: "Zoe", ExternalID: "U-ZOE"},
+			},
+			want: "On call: Alice, <@U-ZOE>",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.want, renderMentions(tc.targets))
+		})
+	}
+}
+
+// TestSlackMessageWithNothingToSayIsByteIdentical is the guarantee that makes
+// this feature safe to ship to every existing install: when the resolver has
+// nothing to say, the message bytes are EXACTLY the ones the sender produced
+// before mentions existed.
+//
+// Asserted on the serialized message rather than on block counts, because a
+// stray empty block, a changed fallback text or a reordered attachment would
+// all pass a structural check and still change what Slack renders.
+func TestSlackMessageWithNothingToSayIsByteIdentical(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	sender := &SlackSender{}
+
+	for _, eventType := range []string{"incident.created", "incident.escalated"} {
+		baseline, err := json.Marshal(sender.buildMessage(mentionPayload(eventType, nil)))
+		r.NoError(err)
+
+		// A resolved target that renders to nothing: no handle AND no name.
+		// The sender must treat it exactly like "no mentions at all".
+		empty, err := json.Marshal(sender.buildMessage(
+			mentionPayload(eventType, []MentionTarget{{UserUID: "u1"}})))
+		r.NoError(err)
+
+		r.Equal(string(baseline), string(empty),
+			"%s with nothing to say must be byte-identical to the mention-free message", eventType)
+
+		// Positive control: a real target DOES change the bytes, so the
+		// equality above is a property of emptiness and not of the comparison.
+		withMention, err := json.Marshal(sender.buildMessage(
+			mentionPayload(eventType, []MentionTarget{{UserUID: "u1", ExternalID: "U-ADAM"}})))
+		r.NoError(err)
+		r.NotEqual(string(baseline), string(withMention))
+	}
 }
