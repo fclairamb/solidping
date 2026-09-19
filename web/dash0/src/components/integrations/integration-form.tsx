@@ -31,11 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -109,15 +105,7 @@ interface IntegrationFormProps {
 // once; a per-type panel slots in below for the channel-specific
 // settings. Each panel keeps its own narrow shape — no anything-goes
 // JSON editor.
-export function IntegrationForm({
-  type,
-  initial,
-  initialName,
-  onChange,
-  org,
-  channelUid,
-  canTest = true,
-}: IntegrationFormProps) {
+export function IntegrationForm({ type, initial, initialName, onChange, org, channelUid, canTest = true }: IntegrationFormProps) {
   const { t } = useTranslation("integrations");
   const [name, setName] = useState(initial?.name || initialName || "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
@@ -178,17 +166,10 @@ export function IntegrationForm({
             {t("form.enabled", "Enabled")}
           </Label>
           <p className="text-xs text-muted-foreground">
-            {t(
-              "form.enabledHelp",
-              "Disabled channels never send notifications.",
-            )}
+            {t("form.enabledHelp", "Disabled channels never send notifications.")}
           </p>
         </div>
-        <Switch
-          id="ch-enabled"
-          checked={enabled}
-          onCheckedChange={setEnabled}
-        />
+        <Switch id="ch-enabled" checked={enabled} onCheckedChange={setEnabled} />
       </div>
 
       <div className="flex items-center justify-between rounded border p-3">
@@ -239,11 +220,7 @@ interface TestNotificationSectionProps {
 // TestNotificationSection sends a sample notification through the saved
 // integration and shows whether it was delivered. It tests the persisted
 // settings, so unsaved form edits are not reflected until saved.
-function TestNotificationSection({
-  org,
-  channelUid,
-  canTest = true,
-}: TestNotificationSectionProps) {
+function TestNotificationSection({ org, channelUid, canTest = true }: TestNotificationSectionProps) {
   const { t } = useTranslation("integrations");
   const test = useTestIntegration(org ?? "");
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
@@ -347,15 +324,7 @@ interface PerTypePanelProps {
   canTest?: boolean;
 }
 
-function PerTypePanel({
-  type,
-  settings,
-  onChange,
-  org,
-  channelUid,
-  privateKeys,
-  canTest,
-}: PerTypePanelProps) {
+function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, canTest }: PerTypePanelProps) {
   const { t } = useTranslation("integrations");
 
   const update = (key: string, value: unknown) =>
@@ -420,7 +389,9 @@ function PerTypePanel({
       const hasInvalid = recipients.some((v) => !isValidEmail(v));
       return (
         <div className="space-y-2">
-          <Label htmlFor="ch-to">{t("form.recipients", "Recipients")}</Label>
+          <Label htmlFor="ch-to">
+            {t("form.recipients", "Recipients")}
+          </Label>
           <RecipientsInput
             id="ch-to"
             value={recipients}
@@ -538,9 +509,7 @@ function PerTypePanel({
             onChange={(v) => update("accessToken", v)}
           />
           <div className="space-y-2">
-            <Label htmlFor="ch-matrix-room">
-              {t("form.matrixRoom", "Room")}
-            </Label>
+            <Label htmlFor="ch-matrix-room">{t("form.matrixRoom", "Room")}</Label>
             <Input
               id="ch-matrix-room"
               value={(settings.roomId as string) || ""}
@@ -583,9 +552,7 @@ function PerTypePanel({
             onChange={(v) => update("api_key", v)}
           />
           <div className="space-y-2">
-            <Label htmlFor="ch-zulip-stream">
-              {t("form.zulipStream", "Stream")}
-            </Label>
+            <Label htmlFor="ch-zulip-stream">{t("form.zulipStream", "Stream")}</Label>
             <Input
               id="ch-zulip-stream"
               value={(settings.stream as string) || ""}
@@ -630,7 +597,9 @@ function PerTypePanel({
         </div>
       );
     case "twilio":
-      return <TwilioPanel settings={settings} update={update} />;
+      return (
+        <TwilioPanel settings={settings} update={update} />
+      );
     case "msteams-bot":
       return (
         <MSTeamsBotPanel
@@ -679,11 +648,7 @@ function PerTypePanel({
 // FreeboxStatusPanel is a read-only summary shown on the edit page —
 // the actual pairing happens on the dedicated create flow and cannot
 // be retried from here (re-pairing creates a new channel row).
-function FreeboxStatusPanel({
-  settings,
-}: {
-  settings: Record<string, unknown>;
-}) {
+function FreeboxStatusPanel({ settings }: { settings: Record<string, unknown> }) {
   const { t } = useTranslation("integrations");
   const status = typeof settings.status === "string" ? settings.status : "";
   const baseUrl = typeof settings.baseUrl === "string" ? settings.baseUrl : "";
@@ -777,10 +742,7 @@ function KubernetesPanel({
         <Label htmlFor="k8s-auth-mode">
           {t("kubernetes.authMode", "Authentication")}
         </Label>
-        <Select
-          value={mode}
-          onValueChange={(v) => handleModeChange(v as KubeAuthMode)}
-        >
+        <Select value={mode} onValueChange={(v) => handleModeChange(v as KubeAuthMode)}>
           <SelectTrigger id="k8s-auth-mode" data-testid="kubernetes-auth-mode">
             <SelectValue />
           </SelectTrigger>
@@ -1075,12 +1037,7 @@ interface WebPushChannelPanelProps {
 }
 
 /** Manages the list of browser subscriptions for a webpush org channel. */
-function WebPushChannelPanel({
-  settings,
-  onChange,
-  org,
-  isEdit: _isEdit,
-}: WebPushChannelPanelProps) {
+function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPushChannelPanelProps) {
   const { t } = useTranslation("integrations");
 
   const subs: WebPushSub[] = Array.isArray(settings.subscriptions)
@@ -1111,10 +1068,7 @@ function WebPushChannelPanel({
   return (
     <div className="space-y-3" data-testid="webpush-channel-panel">
       <p className="text-sm text-muted-foreground">
-        {t(
-          "hint.webpush",
-          "Receive alerts as browser notifications on your subscribed devices",
-        )}
+        {t("hint.webpush", "Receive alerts as browser notifications on your subscribed devices")}
       </p>
 
       {subs.length === 0 ? (
@@ -1127,10 +1081,7 @@ function WebPushChannelPanel({
       ) : (
         <div className="space-y-2" data-testid="webpush-subscriptions-list">
           {subs.map((sub) => (
-            <div
-              key={sub.endpoint}
-              className="flex items-center gap-2 rounded border px-3 py-2"
-            >
+            <div key={sub.endpoint} className="flex items-center gap-2 rounded border px-3 py-2">
               <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
               <span className="flex-1 text-sm truncate">
                 {sub.label || t("form.webpushDefaultDeviceLabel", "Browser")}
@@ -1139,10 +1090,7 @@ function WebPushChannelPanel({
                 type="button"
                 onClick={() => handleRemove(sub.endpoint)}
                 className="text-destructive hover:text-destructive/80"
-                aria-label={t(
-                  "form.webpushRemoveSubscription",
-                  "Remove subscription",
-                )}
+                aria-label={t("form.webpushRemoveSubscription", "Remove subscription")}
                 data-testid="remove-webpush-subscription"
               >
                 <Trash2 className="h-4 w-4" />
@@ -1174,11 +1122,7 @@ interface WebhookSigningPanelProps {
 // WebhookSigningPanel shows the per-channel Standard Webhooks signing secret
 // (retrievable, not a one-time reveal), with copy + rotate actions, a
 // rotation-in-progress banner, and a "send test" button reporting the result.
-function WebhookSigningPanel({
-  settings,
-  org,
-  channelUid,
-}: WebhookSigningPanelProps) {
+function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelProps) {
   const { t } = useTranslation("integrations");
   const rotate = useRotateWebhookSecret(org, channelUid);
 
@@ -1334,8 +1278,7 @@ function DiscordDestinationPanel({
   // always has an endpoint behind it (spec 2026-09-19-01).
   const botAvailable = useDiscordBotEnabled();
   const isEditMode = Boolean(org && channelUid);
-  const guildId =
-    typeof settings.guild_id === "string" ? settings.guild_id : "";
+  const guildId = typeof settings.guild_id === "string" ? settings.guild_id : "";
   const guildName =
     typeof settings.guild_name === "string" ? settings.guild_name : "";
   const isConnected = guildId.length > 0;
@@ -1362,10 +1305,7 @@ function DiscordDestinationPanel({
         <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
           <div className="space-y-1">
             <p className="font-medium">
-              {t(
-                "form.discordNotConnectedTitle",
-                "Discord server not connected",
-              )}
+              {t("form.discordNotConnectedTitle", "Discord server not connected")}
             </p>
             <p className="text-muted-foreground">
               {botAvailable
@@ -1386,10 +1326,7 @@ function DiscordDestinationPanel({
                 if (!org) return;
                 void startDiscordInstall(org, channelUid).catch(() => {
                   toast.error(
-                    t(
-                      "form.discordInstallFailed",
-                      "Failed to start Discord install",
-                    ),
+                    t("form.discordInstallFailed", "Failed to start Discord install"),
                   );
                 });
               }}
@@ -1440,10 +1377,7 @@ function DiscordDestinationPanel({
         )}
 
         <DiscordMentionSwitch settings={settings} onChange={onChange} />
-        <DiscordCommentIngestionSwitch
-          settings={settings}
-          onChange={onChange}
-        />
+        <DiscordCommentIngestionSwitch settings={settings} onChange={onChange} />
 
         {org && channelUid && currentId && (
           <SlackMemberMapping
@@ -1511,9 +1445,7 @@ function DiscordChannelCombobox({
           data-testid="discord-channel-combobox"
         >
           <span className={cn(!selected && "text-muted-foreground")}>
-            {selected
-              ? `#${selected.name}`
-              : t("form.pickChannel", "Pick a channel…")}
+            {selected ? `#${selected.name}` : t("form.pickChannel", "Pick a channel…")}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -1525,10 +1457,7 @@ function DiscordChannelCombobox({
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t(
-              "form.searchChannelsPlaceholder",
-              "Search channels…",
-            )}
+            placeholder={t("form.searchChannelsPlaceholder", "Search channels…")}
             className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             data-testid="discord-channel-search"
           />
@@ -1586,10 +1515,7 @@ function DiscordMentionSwitch({ settings, onChange }: DiscordSwitchProps) {
     <div className="flex items-start justify-between gap-3 rounded border bg-background p-3">
       <div>
         <Label htmlFor="discord-mention-on-call" className="font-medium">
-          {t(
-            "form.discordMentionOnCall",
-            "Mention the on-call person in alerts",
-          )}
+          {t("form.discordMentionOnCall", "Mention the on-call person in alerts")}
         </Label>
         <p className="text-xs text-muted-foreground">
           {t(
@@ -1656,12 +1582,7 @@ interface SlackDestinationPanelProps {
   channelUid?: string;
 }
 
-function SlackDestinationPanel({
-  settings,
-  onChange,
-  org,
-  channelUid,
-}: SlackDestinationPanelProps) {
+function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDestinationPanelProps) {
   const { t } = useTranslation("integrations");
 
   // If no org/channelUid, we're on the new-channel page (Slack OAuth not yet complete).
@@ -1714,8 +1635,7 @@ function SlackDestinationPanel({
   }
 
   // Show the workspace name if present
-  const teamName =
-    typeof settings.team_name === "string" ? settings.team_name : "";
+  const teamName = typeof settings.team_name === "string" ? settings.team_name : "";
 
   if (!isEditMode) {
     return (
@@ -1772,8 +1692,7 @@ function SlackDestinationPanel({
     <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
       {teamName && (
         <p className="text-muted-foreground">
-          <strong>{t("form.slackWorkspaceLabel", "Workspace:")}</strong>{" "}
-          {teamName}
+          <strong>{t("form.slackWorkspaceLabel", "Workspace:")}</strong> {teamName}
         </p>
       )}
 
@@ -2131,7 +2050,11 @@ function SlackMemberMapping({
   );
 }
 
-function IdentityStatusBadge({ identity }: { identity: IntegrationIdentity }) {
+function IdentityStatusBadge({
+  identity,
+}: {
+  identity: IntegrationIdentity;
+}) {
   const { t } = useTranslation("integrations");
 
   if (identity.status === "matched") {
@@ -2167,11 +2090,7 @@ interface SlackChannelComboboxProps {
   onSelect: (ch: SlackChannel) => void;
 }
 
-function SlackChannelCombobox({
-  channels,
-  currentId,
-  onSelect,
-}: SlackChannelComboboxProps) {
+function SlackChannelCombobox({ channels, currentId, onSelect }: SlackChannelComboboxProps) {
   const { t } = useTranslation("integrations");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -2188,17 +2107,12 @@ function SlackChannelCombobox({
   );
 
   const selected = channels.find((ch) => ch.id === currentId);
-  const label = selected
-    ? `#${selected.name}`
-    : t("form.pickChannel", "Pick a channel…");
+  const label = selected ? `#${selected.name}` : t("form.pickChannel", "Pick a channel…");
 
   if (channels.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        {t(
-          "form.slackInviteBotFirst",
-          "Invite the bot to a channel first with",
-        )}{" "}
+        {t("form.slackInviteBotFirst", "Invite the bot to a channel first with")}{" "}
         <code className="font-mono">/invite @solidping</code>.
       </p>
     );
@@ -2214,9 +2128,7 @@ function SlackChannelCombobox({
           className="w-full justify-between font-normal text-sm"
           data-testid="slack-channel-combobox"
         >
-          <span className={cn(!selected && "text-muted-foreground")}>
-            {label}
-          </span>
+          <span className={cn(!selected && "text-muted-foreground")}>{label}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -2227,19 +2139,14 @@ function SlackChannelCombobox({
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t(
-              "form.searchChannelsPlaceholder",
-              "Search channels…",
-            )}
+            placeholder={t("form.searchChannelsPlaceholder", "Search channels…")}
             className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             data-testid="slack-channel-search"
           />
         </div>
         <div className="max-h-56 overflow-y-auto p-1">
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              {t("form.noChannelsFound", "No channels found")}
-            </div>
+            <div className="px-3 py-2 text-sm text-muted-foreground">{t("form.noChannelsFound", "No channels found")}</div>
           ) : (
             filtered.map((ch) => (
               <button
@@ -2297,11 +2204,7 @@ interface SlackUserComboboxProps {
   onSelect: (u: SlackUser) => void;
 }
 
-function SlackUserCombobox({
-  users,
-  currentId,
-  onSelect,
-}: SlackUserComboboxProps) {
+function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProps) {
   const { t } = useTranslation("integrations");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -2334,9 +2237,7 @@ function SlackUserCombobox({
           className="w-full justify-between font-normal text-sm"
           data-testid="slack-user-combobox"
         >
-          <span className={cn(!selected && "text-muted-foreground")}>
-            {label}
-          </span>
+          <span className={cn(!selected && "text-muted-foreground")}>{label}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -2354,9 +2255,7 @@ function SlackUserCombobox({
         </div>
         <div className="max-h-56 overflow-y-auto p-1">
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              {t("form.noPeopleFound", "No people found")}
-            </div>
+            <div className="px-3 py-2 text-sm text-muted-foreground">{t("form.noPeopleFound", "No people found")}</div>
           ) : (
             filtered.map((u) => (
               <button
@@ -2486,9 +2385,7 @@ function TwilioPanel({
           list="ch-twilio-region-options"
           placeholder="us1"
           value={(settings.region as string) || ""}
-          onChange={(e) =>
-            update("region", e.target.value.trim().toLowerCase())
-          }
+          onChange={(e) => update("region", e.target.value.trim().toLowerCase())}
         />
         {/* Suggestions only — any well-formed region token (e.g. "br2") is
             accepted, not just these three. The backend validates by format,
@@ -2565,13 +2462,8 @@ function TwilioPanel({
           validate={isE164}
           normalize={(v) => v.trim()}
           placeholder="+15551234567"
-          invalidTitle={t(
-            "form.twilioInvalidNumber",
-            "Not a valid E.164 number",
-          )}
-          getRemoveLabel={(n) =>
-            t("form.twilioRemoveNumber", "Remove {{n}}", { n })
-          }
+          invalidTitle={t("form.twilioInvalidNumber", "Not a valid E.164 number")}
+          getRemoveLabel={(n) => t("form.twilioRemoveNumber", "Remove {{n}}", { n })}
         />
         <p className="text-xs text-muted-foreground">
           {t(
@@ -2609,12 +2501,7 @@ interface MSTeamsBotPanelProps {
  * only, from a signature-verified Bot Framework activity that quotes this
  * code back.
  */
-function MSTeamsBotPanel({
-  settings,
-  onChange,
-  org,
-  channelUid,
-}: MSTeamsBotPanelProps) {
+function MSTeamsBotPanel({ settings, onChange, org, channelUid }: MSTeamsBotPanelProps) {
   const { t } = useTranslation("integrations");
 
   const isEditMode = Boolean(org && channelUid);
@@ -2665,10 +2552,7 @@ function MSTeamsBotPanel({
       await downloadMSTeamsManifest(org);
     } catch {
       toast.error(
-        t(
-          "form.msteamsBotDownloadFailed",
-          "Could not download the Teams app package",
-        ),
+        t("form.msteamsBotDownloadFailed", "Could not download the Teams app package"),
       );
     }
   }
@@ -2692,10 +2576,7 @@ function MSTeamsBotPanel({
         <Alert variant="destructive" data-testid="msteams-bot-disabled">
           <AlertTriangle />
           <AlertTitle>
-            {t(
-              "form.msteamsBotDisabledTitle",
-              "The Teams bot is disabled on this server",
-            )}
+            {t("form.msteamsBotDisabledTitle", "The Teams bot is disabled on this server")}
           </AlertTitle>
           <AlertDescription>
             {t(
@@ -2735,10 +2616,7 @@ function MSTeamsBotPanel({
         <Alert data-testid="msteams-bot-not-connected">
           <Info />
           <AlertTitle>
-            {t(
-              "form.msteamsBotNotConnectedTitle",
-              "Not connected to Microsoft Teams",
-            )}
+            {t("form.msteamsBotNotConnectedTitle", "Not connected to Microsoft Teams")}
           </AlertTitle>
           <AlertDescription>
             {t(
@@ -2795,10 +2673,7 @@ function MSTeamsBotPanel({
             data-testid="msteams-bot-connect"
           >
             {startLink.isPending && (
-              <Loader2
-                className="mr-2 h-4 w-4 animate-spin"
-                aria-hidden="true"
-              />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
             )}
             {t("form.msteamsBotConnectButton", "Connect Microsoft Teams")}
           </Button>
@@ -2843,10 +2718,7 @@ function MSTeamsBotPanel({
             {t("form.msteamsBotError", "Could not load Teams channels.")}
           </p>
         ) : destinations.length === 0 ? (
-          <p
-            className="text-xs text-muted-foreground"
-            data-testid="msteams-bot-empty"
-          >
+          <p className="text-xs text-muted-foreground" data-testid="msteams-bot-empty">
             {t(
               "form.msteamsBotNoDestinations",
               "No Teams channels yet. Add SolidPing to a channel in Teams and it will appear here.",
@@ -2866,9 +2738,7 @@ function MSTeamsBotPanel({
                   data-testid={`msteams-bot-destination-${dest.id}`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-medium">
-                      {dest.name || dest.id}
-                    </span>
+                    <span className="block truncate font-medium">{dest.name || dest.id}</span>
                     {dest.team_name && (
                       <span className="block truncate text-xs text-muted-foreground">
                         {dest.team_name}
@@ -2914,9 +2784,7 @@ function SlackDmCaptureNotice({
 }) {
   const { t } = useTranslation("integrations");
 
-  const scopes = Array.isArray(settings.scopes)
-    ? (settings.scopes as string[])
-    : [];
+  const scopes = Array.isArray(settings.scopes) ? (settings.scopes as string[]) : [];
   if (scopes.includes("im:history")) {
     return null;
   }
@@ -2925,10 +2793,7 @@ function SlackDmCaptureNotice({
     <Alert data-testid="slack-dm-reinstall">
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>
-        {t(
-          "form.slackDmUnavailableTitle",
-          "Direct messages are not being captured",
-        )}
+        {t("form.slackDmUnavailableTitle", "Direct messages are not being captured")}
       </AlertTitle>
       <AlertDescription className="space-y-2">
         <p>

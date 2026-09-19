@@ -113,23 +113,16 @@ export interface PublicConfig {
  * THE enablement rule, identical to config.PostHogConfig.Active() on the
  * backend: enabled AND a non-empty project key. Anything else is off.
  */
-export function isAnalyticsEnabled(
-  config: PublicConfig | null | undefined,
-): boolean {
+export function isAnalyticsEnabled(config: PublicConfig | null | undefined): boolean {
   const ph = config?.posthog;
-  return Boolean(
-    ph?.enabled && ph.projectApiKey && ph.projectApiKey.trim() !== "",
-  );
+  return Boolean(ph?.enabled && ph.projectApiKey && ph.projectApiKey.trim() !== "");
 }
 
 /**
  * Builds the pseudonymous distinct id. MUST stay byte-identical to
  * analytics.DistinctID in the Go backend.
  */
-export function distinctId(
-  orgUid?: string | null,
-  userUid?: string | null,
-): string {
+export function distinctId(orgUid?: string | null, userUid?: string | null): string {
   const org = orgUid ?? "";
   const user = userUid ?? "";
   if (!org && !user) return "anonymous";
@@ -216,9 +209,7 @@ let pendingIdentity: string | null = null;
  * Loads and initializes posthog-js — and ONLY then. Returns false without
  * importing anything when analytics is off.
  */
-export async function initAnalytics(
-  config: PublicConfig | null | undefined,
-): Promise<boolean> {
+export async function initAnalytics(config: PublicConfig | null | undefined): Promise<boolean> {
   if (!isAnalyticsEnabled(config)) {
     // Analytics stays off: discard anything identifyAnalytics queued while the
     // config fetch was in flight. It was only ever held in memory.
@@ -301,10 +292,7 @@ export async function initAnalytics(
  * Identifies the current session with the pseudonymous org+user id. No-op when
  * analytics was never initialized.
  */
-export function identifyAnalytics(
-  orgUid?: string | null,
-  userUid?: string | null,
-): void {
+export function identifyAnalytics(orgUid?: string | null, userUid?: string | null): void {
   if (!userUid && !orgUid) return;
 
   const id = distinctId(orgUid, userUid);
@@ -339,10 +327,7 @@ export function resetAnalytics(): void {
  * pass an actual check target/hostname, which sanitizeProperties does not
  * scrub.
  */
-export function captureEvent(
-  event: string,
-  properties?: Record<string, unknown>,
-): void {
+export function captureEvent(event: string, properties?: Record<string, unknown>): void {
   client?.capture(event, sanitizeProperties(properties ?? {}));
 }
 
