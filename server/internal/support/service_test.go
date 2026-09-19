@@ -923,3 +923,57 @@ func TestCapture_AbuseCeilingsAreEnforced(t *testing.T) {
 	})
 	r.NoError(err)
 }
+
+// TestCapture_AttributesDiscordDMToTheMember closes the gap
+// contactTypeForChannel's own comment used to name: the Gateway has always
+// captured DMs to the bot, but `discord` had no contact vocabulary, so a DM from a
+// member the org knows perfectly well arrived anonymous.
+//
+// The Gateway records a DM's Identity as the author's Discord user id
+// (captureDirectMessage), which is exactly what a `discord` contact's Value holds
+// — so a member who connected Discord to be PAGED is now also recognised when
+// they write in.
+//
+// The negative control is the same one every channel gets: an unverified contact
+// must not attribute, because a revoked binding proves nothing.
+func TestCapture_AttributesDiscordDMToTheMember(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+	h := newHarness(t, "")
+
+	org := models.NewOrganization("acme", "Acme")
+	r.NoError(h.dbSvc.CreateOrganization(ctx, org))
+
+	user := models.NewUser("alice@acme.com")
+	r.NoError(h.dbSvc.CreateUser(ctx, user))
+
+	// NEGATIVE: an unverified discord contact (a revoked binding).
+	unverified := models.NewUserContact(
+		user.UID, org.UID, models.UserContactTypeDiscord, "SNOW-REVOKED", "Discord")
+	r.NoError(h.dbSvc.UpsertUserContact(ctx, unverified))
+
+	anonymous, _, err := h.svc.Capture(ctx, &support.Inbound{
+		Channel: models.SupportChannelDiscord, Identity: "SNOW-REVOKED",
+		ExternalID: "discord-msg-1", Body: "is the api down?",
+	})
+	r.NoError(err)
+	r.Nil(anonymous.UserUID)
+
+	// POSITIVE: a verified one attributes.
+	verified := models.NewUserContact(
+		user.UID, org.UID, models.UserContactTypeDiscord, "SNOW-ALICE", "Discord")
+	r.NoError(h.dbSvc.UpsertUserContact(ctx, verified))
+	r.NoError(h.dbSvc.MarkUserContactVerified(ctx, verified.UID, time.Now()))
+
+	attributed, _, err := h.svc.Capture(ctx, &support.Inbound{
+		Channel: models.SupportChannelDiscord, Identity: "SNOW-ALICE",
+		ExternalID: "discord-msg-2", Body: "is the api down?",
+	})
+	r.NoError(err)
+	r.NotNil(attributed.UserUID, "a verified discord contact must attribute the DM")
+	r.Equal(user.UID, *attributed.UserUID)
+	r.NotNil(attributed.OrganizationUID)
+	r.Equal(org.UID, *attributed.OrganizationUID)
+}

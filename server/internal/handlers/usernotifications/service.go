@@ -151,6 +151,11 @@ type Service struct {
 	// serverBaseURL is the public base URL, needed to build the Discord OAuth
 	// callback a link round trip returns to.
 	serverBaseURL string
+	// discordAPIBaseURL overrides Discord's REST base. Empty in production;
+	// set only by in-package tests so the Test button's real code path can be
+	// driven against an httptest stand-in. A per-instance field rather than a
+	// package-level seam, so parallel tests cannot race on it.
+	discordAPIBaseURL string
 	// smsResolver picks, per org, whether an SMS goes through the org's own
 	// Twilio integration (bring-your-own) or the instance-level provider
 	// (server-provided, the default). Nil when the phone paths are not

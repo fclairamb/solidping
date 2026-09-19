@@ -245,6 +245,16 @@ func (s *Service) discordCallbackURL() string {
 	return s.serverBaseURL + "/api/v1/auth/discord/callback"
 }
 
+// discordBotClient builds the instance bot client.
+func (s *Service) discordBotClient() *discord.BotClient {
+	client := discord.NewBotClient(s.discordCfg.BotToken)
+	if s.discordAPIBaseURL != "" {
+		client = client.WithBaseURL(s.discordAPIBaseURL)
+	}
+
+	return client
+}
+
 // dispatchTestDiscord DMs a test message through the instance bot.
 //
 // BotConfigured(), not just a token, for the same reason the escalation path
@@ -255,7 +265,7 @@ func (s *Service) dispatchTestDiscord(ctx context.Context, contact *models.UserC
 		return ErrDiscordNotEnabled
 	}
 
-	client := discord.NewBotClient(s.discordCfg.BotToken)
+	client := s.discordBotClient()
 
 	msg := &discord.Message{
 		Content: "Test alert from SolidPing. This is a test notification — " +

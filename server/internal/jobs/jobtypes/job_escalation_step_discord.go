@@ -70,7 +70,7 @@ func (r *EscalationStepJobRun) pageDiscord(
 		return 0
 	}
 
-	client := newEscalationDiscordClient(jctx.AppConfig.Discord.BotToken)
+	client := r.discordBotClient(jctx.AppConfig.Discord.BotToken)
 	msg := escalationDiscordMessage(ctx, jctx, log, incident)
 
 	result, err := discord.SendContactDM(ctx, client, jctx.DBService, contact, msg)
@@ -111,17 +111,27 @@ func (r *EscalationStepJobRun) reserveDiscord(userID string) bool {
 		return false
 	}
 
+	if r.sentPhones == nil {
+		r.sentPhones = make(map[string]bool)
+	}
+
 	r.sentPhones[key] = true
 
 	return true
 }
 
-// newEscalationDiscordClient builds the bot client. A package-level function
-// variable so a test can drive the real message-building code against an
-// httptest stand-in without a network.
+// discordBotClient builds the bot client for this run.
 //
-//nolint:gochecknoglobals // test seam for the Discord REST API endpoint
-var newEscalationDiscordClient = func(token string) *discord.BotClient {
+// The factory is a PER-RUN field rather than a package-level variable so the
+// tests that drive the real message-building code against an httptest stand-in
+// can run in parallel: a package global would have them handing each other's
+// fake server to each other, which is exactly the flake that produced this
+// comment.
+func (r *EscalationStepJobRun) discordBotClient(token string) *discord.BotClient {
+	if r.discordClientFactory != nil {
+		return r.discordClientFactory(token)
+	}
+
 	return discord.NewBotClient(token)
 }
 

@@ -127,6 +127,10 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		// generic POST both hand us a team-less contact, and clearing the column
 		// would silently demote a verified workspace back to "unknown".
 		Set("team_id = coalesce(EXCLUDED.team_id, \"user_contact\".team_id)").
+		// Same for the cached DM channel: a re-connect hands us a channel-less
+		// contact, and clearing the cache would cost one extra round trip on the
+		// next page for no reason at all.
+		Set("dm_channel_id = coalesce(EXCLUDED.dm_channel_id, \"user_contact\".dm_channel_id)").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
 		Returning("uid").
