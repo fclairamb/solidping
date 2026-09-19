@@ -16,6 +16,7 @@
     "analytics": "Analytique",
     "discord": "Discord",
     "entitlements": "Droits",
+    "users": "Utilisateurs",
     "notifications": "Notifications",
     "activation": "Activation"
   },
@@ -430,6 +431,33 @@
       "released": "Rendue à la facturation",
       "admin": "Dérogation admin",
       "billing": "Synchronisation facturation"
+    }
+  },
+  "users": {
+    "title": "Annuaire des utilisateurs",
+    "description": "Recherchez tous les comptes utilisateurs de cette instance et consultez les organisations auxquelles chacun appartient.",
+    "search": "Rechercher par email ou nom…",
+    "empty": "Aucun utilisateur ne correspond à cette recherche.",
+    "loadError": "Impossible de charger les utilisateurs.",
+    "noOrgs": "Aucune organisation",
+    "previous": "Précédent",
+    "next": "Suivant",
+    "showing": "Affichage de {{start}} à {{end}} sur {{total}}",
+    "columns": {
+      "email": "Email",
+      "name": "Nom",
+      "organizations": "Organisations",
+      "flags": "Indicateurs",
+      "lastActive": "Dernière activité",
+      "created": "Créé le"
+    },
+    "flags": {
+      "superAdmin": "Super admin",
+      "twoFactor": "2FA",
+      "demo": "Démo",
+      "unverified": "Non vérifié",
+      "passwordResetPending": "Réinitialisation en attente",
+      "ssoOnly": "SSO uniquement"
     }
   },
   "notifications": {

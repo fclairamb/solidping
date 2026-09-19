@@ -16,6 +16,7 @@
     "analytics": "Analyse",
     "discord": "Discord",
     "entitlements": "Kontingente",
+    "users": "Benutzer",
     "notifications": "Benachrichtigungen",
     "activation": "Aktivierung"
   },
@@ -430,6 +431,33 @@
       "released": "An Abrechnung zurückgegeben",
       "admin": "Admin-Übersteuerung",
       "billing": "Abrechnungs-Sync"
+    }
+  },
+  "users": {
+    "title": "Benutzerverzeichnis",
+    "description": "Durchsuchen Sie alle Benutzerkonten dieser Instanz und sehen Sie, zu welchen Organisationen jedes gehört.",
+    "search": "Nach E-Mail oder Name suchen…",
+    "empty": "Kein Benutzer entspricht dieser Suche.",
+    "loadError": "Benutzer konnten nicht geladen werden.",
+    "noOrgs": "Keine Organisationen",
+    "previous": "Zurück",
+    "next": "Weiter",
+    "showing": "Zeige {{start}}–{{end}} von {{total}}",
+    "columns": {
+      "email": "E-Mail",
+      "name": "Name",
+      "organizations": "Organisationen",
+      "flags": "Merkmale",
+      "lastActive": "Zuletzt aktiv",
+      "created": "Erstellt"
+    },
+    "flags": {
+      "superAdmin": "Super-Admin",
+      "twoFactor": "2FA",
+      "demo": "Demo",
+      "unverified": "Nicht verifiziert",
+      "passwordResetPending": "Passwort-Reset ausstehend",
+      "ssoOnly": "Nur SSO"
     }
   },
   "notifications": {

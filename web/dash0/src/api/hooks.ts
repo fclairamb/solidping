@@ -6567,6 +6567,68 @@ export function useAdminEntitlementsDetail(orgSlug: string, enabled = true) {
   });
 }
 
+/** One organization a directory user belongs to. */
+export interface AdminOrgMembership {
+  uid: string;
+  slug: string;
+  name: string;
+  /** "owner" | "admin" | "user" | "viewer" */
+  role: string;
+  joinedAt?: string | null;
+}
+
+/**
+ * A deliberate allow-list projection of the user record — it never carries
+ * passwordHash, totpSecret or totpRecoveryCodes.
+ */
+export interface AdminUserRow {
+  uid: string;
+  email: string;
+  name: string;
+  avatarUrl: string;
+  superAdmin: boolean;
+  demo: boolean;
+  emailVerified: boolean;
+  totpEnabled: boolean;
+  mustChangePassword: boolean;
+  /** passwordHash != nil — false means the account is SSO/OAuth-only. */
+  hasPassword: boolean;
+  lastActiveAt?: string | null;
+  createdAt: string;
+  orgs: AdminOrgMembership[];
+}
+
+export interface AdminUsersListResponse {
+  data: AdminUserRow[];
+  total: number;
+}
+
+export function useAdminUsersList(params: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+  enabled?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.limit) search.set("limit", String(params.limit));
+  if (params.offset) search.set("offset", String(params.offset));
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+
+  return useQuery({
+    queryKey: [
+      "adminUsers",
+      params.q ?? "",
+      params.limit ?? 0,
+      params.offset ?? 0,
+    ],
+    queryFn: () =>
+      apiFetch<AdminUsersListResponse>(`/api/v1/system/users${suffix}`),
+    enabled: params.enabled !== false,
+  });
+}
+
 /** What the superadmin PUT / DELETE answer with. */
 export interface AdminEntitlementsWriteResponse {
   limits: EntitlementsLimits;

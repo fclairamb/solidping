@@ -16,6 +16,7 @@
     "analytics": "Analytics",
     "discord": "Discord",
     "entitlements": "Entitlements",
+    "users": "Users",
     "notifications": "Notifications",
     "activation": "Activation"
   },
@@ -430,6 +431,33 @@
       "released": "Released to billing",
       "admin": "Admin override",
       "billing": "Billing sync"
+    }
+  },
+  "users": {
+    "title": "User directory",
+    "description": "Search every user account on this instance and see which organizations each one belongs to.",
+    "search": "Search by email or name…",
+    "empty": "No user matches this search.",
+    "loadError": "Failed to load users.",
+    "noOrgs": "No organizations",
+    "previous": "Previous",
+    "next": "Next",
+    "showing": "Showing {{start}}–{{end}} of {{total}}",
+    "columns": {
+      "email": "Email",
+      "name": "Name",
+      "organizations": "Organizations",
+      "flags": "Flags",
+      "lastActive": "Last active",
+      "created": "Created"
+    },
+    "flags": {
+      "superAdmin": "Super admin",
+      "twoFactor": "2FA",
+      "demo": "Demo",
+      "unverified": "Unverified",
+      "passwordResetPending": "Password reset pending",
+      "ssoOnly": "SSO only"
     }
   },
   "notifications": {

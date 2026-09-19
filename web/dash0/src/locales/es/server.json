@@ -16,6 +16,7 @@
     "analytics": "Analítica",
     "discord": "Discord",
     "entitlements": "Límites",
+    "users": "Usuarios",
     "notifications": "Notificaciones",
     "activation": "Activación"
   },
@@ -430,6 +431,33 @@
       "released": "Devuelta a facturación",
       "admin": "Anulación de administrador",
       "billing": "Sincronización de facturación"
+    }
+  },
+  "users": {
+    "title": "Directorio de usuarios",
+    "description": "Busca en todas las cuentas de usuario de esta instancia y consulta a qué organizaciones pertenece cada una.",
+    "search": "Buscar por email o nombre…",
+    "empty": "Ningún usuario coincide con esta búsqueda.",
+    "loadError": "No se pudieron cargar los usuarios.",
+    "noOrgs": "Sin organizaciones",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "showing": "Mostrando {{start}}–{{end}} de {{total}}",
+    "columns": {
+      "email": "Email",
+      "name": "Nombre",
+      "organizations": "Organizaciones",
+      "flags": "Indicadores",
+      "lastActive": "Última actividad",
+      "created": "Creado"
+    },
+    "flags": {
+      "superAdmin": "Super admin",
+      "twoFactor": "2FA",
+      "demo": "Demo",
+      "unverified": "Sin verificar",
+      "passwordResetPending": "Restablecimiento pendiente",
+      "ssoOnly": "Solo SSO"
     }
   },
   "notifications": {

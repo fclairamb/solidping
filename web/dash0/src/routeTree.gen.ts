@@ -73,6 +73,7 @@ import { Route as OrgsOrgStatusPagesStatusPageUidRouteImport } from './routes/or
 import { Route as OrgsOrgSlosNewRouteImport } from './routes/orgs/$org/slos.new'
 import { Route as OrgsOrgSlosUidRouteImport } from './routes/orgs/$org/slos.$uid'
 import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.web'
+import { Route as OrgsOrgServerUsersRouteImport } from './routes/orgs/$org/server.users'
 import { Route as OrgsOrgServerSlackRouteImport } from './routes/orgs/$org/server.slack'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
 import { Route as OrgsOrgServerNotificationsRouteImport } from './routes/orgs/$org/server.notifications'
@@ -485,6 +486,11 @@ const OrgsOrgSlosUidRoute = OrgsOrgSlosUidRouteImport.update({
 const OrgsOrgServerWebRoute = OrgsOrgServerWebRouteImport.update({
   id: '/web',
   path: '/web',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
+const OrgsOrgServerUsersRoute = OrgsOrgServerUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
 const OrgsOrgServerSlackRoute = OrgsOrgServerSlackRouteImport.update({
@@ -1042,6 +1048,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
+  '/orgs/$org/server/users': typeof OrgsOrgServerUsersRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/slos/$uid': typeof OrgsOrgSlosUidRouteWithChildren
   '/orgs/$org/slos/new': typeof OrgsOrgSlosNewRoute
@@ -1167,6 +1174,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
+  '/orgs/$org/server/users': typeof OrgsOrgServerUsersRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/slos/new': typeof OrgsOrgSlosNewRoute
   '/orgs/$org/status-pages/new': typeof OrgsOrgStatusPagesNewRoute
@@ -1314,6 +1322,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/notifications': typeof OrgsOrgServerNotificationsRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
+  '/orgs/$org/server/users': typeof OrgsOrgServerUsersRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/slos/$uid': typeof OrgsOrgSlosUidRouteWithChildren
   '/orgs/$org/slos/new': typeof OrgsOrgSlosNewRoute
@@ -1465,6 +1474,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
+    | '/orgs/$org/server/users'
     | '/orgs/$org/server/web'
     | '/orgs/$org/slos/$uid'
     | '/orgs/$org/slos/new'
@@ -1590,6 +1600,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
+    | '/orgs/$org/server/users'
     | '/orgs/$org/server/web'
     | '/orgs/$org/slos/new'
     | '/orgs/$org/status-pages/new'
@@ -1736,6 +1747,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/notifications'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
+    | '/orgs/$org/server/users'
     | '/orgs/$org/server/web'
     | '/orgs/$org/slos/$uid'
     | '/orgs/$org/slos/new'
@@ -2264,6 +2276,13 @@ declare module '@tanstack/react-router' {
       path: '/web'
       fullPath: '/orgs/$org/server/web'
       preLoaderRoute: typeof OrgsOrgServerWebRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
+    '/orgs/$org/server/users': {
+      id: '/orgs/$org/server/users'
+      path: '/users'
+      fullPath: '/orgs/$org/server/users'
+      preLoaderRoute: typeof OrgsOrgServerUsersRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/slack': {
@@ -3233,6 +3252,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerNotificationsRoute: typeof OrgsOrgServerNotificationsRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
   OrgsOrgServerSlackRoute: typeof OrgsOrgServerSlackRoute
+  OrgsOrgServerUsersRoute: typeof OrgsOrgServerUsersRoute
   OrgsOrgServerWebRoute: typeof OrgsOrgServerWebRoute
   OrgsOrgServerIndexRoute: typeof OrgsOrgServerIndexRoute
   OrgsOrgServerEntitlementsTargetOrgRoute: typeof OrgsOrgServerEntitlementsTargetOrgRoute
@@ -3252,6 +3272,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerNotificationsRoute: OrgsOrgServerNotificationsRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
   OrgsOrgServerSlackRoute: OrgsOrgServerSlackRoute,
+  OrgsOrgServerUsersRoute: OrgsOrgServerUsersRoute,
   OrgsOrgServerWebRoute: OrgsOrgServerWebRoute,
   OrgsOrgServerIndexRoute: OrgsOrgServerIndexRoute,
   OrgsOrgServerEntitlementsTargetOrgRoute:
