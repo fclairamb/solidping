@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 )
@@ -56,7 +55,13 @@ func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, recipient string
 	return nil
 }
 
-// SlackDMSenderAdapter wraps the Slack access-token to send a DM.
+// SlackDMSenderAdapter posts a test DM with an already-resolved bot token.
+//
+// It deliberately does NOT parse the integration row itself: the bot token
+// lives in the encrypted `settings_private` envelope, and a reader that only
+// looks at the public settings silently sees an empty token (spec
+// 2026-09-18-02). Resolving it is the service's job, through the one shared
+// helper.
 type SlackDMSenderAdapter struct{}
 
 // NewSlackDMSenderAdapter builds an adapter.
@@ -66,28 +71,22 @@ func NewSlackDMSenderAdapter() *SlackDMSenderAdapter {
 
 // SendDMTest sends a test DM to slackUserID using the org's Slack bot token.
 func (a *SlackDMSenderAdapter) SendDMTest(
-	ctx context.Context, ch *models.Integration, slackUserID string,
+	ctx context.Context, accessToken, slackUserID string,
 ) error {
-	settings, err := models.SlackSettingsFromJSONMap(ch.Settings)
-	if err != nil {
-		return fmt.Errorf("parse slack settings: %w", err)
-	}
-
-	if settings.AccessToken == "" {
+	if accessToken == "" {
 		return ErrSlackClientNotConfigured
 	}
 
-	client := slackclient.NewClient(settings.AccessToken)
+	client := slackclient.NewClient(accessToken)
 
 	msg := &slackclient.MessageResponse{
 		Text: "Test notification from SolidPing — your Slack DM delivery is working correctly.",
 	}
 
-	_, err = client.PostMessage(ctx, slackclient.PostMessageOptions{
+	if _, err := client.PostMessage(ctx, slackclient.PostMessageOptions{
 		Channel: slackUserID,
 		Message: msg,
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("send slack DM test: %w", err)
 	}
 

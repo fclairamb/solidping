@@ -274,21 +274,16 @@ func (s *Service) ListIdentities(
 
 // slackAccessToken decrypts the integration settings and returns the bot token.
 func (s *Service) slackAccessToken(ctx context.Context, conn *models.Integration) (string, error) {
-	merged, err := s.loadDecryptedSettings(ctx, conn)
+	token, err := slack.BotToken(ctx, s.creds, conn)
 	if err != nil {
+		if errors.Is(err, slack.ErrSlackNotConnected) {
+			return "", ErrSlackNotConnected
+		}
+
 		return "", err
 	}
 
-	settings, err := models.SlackSettingsFromJSONMap(models.JSONMap(merged))
-	if err != nil {
-		return "", fmt.Errorf("parse slack settings: %w", err)
-	}
-
-	if settings.AccessToken == "" {
-		return "", ErrSlackNotConnected
-	}
-
-	return settings.AccessToken, nil
+	return token, nil
 }
 
 // SyncIdentities re-runs the email auto-match against the Slack workspace.

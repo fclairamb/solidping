@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -33,7 +34,7 @@ var (
 	ErrEmailSenderNotConfigured    = errors.New("email sender not configured")
 	ErrEmailFormatterNotConfigured = errors.New("email formatter not configured")
 	ErrNoSlackChannelForOrg        = errors.New("no Slack channel configured for this organization")
-	ErrSlackClientNotConfigured    = errors.New("slack client not configured")
+	ErrSlackClientNotConfigured    = errors.New("slack app not installed for this organization")
 	ErrWebPushNotConfigured        = errors.New("web push not configured on this server")
 	// ErrSMSDestinationNotAllowed is returned when an SMS on the SERVER's
 	// credentials targets a country outside SP_SMS_ALLOWED_COUNTRIES. Distinct
@@ -709,6 +710,12 @@ func (s *Service) dispatchTestWhatsApp(ctx context.Context, orgSlug, toNumber st
 }
 
 // dispatchTestSlack sends a test Slack DM for the given user ID.
+//
+// The bot token is resolved here, through the shared helper, because it lives
+// in the connection's encrypted `settings_private` envelope — reading the
+// public settings map straight off the row is what made this button answer
+// "slack client not configured" for a perfectly installed app
+// (spec 2026-09-18-02).
 func (s *Service) dispatchTestSlack(
 	ctx context.Context, orgUID, slackUserID string, slackClient SlackDMSender,
 ) error {
@@ -725,5 +732,14 @@ func (s *Service) dispatchTestSlack(
 		return ErrSlackClientNotConfigured
 	}
 
-	return slackClient.SendDMTest(ctx, slackChannel, slackUserID)
+	token, tokenErr := slackclient.BotToken(ctx, s.creds, slackChannel)
+	if tokenErr != nil {
+		if errors.Is(tokenErr, slackclient.ErrSlackNotConnected) {
+			return ErrSlackClientNotConfigured
+		}
+
+		return fmt.Errorf("resolve slack bot token: %w", tokenErr)
+	}
+
+	return slackClient.SendDMTest(ctx, token, slackUserID)
 }
