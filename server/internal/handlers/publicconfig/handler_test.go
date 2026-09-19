@@ -369,3 +369,37 @@ func TestBuildSMSVoiceIsIndependent(t *testing.T) {
 	r.False(built.SMS.Enabled)
 	r.True(built.SMS.VoiceEnabled)
 }
+
+// TestBuildDiscordBotEnabled pins the flag the dashboard renders the install
+// button on. The production state — Discord on, client id and secret set, no
+// bot token, no public key — must report false: that is exactly the
+// configuration that advertised an install nobody could complete
+// (spec 2026-09-19-01). And no credential may leak into this document: the
+// browser gets one boolean.
+func TestBuildDiscordBotEnabled(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	production := &config.Config{}
+	production.Discord = config.DiscordOAuthConfig{
+		Enabled: true, ClientID: "id", ClientSecret: "secret",
+	}
+	r.False(publicconfig.Build(production).Discord.BotEnabled)
+
+	full := &config.Config{}
+	full.Discord = config.DiscordOAuthConfig{
+		Enabled: true, ClientID: "id", ClientSecret: "secret",
+		BotToken: "bot-token", PublicKey: "pubkey",
+	}
+	built := publicconfig.Build(full)
+	r.True(built.Discord.BotEnabled)
+
+	raw, err := json.Marshal(built)
+	r.NoError(err)
+	r.NotContains(string(raw), "bot-token")
+	r.NotContains(string(raw), "secret")
+	r.Contains(string(raw), `"discord":{"botEnabled":true}`)
+
+	r.False(publicconfig.Build(&config.Config{}).Discord.BotEnabled)
+}
