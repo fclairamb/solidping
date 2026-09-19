@@ -151,6 +151,11 @@ type Service interface {
 	GetUser(ctx context.Context, uid string) (*models.User, error)
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	ListUsers(ctx context.Context) ([]*models.User, error)
+	// SearchUsers pages the global user directory (super-admin only surface).
+	// It always excludes soft-deleted users and returns the total count of
+	// matches before Limit/Offset were applied, ordered by created_at DESC
+	// then uid for a stable page across calls.
+	SearchUsers(ctx context.Context, filter models.UserSearchFilter) ([]*models.User, int, error)
 	UpdateUser(ctx context.Context, uid string, update *models.UserUpdate) error
 	DeleteUser(ctx context.Context, uid string) error
 
@@ -169,6 +174,11 @@ type Service interface {
 	GetMemberByUserAndOrg(ctx context.Context, userUID, orgUID string) (*models.OrganizationMember, error)
 	ListMembersByOrg(ctx context.Context, orgUID string) ([]*models.OrganizationMember, error)
 	ListMembersByUser(ctx context.Context, userUID string) ([]*models.OrganizationMember, error)
+	// ListMembersByUsers batches ListMembersByUser across a page of users:
+	// one query with `user_uid IN (...)`, membership deleted_at IS NULL, and
+	// the joined organization's deleted_at IS NULL, with Organization eager
+	// loaded. An empty userUIDs returns an empty slice without querying.
+	ListMembersByUsers(ctx context.Context, userUIDs []string) ([]*models.OrganizationMember, error)
 	UpdateOrganizationMember(ctx context.Context, uid string, update models.OrganizationMemberUpdate) error
 	DeleteOrganizationMember(ctx context.Context, uid string) error
 	// CountAdminsByOrg counts members holding at least the admin role (owners
