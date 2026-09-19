@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -1602,7 +1603,7 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
 
   // Gate the destinations fetch so a tokenless channel never triggers the
   // backend 409 / Slack API call.
-  const { data, isLoading, isError } = useSlackDestinations(
+  const { data, isLoading, isError, error: destinationsError } = useSlackDestinations(
     org ?? "",
     channelUid ?? "",
     isEditMode && isConnected,
@@ -1731,11 +1732,13 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
           <span>{t("form.slackLoading", "Loading…")}</span>
         </div>
       ) : isError ? (
-        <p className="text-destructive text-xs">
-          {t(
-            "form.slackError",
-            "Could not connect to Slack workspace — re-install the bot.",
-          )}
+        <p className="text-destructive text-xs" data-testid="slack-destinations-error">
+          {destinationsError instanceof Error && destinationsError.message
+            ? destinationsError.message
+            : t(
+                "form.slackError",
+                "Could not connect to Slack workspace — re-install the bot.",
+              )}
         </p>
       ) : activeTab === "channel" ? (
         <SlackChannelCombobox
@@ -1760,6 +1763,17 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
           org={org}
           integrationUid={channelUid}
           workspaceUsers={data?.users ?? []}
+          workspaceUsersLoading={isLoading}
+          workspaceUsersError={
+            isError
+              ? destinationsError instanceof Error && destinationsError.message
+                ? destinationsError.message
+                : t(
+                    "form.slackError",
+                    "Could not connect to Slack workspace — re-install the bot.",
+                  )
+              : undefined
+          }
         />
       )}
     </div>
@@ -1879,6 +1893,14 @@ interface SlackMemberMappingProps {
    * no options would be a dead control that looks broken.
    */
   variant?: "slack" | "discord";
+  /** True while the workspace user list (destinations query) is loading. */
+  workspaceUsersLoading?: boolean;
+  /**
+   * The destinations query's `err.message` when it failed to load — carries
+   * the API's own `title` (e.g. a 409 "channel is not connected"). Undefined
+   * when the list loaded fine (or was never fetched, e.g. Discord).
+   */
+  workspaceUsersError?: string;
 }
 
 /**
@@ -1891,12 +1913,15 @@ function SlackMemberMapping({
   integrationUid,
   workspaceUsers,
   variant = "slack",
+  workspaceUsersLoading = false,
+  workspaceUsersError,
 }: SlackMemberMappingProps) {
   const { t } = useTranslation("integrations");
   const { data, isLoading, isError } = useIntegrationIdentities(
     org,
     integrationUid,
   );
+  const queryClient = useQueryClient();
   const sync = useSyncIntegrationIdentities(org, integrationUid);
   const setIdentity = useSetIntegrationIdentity(org, integrationUid);
   const clearIdentity = useDeleteIntegrationIdentity(org, integrationUid);
@@ -1917,6 +1942,11 @@ function SlackMemberMapping({
             ambiguous: result.ambiguousCount,
           }),
         );
+        // Re-sync is the natural retry when the workspace list failed to
+        // load — bring the pickers back without requiring a page reload.
+        void queryClient.invalidateQueries({
+          queryKey: ["slack-destinations", org, integrationUid],
+        });
       },
       onError: () =>
         toast.error(t("form.slackMappingSyncFailed", "Member sync failed")),
@@ -1981,6 +2011,17 @@ function SlackMemberMapping({
               unmatched: unmatched.length,
             })}
           </p>
+          {workspaceUsersError && (
+            <p
+              className="text-destructive text-xs"
+              data-testid="slack-mapping-users-error"
+            >
+              {t("form.slackMappingUsersError", {
+                defaultValue: "Workspace members could not be loaded: {{reason}}",
+                reason: workspaceUsersError,
+              })}
+            </p>
+          )}
           <ul className="divide-y rounded border">
             {identities.map((identity) => (
               <li
@@ -2007,6 +2048,9 @@ function SlackMemberMapping({
                     <SlackUserCombobox
                       users={workspaceUsers}
                       currentId={identity.externalId ?? ""}
+                      fallbackLabel={identity.displayName}
+                      disabled={workspaceUsersLoading || Boolean(workspaceUsersError)}
+                      loading={workspaceUsersLoading}
                       onSelect={(u) =>
                         setIdentity.mutate(
                           {
@@ -2202,9 +2246,27 @@ interface SlackUserComboboxProps {
   users: SlackUser[];
   currentId: string;
   onSelect: (u: SlackUser) => void;
+  /**
+   * Name to fall back to when `currentId` is set but not found in `users`
+   * (workspace list unavailable, or the person left / isn't returned by
+   * `users.list`). Shown as a real selection, not muted — the mapping still
+   * holds, we just can't re-resolve it against the live list.
+   */
+  fallbackLabel?: string;
+  /** Disables the trigger — the workspace user list is loading or failed. */
+  disabled?: boolean;
+  /** Shows a spinner instead of the chevron while the list is loading. */
+  loading?: boolean;
 }
 
-function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProps) {
+function SlackUserCombobox({
+  users,
+  currentId,
+  onSelect,
+  fallbackLabel,
+  disabled = false,
+  loading = false,
+}: SlackUserComboboxProps) {
   const { t } = useTranslation("integrations");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -2223,70 +2285,96 @@ function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProp
   );
 
   const selected = users.find((u) => u.id === currentId);
+  const hasFallback = Boolean(currentId) && Boolean(fallbackLabel);
   const label = selected
     ? `@${selected.realName || selected.name}`
-    : t("form.pickPerson", "Pick a person…");
+    : hasFallback
+      ? `@${fallbackLabel}`
+      : t("form.pickPerson", "Pick a person…");
+  const isMuted = !selected && !hasFallback;
+  // Only claim "not in the workspace list" once the list has actually loaded
+  // successfully — during loading/error we don't know that yet, and the
+  // error banner above already explains the situation.
+  const showNotInWorkspaceHint = !disabled && hasFallback && !selected;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between font-normal text-sm"
-          data-testid="slack-user-combobox"
-        >
-          <span className={cn(!selected && "text-muted-foreground")}>{label}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="p-0 w-[280px]" align="start">
-        <div className="flex items-center border-b px-3 py-2">
-          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-          <input
-            ref={searchRef}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("form.searchPeoplePlaceholder", "Search people…")}
-            className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            data-testid="slack-user-search"
-          />
-        </div>
-        <div className="max-h-56 overflow-y-auto p-1">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">{t("form.noPeopleFound", "No people found")}</div>
-          ) : (
-            filtered.map((u) => (
-              <button
-                key={u.id}
-                type="button"
-                role="option"
-                aria-selected={u.id === currentId}
-                className={cn(
-                  "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
-                  u.id === currentId && "bg-accent",
-                )}
-                onClick={() => {
-                  onSelect(u);
-                  setOpen(false);
-                  setSearch("");
-                }}
-                data-testid={`slack-user-option-${u.id}`}
-              >
-                <Check
+    <div className="space-y-1">
+      <Popover open={open} onOpenChange={(next) => !disabled && setOpen(next)}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            className="w-full justify-between font-normal text-sm"
+            data-testid="slack-user-combobox"
+          >
+            <span className={cn(isMuted && "text-muted-foreground")}>{label}</span>
+            {loading ? (
+              <Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin" />
+            ) : (
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="p-0 w-[280px]" align="start">
+          <div className="flex items-center border-b px-3 py-2">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("form.searchPeoplePlaceholder", "Search people…")}
+              className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              data-testid="slack-user-search"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">{t("form.noPeopleFound", "No people found")}</div>
+            ) : (
+              filtered.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  role="option"
+                  aria-selected={u.id === currentId}
                   className={cn(
-                    "mt-0.5 h-4 w-4 shrink-0",
-                    u.id === currentId ? "opacity-100" : "opacity-0",
+                    "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                    u.id === currentId && "bg-accent",
                   )}
-                />
-                <div className="font-medium">@{u.realName || u.name}</div>
-              </button>
-            ))
+                  onClick={() => {
+                    onSelect(u);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  data-testid={`slack-user-option-${u.id}`}
+                >
+                  <Check
+                    className={cn(
+                      "mt-0.5 h-4 w-4 shrink-0",
+                      u.id === currentId ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <div className="font-medium">@{u.realName || u.name}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {showNotInWorkspaceHint && (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="slack-mapping-not-in-workspace"
+        >
+          {t(
+            "form.slackMappingNotInWorkspaceList",
+            "Not in the workspace member list",
           )}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </p>
+      )}
+    </div>
   );
 }
 
