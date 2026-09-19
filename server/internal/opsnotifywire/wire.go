@@ -193,7 +193,7 @@ func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDM
 			return errNoDiscordBot
 		}
 
-		client := discord.NewBotClient(cfg.Discord.BotToken)
+		client := newDiscordBotClient(cfg.Discord.BotToken)
 
 		_, err := discord.SendContactDM(ctx, client, dbSvc, contact, &discord.Message{Content: text})
 		if err == nil {
@@ -206,6 +206,17 @@ func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDM
 
 		return fmt.Errorf("send discord dm: %w", err)
 	}
+}
+
+// newDiscordBotClient builds the bot client. A package-level function variable
+// so a test can drive the real 50007 classification against an httptest
+// stand-in — the whole "unavailable, not failed" policy is decided by that
+// branch, and a test that stubbed the closure instead would be asserting its own
+// fixture.
+//
+//nolint:gochecknoglobals // test seam for the Discord REST API endpoint
+var newDiscordBotClient = func(token string) *discord.BotClient {
+	return discord.NewBotClient(token)
 }
 
 // sendWebPush pushes the headline to a stored browser subscription.

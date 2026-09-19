@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -125,6 +126,12 @@ func (e *env) deps() opsnotify.Deps {
 	if !e.missing["slack"] {
 		deps.SendSlackDM = func(_ context.Context, orgUID, user, text string) error {
 			return e.record("slack", orgUID, user, "", text)
+		}
+	}
+
+	if !e.missing["discord"] {
+		deps.SendDiscordDM = func(_ context.Context, contact *models.UserContact, text string) error {
+			return e.record("discord", contact.OrganizationUID, contact.Value, "", text)
 		}
 	}
 
@@ -670,3 +677,113 @@ func TestNotifyNeverFailsTheCaller(t *testing.T) {
 // dispatcherMu serializes the tests that install a process-global dispatcher.
 // They still run under t.Parallel(); the lock just queues them.
 var dispatcherMu sync.Mutex //nolint:gochecknoglobals // test-local serialization of a process-wide hook
+
+// TestDeliverDiscordContactIsDelivered: a `discord` contact is a real route, not
+// a type the transport silently drops the way it drops pushover/ntfy.
+func TestDeliverDiscordContactIsDelivered(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	alice := e.user(t, "alice@acme.com", true)
+	org := e.org(t, "acme")
+	e.join(t, org, alice)
+	e.contact(t, org, alice, models.UserContactTypeDiscord, "111222333444555666", true)
+
+	report := opsnotify.DeliverToUser(ctx, e.deps(), e.log, alice.UID, testNotice())
+
+	r.Equal(1, report.Delivered)
+	r.Equal(0, report.Skipped)
+	r.Equal(0, report.Failed)
+
+	deliveries := e.deliveries()
+	r.Len(deliveries, 1)
+	r.Equal("discord", deliveries[0].medium)
+	r.Equal("111222333444555666", deliveries[0].target)
+	r.Contains(deliveries[0].body, "is the api down for you too?")
+}
+
+// TestDeliverDiscordUnconfiguredInstanceSkips: a nil closure is "this instance
+// cannot carry Discord" and must be skipped, never counted as delivered.
+func TestDeliverDiscordUnconfiguredInstanceSkips(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	e := newEnv(t)
+	ctx := t.Context()
+
+	e.missing["discord"] = true
+
+	alice := e.user(t, "alice@acme.com", true)
+	org := e.org(t, "acme")
+	e.join(t, org, alice)
+	e.contact(t, org, alice, models.UserContactTypeDiscord, "111222333444555666", true)
+
+	report := opsnotify.DeliverToUser(ctx, e.deps(), e.log, alice.UID, testNotice())
+
+	r.Equal(0, report.Delivered)
+	r.Equal(1, report.Skipped)
+	r.Equal(0, report.Failed)
+	r.Empty(e.deliveries())
+}
+
+// TestDeliverDiscordUnavailableVsFailed is the pair the whole 50007 policy rests
+// on, asserted at the classification layer where the two diverge.
+//
+//   - a closure returning an error that WRAPS ErrMediumUnavailable (what the wire
+//     closure does for Discord code 50007) is SKIPPED, so paging coverage falls
+//     through to the member's next route;
+//   - the positive control: a plain error — a 5xx from Discord, a timeout — is
+//     FAILED, so somebody is told about it.
+//
+// Getting this backwards either buries real outages or manufactures fake ones.
+func TestDeliverDiscordUnavailableVsFailed(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		err       error
+		delivered int
+		skipped   int
+		failed    int
+	}{
+		{
+			name:    "50007 refusal wraps the sentinel and is skipped",
+			err:     fmt.Errorf("%w: discord refused the DM", opsnotify.ErrMediumUnavailable),
+			skipped: 1,
+		},
+		{
+			name:   "a plain 5xx is a failure, not an unavailability",
+			err:    errors.New("discord unexpected status: status 500 on POST /channels/x/messages"),
+			failed: 1,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			e := newEnv(t)
+			ctx := t.Context()
+
+			alice := e.user(t, "alice@acme.com", true)
+			org := e.org(t, "acme")
+			e.join(t, org, alice)
+			e.contact(t, org, alice, models.UserContactTypeDiscord, "111222333444555666", true)
+
+			deps := e.deps()
+			deps.SendDiscordDM = func(_ context.Context, _ *models.UserContact, _ string) error {
+				return testCase.err
+			}
+
+			report := opsnotify.DeliverToUser(ctx, deps, e.log, alice.UID, testNotice())
+
+			r.Equal(testCase.delivered, report.Delivered, "delivered")
+			r.Equal(testCase.skipped, report.Skipped, "skipped")
+			r.Equal(testCase.failed, report.Failed, "failed")
+		})
+	}
+}
