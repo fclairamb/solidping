@@ -2143,6 +2143,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Discord destinations picker (authenticated, org-scoped).
 	discordOrgRoutes := orgGroup("/orgs/:org/channels/:uid/discord")
 	discordOrgRoutes.GET("/destinations", discordHandler.GetDestinations)
+	// Opening the DM at PICK time, not at send time: an admin choosing a DM
+	// destination finds out immediately whether Discord will carry it, rather
+	// than during the first real incident.
+	discordOrgRoutes.POST("/dm", discordHandler.OpenDMDestination)
 
 	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
 	// org comes from the authenticated route context, never from a query param.

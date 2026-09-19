@@ -321,6 +321,21 @@ type DiscordSettings struct {
 	// with the same explicit/all semantics as SlackSettings.CommentIngestion.
 	// Zero value ("") means explicit — the safe direction.
 	CommentIngestion string `json:"comment_ingestion,omitempty"`
+
+	// DMUserID names the member this integration DMs instead of posting to a
+	// guild channel. When it is set, ChannelID holds the DM CHANNEL id that
+	// POST /users/@me/channels returned for that user — so every existing
+	// sender path keeps addressing ChannelID and needs no new concept of a
+	// destination.
+	//
+	// It is stored alongside ChannelID rather than instead of it for two
+	// reasons: the picker must be able to say WHO the destination is (a DM
+	// channel id is an opaque number), and the sender must be able to tell a DM
+	// apart from a guild channel, because a DM cannot host threads.
+	//
+	// Zero value is empty, so every integration stored before this field existed
+	// is a channel destination and behaves exactly as before.
+	DMUserID string `json:"dm_user_id,omitempty"`
 }
 
 // Discord comment-ingestion modes. Deliberately the same string values as the
@@ -337,6 +352,18 @@ const (
 // the sender must fall back to the webhook rather than silently doing nothing.
 func (ds *DiscordSettings) UsesBot() bool {
 	return ds != nil && ds.GuildID != "" && ds.ChannelID != ""
+}
+
+// IsDM reports whether this integration's destination is a member's direct
+// messages rather than a guild channel.
+//
+// Load-bearing in the sender: a DM channel (Discord type 1) rejects thread
+// creation, so every thread operation must be skipped for one, and follow-ups
+// posted as plain messages referencing the original instead. It also suppresses
+// mention_on_call — a DM already has exactly one reader, so pinging them inside
+// their own private conversation is noise, not signal.
+func (ds *DiscordSettings) IsDM() bool {
+	return ds != nil && ds.DMUserID != ""
 }
 
 // IngestsAllThreadReplies reports whether this Discord integration captures

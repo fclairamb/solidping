@@ -668,19 +668,29 @@ type DiscordChannel struct { //nolint:revive // prefix is intentional disambigua
 
 // DiscordDestinationsResponse is returned by GetDestinations.
 type DiscordDestinationsResponse struct { //nolint:revive // prefix is intentional disambiguation
-	Channels  []DiscordChannel `json:"channels"`
-	GuildID   string           `json:"guildId"`
-	GuildName string           `json:"guildName"`
-	Connected bool             `json:"connected"`
+	Channels []DiscordChannel `json:"channels"`
+	// Users are the org members who can be picked as a DM destination — the
+	// Discord twin of SlackDestinationsResponse.Users. Never the guild member
+	// list: see listDestinationUsers.
+	Users     []DiscordDestinationUser `json:"users"`
+	GuildID   string                   `json:"guildId"`
+	GuildName string                   `json:"guildName"`
+	Connected bool                     `json:"connected"`
 }
 
-// GetDestinations lists the guild's postable text channels for the picker.
+// GetDestinations lists the guild's postable text channels, and the org members
+// a DM can be addressed to, for the picker.
 func (s *Service) GetDestinations(
 	ctx context.Context, orgSlug, channelUID string,
 ) (*DiscordDestinationsResponse, error) {
-	settings, err := s.loadConnectionSettings(ctx, orgSlug, channelUID)
+	conn, err := s.loadConnection(ctx, orgSlug, channelUID)
 	if err != nil {
 		return nil, err
+	}
+
+	settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		return nil, fmt.Errorf("parse discord settings: %w", err)
 	}
 
 	if !settings.UsesBot() && settings.GuildID == "" {
@@ -718,17 +728,18 @@ func (s *Service) GetDestinations(
 
 	return &DiscordDestinationsResponse{
 		Channels:  channels,
+		Users:     s.listDestinationUsers(ctx, conn),
 		GuildID:   settings.GuildID,
 		GuildName: settings.GuildName,
 		Connected: true,
 	}, nil
 }
 
-// loadConnectionSettings resolves org + integration and returns its settings,
-// asserting the integration belongs to the org and is a Discord one.
-func (s *Service) loadConnectionSettings(
+// loadConnection resolves org + integration, asserting the integration belongs
+// to the org and is a Discord one.
+func (s *Service) loadConnection(
 	ctx context.Context, orgSlug, channelUID string,
-) (*models.DiscordSettings, error) {
+) (*models.Integration, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -753,6 +764,19 @@ func (s *Service) loadConnectionSettings(
 
 	if conn.Type != models.ConnectionTypeDiscord {
 		return nil, ErrNotDiscordChannel
+	}
+
+	return conn, nil
+}
+
+// loadConnectionSettings resolves org + integration and returns its settings,
+// asserting the integration belongs to the org and is a Discord one.
+func (s *Service) loadConnectionSettings(
+	ctx context.Context, orgSlug, channelUID string,
+) (*models.DiscordSettings, error) {
+	conn, err := s.loadConnection(ctx, orgSlug, channelUID)
+	if err != nil {
+		return nil, err
 	}
 
 	settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
