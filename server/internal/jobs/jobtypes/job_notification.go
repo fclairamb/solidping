@@ -104,23 +104,15 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	// URLs, PagerDuty routing keys, etc.) before passing them down to the sender.
 	// On decrypt failure we don't ship a half-credential — fail the job.
 	if connection.SettingsPrivate != nil && *connection.SettingsPrivate != "" {
-		creds := jctx.Services.Credentials
-		// A plaintext envelope (no-master-key fallback) opens with no key; only
-		// AES-GCM / sealed envelopes need one. Gate the disabled error on that so
-		// a self-hosted deployment can still send notifications with its token.
-		// A nil service can open nothing, so it always fails here.
-		if creds == nil || (credentials.RequiresKey(*connection.SettingsPrivate) && !creds.Enabled()) {
-			return fmt.Errorf("%w: %s", ErrEncryptionDisabled, connection.UID)
-		}
-
-		private, decErr := creds.DecryptForOrg(
-			ctx, connection.OrganizationUID, *connection.SettingsPrivate,
-		)
+		merged, decErr := credentials.OpenConnectionSettings(ctx, jctx.Services.Credentials, connection)
 		if decErr != nil {
+			if errors.Is(decErr, credentials.ErrEncryptionDisabled) {
+				return fmt.Errorf("%w: %s", ErrEncryptionDisabled, connection.UID)
+			}
+
 			return fmt.Errorf("decrypt connection settings: %w", decErr)
 		}
 
-		merged := credentials.MergeConfig(connection.Settings, private)
 		connection.Settings = models.JSONMap(merged)
 	}
 

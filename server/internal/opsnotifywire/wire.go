@@ -12,12 +12,13 @@ package opsnotifywire
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
-	"github.com/fclairamb/solidping/server/internal/db/models"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
@@ -73,7 +74,7 @@ func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config) op
 		DB:           dbSvc,
 		EnqueueEmail: enqueueEmail(registry),
 		SendTelegram: sendTelegram(cfg),
-		SendSlackDM:  sendSlackDM(dbSvc),
+		SendSlackDM:  sendSlackDM(dbSvc, registry),
 		SendWebPush:  sendWebPush(registry),
 		SendSMS:      sendSMS(registry),
 	}
@@ -123,7 +124,7 @@ func sendTelegram(cfg *config.Config) opsnotify.SendTelegramFunc {
 
 // sendSlackDM delivers through the org's own Slack connection — the same path
 // escalation DMs take.
-func sendSlackDM(dbSvc db.Service) opsnotify.SendSlackDMFunc {
+func sendSlackDM(dbSvc db.Service, registry *services.Registry) opsnotify.SendSlackDMFunc {
 	return func(ctx context.Context, orgUID, slackUserID, text string) error {
 		if dbSvc == nil {
 			return errNoSlackChannel
@@ -134,12 +135,24 @@ func sendSlackDM(dbSvc db.Service) opsnotify.SendSlackDMFunc {
 			return fmt.Errorf("%w: %w", errNoSlackChannel, err)
 		}
 
-		settings, parseErr := models.SlackSettingsFromJSONMap(conn.Settings)
-		if parseErr != nil || settings.AccessToken == "" {
-			return errNoSlackToken
+		// The token lives in the encrypted settings_private envelope; the
+		// registry pointer is read at send time so a credentials service wired
+		// after Build is still picked up.
+		var creds credentials.Service
+		if registry != nil {
+			creds = registry.Credentials
 		}
 
-		client := slackclient.NewClient(settings.AccessToken)
+		accessToken, tokenErr := slackclient.BotToken(ctx, creds, conn)
+		if tokenErr != nil {
+			if errors.Is(tokenErr, slackclient.ErrSlackNotConnected) {
+				return errNoSlackToken
+			}
+
+			return fmt.Errorf("resolve slack bot token: %w", tokenErr)
+		}
+
+		client := slackclient.NewClient(accessToken)
 
 		if _, err := client.PostMessage(ctx, slackclient.PostMessageOptions{
 			Channel: slackUserID,
