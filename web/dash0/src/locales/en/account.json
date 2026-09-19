@@ -271,6 +271,19 @@
       "noMethods": "No notification methods configured. Add one below.",
       "addMethodButton": "+ Add method",
       "loading": "Loading notification settings…"
+    },
+    "discord": {
+      "title": "Discord direct messages",
+      "connected": "Connected",
+      "available": "Your Discord account is linked — connect it to receive alerts as direct messages.",
+      "unavailable": "Link your Discord account to receive alerts as direct messages.",
+      "mentionedAs": "Mentioned in channel alerts as {{handle}}",
+      "mentionNotLinked": "Nothing links you to this server — channel alerts name you without pinging you. Connect Discord below, or ask an admin to map you.",
+      "connectButton": "Connect Discord",
+      "linkButton": "Link Discord",
+      "added": "Discord DM notifications added",
+      "addFailed": "Failed to add Discord DM contact",
+      "linkFailed": "Could not start the Discord link"
     }
   },
   "device": {

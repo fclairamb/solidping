@@ -271,6 +271,19 @@
       "noMethods": "Aucune méthode de notification configurée. Ajoutez-en une ci-dessous.",
       "addMethodButton": "+ Ajouter une méthode",
       "loading": "Chargement des paramètres de notification…"
+    },
+    "discord": {
+      "title": "Messages privés Discord",
+      "connected": "Connecté",
+      "available": "Votre compte Discord est lié — connectez-le pour recevoir les alertes en message privé.",
+      "unavailable": "Liez votre compte Discord pour recevoir les alertes en message privé.",
+      "mentionedAs": "Mentionné dans les alertes de canal en tant que {{handle}}",
+      "mentionNotLinked": "Rien ne vous relie à ce serveur — les alertes de canal vous nomment sans vous notifier. Connectez Discord ci-dessous, ou demandez à un administrateur de vous associer.",
+      "connectButton": "Connecter Discord",
+      "linkButton": "Lier Discord",
+      "added": "Notifications par message privé Discord ajoutées",
+      "addFailed": "Impossible d'ajouter le contact Discord",
+      "linkFailed": "Impossible de démarrer la liaison Discord"
     }
   },
   "device": {

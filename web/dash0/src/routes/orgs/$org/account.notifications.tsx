@@ -18,6 +18,7 @@ import {
   Mail,
   MessageCircle,
   MessageSquare,
+  MessagesSquare,
   MonitorSmartphone,
   Phone,
   ShieldCheck,
@@ -46,12 +47,20 @@ import {
   useVerifyContact,
   useConfirmVerifyContact,
   useCreateTelegramLink,
+  useConnectDiscord,
+  useCreateDiscordLink,
   useIntegrations,
   type NotificationRoute,
   type SlackSuggestion,
   type SlackMentionIdentity,
+  type DiscordSuggestion,
+  type DiscordMentionIdentity,
 } from "@/api/hooks";
-import { useTelegramEnabled, useWhatsAppEnabled } from "@/api/public-config";
+import {
+  useDiscordBotEnabled,
+  useTelegramEnabled,
+  useWhatsAppEnabled,
+} from "@/api/public-config";
 import {
   DirectChannelIcon,
   directChannelLabel,
@@ -650,6 +659,168 @@ function SlackConnectRow({
   );
 }
 
+/**
+ * First-class "Connect Discord" row — the Discord twin of SlackConnectRow.
+ *
+ * Two connect paths, and deliberately no third. There is no field to type a
+ * Discord id into, because a Discord user id is PUBLIC: anyone can copy a
+ * stranger's snowflake out of a Discord client, and the backend rejects a typed
+ * one outright. So either the member already has a Discord sign-in on file (one
+ * click) or they complete the OAuth link round trip (one redirect).
+ *
+ * Unlike Slack this needs no org integration at all: a Discord DM goes through
+ * the INSTANCE bot, the way Telegram does, so the row is gated on the instance's
+ * `discord.botEnabled` rather than on the org having a Discord channel.
+ */
+function DiscordConnectRow({
+  org,
+  suggestion,
+  connected,
+  mention,
+  onConnected,
+}: {
+  org: string;
+  suggestion?: DiscordSuggestion;
+  connected: boolean;
+  mention?: DiscordMentionIdentity;
+  onConnected: () => void;
+}) {
+  const { t } = useTranslation("account");
+  const connect = useConnectDiscord(org);
+  const createLink = useCreateDiscordLink(org);
+  const [error, setError] = useState<string | null>(null);
+
+  const accountPath = `/d/orgs/${org}/account/notifications`;
+
+  const handleConnect = async () => {
+    setError(null);
+
+    try {
+      await connect.mutateAsync();
+      toast.success(t("notifications.discord.added", "Discord DM notifications added"));
+      onConnected();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : t("notifications.discord.addFailed", "Failed to add Discord DM contact");
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  // Returning from the OAuth round trip: the callback wrote the user_providers
+  // row and sent us back with ?discord_linked=1. Creating the contact is done
+  // here, from an AUTHENTICATED call, rather than by the public callback.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("discord_linked") !== "1") return;
+
+    // Strip the marker first, so a refresh does not replay it.
+    params.delete("discord_linked");
+    const query = params.toString();
+    window.history.replaceState(
+      {},
+      "",
+      window.location.pathname + (query ? `?${query}` : ""),
+    );
+
+    void handleConnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once, on the return trip only
+  }, []);
+
+  const handleLink = async () => {
+    setError(null);
+
+    try {
+      const resp = await createLink.mutateAsync(accountPath);
+      window.location.assign(resp.url);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("notifications.discord.linkFailed", "Could not start the Discord link"),
+      );
+    }
+  };
+
+  const busy = connect.isPending || createLink.isPending;
+
+  return (
+    <div
+      className="flex flex-col gap-2 border-t py-3 sm:flex-row sm:items-center sm:justify-between"
+      data-testid="discord-connect-row"
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <MessagesSquare className="h-4 w-4 mt-0.5 flex-none" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            {t("notifications.discord.title", "Discord direct messages")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {connected
+              ? t("notifications.discord.connected", "Connected")
+              : suggestion
+                ? t(
+                    "notifications.discord.available",
+                    "Your Discord account is linked — connect it to receive alerts as direct messages.",
+                  )
+                : t(
+                    "notifications.discord.unavailable",
+                    "Link your Discord account to receive alerts as direct messages.",
+                  )}
+          </p>
+          {/* How this member appears in CHANNEL alerts. Read-only, for the same
+              reason the Slack line is: the things that can set it are all
+              reached elsewhere, and what was missing was any way to SEE which
+              of them applied. */}
+          {mention && (
+            <p
+              className="text-xs text-muted-foreground mt-1 break-words"
+              data-testid="discord-mention-status"
+            >
+              {mention.linked
+                ? t("notifications.discord.mentionedAs", {
+                    defaultValue: "Mentioned in channel alerts as {{handle}}",
+                    handle: `<@${mention.externalId}>`,
+                  })
+                : t(
+                    "notifications.discord.mentionNotLinked",
+                    "Nothing links you to this server — channel alerts name you without pinging you. Connect Discord below, or ask an admin to map you.",
+                  )}
+            </p>
+          )}
+          {error && (
+            <p
+              className="text-xs text-destructive mt-1 break-words"
+              data-testid="discord-connect-error"
+            >
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
+      {!connected && (
+        <Button
+          size="sm"
+          onClick={suggestion ? handleConnect : handleLink}
+          disabled={busy}
+          data-testid={suggestion ? "discord-connect-button" : "discord-link-button"}
+        >
+          {busy ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <MessagesSquare className="h-4 w-4 mr-2" />
+          )}
+          {suggestion
+            ? t("notifications.discord.connectButton", "Connect Discord")
+            : t("notifications.discord.linkButton", "Link Discord")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function SlackBanner({
   suggestion,
   org,
@@ -958,6 +1129,10 @@ function NotificationsPage() {
   // Telegram is instance-level too: one bot for the whole deployment, so the
   // capability comes from the public config rather than the org's integrations.
   const telegramAvailable = useTelegramEnabled();
+  // Discord is instance-level too: one bot for the whole deployment, and a DM
+  // contact needs no org integration — so the capability comes from the public
+  // config, not from the org's channels.
+  const discordAvailable = useDiscordBotEnabled();
 
   const routes = data?.data ?? [];
 
@@ -986,6 +1161,14 @@ function NotificationsPage() {
   const connectedSlackWorkspace = slackRoute
     ? slackRoute.contact.label || data?.slackSuggestion?.workspaceName || "Slack"
     : undefined;
+
+  // A *verified* discord contact is what "connected" means, for the same reason
+  // it does for Telegram: a contact whose verification was cleared needs
+  // reconnecting before it can be paged.
+  const discordConnected = routes.some(
+    (route: NotificationRoute) =>
+      route.contact.type === "discord" && !!route.contact.verifiedAt,
+  );
 
   if (isLoading) {
     return (
@@ -1050,6 +1233,16 @@ function NotificationsPage() {
             connectedWorkspace={connectedSlackWorkspace}
             mention={data?.slackMention}
           />
+
+          {discordAvailable && (
+            <DiscordConnectRow
+              org={org}
+              suggestion={data?.discordSuggestion}
+              connected={discordConnected}
+              mention={data?.discordMention}
+              onConnected={() => refetch()}
+            />
+          )}
 
           {showAddForm ? (
             <AddContactForm

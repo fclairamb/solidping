@@ -271,6 +271,19 @@
       "noMethods": "No hay métodos de notificación configurados. Añade uno abajo.",
       "addMethodButton": "+ Añadir método",
       "loading": "Cargando la configuración de notificaciones…"
+    },
+    "discord": {
+      "title": "Mensajes directos de Discord",
+      "connected": "Conectado",
+      "available": "Tu cuenta de Discord está vinculada: conéctala para recibir alertas como mensajes directos.",
+      "unavailable": "Vincula tu cuenta de Discord para recibir alertas como mensajes directos.",
+      "mentionedAs": "Mencionado en las alertas de canal como {{handle}}",
+      "mentionNotLinked": "Nada te vincula a este servidor: las alertas de canal te nombran sin notificarte. Conecta Discord abajo, o pide a un administrador que te asocie.",
+      "connectButton": "Conectar Discord",
+      "linkButton": "Vincular Discord",
+      "added": "Notificaciones por mensaje directo de Discord añadidas",
+      "addFailed": "No se pudo añadir el contacto de Discord",
+      "linkFailed": "No se pudo iniciar la vinculación de Discord"
     }
   },
   "device": {

@@ -6,6 +6,7 @@ import {
   Hash,
   Mail,
   MessageCircle,
+  MessagesSquare,
   Phone,
   Send,
 } from "lucide-react";
@@ -27,6 +28,10 @@ const CHANNEL_ICONS: Record<string, LucideIcon> = {
   telegram: Send,
   webpush: Bell,
   slack_user: Hash,
+  // A Discord DM is a real route, counted and degraded exactly like Telegram:
+  // enabled + verified is solid, anything else is muted, because it cannot page
+  // anyone yet.
+  discord: MessagesSquare,
 };
 
 function iconFor(type: string): LucideIcon {
