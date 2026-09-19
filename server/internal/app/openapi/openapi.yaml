@@ -8051,6 +8051,52 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  # Global user directory (spec 2026-09-19-04). Instance-level, NOT
+  # org-scoped, same reasoning as the entitlements editor above: a super
+  # admin looks up an account regardless of which org (if any) it belongs to.
+  /api/v1/system/users:
+    get:
+      tags: [System]
+      summary: Search and page the global user directory (super admin)
+      operationId: listAdminUsers
+      description: |
+        One row per user account, with the organizations it belongs to
+        attached. Read-only. The response is an explicit allow-list — it
+        never carries passwordHash, totpSecret or totpRecoveryCodes.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: >-
+            Case-insensitive substring match on email or name. A literal `%`
+            or `_` is matched literally, never as a wildcard.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size (1-200, default 50)
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Users matching the search
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsersListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # File storage APIs (org-scoped metadata + content)
   /api/v1/orgs/{org}/files:
     get:
@@ -15949,6 +15995,88 @@ components:
               description: >-
                 A stored row was actually removed. False when releasing an
                 organization that had no override.
+
+    # Global user directory schemas (spec 2026-09-19-04)
+    AdminOrgMembership:
+      type: object
+      required: [uid, slug, name, role]
+      properties:
+        uid:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          description: "owner | admin | user | viewer"
+        joinedAt:
+          type: string
+          format: date-time
+
+    AdminUserRow:
+      type: object
+      description: >-
+        A deliberate allow-list projection of the user record. It never
+        carries passwordHash, totpSecret or totpRecoveryCodes.
+      required:
+        - uid
+        - email
+        - name
+        - avatarUrl
+        - superAdmin
+        - demo
+        - emailVerified
+        - totpEnabled
+        - mustChangePassword
+        - hasPassword
+        - createdAt
+        - orgs
+      properties:
+        uid:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        superAdmin:
+          type: boolean
+        demo:
+          type: boolean
+        emailVerified:
+          type: boolean
+        totpEnabled:
+          type: boolean
+        mustChangePassword:
+          type: boolean
+        hasPassword:
+          type: boolean
+          description: >-
+            PasswordHash != nil — false means the account is SSO/OAuth-only.
+        lastActiveAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        orgs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminOrgMembership"
+
+    AdminUsersListResponse:
+      type: object
+      required: [data, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUserRow"
+        total:
+          type: integer
+          description: Users matching the search, before paging.
 
     # File schemas
     FileResponse:
