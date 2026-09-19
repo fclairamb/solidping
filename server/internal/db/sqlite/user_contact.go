@@ -122,6 +122,11 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		Model(c).
 		On("CONFLICT (user_uid, organization_uid, type, value) DO UPDATE").
 		Set("label = EXCLUDED.label").
+		// A known workspace is never un-learned by a later upsert that does not
+		// carry one: the revive path (re-adding a deleted contact) and the
+		// generic POST both hand us a team-less contact, and clearing the column
+		// would silently demote a verified workspace back to "unknown".
+		Set("team_id = coalesce(EXCLUDED.team_id, user_contacts.team_id)").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
 		Returning("uid").

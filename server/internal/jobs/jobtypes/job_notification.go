@@ -53,6 +53,19 @@ type NotificationJobConfig struct {
 	// JobUID is the UID of the job row itself. Populated at Sites 1+2 so that
 	// NotificationJobRun.Run can update the matching audit row by job_uid.
 	JobUID string `json:"jobUid,omitempty"`
+	// StepUID names the escalation step that caused this notification, for
+	// `incident.escalated`. Empty for every other event — an `incident.created`
+	// message is not posted by any particular step.
+	//
+	// It exists so the on-call mention names the humans THIS step is paging.
+	// Resolving step 1 on an escalation would confidently name somebody who is
+	// not being paged, which is worse than saying nothing.
+	StepUID string `json:"stepUid,omitempty"`
+	// RepeatIndex is the escalation cycle this notification belongs to (0 for
+	// the first pass). Carried alongside StepUID so the pair in the job config
+	// matches the pair on the audit row, and so a future "repeat N of M" line
+	// needs no new plumbing.
+	RepeatIndex int `json:"repeatIndex,omitempty"`
 }
 
 // NotificationJobDefinition is the factory for notification jobs.
@@ -199,7 +212,8 @@ func (r *NotificationJobRun) buildPayload(
 		// Resolved at send time, not at incident-open: the on-call rotation may
 		// have handed over since. Returns nil for every uncertain case, so a
 		// mention is only ever added when we know exactly who to name.
-		OnCallMentions: ResolveOnCallMentions(ctx, jctx, log, connection, check, r.config.EventType),
+		OnCallMentions: ResolveOnCallMentions(
+			ctx, jctx, log, connection, check, r.config.EventType, r.config.StepUID),
 		// Non-nil only for `incident.comment`.
 		Comment: r.config.Comment,
 		// Non-nil only for `incident.acknowledged`.

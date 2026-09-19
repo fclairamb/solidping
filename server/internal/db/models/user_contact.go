@@ -57,13 +57,22 @@ func ContactRequiresVerification(contactType string) bool {
 type UserContact struct {
 	bun.BaseModel `bun:"table:user_contacts"`
 
-	UID             string     `bun:"uid,pk,type:varchar(36)"`
-	UserUID         string     `bun:"user_uid,notnull,type:varchar(36)"`
-	OrganizationUID string     `bun:"organization_uid,notnull,type:varchar(36)"`
-	Type            string     `bun:"type,notnull"`
-	Value           string     `bun:"value,notnull"`
-	Label           string     `bun:"label,notnull"`
-	VerifiedAt      *time.Time `bun:"verified_at"`
+	UID             string `bun:"uid,pk,type:varchar(36)"`
+	UserUID         string `bun:"user_uid,notnull,type:varchar(36)"`
+	OrganizationUID string `bun:"organization_uid,notnull,type:varchar(36)"`
+	Type            string `bun:"type,notnull"`
+	Value           string `bun:"value,notnull"`
+	// TeamID names the provider workspace Value is scoped to (a Slack team id
+	// for a `slack_user` contact). NULL means "unknown workspace" — every
+	// contact created before the column existed, deliberately not backfilled.
+	//
+	// It exists so the on-call mention resolver can prove a self-declared Slack
+	// handle belongs to the SAME workspace as the integration about to post:
+	// the same Slack user id in another workspace is a different person, and
+	// pinging them would be worse than not pinging anyone.
+	TeamID     *string    `bun:"team_id"`
+	Label      string     `bun:"label,notnull"`
+	VerifiedAt *time.Time `bun:"verified_at"`
 	// Verification state for contact types that require a code round-trip
 	// (phone). VerifyCodeHash is the SHA-256 hex of the in-flight 6-digit
 	// code; nil when no verification is pending or after a successful confirm.

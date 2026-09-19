@@ -411,6 +411,12 @@ const (
 
 // renderMentions turns the resolved on-call targets into a Slack mrkdwn line.
 //
+// The line reads `On call: <@U1>, <@U2>` — a statement to the channel about who
+// is on call, not a sentence addressed to them. The previous wording,
+// `<@U1> — you are on call for this.`, read as a message TO that person, and
+// degraded badly when nobody had a handle: `Alice — you are on call for this.`
+// looks like it was written to Alice rather than about her.
+//
 // A target with an identity renders as `<@U123ABC>` (a real ping); one without
 // renders as its plain-text name, which names the responsible person without
 // notifying anyone — the deliberate degradation when a member has no mapping.
@@ -439,7 +445,7 @@ func renderMentions(targets []MentionTarget) string {
 		return ""
 	}
 
-	return strings.Join(parts, " ") + " — you are on call for this."
+	return "On call: " + strings.Join(parts, ", ")
 }
 
 // mentionBlock returns the leading context block naming the on-call people, or

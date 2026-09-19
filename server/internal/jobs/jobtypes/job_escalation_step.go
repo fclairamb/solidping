@@ -421,6 +421,10 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 		ConnectionUID: connectionUID,
 		IncidentUID:   incident.UID,
 		EventType:     string(models.EventTypeIncidentEscalated),
+		// The step that is paging right now — so the channel message names the
+		// humans THIS step pages, not whoever step 1 happens to name.
+		StepUID:     r.config.StepUID,
+		RepeatIndex: r.config.RepeatIndex,
 	})
 	if err != nil {
 		log.WarnContext(ctx, "failed to marshal escalation notification config",

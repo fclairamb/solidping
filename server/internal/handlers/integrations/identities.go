@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/identitylink"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 )
 
@@ -365,7 +366,7 @@ func (s *Service) resolveIdentities(
 		return nil, err
 	}
 
-	return s.lookupSlackIdentities(ctx, s.slackIdentityClientFor(token), ictx.members, byUser)
+	return s.lookupSlackIdentities(ctx, s.slackIdentityClientFor(token), ictx.conn, ictx.members, byUser)
 }
 
 // skipAutoMatch reports whether a member's mapping is already settled by an
@@ -381,10 +382,22 @@ func skipAutoMatch(user *models.User, byUser map[string]*models.UserIntegrationI
 	return existing != nil && existing.Source == models.IdentitySourceManual
 }
 
-// lookupSlackIdentities resolves every member's email against the workspace.
+// lookupSlackIdentities resolves every member against the workspace: first by
+// email, then — when that finds nobody — by what the member declared for
+// themselves (a Slack DM contact in this workspace, or a Slack sign-in on the
+// same team).
+//
+// The fallback is what keeps this table honest. The sender already pings those
+// members (identitylink is the same helper it uses), so without it the admin
+// view would report "not found" for people who are demonstrably being
+// mentioned — and an admin would "fix" a mapping that was never broken.
+//
+// A `manual` row still short-circuits before either lookup: an admin's
+// explicit choice outranks both.
 func (s *Service) lookupSlackIdentities(
 	ctx context.Context,
 	client SlackIdentityLookup,
+	conn *models.Integration,
 	members []*models.OrganizationMember,
 	byUser map[string]*models.UserIntegrationIdentity,
 ) (map[string]*identityHit, error) {
@@ -392,17 +405,28 @@ func (s *Service) lookupSlackIdentities(
 
 	for _, member := range members {
 		user := memberUser(member)
-		if user == nil || strings.TrimSpace(user.Email) == "" || skipAutoMatch(user, byUser) {
+		if user == nil || skipAutoMatch(user, byUser) {
 			continue
 		}
 
-		slackUser, found, err := client.LookupUserByEmail(ctx, user.Email)
-		if err != nil {
-			return nil, fmt.Errorf("slack lookup for %s: %w", user.Email, err)
+		if strings.TrimSpace(user.Email) != "" {
+			slackUser, found, err := client.LookupUserByEmail(ctx, user.Email)
+			if err != nil {
+				return nil, fmt.Errorf("slack lookup for %s: %w", user.Email, err)
+			}
+
+			if found && slackUser != nil {
+				resolved[user.UID] = &identityHit{ID: slackUser.ID, DisplayName: slackDisplayName(slackUser)}
+
+				continue
+			}
 		}
 
-		if found && slackUser != nil {
-			resolved[user.UID] = &identityHit{ID: slackUser.ID, DisplayName: slackDisplayName(slackUser)}
+		if declared := identitylink.DeclaredSlackIdentity(ctx, s.db, conn, user.UID); declared != nil {
+			resolved[user.UID] = &identityHit{
+				ID:          declared.ExternalID,
+				DisplayName: strings.TrimSpace(user.Name),
+			}
 		}
 	}
 
