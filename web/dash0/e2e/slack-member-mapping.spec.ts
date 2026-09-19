@@ -31,8 +31,20 @@ const IDENTITIES = {
 /** Stubs the integration GET, the destinations picker and the identity APIs. */
 async function stubSlackIntegration(
   page: import("./fixtures").Page,
-  opts: { mentionOnCall: boolean },
+  opts: {
+    mentionOnCall: boolean;
+    /**
+     * "ok" (default): destinations 200 with both matched workspace users.
+     * "error": destinations 409, the exact shape the deployed API sends when
+     * the bot token can't be resolved — the panel and the mapping card must
+     * both surface the API's own title instead of a generic message.
+     * "missingAlice": destinations 200 but Alice's externalId isn't in the
+     * list (deactivated / a guest `users.list` doesn't return).
+     */
+    destinationsMode?: "ok" | "error" | "missingAlice";
+  },
 ) {
+  const destinationsMode = opts.destinationsMode ?? "ok";
   const state = { syncCalls: 0, lastPut: null as unknown, deleteCalls: 0 };
 
   await page.route(
@@ -71,6 +83,27 @@ async function stubSlackIntegration(
   await page.route(
     `**/api/v1/orgs/test/channels/${CHANNEL_UID}/slack/destinations`,
     async (route) => {
+      if (destinationsMode === "error") {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            code: "CHANNEL_NOT_CONNECTED",
+            title: "Slack channel is not connected — install the Slack app",
+          }),
+        });
+
+        return;
+      }
+
+      const users =
+        destinationsMode === "missingAlice"
+          ? [{ id: "U-BOB", name: "bob", realName: "Bob B" }]
+          : [
+              { id: "U-ALICE", name: "alice", realName: "Alice A" },
+              { id: "U-BOB", name: "bob", realName: "Bob B" },
+            ];
+
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -78,10 +111,7 @@ async function stubSlackIntegration(
           channels: [
             { id: "C1", name: "alerts", isPrivate: false, isMember: true },
           ],
-          users: [
-            { id: "U-ALICE", name: "alice", realName: "Alice A" },
-            { id: "U-BOB", name: "bob", realName: "Bob B" },
-          ],
+          users,
         }),
       });
     },
@@ -241,5 +271,79 @@ test.describe("Slack member mapping", () => {
 
     await toggle.click();
     await expect(toggle).toHaveAttribute("data-state", "checked");
+  });
+
+  test("a destinations 409 still shows who is mapped and disables every picker", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await stubSlackIntegration(page, {
+      mentionOnCall: true,
+      destinationsMode: "error",
+    });
+
+    await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    // Panel-level copy: the API's own title, not the generic
+    // "re-install the bot" advice — the token is fine, the server just
+    // couldn't read it.
+    await expect(page.getByTestId("slack-destinations-error")).toHaveText(
+      "Slack channel is not connected — install the Slack app",
+    );
+
+    await expect(page.getByTestId("slack-member-mapping")).toBeVisible();
+    await expect(page.getByTestId("slack-mapping-users-error")).toContainText(
+      "Slack channel is not connected — install the Slack app",
+    );
+
+    // Counts are unaffected by the destinations failure.
+    const aliceRow = page.getByTestId("slack-mapping-row-alice@acme.test");
+    const bobRow = page.getByTestId("slack-mapping-row-bob@acme.test");
+    await expect(
+      aliceRow.getByTestId("slack-mapping-status-matched"),
+    ).toBeVisible();
+    await expect(
+      bobRow.getByTestId("slack-mapping-status-notfound"),
+    ).toBeVisible();
+
+    // Matched row still shows who it's mapped to, not "Pick a person…".
+    await expect(aliceRow.getByTestId("slack-user-combobox")).toHaveText(
+      "@Alice A",
+    );
+    await expect(aliceRow.getByTestId("slack-user-combobox")).toBeDisabled();
+    await expect(bobRow.getByTestId("slack-user-combobox")).toBeDisabled();
+
+    // The clear button on the matched row is still enabled — clearing (and
+    // re-sync) remain available even while the workspace list is down.
+    await expect(
+      page.getByTestId("slack-mapping-clear-alice@acme.test"),
+    ).toBeEnabled();
+  });
+
+  test("a matched externalId absent from a healthy list shows the name plus a hint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await stubSlackIntegration(page, {
+      mentionOnCall: true,
+      destinationsMode: "missingAlice",
+    });
+
+    await page.goto(`orgs/test/integrations/${CHANNEL_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    const aliceRow = page.getByTestId("slack-mapping-row-alice@acme.test");
+    await expect(aliceRow.getByTestId("slack-user-combobox")).toHaveText(
+      "@Alice A",
+    );
+    await expect(aliceRow.getByTestId("slack-user-combobox")).toBeEnabled();
+    await expect(
+      aliceRow.getByTestId("slack-mapping-not-in-workspace"),
+    ).toBeVisible();
+
+    // The picker still lists the users that *are* in the workspace.
+    await aliceRow.getByTestId("slack-user-combobox").click();
+    await expect(page.getByTestId("slack-user-option-U-BOB")).toBeVisible();
   });
 });
