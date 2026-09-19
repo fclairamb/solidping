@@ -77,7 +77,7 @@ export function CheckSummaryCards({
         <Link
           to="/orgs/$org/incidents"
           params={{ org }}
-          search={{ checkUid: check.uid, state: "all" }}
+          search={{ checkUid: check.uid, state: "all", showSuppressed: undefined }}
           className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Card
