@@ -83,7 +83,9 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Req
 		})
 	}
 
-	if h.cfg.Discord.Enabled && h.cfg.Discord.ClientID != "" && h.cfg.Discord.ClientSecret != "" {
+	// Login needs only the client id/secret pair — deliberately a weaker rule
+	// than DiscordOAuthConfig.BotConfigured(), which the bot half gates on.
+	if h.cfg.Discord.LoginConfigured() {
 		providers = append(providers, ProviderInfo{
 			Name: "Discord",
 			Type: "discord",

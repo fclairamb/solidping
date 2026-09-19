@@ -2005,11 +2005,31 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		discordHandler.SetGatewaySupervisor(s.discordGatewaySupervisor)
 	}
 
-	discordIntegration := api.NewGroup("/integrations/discord")
-	discordIntegration.GET("/oauth", discordHandler.OAuthCallback)
-	discordIntegration.GET("/gateway/status", discordHandler.GetGatewayStatus)
-	discordIntegration.POST("/interactions",
-		discordHandler.VerifyMiddleware(discordHandler.HandleInteractions))
+	// FAIL CLOSED. These routes exist only when the bot is FULLY configured —
+	// client id AND secret AND bot token AND application public key
+	// (config.DiscordOAuthConfig.BotConfigured()). Until spec 2026-09-19-01 they
+	// were mounted unconditionally, so production — which has the three values
+	// an OAuth *login* provider needs and neither of the two the bot needs —
+	// advertised an install button, sent users to Discord, and could not finish
+	// the round trip. An absent channel is better than one that dead-ends.
+	//
+	// The interactions endpoint in particular MUST NOT exist without the public
+	// key: its authenticity is the per-request Ed25519 check, and a deployment
+	// that cannot verify has nothing to serve there.
+	if s.config.Discord.BotConfigured() {
+		discordIntegration := api.NewGroup("/integrations/discord")
+		discordIntegration.GET("/oauth", discordHandler.OAuthCallback)
+		discordIntegration.GET("/gateway/status", discordHandler.GetGatewayStatus)
+		discordIntegration.POST("/interactions",
+			discordHandler.VerifyMiddleware(discordHandler.HandleInteractions))
+	} else if missing := s.config.Discord.MissingBotConfigKeys(); len(missing) > 0 {
+		// Exactly one WARN, naming the keys. Discord login is unaffected and
+		// keeps working on the client id/secret pair alone.
+		slog.Warn("Discord bot disabled: missing configuration",
+			"missing", strings.Join(missing, ", "),
+			"effect", "install routes not mounted, install button hidden; Discord login unaffected",
+			"runbook", "wiki/runbooks/discord-bot-setup.md")
+	}
 
 	// Microsoft Teams bot routes (inbound from Bot Framework — no org auth;
 	// authenticity is the per-request JWT check against Microsoft's JWKS in
@@ -2132,8 +2152,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
 	// org comes from the authenticated route context, never from a query param.
-	discordOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/discord")
-	discordOrgIntegrationRoutes.POST("/install-url", discordHandler.BuildInstallURLForOrg)
+	// Gated on the same BotConfigured() predicate as the inbound routes above —
+	// this is the endpoint that actually starts the OAuth round trip, so it is
+	// the one that must not exist on a half-configured deployment.
+	if s.config.Discord.BotConfigured() {
+		discordOrgIntegrationRoutes := orgGroup("/orgs/:org/integrations/discord")
+		discordOrgIntegrationRoutes.POST("/install-url", discordHandler.BuildInstallURLForOrg)
+	}
 
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
