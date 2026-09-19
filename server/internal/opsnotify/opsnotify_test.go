@@ -88,6 +88,11 @@ func newEnv(t *testing.T) *env {
 
 var errMediumRefused = errors.New("medium refused the notice")
 
+// errDiscordUpstream stands in for a plain 5xx from Discord: a real failure,
+// deliberately NOT wrapping ErrMediumUnavailable.
+var errDiscordUpstream = errors.New(
+	"discord unexpected status: status 500 on POST /channels/x/messages")
+
 func (e *env) record(medium, orgUID, target, subject, body string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -756,7 +761,7 @@ func TestDeliverDiscordUnavailableVsFailed(t *testing.T) {
 		},
 		{
 			name:   "a plain 5xx is a failure, not an unavailability",
-			err:    errors.New("discord unexpected status: status 500 on POST /channels/x/messages"),
+			err:    errDiscordUpstream,
 			failed: 1,
 		},
 	}

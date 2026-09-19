@@ -215,9 +215,7 @@ func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDM
 // fixture.
 //
 //nolint:gochecknoglobals // test seam for the Discord REST API endpoint
-var newDiscordBotClient = func(token string) *discord.BotClient {
-	return discord.NewBotClient(token)
-}
+var newDiscordBotClient = discord.NewBotClient
 
 // sendWebPush pushes the headline to a stored browser subscription.
 func sendWebPush(registry *services.Registry) opsnotify.SendWebPushFunc {

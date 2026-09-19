@@ -931,7 +931,7 @@ func TestCapture_AbuseCeilingsAreEnforced(t *testing.T) {
 //
 // The Gateway records a DM's Identity as the author's Discord user id
 // (captureDirectMessage), which is exactly what a `discord` contact's Value holds
-// — so a member who connected Discord to be PAGED is now also recognised when
+// — so a member who connected Discord to be PAGED is now also recognized when
 // they write in.
 //
 // The negative control is the same one every channel gets: an unverified contact

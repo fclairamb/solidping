@@ -152,6 +152,10 @@ var viewerSelfScopedRoutes = map[string]string{
 	"POST /api/v1/orgs/{org}/users/me/notification-routes/{routeUid}/test": "a test notification to the " +
 		"member's own contact",
 	"POST /api/v1/orgs/{org}/users/me/telegram/link": "linking the member's own Telegram account",
+	"POST /api/v1/orgs/{org}/users/me/discord/connect": "binding the member's own Discord account, " +
+		"from the Discord sign-in already on THEIR account",
+	"POST /api/v1/orgs/{org}/users/me/discord/link-start": "starting the OAuth round trip that binds " +
+		"the member's own Discord account",
 }
 
 // viewerPublicOrgRoutes names the org-scoped non-GET routes that are

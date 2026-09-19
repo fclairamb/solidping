@@ -46,7 +46,7 @@ var ErrDiscordContactExists = errors.New("this Discord account is already connec
 // ErrDiscordDMRefused is what the Test button reports when Discord answers
 // 50007. Its text is the member's actual remedy, which a generic failure is not.
 var ErrDiscordDMRefused = errors.New(
-	"Discord refused the DM — open your DMs for server members, " +
+	"discord refused the DM — open your DMs for server members, " +
 		"or join the server the bot is in",
 )
 

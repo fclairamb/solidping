@@ -329,7 +329,7 @@ func declaredIdentityFor(
 	ctx context.Context, jctx *jobdef.JobContext,
 	integration *models.Integration, userUID string,
 ) string {
-	switch integration.Type {
+	switch integration.Type { //nolint:exhaustive // only the two providers with a declared-identity resolver
 	case models.ConnectionTypeSlack:
 		if declared := identitylink.DeclaredSlackIdentity(
 			ctx, jctx.DBService, integration, userUID); declared != nil {

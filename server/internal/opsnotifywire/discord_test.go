@@ -114,6 +114,8 @@ func newDiscordEnv(t *testing.T) *discordEnv {
 // two sends must open the DM exactly ONCE, which is the entire reason the
 // dm_channel_id column exists.
 func TestSendDiscordDMOpensCachesAndPosts(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := t.Context()
 	env := newDiscordEnv(t)
@@ -152,6 +154,8 @@ func TestSendDiscordDMOpensCachesAndPosts(t *testing.T) {
 //     unavailable, or a genuine Discord outage would be silently reclassified as
 //     "this instance cannot do Discord" and nobody would be told.
 func TestSendDiscordDM50007IsUnavailableAnd5xxIsNot(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name        string
 		status      int
@@ -179,6 +183,8 @@ func TestSendDiscordDM50007IsUnavailableAnd5xxIsNot(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
 			r := require.New(t)
 			ctx := t.Context()
 			env := newDiscordEnv(t)
@@ -202,6 +208,8 @@ func TestSendDiscordDM50007IsUnavailableAnd5xxIsNot(t *testing.T) {
 // reports "unavailable", which is a skip, not a failure — the same rule every
 // other unconfigured medium follows.
 func TestSendDiscordDMUnconfiguredBotIsUnavailable(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := t.Context()
 	env := newDiscordEnv(t)

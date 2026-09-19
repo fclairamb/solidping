@@ -50,6 +50,10 @@ func newIdentityEnv(t *testing.T) *identityEnv {
 	return &identityEnv{db: dbSvc, org: org, conn: conn, user: user}
 }
 
+// Only ever called with one snowflake today; kept parameterized so adding a
+// second case is a one-word change rather than a refactor.
+//
+//nolint:unparam // see above
 func (e *identityEnv) addDiscordContact(t *testing.T, snowflake string) {
 	t.Helper()
 

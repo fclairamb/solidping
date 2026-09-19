@@ -176,10 +176,10 @@ func escalationDiscordMessage(
 // with no number yet.
 func discordIncidentRef(incident *models.Incident) string {
 	if incident != nil && incident.Number > 0 {
-		return fmt.Sprintf("Incident #%d", incident.Number)
+		return fmt.Sprintf("%s #%d", incidentRefWord, incident.Number)
 	}
 
-	return "Incident"
+	return incidentRefWord
 }
 
 // discordEscalationDetail is the incident's headline, whitespace-collapsed and

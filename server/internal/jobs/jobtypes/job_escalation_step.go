@@ -653,9 +653,9 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 // syntax; otherwise it degrades to plain text with no link, as the phone/SMS
 // path already does.
 func escalationSlackDMMessage(incident *models.Incident, checkName, orgSlug, baseURL string) string {
-	ref := "Incident"
+	ref := incidentRefWord
 	if incident.Number > 0 {
-		ref = fmt.Sprintf("Incident #%d", incident.Number)
+		ref = fmt.Sprintf("%s #%d", incidentRefWord, incident.Number)
 	}
 
 	dashboard := "Open the dashboard"
@@ -1479,6 +1479,11 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 // escalationUnknownCheckName is the fallback check name when the check has
 // been deleted since the incident opened (or has neither Name nor Slug).
 const escalationUnknownCheckName = "Unknown check"
+
+// incidentRefWord is the bare word used when an incident has no number yet.
+// Shared by the Slack DM and Discord DM renderers so goconst stays quiet and the
+// two channels cannot drift on the wording.
+const incidentRefWord = "Incident"
 
 // viewModelKeyCheckName is the escalation.html view-model key for the check
 // name — pulled into a constant alongside escalationUnknownCheckName so

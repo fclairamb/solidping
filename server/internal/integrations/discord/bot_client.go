@@ -396,6 +396,8 @@ func (c *BotClient) GetChannel(ctx context.Context, channelID string) (*ChannelI
 }
 
 // createDMRequest is the body of POST /users/@me/channels.
+//
+//nolint:tagliatelle // Discord API uses snake_case
 type createDMRequest struct {
 	RecipientID string `json:"recipient_id"`
 }

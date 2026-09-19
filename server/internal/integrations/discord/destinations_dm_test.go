@@ -61,6 +61,8 @@ func setupDMDestEnv(t *testing.T) (context.Context, *dmDestEnv) {
 // would need the privileged GUILD_MEMBERS intent and would not say which
 // SolidPing account any guild member is.
 func TestGetDestinationsListsOnlyIdentityResolvedUsers(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx, env := setupDMDestEnv(t)
 
@@ -86,6 +88,8 @@ func TestGetDestinationsListsOnlyIdentityResolvedUsers(t *testing.T) {
 // show who the SENDER will actually address, and the admin's mapping is what the
 // sender prefers.
 func TestGetDestinationsPrefersAdminMappingOverDeclaredIdentity(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx, env := setupDMDestEnv(t)
 
@@ -109,6 +113,8 @@ func TestGetDestinationsPrefersAdminMappingOverDeclaredIdentity(t *testing.T) {
 // and returns the channel id the integration will store, so an admin finds out
 // immediately whether the destination works.
 func TestOpenDMDestinationOpensTheChannel(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx, env := setupDMDestEnv(t)
 
@@ -130,6 +136,8 @@ func TestOpenDMDestinationOpensTheChannel(t *testing.T) {
 // never become a destination, or an admin could route a check's alerts to any
 // Discord account on earth.
 func TestOpenDMDestinationRejectsUnresolvedSnowflake(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx, env := setupDMDestEnv(t)
 

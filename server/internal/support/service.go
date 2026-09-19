@@ -637,7 +637,7 @@ func contactTypeForChannel(channel string) (string, bool) {
 		// The Gateway captures a DM's Identity as the author's Discord user id
 		// (gateway_messages.captureDirectMessage), which is exactly what a
 		// `discord` contact's Value holds — so a member who connected Discord to
-		// be paged is now also recognised when they write in.
+		// be paged is now also recognized when they write in.
 		return models.UserContactTypeDiscord, true
 	case models.SupportChannelEmail:
 		return models.UserContactTypeEmail, true

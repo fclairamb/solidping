@@ -132,7 +132,7 @@ func TestDiscordSender_DMFollowUpIsAPlainMessageReferencingTheOriginal(t *testin
 	db := &mockDBService{
 		getStateEntryFunc: func(_ context.Context, _ *string, key string) (*models.StateEntry, error) {
 			if !strings.HasPrefix(key, "incidents/") {
-				return nil, nil
+				return nil, nil //nolint:nilnil // "no entry" is the mock's normal answer
 			}
 
 			return &models.StateEntry{Value: &models.JSONMap{

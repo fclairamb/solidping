@@ -138,10 +138,11 @@ func (s *Service) OpenDMDestination(
 
 	var picked *DiscordDestinationUser
 
-	for _, candidate := range s.listDestinationUsers(ctx, conn) {
-		if candidate.ID == discordUserID {
-			user := candidate
-			picked = &user
+	candidates := s.listDestinationUsers(ctx, conn)
+
+	for i := range candidates {
+		if candidates[i].ID == discordUserID {
+			picked = &candidates[i]
 
 			break
 		}

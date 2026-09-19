@@ -769,24 +769,6 @@ func (s *Service) loadConnection(
 	return conn, nil
 }
 
-// loadConnectionSettings resolves org + integration and returns its settings,
-// asserting the integration belongs to the org and is a Discord one.
-func (s *Service) loadConnectionSettings(
-	ctx context.Context, orgSlug, channelUID string,
-) (*models.DiscordSettings, error) {
-	conn, err := s.loadConnection(ctx, orgSlug, channelUID)
-	if err != nil {
-		return nil, err
-	}
-
-	settings, err := models.DiscordSettingsFromJSONMap(conn.Settings)
-	if err != nil {
-		return nil, fmt.Errorf("parse discord settings: %w", err)
-	}
-
-	return settings, nil
-}
-
 // SetDefaultChannel points a guild's integration at a channel, optionally
 // posting a welcome message there. Used by the in-band
 // `config default-channel` command.

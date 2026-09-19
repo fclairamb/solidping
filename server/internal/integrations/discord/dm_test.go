@@ -125,12 +125,20 @@ func TestCreateDMPostsRecipientID(t *testing.T) {
 
 	r := require.New(t)
 
-	var body []byte
+	var (
+		body   []byte
+		method string
+		path   string
+		auth   string
+	)
 
+	// Recorded rather than asserted in the handler: a failed require inside a
+	// server goroutine aborts that goroutine, not the test, so the assertions
+	// happen on the test goroutine below.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		r.Equal(http.MethodPost, req.Method)
-		r.Equal("/users/@me/channels", req.URL.Path)
-		r.Equal("Bot bot-token", req.Header.Get("Authorization"))
+		method = req.Method
+		path = req.URL.Path
+		auth = req.Header.Get("Authorization")
 
 		body, _ = io.ReadAll(req.Body)
 
@@ -142,6 +150,9 @@ func TestCreateDMPostsRecipientID(t *testing.T) {
 	channel, err := NewBotClient("bot-token").WithBaseURL(server.URL).
 		CreateDM(t.Context(), "SNOWFLAKE")
 	r.NoError(err)
+	r.Equal(http.MethodPost, method)
+	r.Equal("/users/@me/channels", path)
+	r.Equal("Bot bot-token", auth)
 	r.Equal("DM-9", channel.ID)
 	r.Equal(ChannelTypeDM, channel.Type)
 	r.JSONEq(`{"recipient_id":"SNOWFLAKE"}`, string(body))
@@ -170,7 +181,7 @@ func TestAPIErrorDecodesDiscordCode(t *testing.T) {
 		cannotDMUser bool
 	}{
 		{
-			name:         "50007 is recognised as a recipient refusal",
+			name:         "50007 is recognized as a recipient refusal",
 			status:       http.StatusForbidden,
 			body:         `{"code":50007,"message":"Cannot send messages to this user"}`,
 			wantCode:     50007,
@@ -285,7 +296,7 @@ func TestSendContactDMRejectsWrongContactType(t *testing.T) {
 }
 
 // TestSendContactDM50007SurfacesUnchanged: the refusal must reach the caller as a
-// recognisable 50007 so IT can decide the policy. Swallowing or rewrapping it
+// recognizable 50007 so IT can decide the policy. Swallowing or rewrapping it
 // here is how paging coverage would stop falling through to the next route.
 func TestSendContactDM50007SurfacesUnchanged(t *testing.T) {
 	t.Parallel()

@@ -14,18 +14,18 @@ import (
 // integration in place of the Slack one, so the same policy/resolution plumbing
 // exercises the Discord branch of declaredIdentityFor.
 func newDiscordMentionFixture(
-	ctx context.Context, t *testing.T, slug string, mentionOnCall bool,
+	ctx context.Context, t *testing.T, slug string,
 ) *mentionFixture {
 	t.Helper()
 
 	r := require.New(t)
-	fx := newMentionFixture(ctx, t, slug, mentionOnCall)
+	fx := newMentionFixture(ctx, t, slug, true)
 
 	settings, err := (&models.DiscordSettings{
 		GuildID:       "G-ACME",
 		GuildName:     "Acme",
 		ChannelID:     "C-ALERTS",
-		MentionOnCall: mentionOnCall,
+		MentionOnCall: true,
 	}).ToJSONMap()
 	r.NoError(err)
 
@@ -76,7 +76,7 @@ func TestDiscordMentionAdminMappingBeatsDeclaredIdentity(t *testing.T) {
 	t.Run("positive control: the declared contact resolves on its own", func(t *testing.T) {
 		t.Parallel()
 
-		fx := newDiscordMentionFixture(ctx, t, "dmention-declared", true)
+		fx := newDiscordMentionFixture(ctx, t, "dmention-declared")
 		adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
 		fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 		fx.addDiscordContact(ctx, t, adam, "SNOW-SELF-DECLARED")
@@ -87,7 +87,7 @@ func TestDiscordMentionAdminMappingBeatsDeclaredIdentity(t *testing.T) {
 	t.Run("the admin mapping wins", func(t *testing.T) {
 		t.Parallel()
 
-		fx := newDiscordMentionFixture(ctx, t, "dmention-adminwins", true)
+		fx := newDiscordMentionFixture(ctx, t, "dmention-adminwins")
 		adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
 		fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 		fx.addDiscordContact(ctx, t, adam, "SNOW-SELF-DECLARED")
@@ -105,7 +105,7 @@ func TestDiscordMentionSignInFallback(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	fx := newDiscordMentionFixture(ctx, t, "dmention-signin", true)
+	fx := newDiscordMentionFixture(ctx, t, "dmention-signin")
 	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 	fx.addDiscordSignIn(ctx, t, adam, "SNOW-SIGNIN")
@@ -120,7 +120,7 @@ func TestDiscordMentionUnlinkedStaysPlainText(t *testing.T) {
 
 	r := require.New(t)
 	ctx := t.Context()
-	fx := newDiscordMentionFixture(ctx, t, "dmention-unlinked", true)
+	fx := newDiscordMentionFixture(ctx, t, "dmention-unlinked")
 	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 
@@ -139,7 +139,7 @@ func TestDiscordMentionIgnoresSlackDeclarations(t *testing.T) {
 
 	r := require.New(t)
 	ctx := t.Context()
-	fx := newDiscordMentionFixture(ctx, t, "dmention-slackonly", true)
+	fx := newDiscordMentionFixture(ctx, t, "dmention-slackonly")
 	adam := fx.addUser(ctx, t, "adam@acme.test", "Adam")
 	fx.attachPolicy(ctx, t, []*models.EscalationPolicyTarget{userTarget(adam.UID, 0)})
 

@@ -11,7 +11,7 @@ import (
 // ContactDMStore is the narrow slice of the database a DM send needs: somewhere
 // to cache the channel Discord hands back. Declared here rather than taking a
 // db.Service so this package keeps no dependency on the full store interface —
-// and so tests can drive the caching behaviour without a database.
+// and so tests can drive the caching behavior without a database.
 type ContactDMStore interface {
 	SetUserContactDMChannel(ctx context.Context, uid, channelID string) error
 }
