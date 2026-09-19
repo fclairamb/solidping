@@ -91,25 +91,25 @@ func (s *Service) SearchUsers(
 
 	rows := make([]AdminUserRow, len(users))
 
-	for i, u := range users {
-		orgs := membershipsByUser[u.UID]
+	for i, user := range users {
+		orgs := membershipsByUser[user.UID]
 		if orgs == nil {
 			orgs = []AdminOrgMembership{}
 		}
 
 		rows[i] = AdminUserRow{
-			UID:                u.UID,
-			Email:              u.Email,
-			Name:               u.Name,
-			AvatarURL:          u.AvatarURL,
-			SuperAdmin:         u.SuperAdmin,
-			Demo:               u.Demo,
-			EmailVerified:      u.EmailVerifiedAt != nil,
-			TOTPEnabled:        u.TOTPEnabled,
-			MustChangePassword: u.MustChangePassword,
-			HasPassword:        u.PasswordHash != nil,
-			LastActiveAt:       u.LastActiveAt,
-			CreatedAt:          u.CreatedAt,
+			UID:                user.UID,
+			Email:              user.Email,
+			Name:               user.Name,
+			AvatarURL:          user.AvatarURL,
+			SuperAdmin:         user.SuperAdmin,
+			Demo:               user.Demo,
+			EmailVerified:      user.EmailVerifiedAt != nil,
+			TOTPEnabled:        user.TOTPEnabled,
+			MustChangePassword: user.MustChangePassword,
+			HasPassword:        user.PasswordHash != nil,
+			LastActiveAt:       user.LastActiveAt,
+			CreatedAt:          user.CreatedAt,
 			Orgs:               orgs,
 		}
 	}

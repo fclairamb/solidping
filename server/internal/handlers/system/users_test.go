@@ -294,7 +294,9 @@ func TestListUsersExclusions(t *testing.T) {
 
 	byEmail := make(map[string]map[string]any, len(resp.Data))
 	for _, row := range resp.Data {
-		byEmail[row["email"].(string)] = row
+		email, ok := row["email"].(string)
+		r.True(ok, "email field must be a string: %v", row)
+		byEmail[email] = row
 	}
 
 	r.NotContains(byEmail, "ghost@example.com", "soft-deleted user must be absent")

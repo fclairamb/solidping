@@ -45,7 +45,7 @@ func newUsersSearchPostgresDB(t *testing.T) *Service {
 // literal '%' matched literally, paging + total, and soft-delete exclusion —
 // the same contract, on the dialect that actually ships to most deployments.
 //
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with siblings in this package
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go pwfile extraction) with siblings
 func TestSearchUsers_Postgres(t *testing.T) {
 	ctx := t.Context()
 	r := require.New(t)
@@ -87,7 +87,7 @@ func TestSearchUsers_Postgres(t *testing.T) {
 	r.NoError(err)
 	r.Equal(2, total)
 
-	var emails []string
+	emails := make([]string, 0, len(rows))
 	for _, row := range rows {
 		emails = append(emails, row.Email)
 	}
