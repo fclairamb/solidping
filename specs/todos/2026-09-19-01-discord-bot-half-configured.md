@@ -80,6 +80,48 @@ while the code requests `bot` as well. That mismatch is the most likely source
 of the literal "oauth error" Max saw, and it is console-side state no amount of
 Go will fix.
 
+## Findings from `failed_discord_auth.priv.har` (2026-08-24)
+
+The capture was examined (it is gitignored and stays out of the repo; nothing
+secret is reproduced here). **It does not contain a bot install at all.**
+
+- Zero requests to `/integrations/discord` and zero `oauth2/authorize` requests
+  carrying `scope=bot` or a `permissions` parameter. Both authorize requests in
+  the file are the **login** provider round trip:
+  `scope=identify email guilds`, `redirect_uri=https://solidping.io/api/v1/auth/discord/callback`.
+- Discord itself did **not** fail. It answered the authorize POST with
+  `{"location": "https://solidping.io/api/v1/auth/discord/callback?code=…&state=…"}`
+  and `"authorized": true`. There is no `error` / `error_description` from
+  discord.com anywhere in the capture.
+- The failure is **SolidPing's own**. The capture's landing page is
+  `https://solidping.io/api/v1/auth/discord/login?org=default&redirect_uri=/dash0/orgs/default?error=OAUTH_FAILED&error_description=OAuth+failed:+failed+to+find/create+organization:+sql:+no+rows+in+result+set`
+  — i.e. the Discord **login** callback died on
+  `failed to find/create organization: sql: no rows in result set`, and every
+  subsequent dashboard call in the capture is a `401 NO_TOKEN`.
+- The application record in the capture confirms the spec's console-state claim
+  verbatim, for the prod app id `1500421248931336192`:
+  `"install_params": {"scopes": ["applications.commands"], "permissions": "0"}`,
+  `"flags": 0`, `bot_public: true`. It also carries a `verify_key` — which *is*
+  the application's Ed25519 public key, so `SP_DISCORD_PUBLIC_KEY` can be read
+  from the public `/applications/<id>/rpc` endpoint and is not a secret.
+
+### What this does and does not establish
+
+- **Established:** the prod Discord application grants only
+  `applications.commands` with `permissions: "0"`, while
+  [`botInstallScopes`](server/internal/integrations/discord/service.go#L87) asks
+  for `bot applications.commands identify`. That mismatch is still the leading
+  hypothesis for Max's "oauth error", and it remains console-side state.
+- **Established:** a second, unrelated production bug — Discord **login** on
+  `org=default` failed with `find/create organization: sql: no rows in result
+  set` on 2026-08-24. Out of scope here; recorded so it is not lost.
+- **NOT established:** the literal `error` / `error_description` Discord returns
+  for the *bot install*. No capture of that round trip exists. Confirming it
+  needs a human with a logged-in Discord session to click **Install Discord bot**
+  in prod with the network panel open. §2 and §4 below are implemented so that
+  the dead end cannot be reached at all, but they do not substitute for that
+  capture.
+
 ## What this spec must produce
 
 ### 1. Reproduce it and capture the real error (do this first)
