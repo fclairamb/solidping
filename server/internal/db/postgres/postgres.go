@@ -1064,7 +1064,7 @@ func (s *Service) ListMembersByUsers(
 	err := s.db.NewSelect().
 		Model(&members).
 		Relation("Organization", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.Where("deleted_at IS NULL")
+			return q.Where("organization.deleted_at IS NULL")
 		}).
 		Where("organization_member.user_uid IN (?)", bun.In(userUIDs)).
 		Where("organization_member.deleted_at IS NULL").
