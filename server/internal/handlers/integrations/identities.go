@@ -358,7 +358,7 @@ func (s *Service) resolveIdentities(
 	byUser map[string]*models.UserIntegrationIdentity,
 ) (map[string]*identityHit, error) {
 	if ictx.conn.Type == models.ConnectionTypeDiscord {
-		return s.lookupDiscordIdentities(ctx, ictx.members, byUser), nil
+		return s.lookupDiscordIdentities(ctx, ictx.conn, ictx.members, byUser), nil
 	}
 
 	token, err := s.slackAccessToken(ctx, ictx.conn)
@@ -433,17 +433,25 @@ func (s *Service) lookupSlackIdentities(
 	return resolved, nil
 }
 
-// lookupDiscordIdentities resolves members from the Discord sign-ins already on
-// file (`user_providers`, provider type `discord`).
+// lookupDiscordIdentities resolves members from whatever they have already
+// declared for themselves on Discord — a `discord` notification contact, or a
+// Discord sign-in (`user_providers`).
 //
 // Deliberately no API call: Discord has no "look up a user by email" endpoint
 // for bots, and a guild member list would only tell us who is in the server,
-// not which SolidPing account they are. Anyone who has ever pressed "Sign in
-// with Discord" is therefore matched for free, and everyone else is mapped by
-// an admin through the manual override — which is also why a failure here is
-// impossible and the function returns no error.
+// not which SolidPing account they are. Anyone who has connected their Discord
+// account is therefore matched for free, and everyone else is mapped by an admin
+// through the manual override — which is also why a failure here is impossible
+// and the function returns no error.
+//
+// The resolution itself is identitylink.DeclaredDiscordIdentity, the SAME
+// function the sender consults at mention time. That shared definition is the
+// point: an admin looking at this table must see who will actually be pinged, and
+// the way this table came to disagree with the sender for Slack was two
+// independent implementations of "who is this member".
 func (s *Service) lookupDiscordIdentities(
 	ctx context.Context,
+	conn *models.Integration,
 	members []*models.OrganizationMember,
 	byUser map[string]*models.UserIntegrationIdentity,
 ) map[string]*identityHit {
@@ -455,22 +463,14 @@ func (s *Service) lookupDiscordIdentities(
 			continue
 		}
 
-		providers, err := s.db.ListUserProvidersByUser(ctx, user.UID)
-		if err != nil {
+		declared := identitylink.DeclaredDiscordIdentity(ctx, s.db, conn, user.UID)
+		if declared == nil {
 			continue
 		}
 
-		for _, provider := range providers {
-			if provider.ProviderType != models.ProviderTypeDiscord || provider.ProviderID == "" {
-				continue
-			}
-
-			resolved[user.UID] = &identityHit{
-				ID:          provider.ProviderID,
-				DisplayName: strings.TrimSpace(user.Name),
-			}
-
-			break
+		resolved[user.UID] = &identityHit{
+			ID:          declared.ExternalID,
+			DisplayName: strings.TrimSpace(user.Name),
 		}
 	}
 

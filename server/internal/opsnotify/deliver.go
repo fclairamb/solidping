@@ -110,6 +110,14 @@ type (
 	SendTelegramFunc func(ctx context.Context, chatID, html string) error
 	// SendSlackDMFunc DMs plain text through the org's own Slack connection.
 	SendSlackDMFunc func(ctx context.Context, orgUID, slackUserID, text string) error
+	// SendDiscordDMFunc DMs plain text through the INSTANCE Discord bot — no
+	// org integration involved, the way Telegram works.
+	//
+	// It takes the whole contact rather than just the user id because Discord
+	// cannot address a user: the bot must first open a DM channel, and that
+	// channel id is cached on the contact so paging does not pay for the open
+	// on every notice.
+	SendDiscordDMFunc func(ctx context.Context, contact *models.UserContact, text string) error
 	// SendWebPushFunc pushes a title, body and click-through URL to a stored
 	// subscription.
 	SendWebPushFunc func(ctx context.Context, subscription, title, body, url string) error
@@ -126,11 +134,12 @@ type Deps struct {
 	// DB reads the recipient, their memberships and their routes.
 	DB db.Service
 
-	EnqueueEmail EnqueueEmailFunc
-	SendTelegram SendTelegramFunc
-	SendSlackDM  SendSlackDMFunc
-	SendWebPush  SendWebPushFunc
-	SendSMS      SendSMSFunc
+	EnqueueEmail  EnqueueEmailFunc
+	SendTelegram  SendTelegramFunc
+	SendSlackDM   SendSlackDMFunc
+	SendDiscordDM SendDiscordDMFunc
+	SendWebPush   SendWebPushFunc
+	SendSMS       SendSMSFunc
 }
 
 // DeliveryReport is what one recipient's fan-out did. It is returned rather
@@ -302,6 +311,8 @@ func dispatchRoute(
 		outcome = sendTelegram(ctx, deps, log, label, route, notice)
 	case models.UserContactTypeSlackUser:
 		outcome = sendSlackDM(ctx, deps, log, label, route, notice)
+	case models.UserContactTypeDiscord:
+		outcome = sendDiscordDM(ctx, deps, log, label, route, notice)
 	case models.UserContactTypeWebPush:
 		outcome = sendWebPush(ctx, deps, log, label, route, notice)
 	case models.UserContactTypePhone:
@@ -371,6 +382,32 @@ func sendSlackDM(
 
 	return classifySend(ctx, log, label, models.UserContactTypeSlackUser, route,
 		deps.SendSlackDM(ctx, route.OrgUID, route.Contact.Value, notice.noticeText()))
+}
+
+// sendDiscordDM delivers the notice as a Discord DM through the instance bot.
+//
+// Discord refusing the DM outright (error code 50007 — the member has DMs from
+// server members off, has blocked the bot, or shares no server with it) is
+// counted as SKIPPED, not failed, so paging coverage falls through to the
+// member's next route. It is not a fault: nothing an operator can configure and
+// nothing a retry will change, and reporting it as a failure would bury the
+// real failures under it. A plain 5xx from Discord stays a failure.
+//
+// The 50007 recognition itself lives in the closure (opsnotifywire), for the
+// same import-cycle reason every other medium's provider knowledge does:
+// `integrations/discord` reaches the support inbox, which raises notices, so
+// this package may not import it. All the closure has to do is wrap
+// ErrMediumUnavailable, exactly as the Slack one does for a missing token.
+func sendDiscordDM(
+	ctx context.Context, deps Deps, log *slog.Logger, label string,
+	route *models.UserNotificationRoute, notice *Notice,
+) string {
+	if deps.SendDiscordDM == nil {
+		return skipUnavailable(ctx, log, label, models.UserContactTypeDiscord, route)
+	}
+
+	return classifySend(ctx, log, label, models.UserContactTypeDiscord, route,
+		deps.SendDiscordDM(ctx, route.Contact, notice.noticeText()))
 }
 
 // sendWebPush pushes the subject line plus the first content line.

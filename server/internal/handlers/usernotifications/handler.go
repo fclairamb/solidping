@@ -60,6 +60,12 @@ func (h *Handler) handleError(writer http.ResponseWriter, request *http.Request,
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	case errors.Is(err, ErrTelegramNotEnabled):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
+	case errors.Is(err, ErrDiscordContactNotDirect),
+		errors.Is(err, ErrDiscordNotEnabled),
+		errors.Is(err, ErrDiscordNotSignedIn),
+		errors.Is(err, ErrDiscordContactExists),
+		errors.Is(err, ErrDiscordDMRefused):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, request, err)
 	}
@@ -132,6 +138,53 @@ func (h *Handler) CreateTelegramLink(writer http.ResponseWriter, req *http.Reque
 	}
 
 	resp, err := h.svc.CreateTelegramLink(req.Context(), httpx.Param(req, "org"), user)
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, resp)
+}
+
+// ConnectDiscord handles POST /api/v1/orgs/:org/users/me/discord/connect.
+//
+// One click, no round trip: the member already has a Discord sign-in on file, so
+// the snowflake is already attested and the contact can be created outright.
+func (h *Handler) ConnectDiscord(writer http.ResponseWriter, req *http.Request) error {
+	user, ok := userFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
+	}
+
+	route, err := h.svc.ConnectDiscord(req.Context(), httpx.Param(req, "org"), user)
+	if err != nil {
+		return h.handleError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, route)
+}
+
+// CreateDiscordLink handles POST /api/v1/orgs/:org/users/me/discord/link-start.
+//
+// It mints a single-use link token and returns the Discord authorization URL
+// carrying it. Nothing is created here: the contact only comes into existence
+// when Discord sends the member back to our callback with a code, which is what
+// proves they control the account.
+func (h *Handler) CreateDiscordLink(writer http.ResponseWriter, req *http.Request) error {
+	user, ok := userFromContext(req)
+	if !ok {
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Not authenticated")
+	}
+
+	var body struct {
+		RedirectURI string `json:"redirectUri"`
+	}
+
+	// A missing or unparseable body is fine — the redirect is optional and the
+	// callback falls back to the dashboard root.
+	_ = json.NewDecoder(req.Body).Decode(&body)
+
+	resp, err := h.svc.CreateDiscordLink(
+		req.Context(), httpx.Param(req, "org"), user, body.RedirectURI)
 	if err != nil {
 		return h.handleError(writer, req, err)
 	}

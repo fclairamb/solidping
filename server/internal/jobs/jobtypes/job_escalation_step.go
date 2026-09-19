@@ -337,6 +337,7 @@ const (
 	channelTokenCriticalPush = "critical_push"
 	channelTokenWhatsApp     = "whatsapp"
 	channelTokenTelegram     = "telegram"
+	channelTokenDiscord      = "discord"
 )
 
 // severityAllowsPersonTargets reports whether a severity permits paging
@@ -351,7 +352,7 @@ func severityAllowsPersonTargets(filter map[string]bool) bool {
 	for _, tok := range []string{
 		channelTokenEmail, channelTokenSMS, channelTokenVoice,
 		channelTokenPush, channelTokenCriticalPush, channelTokenWhatsApp,
-		channelTokenTelegram,
+		channelTokenTelegram, channelTokenDiscord,
 	} {
 		if filter[tok] {
 			return true
@@ -409,6 +410,17 @@ func severityAllowsWhatsApp(filter map[string]bool) bool {
 // 2026-08-10-04, "Escalation dispatch": *explicit token or nil filter*.)
 func severityAllowsTelegram(filter map[string]bool) bool {
 	return filter == nil || filter[channelTokenTelegram]
+}
+
+// severityAllowsDiscord reports whether a Discord DM delivery is permitted.
+//
+// Same rule as Telegram, and for the same reason: a Discord DM is free and lands
+// where the member already reads alerts, so it follows the email/SMS
+// "on unless excluded" rule rather than the voice/WhatsApp "off unless named"
+// one. Those two are opt-in only because each delivery costs money and
+// interrupts hard.
+func severityAllowsDiscord(filter map[string]bool) bool {
+	return filter == nil || filter[channelTokenDiscord]
 }
 
 // enqueueNotificationFor queues a notification job for the
@@ -554,6 +566,8 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		return r.pageWhatsApp(ctx, jctx, log, incident, route, filter)
 	case models.UserContactTypeTelegram:
 		return r.pageTelegram(ctx, jctx, log, incident, route, filter)
+	case models.UserContactTypeDiscord:
+		return r.pageDiscord(ctx, jctx, log, incident, route, filter)
 	default:
 		log.WarnContext(ctx, "unknown contact type; skipping route",
 			"type", route.Contact.Type,

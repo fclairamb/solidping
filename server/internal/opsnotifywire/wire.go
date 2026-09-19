@@ -19,6 +19,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/telegram"
@@ -43,6 +45,14 @@ var (
 	errNoSMSResolver  = unavailable("no SMS resolver wired")
 	errNoSMSProvider  = unavailable("no SMS provider available for this organization")
 	errNoSlackChannel = unavailable("no Slack connection for this organization")
+	errNoDiscordBot   = unavailable("the Discord bot is not configured on this instance")
+	// errDiscordDMRefused is Discord code 50007 — the recipient does not accept
+	// DMs from the bot. It sits with the "unavailable" errors rather than the
+	// failures on purpose: the medium genuinely cannot carry this route, so
+	// paging coverage must fall through to the member's NEXT route instead of
+	// recording a delivery that never happened. A plain 5xx from Discord is a
+	// failure and is left alone.
+	errDiscordDMRefused = unavailable("discord refused the DM: the recipient does not accept them")
 )
 
 // unavailable builds a static "not configured" error carrying the sentinel.
@@ -71,12 +81,13 @@ type emailJobConfig struct {
 // (the boot order does exactly that) is still picked up at send time.
 func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config) opsnotify.Deps {
 	return opsnotify.Deps{
-		DB:           dbSvc,
-		EnqueueEmail: enqueueEmail(registry),
-		SendTelegram: sendTelegram(cfg),
-		SendSlackDM:  sendSlackDM(dbSvc, registry),
-		SendWebPush:  sendWebPush(registry),
-		SendSMS:      sendSMS(registry),
+		DB:            dbSvc,
+		EnqueueEmail:  enqueueEmail(registry),
+		SendTelegram:  sendTelegram(cfg),
+		SendSlackDM:   sendSlackDM(dbSvc, registry),
+		SendDiscordDM: sendDiscordDM(dbSvc, cfg),
+		SendWebPush:   sendWebPush(registry),
+		SendSMS:       sendSMS(registry),
 	}
 }
 
@@ -162,6 +173,38 @@ func sendSlackDM(dbSvc db.Service, registry *services.Registry) opsnotify.SendSl
 		}
 
 		return nil
+	}
+}
+
+// sendDiscordDM delivers through the INSTANCE Discord bot, the way Telegram
+// does — a Discord DM contact needs no org integration, only a configured bot.
+//
+// BotConfigured(), not just a token: the DM carries the incident action row, and
+// its buttons reach us through the signature-verified interactions endpoint. An
+// instance with a token but no public key would DM an Acknowledge button that
+// does nothing when pressed.
+func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDMFunc {
+	return func(ctx context.Context, contact *models.UserContact, text string) error {
+		if cfg == nil || !cfg.Discord.BotConfigured() {
+			return errNoDiscordBot
+		}
+
+		if contact == nil {
+			return errNoDiscordBot
+		}
+
+		client := discord.NewBotClient(cfg.Discord.BotToken)
+
+		_, err := discord.SendContactDM(ctx, client, dbSvc, contact, &discord.Message{Content: text})
+		if err == nil {
+			return nil
+		}
+
+		if discord.IsCannotDMUser(err) {
+			return fmt.Errorf("%w: %w", errDiscordDMRefused, err)
+		}
+
+		return fmt.Errorf("send discord dm: %w", err)
 	}
 }
 
