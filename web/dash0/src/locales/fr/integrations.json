@@ -198,12 +198,13 @@
     "twilioRegionHint": "Laissez vide pour US1 (par défaut). Les identifiants sont liés à une région — le SID et le jeton d'authentification d'un compte ie1 ne fonctionnent que sur ie1 et ne seront pas validés ici s'ils proviennent d'une autre région.",
     "discordTabChannel": "Canal",
     "discordTabDirectMessage": "Message privé",
-    "discordDmUser": "Membre",
     "discordDmPlaceholder": "Choisir un membre…",
     "discordDmOpening": "Ouverture du message privé…",
     "discordDmFailed": "Impossible d'ouvrir un message privé avec ce membre",
     "discordDmEmpty": "Aucun membre de cette organisation n'a encore lié de compte Discord. Chaque membre connecte le sien depuis Compte → Notifications.",
-    "discordMappingNobodyLinked": "Personne ici n'a encore lié de compte Discord : les alertes de canal nomment les personnes sans les notifier. Chaque membre connecte son propre compte depuis Compte → Notifications ; resynchronisez ensuite pour les récupérer."
+    "discordMappingNobodyLinked": "Personne ici n'a encore lié de compte Discord : les alertes de canal nomment les personnes sans les notifier. Chaque membre connecte son propre compte depuis Compte → Notifications ; resynchronisez ensuite pour les récupérer.",
+    "discordDmSearchPlaceholder": "Rechercher des membres…",
+    "discordDmNoneFound": "Aucun membre trouvé"
   },
   "freebox": {
     "name": "Freebox",

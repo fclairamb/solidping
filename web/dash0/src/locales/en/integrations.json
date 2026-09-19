@@ -198,12 +198,13 @@
     "twilioRegionHint": "Leave empty for US1 (default). Credentials are region-scoped — an ie1 account's SID and auth token only work against ie1, and won't verify here if pasted from a different region's account.",
     "discordTabChannel": "Channel",
     "discordTabDirectMessage": "Direct message",
-    "discordDmUser": "Member",
     "discordDmPlaceholder": "Select a member…",
     "discordDmOpening": "Opening the DM…",
     "discordDmFailed": "Could not open a DM with that member",
     "discordDmEmpty": "No member of this organization has linked a Discord account yet. Each member connects their own under Account → Notifications.",
-    "discordMappingNobodyLinked": "Nobody here has linked a Discord account yet, so channel alerts name people without pinging them. Each member connects their own account under Account → Notifications; re-sync afterwards to pick them up."
+    "discordMappingNobodyLinked": "Nobody here has linked a Discord account yet, so channel alerts name people without pinging them. Each member connects their own account under Account → Notifications; re-sync afterwards to pick them up.",
+    "discordDmSearchPlaceholder": "Search members…",
+    "discordDmNoneFound": "No members found"
   },
   "freebox": {
     "name": "Freebox",

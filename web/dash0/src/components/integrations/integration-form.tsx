@@ -1504,13 +1504,27 @@ function DiscordUserCombobox({
   onSelect: (user: DiscordDestinationUser) => void;
 }) {
   const { t } = useTranslation("integrations");
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const filtered = users.filter((user) =>
+    user.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const selected = users.find((user) => user.id === currentId);
 
   if (users.length === 0) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="discord-dm-empty">
         {t(
           "form.discordDmEmpty",
-          "No member of this organization has linked a Discord account yet. Each member connects their own under Account → Notifications.",
+          "No member of this organization has linked a Discord account yet. Each member connects their own under Account \u2192 Notifications.",
         )}
       </p>
     );
@@ -1518,33 +1532,76 @@ function DiscordUserCombobox({
 
   return (
     <div className="space-y-1">
-      <Label htmlFor="discord-dm-user">
-        {t("form.discordDmUser", "Member")}
-      </Label>
-      <select
-        id="discord-dm-user"
-        className="w-full rounded border bg-background px-2 py-1 text-sm"
-        value={currentId}
-        disabled={loading}
-        onChange={(event) => {
-          const picked = users.find((user) => user.id === event.target.value);
-          if (picked) onSelect(picked);
-        }}
-        data-testid="discord-dm-user-select"
-      >
-        <option value="">
-          {t("form.discordDmPlaceholder", "Select a member…")}
-        </option>
-        {users.map((user) => (
-          <option key={user.id} value={user.id}>
-            {user.name}
-          </option>
-        ))}
-      </select>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={loading}
+            className="w-full justify-between font-normal text-sm"
+            data-testid="discord-user-combobox"
+          >
+            <span className={cn(!selected && "text-muted-foreground")}>
+              {selected
+                ? selected.name
+                : t("form.discordDmPlaceholder", "Select a member\u2026")}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="p-0 w-[280px]" align="start">
+          <div className="flex items-center border-b px-3 py-2">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("form.discordDmSearchPlaceholder", "Search members\u2026")}
+              className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              data-testid="discord-user-search"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                {t("form.discordDmNoneFound", "No members found")}
+              </div>
+            ) : (
+              filtered.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  role="option"
+                  aria-selected={user.id === currentId}
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                    user.id === currentId && "bg-accent",
+                  )}
+                  onClick={() => {
+                    onSelect(user);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  data-testid={`discord-user-option-${user.id}`}
+                >
+                  <Check
+                    className={cn(
+                      "mt-0.5 h-4 w-4 shrink-0",
+                      user.id === currentId ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <div className="font-medium">{user.name}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
       {loading && (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" />
-          {t("form.discordDmOpening", "Opening the DM…")}
+          {t("form.discordDmOpening", "Opening the DM\u2026")}
         </p>
       )}
     </div>

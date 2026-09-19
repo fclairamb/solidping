@@ -198,12 +198,13 @@
     "twilioRegionHint": "Für US1 (Standard) leer lassen. Zugangsdaten sind regionsgebunden — SID und Auth-Token eines ie1-Kontos funktionieren nur gegen ie1 und werden hier nicht verifiziert, wenn sie aus einer anderen Region stammen.",
     "discordTabChannel": "Kanal",
     "discordTabDirectMessage": "Direktnachricht",
-    "discordDmUser": "Mitglied",
     "discordDmPlaceholder": "Mitglied auswählen…",
     "discordDmOpening": "Direktnachricht wird geöffnet…",
     "discordDmFailed": "Mit diesem Mitglied konnte keine Direktnachricht geöffnet werden",
     "discordDmEmpty": "Kein Mitglied dieser Organisation hat bisher ein Discord-Konto verknüpft. Jedes Mitglied verbindet sein eigenes unter Konto → Benachrichtigungen.",
-    "discordMappingNobodyLinked": "Hier hat noch niemand ein Discord-Konto verknüpft, daher nennen Kanal-Alarme Personen, ohne sie zu benachrichtigen. Jedes Mitglied verbindet sein eigenes Konto unter Konto → Benachrichtigungen; danach neu synchronisieren, um sie zu erfassen."
+    "discordMappingNobodyLinked": "Hier hat noch niemand ein Discord-Konto verknüpft, daher nennen Kanal-Alarme Personen, ohne sie zu benachrichtigen. Jedes Mitglied verbindet sein eigenes Konto unter Konto → Benachrichtigungen; danach neu synchronisieren, um sie zu erfassen.",
+    "discordDmSearchPlaceholder": "Mitglieder suchen…",
+    "discordDmNoneFound": "Keine Mitglieder gefunden"
   },
   "kubernetes": {
     "name": "Kubernetes",

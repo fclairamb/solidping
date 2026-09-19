@@ -198,6 +198,7 @@ test.describe("Discord bot settings panel", () => {
               { id: "C-ALERTS", name: "alerts", type: 0 },
               { id: "C-GENERAL", name: "general", type: 0 },
             ],
+            users: [],
           }),
         });
       },
@@ -265,5 +266,216 @@ test.describe("Discord bot settings panel", () => {
 
     await expect(page.getByTestId("discord-install")).toHaveCount(0);
     expect(installUrlCalled).toBe(false);
+  });
+
+  // §4 of spec 2026-09-19-05: the DM destination tab.
+  test("the DM tab lists only identity-resolved members", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await stubPublicConfig(page, true);
+    await stubIntegration(page, BOT_UID, {
+      guild_id: "G-ACME",
+      guild_name: "acme",
+      channel_id: "C-ALERTS",
+      channel_name: "alerts",
+    });
+
+    await page.route(
+      `**/api/v1/orgs/test/channels/${BOT_UID}/discord/destinations`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            guildId: "G-ACME",
+            guildName: "acme",
+            connected: true,
+            channels: [{ id: "C-ALERTS", name: "alerts", type: 0 }],
+            // Only Alice. Bob is an org member with nothing linking him to
+            // Discord, and the backend leaves him out — the list is what the
+            // SENDER can address, never the guild member list.
+            users: [{ id: "SNOW-ALICE", name: "Alice", userUid: "user-alice" }],
+          }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${BOT_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    // The channel tab is the one that opens for a channel destination.
+    await expect(page.getByTestId("discord-channel-combobox")).toBeVisible();
+    await expect(page.getByTestId("discord-user-combobox")).toHaveCount(0);
+
+    await page.getByTestId("discord-tab-dm").click();
+
+    const userCombobox = page.getByTestId("discord-user-combobox");
+    await expect(userCombobox).toBeVisible();
+    await expect(page.getByTestId("discord-channel-combobox")).toHaveCount(0);
+
+    await userCombobox.click();
+    await expect(page.getByTestId("discord-user-option-SNOW-ALICE")).toBeVisible();
+    await expect(page.getByTestId("discord-user-option-SNOW-BOB")).toHaveCount(0);
+  });
+
+  test("picking a member opens the DM and stores dm_user_id", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await stubPublicConfig(page, true);
+
+    const state = { lastPatch: null as Record<string, unknown> | null, dmCalls: 0 };
+
+    await page.route(
+      `**/api/v1/orgs/test/integrations/${BOT_UID}`,
+      async (route) => {
+        const method = route.request().method();
+
+        if (method === "PATCH") {
+          state.lastPatch = route.request().postDataJSON() as Record<
+            string,
+            unknown
+          >;
+          await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+
+          return;
+        }
+
+        if (method !== "GET") {
+          await route.continue();
+
+          return;
+        }
+
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            uid: BOT_UID,
+            type: "discord",
+            name: "acme discord",
+            enabled: true,
+            isDefault: false,
+            settings: {
+              guild_id: "G-ACME",
+              guild_name: "acme",
+              channel_id: "C-ALERTS",
+              channel_name: "alerts",
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }),
+        });
+      },
+    );
+
+    await page.route(
+      `**/api/v1/orgs/test/channels/${BOT_UID}/discord/destinations`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            guildId: "G-ACME",
+            guildName: "acme",
+            connected: true,
+            channels: [{ id: "C-ALERTS", name: "alerts", type: 0 }],
+            users: [{ id: "SNOW-ALICE", name: "Alice", userUid: "user-alice" }],
+          }),
+        });
+      },
+    );
+
+    // The DM is opened AT PICK TIME, server-side, so an admin finds out now
+    // whether Discord will carry it rather than during the first incident.
+    await page.route(
+      `**/api/v1/orgs/test/channels/${BOT_UID}/discord/dm`,
+      async (route) => {
+        expect(route.request().method()).toBe("POST");
+        expect(
+          (route.request().postDataJSON() as { userId?: string }).userId,
+        ).toBe("SNOW-ALICE");
+        state.dmCalls += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            channelId: "DM-ALICE",
+            userId: "SNOW-ALICE",
+            name: "Alice",
+          }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${BOT_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByTestId("discord-tab-dm").click();
+    await page.getByTestId("discord-user-combobox").click();
+    await page.getByTestId("discord-user-option-SNOW-ALICE").click();
+
+    await expect.poll(() => state.dmCalls).toBe(1);
+    await expect(page.getByTestId("discord-user-combobox")).toContainText("Alice");
+
+    await page.getByRole("button", { name: /save|enregistrer/i }).click();
+
+    // channel_id becomes the DM CHANNEL id, and dm_user_id names who it is —
+    // which is how the sender tells a DM apart from a guild channel and skips
+    // every thread operation for it.
+    const settings = () =>
+      (state.lastPatch?.settings as Record<string, unknown> | undefined) ?? {};
+    await expect.poll(() => settings().dm_user_id).toBe("SNOW-ALICE");
+    await expect.poll(() => settings().channel_id).toBe("DM-ALICE");
+  });
+
+  // The resolved open question: mentioning is meaningless in a DM, so the switch
+  // is not offered there rather than offered and silently ignored.
+  test("the DM tab offers no mention-on-call switch", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await stubPublicConfig(page, true);
+    await stubIntegration(page, BOT_UID, {
+      guild_id: "G-ACME",
+      guild_name: "acme",
+      channel_id: "DM-ALICE",
+      dm_user_id: "SNOW-ALICE",
+      mention_on_call: true,
+    });
+
+    await page.route(
+      `**/api/v1/orgs/test/channels/${BOT_UID}/discord/destinations`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            guildId: "G-ACME",
+            guildName: "acme",
+            connected: true,
+            channels: [{ id: "C-ALERTS", name: "alerts", type: 0 }],
+            users: [{ id: "SNOW-ALICE", name: "Alice", userUid: "user-alice" }],
+          }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${BOT_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    // A stored dm_user_id opens the DM tab, so the destination is never
+    // misreported as a channel one.
+    await expect(page.getByTestId("discord-user-combobox")).toBeVisible();
+    await expect(page.getByTestId("discord-mention-on-call")).toHaveCount(0);
+
+    // POSITIVE CONTROL: switching back to the channel tab brings it back, so the
+    // assertion above is about the DM branch and not about a missing switch.
+    await page.getByTestId("discord-tab-channel").click();
+    await expect(page.getByTestId("discord-mention-on-call")).toBeVisible();
   });
 });

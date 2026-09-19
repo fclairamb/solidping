@@ -725,7 +725,14 @@ function DiscordConnectRow({
       window.location.pathname + (query ? `?${query}` : ""),
     );
 
-    void handleConnect();
+    // Deferred to a microtask rather than called in the effect body: creating
+    // the contact writes state (the mutation, the error line, the toast), and
+    // doing that synchronously inside an effect is the cascading-render pattern
+    // react-hooks/set-state-in-effect exists to stop. One tick later is exactly
+    // as prompt and is a plain event, not a render cascade.
+    queueMicrotask(() => {
+      void handleConnect();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once, on the return trip only
   }, []);
 
