@@ -64,6 +64,27 @@ export function useTelegramEnabled(): boolean {
 }
 
 /**
+ * Whether this instance has a FULLY configured Discord bot. Mirrors the
+ * backend's `config.DiscordOAuthConfig.BotConfigured()` rule — the very same
+ * predicate the install routes are mounted on, so the button and the endpoint
+ * it calls cannot disagree.
+ *
+ * This is not "is Discord enabled": Discord *login* runs on a client id and
+ * secret, which is exactly what production had while the bot token and the
+ * application public key were missing. The button was rendered anyway and the
+ * install dead-ended at Discord (spec 2026-09-19-01).
+ *
+ * Defaults to false while loading, so the button never flashes into view on an
+ * instance that cannot honour it. Over the same cached query as the other
+ * public-config hooks — one document, one fetch.
+ */
+export function useDiscordBotEnabled(): boolean {
+  const { data } = usePublicConfig();
+
+  return Boolean(data?.discord?.botEnabled);
+}
+
+/**
  * The instance's server-provided SMS capability. Mirrors the backend's
  * resolved `config.SMSConfig.Active()` / `config.VoiceConfig.Active()` rules.
  *
