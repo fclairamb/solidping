@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -105,10 +106,10 @@ func TestCreateOrUpdateConnection_SameOrgReinstall(t *testing.T) {
 	r.NoError(err)
 	r.Equal(firstUID, conn.UID)
 
-	// Settings were refreshed with the new token.
-	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
-	r.NoError(err)
-	r.Equal("xoxb-refreshed-token", settings.AccessToken)
+	// Settings were refreshed with the new token — read through the shared
+	// helper, since the token is sealed out of the public settings column.
+	r.NotContains(conn.Settings, "access_token")
+	r.Equal("xoxb-refreshed-token", mustBotToken(ctx, t, svc, conn))
 }
 
 // TestResolveResultChannelUID covers the "land the user where they started"
@@ -229,7 +230,10 @@ func TestCreateOrUpdateConnection_PreservesCommentIngestion(t *testing.T) {
 	// not an accidental no-op that would make the assertion above vacuous.
 	conn, err := svc.db.GetChannel(ctx, connUID)
 	r.NoError(err)
-	r.Equal("xoxb-fake-token", conn.Settings["access_token"])
+	// The token lives in the encrypted settings_private envelope, never in the
+	// public settings column (spec 2026-09-18-02).
+	r.NotContains(conn.Settings, "access_token")
+	r.Equal("xoxb-fake-token", mustBotToken(ctx, t, svc, conn))
 }
 
 // TestUpdateExistingChannel_PreservesCommentIngestion is the same guard on the
@@ -265,6 +269,17 @@ func TestUpdateExistingChannel_PreservesCommentIngestion(t *testing.T) {
 	// rewritten (otherwise the assertions above prove nothing).
 	after, err := svc.db.GetChannel(ctx, conn.UID)
 	r.NoError(err)
-	r.Equal("xoxb-fake-token", after.Settings["access_token"])
+	r.NotContains(after.Settings, "access_token")
+	r.Equal("xoxb-fake-token", mustBotToken(ctx, t, svc, after))
 	r.Equal(true, after.Settings["mention_on_call"])
+}
+
+// mustBotToken reads a connection's bot token the way production does.
+func mustBotToken(ctx context.Context, t *testing.T, svc *Service, conn *models.Integration) string {
+	t.Helper()
+
+	token, err := BotToken(ctx, svc.creds, conn)
+	require.NoError(t, err)
+
+	return token
 }
