@@ -1015,6 +1015,20 @@ func (r *CheckWorker) executeJob(
 
 	checkConfig = config
 
+	// Burst-style checkers (icmp, spec 2026-09-21-01) size their cost from
+	// count/interval/timeout, not from a single probe. `timeout` keeps only its
+	// per-packet meaning from here down — it is never the whole-burst budget —
+	// so the execution context is raised to the config's own worst-case burst
+	// cost (count × timeout + (count-1) × interval). A burst that meets packet
+	// loss runs to completion and reports truthful loss instead of being
+	// truncated into over-reporting it. For an unset `timeout` the threaded
+	// default makes a count-1 burst identical to the pre-burst budget.
+	if burst, ok := checkConfig.(checkerdef.BurstBudgeter); ok {
+		if budget := burst.BurstBudget(); budget > checkTimeout {
+			checkTimeout = budget
+		}
+	}
+
 	// 3. Get checker from registry
 	checker, ok := r.getChecker(checkerdef.CheckType(checkType))
 	if !ok {
