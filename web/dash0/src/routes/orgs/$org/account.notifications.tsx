@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 import { deriveDeviceLabel } from "@/lib/browser-detection";
+import { contactCanTest } from "@/lib/notifications";
 import {
   useNotificationRoutes,
   useCreateNotificationContact,
@@ -424,12 +425,10 @@ function RouteRow({
   // as "reconnect needed" rather than as a generic unverified contact.
   const isTelegram = route.contact.type === "telegram";
 
-  // A route is testable once its contact is ready to be paged. Types with a
-  // setup round-trip (code verification for phone/WhatsApp, pressing Start for
-  // Telegram) are testable only once verified; every other type — including
-  // any future one — gets the Test button by default rather than by being
-  // remembered here. The backend applies the same readiness rule.
-  const canTest = (!needsVerification && !isTelegram) || isVerified;
+  // Keep this client affordance aligned with the backend readiness rule. The
+  // helper includes Discord alongside Telegram, whose setup is also completed
+  // in its DM rather than through a code round-trip.
+  const canTest = contactCanTest(route.contact.type, route.contact.verifiedAt);
 
   return (
     <div className="flex items-center gap-3 py-3 border-b last:border-0">

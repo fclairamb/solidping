@@ -344,14 +344,15 @@ export function getCommentText(event: {
   return typeof text === "string" ? text : "";
 }
 
-// getCommentSource returns where a comment originated ("web" | "slack"), or
+// getCommentSource returns where a comment originated, or
 // undefined for non-comment events / payloads that predate the field.
 export function getCommentSource(event: {
   payload?: Record<string, unknown>;
-}): "web" | "slack" | "telegram" | undefined {
+}): "web" | "slack" | "telegram" | "discord" | undefined {
   const source = event.payload?.source;
   if (source === "slack") return "slack";
   if (source === "telegram") return "telegram";
+  if (source === "discord") return "discord";
   if (source === "web") return "web";
   return undefined;
 }

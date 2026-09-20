@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TFunction } from "i18next";
 
-import { sourceLabel } from "@/lib/notifications";
+import { contactCanTest, sourceLabel } from "@/lib/notifications";
 
 import commonEn from "@/locales/en/common.json";
 import commonFr from "@/locales/fr/common.json";
@@ -31,6 +31,24 @@ function tFor(bundle: Record<string, unknown>): TFunction {
 
 const t = tFor(commonEn);
 const tFr = tFor(commonFr);
+
+describe("contactCanTest", () => {
+  it.each(["discord", "telegram", "phone", "whatsapp"])(
+    "requires setup for %s contacts",
+    (type) => {
+      expect(contactCanTest(type, null)).toBe(false);
+      expect(contactCanTest(type, "2026-09-20T12:00:00Z")).toBe(true);
+    },
+  );
+
+  it.each(["email", "webpush", "future_channel"])(
+    "keeps %s contacts testable without verification",
+    (type) => {
+      expect(contactCanTest(type, null)).toBe(true);
+      expect(contactCanTest(type, "2026-09-20T12:00:00Z")).toBe(true);
+    },
+  );
+});
 
 describe("sourceLabel", () => {
   it("labels every source the backend can record", () => {

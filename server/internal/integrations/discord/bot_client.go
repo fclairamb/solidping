@@ -15,6 +15,12 @@ import (
 // ErrBotTokenMissing is returned when a bot call is attempted with no token.
 var ErrBotTokenMissing = errors.New("discord bot token not configured")
 
+// ErrUnexpectedStatus is returned when an unexpected HTTP status is received.
+var ErrUnexpectedStatus = errors.New("unexpected HTTP status")
+
+// DefaultTimeout is the default HTTP client timeout.
+const DefaultTimeout = 30 * time.Second
+
 // ErrEmptyRecipient is returned when a DM is requested for no recipient. A
 // blank Discord user id would otherwise reach Discord as a malformed request
 // whose 400 says nothing about the cause.
@@ -96,11 +102,6 @@ func IsCannotDMUser(err error) bool {
 }
 
 // BotClient is a Discord REST client authenticated as the application's bot.
-//
-// It is deliberately separate from Client (the legacy webhook poster): a
-// webhook connection has no token and no bot capabilities, and keeping the two
-// apart is what makes it structurally impossible for the bot rework to break
-// the legacy path.
 type BotClient struct {
 	httpClient *http.Client
 	token      string

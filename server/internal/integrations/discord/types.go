@@ -1,3 +1,5 @@
+// Package discord provides a client for the Discord bot API: REST calls,
+// gateway types, and the shared wire types they exchange.
 package discord
 
 // Discord embed colors.
@@ -7,16 +9,6 @@ const (
 	ColorOrange = 16744448 // #FFA500 - Escalations
 	ColorBlue   = 3447003  // #3498DB - Info
 )
-
-// WebhookMessage represents a Discord webhook message.
-//
-//nolint:tagliatelle // Discord API uses snake_case
-type WebhookMessage struct {
-	Content   string  `json:"content,omitempty"`
-	Username  string  `json:"username,omitempty"`
-	AvatarURL string  `json:"avatar_url,omitempty"`
-	Embeds    []Embed `json:"embeds,omitempty"`
-}
 
 // Embed represents a Discord embed object.
 type Embed struct {

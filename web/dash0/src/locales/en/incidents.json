@@ -191,6 +191,7 @@
     "submit": "Comment",
     "viaSlack": "via Slack",
     "viaTelegram": "via Telegram",
+    "viaDiscord": "via Discord",
     "slackUser": "Slack user",
     "teamMember": "Team member",
     "addFailed": "Failed to add comment"

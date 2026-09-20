@@ -1381,7 +1381,18 @@ function DiscordDestinationPanel({
             </Button>
           )}
         </div>
-        {webhookField}
+        {/* Legacy webhook mode. On an instance WITH the bot, a fresh Discord
+            integration should be installed, not webhook-wired, so an empty
+            field here is pure clutter next to the install button. It stays
+            visible in the two cases where it is the real answer: the instance
+            has no bot to install (webhook is the only transport), or this
+            integration already stores a URL — the pre-bot integrations the
+            bot rework must never break. Same rule the connected branch below
+            already applies. */}
+        {(!botAvailable ||
+          (typeof settings.webhook_url === "string" &&
+            settings.webhook_url.length > 0)) &&
+          webhookField}
       </div>
     );
   }

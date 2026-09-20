@@ -122,6 +122,34 @@ test.describe("Discord bot settings panel", () => {
     expect(destinationsCalled).toBe(false);
   });
 
+  test("an empty webhook field is hidden when the bot can be installed, and shown when it cannot", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Bot available + nothing stored: installing is the answer, so the empty
+    // legacy field is clutter sitting next to the install button.
+    await stubPublicConfig(page, true);
+    await stubIntegration(page, LEGACY_UID, { webhook_url: "" });
+
+    await page.goto(`orgs/test/integrations/${LEGACY_UID}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("discord-not-connected")).toBeVisible();
+    await expect(page.getByTestId("discord-install")).toBeVisible();
+    await expect(page.getByLabel(/webhook url/i)).toHaveCount(0);
+
+    // Positive control: the SAME empty integration on an instance with no bot
+    // still shows the field, because there the webhook is the only transport.
+    // Without this, hiding the field unconditionally would also pass.
+    await stubPublicConfig(page, false);
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("discord-install")).toHaveCount(0);
+    await expect(page.getByLabel(/webhook url/i)).toHaveCount(1);
+  });
+
   test("install CTA mints an org-scoped install URL for this channel", async ({
     authenticatedPage,
   }) => {

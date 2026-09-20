@@ -127,6 +127,10 @@ function LoginPage() {
   const [twoFAState, setTwoFAState] = useState<{ tempToken: string } | null>(null);
   const [twoFACode, setTwoFACode] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
+  // @simplewebauthn/browser owns one shared abort signal for every WebAuthn
+  // ceremony. Prevent a late background conditional-UI ceremony from starting
+  // after a click and aborting that user-initiated ceremony.
+  const explicitPasskeyLoginStarted = useRef(false);
   // The method this browser used last (read once on mount). Drives which
   // option is promoted to the top of the card with a "Last used" badge.
   const [lastAuthMethod] = useState<string | null>(() => getLastAuthMethod());
@@ -478,6 +482,7 @@ function LoginPage() {
   };
 
   const handlePasskeyLogin = async () => {
+    explicitPasskeyLoginStarted.current = true;
     setError(null);
     setIsLoading(true);
     try {
@@ -523,7 +528,7 @@ function LoginPage() {
     (async () => {
       try {
         const begin = await beginPasskeyLogin();
-        if (cancelled) return;
+        if (cancelled || explicitPasskeyLoginStarted.current) return;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const optionsJSON = (begin.options as any).publicKey ?? begin.options;
         const credential = await startAuthentication({

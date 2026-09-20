@@ -15,14 +15,11 @@ import (
 )
 
 var (
-	// ErrDiscordWebhookURLNotConfigured is returned when a legacy webhook-mode
-	// integration has no webhook URL.
-	ErrDiscordWebhookURLNotConfigured = errors.New("discord webhook URL not configured")
 	// ErrDiscordBotNotConfigured is returned when a bot-mode integration is
 	// asked to send but the instance has no Discord bot token.
 	ErrDiscordBotNotConfigured = errors.New("discord bot token is not configured on this instance")
-	// ErrDiscordNoDestination is returned when the bot is installed in a guild
-	// but no channel has been chosen yet.
+	// ErrDiscordNoDestination is returned when no destination channel is
+	// configured on the integration.
 	ErrDiscordNoDestination = errors.New("no default channel configured for discord connection")
 )
 
@@ -33,19 +30,10 @@ const (
 	discordKeyThreadID  = "thread_id"
 )
 
-// DiscordSender sends notifications to Discord.
-//
-// It covers two modes, chosen per integration by the data (see
-// models.DiscordSettings):
-//
-//   - Bot mode (guild + channel set): rich embeds with an Acknowledge button,
-//     a real thread per incident, and an in-place edit of the original embed
-//     when the incident resolves — the Slack behavior, on Discord's primitives.
-//   - Legacy webhook mode: a plain embed POSTed to a pasted webhook URL. This
-//     is what every Discord integration created before the bot existed does,
-//     and it is deliberately reachable without ANY bot field being present, so
-//     an instance with no bot token configured keeps delivering exactly as it
-//     always has.
+// DiscordSender sends notifications to Discord via the instance bot: rich
+// embeds with an Acknowledge button, a real thread per incident, and an
+// in-place edit of the original embed when the incident resolves — the Slack
+// behavior, on Discord's primitives.
 type DiscordSender struct {
 	// newBotClient builds the Discord REST client. Tests override it to point
 	// at an httptest fake Discord; nil means the real one.
@@ -54,10 +42,9 @@ type DiscordSender struct {
 
 // Send sends a notification to Discord.
 //
-// Mode selection is by data, and bot mode requires BOTH a guild and a
-// resolved destination channel. Anything else falls through to the legacy
-// webhook path, which is what keeps a pre-bot integration working with no
-// migration and no bot token on the instance.
+// Sending requires a resolved destination channel, plus either a guild or a DM
+// destination (a DM channel id needs no guild to post into). Anything else has
+// nowhere to deliver and fails with ErrDiscordNoDestination.
 func (ds *DiscordSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := ds.parseSettings(payload)
 	if err != nil {
@@ -65,23 +52,13 @@ func (ds *DiscordSender) Send(ctx context.Context, jctx *jobdef.JobContext, payl
 	}
 
 	channel := ds.determineChannel(settings, payload)
-	// A DM destination qualifies for bot mode on its own: its ChannelID is a DM
-	// channel id, which needs no guild to post into. Without the IsDM() clause a
-	// DM-only integration would fall through to the webhook branch and fail with
-	// "webhook URL not configured" — the wrong diagnosis entirely.
-	if channel != "" && (settings.GuildID != "" || settings.IsDM()) {
-		return ds.sendViaBot(ctx, jctx, settings, payload, channel)
+	// A DM destination qualifies on its own: its ChannelID is a DM channel id,
+	// which needs no guild to post into.
+	if channel == "" || (settings.GuildID == "" && !settings.IsDM()) {
+		return ErrDiscordNoDestination
 	}
 
-	if settings.WebhookURL == "" {
-		if settings.GuildID != "" {
-			return ErrDiscordNoDestination
-		}
-
-		return ErrDiscordWebhookURLNotConfigured
-	}
-
-	return ds.sendViaWebhook(ctx, settings, payload)
+	return ds.sendViaBot(ctx, jctx, settings, payload, channel)
 }
 
 // parseSettings extracts the Discord settings from the payload.
@@ -106,27 +83,6 @@ func (ds *DiscordSender) determineChannel(settings *models.DiscordSettings, payl
 	}
 
 	return channel
-}
-
-// ---------------------------------------------------------------------------
-// Legacy webhook mode
-// ---------------------------------------------------------------------------
-
-// sendViaWebhook is the pre-bot delivery path, unchanged in behavior.
-func (ds *DiscordSender) sendViaWebhook(
-	ctx context.Context, settings *models.DiscordSettings, payload *Payload,
-) error {
-	client := discord.NewClient(settings.WebhookURL)
-	msg := &discord.WebhookMessage{
-		Username: productName,
-		Embeds:   []discord.Embed{ds.buildEmbed(payload)},
-	}
-
-	if err := client.SendWebhookMessage(ctx, msg); err != nil {
-		return fmt.Errorf("sending discord webhook message: %w", err)
-	}
-
-	return nil
 }
 
 // ---------------------------------------------------------------------------
