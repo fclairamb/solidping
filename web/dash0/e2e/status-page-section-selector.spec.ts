@@ -139,6 +139,103 @@ test.describe("Status page section selectors", () => {
     expect(await publicSectionResources(page, pageSlug, "auto")).toHaveLength(0);
   });
 
+  test("a group selector adopts a check created later into the group, and Name precedes Membership in the dialog", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await disableHttpCache(page);
+
+    const token = await getAuthToken(page);
+    const suffix = Date.now().toString().slice(-9);
+    const groupName = `E2E Sel Group ${suffix}`;
+
+    // The group exists first; the section that follows it will adopt checks
+    // added to the group from then on.
+    const group = await api(page, token, "/api/v1/orgs/test/check-groups", {
+      name: groupName,
+    });
+    const groupUid = group.uid;
+
+    const pageSlug = `e2e-grp-page-${suffix}`.slice(0, 40);
+    const statusPage = await api(page, token, "/api/v1/orgs/test/status-pages", {
+      name: `E2E Group Selector Page ${suffix}`,
+      slug: pageSlug,
+      visibility: "public",
+    });
+
+    // The dialog's field order is part of this spec: Name first, then Slug,
+    // then Membership — a section dialog reads as "create a section", not as
+    // a settings page.
+    await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Add Section" }).first().click();
+    const dialogBody = page
+      .getByTestId("section-membership")
+      .locator("xpath=ancestor::div[contains(@class,'space-y-4')]");
+    const placeholders = await dialogBody
+      .locator("input")
+      .evaluateAll((inputs) =>
+        inputs.map((input) => input.getAttribute("placeholder") ?? ""),
+      );
+    // The name field is the first input in the dialog; the membership picker
+    // sits below both text fields.
+    expect(placeholders[0]).toContain("name");
+
+    // Create the section through the UI's own picker, by group.
+    await page.getByTestId("section-membership-group").click();
+    await page.getByTestId("section-membership-group-picker").click();
+    await page.getByRole("option", { name: groupName }).click();
+    await page.getByTestId("section-create-submit").click();
+    await expect(page.getByTestId("section-create-submit")).toHaveCount(0);
+
+    // Nothing matches yet: the group exists but has no members.
+    expect(
+      await publicSectionResources(page, pageSlug, "by-group"),
+    ).toHaveLength(0);
+
+    // A brand-new check placed in the group — created AFTER the page, the
+    // exact silent-omission window this feature exists to close.
+    const checkName = `E2E Group Member ${suffix}`;
+    await api(page, token, "/api/v1/orgs/test/checks", {
+      type: "http",
+      name: checkName,
+      slug: `e2e-grp-check-${suffix}`.slice(0, 40),
+      config: { url: "https://httpbin.org/anything/group-selector" },
+      period: "00:05:00",
+      checkGroupUid: groupUid,
+    });
+
+    const adopted = await publicSectionResources(page, pageSlug, "by-group");
+    expect(adopted).toHaveLength(1);
+    expect(adopted[0].check?.name).toBe(checkName);
+
+    // The dashboard marks the row as automatic.
+    await page.goto(`orgs/test/status-pages/${statusPage.uid}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("resource-row-auto-badge")).toHaveCount(1);
+
+    // Deleting the group empties the section — a deleted group matches
+    // nothing — and the admin payload reports selectorGroupMissing while the
+    // public payload stays silent about it.
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/test/check-groups/${groupUid}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    expect(
+      await publicSectionResources(page, pageSlug, "by-group"),
+    ).toHaveLength(0);
+
+    const sectionsResp = await page.request.get(
+      `${API_BASE}/api/v1/orgs/test/status-pages/${statusPage.uid}?with=sections`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    const sectionsBody = await sectionsResp.json();
+    const section = (sectionsBody.sections ?? []).find(
+      (candidate: { slug?: string }) => candidate.slug === "by-group",
+    );
+    expect(section?.selectorGroupMissing).toBe(true);
+  });
+
   test("enabling a rule on a public page warns about future checks", async ({
     authenticatedPage,
   }) => {
