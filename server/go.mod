@@ -76,7 +76,7 @@ require (
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
-	github.com/urfave/cli/v3 v3.12.0
+	github.com/urfave/cli/v3 v3.13.0
 	github.com/vanng822/go-premailer v1.36.0
 	github.com/wneessen/go-mail v0.8.1
 	github.com/xdg-go/scram v1.2.0
