@@ -22,6 +22,14 @@ const (
 	defaultInterval   = 1 * time.Second
 	defaultPacketSize = 56
 
+	// Burst limits (spec 2026-09-21-01). The interval floor is 50ms because
+	// interval only ever adds delay — lowering it shortens the burst — and the
+	// count ceiling of 600 at 50ms spans a 30-second window.
+	minCount    = 1
+	maxCount    = 600
+	minInterval = 50 * time.Millisecond
+	maxInterval = 60 * time.Second
+
 	// Network constants.
 	percentageMultiplier = 100    // Multiplier for percentage calculations
 	microsecondsToMillis = 1000.0 // Conversion factor from microseconds to milliseconds
@@ -61,14 +69,14 @@ func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigError("host", "is required")
 	}
 
-	// Validate Count (1-10) - check the original value if set
-	if cfg.Count != 0 && (cfg.Count < 1 || cfg.Count > 10) {
-		return checkerdef.NewConfigErrorf("count", "must be between 1 and 10, got %d", cfg.Count)
+	// Validate Count (1-600) - check the original value if set
+	if cfg.Count != 0 && (cfg.Count < minCount || cfg.Count > maxCount) {
+		return checkerdef.NewConfigErrorf("count", "must be between %d and %d, got %d", minCount, maxCount, cfg.Count)
 	}
 
-	// Validate Interval (100ms - 60s) - check the original value if set
-	if cfg.Interval != 0 && (cfg.Interval < 100*time.Millisecond || cfg.Interval > 60*time.Second) {
-		return checkerdef.NewConfigErrorf("interval", "must be between 100ms and 60s, got %s", cfg.Interval.String())
+	// Validate Interval (50ms - 60s) - check the original value if set
+	if cfg.Interval != 0 && (cfg.Interval < minInterval || cfg.Interval > maxInterval) {
+		return checkerdef.NewConfigErrorf("interval", "must be between %s and %s, got %s", minInterval.String(), maxInterval.String(), cfg.Interval.String())
 	}
 
 	// Validate PacketSize (0 - 65507)
