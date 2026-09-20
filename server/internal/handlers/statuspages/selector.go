@@ -2,7 +2,8 @@ package statuspages
 
 // Section selectors (spec 2026-08-29-11) — dynamic status page membership.
 //
-// A section may carry a SectionSelector ({"all":true} or {"labels":{k:v,...}}).
+// A section may carry a SectionSelector ({"all":true}, {"labels":{k:v,...}}
+// or {"checkGroupUid":"..."}).
 // The system then keeps that section's check resources in sync, so a check
 // created after the page was built still shows up. The failure this exists to
 // remove is silent: a new service ships, its check goes down, and the page
