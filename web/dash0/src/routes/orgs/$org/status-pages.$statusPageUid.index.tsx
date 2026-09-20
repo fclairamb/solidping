@@ -263,7 +263,11 @@ function AddSectionDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-		  <div className="space-y-2">
+          {/* Name and slug come FIRST: a section dialog should read as "create
+              a section", not as a settings page. Discoverability of the
+              dynamic modes is carried by the always-visible legend inside the
+              picker below, not by burying the identity fields. */}
+          <div className="space-y-2">
             <Label>{t("statusPages:sections.name")}</Label>
             <Input
               value={name}
@@ -273,7 +277,7 @@ function AddSectionDialog({
               }}
               placeholder={t("statusPages:sections.namePlaceholder")}
             />
-		  </div>
+          </div>
           <div className="space-y-2">
             <Label>{t("statusPages:sections.slug")}</Label>
             <Input
@@ -285,9 +289,12 @@ function AddSectionDialog({
               placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
-		  {/* The always-visible membership legend makes dynamic modes discoverable
-		      without making a new section begin with settings. */}
-		  <SectionMembership org={org} value={membership} onChange={setMembership} visibility={visibility} />
+          <SectionMembership
+            org={org}
+            value={membership}
+            onChange={setMembership}
+            visibility={visibility}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -367,14 +374,14 @@ function EditSectionDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-		  <div className="space-y-2">
+          <div className="space-y-2">
             <Label>{t("statusPages:sections.name")}</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t("statusPages:sections.namePlaceholder")}
             />
-		  </div>
+          </div>
           <div className="space-y-2">
             <Label>{t("statusPages:sections.slug")}</Label>
             <Input
@@ -383,9 +390,17 @@ function EditSectionDialog({
               placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
-		  {/* Keep the section identity first; the legend in this picker carries
-		      dynamic-membership discoverability for every mode. */}
-		  <SectionMembership org={org} value={membership} onChange={setMembership} visibility={visibility} />
+          {/* Keep the section identity first; the legend in this picker carries
+              dynamic-membership discoverability for every mode. The missing-
+              group warning mirrors the section card's, so the editor explains
+              an empty section the same way the page does. */}
+          <SectionMembership
+            org={org}
+            value={membership}
+            onChange={setMembership}
+            visibility={visibility}
+            groupMissing={section.selectorGroupMissing}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -1160,6 +1175,14 @@ function SectionCard({
         onOpenChange={setEditOpen}
       />
       <CardContent className="space-y-3">
+        {section.selectorGroupMissing && (
+          <Alert variant="warning" data-testid="section-selector-group-missing">
+            <AlertTriangle />
+            <AlertDescription>
+              {t("statusPages:sections.membership.groupMissing")}
+            </AlertDescription>
+          </Alert>
+        )}
         {section.selectorTruncated && (
           <Alert variant="warning" data-testid="section-selector-truncated">
             <AlertTriangle />

@@ -2623,9 +2623,9 @@ export interface StatusPage {
  * what every existing section keeps — a selector is never applied implicitly.
  */
 export interface StatusPageSectionSelector {
-	all?: boolean;
-	labels?: Record<string, string>;
-	checkGroupUid?: string;
+  all?: boolean;
+  labels?: Record<string, string>;
+  checkGroupUid?: string;
 }
 
 export interface StatusPageSection {
@@ -2644,9 +2644,9 @@ export interface StatusPageSection {
    * True when the match count exceeds the per-section cap and the section is
    * showing a stable alphabetical prefix. Authenticated only.
    */
-	selectorTruncated?: boolean;
-	/** The dynamic group selector points to a deleted group. Authenticated only. */
-	selectorGroupMissing?: boolean;
+  selectorTruncated?: boolean;
+  /** The dynamic group selector points to a deleted group. Authenticated only. */
+  selectorGroupMissing?: boolean;
   /**
    * How many of the selector's matched checks are already displayed by
    * resource rows OUTSIDE this section — an earlier selector section or a

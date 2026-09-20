@@ -117,16 +117,22 @@
       "manual": "Manuell",
       "all": "Alle Prüfungen",
       "labels": "Nach Label",
+      "group": "Nach Gruppe",
       "hint": {
         "manual": "Sie fügen jede Komponente dieses Abschnitts von Hand hinzu.",
         "all": "Jede Prüfung dieser Organisation wird automatisch aufgeführt, auch später angelegte.",
-        "labels": "Jede Prüfung mit all diesen Labels wird automatisch aufgeführt, auch später angelegte."
+        "labels": "Jede Prüfung mit all diesen Labels wird automatisch aufgeführt, auch später angelegte.",
+        "group": "Jede Prüfung dieser Gruppe wird einzeln aufgeführt, auch später hinzugefügte."
       },
       "labelsField": "Erforderliche Labels",
       "labelsHint": "Eine Prüfung muss alle diese Labels tragen, um zu erscheinen. Werte werden exakt verglichen.",
+      "groupField": "Gruppe",
+      "groupPlaceholder": "Gruppe auswählen",
+      "groupHint": "Jede Prüfung dieser Gruppe wird einzeln aufgeführt, auch später hinzugefügte. Um die Gruppe als einzelne Komponente anzuzeigen, fügen Sie sie stattdessen über die Komponentenliste hinzu.",
       "publicWarningTitle": "Dieser Abschnitt liegt auf einer öffentlichen Seite",
       "publicWarningAll": "Jede aktuelle und künftige Prüfung dieser Organisation erscheint auf dieser öffentlichen Seite, auch später angelegte. Verwenden Sie besser ein Label wie public=true, damit sich jede Prüfung ausdrücklich anmeldet.",
       "publicWarningLabels": "Jede aktuelle und künftige Prüfung mit diesen Labels erscheint auf dieser öffentlichen Seite, auch später angelegte.",
+      "publicWarningGroup": "Jede aktuelle und künftige Prüfung dieser Gruppe erscheint auf dieser öffentlichen Seite, auch später hinzugefügte.",
       "autoBadge": "auto",
       "autoTooltip": "Automatisch durch die Zusammensetzungsregel dieses Abschnitts hinzugefügt. Ändern Sie die Regel, um dies zu ändern.",
       "truncated": "{{shown}} von {{total}} passenden Prüfungen werden angezeigt. Grenzen Sie die Regel mit Labels ein, um den Rest zu sehen.",
@@ -136,7 +142,9 @@
         "partial_one": "{{count}} weitere passende Prüfung wird bereits an anderer Stelle auf dieser Seite angezeigt.",
         "partial_other": "{{count}} weitere passende Prüfungen werden bereits an anderer Stelle auf dieser Seite angezeigt."
       },
-      "labelsRequired": "Fügen Sie mindestens ein Label hinzu"
+      "labelsRequired": "Fügen Sie mindestens ein Label hinzu",
+      "groupMissingTitle": "Diese Gruppe existiert nicht mehr",
+      "groupMissing": "Diese Gruppe wurde gelöscht; der Abschnitt zeigt nichts, bis Sie eine andere Regel wählen."
     }
   },
   "resources": {

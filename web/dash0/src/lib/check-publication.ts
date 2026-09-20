@@ -50,7 +50,9 @@ export function selectorMatchesCheck(
 ): boolean {
   if (!selector) return false;
   if (selector.all) return true;
-	if (selector.checkGroupUid) return selector.checkGroupUid === check.checkGroupUid;
+  if (selector.checkGroupUid) {
+    return selector.checkGroupUid === check.checkGroupUid;
+  }
   const wanted = selector.labels;
   if (!wanted || Object.keys(wanted).length === 0) return false;
   const have = check.labels ?? {};

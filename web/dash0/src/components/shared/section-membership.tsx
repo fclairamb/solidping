@@ -21,7 +21,7 @@ import type { StatusPageSectionSelector } from "@/api/hooks";
  * - `labels` — every check carrying ALL of the given key=value labels.
  * - `group` — every check in a selected check group.
  *
- * The two dynamic modes MATERIALIZE real components, so a check created later
+ * The dynamic modes MATERIALIZE real components, so a check created later
  * appears on the page with no manual action. That is the point: a board that
  * silently omits a new service — and therefore stays green while it is down —
  * is worse than no board.
@@ -30,8 +30,8 @@ export type MembershipMode = "manual" | "all" | "labels" | "group";
 
 export type SectionMembershipValue = {
   mode: MembershipMode;
-	labels: Record<string, string>;
-	checkGroupUid?: string;
+  labels: Record<string, string>;
+  checkGroupUid?: string;
 };
 
 /**
@@ -44,10 +44,12 @@ export function membershipFromSelector(
   selector: StatusPageSectionSelector | null | undefined,
 ): SectionMembershipValue {
   if (selector?.all) return { mode: "all", labels: {} };
-	if (selector?.labels && Object.keys(selector.labels).length > 0) {
-		return { mode: "labels", labels: selector.labels };
-	}
-	if (selector?.checkGroupUid) return { mode: "group", labels: {}, checkGroupUid: selector.checkGroupUid };
+  if (selector?.labels && Object.keys(selector.labels).length > 0) {
+    return { mode: "labels", labels: selector.labels };
+  }
+  if (selector?.checkGroupUid) {
+    return { mode: "group", labels: {}, checkGroupUid: selector.checkGroupUid };
+  }
   return { mode: "manual", labels: {} };
 }
 
@@ -62,17 +64,20 @@ export function selectorFromMembership(
   value: SectionMembershipValue,
 ): StatusPageSectionSelector | null {
   if (value.mode === "all") return { all: true };
-	if (value.mode === "labels" && Object.keys(value.labels).length > 0) {
-		return { labels: value.labels };
-	}
-	if (value.mode === "group" && value.checkGroupUid) return { checkGroupUid: value.checkGroupUid };
+  if (value.mode === "labels" && Object.keys(value.labels).length > 0) {
+    return { labels: value.labels };
+  }
+  if (value.mode === "group" && value.checkGroupUid) {
+    return { checkGroupUid: value.checkGroupUid };
+  }
   return null;
 }
 
 /** Whether the current editor state is a submittable membership rule. */
 export function membershipIsComplete(value: SectionMembershipValue): boolean {
-	if (value.mode === "labels") return Object.keys(value.labels).length > 0;
-	return value.mode !== "group" || Boolean(value.checkGroupUid);
+  if (value.mode === "labels") return Object.keys(value.labels).length > 0;
+  if (value.mode === "group") return Boolean(value.checkGroupUid);
+  return true;
 }
 
 /**
@@ -92,12 +97,15 @@ export function SectionMembership({
   onChange,
   visibility,
   disabled,
+  groupMissing,
 }: {
   org: string;
   value: SectionMembershipValue;
   onChange: (next: SectionMembershipValue) => void;
   visibility?: string;
   disabled?: boolean;
+  /** The stored rule points to a deleted group (backend `selectorGroupMissing`). */
+  groupMissing?: boolean;
 }) {
   const { t } = useTranslation("statusPages");
 
@@ -117,11 +125,11 @@ export function SectionMembership({
       label: t("sections.membership.labels"),
       testId: "section-membership-labels",
     },
-	{
-		value: "group",
-		label: t("sections.membership.group"),
-		testId: "section-membership-group",
-	},
+    {
+      value: "group",
+      label: t("sections.membership.group"),
+      testId: "section-membership-group",
+    },
   ];
 
   const isPublic = visibility === "public";
@@ -136,15 +144,15 @@ export function SectionMembership({
           onValueChange={(mode) => onChange({ ...value, mode })}
           options={options}
           aria-label={t("sections.membership.title")}
-		  className="w-full flex-wrap"
+          className="w-full flex-wrap"
         />
         {/*
           Every mode gets its line, not just the selected one. A user who never
-          reads past the default cannot discover that the other two exist, and
+          reads past the default cannot discover that the others exist, and
           that is exactly how a shipped feature (dynamic sections) stayed
           invisible: the control was there, the consequence of each option was
-          not. The active line is emphasized; the other two stay muted so the
-          block reads as a legend rather than three competing hints.
+          not. The active line is emphasized; the others stay muted so the
+          block reads as a legend rather than competing hints.
         */}
         <div className="space-y-1" data-testid="section-membership-hints">
           {options.map((option) => (
@@ -181,20 +189,32 @@ export function SectionMembership({
         </div>
       )}
 
-	  {value.mode === "group" && (
-		<div className="space-y-2">
-		  <Label>{t("sections.membership.groupField")}</Label>
-		  <CheckGroupPicker
-			org={org}
-			value={value.checkGroupUid}
-			onChange={(checkGroupUid) => onChange({ ...value, checkGroupUid })}
-			placeholder={t("resources.selectGroup")}
-			triggerTestId="section-membership-group-picker"
-			disabled={disabled}
-		  />
-		  <p className="text-xs text-muted-foreground">{t("sections.membership.groupHint")}</p>
-		</div>
-	  )}
+      {value.mode === "group" && (
+        <div className="space-y-2">
+          <Label>{t("sections.membership.groupField")}</Label>
+          <CheckGroupPicker
+            org={org}
+            value={value.checkGroupUid}
+            onChange={(checkGroupUid) => onChange({ ...value, checkGroupUid })}
+            placeholder={t("sections.membership.groupPlaceholder")}
+            triggerTestId="section-membership-group-picker"
+            disabled={disabled}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("sections.membership.groupHint")}
+          </p>
+        </div>
+      )}
+
+      {value.mode === "group" && groupMissing && (
+        <Alert variant="warning" data-testid="section-membership-group-missing">
+          <AlertTriangle />
+          <AlertTitle>{t("sections.membership.groupMissingTitle")}</AlertTitle>
+          <AlertDescription>
+            {t("sections.membership.groupMissing")}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {showWarning && (
         <Alert
@@ -206,9 +226,9 @@ export function SectionMembership({
           <AlertDescription>
             {value.mode === "all"
               ? t("sections.membership.publicWarningAll")
-			  : value.mode === "group"
-				? t("sections.membership.publicWarningGroup")
-				: t("sections.membership.publicWarningLabels")}
+              : value.mode === "group"
+                ? t("sections.membership.publicWarningGroup")
+                : t("sections.membership.publicWarningLabels")}
           </AlertDescription>
         </Alert>
       )}
