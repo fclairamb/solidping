@@ -195,7 +195,16 @@
     "slackLoading": "Cargando…",
     "slackError": "No se pudo conectar con el espacio de trabajo de Slack: reinstala el bot.",
     "twilioRegion": "Región (opcional)",
-    "twilioRegionHint": "Déjalo vacío para US1 (predeterminado). Las credenciales están asociadas a una región: el SID y el token de una cuenta ie1 solo funcionan contra ie1 y no se verificarán aquí si provienen de otra región."
+    "twilioRegionHint": "Déjalo vacío para US1 (predeterminado). Las credenciales están asociadas a una región: el SID y el token de una cuenta ie1 solo funcionan contra ie1 y no se verificarán aquí si provienen de otra región.",
+    "discordTabChannel": "Canal",
+    "discordTabDirectMessage": "Mensaje directo",
+    "discordDmPlaceholder": "Selecciona un miembro…",
+    "discordDmOpening": "Abriendo el mensaje directo…",
+    "discordDmFailed": "No se pudo abrir un mensaje directo con ese miembro",
+    "discordDmEmpty": "Ningún miembro de esta organización ha vinculado aún una cuenta de Discord. Cada miembro conecta la suya en Cuenta → Notificaciones.",
+    "discordMappingNobodyLinked": "Aquí nadie ha vinculado todavía una cuenta de Discord, por lo que las alertas de canal nombran a las personas sin notificarlas. Cada miembro conecta su propia cuenta en Cuenta → Notificaciones; vuelve a sincronizar después para recogerlas.",
+    "discordDmSearchPlaceholder": "Buscar miembros…",
+    "discordDmNoneFound": "No se encontraron miembros"
   },
   "kubernetes": {
     "name": "Kubernetes",

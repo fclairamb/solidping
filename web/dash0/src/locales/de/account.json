@@ -271,6 +271,19 @@
       "noMethods": "Keine Benachrichtigungsmethode konfiguriert. Fügen Sie unten eine hinzu.",
       "addMethodButton": "+ Methode hinzufügen",
       "loading": "Benachrichtigungseinstellungen werden geladen…"
+    },
+    "discord": {
+      "title": "Discord-Direktnachrichten",
+      "connected": "Verbunden",
+      "available": "Dein Discord-Konto ist verknüpft — verbinde es, um Alarme als Direktnachricht zu erhalten.",
+      "unavailable": "Verknüpfe dein Discord-Konto, um Alarme als Direktnachricht zu erhalten.",
+      "mentionedAs": "In Kanal-Alarmen erwähnt als {{handle}}",
+      "mentionNotLinked": "Nichts verbindet dich mit diesem Server — Kanal-Alarme nennen dich, ohne dich zu benachrichtigen. Verbinde Discord unten, oder bitte einen Administrator, dich zuzuordnen.",
+      "connectButton": "Discord verbinden",
+      "linkButton": "Discord verknüpfen",
+      "added": "Discord-Direktnachrichten hinzugefügt",
+      "addFailed": "Discord-Kontakt konnte nicht hinzugefügt werden",
+      "linkFailed": "Discord-Verknüpfung konnte nicht gestartet werden"
     }
   },
   "device": {

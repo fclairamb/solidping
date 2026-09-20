@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
@@ -268,19 +269,16 @@ func acknowledgeFromInteraction(
 		return ephemeralResponse("Invalid incident reference."), nil
 	}
 
-	conn, err := svc.GetConnectionByGuildID(ctx, interaction.GuildID)
-	if err != nil || conn == nil {
-		slog.WarnContext(ctx, "Discord ack from an unconnected guild",
-			"guild_id", interaction.GuildID, "error", err)
-
-		return ephemeralResponse(notConnectedMessage), nil
-	}
-
 	userID := interaction.InvokerID()
 	userName := interaction.InvokerName()
 
+	orgUID, ok := ackOrgUID(ctx, svc, interaction, incidentUID, userID)
+	if !ok {
+		return ephemeralResponse(notConnectedMessage), nil
+	}
+
 	incident, err := svc.incidentsService.AcknowledgeIncidentFromDiscord(
-		ctx, conn.OrganizationUID, incidentUID, userID, userName, interaction.GuildID,
+		ctx, orgUID, incidentUID, userID, userName, interaction.GuildID,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to acknowledge incident from Discord",
@@ -319,6 +317,71 @@ func acknowledgedEmbeds(_ *Interaction) []Embed {
 	// line above stands on its own. Kept as a named seam so a future change
 	// that does want to preserve the card has one place to do it.
 	return nil
+}
+
+// ackOrgUID resolves the organization an Acknowledge press belongs to.
+//
+// Two shapes, because a button lives in two places now:
+//
+//   - pressed in a guild channel — the guild names the org, exactly as before;
+//   - pressed inside a DM — there IS no guild. A DM interaction carries no
+//     guild_id at all, so the guild lookup returns nothing and the press used to
+//     answer "this server is not connected", which is both wrong and baffling
+//     inside a 1:1 conversation.
+//
+// For the DM case the org is derived from the PRESSER: the orgs in which their
+// Discord account is a verified `discord` contact, narrowed to the one that
+// actually owns this incident.
+//
+// That ordering is the authorization, not a convenience. Going the other way —
+// resolve the incident first, then check the presser — would mean an incident
+// UID is enough to acknowledge somebody else's incident from a DM, and an
+// incident UID travels in every alert, every dashboard URL and every webhook.
+// Here, an org the presser is not bound to is never even looked at.
+func ackOrgUID(
+	ctx context.Context, svc *Service, interaction *Interaction, incidentUID, userID string,
+) (string, bool) {
+	if interaction.GuildID != "" {
+		conn, err := svc.GetConnectionByGuildID(ctx, interaction.GuildID)
+		if err != nil || conn == nil {
+			slog.WarnContext(ctx, "Discord ack from an unconnected guild",
+				"guild_id", interaction.GuildID, "error", err)
+
+			return "", false
+		}
+
+		return conn.OrganizationUID, true
+	}
+
+	if userID == "" {
+		return "", false
+	}
+
+	contacts, err := svc.db.ListUserContactsByTypeValue(
+		ctx, models.UserContactTypeDiscord, userID)
+	if err != nil {
+		slog.WarnContext(ctx, "Could not resolve the org for a Discord DM acknowledgment",
+			"discord_user_id", userID, "error", err)
+
+		return "", false
+	}
+
+	for _, contact := range contacts {
+		// An unverified contact is a revoked binding: it proves nothing about
+		// who this Discord account belongs to any more.
+		if contact.VerifiedAt == nil {
+			continue
+		}
+
+		if _, incErr := svc.db.GetIncident(ctx, contact.OrganizationUID, incidentUID); incErr == nil {
+			return contact.OrganizationUID, true
+		}
+	}
+
+	slog.WarnContext(ctx, "Discord DM acknowledgment for an incident the presser cannot reach",
+		"discord_user_id", userID, "incident_uid", incidentUID)
+
+	return "", false
 }
 
 // postAcknowledgmentNotice posts "<@user> acknowledged the incident" into the

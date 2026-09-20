@@ -170,6 +170,18 @@ type UserUpdate struct {
 	LastActiveAt *time.Time
 }
 
+// UserSearchFilter narrows SearchUsers to a page of the global user
+// directory. Query, when non-empty, matches a case-insensitive substring on
+// either email or name; a literal `%` or `_` in Query is matched literally,
+// never as a wildcard. Limit/Offset page the (already-filtered) result set;
+// a zero Limit means "no limit" at the DB layer — callers (the HTTP handler)
+// are expected to clamp it before calling in.
+type UserSearchFilter struct {
+	Query  string
+	Limit  int
+	Offset int
+}
+
 // ProviderType represents an external auth provider type.
 type ProviderType string
 

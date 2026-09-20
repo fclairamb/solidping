@@ -114,6 +114,7 @@ const DIRECT_CHANNEL_ICONS: Record<string, typeof Webhook> = {
   whatsapp: MessageCircle,
   telegram: Send,
   slack_user: MessageSquare,
+  discord: MessagesSquare,
   webpush: MonitorSmartphone,
 };
 
@@ -151,6 +152,8 @@ export function directChannelLabel(contactType: string): string {
       return "Telegram";
     case "slack_user":
       return "Slack DM";
+    case "discord":
+      return "Discord DM";
     case "webpush":
       return "Browser push";
     default:

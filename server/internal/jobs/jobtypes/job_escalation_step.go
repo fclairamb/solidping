@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
+	"github.com/fclairamb/solidping/server/internal/integrations/discord"
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	smssvc "github.com/fclairamb/solidping/server/internal/integrations/sms"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -94,6 +95,10 @@ type EscalationStepJobRun struct {
 	// "kind:number" — so a user matched via both a user target and all_admins
 	// is texted/called at most once per channel per step.
 	sentPhones map[string]bool
+	// discordClientFactory overrides how the Discord bot client is built. Nil in
+	// production. A per-run field rather than a package-level seam so the tests
+	// that point it at an httptest server stay parallel-safe.
+	discordClientFactory func(token string) *discord.BotClient
 }
 
 // Run loads the incident, exits if it has been acked/snoozed/resolved
@@ -337,6 +342,7 @@ const (
 	channelTokenCriticalPush = "critical_push"
 	channelTokenWhatsApp     = "whatsapp"
 	channelTokenTelegram     = "telegram"
+	channelTokenDiscord      = "discord"
 )
 
 // severityAllowsPersonTargets reports whether a severity permits paging
@@ -351,7 +357,7 @@ func severityAllowsPersonTargets(filter map[string]bool) bool {
 	for _, tok := range []string{
 		channelTokenEmail, channelTokenSMS, channelTokenVoice,
 		channelTokenPush, channelTokenCriticalPush, channelTokenWhatsApp,
-		channelTokenTelegram,
+		channelTokenTelegram, channelTokenDiscord,
 	} {
 		if filter[tok] {
 			return true
@@ -409,6 +415,17 @@ func severityAllowsWhatsApp(filter map[string]bool) bool {
 // 2026-08-10-04, "Escalation dispatch": *explicit token or nil filter*.)
 func severityAllowsTelegram(filter map[string]bool) bool {
 	return filter == nil || filter[channelTokenTelegram]
+}
+
+// severityAllowsDiscord reports whether a Discord DM delivery is permitted.
+//
+// Same rule as Telegram, and for the same reason: a Discord DM is free and lands
+// where the member already reads alerts, so it follows the email/SMS
+// "on unless excluded" rule rather than the voice/WhatsApp "off unless named"
+// one. Those two are opt-in only because each delivery costs money and
+// interrupts hard.
+func severityAllowsDiscord(filter map[string]bool) bool {
+	return filter == nil || filter[channelTokenDiscord]
 }
 
 // enqueueNotificationFor queues a notification job for the
@@ -554,6 +571,8 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		return r.pageWhatsApp(ctx, jctx, log, incident, route, filter)
 	case models.UserContactTypeTelegram:
 		return r.pageTelegram(ctx, jctx, log, incident, route, filter)
+	case models.UserContactTypeDiscord:
+		return r.pageDiscord(ctx, jctx, log, incident, route, filter)
 	default:
 		log.WarnContext(ctx, "unknown contact type; skipping route",
 			"type", route.Contact.Type,
@@ -634,9 +653,9 @@ func (r *EscalationStepJobRun) sendEscalationSlackDM(
 // syntax; otherwise it degrades to plain text with no link, as the phone/SMS
 // path already does.
 func escalationSlackDMMessage(incident *models.Incident, checkName, orgSlug, baseURL string) string {
-	ref := "Incident"
+	ref := incidentRefWord
 	if incident.Number > 0 {
-		ref = fmt.Sprintf("Incident #%d", incident.Number)
+		ref = fmt.Sprintf("%s #%d", incidentRefWord, incident.Number)
 	}
 
 	dashboard := "Open the dashboard"
@@ -1460,6 +1479,11 @@ func (r *EscalationStepJobRun) buildEscalationEmailViewModel(
 // escalationUnknownCheckName is the fallback check name when the check has
 // been deleted since the incident opened (or has neither Name nor Slug).
 const escalationUnknownCheckName = "Unknown check"
+
+// incidentRefWord is the bare word used when an incident has no number yet.
+// Shared by the Slack DM and Discord DM renderers so goconst stays quiet and the
+// two channels cannot drift on the wording.
+const incidentRefWord = "Incident"
 
 // viewModelKeyCheckName is the escalation.html view-model key for the check
 // name — pulled into a constant alongside escalationUnknownCheckName so

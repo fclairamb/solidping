@@ -195,3 +195,55 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req *http.Request)
 
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
+
+// OpenDMDestination opens the DM channel for one org member so the picker can
+// store it as the integration's destination.
+//
+// Route: POST /api/v1/orgs/:org/channels/:uid/discord/dm.
+func (h *Handler) OpenDMDestination(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+	channelUID := httpx.Param(req, "uid")
+
+	var body struct {
+		UserID string `json:"userId"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Invalid JSON")
+	}
+
+	if body.UserID == "" {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"userId is required")
+	}
+
+	resp, err := h.svc.OpenDMDestination(req.Context(), orgSlug, channelUID, body.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrConnectionNotFound), errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound,
+				"Channel not found")
+		case errors.Is(err, ErrNotDiscordChannel):
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+				"Channel is not of type discord")
+		case errors.Is(err, ErrDiscordUserNotResolved):
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+				err.Error())
+		case errors.Is(err, ErrBotNotConfigured):
+			return h.WriteError(writer, http.StatusConflict, base.ErrorCodeChannelNotConnected,
+				"Discord server is not connected — install the SolidPing bot")
+		case IsCannotDMUser(err):
+			// Not a fault, and the admin can act on it: say so instead of
+			// reporting a generic upstream failure.
+			return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError,
+				"Discord refused the DM — that member must open their DMs for "+
+					"server members, or join the server the bot is in")
+		default:
+			return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError,
+				"Could not connect to the Discord server")
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}

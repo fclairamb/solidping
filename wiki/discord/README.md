@@ -72,6 +72,40 @@ late follow-up. Without this permission a long incident resolves silently.
 Scopes: `bot applications.commands identify`. `identify` only names the human
 who performed the install (`installed_by_user_id`).
 
+**Direct messages need NOTHING from this table, and no gateway intent either.**
+That is worth stating because the next reader will assume otherwise: a bot may
+always call `POST /users/@me/channels` to open a 1:1 DM, with no permission grant
+and no privileged intent, because a DM is not in a guild and guild permissions do
+not reach it. What governs a DM is the RECIPIENT's own privacy setting, and the
+only way to learn the answer is to try — a refusal comes back as error code
+**50007** ("Cannot send messages to this user": DMs from server members off, the
+bot blocked, or no shared server).
+
+SolidPing treats 50007 as "this route cannot be used", not as a failure: escalation
+paging falls through to the member's next route, and the account page's Test button
+reports the recipient-side remedy verbatim. Nothing an operator can grant here
+changes it.
+
+So: if per-user Discord DMs are not arriving, do not go looking for a missing
+permission or intent — check whether that person has DMs from server members
+enabled, and whether they are in a server the bot is in.
+
+One consequence worth knowing when reading the interactions code: a DM
+interaction carries **no `guild_id`**, so the guild→org lookup every other
+inbound path uses returns nothing. An Acknowledge pressed inside a DM resolves
+its organization from the PRESSER instead — the orgs where their Discord account
+is a verified `discord` contact, narrowed to the one owning that incident
+(`ackOrgUID` in `interactions.go`). The direction is the authorization: an
+incident UID travels in every alert and every dashboard URL, so resolving the
+incident first and then trusting the presser would make a UID sufficient to
+silence somebody else's page.
+
+The OAuth **link** round trip a member uses to bind their own Discord account
+(Account → Notifications) asks for `identify email` only — no `guilds`, which is
+what makes it structurally incapable of resolving or creating an organization.
+Those are scopes the login provider already requests, so
+`wiki/runbooks/discord-bot-setup.md` needs no change for it.
+
 ## 4. The `MESSAGE_CONTENT` intent
 
 **Request it early.** Discord grants `MESSAGE_CONTENT` freely while an

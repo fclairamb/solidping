@@ -114,3 +114,56 @@ Activation funnel counters across the server. Auth: super-admin
 ### GET /api/v1/system/scheduling/lane-load
 Current load per scheduling lane — used to diagnose an overloaded or unbalanced
 scheduler. Auth: super-admin
+
+## Users
+
+### GET /api/v1/system/users
+Search and page the global user directory. Auth: super-admin
+
+The instance-level counterpart of a per-org member list: every user account,
+regardless of which organization (if any) it belongs to, with its memberships
+attached. Read-only — no write action lives here (promoting to super admin,
+forcing a password reset, deleting or impersonating a user are all
+out of scope for this endpoint).
+
+Query parameters:
+
+- `q` — case-insensitive substring match on email OR name. A literal `%` or
+  `_` in the query is matched literally, never as a SQL wildcard.
+- `limit` — page size, 1–200, default 50. Values above 200 are clamped, not
+  rejected.
+- `offset` — result offset.
+
+Response:
+
+```json
+{
+  "data": [
+    {
+      "uid": "…",
+      "email": "alice@acme.com",
+      "name": "alice",
+      "avatarUrl": "",
+      "superAdmin": false,
+      "demo": false,
+      "emailVerified": true,
+      "totpEnabled": false,
+      "mustChangePassword": false,
+      "hasPassword": true,
+      "lastActiveAt": "2026-09-18T10:12:00Z",
+      "createdAt": "2026-08-01T09:00:00Z",
+      "orgs": [
+        { "uid": "…", "slug": "acmetech", "name": "Acme", "role": "admin", "joinedAt": "…" }
+      ]
+    }
+  ],
+  "total": 1
+}
+```
+
+Each row is an explicit allow-list projection of the user record — it never
+carries `passwordHash`, `totpSecret` or `totpRecoveryCodes`. `hasPassword` is
+`passwordHash != nil`, i.e. whether the account can authenticate locally at
+all versus being SSO/OAuth-only. `orgs` excludes a soft-deleted user (the row
+itself is absent), a soft-deleted membership, and a membership whose
+organization is soft-deleted; a user with no org has `orgs: []`.

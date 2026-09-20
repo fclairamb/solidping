@@ -210,6 +210,10 @@ func (m *mockDBService) ListUsers(_ context.Context) ([]*models.User, error) {
 	panic("not implemented")
 }
 
+func (m *mockDBService) SearchUsers(_ context.Context, _ models.UserSearchFilter) ([]*models.User, int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateUser(_ context.Context, _ string, _ *models.UserUpdate) error {
 	panic("not implemented")
 }
@@ -253,6 +257,10 @@ func (m *mockDBService) ListMembersByOrg(_ context.Context, _ string) ([]*models
 }
 
 func (m *mockDBService) ListMembersByUser(_ context.Context, _ string) ([]*models.OrganizationMember, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListMembersByUsers(_ context.Context, _ []string) ([]*models.OrganizationMember, error) {
 	panic("not implemented")
 }
 
@@ -2385,6 +2393,10 @@ func (m *mockDBService) SetUserContactVerifyState(
 }
 
 func (m *mockDBService) MarkUserContactVerified(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+
+func (m *mockDBService) SetUserContactDMChannel(_ context.Context, _, _ string) error {
 	return nil
 }
 

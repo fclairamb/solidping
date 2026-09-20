@@ -55,6 +55,8 @@ import {
   useRotateWebhookSecret,
   useTestIntegration,
   useDiscordDestinations,
+  useOpenDiscordDM,
+  type DiscordDestinationUser,
   useMSTeamsBotDestinations,
   useMSTeamsBotStatus,
   startDiscordInstall,
@@ -1291,6 +1293,48 @@ function DiscordDestinationPanel({
   );
 
   const currentId = (settings.channel_id as string) || "";
+  const dmUserId = (settings.dm_user_id as string) || "";
+
+  // The stored destination decides which tab opens, so an integration already
+  // pointed at a DM does not appear to be a channel one.
+  const [activeTab, setActiveTab] = useState<DiscordTab>(() =>
+    dmUserId ? "dm" : "channel",
+  );
+
+  const openDM = useOpenDiscordDM(org ?? "", channelUid ?? "");
+
+  function switchTab(tab: DiscordTab) {
+    setActiveTab(tab);
+    // Clear the selection: a DM channel id and a guild channel id are not
+    // interchangeable, and leaving one behind under the other tab is how an
+    // alert ends up in the wrong place.
+    onChange({
+      ...settings,
+      channel_id: "",
+      channel_name: "",
+      dm_user_id: "",
+    });
+  }
+
+  function selectDM(user: DiscordDestinationUser) {
+    // The DM is opened server-side AT PICK TIME, so an admin finds out now
+    // whether Discord will carry it rather than during the first incident.
+    openDM.mutate(user.id, {
+      onSuccess: (resp) =>
+        onChange({
+          ...settings,
+          channel_id: resp.channelId,
+          channel_name: resp.name,
+          dm_user_id: resp.userId,
+        }),
+      onError: (err) =>
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : t("form.discordDmFailed", "Could not open a DM with that member"),
+        ),
+    });
+  }
 
   const webhookField = (
     <UrlPanel
@@ -1364,20 +1408,59 @@ function DiscordDestinationPanel({
             )}
           </p>
         ) : (
-          <DiscordChannelCombobox
-            channels={data?.channels ?? []}
-            currentId={currentId}
-            onSelect={(ch) =>
-              onChange({
-                ...settings,
-                channel_id: ch.id,
-                channel_name: ch.name,
-              })
-            }
-          />
+          <>
+            {/* Tab strip, the shape of SlackDestinationPanel's. */}
+            <div className="flex gap-1 rounded-md border bg-background p-0.5 w-fit">
+              {(["channel", "dm"] as DiscordTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => switchTab(tab)}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs font-medium transition-colors",
+                    activeTab === tab
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  data-testid={`discord-tab-${tab}`}
+                >
+                  {tab === "channel"
+                    ? t("form.discordTabChannel", "Channel")
+                    : t("form.discordTabDirectMessage", "Direct message")}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "channel" ? (
+              <DiscordChannelCombobox
+                channels={data?.channels ?? []}
+                currentId={currentId}
+                onSelect={(ch) =>
+                  onChange({
+                    ...settings,
+                    channel_id: ch.id,
+                    channel_name: ch.name,
+                    dm_user_id: "",
+                  })
+                }
+              />
+            ) : (
+              <DiscordUserCombobox
+                users={data?.users ?? []}
+                currentId={dmUserId}
+                loading={openDM.isPending}
+                onSelect={selectDM}
+              />
+            )}
+          </>
         )}
 
-        <DiscordMentionSwitch settings={settings} onChange={onChange} />
+        {/* mention_on_call is meaningless on a DM destination — a DM already has
+            exactly one reader — so the switch is hidden rather than offered and
+            silently ignored. The sender skips it regardless. */}
+        {activeTab === "channel" && (
+          <DiscordMentionSwitch settings={settings} onChange={onChange} />
+        )}
         <DiscordCommentIngestionSwitch settings={settings} onChange={onChange} />
 
         {org && channelUid && currentId && (
@@ -1393,6 +1476,134 @@ function DiscordDestinationPanel({
       {typeof settings.webhook_url === "string" &&
         settings.webhook_url.length > 0 &&
         webhookField}
+    </div>
+  );
+}
+
+/** Which destination kind the Discord panel is editing. */
+type DiscordTab = "channel" | "dm";
+
+/**
+ * Picks the org member whose DMs the alerts go to.
+ *
+ * The list is the members whose Discord identity the SENDER can already resolve —
+ * an admin mapping, a `discord` contact, or a Discord sign-in. Deliberately NOT
+ * the guild member list: that needs the privileged GUILD_MEMBERS intent, and it
+ * would say who is in the server without saying which SolidPing account any of
+ * them is.
+ */
+function DiscordUserCombobox({
+  users,
+  currentId,
+  loading,
+  onSelect,
+}: {
+  users: DiscordDestinationUser[];
+  currentId: string;
+  loading?: boolean;
+  onSelect: (user: DiscordDestinationUser) => void;
+}) {
+  const { t } = useTranslation("integrations");
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const filtered = users.filter((user) =>
+    user.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const selected = users.find((user) => user.id === currentId);
+
+  if (users.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="discord-dm-empty">
+        {t(
+          "form.discordDmEmpty",
+          "No member of this organization has linked a Discord account yet. Each member connects their own under Account \u2192 Notifications.",
+        )}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={loading}
+            className="w-full justify-between font-normal text-sm"
+            data-testid="discord-user-combobox"
+          >
+            <span className={cn(!selected && "text-muted-foreground")}>
+              {selected
+                ? selected.name
+                : t("form.discordDmPlaceholder", "Select a member\u2026")}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="p-0 w-[280px]" align="start">
+          <div className="flex items-center border-b px-3 py-2">
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("form.discordDmSearchPlaceholder", "Search members\u2026")}
+              className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              data-testid="discord-user-search"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                {t("form.discordDmNoneFound", "No members found")}
+              </div>
+            ) : (
+              filtered.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  role="option"
+                  aria-selected={user.id === currentId}
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                    user.id === currentId && "bg-accent",
+                  )}
+                  onClick={() => {
+                    onSelect(user);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                  data-testid={`discord-user-option-${user.id}`}
+                >
+                  <Check
+                    className={cn(
+                      "mt-0.5 h-4 w-4 shrink-0",
+                      user.id === currentId ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <div className="font-medium">{user.name}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {loading && (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("form.discordDmOpening", "Opening the DM\u2026")}
+        </p>
+      )}
     </div>
   );
 }
@@ -2002,6 +2213,20 @@ function SlackMemberMapping({
         <p className="text-xs text-muted-foreground">
           {t("form.slackMappingEmpty", "No organization members yet.")}
         </p>
+      ) : variant === "discord" && matched.length === 0 ? (
+        /* Discord has no look-up-by-email, so an admin CANNOT map anyone from
+           here — the panel is picker-less on purpose. Saying only "0 matched"
+           implies the admin is the one who has to act, when in fact the member
+           is. So the empty state names the affordance that actually exists. */
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="discord-mapping-nobody-linked"
+        >
+          {t(
+            "form.discordMappingNobodyLinked",
+            "Nobody here has linked a Discord account yet, so channel alerts name people without pinging them. Each member connects their own account under Account → Notifications; re-sync afterwards to pick them up.",
+          )}
+        </p>
       ) : (
         <div className="space-y-3" data-testid="slack-member-mapping">
           <p className="text-xs text-muted-foreground">
@@ -2039,12 +2264,13 @@ function SlackMemberMapping({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <IdentityStatusBadge identity={identity} />
-                  <div
-                    className={cn(
-                      "w-full sm:w-[220px]",
-                      variant === "discord" && "hidden",
-                    )}
-                  >
+                  {/* Discord renders NO picker: Discord has no
+                      look-up-by-email endpoint for bots, so there is no list of
+                      workspace members to choose from. Unmounted rather than
+                      CSS-hidden, so "no picker" is a fact about the DOM that a
+                      test can assert, not a styling coincidence. */}
+                  {variant !== "discord" && (
+                  <div className="w-full sm:w-[220px]">
                     <SlackUserCombobox
                       users={workspaceUsers}
                       currentId={identity.externalId ?? ""}
@@ -2073,6 +2299,7 @@ function SlackMemberMapping({
                       }
                     />
                   </div>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"

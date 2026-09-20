@@ -5395,11 +5395,51 @@ export interface DiscordChannel {
   type: number;
 }
 
+/**
+ * An org member who can be picked as a DM destination.
+ *
+ * Never the guild member list: that needs the privileged GUILD_MEMBERS intent
+ * and would not say which SolidPing account a guild member is. These are the org
+ * members whose Discord identity the SENDER can already resolve.
+ */
+export interface DiscordDestinationUser {
+  id: string;
+  name: string;
+  userUid: string;
+}
+
 export interface DiscordDestinationsResponse {
   channels: DiscordChannel[];
+  users: DiscordDestinationUser[];
   guildId: string;
   guildName: string;
   connected: boolean;
+}
+
+/** The DM channel POST /channels/:uid/discord/dm opened. */
+export interface DiscordDMResponse {
+  channelId: string;
+  userId: string;
+  name: string;
+}
+
+/**
+ * Opens (or reuses) the DM channel for one org member, AT PICK TIME.
+ *
+ * Deliberately not deferred to send time: Discord refuses a DM to a member who
+ * has DMs from server members off or who is not in the server (error 50007), and
+ * discovering that during the first real incident is how a check ends up routed
+ * to nobody. The returned `channelId` is what the integration stores as its
+ * destination.
+ */
+export function useOpenDiscordDM(org: string, channelUid: string) {
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<DiscordDMResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/discord/dm`,
+        { method: "POST", body: JSON.stringify({ userId }) },
+      ),
+  });
 }
 
 export function useDiscordDestinations(
@@ -6212,10 +6252,32 @@ export interface SlackMentionIdentity {
   workspace?: string;
 }
 
+/** The Discord twin of SlackSuggestion: a Discord sign-in is already on file. */
+export interface DiscordSuggestion {
+  discordUserId: string;
+}
+
+/**
+ * How the member appears in the org's Discord CHANNEL alerts.
+ *
+ * The twin of SlackMentionIdentity with one structural difference: there is no
+ * `workspace`. A Discord user id is GLOBAL rather than per-guild, so there is no
+ * workspace qualification to report — and, as a consequence, a mention only
+ * PINGS a member who is actually in that guild. For anyone else Discord renders
+ * `<@id>` as inert text: the right person is named, nobody is notified.
+ */
+export interface DiscordMentionIdentity {
+  linked: boolean;
+  externalId?: string;
+  guild?: string;
+}
+
 export interface NotificationRoutesResponse {
   data: NotificationRoute[];
   slackSuggestion?: SlackSuggestion;
   slackMention?: SlackMentionIdentity;
+  discordSuggestion?: DiscordSuggestion;
+  discordMention?: DiscordMentionIdentity;
 }
 
 export function useNotificationRoutes(org: string) {
@@ -6294,6 +6356,55 @@ export function useCreateTelegramLink(org: string) {
         {
           method: "POST",
         },
+      ),
+  });
+}
+
+/**
+ * Creates the `discord` contact from the Discord sign-in already on the member's
+ * account — the one-click path.
+ *
+ * There is deliberately no "type your Discord id" mutation to pair with this: a
+ * Discord user id is public, so the backend rejects `type: "discord"` on the
+ * generic create endpoint outright. The two accepted sources are this one and
+ * the OAuth link round trip below.
+ */
+export function useConnectDiscord(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/discord/connect`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+/** The authorization URL returned by POST /users/me/discord/link-start. */
+export interface DiscordLinkResponse {
+  url: string;
+  expiresAt: string;
+}
+
+/**
+ * Mints a single-use Discord link round trip (TTL 15 minutes) for a member with
+ * no Discord sign-in, and returns the Discord authorization URL.
+ *
+ * Nothing is created by this call. Discord sends the member back to
+ * `/auth/discord/callback`, which writes the `user_providers` row and returns
+ * them here with `?discord_linked=1`; the page then calls `useConnectDiscord`.
+ * That split is deliberate — the callback is a PUBLIC route, so the less it is
+ * allowed to write the better.
+ */
+export function useCreateDiscordLink(org: string) {
+  return useMutation({
+    mutationFn: (redirectUri: string) =>
+      apiFetch<DiscordLinkResponse>(
+        `/api/v1/orgs/${org}/users/me/discord/link-start`,
+        { method: "POST", body: JSON.stringify({ redirectUri }) },
       ),
   });
 }
@@ -6564,6 +6675,68 @@ export function useAdminEntitlementsDetail(orgSlug: string, enabled = true) {
         `/api/v1/system/entitlements/${orgSlug}`,
       ),
     enabled: enabled && !!orgSlug,
+  });
+}
+
+/** One organization a directory user belongs to. */
+export interface AdminOrgMembership {
+  uid: string;
+  slug: string;
+  name: string;
+  /** "owner" | "admin" | "user" | "viewer" */
+  role: string;
+  joinedAt?: string | null;
+}
+
+/**
+ * A deliberate allow-list projection of the user record — it never carries
+ * passwordHash, totpSecret or totpRecoveryCodes.
+ */
+export interface AdminUserRow {
+  uid: string;
+  email: string;
+  name: string;
+  avatarUrl: string;
+  superAdmin: boolean;
+  demo: boolean;
+  emailVerified: boolean;
+  totpEnabled: boolean;
+  mustChangePassword: boolean;
+  /** passwordHash != nil — false means the account is SSO/OAuth-only. */
+  hasPassword: boolean;
+  lastActiveAt?: string | null;
+  createdAt: string;
+  orgs: AdminOrgMembership[];
+}
+
+export interface AdminUsersListResponse {
+  data: AdminUserRow[];
+  total: number;
+}
+
+export function useAdminUsersList(params: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+  enabled?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.limit) search.set("limit", String(params.limit));
+  if (params.offset) search.set("offset", String(params.offset));
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+
+  return useQuery({
+    queryKey: [
+      "adminUsers",
+      params.q ?? "",
+      params.limit ?? 0,
+      params.offset ?? 0,
+    ],
+    queryFn: () =>
+      apiFetch<AdminUsersListResponse>(`/api/v1/system/users${suffix}`),
+    enabled: params.enabled !== false,
   });
 }
 

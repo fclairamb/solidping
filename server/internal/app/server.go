@@ -1422,6 +1422,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		// Instance-level Telegram credentials power the connect-link flow. Off
 		// by default; CreateTelegramLink refuses while the config is inactive.
 		usernotifications.WithTelegramConfig(&s.config.Telegram),
+		// The INSTANCE Discord bot DMs a `discord` contact, the way the instance
+		// Telegram bot does — a DM contact needs no org integration. Off by
+		// default; every Discord path refuses while the bot is unconfigured.
+		usernotifications.WithDiscordConfig(&s.config.Discord),
+		usernotifications.WithServerBaseURL(s.config.Server.BaseURL),
 		// Two-mode SMS: the org's own Twilio integration when it has one, the
 		// instance provider otherwise.
 		usernotifications.WithSMSResolver(s.services.SMS),
@@ -1451,6 +1456,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// VALIDATION_ERROR when the instance has no bot) so the dashboard gets a
 	// meaningful message rather than a 404 it would have to guess about.
 	orgUserNotif.POST("/telegram/link", userNotifHandler.CreateTelegramLink)
+	// Discord DM contact. Two verified sources, and a typed snowflake is never
+	// one of them (POST /notification-contacts rejects type=discord outright):
+	// `connect` binds a Discord sign-in already on file, `link-start` sends
+	// everyone else through the OAuth round trip. Always registered so a
+	// dashboard on an instance without the bot gets a VALIDATION_ERROR it can
+	// display rather than a 404 it would have to guess about.
+	orgUserNotif.POST("/discord/connect", userNotifHandler.ConnectDiscord)
+	orgUserNotif.POST("/discord/link-start", userNotifHandler.CreateDiscordLink)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
@@ -1605,6 +1618,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
 	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
+	// Global user directory (spec 2026-09-19-04): search/page every user
+	// account across every org, read-only. The only prior consumer of
+	// ListUsers was the operator-notifications job; this is the first HTTP
+	// exposure.
+	systemActions.GET("/users", systemHandler.ListUsers)
 	// Fleet-wide agent view (spec 2026-08-05-01): org agents are already
 	// listed per-org, but system agents (kind='system', no owning org) are
 	// otherwise visible nowhere short of querying the DB by hand.
@@ -2125,6 +2143,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Discord destinations picker (authenticated, org-scoped).
 	discordOrgRoutes := orgGroup("/orgs/:org/channels/:uid/discord")
 	discordOrgRoutes.GET("/destinations", discordHandler.GetDestinations)
+	// Opening the DM at PICK time, not at send time: an admin choosing a DM
+	// destination finds out immediately whether Discord will carry it, rather
+	// than during the first real incident.
+	discordOrgRoutes.POST("/dm", discordHandler.OpenDMDestination)
 
 	// Org-scoped Discord bot install-URL minting. Same reasoning as Slack: the
 	// org comes from the authenticated route context, never from a query param.

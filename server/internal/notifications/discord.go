@@ -65,7 +65,11 @@ func (ds *DiscordSender) Send(ctx context.Context, jctx *jobdef.JobContext, payl
 	}
 
 	channel := ds.determineChannel(settings, payload)
-	if settings.GuildID != "" && channel != "" {
+	// A DM destination qualifies for bot mode on its own: its ChannelID is a DM
+	// channel id, which needs no guild to post into. Without the IsDM() clause a
+	// DM-only integration would fall through to the webhook branch and fail with
+	// "webhook URL not configured" — the wrong diagnosis entirely.
+	if channel != "" && (settings.GuildID != "" || settings.IsDM()) {
 		return ds.sendViaBot(ctx, jctx, settings, payload, channel)
 	}
 
@@ -185,7 +189,7 @@ func (ds *DiscordSender) sendViaBot(
 	client := ds.botClient(token)
 
 	if hasThread {
-		return ds.sendFollowUp(ctx, client, entry, payload)
+		return ds.sendFollowUp(ctx, client, settings, entry, payload)
 	}
 
 	return ds.postIncidentMessage(ctx, jctx, client, settings, payload, channelID, stateKey)
@@ -210,7 +214,15 @@ func (ds *DiscordSender) postIncidentMessage(
 
 	payload.MessageID = result.ID
 
-	threadID := ds.openThread(ctx, client, channelID, result.ID, payload)
+	// A Discord DM channel (type 1) does not support threads: Discord rejects
+	// POST /channels/{dm}/messages/{id}/threads. Skipping the call outright
+	// rather than letting openThread swallow the error keeps a DM destination
+	// from logging a misleading "could not open thread" warning on every single
+	// alert — and makes the no-thread contract testable.
+	threadID := ""
+	if !settings.IsDM() {
+		threadID = ds.openThread(ctx, client, channelID, result.ID, payload)
+	}
 
 	return ds.storeThreadInfo(ctx, jctx, settings, payload, stateKey, channelID, result.ID, threadID)
 }
@@ -325,6 +337,7 @@ func decodeThreadRef(entry *models.StateEntry) threadRef {
 func (ds *DiscordSender) sendFollowUp(
 	ctx context.Context,
 	client *discord.BotClient,
+	settings *models.DiscordSettings,
 	entry *models.StateEntry,
 	payload *Payload,
 ) error {
@@ -352,7 +365,7 @@ func (ds *DiscordSender) sendFollowUp(
 		}
 	}
 
-	return ds.postThreadReply(ctx, client, ref, payload)
+	return ds.postThreadReply(ctx, client, settings, ref, payload)
 }
 
 // editOriginal rewrites the incident's original message.
@@ -377,11 +390,21 @@ func (ds *DiscordSender) editOriginal(
 //
 // With no thread (creation was denied at post time) the reply falls back to the
 // channel, which is noisier but never silent.
+//
+// A DM destination has NO thread and can never have one, so it takes the
+// fallback deliberately rather than by accident: no UnarchiveThread call is
+// attempted, and the follow-up carries a one-line reference back to the original
+// message instead, which is what a thread would otherwise have provided.
 func (ds *DiscordSender) postThreadReply(
-	ctx context.Context, client *discord.BotClient, ref threadRef, payload *Payload,
+	ctx context.Context, client *discord.BotClient, settings *models.DiscordSettings,
+	ref threadRef, payload *Payload,
 ) error {
+	isDM := settings.IsDM()
+
 	target := ref.ThreadID
-	if target == "" {
+	if target == "" || isDM {
+		// A DM is addressed by its channel id and nothing else. Even if a
+		// thread id somehow survived on the row, posting into it would fail.
 		target = ref.ChannelID
 	} else if err := client.UnarchiveThread(ctx, target); err != nil {
 		slog.WarnContext(ctx, "Could not un-archive Discord incident thread",
@@ -391,6 +414,10 @@ func (ds *DiscordSender) postThreadReply(
 	reply := &discord.Message{
 		Embeds:     []discord.Embed{ds.buildEmbed(payload)},
 		Components: []discord.Component{},
+	}
+
+	if isDM {
+		reply.Content = dmFollowUpReference(ref)
 	}
 
 	result, err := client.CreateMessage(ctx, target, reply)
@@ -415,7 +442,12 @@ func (ds *DiscordSender) buildBotMessage(payload *Payload, settings *models.Disc
 		Components: []discord.Component{},
 	}
 
-	if settings.MentionOnCall {
+	// mention_on_call is deliberately SKIPPED for a DM destination. A DM already
+	// has exactly one reader, so "<@them> — you are on call for this" pings the
+	// person already reading it, inside their own private conversation: pure
+	// noise, and it reads as a bug. Nothing about a DM needs a mention to
+	// identify who it is for.
+	if settings.MentionOnCall && !settings.IsDM() {
 		content, userIDs := renderDiscordMentions(payload.OnCallMentions)
 		if content != "" {
 			msg.Content = content
@@ -431,6 +463,21 @@ func (ds *DiscordSender) buildBotMessage(payload *Payload, settings *models.Disc
 	}
 
 	return msg
+}
+
+// dmFollowUpReference is the one-line pointer a DM follow-up carries in place of
+// the thread it cannot have.
+//
+// A Discord message link is guild-scoped (`/channels/<guild>/<channel>/<msg>`)
+// and a DM has no guild, so the `@me` form is used — which is exactly the link
+// a Discord client itself produces for a DM message.
+func dmFollowUpReference(ref threadRef) string {
+	if ref.ChannelID == "" || ref.MessageID == "" {
+		return "Update on the incident above."
+	}
+
+	return "Update on https://discord.com/channels/@me/" +
+		ref.ChannelID + "/" + ref.MessageID
 }
 
 // actionable reports whether an event's message carries incident buttons.

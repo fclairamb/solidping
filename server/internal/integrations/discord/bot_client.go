@@ -15,6 +15,11 @@ import (
 // ErrBotTokenMissing is returned when a bot call is attempted with no token.
 var ErrBotTokenMissing = errors.New("discord bot token not configured")
 
+// ErrEmptyRecipient is returned when a DM is requested for no recipient. A
+// blank Discord user id would otherwise reach Discord as a malformed request
+// whose 400 says nothing about the cause.
+var ErrEmptyRecipient = errors.New("discord dm recipient is empty")
+
 // ErrNotFound is returned when Discord answers 404 — a deleted channel, an
 // unknown message, a thread that no longer exists. Callers distinguish it so
 // "the destination is gone" can degrade differently from "Discord is broken".
@@ -23,6 +28,72 @@ var ErrNotFound = errors.New("discord resource not found")
 // maxBodySnippet bounds how much of an error response we quote back. Discord
 // error bodies are small, but a proxy in front of it may not be.
 const maxBodySnippet = 512
+
+// ErrCodeCannotSendToUser is Discord's JSON error code 50007, "Cannot send
+// messages to this user". It is the one outcome of a DM that is not a fault:
+// the recipient has direct messages from server members switched off, has
+// blocked the bot, or shares no server with it. Nothing an operator can fix,
+// and nothing a retry will change.
+const ErrCodeCannotSendToUser = 50007
+
+// APIError is a non-2xx answer from Discord with its error envelope decoded.
+//
+// The envelope was previously thrown away and only the raw body quoted into a
+// message string, which left callers with substring matching as the only way to
+// tell one failure from another. That is fine for logging and useless for
+// policy, and DMs need policy: code 50007 must fall through to the member's
+// next paging route, while a 500 must be counted as a failure so somebody is
+// told about it.
+//
+// Unwrap reports ErrUnexpectedStatus, so every pre-existing
+// `errors.Is(err, ErrUnexpectedStatus)` caller keeps working unchanged.
+type APIError struct {
+	// Status is the HTTP status code.
+	Status int
+	// Code is Discord's own numeric error code, 0 when the body carried none
+	// (a proxy error page, an empty body, a non-JSON response).
+	Code int
+	// Message is Discord's human-readable message, or the quoted body snippet
+	// when there was no envelope to decode.
+	Message string
+	// Method and Path name the call, so a log line is actionable without the
+	// surrounding context.
+	Method string
+	Path   string
+}
+
+// Error implements error.
+func (e *APIError) Error() string {
+	return fmt.Sprintf("%s: status %d on %s %s: code %d: %s",
+		ErrUnexpectedStatus.Error(), e.Status, e.Method, e.Path, e.Code, e.Message)
+}
+
+// Unwrap keeps errors.Is(err, ErrUnexpectedStatus) true for callers written
+// before this type existed.
+func (e *APIError) Unwrap() error { return ErrUnexpectedStatus }
+
+// errorEnvelope is Discord's standard error body.
+type errorEnvelope struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// IsCannotDMUser reports whether err is Discord refusing to open or use a DM
+// with a user (error code 50007).
+//
+// This is NOT a delivery failure: the member simply cannot be reached this way
+// — DMs from server members are off, the bot is blocked, or they share no
+// server with it. Callers degrade rather than alert: paging falls through to the
+// next route, and the account page's Test button says what the member can do
+// about it.
+func IsCannotDMUser(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+
+	return apiErr.Code == ErrCodeCannotSendToUser
+}
 
 // BotClient is a Discord REST client authenticated as the application's bot.
 //
@@ -92,8 +163,7 @@ func (c *BotClient) do(ctx context.Context, method, path string, body, out any) 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodySnippet))
 
-		return fmt.Errorf("%w: status %d on %s %s: %s",
-			ErrUnexpectedStatus, resp.StatusCode, method, path, string(snippet))
+		return newAPIError(resp.StatusCode, method, path, snippet)
 	}
 
 	if out == nil {
@@ -169,6 +239,30 @@ func retryAfter(resp *http.Response) time.Duration {
 func drain(resp *http.Response) {
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBodySnippet))
 	_ = resp.Body.Close()
+}
+
+// newAPIError builds an APIError from a non-2xx response body, decoding
+// Discord's error envelope when the body carries one. A body that is not the
+// envelope (a proxy error page, an empty body) yields Code 0 and the quoted
+// snippet as the message — strictly more information than before, never less.
+func newAPIError(status int, method, path string, body []byte) *APIError {
+	apiErr := &APIError{
+		Status:  status,
+		Message: string(body),
+		Method:  method,
+		Path:    path,
+	}
+
+	var envelope errorEnvelope
+	if err := json.Unmarshal(body, &envelope); err == nil && envelope.Code != 0 {
+		apiErr.Code = envelope.Code
+
+		if envelope.Message != "" {
+			apiErr.Message = envelope.Message
+		}
+	}
+
+	return apiErr
 }
 
 // CreateMessage posts a message into a channel (or a thread — a thread id is
@@ -299,4 +393,38 @@ func (c *BotClient) GetChannel(ctx context.Context, channelID string) (*ChannelI
 	}
 
 	return &channel, nil
+}
+
+// createDMRequest is the body of POST /users/@me/channels.
+//
+//nolint:tagliatelle // Discord API uses snake_case
+type createDMRequest struct {
+	RecipientID string `json:"recipient_id"`
+}
+
+// CreateDM opens (or returns the existing) 1:1 DM channel between the bot and
+// one user — POST /users/@me/channels.
+//
+// The call is idempotent on Discord's side: the same recipient always yields the
+// same channel id, forever. That is why callers cache the result on the contact
+// instead of calling this before every message.
+//
+// It needs NO additional bot permission and NO privileged gateway intent: a bot
+// may always open a DM, and whether the user ACCEPTS one is decided by their own
+// privacy settings at post time, which surfaces as APIError code 50007
+// (IsCannotDMUser). Opening the channel can therefore succeed while posting into
+// it fails.
+func (c *BotClient) CreateDM(ctx context.Context, userID string) (*ChannelInfo, error) {
+	if userID == "" {
+		return nil, ErrEmptyRecipient
+	}
+
+	var info ChannelInfo
+
+	if err := c.do(ctx, http.MethodPost, "/users/@me/channels",
+		&createDMRequest{RecipientID: userID}, &info); err != nil {
+		return nil, err
+	}
+
+	return &info, nil
 }

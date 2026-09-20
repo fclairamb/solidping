@@ -621,8 +621,8 @@ func (s *Service) attribute(ctx context.Context, thread *models.SupportThread) {
 }
 
 // contactTypeForChannel maps a support channel to the user_contacts type that
-// can identify its sender. Channels with no contact vocabulary (Discord today)
-// simply never attribute.
+// can identify its sender. A channel with no contact vocabulary simply never
+// attributes.
 func contactTypeForChannel(channel string) (string, bool) {
 	switch channel {
 	case models.SupportChannelWhatsApp:
@@ -633,6 +633,12 @@ func contactTypeForChannel(channel string) (string, bool) {
 		return models.UserContactTypePhone, true
 	case models.SupportChannelSlack:
 		return models.UserContactTypeSlackUser, true
+	case models.SupportChannelDiscord:
+		// The Gateway captures a DM's Identity as the author's Discord user id
+		// (gateway_messages.captureDirectMessage), which is exactly what a
+		// `discord` contact's Value holds — so a member who connected Discord to
+		// be paged is now also recognized when they write in.
+		return models.UserContactTypeDiscord, true
 	case models.SupportChannelEmail:
 		return models.UserContactTypeEmail, true
 	default:

@@ -263,9 +263,11 @@ func mentionResolveTime(jctx *jobdef.JobContext) time.Time {
 //
 //  1. the `user_integration_identities` row — an admin's explicit mapping, and
 //     the only source that also carries a provider display name;
-//  2. failing that, whatever the member declared for themselves (a `slack_user`
-//     contact, or a Slack sign-in), resolved workspace-scoped by
-//     identitylink.DeclaredSlackIdentity.
+//  2. failing that, whatever the member declared for themselves — a `slack_user`
+//     contact or a Slack sign-in, resolved WORKSPACE-SCOPED by
+//     identitylink.DeclaredSlackIdentity; or a `discord` contact or a Discord
+//     sign-in, resolved by identitylink.DeclaredDiscordIdentity, which has no
+//     scoping to do because a snowflake is global.
 //
 // The order is what makes "an admin mapping always wins" true: a member who
 // declared the wrong handle cannot override the admin's correction.
@@ -298,10 +300,7 @@ func buildMentionTargets(
 		}
 
 		if target.ExternalID == "" {
-			if declared := identitylink.DeclaredSlackIdentity(
-				ctx, jctx.DBService, integration, user.UID); declared != nil {
-				target.ExternalID = declared.ExternalID
-			}
+			target.ExternalID = declaredIdentityFor(ctx, jctx, integration, user.UID)
 		}
 
 		targets = append(targets, target)
@@ -317,6 +316,33 @@ func buildMentionTargets(
 	})
 
 	return targets
+}
+
+// declaredIdentityFor resolves the member's own declared provider id for this
+// integration's type, or "".
+//
+// A switch on the integration type rather than calling both resolvers: each one
+// self-gates on the type anyway, but making the dispatch explicit here is what
+// stops the next provider being added to identitylink and silently never
+// consulted — which is exactly how the Discord half of this came to be missing.
+func declaredIdentityFor(
+	ctx context.Context, jctx *jobdef.JobContext,
+	integration *models.Integration, userUID string,
+) string {
+	switch integration.Type { //nolint:exhaustive // only the two providers with a declared-identity resolver
+	case models.ConnectionTypeSlack:
+		if declared := identitylink.DeclaredSlackIdentity(
+			ctx, jctx.DBService, integration, userUID); declared != nil {
+			return declared.ExternalID
+		}
+	case models.ConnectionTypeDiscord:
+		if declared := identitylink.DeclaredDiscordIdentity(
+			ctx, jctx.DBService, integration, userUID); declared != nil {
+			return declared.ExternalID
+		}
+	}
+
+	return ""
 }
 
 // userDisplayName is the human label used when no provider display name is

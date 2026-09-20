@@ -79,6 +79,8 @@ type fakeDiscord struct {
 	channels []ChannelInfo
 	// installerID is what /users/@me returns for a user token.
 	installerID string
+	// dmOpened records each recipient POST /users/@me/channels was called for.
+	dmOpened []string
 }
 
 func newFakeDiscord(t *testing.T) *fakeDiscord {
@@ -133,6 +135,23 @@ func newFakeDiscord(t *testing.T) *fakeDiscord {
 		_ = json.NewEncoder(w).Encode(MessageResult{ID: "M-POSTED", ChannelID: channelID})
 	})
 
+	mux.HandleFunc("/users/@me/channels", func(w http.ResponseWriter, r *http.Request) {
+		body := map[string]any{}
+
+		if raw, _ := io.ReadAll(r.Body); len(raw) > 0 {
+			_ = json.Unmarshal(raw, &body)
+		}
+
+		recipient, _ := body["recipient_id"].(string)
+
+		fake.mu.Lock()
+		fake.dmOpened = append(fake.dmOpened, recipient)
+		fake.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ChannelInfo{ID: "DM-" + recipient, Type: ChannelTypeDM})
+	})
+
 	mux.HandleFunc("/guilds/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/channels") {
 			w.Header().Set("Content-Type", "application/json")
@@ -149,6 +168,14 @@ func newFakeDiscord(t *testing.T) *fakeDiscord {
 	t.Cleanup(fake.server.Close)
 
 	return fake
+}
+
+// dmRecipients returns the recipients a DM channel was opened for.
+func (f *fakeDiscord) dmRecipients() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.dmOpened...)
 }
 
 // messages returns the messages posted to the fake so far.

@@ -107,6 +107,11 @@ type ListRoutesResponse struct {
 	// SlackMention is present only when the org actually has a Slack channel —
 	// there is nothing to say about channel-alert mentions otherwise.
 	SlackMention *SlackMentionIdentity `json:"slackMention,omitempty"`
+	// DiscordSuggestion is the Discord twin of SlackSuggestion.
+	DiscordSuggestion *DiscordSuggestion `json:"discordSuggestion,omitempty"`
+	// DiscordMention is present only when the org actually has a Discord bot
+	// integration, for the same reason SlackMention is.
+	DiscordMention *DiscordMentionIdentity `json:"discordMention,omitempty"`
 }
 
 // CreateContactRequest is the body for POST /notification-contacts.
@@ -140,6 +145,17 @@ type Service struct {
 	// telegramCfg is the instance-level Telegram configuration used to mint
 	// connect links. Zero value = feature off.
 	telegramCfg config.TelegramConfig
+	// discordCfg is the instance-level Discord configuration used to DM a
+	// `discord` contact and to mint a link round trip. Zero value = feature off.
+	discordCfg config.DiscordOAuthConfig
+	// serverBaseURL is the public base URL, needed to build the Discord OAuth
+	// callback a link round trip returns to.
+	serverBaseURL string
+	// discordAPIBaseURL overrides Discord's REST base. Empty in production;
+	// set only by in-package tests so the Test button's real code path can be
+	// driven against an httptest stand-in. A per-instance field rather than a
+	// package-level seam, so parallel tests cannot race on it.
+	discordAPIBaseURL string
 	// smsResolver picks, per org, whether an SMS goes through the org's own
 	// Twilio integration (bring-your-own) or the instance-level provider
 	// (server-provided, the default). Nil when the phone paths are not
@@ -240,8 +256,107 @@ func (s *Service) ListRoutes(
 
 	resp.SlackSuggestion = s.buildSlackSuggestion(ctx, user, orgUID, routes)
 	resp.SlackMention = s.buildSlackMention(ctx, user, orgUID)
+	resp.DiscordSuggestion = s.buildDiscordSuggestion(ctx, user, routes)
+	resp.DiscordMention = s.buildDiscordMention(ctx, user, orgUID)
 
 	return resp, nil
+}
+
+// buildDiscordSuggestion returns the one-click connect hint: a Discord sign-in
+// on file, the instance bot configured, and no discord contact yet.
+//
+// Unlike the Slack twin it does NOT require an org integration. A Discord DM goes
+// through the INSTANCE bot, the way Telegram does, so a member can be paged on
+// Discord in an org that has no Discord channel at all.
+func (s *Service) buildDiscordSuggestion(
+	ctx context.Context, user *models.User, existing []*models.UserNotificationRoute,
+) *DiscordSuggestion {
+	if !s.DiscordEnabled() {
+		return nil
+	}
+
+	discordUserID, err := s.discordProviderID(ctx, user.UID)
+	if err != nil || discordUserID == "" {
+		return nil
+	}
+
+	for _, route := range existing {
+		if route.Contact != nil &&
+			route.Contact.Type == models.UserContactTypeDiscord &&
+			route.Contact.Value == discordUserID {
+			return nil // already connected
+		}
+	}
+
+	return &DiscordSuggestion{DiscordUserID: discordUserID}
+}
+
+// buildDiscordMention tells the member how they will appear in the org's Discord
+// CHANNEL alerts. The twin of buildSlackMention: the admin's mapping wins, then
+// the declared identity, then "nothing links you to this server".
+func (s *Service) buildDiscordMention(
+	ctx context.Context, user *models.User, orgUID string,
+) *DiscordMentionIdentity {
+	channel := s.discordBotChannelForOrg(ctx, orgUID)
+	if channel == nil {
+		return nil
+	}
+
+	mention := &DiscordMentionIdentity{}
+
+	if settings, sErr := models.DiscordSettingsFromJSONMap(channel.Settings); sErr == nil {
+		mention.Guild = settings.GuildName
+	}
+
+	identity, err := s.db.GetUserIntegrationIdentity(ctx, channel.UID, user.UID)
+	if err == nil && identity != nil && identity.ExternalID != "" {
+		mention.Linked = true
+		mention.ExternalID = identity.ExternalID
+
+		return mention
+	}
+
+	if declared := identitylink.DeclaredDiscordIdentity(ctx, s.db, channel, user.UID); declared != nil {
+		mention.Linked = true
+		mention.ExternalID = declared.ExternalID
+	}
+
+	return mention
+}
+
+// discordBotChannelForOrg returns the org's first live Discord integration that
+// is in BOT mode, or nil.
+//
+// Legacy webhook integrations are skipped on purpose: a webhook cannot mention
+// anybody, so reporting a mention identity for one would answer a question the
+// member never gets to act on.
+func (s *Service) discordBotChannelForOrg(
+	ctx context.Context, orgUID string,
+) *models.Integration {
+	discordType := models.ConnectionTypeDiscord
+
+	conns, err := s.db.ListChannels(ctx, &models.ListIntegrationsFilter{
+		OrganizationUID: orgUID,
+		Type:            &discordType,
+	})
+	if err != nil {
+		return nil
+	}
+
+	for _, conn := range conns {
+		if conn == nil || conn.DeletedAt != nil {
+			continue
+		}
+
+		settings, sErr := models.DiscordSettingsFromJSONMap(conn.Settings)
+		if sErr != nil || !settings.UsesBot() {
+			continue
+		}
+
+		return conn
+	}
+
+	return nil
 }
 
 // buildSlackSuggestion returns a suggestion if all conditions are met.
@@ -364,6 +479,19 @@ func (s *Service) CreateContact(
 	// sent the /start.
 	if req.Type == models.UserContactTypeTelegram {
 		return nil, ErrTelegramContactNotDirect
+	}
+
+	// Discord contacts are NEVER created here either, and for a sharper reason
+	// than Telegram's: a Discord user id is PUBLIC. Anyone can copy a stranger's
+	// snowflake out of a Discord client, and nothing in a request body could
+	// tell it apart from the caller's own. Accepting one would let any user
+	// point our incident DMs at any Discord account on earth.
+	//
+	// The two accepted sources are both bindings Discord attested:
+	// POST …/discord/connect (a sign-in already on file) and the OAuth
+	// link-mode round trip.
+	if req.Type == models.UserContactTypeDiscord {
+		return nil, ErrDiscordContactNotDirect
 	}
 
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
@@ -609,7 +737,8 @@ func (s *Service) SendTestNotification(
 // verified, so an unverified one means the connection was lost).
 func contactRequiresSetup(contactType string) bool {
 	return models.ContactRequiresVerification(contactType) ||
-		contactType == models.UserContactTypeTelegram
+		contactType == models.UserContactTypeTelegram ||
+		contactType == models.UserContactTypeDiscord
 }
 
 // dispatchTestRoute delivers a test notification for a single route. Every
@@ -632,6 +761,8 @@ func (s *Service) dispatchTestRoute(
 		return s.dispatchTestSlack(ctx, orgUID, target.Contact.Value, slackClient)
 	case models.UserContactTypeTelegram:
 		return s.dispatchTestTelegram(ctx, target.Contact.Value)
+	case models.UserContactTypeDiscord:
+		return s.dispatchTestDiscord(ctx, target.Contact)
 	case models.UserContactTypePhone:
 		return s.dispatchTestSMS(ctx, orgUID, target.Contact.Value)
 	case models.UserContactTypeWhatsApp:

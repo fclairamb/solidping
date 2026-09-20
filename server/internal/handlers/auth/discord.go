@@ -68,6 +68,13 @@ func (h *DiscordOAuthHandler) Callback(writer http.ResponseWriter, req *http.Req
 		)
 	}
 
+	// A `link:`-prefixed state is a LINK round trip, not a login. It gets its
+	// own handler that mints no session and creates no organization — see
+	// discord_link.go for why that separation is structural rather than a flag.
+	if isDiscordLinkState(stateParam) {
+		return h.handleLinkCallback(writer, req, code, stateParam)
+	}
+
 	// Validate state and get redirect URI
 	oauthState, err := h.svc.ValidateOAuthState(req.Context(), stateParam)
 	if err != nil {

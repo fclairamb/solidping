@@ -127,6 +127,10 @@ func (s *Service) UpsertUserContact(ctx context.Context, c *models.UserContact) 
 		// generic POST both hand us a team-less contact, and clearing the column
 		// would silently demote a verified workspace back to "unknown".
 		Set("team_id = coalesce(EXCLUDED.team_id, \"user_contact\".team_id)").
+		// Same for the cached DM channel: a re-connect hands us a channel-less
+		// contact, and clearing the cache would cost one extra round trip on the
+		// next page for no reason at all.
+		Set("dm_channel_id = coalesce(EXCLUDED.dm_channel_id, \"user_contact\".dm_channel_id)").
 		Set("deleted_at = NULL").
 		Set("updated_at = ?", time.Now()).
 		Returning("uid").
@@ -250,6 +254,30 @@ func (s *Service) ClearUserContactVerified(ctx context.Context, uid string) erro
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("clear user contact verified: %w", err)
+	}
+
+	return nil
+}
+
+// SetUserContactDMChannel caches the provider-side DM conversation id on a
+// contact. Passing an empty channelID clears the cache, which is what a sender
+// does when Discord answers 404 for a channel it once handed us.
+func (s *Service) SetUserContactDMChannel(ctx context.Context, uid, channelID string) error {
+	now := time.Now()
+
+	query := s.db.NewUpdate().
+		Model((*models.UserContact)(nil)).
+		Where("uid = ?", uid).
+		Set("updated_at = ?", now)
+
+	if channelID == "" {
+		query = query.Set("dm_channel_id = NULL")
+	} else {
+		query = query.Set("dm_channel_id = ?", channelID)
+	}
+
+	if _, err := query.Exec(ctx); err != nil {
+		return fmt.Errorf("set user contact dm channel: %w", err)
 	}
 
 	return nil

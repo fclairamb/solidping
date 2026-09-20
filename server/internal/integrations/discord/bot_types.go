@@ -19,7 +19,12 @@ const (
 // Discord channel types. Only the text-ish ones can receive a notification,
 // which is what the destinations picker filters on.
 const (
-	ChannelTypeGuildText          = 0
+	ChannelTypeGuildText = 0
+	// ChannelTypeDM is a 1:1 direct message channel — what
+	// POST /users/@me/channels returns. It is NOT a guild channel: it has no
+	// guild id, it cannot host threads, and the sender must skip every
+	// thread operation for it.
+	ChannelTypeDM                 = 1
 	ChannelTypeGuildVoice         = 2
 	ChannelTypeGuildCategory      = 4
 	ChannelTypeGuildAnnouncement  = 5
@@ -34,6 +39,15 @@ const (
 // destinations that silently fail at send time.
 func IsPostableChannelType(t int) bool {
 	return t == ChannelTypeGuildText || t == ChannelTypeGuildAnnouncement
+}
+
+// SupportsThreads reports whether a channel of this type can host a thread.
+//
+// A DM channel cannot. Discord answers POST /channels/{dm}/messages/{id}/threads
+// with an error, so the incident sender must not even try: it posts follow-ups
+// as plain messages in the DM that reference the original instead.
+func SupportsThreads(t int) bool {
+	return t != ChannelTypeDM
 }
 
 // IsThreadChannelType reports whether a channel id refers to a thread.

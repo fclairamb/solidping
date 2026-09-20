@@ -6,6 +6,10 @@
 --
 --   SECTION: user-contact-team-id   user_contacts.team_id, the workspace a
 --                                   slack_user contact belongs to
+--   SECTION: user-contact-dm-channel-id
+--                                   user_contacts.dm_channel_id, the cached
+--                                   Discord DM channel a `discord` contact is
+--                                   paged through
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -32,3 +36,31 @@
 -- ==========================================================================
 
 alter table user_contacts add column team_id text;
+
+-- ==========================================================================
+-- SECTION: user-contact-dm-channel-id  (spec 2026-09-19-05)
+--
+-- A `discord` contact stores the member's Discord user id (a snowflake). Discord
+-- will not accept a message addressed to a user: the bot must first call
+-- `POST /users/@me/channels` to open a 1:1 DM channel and then post into that
+-- channel id. That call is idempotent — Discord returns the SAME channel for the
+-- same recipient forever — so re-opening it before every notice would be one
+-- wasted, rate-limited round trip per page, on the exact path that is latency
+-- sensitive.
+--
+-- Deliberately NULLABLE with no backfill: "not opened yet" is the honest state
+-- for a contact the bot has never messaged, and there is no value that could be
+-- computed offline — only Discord can mint a DM channel id. A NULL simply means
+-- the next send opens the DM and caches what it gets back.
+--
+-- Deliberately NOT unique and not a foreign key: it is an opaque id owned by
+-- Discord, it can be revoked on their side (a stale one answers 404, and the
+-- sender then re-opens and re-caches), and the same channel legitimately appears
+-- on two contacts when one human is a member of two organizations.
+--
+-- Generic name rather than `discord_dm_channel_id`: the column answers "which
+-- provider-side conversation is this contact's value reachable through", the
+-- same question a future Teams-chat or Matrix-room contact would ask.
+-- ==========================================================================
+
+alter table user_contacts add column dm_channel_id text;

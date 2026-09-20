@@ -717,6 +717,52 @@ func (s *Service) ListUsers(ctx context.Context) ([]*models.User, error) {
 	return users, err
 }
 
+// SearchUsers pages the global user directory (super-admin only). Query, when
+// non-empty, matches a case-insensitive substring on email OR name; `%` and
+// `_` in Query are escaped so they are matched literally, never as SQL LIKE
+// wildcards. The existing users_email_idx (on lower(email)) cannot serve a
+// leading-wildcard scan, which is an accepted trade-off at this scale.
+func (s *Service) SearchUsers(
+	ctx context.Context, filter models.UserSearchFilter,
+) ([]*models.User, int, error) {
+	var users []*models.User
+
+	query := s.db.NewSelect().
+		Model(&users).
+		Where("deleted_at IS NULL")
+
+	if filter.Query != "" {
+		pattern := "%" + escapeLikePrefix(strings.ToLower(filter.Query)) + "%"
+		query = query.Where(
+			"(lower(email) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\')", pattern, pattern)
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query = query.Order("created_at DESC", "uid ASC")
+
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, 0, err
+	}
+
+	if users == nil {
+		users = []*models.User{}
+	}
+
+	return users, total, nil
+}
+
 func (s *Service) UpdateUser(ctx context.Context, uid string, update *models.UserUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.User)(nil)).
@@ -917,6 +963,41 @@ func (s *Service) ListMembersByUser(ctx context.Context, userUID string) ([]*mod
 		Scan(ctx)
 
 	return members, err
+}
+
+// ListMembersByUsers batches ListMembersByUser across a page of users into one
+// query, so a directory page costs a fixed two queries (SearchUsers plus
+// this) rather than 1+N. An empty userUIDs returns an empty slice without
+// querying. See the postgres implementation for why the Relation("Organization")
+// apply-closure Where turns the inline LEFT JOIN into a de facto INNER JOIN
+// that drops memberships in a soft-deleted org.
+func (s *Service) ListMembersByUsers(
+	ctx context.Context, userUIDs []string,
+) ([]*models.OrganizationMember, error) {
+	if len(userUIDs) == 0 {
+		return []*models.OrganizationMember{}, nil
+	}
+
+	var members []*models.OrganizationMember
+
+	err := s.db.NewSelect().
+		Model(&members).
+		Relation("Organization", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.Where("organization.deleted_at IS NULL")
+		}).
+		Where("organization_member.user_uid IN (?)", bun.List(userUIDs)).
+		Where("organization_member.deleted_at IS NULL").
+		Order("organization_member.created_at DESC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if members == nil {
+		members = []*models.OrganizationMember{}
+	}
+
+	return members, nil
 }
 
 func (s *Service) UpdateOrganizationMember(

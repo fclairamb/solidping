@@ -27,6 +27,7 @@ function ServerLayout() {
     { label: t("tabs.activation", "Activation"), path: "/orgs/$org/server/activation" },
     { label: t("tabs.analytics"), path: "/orgs/$org/server/analytics" },
     { label: t("tabs.entitlements"), path: "/orgs/$org/server/entitlements" },
+    { label: t("tabs.users"), path: "/orgs/$org/server/users" },
     {
       label: t("tabs.notifications", "Notifications"),
       path: "/orgs/$org/server/notifications",

@@ -433,6 +433,7 @@ Discord comes in two flavours, and an organization may use either.
 | Resolve edits the original message | Yes | No |
 | Acknowledge button | Yes | No |
 | On-call @-mentions | Yes | No |
+| Direct message to one person | Yes | No |
 | Slash + mention commands | Yes | No |
 | Thread replies → incident comments | Yes (needs the Gateway) | No |
 | Needs instance-level configuration | Yes | No |
@@ -455,6 +456,73 @@ Embed Links, Read Message History, Create Public Threads, Send Messages in
 Threads and Manage Threads. Manage Threads is what lets SolidPing re-open a
 thread Discord auto-archived, so a long incident's "resolved" notice still lands
 in the incident's own thread instead of vanishing.
+
+### Direct messages to one person
+
+Discord can page an individual, not just a channel. There are two separate
+things with the same name, and they are configured in different places:
+
+| | Personal DM contact | DM destination |
+|---|---|---|
+| Who sets it up | The member, under **Account → Notifications** | An org admin, on the Discord integration |
+| What it is | A notification route the escalation policy pages | A channel destination that happens to be a DM |
+| What arrives | Only the incidents that page *you* | Every alert the integration sends |
+| Needs an org Discord integration | No | Yes |
+
+#### Connecting your own Discord (members)
+
+Under **Account → Notifications**, the Discord row offers one of two things:
+
+- **Connect Discord** — you have signed in with Discord before, so SolidPing
+  already knows your account and binds it in one click;
+- **Link Discord** — you have not, so it sends you through Discord once and
+  brings you back.
+
+There is deliberately **no field to type a Discord user id into**, and the API
+rejects one. A Discord user id is public — anyone can copy a stranger's out of a
+Discord client in two clicks — so accepting a typed one would let any user point
+our incident DMs at somebody else's account, indefinitely, with nothing telling
+that person where the messages came from. Both connect paths are bindings
+Discord itself attested, which is why neither needs a verification code.
+
+A DM contact goes through the **instance** bot, the way Telegram does, so it
+needs no Discord integration in your organization. It does need the instance to
+have a configured bot — the row is simply absent otherwise.
+
+Pages that arrive as a DM carry the same **Acknowledge** button a channel alert
+does, and pressing it acknowledges the incident exactly as it would in a channel.
+Only someone whose Discord account is connected to a member of that incident's
+organization can do so.
+
+#### Routing a check's alerts to one person (admins)
+
+On a bot-installed Discord integration the destination picker has **Channel** and
+**Direct message** tabs. The DM tab lists the organization's members whose
+Discord account SolidPing can already resolve — an admin mapping, a personal
+Discord contact, or a Discord sign-in. It is **not** the server's member list:
+reading that needs the privileged `GUILD_MEMBERS` intent, and it would tell us
+who is in the server without telling us which SolidPing account any of them is.
+
+A DM destination behaves like a channel one with two differences, both forced by
+Discord: a DM cannot host a thread, so follow-ups post as plain messages that
+link back to the original instead of threading under it; and the on-call mention
+is skipped, because a DM already has exactly one reader.
+
+#### When Discord refuses a DM
+
+Discord will not let a bot DM someone who has direct messages from server members
+switched off, who has blocked it, or who shares no server with it. That is not
+something an operator can configure around — it is the recipient's own privacy
+setting.
+
+**Use the Test button to find out.** On **Account → Notifications** it reports the
+refusal in as many words ("open your DMs for server members, or join the server
+the bot is in") rather than a generic failure, and the DM tab reports it at pick
+time rather than during your first real incident.
+
+When a refusal happens during real paging, SolidPing treats it as *this route
+cannot be used* and falls through to the member's next notification route. It is
+not counted as a delivery and not reported as an outage.
 
 ### Instance-level configuration (operators)
 
