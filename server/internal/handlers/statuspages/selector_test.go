@@ -1353,12 +1353,12 @@ func TestSectionSelector_ForeignAndDeletedGroupRejected(t *testing.T) {
 		"foreign org": foreignGroup.UID,
 		"deleted":     deletedGroup.UID,
 	} {
-		_, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		_, createErr := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
 			Name: "Dyn " + name, Slug: "dyn-" + strings.ReplaceAll(name, " ", "-"),
 			Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: groupUID}),
 		})
-		r.ErrorIs(err, models.ErrSelectorGroupNotFound, name)
-		r.True(selectorValidationError(err), name)
+		r.ErrorIs(createErr, models.ErrSelectorGroupNotFound, name)
+		r.True(selectorValidationError(createErr), name)
 	}
 
 	// Positive control: the same org's live group is accepted, canonicalised

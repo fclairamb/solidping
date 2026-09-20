@@ -494,14 +494,10 @@ func (sel *SectionSelector) Validate() error {
 	hasLabels := len(sel.Labels) > 0
 	hasGroup := sel.CheckGroupUID != ""
 	hasShape := 0
-	if sel.All {
-		hasShape++
-	}
-	if hasLabels {
-		hasShape++
-	}
-	if hasGroup {
-		hasShape++
+	for _, set := range []bool{sel.All, hasLabels, hasGroup} {
+		if set {
+			hasShape++
+		}
 	}
 
 	switch {
