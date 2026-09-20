@@ -73,12 +73,25 @@ func sanitizeSlug(name string) string {
 
 // Service provides business logic for check group management.
 type Service struct {
-	db db.Service
+	db         db.Service
+	reconciler StatusPageReconciler
+}
+
+// StatusPageReconciler is the small best-effort contract needed after a group
+// is deleted. Kept local to avoid coupling checkgroups to statuspages.
+type StatusPageReconciler interface {
+	ReconcileOrgSelectors(ctx context.Context, orgUID string)
 }
 
 // NewService creates a new check groups service.
 func NewService(dbService db.Service) *Service {
 	return &Service{db: dbService}
+}
+
+// SetStatusPageReconciler wires dynamic status-page membership. Optional: a
+// group delete must never fail merely because a page cannot be reconciled.
+func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
+	s.reconciler = reconciler
 }
 
 // CheckGroupResponse represents a check group in API responses.
@@ -335,7 +348,13 @@ func (s *Service) DeleteCheckGroup(ctx context.Context, orgSlug, identifier stri
 		return ErrCheckGroupNotFound
 	}
 
-	return s.db.DeleteCheckGroup(ctx, group.UID)
+	if err := s.db.DeleteCheckGroup(ctx, group.UID); err != nil {
+		return err
+	}
+	if s.reconciler != nil {
+		s.reconciler.ReconcileOrgSelectors(ctx, org.UID)
+	}
+	return nil
 }
 
 // convertGroupToResponse builds the API response for a group given the

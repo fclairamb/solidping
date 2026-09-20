@@ -2617,13 +2617,15 @@ export interface StatusPage {
 
 /**
  * A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of the
- * two shapes: `{ all: true }` or `{ labels: { k: v, ... } }` (AND, exact
+ * three shapes: `{ all: true }`, `{ labels: { k: v, ... } }` (AND, exact), or
+ * `{ checkGroupUid: "..." }`.
  * values). Absent means the section is hand-curated, which is the default and
  * what every existing section keeps — a selector is never applied implicitly.
  */
 export interface StatusPageSectionSelector {
-  all?: boolean;
-  labels?: Record<string, string>;
+	all?: boolean;
+	labels?: Record<string, string>;
+	checkGroupUid?: string;
 }
 
 export interface StatusPageSection {
@@ -2642,7 +2644,9 @@ export interface StatusPageSection {
    * True when the match count exceeds the per-section cap and the section is
    * showing a stable alphabetical prefix. Authenticated only.
    */
-  selectorTruncated?: boolean;
+	selectorTruncated?: boolean;
+	/** The dynamic group selector points to a deleted group. Authenticated only. */
+	selectorGroupMissing?: boolean;
   /**
    * How many of the selector's matched checks are already displayed by
    * resource rows OUTSIDE this section — an earlier selector section or a

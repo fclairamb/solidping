@@ -748,6 +748,10 @@ type StatusPageSectionResponse struct {
 	// so the dashboard can say "and N more" instead of quietly showing a subset.
 	SelectorMatchTotal int  `json:"selectorMatchTotal,omitempty"`
 	SelectorTruncated  bool `json:"selectorTruncated,omitempty"`
+	// SelectorGroupMissing reports that a group-based selector's saved group
+	// was deleted. It is admin-only like Selector: public pages simply show an
+	// empty dynamic section rather than exposing internal group topology.
+	SelectorGroupMissing bool `json:"selectorGroupMissing,omitempty"`
 	// SelectorClaimedElsewhere is how many of the selector's matched checks are
 	// already displayed by resource rows OUTSIDE this section — earlier
 	// selector sections and manual rows both count (spec
@@ -1683,6 +1687,13 @@ func (s *Service) enrichSelectorCounts(
 	if section.Selector == nil {
 		return
 	}
+	if section.Selector.CheckGroupUID != "" {
+		group, err := s.db.GetCheckGroup(ctx, orgUID, section.Selector.CheckGroupUID)
+		if err != nil || group == nil {
+			response.SelectorGroupMissing = true
+			return
+		}
+	}
 
 	// Unbounded query: Filter() sets no Limit, so `matched` and `total` cover
 	// every match, not just a page. Called directly (rather than through a
@@ -1765,6 +1776,9 @@ func (s *Service) CreateSection(
 
 	selector, err := parseSelector(req.Selector)
 	if err != nil {
+		return StatusPageSectionResponse{}, err
+	}
+	if err := s.resolveSelectorGroup(ctx, page.OrganizationUID, selector); err != nil {
 		return StatusPageSectionResponse{}, err
 	}
 
@@ -1871,6 +1885,9 @@ func (s *Service) UpdateSection(
 		if errSel != nil {
 			return StatusPageSectionResponse{}, errSel
 		}
+		if errSel := s.resolveSelectorGroup(ctx, page.OrganizationUID, selector); errSel != nil {
+			return StatusPageSectionResponse{}, errSel
+		}
 
 		update.SetSelector = true
 		update.Selector = selector
@@ -1896,6 +1913,20 @@ func (s *Service) UpdateSection(
 	s.enrichSelectorCountsIfDynamic(ctx, page.OrganizationUID, page.UID, &response, updated)
 
 	return response, nil
+}
+
+// resolveSelectorGroup verifies a group selector belongs to the page's
+// organization and canonicalises a supported slug input to its immutable UID.
+func (s *Service) resolveSelectorGroup(ctx context.Context, orgUID string, selector *models.SectionSelector) error {
+	if selector == nil || selector.CheckGroupUID == "" {
+		return nil
+	}
+	group, err := s.db.GetCheckGroupByUidOrSlug(ctx, orgUID, selector.CheckGroupUID)
+	if err != nil || group == nil {
+		return models.ErrSelectorGroupNotFound
+	}
+	selector.CheckGroupUID = group.UID
+	return nil
 }
 
 // DeleteSection soft-deletes a section.
