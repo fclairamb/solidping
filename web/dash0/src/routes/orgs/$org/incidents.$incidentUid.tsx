@@ -697,6 +697,11 @@ function CommentsCard({
                       {t("comments.viaTelegram")}
                     </Badge>
                   )}
+                  {getCommentSource(c) === "discord" && (
+                    <Badge variant="outline" className="text-xs">
+                      {t("comments.viaDiscord")}
+                    </Badge>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {c.createdAt ? (
                       <TimeAgo

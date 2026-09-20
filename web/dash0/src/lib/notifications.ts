@@ -2,6 +2,23 @@ import type { TFunction } from "i18next";
 
 import type { IncidentNotification } from "@/api/hooks";
 
+/**
+ * Whether a contact is ready to receive a test notification.
+ *
+ * Phone and WhatsApp contacts need their verification code confirmed; Telegram
+ * and Discord need the user to complete their respective DM setup. This mirrors
+ * contactRequiresSetup in server/internal/handlers/usernotifications/service.go.
+ * Unknown future contact types deliberately remain testable by default.
+ */
+export function contactCanTest(type: string, verifiedAt?: string | null): boolean {
+  const requiresSetup =
+    type === "phone" ||
+    type === "whatsapp" ||
+    type === "telegram" ||
+    type === "discord";
+  return !requiresSetup || Boolean(verifiedAt);
+}
+
 /** Maps a notification delivery status to the Badge variant used to render it.
  * Shared by the incident notifications table and the notification detail page. */
 export function notificationStatusVariant(

@@ -8,7 +8,14 @@ import {
   getEventEmoji,
   getEventLabel,
   getEventTone,
+  getCommentSource,
 } from "@/components/dashboard/event-display";
+
+describe("getCommentSource", () => {
+  it("preserves Discord as a comment source", () => {
+    expect(getCommentSource({ payload: { source: "discord" } })).toBe("discord");
+  });
+});
 
 import eventsEn from "@/locales/en/events.json";
 import eventsFr from "@/locales/fr/events.json";

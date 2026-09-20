@@ -191,6 +191,7 @@
     "submit": "Comentar",
     "viaSlack": "vía Slack",
     "viaTelegram": "vía Telegram",
+    "viaDiscord": "vía Discord",
     "slackUser": "Usuario de Slack",
     "teamMember": "Miembro del equipo",
     "addFailed": "No se pudo añadir el comentario"
