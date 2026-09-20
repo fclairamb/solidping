@@ -1,3 +1,5 @@
+// Package discord provides a client for the Discord bot API: REST calls,
+// gateway types, and the shared wire types they exchange.
 package discord
 
 // Discord embed colors.
