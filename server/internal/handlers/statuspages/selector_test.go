@@ -25,6 +25,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 )
 
 // --- helpers ---
@@ -1133,6 +1134,447 @@ func TestReorderResources_RefusesMovingAManagedRow(t *testing.T) {
 	r.NoError(err)
 	r.Equal(uids[1], reordered[0].UID)
 	r.Equal(uids[0], reordered[1].UID)
+}
+
+// --- Group selectors (spec 2026-09-20-02) ---
+
+// seedGroupWithMember creates a check group and one member check in it.
+func seedGroupWithMember(
+	ctx context.Context, t *testing.T, svc *Service, orgUID, name string,
+) (*models.CheckGroup, *models.Check) {
+	t.Helper()
+
+	r := require.New(t)
+
+	group := models.NewCheckGroup(orgUID, name, "group-"+uuid.NewString()[:8])
+	r.NoError(svc.db.CreateCheckGroup(ctx, group))
+
+	check := models.NewCheck(orgUID, "check-"+uuid.NewString()[:8], "http")
+	check.Name = strPtr(name + " member")
+	check.CheckGroupUID = &group.UID
+	r.NoError(svc.db.CreateCheck(ctx, check))
+
+	return group, check
+}
+
+// seedGroupSelectorPage creates a page with a section carrying a group
+// selector (by UID) and returns everything needed to reconcile it.
+func seedGroupSelectorPage(
+	ctx context.Context, t *testing.T, svc *Service, org *models.Organization, groupUID string,
+) (StatusPageResponse, StatusPageSectionResponse) {
+	t.Helper()
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	require.NoError(t, err)
+	dropDefaultSections(ctx, t, svc, page.UID)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "By group", Slug: "by-group",
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: groupUID}),
+	})
+	require.NoError(t, err)
+
+	return page, section
+}
+
+// TestSectionSelector_ValidateGroup extends the validation pin with the third
+// shape: a bare group UID is legal, but group+all, group+labels and an EMPTY
+// group string are all rejected — an empty string would otherwise be a silent
+// "match nothing" rule, and the sentinel `none` (ungrouped checks) in
+// ListChecksFilter must be equally unreachable from a selector.
+func TestSectionSelector_ValidateGroup(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		selector *models.SectionSelector
+		wantErr  error
+	}{
+		{"group", &models.SectionSelector{CheckGroupUID: "b6c1"}, nil},
+		{"group and all", &models.SectionSelector{All: true, CheckGroupUID: "b6c1"}, models.ErrSelectorAmbiguous},
+		{
+			"group and labels",
+			&models.SectionSelector{Labels: map[string]string{"env": "prod"}, CheckGroupUID: "b6c1"},
+			models.ErrSelectorAmbiguous,
+		},
+		{"all, labels and group", &models.SectionSelector{
+			All:           true,
+			Labels:        map[string]string{"env": "prod"},
+			CheckGroupUID: "b6c1",
+		}, models.ErrSelectorAmbiguous},
+		{"empty group string", &models.SectionSelector{CheckGroupUID: ""}, models.ErrSelectorEmpty},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := test.selector.Validate()
+			if test.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, test.wantErr)
+		})
+	}
+
+	// The "none" sentinel in ListChecksFilter means "ungrouped checks". It has
+	// no named constant (a literal in both stores); a selector could only send
+	// it as a group UID, and the service-level existence check rejects that
+	// before it can ever reach a filter — no group's UID is "none".
+	filter := (&models.SectionSelector{CheckGroupUID: "none"}).Filter()
+	require.NotNil(t, filter.CheckGroupUID)
+	require.Equal(t, "none", *filter.CheckGroupUID,
+		"a selector stores what it is given; the sentinel is unreachable only "+
+			"because the service resolves and rejects non-existent groups first")
+}
+
+// TestSectionSelector_FilterGroup pins that the group shape renders as the
+// filter's CheckGroupUID — the very filter the checks list uses — and that
+// Equal distinguishes two different groups (otherwise switching A → B would be
+// a no-op that never re-reconciles).
+func TestSectionSelector_FilterGroup(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	groupA := &models.SectionSelector{CheckGroupUID: "group-a"}
+	groupB := &models.SectionSelector{CheckGroupUID: "group-b"}
+
+	filter := groupA.Filter()
+	r.NotNil(filter.CheckGroupUID)
+	r.Equal("group-a", *filter.CheckGroupUID)
+
+	r.True(groupA.Equal(&models.SectionSelector{CheckGroupUID: "group-a"}))
+	r.False(groupA.Equal(groupB), "switching group A to B must count as a change")
+	r.False(groupA.Equal(&models.SectionSelector{All: true}))
+	r.False(groupA.Equal(nil))
+	r.False((*models.SectionSelector)(nil).Equal(groupA))
+}
+
+// TestSectionSelector_GroupRoundTrip is the headline requirement for the group
+// shape: a check moved into the group is adopted on reconcile, and dropped the
+// moment it leaves the group — with no manual action on either side.
+func TestSectionSelector_GroupRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	group, check := seedGroupWithMember(ctx, t, svc, org.UID, "Web frontend")
+	page, section := seedGroupSelectorPage(ctx, t, svc, org, group.UID)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	uids, managed := sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{check.UID}, uids)
+	r.Equal([]bool{true}, managed)
+
+	// A check created later INTO the group is adopted too.
+	later := models.NewCheck(org.UID, "later-member", "http")
+	later.Name = strPtr("Later member")
+	later.CheckGroupUID = &group.UID
+	r.NoError(svc.db.CreateCheck(ctx, later))
+	svc.ReconcileOrgSelectors(ctx, org.UID)
+
+	uids, _ = sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Len(uids, 2)
+
+	// Moving the check OUT of the group drops it. "" clears the column (the
+	// same store semantics the checks service uses).
+	empty := ""
+	r.NoError(svc.db.UpdateCheck(ctx, later.UID, &models.CheckUpdate{CheckGroupUID: &empty}))
+	svc.ReconcileOrgSelectors(ctx, org.UID)
+
+	uids, _ = sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{check.UID}, uids)
+}
+
+// TestSectionSelector_UnknownGroupRejected pins the service-level existence
+// check: create and update reject a group UID that does not exist, as a
+// selector validation error (VALIDATION_ERROR at the API boundary) — not a 500
+// and not a silently-empty rule.
+func TestSectionSelector_UnknownGroupRejected(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+
+	// Create.
+	_, err = svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "Dyn", Slug: "dyn",
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: uuid.NewString()}),
+	})
+	r.ErrorIs(err, models.ErrSelectorGroupNotFound)
+	r.True(selectorValidationError(err))
+
+	// Update with an unknown group is the same refusal.
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	_, err = svc.UpdateSection(ctx, org.Slug, page.UID, section.UID, UpdateSectionRequest{
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: uuid.NewString()}),
+	})
+	r.ErrorIs(err, models.ErrSelectorGroupNotFound)
+}
+
+// TestSectionSelector_ForeignAndDeletedGroupRejected pins that the existence
+// check is scoped to the page's organization and covers soft-deleted groups:
+// a group in ANOTHER org and a deleted one are indistinguishable from an
+// unknown one, so the API never leaks whether the UID exists elsewhere. The
+// positive control proves the refusal is about scope, not about the UID shape.
+func TestSectionSelector_ForeignAndDeletedGroupRejected(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	// A second organization with its own group.
+	otherOrg := models.NewOrganization("other", "Other")
+	r.NoError(svc.db.CreateOrganization(ctx, otherOrg))
+	foreignGroup, _ := seedGroupWithMember(ctx, t, svc, otherOrg.UID, "Foreign")
+
+	// A deleted group in our own org.
+	deletedGroup, _ := seedGroupWithMember(ctx, t, svc, org.UID, "Doomed")
+	r.NoError(svc.db.DeleteCheckGroup(ctx, deletedGroup.UID))
+
+	// A live group in our own org — the positive control.
+	ownGroup, _ := seedGroupWithMember(ctx, t, svc, org.UID, "Own")
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+
+	for name, groupUID := range map[string]string{
+		"foreign org": foreignGroup.UID,
+		"deleted":     deletedGroup.UID,
+	} {
+		_, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+			Name: "Dyn " + name, Slug: "dyn-" + strings.ReplaceAll(name, " ", "-"),
+			Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: groupUID}),
+		})
+		r.ErrorIs(err, models.ErrSelectorGroupNotFound, name)
+		r.True(selectorValidationError(err), name)
+	}
+
+	// Positive control: the same org's live group is accepted, canonicalised
+	// to its UID.
+	created, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "Own group", Slug: "own-group",
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: ownGroup.UID}),
+	})
+	r.NoError(err)
+	r.NotNil(created.Selector)
+	r.Equal(ownGroup.UID, created.Selector.CheckGroupUID)
+}
+
+// TestSectionSelector_GroupSlugResolved pins the open-question default: the
+// selector accepts the group's SLUG on input (like GetCheckGroupByUidOrSlug
+// does elsewhere) but stores and returns the canonical UID.
+func TestSectionSelector_GroupSlugResolved(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	group, check := seedGroupWithMember(ctx, t, svc, org.UID, "Web frontend")
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+	dropDefaultSections(ctx, t, svc, page.UID)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "By slug", Slug: "by-slug",
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: group.Slug}),
+	})
+	r.NoError(err)
+	r.NotNil(section.Selector)
+	r.Equal(group.UID, section.Selector.CheckGroupUID, "the slug is canonicalised to the UID on save")
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	uids, _ := sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{check.UID}, uids)
+}
+
+// TestSectionSelector_DeletedGroupEmptiesAndReports pins the deleted-group
+// semantics: deleting the group drops the section's managed rows (it must not
+// keep publishing the former members), and the authenticated payload reports
+// `selectorGroupMissing` so an empty section never looks neutral.
+func TestSectionSelector_DeletedGroupEmptiesAndReports(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	group, check := seedGroupWithMember(ctx, t, svc, org.UID, "Web frontend")
+	page, section := seedGroupSelectorPage(ctx, t, svc, org, group.UID)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+	uids, _ := sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{check.UID}, uids, "precondition: the member is published")
+
+	r.NoError(svc.db.DeleteCheckGroup(ctx, group.UID))
+
+	// Reconcile (what the checkgroups service triggers after a delete) drops
+	// the managed rows: the group no longer exists, so its rule matches
+	// nothing.
+	svc.ReconcileOrgSelectors(ctx, org.UID)
+
+	uids, _ = sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Empty(uids, "a deleted group's members stop being published")
+
+	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Len(sections, 1)
+	r.NotNil(sections[0].Selector)
+	r.Equal(group.UID, sections[0].Selector.CheckGroupUID, "the rule is kept, not silently rewritten")
+	r.True(sections[0].SelectorGroupMissing)
+
+	// Admin-only: the public payload never carries the hint.
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	r.NoError(err)
+	r.False(public.Sections[0].SelectorGroupMissing)
+	r.NotContains(mustMarshalJSON(t, public), "selectorGroupMissing")
+}
+
+// TestCheckGroupsService_ReconcileAfterDelete pins the wiring: the checkgroups
+// service calls the reconciler after a successful group delete, so the section
+// empties promptly rather than on the next page view.
+func TestCheckGroupsService_ReconcileAfterDelete(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	group, check := seedGroupWithMember(ctx, t, svc, org.UID, "Web frontend")
+	page, section := seedGroupSelectorPage(ctx, t, svc, org, group.UID)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+	uids, _ := sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{check.UID}, uids, "precondition")
+
+	groupsSvc := checkgroups.NewService(svc.db)
+	groupsSvc.SetStatusPageReconciler(svc)
+
+	r.NoError(groupsSvc.DeleteCheckGroup(ctx, org.Slug, group.UID))
+
+	uids, _ = sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Empty(uids, "the group delete itself must trigger the reconcile")
+
+	// And an unknown identifier still fails without touching anything.
+	r.ErrorIs(groupsSvc.DeleteCheckGroup(ctx, org.Slug, "no-such-group"), checkgroups.ErrCheckGroupNotFound)
+}
+
+// TestSectionSelector_SwitchGroupRematerialises pins the Equal case end to
+// end: switching a section from group A to group B is an actual change that
+// re-reconciles — A's checks drop, B's are adopted.
+func TestSectionSelector_SwitchGroupRematerialises(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	groupA, checkA := seedGroupWithMember(ctx, t, svc, org.UID, "Group A")
+	groupB, checkB := seedGroupWithMember(ctx, t, svc, org.UID, "Group B")
+	page, section := seedGroupSelectorPage(ctx, t, svc, org, groupA.UID)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+	uids, _ := sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{checkA.UID}, uids)
+
+	updated, err := svc.UpdateSection(ctx, org.Slug, page.UID, section.UID, UpdateSectionRequest{
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: groupB.UID}),
+	})
+	r.NoError(err)
+	r.NotNil(updated.Selector)
+	r.Equal(groupB.UID, updated.Selector.CheckGroupUID)
+
+	uids, _ = sectionCheckUIDs(ctx, t, svc, section.UID)
+	r.Equal([]string{checkB.UID}, uids, "switching groups re-materializes the section")
+	r.NotContains(uids, checkA.UID)
+}
+
+// TestSectionSelector_GroupManualWinsAndClaimed pins that the label/ALL rules'
+// dedupe guarantees hold for groups too: a manually placed group member is
+// never duplicated by a group selector, and a group member claimed by an
+// earlier selector section is reported as claimed-elsewhere.
+func TestSectionSelector_GroupManualWinsAndClaimed(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	group, member := seedGroupWithMember(ctx, t, svc, org.UID, "Web frontend")
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug})
+	r.NoError(err)
+	dropDefaultSections(ctx, t, svc, page.UID)
+
+	curated, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	dynamic, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{
+		Name: "By group", Slug: "by-group",
+		Selector: selectorRaw(t, models.SectionSelector{CheckGroupUID: group.UID}),
+	})
+	r.NoError(err)
+
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, curated.UID, CreateResourceRequest{CheckUID: member.UID})
+	r.NoError(err)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	curatedUIDs, curatedManaged := sectionCheckUIDs(ctx, t, svc, curated.UID)
+	r.Equal([]string{member.UID}, curatedUIDs)
+	r.Equal([]bool{false}, curatedManaged)
+
+	dynamicUIDs, _ := sectionCheckUIDs(ctx, t, svc, dynamic.UID)
+	r.Empty(dynamicUIDs, "manual placement wins over a group selector")
+
+	sections, err := svc.ListSections(ctx, org.Slug, page.UID)
+	r.NoError(err)
+	r.Len(sections, 2)
+	r.Equal(1, sections[1].SelectorMatchTotal, "the selector still counts its full match")
+	r.Equal(1, sections[1].SelectorClaimedElsewhere)
+	r.Equal("Core", sections[1].SelectorClaimedSectionName)
+}
+
+// TestSectionSelector_PublicPayloadHidesGroupSelector extends the redaction
+// pin to the group shape: the public payload carries neither the rule nor any
+// group identifier from it.
+func TestSectionSelector_PublicPayloadHidesGroupSelector(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	group, check := seedGroupWithMember(ctx, t, svc, org.UID, "Web frontend")
+	page, _ := seedGroupSelectorPage(ctx, t, svc, org, group.UID)
+
+	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
+
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	r.NoError(err)
+	r.Len(public.Sections, 1)
+	r.Nil(public.Sections[0].Selector)
+	r.Len(public.Sections[0].Resources, 1)
+	r.Equal(check.UID, *public.Sections[0].Resources[0].CheckUID,
+		"a group section materializes per-check rows, not a group component")
+
+	body := mustMarshalJSON(t, public)
+	r.NotContains(body, "\"selector\"")
+	r.NotContains(body, "checkGroupUid")
+	r.NotContains(body, group.UID)
+
+	admin, err := svc.GetStatusPage(ctx, org.Slug, page.UID, GetStatusPageOptions{IncludeSections: true})
+	r.NoError(err)
+	r.NotNil(admin.Sections[0].Selector)
+	r.Equal(group.UID, admin.Sections[0].Selector.CheckGroupUID)
 }
 
 // TestSelector_ManualAddOverAManagedRow pins the other direction of

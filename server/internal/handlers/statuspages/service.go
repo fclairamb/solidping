@@ -1688,9 +1688,17 @@ func (s *Service) enrichSelectorCounts(
 		return
 	}
 	if section.Selector.CheckGroupUID != "" {
-		group, err := s.db.GetCheckGroup(ctx, orgUID, section.Selector.CheckGroupUID)
-		if err != nil || group == nil {
+		_, err := s.db.GetCheckGroup(ctx, orgUID, section.Selector.CheckGroupUID)
+		if errors.Is(err, sql.ErrNoRows) {
 			response.SelectorGroupMissing = true
+			return
+		}
+		if err != nil {
+			// Best-effort like the rest of this function: a failed lookup
+			// leaves every counter at zero rather than failing the page load.
+			slog.ErrorContext(ctx, "Failed to check selector group existence",
+				"error", err, "orgUid", orgUID, "sectionUid", section.UID)
+
 			return
 		}
 	}
@@ -1917,15 +1925,27 @@ func (s *Service) UpdateSection(
 
 // resolveSelectorGroup verifies a group selector belongs to the page's
 // organization and canonicalises a supported slug input to its immutable UID.
+//
+// Not-found, soft-deleted and foreign-org groups all collapse onto the same
+// VALIDATION_ERROR (via ErrSelectorGroupNotFound): the message says the group
+// does not exist in THIS organization and nothing more — the API must never
+// reveal whether a UID exists in some other organization.
 func (s *Service) resolveSelectorGroup(ctx context.Context, orgUID string, selector *models.SectionSelector) error {
 	if selector == nil || selector.CheckGroupUID == "" {
 		return nil
 	}
+
 	group, err := s.db.GetCheckGroupByUidOrSlug(ctx, orgUID, selector.CheckGroupUID)
-	if err != nil || group == nil {
+	switch {
+	case err == nil && group != nil:
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
+		return err
+	default:
 		return models.ErrSelectorGroupNotFound
 	}
+
 	selector.CheckGroupUID = group.UID
+
 	return nil
 }
 

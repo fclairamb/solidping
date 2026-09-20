@@ -484,13 +484,17 @@ func (s *Service) desiredChecks(
 ) ([]string, error) {
 	// Check rows retain their check_group_uid after a soft-delete. Verify the
 	// group itself before filtering so a deleted group selects nothing rather
-	// than continuing to publish its former members.
+	// than continuing to publish its former members. A group that is gone is
+	// "desired = empty", NOT an error — the reconciler must still run so the
+	// section's managed rows are dropped — but a genuine database failure is
+	// still an error and must not be read as "no matches".
 	if selector.CheckGroupUID != "" {
-		group, err := s.db.GetCheckGroup(ctx, orgUID, selector.CheckGroupUID)
-		if errors.Is(err, sql.ErrNoRows) || group == nil {
+		_, err := s.db.GetCheckGroup(ctx, orgUID, selector.CheckGroupUID)
+		switch {
+		case err == nil:
+		case errors.Is(err, sql.ErrNoRows):
 			return []string{}, nil
-		}
-		if err != nil {
+		default:
 			return nil, err
 		}
 	}
