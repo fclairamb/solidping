@@ -151,3 +151,14 @@ There is **no jitter figure** anywhere in the checkers — only `rtt_ms_min`,
 same loop that already computes min/max/avg, and it is the number that makes
 this line-quality data rather than uptime data. Worth folding in here or
 splitting out.
+
+## Resolved open questions
+
+Decisions by Florent on 2026-09-21 (binding for the implementer):
+
+- **Interval floor — 50ms or 10ms?** → **Decision: lower the floor to 50ms.** Do not go to 10ms.
+- **Count ceiling?** → **Decision: 600 packets** (not the 60 the spec floated). At a 50ms interval that is a 30-second burst window.
+- **Execution budget — split the meanings, or size the budget?** → **Decision: split** — a per-packet `timeout` plus a separate overall execution budget computed as `count × timeout + (count-1) × interval` plus margin. Stop overloading `timeout` as the whole-burst budget.
+- **Send packets concurrently (fping-style)?** → **Decision: yes** — rework the sequential ping loop so packets are sent on schedule and replies collected asynchronously; run time becomes `(count-1) × interval + timeout`, independent of loss.
+- **Unsent packets — shrink `packets_sent` or mark the result partial?** → **Decision: shrink `packets_sent`** — a truncated burst reports only what it actually sent; do not introduce a partial-result status.
+- **Jitter — fold into this spec or a separate one?** → **Decision: fold in** — compute std-dev (or mdev) over the burst in the same min/max/avg loop and expose it alongside `rtt_ms_*` metrics.
