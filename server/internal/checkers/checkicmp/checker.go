@@ -3,14 +3,9 @@ package checkicmp
 
 import (
 	"context"
-	"net"
-	"os"
+	"math"
 	"strings"
 	"time"
-
-	"golang.org/x/net/icmp"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -45,6 +40,7 @@ const (
 	metricPacketsSent     = "packets_sent"
 	metricPacketsReceived = "packets_received"
 	metricPacketLossPct   = "packet_loss_pct"
+	metricRTTJitterMs     = "rtt_ms_jitter"
 )
 
 // ICMPChecker implements the Checker interface for ICMP ping checks.
@@ -171,22 +167,58 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	start := time.Now()
 
-	// Perform ICMP pings
-	results := performICMPPings(ctx, ip, isIPv6, count, timeout, interval)
+	// Perform the ICMP burst: packets sent on schedule, replies collected
+	// asynchronously (spec 2026-09-21-01).
+	results, burstErr := performICMPPings(ctx, ip, isIPv6, count, timeout, interval)
 
 	duration := time.Since(start)
 
-	// Calculate statistics
+	if burstErr != nil {
+		// The burst could not run at all (socket setup failure, or every write
+		// failed): nothing was sent, so the burst reports zero packets and a
+		// clean failure rather than fabricated loss figures.
+		result := &checkerdef.Result{
+			Status:   checkerdef.StatusDown,
+			Duration: duration,
+			Output: map[string]any{
+				checkerdef.OutputKeyHost:   cfg.Host,
+				checkerdef.OutputKeyMethod: methodICMP,
+				"ip":                       ip.String(),
+				checkerdef.OutputKeyError:  burstErr.Error(),
+			},
+			Metrics: map[string]any{
+				metricPacketsSent:     0,
+				metricPacketsReceived: 0,
+				metricPacketLossPct:   float64(percentageMultiplier),
+			},
+		}
+		result.SetNetworkFailure(checkerdef.NewNetworkFailure(
+			burstFailureClass(burstErr), cfg.Host, ip.String(), 0))
+
+		return result, nil
+	}
+
+	// Calculate statistics. `results` holds exactly the packets that were
+	// actually written to the socket, so sent/received/loss describe what
+	// really happened — a truncated burst shrinks packets_sent instead of
+	// reporting packets it never transmitted as lost (spec 2026-09-21-01).
+	sent := len(results)
+
 	var minRTT, maxRTT, totalRTT time.Duration
 
 	successCount := 0
 
 	minRTT = time.Duration(1<<63 - 1) // Max duration
 
+	var sumSquaresNS float64
+
 	for idx := range results {
 		if results[idx].Success {
 			successCount++
 			totalRTT += results[idx].RTT
+
+			rttNS := float64(results[idx].RTT.Nanoseconds())
+			sumSquaresNS += rttNS * rttNS
 
 			if results[idx].RTT < minRTT {
 				minRTT = results[idx].RTT
@@ -198,8 +230,12 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		}
 	}
 
-	// Calculate packet loss percentage
-	packetLossPct := float64(count-successCount) / float64(count) * percentageMultiplier
+	// Calculate packet loss percentage over what was actually sent.
+	packetLossPct := float64(percentageMultiplier)
+
+	if sent > 0 {
+		packetLossPct = float64(sent-successCount) / float64(sent) * percentageMultiplier
+	}
 
 	// Determine status
 	status := checkerdef.StatusDown
@@ -214,7 +250,7 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Status:   status,
 		Duration: duration,
 		Metrics: map[string]any{
-			metricPacketsSent:     count,
+			metricPacketsSent:     sent,
 			metricPacketsReceived: successCount,
 			metricPacketLossPct:   packetLossPct,
 		},
@@ -232,6 +268,20 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		result.Metrics["rtt_ms_min"] = float64(minRTT.Microseconds()) / microsecondsToMillis
 		result.Metrics["rtt_ms_max"] = float64(maxRTT.Microseconds()) / microsecondsToMillis
 		result.Metrics["rtt_ms_avg"] = float64(avgRTT.Microseconds()) / microsecondsToMillis
+
+		// Jitter: population std-dev over the successful RTTs of the burst,
+		// computed in the same pass as min/max/avg (spec 2026-09-21-01). It is
+		// the figure that makes this line-quality data rather than uptime
+		// data. No aggregation suffix matches, so it rolls up by the
+		// type-based default (float64 → average), like rtt_ms_avg.
+		meanNS := float64(totalRTT) / float64(successCount)
+		variance := sumSquaresNS/float64(successCount) - meanNS*meanNS
+
+		if variance < 0 {
+			variance = 0
+		}
+
+		result.Metrics[metricRTTJitterMs] = math.Sqrt(variance) / float64(time.Millisecond)
 	} else {
 		// Include the last error if all pings failed
 		for i := len(results) - 1; i >= 0; i-- {
@@ -276,211 +326,20 @@ func icmpFailureClass(results []pingResult) string {
 	return checkerdef.NetFailureICMPTimeout
 }
 
+// burstFailureClass classifies a whole-burst failure (socket setup error, or
+// every write failed) the way icmpFailureClass classifies per-packet errors.
+func burstFailureClass(err error) string {
+	switch checkerdef.ClassifyDialError(err, false) {
+	case checkerdef.NetFailureNetworkUnreachable, checkerdef.NetFailureHostUnreachable:
+		return checkerdef.NetFailureICMPUnreachable
+	}
+
+	return checkerdef.NetFailureICMPTimeout
+}
+
 // pingResult represents the result of a single ICMP ping attempt.
 type pingResult struct {
 	Success bool
 	RTT     time.Duration
 	Error   error
-}
-
-// performICMPPings performs multiple ICMP ping attempts.
-func performICMPPings(
-	ctx context.Context,
-	ip net.IP,
-	isIPv6 bool,
-	count int,
-	timeout, interval time.Duration,
-) []pingResult {
-	results := make([]pingResult, 0, count)
-
-	for i := 0; i < count; i++ {
-		// Check if context is canceled
-		if ctx.Err() != nil {
-			results = append(results, pingResult{
-				Success: false,
-				Error:   ctx.Err(),
-			})
-
-			continue
-		}
-
-		// Perform single ICMP ping
-		result := performSingleICMPPing(ctx, ip, isIPv6, timeout, i)
-		results = append(results, result)
-
-		// Sleep between attempts (except for the last one)
-		if i < count-1 {
-			select {
-			case <-ctx.Done():
-				return results
-			case <-time.After(interval):
-			}
-		}
-	}
-
-	return results
-}
-
-// performSingleICMPPing performs a single ICMP Echo Request/Reply exchange.
-//
-//nolint:funlen,cyclop,gocognit // ICMP implementation requires careful handling of multiple cases
-func performSingleICMPPing(ctx context.Context, ip net.IP, isIPv6 bool, timeout time.Duration, seq int) pingResult {
-	// Determine network type and protocol
-	var network, listenAddr string
-
-	var proto int
-
-	var msgType icmp.Type
-
-	if isIPv6 {
-		proto = protocolICMPv6
-		msgType = ipv6.ICMPTypeEchoRequest
-		listenAddr = "::"
-	} else {
-		proto = protocolICMP
-		msgType = ipv4.ICMPTypeEcho
-		listenAddr = "0.0.0.0"
-	}
-
-	// Try unprivileged mode first (udp4/udp6), then fall back to privileged (ip4:icmp/ip6:ipv6-icmp)
-	var conn *icmp.PacketConn
-
-	var connErr error
-
-	var useUDP bool
-
-	if isIPv6 {
-		network = "udp6"
-	} else {
-		network = "udp4"
-	}
-
-	conn, connErr = icmp.ListenPacket(network, listenAddr)
-	if connErr == nil {
-		useUDP = true
-	} else {
-		// Fall back to privileged mode
-		if isIPv6 {
-			network = "ip6:ipv6-icmp"
-		} else {
-			network = "ip4:icmp"
-		}
-
-		conn, connErr = icmp.ListenPacket(network, listenAddr)
-		if connErr != nil {
-			return pingResult{Success: false, Error: connErr}
-		}
-
-		useUDP = false
-	}
-
-	defer func() { _ = conn.Close() }()
-
-	// Create context with timeout
-	pingCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	// Set deadline on connection
-	deadline, _ := pingCtx.Deadline()
-	if deadlineErr := conn.SetDeadline(deadline); deadlineErr != nil {
-		return pingResult{Success: false, Error: deadlineErr}
-	}
-
-	// Build ICMP Echo Request message
-	// Use process ID as identifier (masked to 16 bits)
-	id := os.Getpid() & 0xffff
-
-	msg := &icmp.Message{
-		Type: msgType,
-		Code: 0,
-		Body: &icmp.Echo{
-			ID:   id,
-			Seq:  seq,
-			Data: make([]byte, defaultPacketSize),
-		},
-	}
-
-	msgBytes, marshalErr := msg.Marshal(nil)
-	if marshalErr != nil {
-		return pingResult{Success: false, Error: marshalErr}
-	}
-
-	// Determine destination address based on network type
-	var dst net.Addr
-
-	if useUDP {
-		dst = &net.UDPAddr{IP: ip}
-	} else {
-		dst = &net.IPAddr{IP: ip}
-	}
-
-	// Send ICMP Echo Request
-	start := time.Now()
-
-	if _, writeErr := conn.WriteTo(msgBytes, dst); writeErr != nil {
-		return pingResult{Success: false, Error: writeErr}
-	}
-
-	// Wait for ICMP Echo Reply
-	reply := make([]byte, 1500)
-
-	for {
-		// Check context cancellation
-		select {
-		case <-pingCtx.Done():
-			return pingResult{Success: false, Error: pingCtx.Err()}
-		default:
-		}
-
-		bytesRead, _, readErr := conn.ReadFrom(reply)
-		if readErr != nil {
-			return pingResult{Success: false, Error: readErr}
-		}
-
-		rtt := time.Since(start)
-
-		// Parse ICMP message
-		replyMsg, parseErr := icmp.ParseMessage(proto, reply[:bytesRead])
-		if parseErr != nil {
-			continue // Invalid message, keep waiting
-		}
-
-		// Check if it's an Echo Reply
-		var expectedReplyType icmp.Type
-		if isIPv6 {
-			expectedReplyType = ipv6.ICMPTypeEchoReply
-		} else {
-			expectedReplyType = ipv4.ICMPTypeEchoReply
-		}
-
-		if replyMsg.Type != expectedReplyType {
-			continue // Not an echo reply, keep waiting
-		}
-
-		// Verify it's our reply by checking ID and sequence number
-		echo, ok := replyMsg.Body.(*icmp.Echo)
-		if !ok {
-			continue
-		}
-
-		// In UDP mode on some systems, the kernel may modify the ID
-		// So we primarily check the sequence number
-		if useUDP || echo.ID == id {
-			if echo.Seq == seq {
-				return pingResult{
-					Success: true,
-					RTT:     rtt,
-				}
-			}
-		}
-
-		// Check if this is a response to our sequence but with different ID
-		// (some systems rewrite the ID in UDP mode)
-		if strings.HasPrefix(network, "udp") && echo.Seq == seq {
-			return pingResult{
-				Success: true,
-				RTT:     rtt,
-			}
-		}
-	}
 }
