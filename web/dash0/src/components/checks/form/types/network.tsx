@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -683,15 +684,145 @@ function FtpFields({
 // ── ICMP ──
 export interface IcmpState {
   host: string;
+  // Burst settings (spec 2026-09-21-02). All strings, same display-state
+  // pattern as `port` above: `count`/`packetSize`/`ttl` parse to integers in
+  // `toConfig`, `interval` stays the raw Go duration string the checker
+  // stores ("100ms", "1s" — see `checkicmp.ICMPConfig.FromMap`). Empty means
+  // "leave the server default in place", so an untouched burst is a single
+  // ping exactly as before.
+  count: string;
+  interval: string;
+  packetSize: string;
+  ttl: string;
 }
+
+// parsePositiveInt turns a display string into a non-negative integer, or
+// null when the input is blank/not a whole number (the number input's e.g.
+// "1e" collapses to ""). 0 is VALID here — packet_size 0 passes the server
+// validator — so 0 flows through and only blank/garbage is treated as unset.
+const parseNonNegativeInt = (raw: string): number | null => {
+  if (!raw.trim()) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) return null;
+  return n;
+};
+
+// intervalFormatRE is a loose Go-duration shape check, NOT a bounds check: it
+// only catches obvious typos ("100", "s100", "1sec") before the request.
+// The server (`server/internal/checkers/checkicmp/checker.go`, which owns
+// minCount/maxCount/minInterval/maxInterval and the packet_size/ttl ranges —
+// the single source of these limits, NOT this file) still validates the
+// value and its bounds.
+const intervalFormatRE = /^(?:\d+(?:\.\d+)?(?:ms|s|m|h))+$/;
+
+// icmpBurstSummary builds the one-line "what this burst does" explainer, live
+// from the entered values. Count ≤ 1 (or blank) is the default single ping;
+// count ≥ 2 names the spacing, falling back to the server's 1s default. It
+// takes `t` because the wording is localized (en/fr/de/es) and plural is
+// picked in code — there is no i18next plural-rules config to lean on.
+export const icmpBurstSummary = (
+  t: TFunction,
+  count: string,
+  interval: string,
+): string => {
+  const n = parseNonNegativeInt(count) ?? 0;
+  if (n <= 1) return t("network.burstOne");
+  return t("network.burstMany", {
+    count: n,
+    interval: interval.trim() || "1s",
+  });
+};
+
+const burstCustomized = (state: IcmpState): boolean =>
+  Boolean(
+    state.count.trim() ||
+      state.interval.trim() ||
+      state.packetSize.trim() ||
+      state.ttl.trim(),
+  );
 
 export const icmpModule: CheckTypeModule<IcmpState> = {
   types: ["icmp"],
-  ownedKeys: ["host"],
-  fromConfig: (config) => ({ host: getConfigField(config, "host") }),
+  // Owned = omit-to-clear (see `assembleSubmittedConfig`). `host` was always
+  // here; `count`/`interval`/`packet_size`/`ttl` joined so clearing one of
+  // the new inputs really deletes the stored key instead of the unmodeled
+  // passthrough silently re-sending it. `timeout` and `ipVersion` stay with
+  // the shared controls (SHARED_FORM_CONFIG_KEYS); `url` stays unmodeled.
+  ownedKeys: ["host", "count", "interval", "packet_size", "ttl"],
+  fromConfig: (config) => ({
+    host: getConfigField(config, "host"),
+    count: getConfigField(config, "count"),
+    interval: getConfigField(config, "interval"),
+    packetSize: getConfigField(config, "packet_size"),
+    ttl: getConfigField(config, "ttl"),
+  }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.host) cfg.host = state.host;
+
+    // The module checks only shape (integer / duration format); the numeric
+    // bounds live in the Go checker and nowhere else (see intervalFormatRE).
+    const count = parseNonNegativeInt(state.count);
+    if (state.count.trim() && count === null) {
+      return {
+        config: cfg,
+        errors: [
+          { name: "count", message: "Count must be a whole number of packets" },
+          ...hostRequired(state.host),
+        ],
+      };
+    }
+    if (count !== null && count > 0) cfg.count = count;
+
+    // Interval is only meaningful for a burst of 2+ packets: at the default
+    // single ping it is dead config (the checker never uses it), so it is
+    // omitted — which, owned-keys being omit-to-clear, also deletes a stored
+    // interval the moment the count drops back to 1. The input itself stays
+    // visible but disabled so the value is never silently hidden.
+    const effectiveCount = count ?? 1;
+    if (state.interval.trim() && effectiveCount > 1) {
+      if (!intervalFormatRE.test(state.interval.trim())) {
+        return {
+          config: cfg,
+          errors: [
+            {
+              name: "interval",
+              message: "Interval must be a duration like 100ms or 1s",
+            },
+            ...hostRequired(state.host),
+          ],
+        };
+      }
+      cfg.interval = state.interval.trim();
+    }
+
+    const packetSize = parseNonNegativeInt(state.packetSize);
+    if (state.packetSize.trim() && packetSize === null) {
+      return {
+        config: cfg,
+        errors: [
+          {
+            name: "packet_size",
+            message: "Packet size must be a whole number of bytes",
+          },
+          ...hostRequired(state.host),
+        ],
+      };
+    }
+    if (packetSize !== null) cfg.packet_size = packetSize;
+
+    const ttl = parseNonNegativeInt(state.ttl);
+    if (state.ttl.trim() && ttl === null) {
+      return {
+        config: cfg,
+        errors: [
+          { name: "ttl", message: "TTL must be a whole number" },
+          ...hostRequired(state.host),
+        ],
+      };
+    }
+    if (ttl !== null && ttl > 0) cfg.ttl = ttl;
+
     return { config: cfg, errors: hostRequired(state.host) };
   },
   Fields: IcmpFields,
@@ -712,50 +843,169 @@ function IcmpFields({
       canSource(c.type) &&
       (c.settings?.status as string | undefined) === "granted",
   );
+  // Interval only means something once the burst has ≥ 2 packets.
+  const count = parseNonNegativeInt(state.count) ?? 1;
+  const intervalEnabled = count > 1;
+  const customized = burstCustomized(state);
+  const burstLine = icmpBurstSummary(t, state.count, state.interval);
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label htmlFor="host">{t("form.host")}</Label>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="host">{t("form.host")}</Label>
+          {freeboxChannels.length > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDiscoverOpen(true)}
+              data-testid="check-freebox-discover-button"
+            >
+              {t("freebox.discover")}
+            </Button>
+          )}
+        </div>
+        <Input
+          id="host"
+          type="text"
+          placeholder="example.com"
+          value={state.host}
+          onChange={(e) => onChange({ ...state, host: e.target.value })}
+          className={cn(getFieldError(errors, "host") && "border-destructive")}
+          data-testid="check-host-input"
+        />
+        {getFieldError(errors, "host") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "host")}
+          </p>
+        )}
         {freeboxChannels.length > 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setDiscoverOpen(true)}
-            data-testid="check-freebox-discover-button"
-          >
-            {t("freebox.discover")}
-          </Button>
+          <FreeboxLanDiscovery
+            org={org}
+            open={discoverOpen}
+            onOpenChange={setDiscoverOpen}
+            channels={freeboxChannels}
+            onSelect={(picked: FreeboxLanHost) => {
+              onChange({ ...state, host: picked.ip });
+              if (!name) {
+                setName(picked.name);
+              }
+            }}
+          />
         )}
       </div>
-      <Input
-        id="host"
-        type="text"
-        placeholder="example.com"
-        value={state.host}
-        onChange={(e) => onChange({ ...state, host: e.target.value })}
-        className={cn(getFieldError(errors, "host") && "border-destructive")}
-        data-testid="check-host-input"
-      />
-      {getFieldError(errors, "host") && (
-        <p className="text-xs text-destructive">
-          {getFieldError(errors, "host")}
+      <CollapsibleSection
+        title={t("network.burstTitle")}
+        summary={burstLine}
+        customized={customized}
+        defaultOpen={customized}
+        data-testid="check-icmp-burst-section"
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="icmp-count">{t("network.burstCount")}</Label>
+            <Input
+              id="icmp-count"
+              type="number"
+              min={1}
+              step={1}
+              placeholder="1"
+              value={state.count}
+              onChange={(e) => onChange({ ...state, count: e.target.value })}
+              className={cn(
+                getFieldError(errors, "count") && "border-destructive",
+              )}
+              data-testid="check-icmp-count-input"
+            />
+            {getFieldError(errors, "count") && (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "count")}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="icmp-interval">
+              {t("network.burstInterval")}
+            </Label>
+            <Input
+              id="icmp-interval"
+              type="text"
+              inputMode="decimal"
+              placeholder="1s"
+              disabled={!intervalEnabled}
+              value={state.interval}
+              onChange={(e) =>
+                onChange({ ...state, interval: e.target.value })
+              }
+              className={cn(
+                getFieldError(errors, "interval") && "border-destructive",
+              )}
+              data-testid="check-icmp-interval-input"
+            />
+            {getFieldError(errors, "interval") ? (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "interval")}
+              </p>
+            ) : (
+              !intervalEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  {t("network.burstIntervalNeedsCount")}
+                </p>
+              )
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="icmp-packet-size">
+              {t("network.burstPacketSize")}
+            </Label>
+            <Input
+              id="icmp-packet-size"
+              type="number"
+              min={0}
+              step={1}
+              placeholder="56"
+              value={state.packetSize}
+              onChange={(e) =>
+                onChange({ ...state, packetSize: e.target.value })
+              }
+              className={cn(
+                getFieldError(errors, "packet_size") && "border-destructive",
+              )}
+              data-testid="check-icmp-packet-size-input"
+            />
+            {getFieldError(errors, "packet_size") && (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "packet_size")}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="icmp-ttl">{t("network.burstTtl")}</Label>
+            <Input
+              id="icmp-ttl"
+              type="number"
+              min={1}
+              max={255}
+              step={1}
+              placeholder="64"
+              value={state.ttl}
+              onChange={(e) => onChange({ ...state, ttl: e.target.value })}
+              className={cn(
+                getFieldError(errors, "ttl") && "border-destructive",
+              )}
+              data-testid="check-icmp-ttl-input"
+            />
+            {getFieldError(errors, "ttl") && (
+              <p className="text-xs text-destructive">
+                {getFieldError(errors, "ttl")}
+              </p>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground" data-testid="icmp-burst-line">
+          {burstLine}
         </p>
-      )}
-      {freeboxChannels.length > 0 && (
-        <FreeboxLanDiscovery
-          org={org}
-          open={discoverOpen}
-          onOpenChange={setDiscoverOpen}
-          channels={freeboxChannels}
-          onSelect={(picked: FreeboxLanHost) => {
-            onChange({ ...state, host: picked.ip });
-            if (!name) {
-              setName(picked.name);
-            }
-          }}
-        />
-      )}
+      </CollapsibleSection>
     </div>
   );
 }

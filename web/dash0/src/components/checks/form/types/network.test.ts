@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { tcpModule } from "./network";
+import { icmpModule, tcpModule } from "./network";
 import { assembleSubmittedConfig, type CheckConfig } from "./common";
 
 // saveUntouched reproduces exactly what the shared form submits when a check is
@@ -149,5 +149,186 @@ describe("tcpModule — payload & reply round-trip", () => {
       tls_server_name: "acme.com",
     };
     expect(saveUntouched(stored)).toEqual(stored);
+  });
+});
+
+// saveIcmpUntouched is saveUntouched for the ICMP module. The four burst keys
+// (count / interval / packet_size / ttl) are OWNED since spec 2026-09-21-02,
+// so they are no longer carried by the unmodeled-key passthrough — every one
+// of these tests pins a direction of that contract.
+function saveIcmpUntouched(stored: CheckConfig): CheckConfig {
+  const state = icmpModule.fromConfig(stored);
+  const { config } = icmpModule.toConfig(state);
+  return assembleSubmittedConfig({
+    initialConfig: stored,
+    ownedKeys: icmpModule.ownedKeys,
+    moduleConfig: config,
+  });
+}
+
+describe("icmpModule — burst field round-trip", () => {
+  it("declares every key toConfig can write", () => {
+    const state = icmpModule.fromConfig({
+      host: "h",
+      count: 10,
+      interval: "100ms",
+      packet_size: 1200,
+      ttl: 64,
+    });
+    const { config } = icmpModule.toConfig(state);
+    for (const key of Object.keys(config)) {
+      expect(icmpModule.ownedKeys).toContain(key);
+    }
+  });
+
+  it("round-trips the four burst keys from an API-created check", () => {
+    const stored: CheckConfig = {
+      host: "gw.acme.com",
+      count: 10,
+      interval: "100ms",
+      packet_size: 1200,
+      ttl: 64,
+    };
+    const state = icmpModule.fromConfig(stored);
+    expect(state).toMatchObject({
+      host: "gw.acme.com",
+      count: "10",
+      interval: "100ms",
+      packetSize: "1200",
+      ttl: "64",
+    });
+    expect(icmpModule.toConfig(state).config).toEqual(stored);
+    expect(saveIcmpUntouched(stored)).toEqual(stored);
+  });
+
+  it("an API-created count survives an unrelated edit (rename-only save)", () => {
+    // The regression this spec exists for: somebody opens a check whose
+    // burst was configured over the API, changes nothing (or only the name —
+    // which is not config), hits save. The owned count/interval keys no
+    // longer ride the passthrough, so the module must re-emit them itself or
+    // the server's replace-merge deletes them and the burst silently dies.
+    const stored: CheckConfig = {
+      host: "gw.acme.com",
+      count: 10,
+      interval: "100ms",
+      ttl: 64,
+    };
+    expect(saveIcmpUntouched(stored)).toEqual(stored);
+  });
+
+  it("a fresh check emits only host — unchanged single-ping behaviour", () => {
+    const { config, errors } = icmpModule.toConfig({
+      host: "gw.acme.com",
+      count: "",
+      interval: "",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(config).toEqual({ host: "gw.acme.com" });
+    expect(errors).toEqual([]);
+  });
+
+  it("an empty burst section saves untouched without inventing defaults", () => {
+    // Only host is stored: the four owned keys are absent, so they must NOT
+    // be re-added (that would flip every legacy check to a burst).
+    const stored: CheckConfig = { host: "gw.acme.com" };
+    expect(saveIcmpUntouched(stored)).toEqual(stored);
+  });
+
+  it("clearing a burst field deletes the stored key (omit-to-clear)", () => {
+    const stored: CheckConfig = {
+      host: "gw.acme.com",
+      count: 10,
+      interval: "100ms",
+    };
+    const cleared = { ...icmpModule.fromConfig(stored), count: "" };
+    const submitted = assembleSubmittedConfig({
+      initialConfig: stored,
+      ownedKeys: icmpModule.ownedKeys,
+      moduleConfig: icmpModule.toConfig(cleared).config,
+    });
+    expect(submitted).not.toHaveProperty("count");
+    // Interval rides along with count: back at a single ping it is dead
+    // config the checker never reads, so dropping the count drops it too.
+    expect(submitted).not.toHaveProperty("interval");
+  });
+
+  it("interval is only emitted for a burst (count > 1)", () => {
+    // At the default single ping the interval is meaningless, so a burst
+    // field that lost its count must not leave a dead interval behind — and
+    // the form must not silently invent one either.
+    const solo = icmpModule.toConfig({
+      host: "h",
+      count: "",
+      interval: "100ms",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(solo.config).toEqual({ host: "h" });
+
+    const one = icmpModule.toConfig({
+      host: "h",
+      count: "1",
+      interval: "100ms",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(one.config).toEqual({ host: "h", count: 1 });
+
+    const burst = icmpModule.toConfig({
+      host: "h",
+      count: "5",
+      interval: "100ms",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(burst.config).toEqual({
+      host: "h",
+      count: 5,
+      interval: "100ms",
+    });
+  });
+
+  it("explicitly configured values are re-emitted verbatim", () => {
+    const state = icmpModule.fromConfig({
+      host: "h",
+      count: 600,
+      interval: "50ms",
+      packet_size: 0,
+      ttl: 255,
+    });
+    expect(icmpModule.toConfig(state).config).toEqual({
+      host: "h",
+      count: 600,
+      interval: "50ms",
+      // packet_size 0 is a legal value (server validator allows 0–65507) and
+      // must round-trip, not be dropped as "unset".
+      packet_size: 0,
+      ttl: 255,
+    });
+  });
+
+  it("rejects non-integer counts and malformed intervals", () => {
+    const bad = icmpModule.toConfig({
+      host: "h",
+      count: "10.5",
+      interval: "1sec",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(bad.errors).toEqual([
+      { name: "count", message: "Count must be a whole number of packets" },
+    ]);
+
+    const badInterval = icmpModule.toConfig({
+      host: "h",
+      count: "10",
+      interval: "100",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(badInterval.errors).toEqual([
+      { name: "interval", message: "Interval must be a duration like 100ms or 1s" },
+    ]);
   });
 });
