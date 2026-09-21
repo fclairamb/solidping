@@ -428,14 +428,14 @@ func TestBuildResponseTimeData_LifecycleMarkerDropsItsDuration(t *testing.T) {
 	zero := float32(0)
 	created := int(models.ResultStatusCreated)
 	up := int(models.ResultStatusUp)
-	real := float32(42)
+	probed := float32(42)
 
 	// Newest-first, the order buildResponseTimeData consumes: the real probe
 	// is newer than the marker, so after the builder's reversal the probe is
 	// points[0] and the marker points[1].
 	rows := []*models.Result{
 		{UID: "marker", PeriodType: models.PeriodTypeRaw, Duration: &zero, Status: &created},
-		{UID: "real", PeriodType: models.PeriodTypeRaw, Duration: &real, Status: &up},
+		{UID: "real", PeriodType: models.PeriodTypeRaw, Duration: &probed, Status: &up},
 	}
 
 	points := buildResponseTimeData(rows, 99.9, 99.0)
@@ -452,10 +452,10 @@ func TestResponseTimePointsHaveSignal_ZeroIsNoSignal(t *testing.T) {
 	r := require.New(t)
 
 	zero := float32(0)
-	real := float32(42)
+	probed := float32(42)
 
 	r.False(responseTimePointsHaveSignal([]ResponseTimePoint{{DurationP95: &zero}}))
-	r.True(responseTimePointsHaveSignal([]ResponseTimePoint{{DurationP95: &real}}))
+	r.True(responseTimePointsHaveSignal([]ResponseTimePoint{{DurationP95: &probed}}))
 	r.False(responseTimePointsHaveSignal(nil))
 }
 

@@ -3374,7 +3374,7 @@ func trimWindowedResponseTimeRows(
 func responseTimeTierBudgets(
 	windowSpan time.Duration, rawRows, hourRows, dayRows []*models.Result,
 	now, windowStart time.Time, retentionRawHours int,
-) (rawBudget, hourBudget, dayBudget int) {
+) (int, int, int) {
 	limit := responseTimeLimit
 
 	rawSpan := now.Sub(uptimebar.RawTierStart(windowStart, now, retentionRawHours))
@@ -3400,9 +3400,9 @@ func responseTimeTierBudgets(
 		return min(max(points, tierBudgetFloor), count, limit)
 	}
 
-	rawBudget = share(rawSpan, windowSpan, len(rawRows))
-	hourBudget = share(hourSpan, rollupSpan, len(hourRows))
-	dayBudget = share(daySpan, rollupSpan, len(dayRows))
+	rawBudget := share(rawSpan, windowSpan, len(rawRows))
+	hourBudget := share(hourSpan, rollupSpan, len(hourRows))
+	dayBudget := share(daySpan, rollupSpan, len(dayRows))
 
 	if overflow := rawBudget + hourBudget + dayBudget - limit; overflow > 0 {
 		// Give back from the coarsest tier first, then the middle one, never
@@ -3788,7 +3788,7 @@ func buildResponseTimeData(
 		// 0 ms marker would survive responseTimePointsHaveSignal and
 		// manufacture a phantom one-point "unknown region" series.
 		if recentResult.Status != nil &&
-			(models.ResultStatus(*recentResult.Status)).ExcludedFromAvailability() {
+			models.ResultStatus(*recentResult.Status).ExcludedFromAvailability() {
 			duration = nil
 		}
 

@@ -311,7 +311,6 @@ func readBurst(
 		buf := make([]byte, 1500)
 
 		for {
-
 			if ctx.Err() != nil {
 				// The burst is over, but replies that already arrived must
 				// still count — this goroutine may only now be getting
