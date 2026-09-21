@@ -21,7 +21,7 @@ Status pages provide a real-time view of your monitored services. Each organizat
 ## A new check isn't showing up
 
 You created a check and the status page still doesn't list it. Nothing is
-broken: a section decides what it contains, and there are three ways it can
+broken: a section decides what it contains, and there are four ways it can
 decide.
 
 | The section's membership mode | What happens to a check created later |
@@ -29,6 +29,7 @@ decide.
 | **Manual** (the default) | Nothing. You add each component yourself. |
 | **All checks** | It appears on its own, as soon as it exists. |
 | **By label** | It appears on its own, if it carries all of the rule's labels. |
+| **By group** | It appears on its own, if it is a member of the rule's check group. |
 
 Every section that already exists is **manual**, because auto-inclusion is never
 applied to a page you did not ask for it on — on a public page it is a
@@ -41,8 +42,8 @@ Two ways to fix it:
   through its check group, or through a membership rule — the dialog says so
   instead of adding it twice.
 - **Stop doing it by hand.** Open the status page, edit the section, and set
-  **Membership** to *All checks* or *By label*. From then on, matching checks
-  appear by themselves. See [Dynamic sections](#dynamic-sections).
+  **Membership** to *All checks*, *By label* or *By group*. From then on,
+  matching checks appear by themselves. See [Dynamic sections](#dynamic-sections).
 
 On a public page, prefer **By label** with an opt-in label such as
 `public=true`: *All checks* publishes every future check the moment it is
@@ -120,17 +121,23 @@ the check goes down — and the page (or the office wallboard reading it) stays
 worse than no board.
 
 A section can instead carry a **membership rule**, and SolidPing keeps its
-components in sync for you. Two rules are available:
+components in sync for you. Three rules are available:
 
 | Rule | Meaning |
 |---|---|
 | **All checks** | Every check in the organization, now and in the future |
 | **By label** | Every check carrying **all** of the given `key=value` labels |
+| **By group** | Every check in one [check group](./check-groups.md), now and in the future |
 
 Label matching is AND, and values are exact — a check labelled `env=staging`
 does not match `env=prod`. There is no wildcard.
 
-Internal checks are never matched by either rule.
+Internal checks are never matched by any rule.
+
+If a **By group** rule's group is deleted, the rule matches nothing: the
+components it owned are removed and the dashboard shows an amber warning on the
+section, so an empty section never looks like a deliberate choice. The rule
+itself is kept — pick another group or another mode to fill the section again.
 
 ### Recommended: label opt-in
 
@@ -200,21 +207,23 @@ viewed, so a component can never quietly go missing.
 interchangeable — they differ in what a visitor sees. A membership rule only
 ever adds **individual checks**; it never adopts a group.
 
-| | **Group component** | **Label rule** |
+| | **Group component** | **Group rule** |
 |---|---|---|
-| What you configure | A resource targeting a check **group** | A section whose membership is **By label** |
-| What the page shows | **One** component for the whole group | **One component per matching check** |
+| What you configure | A resource targeting a check **group** | A section whose membership is **By group** (or **By label**) |
+| What the page shows | **One** component for the whole group | **One component per member check** |
 | Member names, types, count | Never published | Published, one row each |
 | Status | Rolled up: degraded when some members are down | Each check's own status, side by side |
 | Availability | Weighted average across members | Per check |
 | Response-time chart | None | One per check |
-| A new check joins | Appears inside the roll-up as soon as it joins the group | Appears as a new row as soon as it carries the labels |
-| Removing one | Move the check out of the group | Remove the label from the check |
+| A new check joins | Appears inside the roll-up as soon as it joins the group | Appears as a new row as soon as it joins the group (or carries the labels) |
+| Removing one | Move the check out of the group | Move the check out of the group (or remove the label) |
+| The group is deleted | The component renders with no live info | The section empties and the dashboard warns you |
 
 Pick the **group component** when the group is an implementation detail — four
 probes against one host, say — and the public page should show one service.
-Pick the **label rule** when each matching check is a service your visitors
-recognize by name and want to see the status of individually.
+Pick the **group rule** when each member check is a service your visitors
+recognize by name and want to see the status of individually — including
+checks added to the group next month, with no label to remember to set.
 
 They compose — a page can carry a hand-curated section of group components and a
 dynamic section of labelled checks — but they do not know about each other. A
@@ -240,6 +249,12 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/js
   -d '{"selector":{"all":true}}' \
   'https://solidping.io/api/v1/orgs/acme/status-pages/public/sections/services'
 
+# Every check in one check group (the group's UID; its slug is accepted too
+# and canonicalised to the UID on save)
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"selector":{"checkGroupUid":"b6c1…"}}' \
+  'https://solidping.io/api/v1/orgs/acme/status-pages/public/sections/services'
+
 # Back to hand-curated (removes the components the rule owned)
 curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"selector":null}' \
@@ -248,9 +263,11 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/js
 
 Omitting `selector` on a `PATCH` leaves the rule alone; sending `null` clears it.
 Unknown keys are rejected, and so are `{}`, an empty `labels` object, and setting
-both `all` and `labels` — a rule that quietly matches nothing forever is the
-failure this feature exists to remove, so a typo is a `VALIDATION_ERROR` rather
-than an empty section.
+more than one of `all`, `labels` and `checkGroupUid` — a rule that quietly
+matches nothing forever is the failure this feature exists to remove, so a typo
+is a `VALIDATION_ERROR` rather than an empty section. A `checkGroupUid` that
+does not exist in the page's organization (unknown, deleted, or belonging to
+another organization) is rejected the same way.
 
 Automatic components are marked `managedBySelector: true` in the API response.
 

@@ -140,7 +140,7 @@ status page.
 | Organizes the checks list | yes — the list is paginated and rendered group by group | no — filter only |
 | Escalation policy | a group can carry one that its members inherit | never |
 | Incident correlation | yes — a group's incidents are shown together | no |
-| Status pages | publish a whole group as one component | select checks into a section by label |
+| Status pages | publish a whole group as one component, or select its checks into a section **By group** | select checks into a section by label |
 | SLOs, maintenance windows | can be scoped to a group | no |
 
 They are not alternatives. A check typically lives in one group *and* carries
