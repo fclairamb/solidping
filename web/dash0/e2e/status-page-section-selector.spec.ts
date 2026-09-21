@@ -172,19 +172,41 @@ test.describe("Status page section selectors", () => {
     const dialogBody = page
       .getByTestId("section-membership")
       .locator("xpath=ancestor::div[contains(@class,'space-y-4')]");
-    const placeholders = await dialogBody
-      .locator("input")
-      .evaluateAll((inputs) =>
-        inputs.map((input) => input.getAttribute("placeholder") ?? ""),
+    // DOM-order probe: collect the labels and the membership picker in the
+    // order they appear, so the assertion doesn't depend on any locale's
+    // placeholder text.
+    const order = await dialogBody
+      .locator("label, [data-testid='section-membership']")
+      .evaluateAll((nodes) =>
+        nodes.map((node) =>
+          node.getAttribute("data-testid") === "section-membership"
+            ? "__membership__"
+            : ((node as HTMLElement).textContent?.trim() ?? ""),
+        ),
       );
-    // The name field is the first input in the dialog; the membership picker
-    // sits below both text fields.
-    expect(placeholders[0]).toContain("name");
+    // Name first, then Slug, then Membership — a section dialog reads as
+    // "create a section", not as a settings page.
+    const membershipIdx = order.indexOf("__membership__");
+    const nameIdx = order.findIndex((entry) => /name/i.test(entry));
+    const slugIdx = order.findIndex((entry) => /slug/i.test(entry));
+    expect(membershipIdx).toBeGreaterThanOrEqual(0);
+    expect(nameIdx).toBeGreaterThanOrEqual(0);
+    expect(slugIdx).toBeGreaterThan(nameIdx);
+    expect(membershipIdx).toBeGreaterThan(slugIdx);
 
-    // Create the section through the UI's own picker, by group.
+    // Create the section through the UI's own picker, by group. The dialog's
+    // first input is the Name field (asserted above) — it must be filled or
+    // the submit button stays disabled.
+    const sectionName = `E2E Group Section ${suffix}`;
+    await dialogBody.locator("input").first().fill(sectionName);
+    // Pin the slug explicitly: the dialog derives it from the name, and the
+    // reads below look the section up by this slug.
+    await dialogBody.locator("input").nth(1).fill("by-group");
     await page.getByTestId("section-membership-group").click();
     await page.getByTestId("section-membership-group-picker").click();
-    await page.getByRole("option", { name: groupName }).click();
+    await page
+      .getByTestId(`check-group-picker-option-${group.slug}`)
+      .click();
     await page.getByTestId("section-create-submit").click();
     await expect(page.getByTestId("section-create-submit")).toHaveCount(0);
 
