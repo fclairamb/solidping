@@ -17,12 +17,13 @@ const (
 	defaultInterval   = 1 * time.Second
 	defaultPacketSize = 56
 
-	// Burst limits (spec 2026-09-21-01). The interval floor is 50ms because
-	// interval only ever adds delay — lowering it shortens the burst — and the
-	// count ceiling of 600 at 50ms spans a 30-second window.
+	// Burst limits (spec 2026-09-21-01). The interval floor is 10ms (fping
+	// territory) because interval only ever adds delay — lowering it shortens
+	// the burst — and the count ceiling of 600 at 10ms spans a 6-second
+	// window.
 	minCount    = 1
 	maxCount    = 600
-	minInterval = 50 * time.Millisecond
+	minInterval = 10 * time.Millisecond
 	maxInterval = 60 * time.Second
 
 	// Network constants.
@@ -70,7 +71,7 @@ func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		return checkerdef.NewConfigErrorf("count", "must be between %d and %d, got %d", minCount, maxCount, cfg.Count)
 	}
 
-	// Validate Interval (50ms - 60s) - check the original value if set
+	// Validate Interval (10ms - 60s) - check the original value if set
 	if cfg.Interval != 0 && (cfg.Interval < minInterval || cfg.Interval > maxInterval) {
 		return checkerdef.NewConfigErrorf(
 			"interval", "must be between %s and %s, got %s", minInterval, maxInterval, cfg.Interval)

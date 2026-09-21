@@ -286,16 +286,16 @@ func TestICMPChecker_Validate(t *testing.T) {
 			name: "interval too short",
 			config: &ICMPConfig{
 				Host:     testHostExample,
-				Interval: 49 * time.Millisecond,
+				Interval: 9 * time.Millisecond,
 			},
 			wantErr: true,
-			errMsg:  "interval: must be between 50ms and 1m0s, got 49ms",
+			errMsg:  "interval: must be between 10ms and 1m0s, got 9ms",
 		},
 		{
-			name: "interval at floor (50ms)",
+			name: "interval at floor (10ms)",
 			config: &ICMPConfig{
 				Host:     testHostExample,
-				Interval: 50 * time.Millisecond,
+				Interval: 10 * time.Millisecond,
 			},
 			wantErr: false,
 		},
@@ -315,7 +315,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 				Interval: 61 * time.Second,
 			},
 			wantErr: true,
-			errMsg:  "interval: must be between 50ms and 1m0s, got 1m1s",
+			errMsg:  "interval: must be between 10ms and 1m0s, got 1m1s",
 		},
 		{
 			name: "packet_size too small",

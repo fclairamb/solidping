@@ -519,9 +519,9 @@ func TestBurstBudget(t *testing.T) {
 			want: 10*time.Second + 9*100*time.Millisecond,
 		},
 		{
-			name: "count 600, timeout 30s, interval 50ms",
-			cfg:  ICMPConfig{Count: 600, Timeout: 30 * time.Second, Interval: 50 * time.Millisecond},
-			want: 600*30*time.Second + 599*50*time.Millisecond,
+			name: "count 600, timeout 30s, interval 10ms",
+			cfg:  ICMPConfig{Count: 600, Timeout: 30 * time.Second, Interval: 10 * time.Millisecond},
+			want: 600*30*time.Second + 599*10*time.Millisecond,
 		},
 		{
 			name: "interval default (1s) applies when unset",
