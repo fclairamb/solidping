@@ -7,7 +7,7 @@ services:
     # bump recipe run at PR-to-upstream time). Never point this at `latest`:
     # the store wants image tag, `version` and `update_at` below to move
     # together on every release.
-    image: ghcr.io/fclairamb/solidping:0.29.2
+    image: ghcr.io/fclairamb/solidping:0.30.0
     container_name: solidping
     network_mode: bridge
     restart: unless-stopped
