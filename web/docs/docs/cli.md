@@ -9,16 +9,29 @@ SolidPing ships a command-line client, `sp`, for managing your monitoring from t
 
 ## Installing
 
-Every release publishes a prebuilt `sp` for macOS and Linux, on both Intel and ARM, plus a checksum file:
+Every release publishes a prebuilt `sp` for macOS, Linux and Windows, on both Intel and ARM, under version-free names (the same stable URLs the server uses), plus a checksum file:
 
 ```bash
-# Pick your platform: darwin_amd64, darwin_arm64, linux_amd64, linux_arm64
-VERSION=0.28.0
-curl -sSL -o sp.tar.gz \
-  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp_${VERSION}_linux_amd64.tar.gz"
-tar -xzf sp.tar.gz
+# Pick your platform: darwin_amd64, darwin_arm64, linux_amd64, linux_arm64, windows_amd64
+curl -sSL -o sp \
+  "https://github.com/fclairamb/solidping/releases/latest/download/sp_linux_amd64"
+chmod +x sp
 sudo mv sp /usr/local/bin/
 sp --version
+```
+
+Or pin a specific version by pointing the same file name at that release's tag:
+
+```bash
+VERSION=0.31.0
+curl -sSL -o sp \
+  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp_linux_amd64"
+```
+
+On Windows, download `sp_windows_amd64.exe` and rename it to `sp.exe`:
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/sp_windows_amd64.exe" -OutFile "sp.exe"
 ```
 
 In CI, or anywhere you would rather not manage a binary, use the image:
