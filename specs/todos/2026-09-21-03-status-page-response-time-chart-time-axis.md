@@ -149,3 +149,80 @@ sampling.
   **Decision:** Hard-lock the window to `HistoryDays` — no selector. The window is a rolling span ending at **now**, matching the availability bar's span (`todayStart − (HistoryDays−1)` → now, since the bar's newest bucket is today). This matches the ecosystem convention (status pages render history over the page's configured history window) and dash0's own convention. **The current (incomplete) day must be calculated as well**: today's points come from raw probes (and hour rollups as they close), never waiting for a day rollup — the day rollup under default retention only materializes ~7 days later (`calculateAggregationBoundary`, `job_aggregation.go`). Do not rely on day rollups for anything newer than what the aggregator has actually closed; request raw alongside rollups for the recent seam, exactly as dash0 does.
 - **Q: When a region legitimately has a gap inside the window (worker restart, paused check), confirm the numeric axis plus `connectNulls={false}` still renders it as a gap rather than a straight line, and that `isolatedDot` still fires for a truly isolated sample.**
   **Decision:** Treated as an acceptance criterion, not a design choice. The implementation must verify with unit tests (in `web/status0/src/lib/response-time-rollup.test.ts` and/or a chart-level test) that (a) an in-window gap between two points of one region renders as a gap (no connecting line across the gap) and (b) a truly isolated sample still triggers `isolatedDot`. Keep `buildCombinedRows` intact; if gap semantics need a slot-expansion rule to survive the numeric axis, implement it.
+
+## Implementation Plan
+
+### A. Server — bound the window and equalize tiers (`server/internal/handlers/statuspages/service.go`)
+
+1. **New `fetchRecentResults` parameter.** Signature gains `windowStart time.Time`
+   (zero = unbounded, the pre-spec behavior — kept as the fallback the parity
+   tests drive). Callers:
+   - `enrichWithAvailability` passes the same `historyStart`
+     (`todayStart.AddDate(0, 0, -(HistoryDays-1))`) the availability bar uses.
+   - `enrichHourly` passes its 24 h `bucketStart`.
+2. **Bounded tiers (A.1).** `rollupSince = max(windowStart, now -
+   responseTimeRollupSpan)` — `responseTimeRollupSpan` stays the hard ceiling so
+   an absurd `HistoryDays` cannot unbound the fetch. The raw branch's `Since`
+   becomes `RawTierStart(rollupSince, now, hints.RetentionRawHours)` — the same
+   clamp, now also capped by the page's own window.
+3. **Tier equalization (A.2) — design note.** Requesting ONE tier for every
+   region is impossible as literally specified: under default retention day
+   rollups only exist for days ≤ today−7 (`calculateAggregationBoundary`,
+   `retention_hour=7`), so a day-tier-only fetch leaves a 7-day hole at the
+   window's right end, and the open day exists only as raw. The equalization is
+   therefore achieved the way dash0's seam fetch does it, server-side:
+   every region is subject to the SAME window and the SAME tier budget
+   allocation, so a live region can no longer donate 100 raw minutes while a
+   dead one donates day rollups. The per-region point budget is split across
+   the tier buckets (raw seam / hour rollups / day+month rollups)
+   proportionally to the time span each tier actually covers inside the
+   window; within a tier the kept rows are evenly spaced over that tier's
+   span (newest and oldest always kept). Total points per region stay ≤
+   `responseTimeLimit`. `trimResponseTimeSeries` grows a windowed variant;
+   the zero-window path keeps the exact legacy trim (parity tests pin it).
+4. **Drop out-of-window regions (A.3).** After the windowed trim, a region
+   whose series is empty is deleted from the map, so `buildResponseTimeSeries`
+   never sees it and a region retired before the window never reaches the
+   legend.
+5. **No phantom series from a 0 ms marker (A.4).** In `buildResponseTimeData`,
+   a row whose status is excluded from availability (`created`, `running`,
+   `abandoned`) gets `DurationP95 = nil` — a lifecycle marker carrying a
+   literal `0` is treated like a nil one. `responseTimePointsHaveSignal` also
+   treats an all-zero series as no signal.
+
+### B. Client — numeric time axis (`web/status0/src/components/shared/response-time-chart.tsx`)
+
+1. New pure module `web/status0/src/lib/chart-axis.ts`:
+   `computeTimeAxis(times: number[], maxTicks)` → `{ domain: [min, max],
+   ticks: number[] }` picking evenly spaced instants over the TIME domain, and
+   `formatAxisTick(ms, spanMs, locale)` with dash0's adaptive granularity
+   (sub-hour → time-of-day, multi-day → date). Unit-tested with bun:test,
+   including the disjoint-39-days fixture (domain and ticks must span the real
+   interval; no two adjacent ticks repeat a time-of-day across days).
+2. Both chart branches carry `ts` (epoch ms) on each rendered row
+   (single-series: mapped points; multi-series: `ts` added to each
+   `CombinedRow` at render). `XAxis` becomes `dataKey="ts" type="number"
+   scale="time" domain={[min, max]}` matching dash0's reference; `pickTicks` /
+   `buildTickLabels` / `formatTick` are replaced by the new module.
+   `buildCombinedRows` stays untouched (B.3) — `connectNulls={false}` still
+   needs the slot merge; granularity is equalized server-side so the
+   min-across-series rule keeps its meaning.
+3. **Time-proportional availability strip (B.4).** Each cell's `flex` weight
+   is its slot duration (time to the next cell's start; the last cell uses the
+   previous gap), so a cell sits under the slice of the plot it describes.
+   `isolatedDot` keeps working unchanged (index-based neighbour lookup on the
+   row array).
+
+### Tests
+
+- Go (`service_test` / `recent_results_test.go` / new `response_time_window_test.go`):
+  window bound (points older than `HistoryDays` never appear; rollup `Since`
+  ceiling at `responseTimeRollupSpan`); one live + one retired region → one
+  series; NULL-region 0 ms marker → no series; windowed trim budgets
+  (≤ limit per region, evenly spaced, newest+oldest kept); zero-window parity
+  with the legacy trim.
+- status0 unit (`bun test`): `chart-axis.test.ts` (domain/ticks over disjoint
+  series) + `response-time-rollup.test.ts` additions: gap renders as a gap
+  (no bridging rows), isolated sample still isolated under the numeric axis.
+- Playwright (`web/status0/e2e/response-time-chart.spec.ts`): retired region +
+  live one → exactly one legend entry; axis labels monotonic in time.
