@@ -1390,7 +1390,7 @@ func (s *Service) GetStatusPage(
 		// section would be noticed.
 		s.maybeReconcileOnView(ctx, org.UID, page.UID)
 
-		sections, err := s.loadSectionsWithResources(ctx, page.UID, true)
+		sections, states, err := s.loadSectionsWithResources(ctx, page.UID, true)
 		if err != nil {
 			return StatusPageResponse{}, err
 		}
@@ -1399,6 +1399,15 @@ func (s *Service) GetStatusPage(
 		// not surface OverallStatus/StatusCounts — those are populated only on
 		// the public view paths (ViewStatusPage / ViewDefaultStatusPage).
 		s.enrichResourceInfo(ctx, org.UID, sections)
+
+		// The same admin-only selector diagnostics the section list carries
+		// (match total, truncation, claimed-elsewhere, deleted-group) must be
+		// present here too: the editor's page view reads THIS payload, and a
+		// missing-group rule that renders nothing must warn (spec
+		// 2026-09-20-02), not look like a neutral empty section.
+		for i := range sections {
+			s.enrichSelectorCounts(ctx, org.UID, &sections[i], states[i].section, states)
+		}
 
 		response.Sections = sections
 	}
@@ -2445,7 +2454,7 @@ func (s *Service) ViewStatusPage(
 	// once a minute, and best-effort, so it can never take the page down.
 	s.maybeReconcileOnView(ctx, org.UID, page.UID)
 
-	sections, err := s.loadSectionsWithResources(ctx, page.UID, false)
+	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageResponse{}, err
 	}
@@ -2602,7 +2611,7 @@ func (s *Service) viewStatusPageSummary(
 	// nobody opens in full must still self-heal.
 	s.maybeReconcileOnView(ctx, org.UID, page.UID)
 
-	sections, err := s.loadSectionsWithResources(ctx, page.UID, false)
+	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageSummary{}, err
 	}
@@ -3585,7 +3594,10 @@ func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) err
 	return nil
 }
 
-// loadSectionsWithResources reads a page's sections and their resources.
+// loadSectionsWithResources reads a page's sections and their resources. It
+// also returns the raw section+resource state so admin callers can run
+// enrichSelectorCounts without a second round of section/resource queries
+// (the public callers ignore it).
 //
 // includeSelector picks the conversion: the authenticated dashboard sees the
 // membership rule, every PUBLIC surface does not — a selector spells out the
@@ -3593,13 +3605,14 @@ func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) err
 // never to hint at.
 func (s *Service) loadSectionsWithResources(
 	ctx context.Context, pageUID string, includeSelector bool,
-) ([]StatusPageSectionResponse, error) {
+) ([]StatusPageSectionResponse, []sectionState, error) {
 	sections, err := s.db.ListStatusPageSections(ctx, pageUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	responses := make([]StatusPageSectionResponse, len(sections))
+	states := make([]sectionState, len(sections))
 	for i, section := range sections {
 		if includeSelector {
 			responses[i] = convertSectionToAdminResponse(section)
@@ -3609,8 +3622,9 @@ func (s *Service) loadSectionsWithResources(
 
 		resources, err := s.db.ListStatusPageResources(ctx, section.UID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		states[i] = sectionState{section: section, resources: resources}
 
 		resourceResponses := make([]StatusPageResourceResponse, len(resources))
 		for j, resource := range resources {
@@ -3626,7 +3640,7 @@ func (s *Service) loadSectionsWithResources(
 		responses[i].Resources = resourceResponses
 	}
 
-	return responses, nil
+	return responses, states, nil
 }
 
 // enrichResourceInfo fills each resource's Check block with live data: a check
