@@ -1167,11 +1167,35 @@ func TestRenderGraphHitColumns(t *testing.T) {
 		r.Equal(3, strings.Count(row, `class="hitcol"`))
 		r.Equal(3, strings.Count(row, "<title>"))
 		r.Contains(row, `<title>a → 100ms</title>`)
-		r.Contains(row, ".hitcol:hover{fill-opacity:.1}")
+		r.Contains(row, ".hitcol:hover rect{fill-opacity:.1}")
 		// Regression: the hit columns must sit INSIDE the translated row group
 		// (<g transform=...>). Emitted after its closing </g> they lose the
 		// row's y offset and land on top of the rows above.
 		r.Less(strings.Index(row, `class="hitcol"`), strings.LastIndex(row, "</g>"))
+	})
+
+	t.Run("hover columns carry a hidden marker dot on the line", func(t *testing.T) {
+		t.Parallel()
+
+		// 100/200/150 over 300×40: padded range [90,210], xStep=150 → the
+		// middle point (200ms, the max) sits at (150, 3.3) near the top.
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, []string{"a", "b", "c"}, 300, 40, 0, "flat")
+		r.Equal(3, strings.Count(row, `r="3"`))
+		r.Contains(row, `<circle cx="150.0" cy="3.3" r="3" fill="#e05d44"`)
+		// The marker is inside its hitcol group (a rect renders no children).
+		r.Contains(row, `class="hitcol"><title>b</title><rect x="75.0" width="150.0" height="40" fill="#4078c0" fill-opacity="0"/><circle cx="150.0" cy="3.3"`)
+	})
+
+	t.Run("gaps get a hit column but no marker dot", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100), nil, f(150)}, []string{"a", "b → no data", "c"}, 300, 40, 0, "flat")
+		r.Equal(3, strings.Count(row, `class="hitcol"`))
+		// Two hover markers (r=3); the two isolated points also render as
+		// small data-layer dots (r=1.6), which must not be confused with them.
+		r.Equal(2, strings.Count(row, `r="3"`))
+		r.Equal(2, strings.Count(row, `r="1.6"`))
+		r.Contains(row, `<title>b → no data</title>`)
 	})
 
 	t.Run("empty tooltips render no hit columns", func(t *testing.T) {
@@ -1194,16 +1218,16 @@ func TestRenderGraphHitColumns(t *testing.T) {
 
 		// 3 points over 300 px: xStep=150 → columns [0,75], [75,225], [225,300].
 		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, []string{"a", "b", "c"}, 300, 40, 0, "flat")
-		r.Contains(row, `<rect class="hitcol" x="0.0" width="75.0"`)
-		r.Contains(row, `<rect class="hitcol" x="75.0" width="150.0"`)
-		r.Contains(row, `<rect class="hitcol" x="225.0" width="75.0"`)
+		r.Contains(row, `<rect x="0.0" width="75.0" height="40"`)
+		r.Contains(row, `<rect x="75.0" width="150.0" height="40"`)
+		r.Contains(row, `<rect x="225.0" width="75.0" height="40"`)
 	})
 
 	t.Run("single point column spans the whole row", func(t *testing.T) {
 		t.Parallel()
 
 		row := renderResponseTimeGraphRow([]*float64{f(100)}, []string{"a → 100ms"}, 300, 40, 0, "flat")
-		r.Contains(row, `<rect class="hitcol" x="0.0" width="300.0"`)
+		r.Contains(row, `<rect x="0.0" width="300.0" height="40"`)
 	})
 }
 

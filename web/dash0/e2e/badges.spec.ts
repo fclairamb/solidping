@@ -115,7 +115,7 @@ test.describe("Badges", () => {
     await page.waitForLoadState("networkidle");
 
     // Verify preview appears
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -147,7 +147,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -179,7 +179,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -192,6 +192,38 @@ test.describe("Badges", () => {
     expect(urlText).toContain("/badges/status");
   });
 
+  test("preview defaults to an interactive object embed, switchable to img", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Mode ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(badgesUrl(check.uid));
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The default preview is an <object> embed — the only embedding that
+    // shows the badge's hover tooltips in every browser.
+    const tagOf = () =>
+      page.getByTestId("badge-preview").evaluate((el) => el.tagName);
+
+    expect(await tagOf()).toBe("OBJECT");
+    await expect(page.getByTestId("badge-embed-object")).toBeVisible();
+
+    // Switching to the static image embed renders an <img> and records the
+    // choice in the URL.
+    await page.getByTestId("badge-preview-mode").click();
+    await page.getByRole("option", { name: /Static image/i }).click();
+
+    await expect.poll(tagOf).toBe("IMG");
+    const pageUrl = new URL(page.url());
+    expect(pageUrl.searchParams.get("preview")).toBe("img");
+  });
+
   test("toggling uptime-bar and response-time-graph grows the preview", async ({
     authenticatedPage,
   }) => {
@@ -202,7 +234,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    const img = page.getByTestId("badge-preview-img");
+    const img = page.getByTestId("badge-preview");
     await expect(img).toBeVisible({ timeout: 10000 });
 
     const heightOf = async () =>
@@ -237,7 +269,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -262,7 +294,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -282,7 +314,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -302,7 +334,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -320,7 +352,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -371,7 +403,7 @@ test.describe("Badges", () => {
     await expect(page.getByTestId("badge-custom-label")).toHaveValue("My Badge");
 
     // Preview is showing
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -393,7 +425,7 @@ test.describe("Badges", () => {
 
     await page.goto(badgesUrl(check.uid));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -423,7 +455,7 @@ test.describe("Badges", () => {
       badgesUrl(check.uid, "?components=availability&period=7d&style=flat-square")
     );
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -458,7 +490,7 @@ test.describe("Badges", () => {
     // Enable uptime-bar so the width input is visible
     await page.goto(badgesUrl(check.uid, "?components=status,uptime-bar"));
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -525,7 +557,7 @@ test.describe("Badges", () => {
       badgesUrl(check.uid, "?components=status,uptime-bar,response-time-graph")
     );
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
 
@@ -570,7 +602,7 @@ test.describe("Badges", () => {
     expect(params.has("check")).toBe(false);
 
     // The builder renders for the resolved check.
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.getByTestId("badge-check-not-found")).toHaveCount(0);
@@ -596,7 +628,7 @@ test.describe("Badges", () => {
     expect(new URL(page.url()).pathname).toBe(
       `${DASH_BASE}/orgs/test/checks/${target.uid}/badges`
     );
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+    await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.getByTestId("badge-check-not-found")).toHaveCount(0);
@@ -629,7 +661,7 @@ test.describe("Badges", () => {
     await expect(page.getByTestId("badge-check-not-found")).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByTestId("badge-preview-img")).toHaveCount(0);
+    await expect(page.getByTestId("badge-preview")).toHaveCount(0);
     expect(new URL(page.url()).pathname).toBe(
       `${DASH_BASE}/orgs/test/checks/${missing}/badges`
     );
