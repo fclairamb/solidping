@@ -242,15 +242,17 @@ func (s *Service) appendRowFragments(
 		segments := buildBarSegments(availMap, win.bucketStart, win.n, win.bucketDuration)
 		labels := computeUptimeBarLabels(win.bucketStart, win.n, win.bucketDuration)
 		barValues := computeUptimeBarValues(availMap, win.bucketStart, win.n, win.bucketDuration, width)
+		tooltips := computeUptimeBarTooltips(availMap, win.bucketStart, win.n, win.bucketDuration)
 		yOffset := totalHeight + rowGap
-		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, width, rowHeightBar, yOffset, opts.Style))
+		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, tooltips, width, rowHeightBar, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightBar
 	}
 
 	if hasGraph {
 		points := buildGraphPoints(durationMap, win.bucketStart, win.n, win.bucketDuration)
+		tooltips := computeGraphTooltips(points, win.bucketStart, win.n, win.bucketDuration)
 		yOffset := totalHeight + rowGap
-		rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, yOffset, opts.Style))
+		rows = append(rows, renderResponseTimeGraphRow(points, tooltips, width, rowHeightGraph, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightGraph
 	}
 
@@ -435,6 +437,58 @@ func formatBarPercent(pct float64) string {
 	}
 
 	return fmt.Sprintf("%.1f%%", pct)
+}
+
+// formatBucketTime renders a bucket start as a human tooltip label: hourly
+// buckets show the date and hour ("Jan 5, 14:00"), daily-or-longer buckets
+// show the weekday and date ("Mon Jan 5").
+func formatBucketTime(t time.Time, bucketDuration time.Duration) string {
+	if bucketDuration < 24*time.Hour {
+		return t.Format("Jan 2, 15:04")
+	}
+
+	return t.Format("Mon Jan 2")
+}
+
+// computeUptimeBarTooltips returns one hover tooltip per uptime-bar segment,
+// always populated (unlike the in-bar overlay, tooltips are not gated by
+// segment width): "<time>: <pct>" for buckets with data, "<time>: no data"
+// otherwise. This is a pure function (no DB access).
+func computeUptimeBarTooltips(
+	availMap map[time.Time]float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+) []string {
+	tooltips := make([]string, n)
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		label := formatBucketTime(t, bucketDuration)
+		if pct, ok := availMap[t]; ok {
+			tooltips[i] = label + ": " + formatBarPercent(pct)
+		} else {
+			tooltips[i] = label + ": no data"
+		}
+	}
+
+	return tooltips
+}
+
+// computeGraphTooltips returns one hover tooltip per response-time-graph
+// bucket: "<time> → <avg duration>" for buckets with data, "<time> → no data"
+// otherwise. This is a pure function (no DB access).
+func computeGraphTooltips(points []*float64, bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	tooltips := make([]string, n)
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		label := formatBucketTime(t, bucketDuration)
+		if i < len(points) && points[i] != nil {
+			tooltips[i] = label + " → " + formatDurationMs(*points[i])
+		} else {
+			tooltips[i] = label + " → no data"
+		}
+	}
+
+	return tooltips
 }
 
 // weekdayLabels labels every segment with its 3-letter weekday name (7d).

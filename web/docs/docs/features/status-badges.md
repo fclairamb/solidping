@@ -30,6 +30,17 @@ render as text segments on the first row, always in this order:
 `status` alone is the default. Combine several, e.g. `status,availability` for
 a two-segment badge, or add `uptime-bar` for a second row underneath.
 
+### Hover details
+
+The `uptime-bar` and `response-time-graph` rows are interactive even when the
+SVG is embedded as a plain `<img>`: hovering a bar segment highlights it and
+shows a tooltip with the bucket's time range and availability percentage
+(e.g. `Wed Jan 7: 99.8%` — including buckets too narrow to print the
+percentage inside the bar), and hovering the graph shows a vertical highlight
+with the bucket's average response time (e.g. `Wed Jan 7 → 304ms`). This works
+without JavaScript, so it applies anywhere the badge is embedded, including
+GitHub READMEs.
+
 ## URL and parameters
 
 ```

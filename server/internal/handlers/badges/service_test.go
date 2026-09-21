@@ -642,7 +642,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("multiple points render a polyline and area", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, nil, 300, 40, 0, "flat")
 		r.Contains(row, "<polyline")
 		r.Contains(row, "<path")
 		r.Contains(row, "linearGradient")
@@ -652,7 +652,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("renders two gridlines with value labels for a varying series", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{f(100), f(304), f(150)}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(304), f(150)}, nil, 300, 40, 0, "flat")
 		// One line at actualMax, one at actualMin.
 		r.Equal(2, strings.Count(row, "<line "))
 		r.Contains(row, `stroke="#ccc"`)
@@ -670,7 +670,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("flat series renders a single gridline", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{f(150), f(150), f(150)}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{f(150), f(150), f(150)}, nil, 300, 40, 0, "flat")
 		r.Equal(1, strings.Count(row, "<line "))
 		r.Equal(1, strings.Count(row, ">150ms<"))
 	})
@@ -678,7 +678,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("single point renders a single gridline", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{nil, f(200), nil}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{nil, f(200), nil}, nil, 300, 40, 0, "flat")
 		r.Equal(1, strings.Count(row, "<line "))
 		r.Contains(row, ">200ms<")
 	})
@@ -686,7 +686,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("no data renders no gridlines", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{nil, nil}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{nil, nil}, nil, 300, 40, 0, "flat")
 		r.NotContains(row, "<line ")
 		r.NotContains(row, "<text")
 	})
@@ -694,14 +694,14 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("nil gap produces a line break (two polylines)", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), nil, f(150), f(120)}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), nil, f(150), f(120)}, nil, 300, 40, 0, "flat")
 		r.Equal(2, strings.Count(row, "<polyline"))
 	})
 
 	t.Run("single value renders a dot, no polyline", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{nil, f(150), nil}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{nil, f(150), nil}, nil, 300, 40, 0, "flat")
 		r.Contains(row, "<circle")
 		r.NotContains(row, "<polyline")
 	})
@@ -709,7 +709,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 	t.Run("no data renders a framed empty area", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{nil, nil}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{nil, nil}, nil, 300, 40, 0, "flat")
 		r.NotContains(row, "<polyline")
 		r.NotContains(row, "<circle")
 		r.Contains(row, "<rect")
@@ -721,7 +721,7 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 		// Min/max auto-scale with 10%% padding: the highest value must map near
 		// the top (small y) and lowest near the bottom (large y), both inside
 		// [0, height]. Use a non-default height to exercise the height param.
-		row := renderResponseTimeGraphRow([]*float64{f(100), f(300)}, 300, 60, 0, "flat")
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(300)}, nil, 300, 60, 0, "flat")
 		r.Contains(row, "<polyline")
 		// Padding means neither endpoint sits exactly at y=0 or y=60.
 		r.NotContains(row, ",0.0 ")
@@ -1083,6 +1083,130 @@ func TestFormatBarPercent(t *testing.T) {
 	r.Equal("99.9%", formatBarPercent(99.857))
 }
 
+func TestComputeUptimeBarTooltips(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	t.Run("daily buckets show weekday, date and percentage", func(t *testing.T) {
+		t.Parallel()
+
+		bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC) // Wednesday
+		day := 24 * time.Hour
+		availMap := map[time.Time]float64{
+			bucketStart:              100,
+			bucketStart.Add(2 * day): 98.6,
+		}
+
+		tooltips := computeUptimeBarTooltips(availMap, bucketStart, 3, day)
+		r.Equal([]string{"Wed Jan 7: 100%", "Thu Jan 8: no data", "Fri Jan 9: 98.6%"}, tooltips)
+	})
+
+	t.Run("hourly buckets show date and hour", func(t *testing.T) {
+		t.Parallel()
+
+		bucketStart := time.Date(2026, 1, 7, 13, 0, 0, 0, time.UTC)
+		availMap := map[time.Time]float64{bucketStart: 99.5}
+
+		tooltips := computeUptimeBarTooltips(availMap, bucketStart, 2, time.Hour)
+		r.Equal([]string{"Jan 7, 13:00: 99.5%", "Jan 7, 14:00: no data"}, tooltips)
+	})
+}
+
+func TestRenderUptimeBarRowTooltips(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	segments := []string{ColorGreen, ColorGray}
+	tooltips := []string{"Wed Jan 7: 100%", "Thu Jan 8: no data"}
+	row := renderUptimeBarRow(segments, nil, nil, tooltips, 300, rowHeightBar, 0, "flat")
+
+	// One <title> per segment, wrapped in a .seg group.
+	r.Equal(2, strings.Count(row, "<title>"))
+	r.Contains(row, `<g class="seg"><title>Wed Jan 7: 100%</title>`)
+	r.Contains(row, `<title>Thu Jan 8: no data</title>`)
+	// The hover stylesheet is embedded.
+	r.Contains(row, ".seg:hover{opacity:.7}")
+}
+
+func TestRenderUptimeBarRowTooltipsEscapeXML(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	row := renderUptimeBarRow([]string{ColorGreen}, nil, nil, []string{`a<b & "c"`}, 300, rowHeightBar, 0, "flat")
+	r.Contains(row, `<title>a&lt;b &amp; &quot;c&quot;</title>`)
+}
+
+func TestComputeGraphTooltips(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+	v := 304.0
+
+	points := []*float64{&v, nil}
+	tooltips := computeGraphTooltips(points, bucketStart, 2, day)
+	r.Equal([]string{"Wed Jan 7 → 304ms", "Thu Jan 8 → no data"}, tooltips)
+}
+
+func TestRenderGraphHitColumns(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	f := func(v float64) *float64 { return &v }
+
+	t.Run("tooltips render invisible hover columns with titles", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, []string{"a → 100ms", "b → 200ms", "c → 150ms"}, 300, 40, 0, "flat")
+		r.Equal(3, strings.Count(row, `class="hitcol"`))
+		r.Equal(3, strings.Count(row, "<title>"))
+		r.Contains(row, `<title>a → 100ms</title>`)
+		r.Contains(row, ".hitcol:hover{fill-opacity:.1}")
+		// Regression: the hit columns must sit INSIDE the translated row group
+		// (<g transform=...>). Emitted after its closing </g> they lose the
+		// row's y offset and land on top of the rows above.
+		r.Less(strings.Index(row, `class="hitcol"`), strings.LastIndex(row, "</g>"))
+	})
+
+	t.Run("empty tooltips render no hit columns", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, nil, 300, 40, 0, "flat")
+		r.NotContains(row, "hitcol")
+		r.NotContains(row, "<title>")
+	})
+
+	t.Run("no data keeps hit columns on the empty frame", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{nil, nil}, []string{"a → no data", "b → no data"}, 300, 40, 0, "flat")
+		r.Equal(2, strings.Count(row, `class="hitcol"`))
+	})
+
+	t.Run("columns span midpoints between points", func(t *testing.T) {
+		t.Parallel()
+
+		// 3 points over 300 px: xStep=150 → columns [0,75], [75,225], [225,300].
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, []string{"a", "b", "c"}, 300, 40, 0, "flat")
+		r.Contains(row, `<rect class="hitcol" x="0.0" width="75.0"`)
+		r.Contains(row, `<rect class="hitcol" x="75.0" width="150.0"`)
+		r.Contains(row, `<rect class="hitcol" x="225.0" width="75.0"`)
+	})
+
+	t.Run("single point column spans the whole row", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100)}, []string{"a → 100ms"}, 300, 40, 0, "flat")
+		r.Contains(row, `<rect class="hitcol" x="0.0" width="300.0"`)
+	})
+}
+
 func TestRenderUptimeBarRowOverlay(t *testing.T) {
 	t.Parallel()
 
@@ -1091,7 +1215,8 @@ func TestRenderUptimeBarRowOverlay(t *testing.T) {
 	segments := []string{ColorGreen, ColorRed, ColorGray}
 	labels := []string{"Mon", "Tue", "Wed"}
 	barValues := []string{"100%", "0%", ""}
-	row := renderUptimeBarRow(segments, labels, barValues, 300, rowHeightBar, 0, "flat")
+	tooltips := []string{"Mon Jan 5: 100%", "Tue Jan 6: 0%", "Wed Jan 7: no data"}
+	row := renderUptimeBarRow(segments, labels, barValues, tooltips, 300, rowHeightBar, 0, "flat")
 
 	// The two non-empty overlays render (white text + dark shadow = 2 each),
 	// plus the three weekday labels → 7 <text> elements total.
@@ -1100,6 +1225,9 @@ func TestRenderUptimeBarRowOverlay(t *testing.T) {
 	r.Contains(row, `font-size="9"`)
 	r.Contains(row, `fill="#fff"`)
 	r.Equal(7, strings.Count(row, "<text"))
+	// Each segment carries its tooltip.
+	r.Equal(3, strings.Count(row, "<title>"))
+	r.Contains(row, `<title>Wed Jan 7: no data</title>`)
 }
 
 func TestFormatDurationMs(t *testing.T) {
@@ -1122,7 +1250,7 @@ func TestRenderUptimeBarRowLabels(t *testing.T) {
 
 	segments := []string{ColorGreen, ColorGreen, ColorGreen}
 	labels := []string{"Mon", "", "Wed"}
-	row := renderUptimeBarRow(segments, labels, nil, 300, rowHeightBar, 0, "flat")
+	row := renderUptimeBarRow(segments, labels, nil, nil, 300, rowHeightBar, 0, "flat")
 
 	// Colored strip uses the fixed color height, not the full row height.
 	r.Contains(row, `height="20"`)
@@ -1142,7 +1270,7 @@ func TestRenderUptimeBarRowNoLabels(t *testing.T) {
 	r := require.New(t)
 
 	segments := []string{ColorGreen, ColorGreen}
-	row := renderUptimeBarRow(segments, nil, nil, 300, rowHeightBar, 0, "flat")
+	row := renderUptimeBarRow(segments, nil, nil, nil, 300, rowHeightBar, 0, "flat")
 	r.NotContains(row, "<text")
 }
 
@@ -1166,7 +1294,7 @@ func TestRenderUptimeBarRowEvenWidths(t *testing.T) {
 		segments[i] = ColorGray
 	}
 
-	row := renderUptimeBarRow(segments, nil, nil, width, rowHeightBar, 0, "flat")
+	row := renderUptimeBarRow(segments, nil, nil, nil, width, rowHeightBar, 0, "flat")
 
 	widthRe := regexp.MustCompile(`<rect x="\d+" width="(\d+)"`)
 	matches := widthRe.FindAllStringSubmatch(row, -1)
