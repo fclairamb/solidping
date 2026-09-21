@@ -1865,18 +1865,8 @@ func (s *Service) UpdateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	// Validate slug if provided
-	if req.Slug != nil && *req.Slug != "" && *req.Slug != section.Slug {
-		if errSlug := validateSlug(*req.Slug); errSlug != nil {
-			return StatusPageSectionResponse{}, errSlug
-		}
-		existing, errCheck := s.db.GetStatusPageSectionBySlug(ctx, page.UID, *req.Slug)
-		if errCheck != nil && !errors.Is(errCheck, sql.ErrNoRows) {
-			return StatusPageSectionResponse{}, errCheck
-		}
-		if existing != nil {
-			return StatusPageSectionResponse{}, ErrSlugConflict
-		}
+	if errSlugChange := s.checkSectionSlugChange(ctx, page.UID, section.Slug, req.Slug); errSlugChange != nil {
+		return StatusPageSectionResponse{}, errSlugChange
 	}
 
 	update := models.StatusPageSectionUpdate{
@@ -1946,6 +1936,27 @@ func (s *Service) resolveSelectorGroup(ctx context.Context, orgUID string, selec
 
 	selector.CheckGroupUID = group.UID
 
+	return nil
+}
+
+// checkSectionSlugChange validates a requested slug change against the page's
+// existing sections. A nil/empty/unchanged slug is a no-op.
+func (s *Service) checkSectionSlugChange(
+	ctx context.Context, pageUID, currentSlug string, requested *string,
+) error {
+	if requested == nil || *requested == "" || *requested == currentSlug {
+		return nil
+	}
+	if errSlug := validateSlug(*requested); errSlug != nil {
+		return errSlug
+	}
+	existing, errCheck := s.db.GetStatusPageSectionBySlug(ctx, pageUID, *requested)
+	if errCheck != nil && !errors.Is(errCheck, sql.ErrNoRows) {
+		return errCheck
+	}
+	if existing != nil {
+		return ErrSlugConflict
+	}
 	return nil
 }
 
