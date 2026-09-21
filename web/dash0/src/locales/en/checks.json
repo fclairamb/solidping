@@ -1010,6 +1010,7 @@
     "burstCount": "Packets per run",
     "burstInterval": "Interval between packets",
     "burstIntervalNeedsCount": "Only applies when sending more than one packet",
+    "burstIntervalDenseWarning": "Below 50ms, some targets rate-limit ICMP echo — packet loss shown may be real, not a measurement artifact",
     "burstPacketSize": "Packet size (bytes)",
     "burstTtl": "TTL (hops)"
   },

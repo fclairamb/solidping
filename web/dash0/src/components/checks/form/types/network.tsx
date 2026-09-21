@@ -715,6 +715,49 @@ const parseNonNegativeInt = (raw: string): number | null => {
 // value and its bounds.
 const intervalFormatRE = /^(?:\d+(?:\.\d+)?(?:ms|s|m|h))+$/;
 
+// goDurationMs parses the loose Go-duration shape intervalFormatRE accepts
+// into milliseconds ("100ms" → 100, "1s" → 1000, "1m30s" → 90000). Returns
+// null for blank or malformed input — bounds stay the server's job; this
+// only powers the dense-interval warning.
+const goDurationMs = (raw: string): number | null => {
+  const value = raw.trim();
+  if (!value) return null;
+
+  const unitMs: Record<string, number> = {
+    ms: 1,
+    s: 1000,
+    m: 60_000,
+    h: 3_600_000,
+  };
+
+  let total = 0;
+  let matched = "";
+
+  for (const m of value.matchAll(/(\d+(?:\.\d+)?)(ms|s|m|h)/g)) {
+    matched += m[0];
+    total += Number(m[1]) * unitMs[m[2]];
+  }
+
+  return matched === value ? total : null;
+};
+
+// denseIntervalThresholdMs is the interval below which the form warns: the
+// server accepts down to 10ms (minInterval in checkicmp/checker.go, which
+// stays the single source of the bounds), but at 100+ echo packets/s some
+// targets rate-limit ICMP and the loss a chart then shows is the target's
+// decision, not a checker artifact.
+const denseIntervalThresholdMs = 50;
+
+// intervalIsDense reports whether the burst form's current interval falls
+// below the warning threshold. Only meaningful once the interval is enabled
+// (count > 1); blank/malformed values stay silent so the server's own
+// validation error surfaces instead.
+export const intervalIsDense = (count: string, interval: string): boolean => {
+  if ((parseNonNegativeInt(count) ?? 1) <= 1) return false;
+  const ms = goDurationMs(interval);
+  return ms !== null && ms < denseIntervalThresholdMs;
+};
+
 // icmpBurstSummary builds the one-line "what this burst does" explainer, live
 // from the entered values. Count ≤ 1 (or blank) is the default single ping;
 // count ≥ 2 names the spacing, falling back to the server's 1s default. It
@@ -946,13 +989,18 @@ function IcmpFields({
               <p className="text-xs text-destructive">
                 {getFieldError(errors, "interval")}
               </p>
-            ) : (
-              !intervalEnabled && (
-                <p className="text-xs text-muted-foreground">
-                  {t("network.burstIntervalNeedsCount")}
-                </p>
-              )
-            )}
+            ) : !intervalEnabled ? (
+              <p className="text-xs text-muted-foreground">
+                {t("network.burstIntervalNeedsCount")}
+              </p>
+            ) : intervalIsDense(state.count, state.interval) ? (
+              <p
+                className="text-xs text-yellow-700 dark:text-yellow-400"
+                data-testid="check-icmp-interval-dense-warning"
+              >
+                {t("network.burstIntervalDenseWarning")}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="icmp-packet-size">

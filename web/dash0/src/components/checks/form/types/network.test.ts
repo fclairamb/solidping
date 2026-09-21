@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { icmpModule, tcpModule } from "./network";
+import { icmpModule, intervalIsDense, tcpModule } from "./network";
 import { assembleSubmittedConfig, type CheckConfig } from "./common";
 
 // saveUntouched reproduces exactly what the shared form submits when a check is
@@ -330,5 +330,31 @@ describe("icmpModule — burst field round-trip", () => {
     expect(badInterval.errors).toEqual([
       { name: "interval", message: "Interval must be a duration like 100ms or 1s" },
     ]);
+  });
+
+  describe("intervalIsDense — sub-50ms warning", () => {
+    it("warns only when the burst is enabled and the interval parses below 50ms", () => {
+      // A dense burst: the warning's whole point.
+      expect(intervalIsDense("50", "49ms")).toBe(true);
+      expect(intervalIsDense("50", "10ms")).toBe(true);
+      expect(intervalIsDense("50", "0.04s")).toBe(true);
+
+      // At or above the threshold — including the old 50ms floor — stays
+      // silent.
+      expect(intervalIsDense("50", "50ms")).toBe(false);
+      expect(intervalIsDense("50", "100ms")).toBe(false);
+      expect(intervalIsDense("50", "0.1s")).toBe(false);
+      expect(intervalIsDense("50", "1s")).toBe(false);
+
+      // A single ping has no burst spacing: the interval is dead config.
+      expect(intervalIsDense("1", "10ms")).toBe(false);
+      expect(intervalIsDense("", "10ms")).toBe(false);
+
+      // Blank/malformed stays silent — the server's validation error, not a
+      // warning, is the right surface for those.
+      expect(intervalIsDense("50", "")).toBe(false);
+      expect(intervalIsDense("50", "1sec")).toBe(false);
+      expect(intervalIsDense("50", "100")).toBe(false);
+    });
   });
 });
