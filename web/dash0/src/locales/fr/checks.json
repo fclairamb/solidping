@@ -1003,7 +1003,15 @@
     "encoding_escaped": "Échappé",
     "encoding_hex": "Hexa",
     "payloadHelp": "Définissez une attente pour prouver que le service répond, et pas seulement que le port est ouvert.",
-    "payloadHelpUdp": "Sans attente, ce check ne peut détecter qu'un port injoignable."
+    "payloadHelpUdp": "Sans attente, ce check ne peut détecter qu'un port injoignable.",
+    "burstTitle": "Rafale de pings et options de paquet",
+    "burstOne": "Un seul paquet par exécution (ping simple)",
+    "burstMany": "{{count}} paquets, espacés de {{interval}}, à chaque exécution",
+    "burstCount": "Paquets par exécution",
+    "burstInterval": "Intervalle entre les paquets",
+    "burstIntervalNeedsCount": "Ne s'applique que si plus d'un paquet est envoyé",
+    "burstPacketSize": "Taille des paquets (octets)",
+    "burstTtl": "TTL (sauts)"
   },
   "prometheus": {
     "mode": "Mode",

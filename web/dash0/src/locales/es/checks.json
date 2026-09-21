@@ -1003,7 +1003,15 @@
     "encoding_escaped": "Escapado",
     "encoding_hex": "Hex",
     "payloadHelp": "Define una expectativa para demostrar que el servicio responde, no solo que el puerto está abierto.",
-    "payloadHelpUdp": "Sin ella, esta comprobación solo puede detectar un puerto inaccesible."
+    "payloadHelpUdp": "Sin ella, esta comprobación solo puede detectar un puerto inaccesible.",
+    "burstTitle": "Ráfaga de pings y opciones de paquete",
+    "burstOne": "Un paquete por ejecución (ping único)",
+    "burstMany": "{{count}} paquetes, con {{interval}} de separación, en cada ejecución",
+    "burstCount": "Paquetes por ejecución",
+    "burstInterval": "Intervalo entre paquetes",
+    "burstIntervalNeedsCount": "Solo se aplica cuando se envía más de un paquete",
+    "burstPacketSize": "Tamaño del paquete (bytes)",
+    "burstTtl": "TTL (saltos)"
   },
   "prometheus": {
     "mode": "Modo",

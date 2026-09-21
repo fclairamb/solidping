@@ -1003,7 +1003,15 @@
     "encoding_escaped": "Escaped",
     "encoding_hex": "Hex",
     "payloadHelp": "Legen Sie eine Erwartung fest, um zu belegen, dass der Dienst antwortet – nicht nur, dass der Port offen ist.",
-    "payloadHelpUdp": "Ohne Erwartung erkennt diese Prüfung nur einen nicht erreichbaren Port."
+    "payloadHelpUdp": "Ohne Erwartung erkennt diese Prüfung nur einen nicht erreichbaren Port.",
+    "burstTitle": "Ping-Burst & Paketoptionen",
+    "burstOne": "Ein Paket pro Durchlauf (einzelner Ping)",
+    "burstMany": "{{count}} Pakete, {{interval}} Abstand, pro Durchlauf",
+    "burstCount": "Pakete pro Durchlauf",
+    "burstInterval": "Intervall zwischen den Paketen",
+    "burstIntervalNeedsCount": "Nur relevant, wenn mehr als ein Paket gesendet wird",
+    "burstPacketSize": "Paketgröße (Bytes)",
+    "burstTtl": "TTL (Hops)"
   },
   "prometheus": {
     "mode": "Modus",
