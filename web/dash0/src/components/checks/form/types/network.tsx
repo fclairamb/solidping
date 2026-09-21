@@ -686,10 +686,11 @@ export interface IcmpState {
   host: string;
   // Burst settings (spec 2026-09-21-02). All strings, same display-state
   // pattern as `port` above: `count`/`packetSize`/`ttl` parse to integers in
-  // `toConfig`, `interval` stays the raw Go duration string the checker
-  // stores ("100ms", "1s" — see `checkicmp.ICMPConfig.FromMap`). Empty means
-  // "leave the server default in place", so an untouched burst is a single
-  // ping exactly as before.
+  // `toConfig`, `interval` is a plain number of milliseconds ("100" = 100ms —
+  // the ms-default form unit; `toConfig` re-emits the Go duration string the
+  // checker stores, and a value the user typed with an explicit unit like
+  // "1s" passes through verbatim). Empty means "leave the server default in
+  // place", so an untouched burst is a single ping exactly as before.
   count: string;
   interval: string;
   packetSize: string;
@@ -715,13 +716,22 @@ const parseNonNegativeInt = (raw: string): number | null => {
 // value and its bounds.
 const intervalFormatRE = /^(?:\d+(?:\.\d+)?(?:ms|s|m|h))+$/;
 
-// goDurationMs parses the loose Go-duration shape intervalFormatRE accepts
-// into milliseconds ("100ms" → 100, "1s" → 1000, "1m30s" → 90000). Returns
-// null for blank or malformed input — bounds stay the server's job; this
-// only powers the dense-interval warning.
+// plainMsRE matches a bare number, the ms-default unit the burst interval
+// input uses: "100" means 100ms. A value with an explicit unit suffix stays
+// accepted (power users, API round-trips) but is no longer what the field
+// suggests.
+const plainMsRE = /^\d+(?:\.\d+)?$/;
+
+// goDurationMs parses what the interval input holds into milliseconds: a
+// bare number IS milliseconds ("100" → 100), and a Go-duration string with
+// units parses per unit ("1s" → 1000, "1m30s" → 90000). Returns null for
+// blank or malformed input — bounds stay the server's job; this powers the
+// dense-interval warning and the ms-default display conversion.
 const goDurationMs = (raw: string): number | null => {
   const value = raw.trim();
   if (!value) return null;
+
+  if (plainMsRE.test(value)) return Number(value);
 
   const unitMs: Record<string, number> = {
     ms: 1,
@@ -739,6 +749,26 @@ const goDurationMs = (raw: string): number | null => {
   }
 
   return matched === value ? total : null;
+};
+
+// durationToMsInput normalizes a stored Go duration string to the ms-default
+// display the burst form uses ("100ms" → "100", "1s" → "1000"). A value the
+// parser cannot read is shown verbatim so the server's validation error, not
+// a silent rewrite, tells the story.
+const durationToMsInput = (raw: string): string => {
+  if (!raw.trim()) return "";
+
+  const ms = goDurationMs(raw);
+  return ms === null ? raw : String(ms);
+};
+
+// intervalDisplayForSummary renders the interval inside the burst explainer
+// line: bare numbers get their unit back ("100" → "100ms"), suffixed values
+// show as typed, blank falls back to the server's 1s default.
+const intervalDisplayForSummary = (raw: string): string => {
+  const value = raw.trim();
+  if (!value) return "1s";
+  return plainMsRE.test(value) ? `${value}ms` : value;
 };
 
 // denseIntervalThresholdMs is the interval below which the form warns: the
@@ -772,7 +802,7 @@ export const icmpBurstSummary = (
   if (n <= 1) return t("network.burstOne");
   return t("network.burstMany", {
     count: n,
-    interval: interval.trim() || "1s",
+    interval: intervalDisplayForSummary(interval),
   });
 };
 
@@ -795,7 +825,7 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     count: getConfigField(config, "count"),
-    interval: getConfigField(config, "interval"),
+    interval: durationToMsInput(getConfigField(config, "interval")),
     packetSize: getConfigField(config, "packet_size"),
     ttl: getConfigField(config, "ttl"),
   }),
@@ -824,19 +854,25 @@ export const icmpModule: CheckTypeModule<IcmpState> = {
     // visible but disabled so the value is never silently hidden.
     const effectiveCount = count ?? 1;
     if (state.interval.trim() && effectiveCount > 1) {
-      if (!intervalFormatRE.test(state.interval.trim())) {
+      const trimmed = state.interval.trim();
+      // ms-default input: a bare number IS milliseconds ("100" → "100ms").
+      // A value the user typed with an explicit unit ("1s", "50ms") passes
+      // through verbatim — power users keep their wording, the server
+      // re-validates both.
+      const normalized = plainMsRE.test(trimmed) ? `${trimmed}ms` : trimmed;
+      if (!intervalFormatRE.test(normalized)) {
         return {
           config: cfg,
           errors: [
             {
               name: "interval",
-              message: "Interval must be a duration like 100ms or 1s",
+              message: "Interval must be a duration like 100 or 100ms",
             },
             ...hostRequired(state.host),
           ],
         };
       }
-      cfg.interval = state.interval.trim();
+      cfg.interval = normalized;
     }
 
     const packetSize = parseNonNegativeInt(state.packetSize);
@@ -974,7 +1010,7 @@ function IcmpFields({
               id="icmp-interval"
               type="text"
               inputMode="decimal"
-              placeholder="1s"
+              placeholder="100"
               disabled={!intervalEnabled}
               value={state.interval}
               onChange={(e) =>

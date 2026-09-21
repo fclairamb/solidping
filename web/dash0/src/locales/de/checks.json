@@ -1008,7 +1008,7 @@
     "burstOne": "Ein Paket pro Durchlauf (einzelner Ping)",
     "burstMany": "{{count}} Pakete, {{interval}} Abstand, pro Durchlauf",
     "burstCount": "Pakete pro Durchlauf",
-    "burstInterval": "Intervall zwischen den Paketen",
+    "burstInterval": "Intervall zwischen den Paketen (ms)",
     "burstIntervalNeedsCount": "Nur relevant, wenn mehr als ein Paket gesendet wird",
     "burstIntervalDenseWarning": "Unter 50 ms drosseln manche Ziele ICMP-Echos — der angezeigte Paketverlust kann echt sein, kein Messartefakt",
     "burstPacketSize": "Paketgröße (Bytes)",

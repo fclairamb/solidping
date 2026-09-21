@@ -79,9 +79,10 @@ test.describe("ICMP burst form fields", () => {
       "10 packets",
     );
 
-    // Interval is meaningless at count 1; it enables once count > 1.
+    // Interval is meaningless at count 1; it enables once count > 1. The
+    // field is denominated in ms: a bare number is milliseconds.
     await expect(page.getByTestId("check-icmp-interval-input")).toBeEnabled();
-    await page.getByTestId("check-icmp-interval-input").fill("100ms");
+    await page.getByTestId("check-icmp-interval-input").fill("100");
     await expect(page.getByTestId("icmp-burst-line")).toContainText("100ms");
 
     await page.getByTestId("check-submit-button").click();
@@ -93,13 +94,13 @@ test.describe("ICMP burst form fields", () => {
     expect(created.config.interval).toBe("100ms");
 
     // Edit route reopens on the stored values (the section auto-expands
-    // because it holds non-defaults).
+    // because it holds non-defaults) — displayed back in ms.
     await page.goto(`orgs/test/checks/${uid}/edit`);
     await page.waitForLoadState("networkidle");
     await expandSection(page, "check-icmp-burst-section");
     await expect(page.getByTestId("check-icmp-count-input")).toHaveValue("10");
     await expect(page.getByTestId("check-icmp-interval-input")).toHaveValue(
-      "100ms",
+      "100",
     );
 
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {

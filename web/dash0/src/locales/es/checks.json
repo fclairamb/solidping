@@ -1008,7 +1008,7 @@
     "burstOne": "Un paquete por ejecución (ping único)",
     "burstMany": "{{count}} paquetes, con {{interval}} de separación, en cada ejecución",
     "burstCount": "Paquetes por ejecución",
-    "burstInterval": "Intervalo entre paquetes",
+    "burstInterval": "Intervalo entre los paquetes (ms)",
     "burstIntervalNeedsCount": "Solo se aplica cuando se envía más de un paquete",
     "burstIntervalDenseWarning": "Por debajo de 50 ms, algunos destros limitan los ecos ICMP — la pérdida de paquetes mostrada puede ser real, no un artefacto de medición",
     "burstPacketSize": "Tamaño del paquete (bytes)",
