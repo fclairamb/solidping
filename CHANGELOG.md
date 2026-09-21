@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+* **cli:** **the `sp` release downloads now have version-free names, and Windows gets a build.** Every release published the CLI as `sp_<version>_<os>_<arch>.tar.gz` — a name that changes with every release — so a `releases/latest/download/…` URL (the natural way to fetch the current version in a script or CI job) could never work, and there was no Windows binary at all. The assets are now bare binaries named like the server's: `sp-darwin-amd64`, `sp-darwin-arm64`, `sp-linux-amd64`, `sp-linux-arm64` and `sp-windows-amd64.exe`, with a single `sp-checksums.txt`. `https://github.com/fclairamb/solidping/releases/latest/download/sp_linux_amd64` is now a stable contract no matter which version is latest, Windows users get a runnable `.exe` with no tar step, and the install docs and CI snippets are updated to match
+
 
 ## [0.31.0](https://github.com/fclairamb/solidping/compare/v0.30.0...v0.31.0) (2026-09-21)
 
