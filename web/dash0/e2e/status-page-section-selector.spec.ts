@@ -274,6 +274,11 @@ test.describe("Status page section selectors", () => {
     await page.getByTestId("section-membership-labels").click();
     await expect(warning).toBeVisible();
 
+    // The group mode warns with its own copy — every dynamic rule publishes
+    // checks that do not exist yet.
+    await page.getByTestId("section-membership-group").click();
+    await expect(warning).toBeVisible();
+
     // Back to manual, warning gone.
     await page.getByTestId("section-membership-manual").click();
     await expect(
