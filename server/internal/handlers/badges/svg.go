@@ -188,7 +188,9 @@ type graphDot struct {
 // nil/short slice renders no <title>, and the segments keep working as plain
 // rects. Each segment is wrapped in a .seg group so the embedded hover CSS can
 // highlight it.
-func renderUptimeBarRow(segments, labels, barValues, tooltips []string, width, height, yOffset int, style string) string {
+func renderUptimeBarRow(
+	segments, labels, barValues, tooltips []string, width, height, yOffset int, style string,
+) string {
 	n := len(segments)
 	if n == 0 {
 		return fmt.Sprintf(`  <g transform="translate(0,%d)"></g>`, yOffset)
@@ -482,17 +484,17 @@ func hitColumnBounds(i, n, width int) (float64, float64) {
 
 	xStep := float64(width) / float64(n-1)
 
-	x0 := float64(i)*xStep - xStep/2
-	if x0 < 0 {
-		x0 = 0
+	start := float64(i)*xStep - xStep/2
+	if start < 0 {
+		start = 0
 	}
 
-	x1 := float64(i)*xStep + xStep/2
-	if x1 > float64(width) {
-		x1 = float64(width)
+	end := float64(i)*xStep + xStep/2
+	if end > float64(width) {
+		end = float64(width)
 	}
 
-	return x0, x1
+	return start, end
 }
 
 // pointsRange returns the min and max of the non-nil points and whether any

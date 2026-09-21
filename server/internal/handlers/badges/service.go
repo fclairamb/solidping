@@ -244,7 +244,9 @@ func (s *Service) appendRowFragments(
 		barValues := computeUptimeBarValues(availMap, win.bucketStart, win.n, win.bucketDuration, width)
 		tooltips := computeUptimeBarTooltips(availMap, win.bucketStart, win.n, win.bucketDuration)
 		yOffset := totalHeight + rowGap
-		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, tooltips, width, rowHeightBar, yOffset, opts.Style))
+		rows = append(rows, renderUptimeBarRow(
+			segments, labels, barValues, tooltips, width, rowHeightBar, yOffset, opts.Style,
+		))
 		totalHeight = yOffset + rowHeightBar
 	}
 

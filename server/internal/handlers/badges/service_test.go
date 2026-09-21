@@ -1163,7 +1163,11 @@ func TestRenderGraphHitColumns(t *testing.T) {
 	t.Run("tooltips render invisible hover columns with titles", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, []string{"a → 100ms", "b → 200ms", "c → 150ms"}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow(
+			[]*float64{f(100), f(200), f(150)},
+			[]string{"a → 100ms", "b → 200ms", "c → 150ms"},
+			300, 40, 0, "flat",
+		)
 		r.Equal(3, strings.Count(row, `class="hitcol"`))
 		r.Equal(3, strings.Count(row, "<title>"))
 		r.Contains(row, `<title>a → 100ms</title>`)
@@ -1182,14 +1186,20 @@ func TestRenderGraphHitColumns(t *testing.T) {
 		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, []string{"a", "b", "c"}, 300, 40, 0, "flat")
 		r.Equal(3, strings.Count(row, `r="3"`))
 		r.Contains(row, `<circle cx="150.0" cy="3.3" r="3" fill="#e05d44"`)
-		// The marker is inside its hitcol group (a rect renders no children).
-		r.Contains(row, `class="hitcol"><title>b</title><rect x="75.0" width="150.0" height="40" fill="#4078c0" fill-opacity="0"/><circle cx="150.0" cy="3.3"`)
+		// The marker is inside its hitcol group (a rect renders no children):
+		// group, tooltip, band rect and dot on one line.
+		r.Contains(row, `class="hitcol"><title>b</title><rect x="75.0" width="150.0" height="40"`)
+		r.Contains(row, `fill="#4078c0" fill-opacity="0"/><circle cx="150.0" cy="3.3"`)
 	})
 
 	t.Run("gaps get a hit column but no marker dot", func(t *testing.T) {
 		t.Parallel()
 
-		row := renderResponseTimeGraphRow([]*float64{f(100), nil, f(150)}, []string{"a", "b → no data", "c"}, 300, 40, 0, "flat")
+		row := renderResponseTimeGraphRow(
+			[]*float64{f(100), nil, f(150)},
+			[]string{"a", "b → no data", "c"},
+			300, 40, 0, "flat",
+		)
 		r.Equal(3, strings.Count(row, `class="hitcol"`))
 		// Two hover markers (r=3); the two isolated points also render as
 		// small data-layer dots (r=1.6), which must not be confused with them.
