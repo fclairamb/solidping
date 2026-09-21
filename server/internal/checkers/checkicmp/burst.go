@@ -16,6 +16,153 @@ import (
 // cancellation is noticed promptly even while replies are still awaited.
 const readPollInterval = 100 * time.Millisecond
 
+// drainGrace bounds the final sweep after the context ends: replies that
+// already reached the socket buffer still count as received, anything still
+// in flight at that point is a lost packet.
+const drainGrace = 25 * time.Millisecond
+
+// openBurstSocket opens the burst's shared socket. A package-level variable so
+// tests can inject a fake responder; production always uses listenICMP.
+var openBurstSocket = listenICMP //nolint:gochecknoglobals // test seam
+
+// burstState tracks the in-flight burst: per-sequence send times, which
+// packets were actually written and which have been answered. Guarded by mu;
+// the sender and the reader goroutine both touch it.
+type burstState struct {
+	mu        sync.Mutex
+	count     int
+	timeout   time.Duration
+	sentAt    []time.Time
+	written   []bool
+	answered  []bool
+	results   []pingResult
+	sendingOK bool
+}
+
+func newBurstState(count int, timeout time.Duration) *burstState {
+	return &burstState{
+		count:    count,
+		timeout:  timeout,
+		sentAt:   make([]time.Time, count),
+		written:  make([]bool, count),
+		answered: make([]bool, count),
+		results:  make([]pingResult, count),
+	}
+}
+
+// markSent records packet i as scheduled for writing; on a failed write the
+// caller calls unmarkSent so the packet is excluded from the reported burst.
+// The flag is set BEFORE the write: the reply can be sitting in the socket
+// buffer the instant WriteTo returns, and a reader that sees the reply but not
+// the flag would discard it.
+func (s *burstState) markSent(i int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.sentAt[i] = time.Now()
+	s.written[i] = true
+}
+
+func (s *burstState) unmarkSent(i int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.written[i] = false
+}
+
+func (s *burstState) setSendingDone() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.sendingOK = true
+}
+
+func (s *burstState) sendingDone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.sendingOK
+}
+
+// nextDeadline returns the earliest still-live deadline among written-but-
+// unanswered packets. Packets whose deadline has already passed are left
+// unanswered (they report as lost) and stop extending the wait — a reply that
+// lands after its own timeout is not worth waiting for, though one already
+// sitting in the socket buffer is still accepted on the next read.
+func (s *burstState) nextDeadline() time.Time {
+	now := time.Now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var next time.Time
+
+	for i := 0; i < s.count; i++ {
+		if !s.written[i] || s.answered[i] {
+			continue
+		}
+
+		deadline := s.sentAt[i].Add(s.timeout)
+		if deadline.After(now) && (next.IsZero() || deadline.Before(next)) {
+			next = deadline
+		}
+	}
+
+	return next
+}
+
+// acceptReply matches one datagram against the written packets and records it.
+func (s *burstState) acceptReply(data []byte, proto int, replyType icmp.Type, useUDP bool, id uint16) {
+	replyMsg, parseErr := icmp.ParseMessage(proto, data)
+	if parseErr != nil || replyMsg.Type != replyType {
+		return
+	}
+
+	echo, ok := replyMsg.Body.(*icmp.Echo)
+	if !ok || echo.Seq >= s.count {
+		return
+	}
+
+	// In UDP mode the kernel may rewrite the ID, so there — as before — the
+	// sequence number is the primary match; in privileged mode the ID must be
+	// ours too.
+	if !useUDP && uint16(echo.ID) != id {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.written[echo.Seq] && !s.answered[echo.Seq] {
+		s.answered[echo.Seq] = true
+		s.results[echo.Seq] = pingResult{Success: true, RTT: time.Since(s.sentAt[echo.Seq])}
+	}
+}
+
+// collect compacts the burst: one entry per packet actually written, in
+// sequence order — answered packets carry their RTT, written-but-unanswered
+// packets report a per-packet timeout (a real lost packet).
+func (s *burstState) collect() []pingResult {
+	out := make([]pingResult, 0, s.count)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := 0; i < s.count; i++ {
+		if !s.written[i] {
+			continue
+		}
+
+		if s.answered[i] {
+			out = append(out, s.results[i])
+		} else {
+			out = append(out, pingResult{Success: false, Error: context.DeadlineExceeded})
+		}
+	}
+
+	return out
+}
+
 // performICMPPings runs one ICMP burst: `count` Echo Requests written on a
 // fixed schedule (packet i at i × interval, the first immediately) over a
 // single shared socket, with replies collected asynchronously — the fping
@@ -35,25 +182,21 @@ func performICMPPings(
 	count int,
 	timeout, interval time.Duration,
 ) ([]pingResult, error) {
-	conn, useUDP, proto, listenErr := listenICMP(isIPv6)
+	conn, useUDP, proto, listenErr := openBurstSocket(isIPv6)
 	if listenErr != nil {
 		return nil, listenErr
 	}
 
 	defer func() { _ = conn.Close() }()
 
-	// Protocol shapes, resolved once for the whole burst.
-	requestType := icmp.Type(ipv4.ICMPTypeEcho)
-	replyType := icmp.Type(ipv4.ICMPTypeEchoReply)
-
+	requestType, replyType := icmp.Type(ipv4.ICMPTypeEcho), icmp.Type(ipv4.ICMPTypeEchoReply)
 	if isIPv6 {
-		requestType = ipv6.ICMPTypeEchoRequest
-		replyType = ipv6.ICMPTypeEchoReply
+		requestType, replyType = ipv6.ICMPTypeEchoRequest, ipv6.ICMPTypeEchoReply
 	}
 
 	// Process ID as identifier, masked to 16 bits — same as before; all
 	// packets of the burst share it and are told apart by sequence number.
-	id := os.Getpid() & 0xffff
+	id := uint16(os.Getpid() & 0xffff)
 
 	var dst net.Addr
 
@@ -63,133 +206,45 @@ func performICMPPings(
 		dst = &net.IPAddr{IP: ip}
 	}
 
-	// Burst state. All three slices are indexed by sequence number; `results`
-	// only carries entries for answered packets, the compaction below rebuilds
-	// the full per-written-packet view. Everything is guarded by mu because
-	// the reader goroutine runs while the sender is still scheduling.
-	var mu sync.Mutex
+	state := newBurstState(count, timeout)
 
-	sentAt := make([]time.Time, count)
-	written := make([]bool, count)
-	answered := make([]bool, count)
-	results := make([]pingResult, count)
+	writeErr := sendBurst(ctx, conn, dst, state, requestType, id, interval)
 
-	var writeErr error
+	// Wait for the reader: either everything written has been answered or has
+	// expired, or the context ended and the reader notices within one poll.
+	<-readBurst(ctx, conn, state, proto, replyType, useUDP, id)
 
-	// sendingDone flips (under mu) once the sender has finished scheduling —
-	// the reader must not interpret "nothing pending yet" as "burst over"
-	// while the first packets have not been written.
-	sendingDone := false
+	out := state.collect()
 
-	// acceptReply matches one datagram against the written packets and records
-	// it. Called only from the reader goroutine.
-	acceptReply := func(data []byte) {
-		replyMsg, parseErr := icmp.ParseMessage(proto, data)
-		if parseErr != nil || replyMsg.Type != replyType {
-			return
-		}
-
-		echo, ok := replyMsg.Body.(*icmp.Echo)
-		if !ok || echo.Seq >= count {
-			return
-		}
-
-		// In UDP mode the kernel may rewrite the ID, so there — as before —
-		// the sequence number is the primary match; in privileged mode the
-		// ID must be ours too.
-		if !useUDP && echo.ID != id {
-			return
-		}
-
-		mu.Lock()
-
-		if written[echo.Seq] && !answered[echo.Seq] {
-			answered[echo.Seq] = true
-			results[echo.Seq] = pingResult{Success: true, RTT: time.Since(sentAt[echo.Seq])}
-		}
-
-		mu.Unlock()
+	if len(out) == 0 && writeErr == nil {
+		writeErr = ctx.Err()
 	}
 
-	// Reader: matches Echo Replies to written packets as they arrive. It exits
-	// once the sender is done and nothing written is left unanswered, or the
-	// context is done, or every pending packet has passed its own
-	// sentAt+timeout deadline.
-	readerDone := make(chan struct{})
+	if len(out) == 0 && writeErr != nil {
+		return nil, writeErr
+	}
 
-	go func() {
-		defer close(readerDone)
+	return out, nil
+}
 
-		buf := make([]byte, 1500)
-
-		for {
-			if ctx.Err() != nil {
-				return
-			}
-
-			// Earliest still-live deadline among written-but-unanswered
-			// packets. Packets whose deadline has already passed are left
-			// unanswered (they report as lost) and stop extending the wait —
-			// a reply that lands after its own timeout is not worth waiting
-			// for, though one already sitting in the socket buffer is still
-			// accepted on the next read.
-			now := time.Now()
-
-			mu.Lock()
-
-			var nextDeadline time.Time
-
-			for i := 0; i < count; i++ {
-				if !written[i] || answered[i] {
-					continue
-				}
-
-				deadline := sentAt[i].Add(timeout)
-				if deadline.After(now) && (nextDeadline.IsZero() || deadline.Before(nextDeadline)) {
-					nextDeadline = deadline
-				}
-			}
-
-			done := sendingDone
-
-			mu.Unlock()
-
-			if nextDeadline.IsZero() {
-				if done {
-					return
-				}
-
-				// The sender has not finished scheduling: keep the socket
-				// drained for a short poll and re-check.
-				nextDeadline = now.Add(readPollInterval)
-			}
-
-			// Cap each wait at readPollInterval so ctx cancellation and
-			// freshly-sent packets are re-checked promptly.
-			wait := nextDeadline.Sub(now)
-			if wait > readPollInterval {
-				wait = readPollInterval
-			}
-
-			if err := conn.SetReadDeadline(now.Add(wait)); err != nil {
-				return
-			}
-
-			bytesRead, _, readErr := conn.ReadFrom(buf)
-			if readErr != nil {
-				continue // deadline (or transient error): loop re-checks pending state
-			}
-
-			acceptReply(buf[:bytesRead])
-		}
-	}()
-
-	// Sender: packet i leaves at i × interval. The socket buffer absorbs
-	// replies between reads, so sending never waits on the reader.
+// sendBurst writes the Echo Requests on schedule: packet i at i × interval.
+// The socket buffer absorbs replies between reads, so sending never waits on
+// the reader. Returns the first write error, if any packet failed to leave.
+func sendBurst(
+	ctx context.Context,
+	conn net.PacketConn,
+	dst net.Addr,
+	state *burstState,
+	requestType icmp.Type,
+	id uint16,
+	interval time.Duration,
+) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for i := 0; i < count; i++ {
+	var writeErr error
+
+	for i := 0; i < state.count; i++ {
 		if i > 0 {
 			select {
 			case <-ctx.Done():
@@ -204,11 +259,7 @@ func performICMPPings(
 		msg := &icmp.Message{
 			Type: requestType,
 			Code: 0,
-			Body: &icmp.Echo{
-				ID:   id,
-				Seq:  i,
-				Data: make([]byte, defaultPacketSize),
-			},
+			Body: &icmp.Echo{ID: int(id), Seq: i, Data: make([]byte, defaultPacketSize)},
 		}
 
 		msgBytes, marshalErr := msg.Marshal(nil)
@@ -216,71 +267,109 @@ func performICMPPings(
 			continue // packet never written: excluded from the reported burst
 		}
 
-		mu.Lock()
-		sentAt[i] = time.Now()
-		mu.Unlock()
+		state.markSent(i)
 
 		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
-			mu.Lock()
+			state.unmarkSent(i) // nothing went out, so no reply can match this seq
 
 			if writeErr == nil {
 				writeErr = err
 			}
-
-			mu.Unlock()
-
-			continue
-		}
-
-		mu.Lock()
-		written[i] = true
-		mu.Unlock()
-	}
-
-	mu.Lock()
-	sendingDone = true
-	mu.Unlock()
-
-	// Wait for the reader: either everything written has been answered or has
-	// expired, or the context ended and the reader notices within one poll.
-	select {
-	case <-readerDone:
-	case <-ctx.Done():
-		<-readerDone
-	}
-
-	// Compact: one entry per packet actually written, in sequence order.
-	out := make([]pingResult, 0, count)
-
-	for i := 0; i < count; i++ {
-		if !written[i] {
-			continue
-		}
-
-		if answered[i] {
-			out = append(out, results[i])
-		} else {
-			// Sent but never answered: a real lost packet, classified as a
-			// per-packet timeout exactly like the sequential loop reported it.
-			out = append(out, pingResult{Success: false, Error: context.DeadlineExceeded})
 		}
 	}
 
-	if len(out) == 0 {
-		mu.Lock()
-		fatal := writeErr
-		mu.Unlock()
+	state.setSendingDone()
 
-		if fatal == nil {
-			fatal = ctx.Err()
+	return writeErr
+}
+
+// readBurst matches Echo Replies to written packets as they arrive, until the
+// sender is done and nothing written is left unanswered, or the context ends.
+// Returns a channel closed when the reader exits.
+func readBurst(
+	ctx context.Context,
+	conn net.PacketConn,
+	state *burstState,
+	proto int,
+	replyType icmp.Type,
+	useUDP bool,
+	id uint16,
+) <-chan struct{} {
+	readerDone := make(chan struct{})
+
+	go func() {
+		defer close(readerDone)
+
+		buf := make([]byte, 1500)
+
+		for {
+			if ctx.Err() != nil {
+				// The burst is over, but replies that already arrived must
+				// still count — this goroutine may only now be getting
+				// scheduled after a truncation. One bounded sweep drains
+				// whatever the socket buffer holds.
+				drainReplies(conn, buf, state, proto, replyType, useUDP, id)
+
+				return
+			}
+
+			deadline := state.nextDeadline()
+			if deadline.IsZero() {
+				if state.sendingDone() {
+					return
+				}
+
+				// The sender has not finished scheduling: keep the socket
+				// drained for a short poll and re-check.
+				deadline = time.Now().Add(readPollInterval)
+			}
+
+			// Cap each wait at readPollInterval so ctx cancellation and
+			// freshly-sent packets are re-checked promptly.
+			wait := time.Until(deadline)
+			if wait > readPollInterval {
+				wait = readPollInterval
+			}
+
+			if err := conn.SetReadDeadline(time.Now().Add(wait)); err != nil {
+				return
+			}
+
+			bytesRead, _, readErr := conn.ReadFrom(buf)
+			if readErr != nil {
+				continue // deadline (or transient error): loop re-checks pending state
+			}
+
+			state.acceptReply(buf[:bytesRead], proto, replyType, useUDP, id)
+		}
+	}()
+
+	return readerDone
+}
+
+// drainReplies sweeps the socket buffer for replies that arrived before the
+// context ended.
+func drainReplies(
+	conn net.PacketConn,
+	buf []byte,
+	state *burstState,
+	proto int,
+	replyType icmp.Type,
+	useUDP bool,
+	id uint16,
+) {
+	for {
+		if err := conn.SetReadDeadline(time.Now().Add(drainGrace)); err != nil {
+			return
 		}
 
-		if fatal != nil {
-			return nil, fatal
+		bytesRead, _, readErr := conn.ReadFrom(buf)
+		if readErr != nil {
+			return
 		}
+
+		state.acceptReply(buf[:bytesRead], proto, replyType, useUDP, id)
 	}
-
-	return out, nil
 }
 
 // listenICMP opens the burst's shared socket: unprivileged UDP first
@@ -288,7 +377,7 @@ func performICMPPings(
 // exactly like the per-packet sockets it replaces. Returns the connection,
 // whether it is the UDP (unprivileged) kind, the ICMP protocol number for
 // reply parsing, and any setup error.
-func listenICMP(isIPv6 bool) (*icmp.PacketConn, bool, int, error) {
+func listenICMP(isIPv6 bool) (net.PacketConn, bool, int, error) {
 	network, listenAddr, proto := "udp4", "0.0.0.0", protocolICMP
 
 	if isIPv6 {
