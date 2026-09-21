@@ -41,3 +41,20 @@ func LookupThreadIncident(
 
 	return incidentUID, orgUID, true
 }
+
+// Keys inside the forward incident→message/thread state entry the notification
+// sender writes when it posts an incident alert.
+const (
+	IncidentStateKeyChannelID = "channel_id"
+	IncidentStateKeyMessageID = "message_id"
+	IncidentStateKeyThreadID  = "thread_id"
+)
+
+// IncidentThreadStateKey is the forward incident→message/thread state entry
+// key: written by the notification sender when it posts the alert (with the
+// message id, the channel it landed in and the thread it opened), read by every
+// consumer that needs to reach an incident's conversation later — follow-up
+// replies, and the acknowledgment notice a button press posts.
+func IncidentThreadStateKey(incidentUID string) string {
+	return "incidents/" + incidentUID + "/discord/thread"
+}

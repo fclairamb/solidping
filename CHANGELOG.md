@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+* **discord:** **pressing Acknowledge on a Discord alert now posts the acknowledgment into the incident's thread, not just the channel.** The alert card in the channel was rewritten in place ("✅ #100 … acknowledged by @you") and the button-press handler also posted a follow-up — but into the alerts channel, never into the incident's thread, even though the comment that opened the thread and every later follow-up ("Incident resolved", …) land there. The acknowledgment notice now resolves the incident's thread from the same mapping the notification sender wrote when the alert was posted — un-archiving it first, the way a late resolve already had to — so the conversation about the incident carries its own acknowledgment. An incident with no thread (thread creation denied, or a DM destination) still gets the notice next to the alert, as before
+
 
 ## [0.31.0](https://github.com/fclairamb/solidping/compare/v0.30.0...v0.31.0) (2026-09-21)
 

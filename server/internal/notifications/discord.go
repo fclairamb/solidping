@@ -23,11 +23,13 @@ var (
 	ErrDiscordNoDestination = errors.New("no default channel configured for discord connection")
 )
 
-// State keys for the incident → Discord message/thread mapping.
+// State keys for the incident → Discord message/thread mapping: defined by the
+// discord integration package, which also reads them (the button-press
+// acknowledgment notice resolves the thread from the same entry).
 const (
-	discordKeyChannelID = "channel_id"
-	discordKeyMessageID = "message_id"
-	discordKeyThreadID  = "thread_id"
+	discordKeyChannelID = discord.IncidentStateKeyChannelID
+	discordKeyMessageID = discord.IncidentStateKeyMessageID
+	discordKeyThreadID  = discord.IncidentStateKeyThreadID
 )
 
 // DiscordSender sends notifications to Discord via the instance bot: rich
@@ -109,7 +111,7 @@ func (ds *DiscordSender) botToken(jctx *jobdef.JobContext) string {
 
 // discordThreadStateKey is the forward incident→message/thread entry key.
 func discordThreadStateKey(incidentUID string) string {
-	return "incidents/" + incidentUID + "/discord/thread"
+	return discord.IncidentThreadStateKey(incidentUID)
 }
 
 // sendViaBot is the bot-mode delivery path.
