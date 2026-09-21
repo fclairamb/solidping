@@ -12784,6 +12784,14 @@ components:
             True when the match count exceeds the per-section cap (200) and the
             section is therefore showing a stable alphabetical prefix.
             Authenticated responses only.
+        selectorGroupMissing:
+          type: boolean
+          description: >-
+            True when a group-based selector (`checkGroupUid`) points to a check
+            group that no longer exists in this organization (deleted). The
+            section's managed resources are removed and the section renders
+            empty until the operator picks another rule. Authenticated
+            responses only.
         resources:
           type: array
           items:
@@ -12796,11 +12804,11 @@ components:
       type: object
       description: >-
         A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of
-        `all` / `labels` is set; `{}` and an empty `labels` object are both
-        rejected, because "select everything" has to be typed out rather than
-        implied. Unknown keys are rejected too: a mistyped rule that silently
-        matches nothing forever is the exact failure dynamic sections exist to
-        remove.
+        `all` / `labels` / `checkGroupUid` is set; `{}` and an empty `labels`
+        object are both rejected, because "select everything" has to be typed
+        out rather than implied. Unknown keys are rejected too: a mistyped rule
+        that silently matches nothing forever is the exact failure dynamic
+        sections exist to remove.
 
         The system MATERIALIZES the matching checks as real resources
         (`managedBySelector: true`), so a check created later appears with no
@@ -12812,6 +12820,13 @@ components:
         becomes publicly visible. Prefer a label opt-in such as
         `{"labels": {"public": "true"}}`, which puts the publish decision on the
         check itself.
+
+        A `checkGroupUid` rule accepts the group's UID or slug on input but is
+        always stored and returned as the canonical UID. If the referenced
+        group is deleted, the rule matches nothing: the section's managed
+        resources are dropped, `selectorGroupMissing` is reported to
+        authenticated editors, and the group's former members stop being
+        published.
       properties:
         all:
           type: boolean
@@ -12823,6 +12838,13 @@ components:
           description: >-
             Select checks carrying ALL of these exact key=value labels (AND).
             Values are exact — there is no existence-only ("*") matching.
+        checkGroupUid:
+          type: string
+          description: >-
+            Select every check in one check group. Accepts the group's UID or
+            slug on input; stored and returned as the canonical UID, scoped to
+            the status page's organization. A group in another organization or
+            a deleted group is rejected with VALIDATION_ERROR.
 
     StatusPageSectionListResponse:
       type: object

@@ -2430,6 +2430,36 @@ func (e UserSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for ValidateDocumentResponsePlanPlanAction.
+const (
+	ValidateDocumentResponsePlanPlanActionCreate    ValidateDocumentResponsePlanPlanAction = "create"
+	ValidateDocumentResponsePlanPlanActionDelete    ValidateDocumentResponsePlanPlanAction = "delete"
+	ValidateDocumentResponsePlanPlanActionRename    ValidateDocumentResponsePlanPlanAction = "rename"
+	ValidateDocumentResponsePlanPlanActionUnchanged ValidateDocumentResponsePlanPlanAction = "unchanged"
+	ValidateDocumentResponsePlanPlanActionUnmanaged ValidateDocumentResponsePlanPlanAction = "unmanaged"
+	ValidateDocumentResponsePlanPlanActionUpdate    ValidateDocumentResponsePlanPlanAction = "update"
+)
+
+// Valid indicates whether the value is a known member of the ValidateDocumentResponsePlanPlanAction enum.
+func (e ValidateDocumentResponsePlanPlanAction) Valid() bool {
+	switch e {
+	case ValidateDocumentResponsePlanPlanActionCreate:
+		return true
+	case ValidateDocumentResponsePlanPlanActionDelete:
+		return true
+	case ValidateDocumentResponsePlanPlanActionRename:
+		return true
+	case ValidateDocumentResponsePlanPlanActionUnchanged:
+		return true
+	case ValidateDocumentResponsePlanPlanActionUnmanaged:
+		return true
+	case ValidateDocumentResponsePlanPlanActionUpdate:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ValidationErrorFieldSeverity.
 const (
 	ValidationErrorFieldSeverityError   ValidationErrorFieldSeverity = "error"
@@ -2932,6 +2962,44 @@ type AdminMemberContact struct {
 	Verified bool `json:"verified"`
 }
 
+// AdminOrgMembership defines model for AdminOrgMembership.
+type AdminOrgMembership struct {
+	JoinedAt *time.Time `json:"joinedAt,omitempty"`
+	Name     string     `json:"name"`
+
+	// Role owner | admin | user | viewer
+	Role string `json:"role"`
+	Slug string `json:"slug"`
+	Uid  string `json:"uid"`
+}
+
+// AdminUserRow A deliberate allow-list projection of the user record. It never carries passwordHash, totpSecret or totpRecoveryCodes.
+type AdminUserRow struct {
+	AvatarUrl     string    `json:"avatarUrl"`
+	CreatedAt     time.Time `json:"createdAt"`
+	Demo          bool      `json:"demo"`
+	Email         string    `json:"email"`
+	EmailVerified bool      `json:"emailVerified"`
+
+	// HasPassword PasswordHash != nil — false means the account is SSO/OAuth-only.
+	HasPassword        bool                 `json:"hasPassword"`
+	LastActiveAt       *time.Time           `json:"lastActiveAt,omitempty"`
+	MustChangePassword bool                 `json:"mustChangePassword"`
+	Name               string               `json:"name"`
+	Orgs               []AdminOrgMembership `json:"orgs"`
+	SuperAdmin         bool                 `json:"superAdmin"`
+	TotpEnabled        bool                 `json:"totpEnabled"`
+	Uid                string               `json:"uid"`
+}
+
+// AdminUsersListResponse defines model for AdminUsersListResponse.
+type AdminUsersListResponse struct {
+	Data []AdminUserRow `json:"data"`
+
+	// Total Users matching the search, before paging.
+	Total int `json:"total"`
+}
+
 // AppendPublicationUpdateRequest Updates are APPEND-ONLY: there is deliberately no edit and no delete endpoint for them.
 type AppendPublicationUpdateRequest struct {
 	BodyMarkdown string `json:"bodyMarkdown"`
@@ -3223,6 +3291,13 @@ type CheckChannel struct {
 // CheckChannelListResponse defines model for CheckChannelListResponse.
 type CheckChannelListResponse struct {
 	Data *[]CheckChannel `json:"data,omitempty"`
+}
+
+// CheckFieldChange One field an update would change, rendered as strings (JSON for anything structured). Secret-bearing values and any value containing a ${env:}/${param:} reference are masked as "***" — a plan is printed in CI logs and pasted into tickets.
+type CheckFieldChange struct {
+	Field string `json:"field"`
+	From  string `json:"from"`
+	To    string `json:"to"`
 }
 
 // CheckGroup defines model for CheckGroup.
@@ -4140,6 +4215,21 @@ type DnsRecord struct {
 	Value string `json:"value"`
 }
 
+// DocumentIssue One problem found in a config-as-code document. `code` is the STABLE half — a CI job branches on it and may allow-list classes it accepts; `message` is prose and may be reworded at any time.
+//
+// Example: {"code":"REGION_FORMAT","field":"regions","message":"region \"Paris!\" must be a slug or \"@private-location\"","slug":"api"}
+type DocumentIssue struct {
+	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
+	Code string `json:"code"`
+
+	// Field The offending property, in the document's own spelling — `regions`, `period`, `config.url`, `labels.tier`, `dependsOn`.
+	Field   *string `json:"field,omitempty"`
+	Message string  `json:"message"`
+
+	// Slug The check the issue belongs to, or the literal "document" for a document-level problem (version, organization, secrets marker, empty checks list).
+	Slug string `json:"slug"`
+}
+
 // EmailInboxConfigResponse Saved JMAP inbox configuration, with the password elided.
 type EmailInboxConfigResponse struct {
 	AddressDomain          *string `json:"addressDomain,omitempty"`
@@ -4530,7 +4620,7 @@ type IncidentAttachment struct {
 	// DownloadUrl RELATIVE, short-lived signed URL (`/pub/files/<uid>?exp=…&sig=…`). Relative so it resolves against whichever host served the dashboard — SolidPing answers on several. Re-signed on every fetch of the incident; do not cache it.
 	DownloadUrl string `json:"downloadUrl"`
 
-	// Kind Attachment kind. `screenshot` is a PNG of what a failing browser check's page looked like; `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
+	// Kind Attachment kind. `screenshot` is an image of what a failing browser check's page looked like — WebP today, and `mimeType` is the authority (the server sniffs the stored bytes and accepts `image/png`, `image/jpeg` and `image/webp`); `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
 	Kind IncidentAttachmentKind `json:"kind"`
 
 	// MimeType Content type as SNIFFED at write time from the bytes themselves, not as declared by the uploader.
@@ -4548,7 +4638,7 @@ type IncidentAttachment struct {
 	Uid openapi_types.UUID `json:"uid"`
 }
 
-// IncidentAttachmentKind Attachment kind. `screenshot` is a PNG of what a failing browser check's page looked like; `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
+// IncidentAttachmentKind Attachment kind. `screenshot` is an image of what a failing browser check's page looked like — WebP today, and `mimeType` is the authority (the server sniffs the stored bytes and accepts `image/png`, `image/jpeg` and `image/webp`); `traceroute` is a JSON MTR-style path capture (`nettrace.Capture`: mode, hops with address/PTR/loss and min/avg/max RTT) taken after a network-reachability failure opened the incident. Fetch and parse the JSON from `downloadUrl` — it is never inlined into this payload.
 type IncidentAttachmentKind string
 
 // IncidentAttachmentTrigger What caused the capture to be kept.
@@ -4581,7 +4671,7 @@ type IncidentDetail struct {
 	// **Returned by the DETAIL endpoint and by `POST .../ack` only.** The list endpoint omits it — resolving it costs a user lookup and an event lookup per incident, which a 100-row page cannot afford.
 	AcknowledgedByActor *IncidentActor `json:"acknowledgedByActor,omitempty"`
 
-	// Attachments Evidence blobs attached to this incident (spec 2026-08-21-01). Present on the DETAIL endpoint only — the list endpoint never populates it. Today the only kind is `screenshot`: the PNG a browser check captured when the incident opened or reopened, for checks with the browser `screenshot` option enabled.
+	// Attachments Evidence blobs attached to this incident (spec 2026-08-21-01). Present on the DETAIL endpoint only — the list endpoint never populates it. Today the only kind is `screenshot`: the image a browser check captured when the incident opened or reopened, for checks with the browser `screenshot` option enabled. Captures are WebP (`image/webp`); read the entry's `mimeType` rather than assuming a format.
 	//
 	// **Operator-only, exactly like `details`.** Each entry carries a short-lived SIGNED download URL, so it is never serialized onto a status page or a subscriber payload.
 	Attachments *[]IncidentAttachment `json:"attachments,omitempty"`
@@ -6420,6 +6510,9 @@ type StatusPageSection struct {
 	// Selector The section's dynamic-membership rule, absent on a hand-curated section. Returned on AUTHENTICATED responses only — the public page payload omits it, since a selector spells out the organization's internal label taxonomy.
 	Selector *StatusPageSectionSelector `json:"selector,omitempty"`
 
+	// SelectorGroupMissing True when a group-based selector (`checkGroupUid`) points to a check group that no longer exists in this organization (deleted). The section's managed resources are removed and the section renders empty until the operator picks another rule. Authenticated responses only.
+	SelectorGroupMissing *bool `json:"selectorGroupMissing,omitempty"`
+
 	// SelectorMatchTotal How many checks the selector matches in total. Authenticated responses only.
 	SelectorMatchTotal *int `json:"selectorMatchTotal,omitempty"`
 
@@ -6434,12 +6527,16 @@ type StatusPageSectionListResponse struct {
 	Data *[]StatusPageSection `json:"data,omitempty"`
 }
 
-// StatusPageSectionSelector A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of `all` / `labels` is set; `{}` and an empty `labels` object are both rejected, because "select everything" has to be typed out rather than implied. Unknown keys are rejected too: a mistyped rule that silently matches nothing forever is the exact failure dynamic sections exist to remove.
+// StatusPageSectionSelector A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of `all` / `labels` / `checkGroupUid` is set; `{}` and an empty `labels` object are both rejected, because "select everything" has to be typed out rather than implied. Unknown keys are rejected too: a mistyped rule that silently matches nothing forever is the exact failure dynamic sections exist to remove.
 // The system MATERIALIZES the matching checks as real resources (`managedBySelector: true`), so a check created later appears with no manual action, and one that stops matching is removed. Internal checks are never matched. A check already placed MANUALLY anywhere on the same page is skipped — manual placement always wins.
 // On a `public` page this means every current AND future matching check becomes publicly visible. Prefer a label opt-in such as `{"labels": {"public": "true"}}`, which puts the publish decision on the check itself.
+// A `checkGroupUid` rule accepts the group's UID or slug on input but is always stored and returned as the canonical UID. If the referenced group is deleted, the rule matches nothing: the section's managed resources are dropped, `selectorGroupMissing` is reported to authenticated editors, and the group's former members stop being published.
 type StatusPageSectionSelector struct {
 	// All Select every non-internal check in the organization.
 	All *bool `json:"all,omitempty"`
+
+	// CheckGroupUid Select every check in one check group. Accepts the group's UID or slug on input; stored and returned as the canonical UID, scoped to the status page's organization. A group in another organization or a deleted group is rejected with VALIDATION_ERROR.
+	CheckGroupUid *string `json:"checkGroupUid,omitempty"`
 
 	// Labels Select checks carrying ALL of these exact key=value labels (AND). Values are exact — there is no existence-only ("*") matching.
 	Labels *map[string]string `json:"labels,omitempty"`
@@ -6536,7 +6633,10 @@ type StatusUpdate struct {
 	BodyMarkdown string              `json:"bodyMarkdown"`
 	CheckUid     *openapi_types.UUID `json:"checkUid,omitempty"`
 	CreatedAt    time.Time           `json:"createdAt"`
-	IncidentUid  *openapi_types.UUID `json:"incidentUid,omitempty"`
+
+	// IncidentPublicationUid Set when the update is threaded under an incident publication on the status page. Absent for a standalone post (maintenance, info). Assigned by the publication pipeline; ignored on write.
+	IncidentPublicationUid *openapi_types.UUID `json:"incidentPublicationUid,omitempty"`
+	IncidentUid            *openapi_types.UUID `json:"incidentUid,omitempty"`
 
 	// Kind One of: investigating, identified, monitoring, resolved, maintenance, info
 	Kind          string              `json:"kind"`
@@ -7093,6 +7193,48 @@ type ValidateCheckResponse struct {
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
+// ValidateDocumentRequest A whole config-as-code document — the export document shape. Only `checks` is load-bearing for detection: a body carrying a top-level `checks` list takes the document path.
+type ValidateDocumentRequest struct {
+	Checks []map[string]interface{} `json:"checks"`
+
+	// Defaults Document-wide defaults each check may override (v2).
+	Defaults     *map[string]interface{} `json:"defaults,omitempty"`
+	Organization *string                 `json:"organization,omitempty"`
+
+	// Secrets "stripped" on every export. It tells the validator that the document deliberately omits declared secrets, so a checker complaining that one is missing is suppressed — but only for a check that already exists, where the import merge really does restore it.
+	Secrets *string `json:"secrets,omitempty"`
+
+	// Version 1 or 2.
+	Version *int `json:"version,omitempty"`
+}
+
+// ValidateDocumentResponse The answer for a whole-document body. EVERY issue is reported, never the first only.
+type ValidateDocumentResponse struct {
+	Issues []DocumentIssue `json:"issues"`
+
+	// Plan Present only with `?plan=true` (org admin) and only when a plan could be computed. It is the /apply dry run: `created=0 updated=0 deleted=0` with a non-zero `unchanged` is the machine-readable "this file matches the instance".
+	Plan *struct {
+		Created *int  `json:"created,omitempty"`
+		Deleted *int  `json:"deleted,omitempty"`
+		DryRun  *bool `json:"dryRun,omitempty"`
+		Plan    *[]struct {
+			Action  *ValidateDocumentResponsePlanPlanAction `json:"action,omitempty"`
+			Changes *[]CheckFieldChange                     `json:"changes,omitempty"`
+			Reason  *string                                 `json:"reason,omitempty"`
+			Slug    *string                                 `json:"slug,omitempty"`
+		} `json:"plan,omitempty"`
+		Unchanged *int `json:"unchanged,omitempty"`
+		Unmanaged *int `json:"unmanaged,omitempty"`
+		Updated   *int `json:"updated,omitempty"`
+	} `json:"plan,omitempty"`
+
+	// Valid True exactly when `issues` is empty.
+	Valid bool `json:"valid"`
+}
+
+// ValidateDocumentResponsePlanPlanAction defines model for ValidateDocumentResponse.Plan.Plan.Action.
+type ValidateDocumentResponsePlanPlanAction string
+
 // ValidationErrorField defines model for ValidationErrorField.
 type ValidationErrorField struct {
 	// Code Stable machine identifier for the rule that produced this finding (e.g. `SLUG_TAKEN`, `ORG_RATE_OVER_LIMIT`). Absent when the producer has no code to offer, in which case clients fall back to `name` + `message`.
@@ -7375,6 +7517,22 @@ type ListChecksParamsInternal string
 
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
+
+// ValidateCheckJSONBody defines parameters for ValidateCheck.
+type ValidateCheckJSONBody struct {
+	union json.RawMessage
+}
+
+// ValidateCheckParams defines parameters for ValidateCheck.
+type ValidateCheckParams struct {
+	// Plan Document bodies only, and org admin only: also return the reconcile plan — what applying this document would create, update, leave unchanged, delete or refuse to adopt. Ignored for a single check.
+	Plan *bool `form:"plan,omitempty" json:"plan,omitempty"`
+}
+
+// ValidateCheck200JSONResponseBody defines parameters for ValidateCheck.
+type ValidateCheck200JSONResponseBody struct {
+	union json.RawMessage
+}
 
 // GetCheckParams defines parameters for GetCheck.
 type GetCheckParams struct {
@@ -7719,7 +7877,7 @@ type ListSlosParams struct {
 
 // GetSloHistoryParams defines parameters for GetSloHistory.
 type GetSloHistoryParams struct {
-	// Months How many calendar months to return (default 12, max 60)
+	// Months How many calendar months to return (default 12). Bounded at 36: the value drives an allocation of one window per month, so anything above the ceiling is rejected with 400 rather than clamped.
 	Months *int `form:"months,omitempty" json:"months,omitempty"`
 }
 
@@ -7907,6 +8065,16 @@ type ListSystemJobsParams struct {
 	Offset *JobOffsetQuery `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAdminUsersParams defines parameters for ListAdminUsers.
+type ListAdminUsersParams struct {
+	// Q Case-insensitive substring match on email or name. A literal `%` or `_` is matched literally, never as a wildcard.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (1-200, default 50)
+	Limit  *int `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
 type AcceptInviteJSONRequestBody = AcceptInviteRequest
 
@@ -7977,7 +8145,7 @@ type UpdateCheckGroupJSONRequestBody = UpdateCheckGroupRequest
 type CreateCheckJSONRequestBody = CreateCheckRequest
 
 // ValidateCheckJSONRequestBody defines body for ValidateCheck for application/json ContentType.
-type ValidateCheckJSONRequestBody = ValidateCheckRequest
+type ValidateCheckJSONRequestBody ValidateCheckJSONBody
 
 // UpdateCheckJSONRequestBody defines body for UpdateCheck for application/json ContentType.
 type UpdateCheckJSONRequestBody = UpdateCheckRequest
@@ -8185,6 +8353,130 @@ type MigrateRegionJSONRequestBody = RegionMigrationRequest
 
 // SendTestEmailJSONRequestBody defines body for SendTestEmail for application/json ContentType.
 type SendTestEmailJSONRequestBody = TestEmailRequest
+
+// AsValidateCheckRequest returns the union data inside the ValidateCheckJSONBody as a ValidateCheckRequest
+func (t ValidateCheckJSONBody) AsValidateCheckRequest() (ValidateCheckRequest, error) {
+	var body ValidateCheckRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromValidateCheckRequest overwrites any union data inside the ValidateCheckJSONBody as the provided ValidateCheckRequest
+func (t *ValidateCheckJSONBody) FromValidateCheckRequest(v ValidateCheckRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeValidateCheckRequest performs a merge with any union data inside the ValidateCheckJSONBody, using the provided ValidateCheckRequest
+func (t *ValidateCheckJSONBody) MergeValidateCheckRequest(v ValidateCheckRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsValidateDocumentRequest returns the union data inside the ValidateCheckJSONBody as a ValidateDocumentRequest
+func (t ValidateCheckJSONBody) AsValidateDocumentRequest() (ValidateDocumentRequest, error) {
+	var body ValidateDocumentRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromValidateDocumentRequest overwrites any union data inside the ValidateCheckJSONBody as the provided ValidateDocumentRequest
+func (t *ValidateCheckJSONBody) FromValidateDocumentRequest(v ValidateDocumentRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeValidateDocumentRequest performs a merge with any union data inside the ValidateCheckJSONBody, using the provided ValidateDocumentRequest
+func (t *ValidateCheckJSONBody) MergeValidateDocumentRequest(v ValidateDocumentRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ValidateCheckJSONBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ValidateCheckJSONBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsValidateCheckResponse returns the union data inside the ValidateCheck200JSONResponseBody as a ValidateCheckResponse
+func (t ValidateCheck200JSONResponseBody) AsValidateCheckResponse() (ValidateCheckResponse, error) {
+	var body ValidateCheckResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromValidateCheckResponse overwrites any union data inside the ValidateCheck200JSONResponseBody as the provided ValidateCheckResponse
+func (t *ValidateCheck200JSONResponseBody) FromValidateCheckResponse(v ValidateCheckResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeValidateCheckResponse performs a merge with any union data inside the ValidateCheck200JSONResponseBody, using the provided ValidateCheckResponse
+func (t *ValidateCheck200JSONResponseBody) MergeValidateCheckResponse(v ValidateCheckResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsValidateDocumentResponse returns the union data inside the ValidateCheck200JSONResponseBody as a ValidateDocumentResponse
+func (t ValidateCheck200JSONResponseBody) AsValidateDocumentResponse() (ValidateDocumentResponse, error) {
+	var body ValidateDocumentResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromValidateDocumentResponse overwrites any union data inside the ValidateCheck200JSONResponseBody as the provided ValidateDocumentResponse
+func (t *ValidateCheck200JSONResponseBody) FromValidateDocumentResponse(v ValidateDocumentResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeValidateDocumentResponse performs a merge with any union data inside the ValidateCheck200JSONResponseBody, using the provided ValidateDocumentResponse
+func (t *ValidateCheck200JSONResponseBody) MergeValidateDocumentResponse(v ValidateDocumentResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ValidateCheck200JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ValidateCheck200JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -8801,23 +9093,31 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/checks/stats (the `GetCheckStats` operationId).
 	GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ValidateCheckWithBody Validate a check configuration without persisting it
+	// ValidateCheckWithBody Validate a check configuration, or a whole config-as-code document
 	//
-	// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+	// Runs the same validation the create/update paths run, but never writes.
+	//
+	// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+	//
+	// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-	ValidateCheckWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ValidateCheckWithBody(ctx context.Context, org OrgPath, params *ValidateCheckParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ValidateCheck Validate a check configuration without persisting it
+	// ValidateCheck Validate a check configuration, or a whole config-as-code document
 	//
-	// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+	// Runs the same validation the create/update paths run, but never writes.
+	//
+	// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+	//
+	// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-	ValidateCheck(ctx context.Context, org OrgPath, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ValidateCheck(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteCheck Soft delete check
 	//
@@ -10912,6 +11212,15 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/system/test-email (the `SendTestEmail` operationId).
 	SendTestEmail(ctx context.Context, body SendTestEmailJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAdminUsers Search and page the global user directory (super admin)
+	//
+	// One row per user account, with the organizations it belongs to
+	// attached. Read-only. The response is an explicit allow-list — it
+	// never carries passwordHash, totpSecret or totpRecoveryCodes.
+	//
+	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
+	ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEmbedWidgetV1 Embeddable live status widget script
 	//
 	// Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
@@ -12231,15 +12540,19 @@ func (c *Client) GetCheckStats(ctx context.Context, org OrgPath, reqEditors ...R
 	return c.Client.Do(req)
 }
 
-// ValidateCheckWithBody Validate a check configuration without persisting it
+// ValidateCheckWithBody Validate a check configuration, or a whole config-as-code document
 //
-// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+// Runs the same validation the create/update paths run, but never writes.
+//
+// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+//
+// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 //
 // Takes any type of body and a specified content type.
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-func (c *Client) ValidateCheckWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewValidateCheckRequestWithBody(c.Server, org, contentType, body)
+func (c *Client) ValidateCheckWithBody(ctx context.Context, org OrgPath, params *ValidateCheckParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewValidateCheckRequestWithBody(c.Server, org, params, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12250,15 +12563,19 @@ func (c *Client) ValidateCheckWithBody(ctx context.Context, org OrgPath, content
 	return c.Client.Do(req)
 }
 
-// ValidateCheck Validate a check configuration without persisting it
+// ValidateCheck Validate a check configuration, or a whole config-as-code document
 //
-// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+// Runs the same validation the create/update paths run, but never writes.
+//
+// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+//
+// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-func (c *Client) ValidateCheck(ctx context.Context, org OrgPath, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewValidateCheckRequest(c.Server, org, body)
+func (c *Client) ValidateCheck(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewValidateCheckRequest(c.Server, org, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17232,6 +17549,25 @@ func (c *Client) SendTestEmail(ctx context.Context, body SendTestEmailJSONReques
 	return c.Client.Do(req)
 }
 
+// ListAdminUsers Search and page the global user directory (super admin)
+//
+// One row per user account, with the organizations it belongs to
+// attached. Read-only. The response is an explicit allow-list — it
+// never carries passwordHash, totpSecret or totpRecoveryCodes.
+//
+// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
+func (c *Client) ListAdminUsers(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAdminUsersRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetEmbedWidgetV1 Embeddable live status widget script
 //
 // Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
@@ -19582,18 +19918,18 @@ func NewGetCheckStatsRequest(server string, org OrgPath) (*http.Request, error) 
 }
 
 // NewValidateCheckRequest calls the generic ValidateCheck builder with application/json body
-func NewValidateCheckRequest(server string, org OrgPath, body ValidateCheckJSONRequestBody) (*http.Request, error) {
+func NewValidateCheckRequest(server string, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewValidateCheckRequestWithBody(server, org, "application/json", bodyReader)
+	return NewValidateCheckRequestWithBody(server, org, params, "application/json", bodyReader)
 }
 
 // NewValidateCheckRequestWithBody constructs an http.Request for the ValidateCheck method, with any body, and a specified content type
-func NewValidateCheckRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+func NewValidateCheckRequestWithBody(server string, org OrgPath, params *ValidateCheckParams, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -19616,6 +19952,33 @@ func NewValidateCheckRequestWithBody(server string, org OrgPath, contentType str
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Plan != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "plan", *params.Plan, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
@@ -31092,6 +31455,84 @@ func NewSendTestEmailRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
+// NewListAdminUsersRequest constructs an http.Request for the ListAdminUsers method
+func NewListAdminUsersRequest(server string, params *ListAdminUsersParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/users")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetEmbedWidgetV1Request constructs an http.Request for the GetEmbedWidgetV1 method
 func NewGetEmbedWidgetV1Request(server string) (*http.Request, error) {
 	var err error
@@ -31766,23 +32207,31 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/orgs/{org}/checks/stats (the `GetCheckStats` operationId).
 	GetCheckStatsWithResponse(ctx context.Context, org OrgPath, reqEditors ...RequestEditorFn) (*GetCheckStatsResult, error)
 
-	// ValidateCheckWithBodyWithResponse Validate a check configuration without persisting it
+	// ValidateCheckWithBodyWithResponse Validate a check configuration, or a whole config-as-code document
 	//
-	// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+	// Runs the same validation the create/update paths run, but never writes.
+	//
+	// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+	//
+	// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-	ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
+	ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, params *ValidateCheckParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
 
-	// ValidateCheckWithResponse Validate a check configuration without persisting it
+	// ValidateCheckWithResponse Validate a check configuration, or a whole config-as-code document
 	//
-	// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+	// Runs the same validation the create/update paths run, but never writes.
+	//
+	// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+	//
+	// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-	ValidateCheckWithResponse(ctx context.Context, org OrgPath, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
+	ValidateCheckWithResponse(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error)
 
 	// DeleteCheckWithResponse Soft delete check
 	//
@@ -34176,6 +34625,17 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v1/system/test-email (the `SendTestEmail` operationId).
 	SendTestEmailWithResponse(ctx context.Context, body SendTestEmailJSONRequestBody, reqEditors ...RequestEditorFn) (*SendTestEmailResult, error)
+
+	// ListAdminUsersWithResponse Search and page the global user directory (super admin)
+	//
+	// One row per user account, with the organizations it belongs to
+	// attached. Read-only. The response is an explicit allow-list — it
+	// never carries passwordHash, totpSecret or totpRecoveryCodes.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
+	ListAdminUsersWithResponse(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*ListAdminUsersResult, error)
 
 	// GetEmbedWidgetV1WithResponse Embeddable live status widget script
 	//
@@ -37007,21 +37467,28 @@ type ValidateCheckResult struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ValidateCheckResponse
+	JSON200 *ValidateCheck200JSONResponseBody
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *NotFound
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ValidateCheckResult) GetJSON200() *ValidateCheckResponse {
+func (r ValidateCheckResult) GetJSON200() *ValidateCheck200JSONResponseBody {
 	return r.JSON200
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r ValidateCheckResult) GetJSON401() *Unauthorized {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ValidateCheckResult) GetJSON403() *Error {
+	return r.JSON403
 }
 
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
@@ -49566,6 +50033,61 @@ func (r SendTestEmailResult) ContentType() string {
 	return ""
 }
 
+type ListAdminUsersResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminUsersListResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Unauthorized
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Forbidden
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAdminUsersResult) GetJSON200() *AdminUsersListResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListAdminUsersResult) GetJSON401() *Unauthorized {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListAdminUsersResult) GetJSON403() *Forbidden {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAdminUsersResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAdminUsersResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAdminUsersResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAdminUsersResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetEmbedWidgetV1Result struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50672,30 +51194,38 @@ func (c *ClientWithResponses) GetCheckStatsWithResponse(ctx context.Context, org
 	return ParseGetCheckStatsResult(rsp)
 }
 
-// ValidateCheckWithBodyWithResponse Validate a check configuration without persisting it
+// ValidateCheckWithBodyWithResponse Validate a check configuration, or a whole config-as-code document
 //
-// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+// Runs the same validation the create/update paths run, but never writes.
+//
+// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+//
+// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-func (c *ClientWithResponses) ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error) {
-	rsp, err := c.ValidateCheckWithBody(ctx, org, contentType, body, reqEditors...)
+func (c *ClientWithResponses) ValidateCheckWithBodyWithResponse(ctx context.Context, org OrgPath, params *ValidateCheckParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error) {
+	rsp, err := c.ValidateCheckWithBody(ctx, org, params, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseValidateCheckResult(rsp)
 }
 
-// ValidateCheckWithResponse Validate a check configuration without persisting it
+// ValidateCheckWithResponse Validate a check configuration, or a whole config-as-code document
 //
-// Runs the same validation the create/update paths run, but never writes. Returns whether the payload is valid plus any per-field validation messages.
+// Runs the same validation the create/update paths run, but never writes.
+//
+// CONTENT-NEGOTIATED: a body carrying a top-level `checks` list (JSON or YAML) is a whole export/manifest document and answers with ValidateDocumentResponse — every issue, each with a stable machine `code`. Anything else is a single check definition and answers with ValidateCheckResponse, unchanged.
+//
+// Authorization differs per body, deliberately. A document needs only organization MEMBERSHIP: validating writes nothing, and a CI job asking "is this file valid?" must not need a token that can delete checks. A single check keeps the write floor (role `user` or above). /import and /apply remain admin-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with POST /api/v1/orgs/{org}/checks/validate (the `ValidateCheck` operationId).
-func (c *ClientWithResponses) ValidateCheckWithResponse(ctx context.Context, org OrgPath, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error) {
-	rsp, err := c.ValidateCheck(ctx, org, body, reqEditors...)
+func (c *ClientWithResponses) ValidateCheckWithResponse(ctx context.Context, org OrgPath, params *ValidateCheckParams, body ValidateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateCheckResult, error) {
+	rsp, err := c.ValidateCheck(ctx, org, params, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -54817,6 +55347,23 @@ func (c *ClientWithResponses) SendTestEmailWithResponse(ctx context.Context, bod
 	return ParseSendTestEmailResult(rsp)
 }
 
+// ListAdminUsersWithResponse Search and page the global user directory (super admin)
+//
+// One row per user account, with the organizations it belongs to
+// attached. Read-only. The response is an explicit allow-list — it
+// never carries passwordHash, totpSecret or totpRecoveryCodes.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/system/users (the `ListAdminUsers` operationId).
+func (c *ClientWithResponses) ListAdminUsersWithResponse(ctx context.Context, params *ListAdminUsersParams, reqEditors ...RequestEditorFn) (*ListAdminUsersResult, error) {
+	rsp, err := c.ListAdminUsers(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAdminUsersResult(rsp)
+}
+
 // GetEmbedWidgetV1WithResponse Embeddable live status widget script
 //
 // Self-contained JavaScript (IIFE) that renders a live status pill on a third-party site. It is loaded by an async script tag carrying data-page="org/slug", and configured entirely through data-attributes: data-mode (inline|floating), data-position (bottom-right|bottom-left), data-theme (light|dark|auto), data-size (sm|md|lg), per-state label overrides data-label-operational|degraded|down|maintenance|unknown, and data-force-status (operational|degraded|down|maintenance|unknown) to render a status statically without polling. The widget polls the status page summary endpoint every 60 s with an uncredentialed request and renders into a shadow root; a failed request or an unknown page renders nothing. Everything under /embed/v1/ is a frozen public contract — behavior changes ship under /embed/v2/, but additive, backward-compatible data-attributes may land within v1. Response carries Cache-Control: public, max-age=3600. No authentication required.
@@ -56868,7 +57415,7 @@ func ParseValidateCheckResult(rsp *http.Response) (*ValidateCheckResult, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ValidateCheckResponse
+		var dest ValidateCheck200JSONResponseBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -56880,6 +57427,13 @@ func ParseValidateCheckResult(rsp *http.Response) (*ValidateCheckResult, error) 
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest NotFound
@@ -66228,6 +66782,46 @@ func ParseSendTestEmailResult(rsp *http.Response) (*SendTestEmailResult, error) 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest TestEmailResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAdminUsersResult parses an HTTP response from a ListAdminUsersWithResponse call
+func ParseListAdminUsersResult(rsp *http.Response) (*ListAdminUsersResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAdminUsersResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminUsersListResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
