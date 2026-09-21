@@ -72,7 +72,8 @@ func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 	// Validate Interval (50ms - 60s) - check the original value if set
 	if cfg.Interval != 0 && (cfg.Interval < minInterval || cfg.Interval > maxInterval) {
-		return checkerdef.NewConfigErrorf("interval", "must be between %s and %s, got %s", minInterval.String(), maxInterval.String(), cfg.Interval.String())
+		return checkerdef.NewConfigErrorf(
+			"interval", "must be between %s and %s, got %s", minInterval, maxInterval, cfg.Interval)
 	}
 
 	// Validate PacketSize (0 - 65507)
