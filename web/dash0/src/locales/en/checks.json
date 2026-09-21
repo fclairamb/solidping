@@ -1003,7 +1003,15 @@
     "encoding_escaped": "Escaped",
     "encoding_hex": "Hex",
     "payloadHelp": "Set an expectation to prove the service answers, not just that the port is open.",
-    "payloadHelpUdp": "Without one, this check can only detect port-unreachable."
+    "payloadHelpUdp": "Without one, this check can only detect port-unreachable.",
+    "burstTitle": "Ping burst & packet options",
+    "burstOne": "One packet per run (single ping)",
+    "burstMany": "{{count}} packets, {{interval}} apart, every run",
+    "burstCount": "Packets per run",
+    "burstInterval": "Interval between packets",
+    "burstIntervalNeedsCount": "Only applies when sending more than one packet",
+    "burstPacketSize": "Packet size (bytes)",
+    "burstTtl": "TTL (hops)"
   },
   "prometheus": {
     "mode": "Mode",

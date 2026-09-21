@@ -117,16 +117,22 @@
       "manual": "Manual",
       "all": "Todas las comprobaciones",
       "labels": "Por etiqueta",
+      "group": "Por grupo",
       "hint": {
         "manual": "Usted añade a mano cada componente de esta sección.",
         "all": "Todas las comprobaciones de esta organización se listan automáticamente, incluidas las creadas más adelante.",
-        "labels": "Toda comprobación que lleve todas estas etiquetas se lista automáticamente, incluidas las creadas más adelante."
+        "labels": "Toda comprobación que lleve todas estas etiquetas se lista automáticamente, incluidas las creadas más adelante.",
+        "group": "Cada comprobación de este grupo se lista por separado, incluidas las añadidas al grupo más adelante."
       },
       "labelsField": "Etiquetas requeridas",
       "labelsHint": "Una comprobación debe llevar todas estas etiquetas para aparecer. Los valores son exactos.",
+      "groupField": "Grupo",
+      "groupPlaceholder": "Seleccionar un grupo",
+      "groupHint": "Cada comprobación de este grupo se lista por separado, incluidas las añadidas al grupo más adelante. Para mostrar el grupo como un único componente, añádalo desde la lista de componentes.",
       "publicWarningTitle": "Esta sección está en una página pública",
       "publicWarningAll": "Todas las comprobaciones actuales y futuras de esta organización aparecerán en esta página pública, incluidas las creadas más adelante. Considere usar una etiqueta como public=true para que cada comprobación se incorpore de forma explícita.",
       "publicWarningLabels": "Todas las comprobaciones actuales y futuras con estas etiquetas aparecerán en esta página pública, incluidas las creadas más adelante.",
+      "publicWarningGroup": "Todas las comprobaciones actuales y futuras de este grupo aparecerán en esta página pública, incluidas las añadidas al grupo más adelante.",
       "autoBadge": "auto",
       "autoTooltip": "Añadido automáticamente por la regla de composición de esta sección. Edite la regla para cambiarlo.",
       "truncated": "Mostrando {{shown}} de {{total}} comprobaciones coincidentes. Acote la regla con etiquetas para ver el resto.",
@@ -136,7 +142,9 @@
         "partial_one": "{{count}} comprobación coincidente adicional ya se muestra en otra parte de esta página.",
         "partial_other": "{{count}} comprobaciones coincidentes adicionales ya se muestran en otra parte de esta página."
       },
-      "labelsRequired": "Añada al menos una etiqueta"
+      "labelsRequired": "Añada al menos una etiqueta",
+      "groupMissingTitle": "Este grupo ya no existe",
+      "groupMissing": "Este grupo ha sido eliminado; la sección no muestra nada hasta que elija otra regla."
     }
   },
   "resources": {

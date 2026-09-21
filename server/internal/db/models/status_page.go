@@ -438,10 +438,13 @@ const SectionSelectorMaxValueLen = LabelValueMaxLen
 // Selector validation errors. They are returned to the API layer, which maps
 // them onto VALIDATION_ERROR.
 var (
-	// ErrSelectorEmpty is returned for `{}` — neither `all` nor `labels`.
-	ErrSelectorEmpty = errors.New("selector must set either all or labels")
-	// ErrSelectorAmbiguous is returned when both `all` and `labels` are set.
-	ErrSelectorAmbiguous = errors.New("selector cannot set both all and labels")
+	// ErrSelectorEmpty is returned for `{}` — no membership rule.
+	ErrSelectorEmpty = errors.New("selector must set one of all, labels, or checkGroupUid")
+	// ErrSelectorAmbiguous is returned when multiple membership rules are set.
+	ErrSelectorAmbiguous = errors.New("selector must set exactly one of all, labels, or checkGroupUid")
+	// ErrSelectorGroupNotFound is returned when the requested group is absent
+	// from the status page's organization.
+	ErrSelectorGroupNotFound = errors.New("selector check group does not exist in this organization")
 	// ErrSelectorLabelsEmpty is returned for an empty `labels` object, which
 	// would silently mean "every check" — the caller must say `all` for that.
 	ErrSelectorLabelsEmpty = errors.New("selector labels must not be empty")
@@ -461,10 +464,11 @@ var (
 // consumer (availability enrichment, positions, badge/summary/embed,
 // publications' affectedResources) keeps working unchanged.
 //
-// Exactly one of the two shapes is legal:
+// Exactly one of the three shapes is legal:
 //
 //	{"all": true}                              — every non-internal check in the org
 //	{"labels": {"env": "prod", "public": "true"}} — AND over exact key=value pairs
+//	{"checkGroupUid": "..."}                  — every check in that group
 //
 // Values are exact in v1: there is no existence-only ("*") matching. `all` and
 // `labels` are mutually exclusive, and an empty `labels` object is rejected
@@ -476,6 +480,9 @@ type SectionSelector struct {
 	All bool `json:"all,omitempty"`
 	// Labels selects checks carrying ALL of these exact key=value labels.
 	Labels map[string]string `json:"labels,omitempty"`
+	// CheckGroupUID selects every check in one check group. It is always
+	// canonicalised to a UID by the status-pages service before storage.
+	CheckGroupUID string `json:"checkGroupUid,omitempty"`
 }
 
 // Validate reports whether the selector is a legal v1 selector.
@@ -485,11 +492,18 @@ func (sel *SectionSelector) Validate() error {
 	}
 
 	hasLabels := len(sel.Labels) > 0
+	hasGroup := sel.CheckGroupUID != ""
+	hasShape := 0
+	for _, set := range []bool{sel.All, hasLabels, hasGroup} {
+		if set {
+			hasShape++
+		}
+	}
 
 	switch {
-	case sel.All && hasLabels:
+	case hasShape > 1:
 		return ErrSelectorAmbiguous
-	case sel.All:
+	case sel.All || hasGroup:
 		return nil
 	case sel.Labels != nil && !hasLabels:
 		return ErrSelectorLabelsEmpty
@@ -526,6 +540,10 @@ func (sel *SectionSelector) Filter() *ListChecksFilter {
 	if sel == nil || sel.All {
 		return filter
 	}
+	if sel.CheckGroupUID != "" {
+		filter.CheckGroupUID = &sel.CheckGroupUID
+		return filter
+	}
 
 	filter.Labels = make(map[string]string, len(sel.Labels))
 	for key, value := range sel.Labels {
@@ -542,7 +560,7 @@ func (sel *SectionSelector) Equal(other *SectionSelector) bool {
 		return sel == nil && other == nil
 	}
 
-	if sel.All != other.All || len(sel.Labels) != len(other.Labels) {
+	if sel.All != other.All || sel.CheckGroupUID != other.CheckGroupUID || len(sel.Labels) != len(other.Labels) {
 		return false
 	}
 

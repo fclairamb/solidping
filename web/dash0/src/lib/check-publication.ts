@@ -46,10 +46,13 @@ export interface CheckPublication {
  */
 export function selectorMatchesCheck(
   selector: StatusPageSectionSelector | null | undefined,
-  check: Pick<Check, "labels">,
+  check: Pick<Check, "labels" | "checkGroupUid">,
 ): boolean {
   if (!selector) return false;
   if (selector.all) return true;
+  if (selector.checkGroupUid) {
+    return selector.checkGroupUid === check.checkGroupUid;
+  }
   const wanted = selector.labels;
   if (!wanted || Object.keys(wanted).length === 0) return false;
   const have = check.labels ?? {};

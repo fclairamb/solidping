@@ -42,17 +42,24 @@ const RENDERED_KEYS = [
   "manual",
   "all",
   "labels",
+  "group",
   "labelsField",
   "labelsHint",
+  "groupField",
+  "groupPlaceholder",
+  "groupHint",
+  "groupMissingTitle",
+  "groupMissing",
   "publicWarningTitle",
   "publicWarningAll",
   "publicWarningLabels",
+  "publicWarningGroup",
   "autoBadge",
   "autoTooltip",
   "truncated",
 ];
 
-const RENDERED_HINT_KEYS = ["manual", "all", "labels"];
+const RENDERED_HINT_KEYS = ["manual", "all", "labels", "group"];
 
 // The claimed-elsewhere hint (spec 2026-08-31-01) is rendered by
 // SelectorClaimedElsewhereAlert, mounted next to `truncated` on the section
@@ -170,7 +177,7 @@ describe("membership selector round trip", () => {
     });
   });
 
-  it("round-trips all and labels", () => {
+  it("round-trips all, labels and group", () => {
     expect(membershipFromSelector({ all: true })).toEqual({
       mode: "all",
       labels: {},
@@ -179,6 +186,11 @@ describe("membership selector round trip", () => {
       mode: "labels",
       labels: { env: "prod" },
     });
+    expect(membershipFromSelector({ checkGroupUid: "grp-1" })).toEqual({
+      mode: "group",
+      labels: {},
+      checkGroupUid: "grp-1",
+    });
 
     expect(selectorFromMembership({ mode: "all", labels: {} })).toEqual({
       all: true,
@@ -186,6 +198,13 @@ describe("membership selector round trip", () => {
     expect(
       selectorFromMembership({ mode: "labels", labels: { env: "prod" } }),
     ).toEqual({ labels: { env: "prod" } });
+    expect(
+      selectorFromMembership({
+        mode: "group",
+        labels: {},
+        checkGroupUid: "grp-1",
+      }),
+    ).toEqual({ checkGroupUid: "grp-1" });
   });
 
   it("renders manual as null so an update clears the rule", () => {
@@ -201,5 +220,18 @@ describe("membership selector round trip", () => {
 
     // And it never degrades into an accidental "match everything".
     expect(selectorFromMembership({ mode: "labels", labels: {} })).toBeNull();
+  });
+
+  it("treats group mode with no group chosen as incomplete", () => {
+    expect(membershipIsComplete({ mode: "group", labels: {} })).toBe(false);
+    expect(
+      membershipIsComplete({ mode: "group", labels: {}, checkGroupUid: "g" }),
+    ).toBe(true);
+
+    // And it never degrades into an accidental "match everything".
+    expect(selectorFromMembership({ mode: "group", labels: {} })).toBeNull();
+    expect(
+      selectorFromMembership({ mode: "group", labels: {}, checkGroupUid: "g" }),
+    ).toEqual({ checkGroupUid: "g" });
   });
 });

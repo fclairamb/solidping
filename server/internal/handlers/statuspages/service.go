@@ -748,6 +748,10 @@ type StatusPageSectionResponse struct {
 	// so the dashboard can say "and N more" instead of quietly showing a subset.
 	SelectorMatchTotal int  `json:"selectorMatchTotal,omitempty"`
 	SelectorTruncated  bool `json:"selectorTruncated,omitempty"`
+	// SelectorGroupMissing reports that a group-based selector's saved group
+	// was deleted. It is admin-only like Selector: public pages simply show an
+	// empty dynamic section rather than exposing internal group topology.
+	SelectorGroupMissing bool `json:"selectorGroupMissing,omitempty"`
 	// SelectorClaimedElsewhere is how many of the selector's matched checks are
 	// already displayed by resource rows OUTSIDE this section — earlier
 	// selector sections and manual rows both count (spec
@@ -1386,7 +1390,7 @@ func (s *Service) GetStatusPage(
 		// section would be noticed.
 		s.maybeReconcileOnView(ctx, org.UID, page.UID)
 
-		sections, err := s.loadSectionsWithResources(ctx, page.UID, true)
+		sections, states, err := s.loadSectionsWithResources(ctx, page.UID, true)
 		if err != nil {
 			return StatusPageResponse{}, err
 		}
@@ -1395,6 +1399,15 @@ func (s *Service) GetStatusPage(
 		// not surface OverallStatus/StatusCounts — those are populated only on
 		// the public view paths (ViewStatusPage / ViewDefaultStatusPage).
 		s.enrichResourceInfo(ctx, org.UID, sections)
+
+		// The same admin-only selector diagnostics the section list carries
+		// (match total, truncation, claimed-elsewhere, deleted-group) must be
+		// present here too: the editor's page view reads THIS payload, and a
+		// missing-group rule that renders nothing must warn (spec
+		// 2026-09-20-02), not look like a neutral empty section.
+		for i := range sections {
+			s.enrichSelectorCounts(ctx, org.UID, &sections[i], states[i].section, states)
+		}
 
 		response.Sections = sections
 	}
@@ -1683,6 +1696,21 @@ func (s *Service) enrichSelectorCounts(
 	if section.Selector == nil {
 		return
 	}
+	if section.Selector.CheckGroupUID != "" {
+		_, err := s.db.GetCheckGroup(ctx, orgUID, section.Selector.CheckGroupUID)
+		if errors.Is(err, sql.ErrNoRows) {
+			response.SelectorGroupMissing = true
+			return
+		}
+		if err != nil {
+			// Best-effort like the rest of this function: a failed lookup
+			// leaves every counter at zero rather than failing the page load.
+			slog.ErrorContext(ctx, "Failed to check selector group existence",
+				"error", err, "orgUid", orgUID, "sectionUid", section.UID)
+
+			return
+		}
+	}
 
 	// Unbounded query: Filter() sets no Limit, so `matched` and `total` cover
 	// every match, not just a page. Called directly (rather than through a
@@ -1767,6 +1795,9 @@ func (s *Service) CreateSection(
 	if err != nil {
 		return StatusPageSectionResponse{}, err
 	}
+	if err := s.resolveSelectorGroup(ctx, page.OrganizationUID, selector); err != nil {
+		return StatusPageSectionResponse{}, err
+	}
 
 	section := models.NewStatusPageSection(page.UID, req.Name, slug, position)
 	section.Selector = selector
@@ -1843,18 +1874,8 @@ func (s *Service) UpdateSection(
 		return StatusPageSectionResponse{}, err
 	}
 
-	// Validate slug if provided
-	if req.Slug != nil && *req.Slug != "" && *req.Slug != section.Slug {
-		if errSlug := validateSlug(*req.Slug); errSlug != nil {
-			return StatusPageSectionResponse{}, errSlug
-		}
-		existing, errCheck := s.db.GetStatusPageSectionBySlug(ctx, page.UID, *req.Slug)
-		if errCheck != nil && !errors.Is(errCheck, sql.ErrNoRows) {
-			return StatusPageSectionResponse{}, errCheck
-		}
-		if existing != nil {
-			return StatusPageSectionResponse{}, ErrSlugConflict
-		}
+	if errSlugChange := s.checkSectionSlugChange(ctx, page.UID, section.Slug, req.Slug); errSlugChange != nil {
+		return StatusPageSectionResponse{}, errSlugChange
 	}
 
 	update := models.StatusPageSectionUpdate{
@@ -1869,6 +1890,9 @@ func (s *Service) UpdateSection(
 	if req.Selector != nil {
 		selector, errSel := parseSelector(req.Selector)
 		if errSel != nil {
+			return StatusPageSectionResponse{}, errSel
+		}
+		if errSel := s.resolveSelectorGroup(ctx, page.OrganizationUID, selector); errSel != nil {
 			return StatusPageSectionResponse{}, errSel
 		}
 
@@ -1896,6 +1920,53 @@ func (s *Service) UpdateSection(
 	s.enrichSelectorCountsIfDynamic(ctx, page.OrganizationUID, page.UID, &response, updated)
 
 	return response, nil
+}
+
+// resolveSelectorGroup verifies a group selector belongs to the page's
+// organization and canonicalises a supported slug input to its immutable UID.
+//
+// Not-found, soft-deleted and foreign-org groups all collapse onto the same
+// VALIDATION_ERROR (via ErrSelectorGroupNotFound): the message says the group
+// does not exist in THIS organization and nothing more — the API must never
+// reveal whether a UID exists in some other organization.
+func (s *Service) resolveSelectorGroup(ctx context.Context, orgUID string, selector *models.SectionSelector) error {
+	if selector == nil || selector.CheckGroupUID == "" {
+		return nil
+	}
+
+	group, err := s.db.GetCheckGroupByUidOrSlug(ctx, orgUID, selector.CheckGroupUID)
+	switch {
+	case err == nil && group != nil:
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
+		return err
+	default:
+		return models.ErrSelectorGroupNotFound
+	}
+
+	selector.CheckGroupUID = group.UID
+
+	return nil
+}
+
+// checkSectionSlugChange validates a requested slug change against the page's
+// existing sections. A nil/empty/unchanged slug is a no-op.
+func (s *Service) checkSectionSlugChange(
+	ctx context.Context, pageUID, currentSlug string, requested *string,
+) error {
+	if requested == nil || *requested == "" || *requested == currentSlug {
+		return nil
+	}
+	if errSlug := validateSlug(*requested); errSlug != nil {
+		return errSlug
+	}
+	existing, errCheck := s.db.GetStatusPageSectionBySlug(ctx, pageUID, *requested)
+	if errCheck != nil && !errors.Is(errCheck, sql.ErrNoRows) {
+		return errCheck
+	}
+	if existing != nil {
+		return ErrSlugConflict
+	}
+	return nil
 }
 
 // DeleteSection soft-deletes a section.
@@ -2383,7 +2454,7 @@ func (s *Service) ViewStatusPage(
 	// once a minute, and best-effort, so it can never take the page down.
 	s.maybeReconcileOnView(ctx, org.UID, page.UID)
 
-	sections, err := s.loadSectionsWithResources(ctx, page.UID, false)
+	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageResponse{}, err
 	}
@@ -2540,7 +2611,7 @@ func (s *Service) viewStatusPageSummary(
 	// nobody opens in full must still self-heal.
 	s.maybeReconcileOnView(ctx, org.UID, page.UID)
 
-	sections, err := s.loadSectionsWithResources(ctx, page.UID, false)
+	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageSummary{}, err
 	}
@@ -3523,7 +3594,10 @@ func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) err
 	return nil
 }
 
-// loadSectionsWithResources reads a page's sections and their resources.
+// loadSectionsWithResources reads a page's sections and their resources. It
+// also returns the raw section+resource state so admin callers can run
+// enrichSelectorCounts without a second round of section/resource queries
+// (the public callers ignore it).
 //
 // includeSelector picks the conversion: the authenticated dashboard sees the
 // membership rule, every PUBLIC surface does not — a selector spells out the
@@ -3531,13 +3605,14 @@ func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) err
 // never to hint at.
 func (s *Service) loadSectionsWithResources(
 	ctx context.Context, pageUID string, includeSelector bool,
-) ([]StatusPageSectionResponse, error) {
+) ([]StatusPageSectionResponse, []sectionState, error) {
 	sections, err := s.db.ListStatusPageSections(ctx, pageUID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	responses := make([]StatusPageSectionResponse, len(sections))
+	states := make([]sectionState, len(sections))
 	for i, section := range sections {
 		if includeSelector {
 			responses[i] = convertSectionToAdminResponse(section)
@@ -3547,8 +3622,9 @@ func (s *Service) loadSectionsWithResources(
 
 		resources, err := s.db.ListStatusPageResources(ctx, section.UID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		states[i] = sectionState{section: section, resources: resources}
 
 		resourceResponses := make([]StatusPageResourceResponse, len(resources))
 		for j, resource := range resources {
@@ -3564,7 +3640,7 @@ func (s *Service) loadSectionsWithResources(
 		responses[i].Resources = resourceResponses
 	}
 
-	return responses, nil
+	return responses, states, nil
 }
 
 // enrichResourceInfo fills each resource's Check block with live data: a check

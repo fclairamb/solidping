@@ -5168,17 +5168,21 @@ function SectionMembershipSection() {
 // warning whenever the rule would publish future items to a PUBLIC surface.
 // selectorFromMembership() returns null for "manual" — send that null on an
 // update to CLEAR an existing rule (omitting the key leaves it in place).
+// groupMissing is the backend's selectorGroupMissing flag: the stored rule
+// points to a deleted group, so the section renders empty and the picker
+// explains why instead of looking neutral.
 <SectionMembership
   org={org}
   value={membership}
   onChange={setMembership}
   visibility={page.visibility}
+  groupMissing={section.selectorGroupMissing}
 />`;
   return (
     <Section
       id="section-membership"
       title="Section membership"
-      description="Manual / rule-driven mode picker for a status page section (spec 2026-08-29-11). The mode sits in a SegmentedControl with a one-line hint; the label mode reuses LabelInput. Switch to All checks or By label below to see the public-page warning — it fires on any non-manual mode when the page is public, with stronger copy for All checks, because auto-inclusion there means every future check reaches the public internet the moment it is created. Private and password pages show nothing."
+      description="Manual / rule-driven mode picker for a status page section (spec 2026-08-29-11, By group added in 2026-09-20-02). The mode sits in a four-option SegmentedControl that wraps on narrow screens; the label mode reuses LabelInput and the group mode reuses CheckGroupPicker. Switch to All checks, By label or By group below to see the public-page warning — it fires on any non-manual mode when the page is public, with stronger copy for All checks, because auto-inclusion there means every future check reaches the public internet the moment it is created. Private and password pages show nothing."
     >
       <ExampleRow
         preview={
@@ -5790,6 +5794,7 @@ function JsonAssertionEditorSection() {
 function JobsPrimitivesSection() {
   const [tab, setTab] = useState("first");
   const [segmented, setSegmented] = useState("first");
+  const [segmentedFour, setSegmentedFour] = useState("manual");
 
   return (
     <Section
@@ -5885,6 +5890,26 @@ function JobsPrimitivesSection() {
               label: "Host",
               tooltip: "Bucket checks by the host they target",
             },
+          ]}
+        />
+        <p className="text-xs text-muted-foreground">
+          <strong>Four options must not overflow a phone.</strong> The
+          section-membership picker (Manual / All checks / By label / By group)
+          is the widest shipped case at 375&nbsp;px: the control carries{" "}
+          <code>flex-wrap</code> so excess segments drop to a second row rather
+          than overflowing the dialog. If your four-option control overflows,
+          wrap it the same way — never shrink the touch targets.
+        </p>
+        <SegmentedControl
+          value={segmentedFour}
+          onValueChange={setSegmentedFour}
+          aria-label="Four-option example"
+          className="w-full flex-wrap"
+          options={[
+            { value: "manual", label: "Manual" },
+            { value: "all", label: "All checks" },
+            { value: "labels", label: "By label" },
+            { value: "group", label: "By group" },
           ]}
         />
       </div>

@@ -89,3 +89,17 @@ type CheckerSamplesProvider interface {
 	// GetSampleConfigs returns a slice of sample configurations with metadata.
 	GetSampleConfigs(opts *ListSampleOptions) []CheckSpec
 }
+
+// BurstBudgeter is an optional interface a checker config implements when the
+// check's wall-clock cost scales with burst configuration (count/interval/
+// timeout) rather than being one probe's duration (spec 2026-09-21-01). The
+// check worker probes it after parsing the config and raises the execution
+// budget to the returned worst case, so a burst that meets packet loss is
+// never truncated by a budget sized for a single probe. `timeout` keeps its
+// per-packet meaning inside the checker; it is never again overloaded as the
+// whole-burst budget.
+type BurstBudgeter interface {
+	// BurstBudget returns the worst-case wall-clock time a full execution
+	// needs with this config, margins excluded.
+	BurstBudget() time.Duration
+}

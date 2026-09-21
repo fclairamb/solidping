@@ -117,16 +117,22 @@
       "manual": "Manuelle",
       "all": "Toutes les vérifications",
       "labels": "Par étiquette",
+      "group": "Par groupe",
       "hint": {
         "manual": "Vous ajoutez chaque composant de cette section à la main.",
         "all": "Toutes les vérifications de cette organisation sont listées automatiquement, y compris celles créées plus tard.",
-        "labels": "Toute vérification portant l'ensemble de ces étiquettes est listée automatiquement, y compris celles créées plus tard."
+        "labels": "Toute vérification portant l'ensemble de ces étiquettes est listée automatiquement, y compris celles créées plus tard.",
+        "group": "Chaque vérification de ce groupe est listée individuellement, y compris celles ajoutées au groupe plus tard."
       },
       "labelsField": "Étiquettes requises",
       "labelsHint": "Une vérification doit porter toutes ces étiquettes pour apparaître. Les valeurs sont exactes.",
+      "groupField": "Groupe",
+      "groupPlaceholder": "Sélectionner un groupe",
+      "groupHint": "Chaque vérification de ce groupe est listée individuellement, y compris celles ajoutées au groupe plus tard. Pour afficher le groupe comme un seul composant, ajoutez-le plutôt depuis la liste des composants.",
       "publicWarningTitle": "Cette section est sur une page publique",
       "publicWarningAll": "Toutes les vérifications actuelles et futures de cette organisation apparaîtront sur cette page publique, y compris celles créées plus tard. Préférez une étiquette comme public=true, pour que chaque vérification s'inscrive explicitement.",
       "publicWarningLabels": "Toutes les vérifications actuelles et futures portant ces étiquettes apparaîtront sur cette page publique, y compris celles créées plus tard.",
+      "publicWarningGroup": "Toutes les vérifications actuelles et futures de ce groupe apparaîtront sur cette page publique, y compris celles ajoutées au groupe plus tard.",
       "autoBadge": "auto",
       "autoTooltip": "Ajouté automatiquement par la règle de composition de cette section. Modifiez la règle pour changer cela.",
       "truncated": "{{shown}} vérifications affichées sur {{total}}. Affinez la règle avec des étiquettes pour voir le reste.",
@@ -136,7 +142,9 @@
         "partial_one": "{{count}} vérification correspondante supplémentaire est déjà affichée ailleurs sur cette page.",
         "partial_other": "{{count}} vérifications correspondantes supplémentaires sont déjà affichées ailleurs sur cette page."
       },
-      "labelsRequired": "Ajoutez au moins une étiquette"
+      "labelsRequired": "Ajoutez au moins une étiquette",
+      "groupMissingTitle": "Ce groupe n'existe plus",
+      "groupMissing": "Ce groupe a été supprimé ; la section n'affiche rien jusqu'à ce que vous choisissiez une autre règle."
     }
   },
   "resources": {

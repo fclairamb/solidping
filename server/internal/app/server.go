@@ -1772,6 +1772,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// returns nothing, so a status page can never fail a check create — with the
 	// page-view backstop as the safety net.
 	checksService.SetStatusPageReconciler(statusPagesService)
+	checkGroupsService.SetStatusPageReconciler(statusPagesService)
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService

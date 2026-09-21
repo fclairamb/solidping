@@ -2,7 +2,8 @@ package statuspages
 
 // Section selectors (spec 2026-08-29-11) — dynamic status page membership.
 //
-// A section may carry a SectionSelector ({"all":true} or {"labels":{k:v,...}}).
+// A section may carry a SectionSelector ({"all":true}, {"labels":{k:v,...}}
+// or {"checkGroupUid":"..."}).
 // The system then keeps that section's check resources in sync, so a check
 // created after the page was built still shows up. The failure this exists to
 // remove is silent: a new service ships, its check goes down, and the page
@@ -25,6 +26,7 @@ package statuspages
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -481,6 +483,23 @@ func (s *Service) materialize(
 func (s *Service) desiredChecks(
 	ctx context.Context, orgUID string, selector *models.SectionSelector, claimed map[string]struct{},
 ) ([]string, error) {
+	// Check rows retain their check_group_uid after a soft-delete. Verify the
+	// group itself before filtering so a deleted group selects nothing rather
+	// than continuing to publish its former members. A group that is gone is
+	// "desired = empty", NOT an error — the reconciler must still run so the
+	// section's managed rows are dropped — but a genuine database failure is
+	// still an error and must not be read as "no matches".
+	if selector.CheckGroupUID != "" {
+		_, err := s.db.GetCheckGroup(ctx, orgUID, selector.CheckGroupUID)
+		switch {
+		case err == nil:
+		case errors.Is(err, sql.ErrNoRows):
+			return []string{}, nil
+		default:
+			return nil, err
+		}
+	}
+
 	checks, _, err := s.db.ListChecks(ctx, orgUID, selector.Filter())
 	if err != nil {
 		return nil, err
@@ -542,6 +561,7 @@ func selectorValidationError(err error) bool {
 	return errors.Is(err, ErrSelectorInvalid) ||
 		errors.Is(err, models.ErrSelectorEmpty) ||
 		errors.Is(err, models.ErrSelectorAmbiguous) ||
+		errors.Is(err, models.ErrSelectorGroupNotFound) ||
 		errors.Is(err, models.ErrSelectorLabelsEmpty) ||
 		errors.Is(err, models.ErrSelectorTooManyLabels) ||
 		errors.Is(err, models.ErrSelectorLabelKeyInvalid) ||

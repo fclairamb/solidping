@@ -1015,6 +1015,16 @@ func (r *CheckWorker) executeJob(
 
 	checkConfig = config
 
+	// Burst-style checkers (icmp, spec 2026-09-21-01) size their cost from
+	// count/interval/timeout, not from a single probe. `timeout` keeps only its
+	// per-packet meaning from here down — it is never the whole-burst budget —
+	// so the execution context is raised to the config's own worst-case burst
+	// cost (count × timeout + (count-1) × interval). A burst that meets packet
+	// loss runs to completion and reports truthful loss instead of being
+	// truncated into over-reporting it. For an unset `timeout` the threaded
+	// default makes a count-1 burst identical to the pre-burst budget.
+	checkTimeout = resolveBurstBudget(checkConfig, checkTimeout)
+
 	// 3. Get checker from registry
 	checker, ok := r.getChecker(checkerdef.CheckType(checkType))
 	if !ok {
@@ -1213,6 +1223,23 @@ func configWithDefaultTimeout(config map[string]any, timeout time.Duration) map[
 	clone[checkTimeoutConfigKey] = timeout.String()
 
 	return clone
+}
+
+// resolveBurstBudget raises an execution budget to a burst-style config's own
+// worst-case wall-clock cost when the config implements
+// checkerdef.BurstBudgeter (spec 2026-09-21-01). Non-burst configs and burst
+// configs whose burst fits in the resolved budget pass straight through.
+func resolveBurstBudget(checkConfig checkerdef.Config, checkTimeout time.Duration) time.Duration {
+	burst, ok := checkConfig.(checkerdef.BurstBudgeter)
+	if !ok {
+		return checkTimeout
+	}
+
+	if budget := burst.BurstBudget(); budget > checkTimeout {
+		return budget
+	}
+
+	return checkTimeout
 }
 
 // applySMTPDeliveryContext marks execCtx as a real, dispatched SMTP check job
