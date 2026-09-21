@@ -2617,10 +2617,10 @@ export interface StatusPage {
 
 /**
  * A section's dynamic-membership rule (spec 2026-08-29-11). Exactly one of the
- * three shapes: `{ all: true }`, `{ labels: { k: v, ... } }` (AND, exact), or
- * `{ checkGroupUid: "..." }`.
- * values). Absent means the section is hand-curated, which is the default and
- * what every existing section keeps — a selector is never applied implicitly.
+ * three shapes: `{ all: true }`, `{ labels: { k: v, ... } }` (AND, exact match
+ * on all listed values), or `{ checkGroupUid: "..." }`. Absent means the
+ * section is hand-curated, which is the default and what every existing
+ * section keeps — a selector is never applied implicitly.
  */
 export interface StatusPageSectionSelector {
   all?: boolean;
