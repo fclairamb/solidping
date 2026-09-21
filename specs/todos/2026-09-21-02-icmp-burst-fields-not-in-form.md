@@ -86,3 +86,37 @@ The same user's two rageclicks in this form both landed on `NotifyViaSection`'s
 first channel row, on a row that was already ticked. Unexplained, not
 reproducible, and not part of this spec — noted only because it is the second
 report in a week of someone fighting this form.
+
+## Implementation Plan
+
+- **Module** (`web/dash0/src/components/checks/form/types/network.tsx`): grow
+  `IcmpState` with `count`, `interval`, `packetSize`, `ttl` (all strings,
+  same string-state pattern as `port`); add the four keys to `ownedKeys`;
+  `fromConfig` reads them, `toConfig` writes integers for `count` /
+  `packet_size` / `ttl` and the raw duration string for `interval` (the
+  checker stores a Go duration string, e.g. `"100ms"` — never a number).
+- **Bounds-sync strategy**: the check-types metadata cannot carry per-field
+  bounds (it has only `MinPeriodHint` / `secretFields` / period metadata —
+  confirmed by reading `server/internal/handlers/checktypes/service.go` and
+  `checkerdef/types.go`), so the client keeps NO second copy of the limits:
+  `toConfig` only checks integer/format sanity, the Go validator
+  (`checkicmp/checker.go`) stays the sole authority on 1–600 / 50ms–60s /
+  0–65507 / 1–255, and the module carries a comment cross-referencing those
+  constants.
+- **UI**: reuse the existing `CollapsibleSection` primitive (same pattern as
+  the TCP "Payload & reply" section) — collapsed by default, auto-open when a
+  stored value exists, `summary` + one-liner under the fields computed live
+  ("N packets, I apart, every run" / singular phrasing at count 1). `interval`
+  input is disabled while `count` ≤ 1. Two-column grid on `sm`, single column
+  at 375px.
+- **Round-trip**: the four new `ownedKeys` are "omit means clear", covered by
+  `network.test.ts` — an API-created check with `count: 10` must survive an
+  untouched save and a rename-only edit; a cleared input must delete the key.
+- **Locales**: new `network.*` keys in en/fr/de/es (locale-parity test
+  enforces parity); plural handled in code (two keys), not i18next plural
+  rules (no plural config exists).
+- **Tests**: unit round-trips in `network.test.ts`; Playwright spec
+  `e2e/check-icmp-burst.spec.ts` (create with count/interval via the form →
+  persisted; API-created `count: 10` check survives an unrelated edit).
+- **Design reference**: no new primitives — `CollapsibleSection` and
+  `Input type="number"` are already catalogued there.
