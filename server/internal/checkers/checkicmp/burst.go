@@ -208,11 +208,19 @@ func performICMPPings(
 
 	state := newBurstState(count, timeout)
 
+	// Start the reader BEFORE the first packet goes out (spec 2026-09-21-01):
+	// sendBurst blocks this goroutine for the whole sending schedule, so a
+	// reader started after it returns would never drain the socket during the
+	// burst — replies would pile into the kernel receive buffer, which drops
+	// datagrams once full. That is a bulk of "lost" packets plus RTTs inflated
+	// to the drain moment, exactly what the per-packet-socket code never saw.
+	readerDone := readBurst(ctx, conn, state, proto, replyType, useUDP, id)
+
 	writeErr := sendBurst(ctx, conn, dst, state, requestType, id, interval)
 
 	// Wait for the reader: either everything written has been answered or has
 	// expired, or the context ended and the reader notices within one poll.
-	<-readBurst(ctx, conn, state, proto, replyType, useUDP, id)
+	<-readerDone
 
 	out := state.collect()
 
@@ -336,6 +344,7 @@ func readBurst(
 			}
 
 			bytesRead, _, readErr := conn.ReadFrom(buf)
+
 			if readErr != nil {
 				continue // deadline (or transient error): loop re-checks pending state
 			}

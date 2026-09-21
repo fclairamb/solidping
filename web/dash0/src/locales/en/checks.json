@@ -1008,8 +1008,9 @@
     "burstOne": "One packet per run (single ping)",
     "burstMany": "{{count}} packets, {{interval}} apart, every run",
     "burstCount": "Packets per run",
-    "burstInterval": "Interval between packets",
+    "burstInterval": "Interval between packets (ms)",
     "burstIntervalNeedsCount": "Only applies when sending more than one packet",
+    "burstIntervalDenseWarning": "Below 50ms, some targets rate-limit ICMP echo — packet loss shown may be real, not a measurement artifact",
     "burstPacketSize": "Packet size (bytes)",
     "burstTtl": "TTL (hops)"
   },

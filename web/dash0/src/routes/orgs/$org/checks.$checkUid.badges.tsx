@@ -55,6 +55,12 @@ export interface BadgeSearch {
   label?: string;
   minWidth?: number;
   width?: number;
+  // How the builder previews the badge. The default is "object" (an
+  // <object type="image/svg+xml"> embed), because that is the only embedding
+  // that shows the badge's hover tooltips in every browser — <img> runs the
+  // SVG in Chrome/Safari's "secure static mode", where :hover never fires.
+  // "img" switches the preview to the plain <img> embed.
+  preview?: "object" | "img";
 }
 
 export function validateBadgeSearch(
@@ -92,6 +98,9 @@ export function validateBadgeSearch(
     width: !isNaN(rawWidth) && rawWidth >= 60 && rawWidth <= 800
       ? rawWidth
       : undefined,
+    // Keep preview undefined when it equals the default ("object") so
+    // TanStack Router omits it from the URL.
+    preview: search.preview === "img" ? "img" : undefined,
   };
 }
 
@@ -160,6 +169,8 @@ function BadgePreview({
   customLabel,
   minWidth,
   width,
+  previewMode,
+  onPreviewModeChange,
 }: {
   org: string;
   check: Check;
@@ -169,6 +180,8 @@ function BadgePreview({
   customLabel: string;
   minWidth: number;
   width: number;
+  previewMode: "object" | "img";
+  onPreviewModeChange: (mode: "object" | "img") => void;
 }) {
   const { t } = useTranslation("badges");
   const imgRef = useRef<HTMLImageElement>(null);
@@ -191,6 +204,10 @@ function BadgePreview({
 
   const markdownCode = `![${check.name || identifier} badge](${badgeUrl})`;
   const htmlCode = `<img src="${badgeUrl}" alt="${check.name || identifier} badge" />`;
+  // Interactive HTML embed: the nested <img> is the no-SVG-object fallback.
+  const objectCode = `<object type="image/svg+xml" data="${badgeUrl}">
+  ${htmlCode}
+</object>`;
 
   const downloadBadge = useCallback(
     async (downloadFormat: "svg" | "png") => {
@@ -250,9 +267,25 @@ function BadgePreview({
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">{t("preview")}</CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Select
+              value={previewMode}
+              onValueChange={(v) => onPreviewModeChange(v as "object" | "img")}
+            >
+              <SelectTrigger
+                data-testid="badge-preview-mode"
+                className="h-8 w-[200px] text-xs"
+                aria-label={t("previewMode")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="object">{t("previewMode.object")}</SelectItem>
+                <SelectItem value="img">{t("previewMode.img")}</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               size="sm"
@@ -284,13 +317,30 @@ function BadgePreview({
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
-            <img
-              ref={imgRef}
-              src={previewUrl}
-              alt={`${check.name || identifier} badge`}
-              data-testid="badge-preview-img"
-            />
+            {previewMode === "img" ? (
+              <img
+                ref={imgRef}
+                src={previewUrl}
+                alt={`${check.name || identifier} badge`}
+                data-testid="badge-preview"
+              />
+            ) : (
+              <object
+                data={previewUrl}
+                type="image/svg+xml"
+                aria-label={`${check.name || identifier} badge`}
+                data-testid="badge-preview"
+              >
+                <img
+                  src={previewUrl}
+                  alt={`${check.name || identifier} badge`}
+                />
+              </object>
+            )}
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("previewModeDescription")}
+          </p>
         </CardContent>
       </Card>
 
@@ -327,6 +377,15 @@ function BadgePreview({
               {htmlCode}
             </code>
           </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">{t("objectHtml")}</Label>
+              <CopyButton text={objectCode} label={t("objectHtml")} />
+            </div>
+            <code data-testid="badge-embed-object" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
+              {objectCode}
+            </code>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -349,6 +408,7 @@ function CheckBadgesPage() {
   const customLabel = search.label ?? "";
   const minWidth = search.minWidth ?? 0;
   const width = search.width ?? DEFAULT_WIDTH;
+  const previewMode = search.preview ?? "object";
 
   const [localWidth, setLocalWidth] = useState(String(width));
   const [localMinWidth, setLocalMinWidth] = useState(String(minWidth));
@@ -378,6 +438,7 @@ function CheckBadgesPage() {
         if (!next.label) delete next.label;
         if (!next.minWidth || next.minWidth <= 0) delete next.minWidth;
         if (!next.width || next.width === DEFAULT_WIDTH) delete next.width;
+        if (!next.preview || next.preview === "object") delete next.preview;
         return next;
       },
       replace: true,
@@ -578,6 +639,8 @@ function CheckBadgesPage() {
               customLabel={customLabel}
               minWidth={minWidth}
               width={width}
+              previewMode={previewMode}
+              onPreviewModeChange={(mode) => updateSearch({ preview: mode })}
             />
           ) : (
             <Card>

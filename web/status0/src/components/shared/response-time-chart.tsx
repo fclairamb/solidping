@@ -15,74 +15,17 @@ import type {
 } from "@/api/hooks";
 import {
   buildCombinedRows,
+  expandTimeGaps,
   pointKey,
   statusFieldKey,
   type CombinedRow,
 } from "@/lib/response-time-rollup";
+import { computeTimeAxis, formatAxisTick } from "@/lib/chart-axis";
 import {
   availabilityFill,
   classifyAvailabilityCounts,
   formatAvailabilityPct,
 } from "@/lib/availability-status";
-
-function formatTick(isoStr: string, spansDays: boolean, locale: string) {
-  const date = new Date(isoStr);
-  if (spansDays) {
-    return date.toLocaleDateString(locale, {
-      month: "short",
-      day: "numeric",
-    });
-  }
-  return date.toLocaleTimeString(locale, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-// Recharts puts one tick per category by default, so a multi-day window
-// sampled every few hours printed the *same* day-only label over and over
-// ("Aug 9  Aug 9  Aug 9  Aug 10 …"). Pick a small, evenly spaced tick set
-// ourselves instead of letting the tick count follow the sample count.
-const MAX_TICKS = 5;
-
-function pickTicks(times: string[]): string[] {
-  if (times.length <= MAX_TICKS) return times;
-  const step = (times.length - 1) / (MAX_TICKS - 1);
-  const picked = Array.from(
-    { length: MAX_TICKS },
-    (_, i) => times[Math.round(i * step)],
-  );
-  return [...new Set(picked)];
-}
-
-// Label the picked ticks, falling back to a time-of-day label whenever a tick
-// would repeat the day printed by the tick before it — so the axis reads
-// "Jul 28 · Aug 3 · Aug 9 · Aug 11 · 18:00" rather than the same date twice.
-function buildTickLabels(
-  ticks: string[],
-  spansDays: boolean,
-  locale: string,
-): Record<string, string> {
-  const labels: Record<string, string> = {};
-  let previousDay = "";
-  for (const tick of ticks) {
-    const date = new Date(tick);
-    if (!spansDays) {
-      labels[tick] = formatTick(tick, false, locale);
-      continue;
-    }
-    const day = date.toLocaleDateString(locale, {
-      month: "short",
-      day: "numeric",
-    });
-    labels[tick] =
-      day === previousDay
-        ? date.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })
-        : day;
-    previousDay = day;
-  }
-  return labels;
-}
 
 function formatDuration(ms: number) {
   if (ms >= 1000) {
@@ -215,6 +158,11 @@ interface AvailabilityCell {
  * much". The `ml-[50px] mr-[4px]` inset matches the chart's YAxis width and its
  * right margin, so a cell sits under the slice of the plot it describes.
  *
+ * Each cell's flex weight is its slot's DURATION (spec 2026-09-21-03 B.4):
+ * time to the next cell's start, and the last cell reuses the previous gap —
+ * the chart is a real time axis now, so a uniform flex-1 would give six weeks
+ * of dead region and sixteen minutes of live one the same width.
+ *
  * Colours come from the shared availability vocabulary, so this strip and the
  * availability bar above it can never paint the same numbers differently.
  */
@@ -230,6 +178,20 @@ function AvailabilityStrip({
   testId: string;
 }) {
   if (cells.length === 0) return null;
+
+  const starts = cells.map((cell) => Date.parse(cell.time));
+
+  const weight = (index: number): number => {
+    const next = starts[index + 1];
+    if (Number.isFinite(next) && next > starts[index]) {
+      return next - starts[index];
+    }
+    const previous = starts[index - 1];
+    if (Number.isFinite(previous) && starts[index] > previous) {
+      return starts[index] - previous;
+    }
+    return 1;
+  };
 
   return (
     <div
@@ -251,8 +213,7 @@ function AvailabilityStrip({
         return (
           <div
             key={`${cell.time}-${index}`}
-            className="flex-1"
-            style={{ backgroundColor: fill, opacity }}
+            style={{ backgroundColor: fill, opacity, flex: weight(index) }}
             data-status={cell.status}
             title={
               cell.total > 0
@@ -283,17 +244,25 @@ export function ResponseTimeChart({
   const isMultiSeries = series.length > 1;
 
   if (!isMultiSeries) {
-    const data = series[0]?.points ?? [];
+    // Each row carries an epoch-ms `ts` so the axis is a real time axis (spec
+    // 2026-09-21-03 B.1/B.2). Gap rows break the line wherever the series was
+    // silent for several sampling intervals — connectNulls={false} only
+    // breaks at null rows, and a silent stretch contributes none itself.
+    const data = expandTimeGaps(
+      (series[0]?.points ?? []).map((point) => ({
+        ...point,
+        ts: Date.parse(point.time),
+      })),
+      (time): ResponseTimePoint & { ts: number } => ({
+        time,
+        ts: Date.parse(time),
+      }),
+    );
     const hasData = data.some((d) => d.durationP95 != null);
     if (!hasData) return null;
 
-    const first = data[0]?.time;
-    const last = data[data.length - 1]?.time;
-    const spansDays =
-      first && last
-        ? new Date(last).getTime() - new Date(first).getTime() >
-          24 * 60 * 60 * 1000
-        : false;
+    const axis = computeTimeAxis(data.map((d) => d.ts));
+    const spanMs = axis.domain[1] - axis.domain[0];
 
     // The server already classified each point against the page's thresholds,
     // so the single-region strip renders exactly what it was told — no client
@@ -305,9 +274,6 @@ export function ResponseTimeChart({
       total: point.totalChecks ?? 0,
       pct: point.availabilityPct,
     }));
-
-    const ticks = pickTicks(data.map((d) => d.time));
-    const tickLabels = buildTickLabels(ticks, spansDays, i18n.language);
 
     return (
       <div className="mt-3">
@@ -330,15 +296,17 @@ export function ResponseTimeChart({
               </linearGradient>
             </defs>
             <XAxis
-              dataKey="time"
-              ticks={ticks}
+              dataKey="ts"
+              type="number"
+              scale="time"
+              domain={axis.domain}
+              ticks={axis.ticks}
               tickFormatter={(v) =>
-                tickLabels[v] ?? formatTick(v, spansDays, i18n.language)
+                formatAxisTick(Number(v), spanMs, i18n.language)
               }
               tick={{ fontSize: 10 }}
               tickLine={false}
               axisLine={false}
-              interval="preserveStartEnd"
             />
             <YAxis
               tickFormatter={formatDuration}
@@ -376,13 +344,21 @@ export function ResponseTimeChart({
   );
   if (!hasData) return null;
 
-  const first = rows[0]?.time;
-  const last = rows[rows.length - 1]?.time;
-  const spansDays =
-    first && last
-      ? new Date(last).getTime() - new Date(first).getTime() >
-        24 * 60 * 60 * 1000
-      : false;
+  // Each merged row carries an epoch-ms `ts` for the numeric axis (spec
+  // 2026-09-21-03 B.1/B.2), and silent stretches become explicit null rows so
+  // connectNulls={false} keeps rendering them as gaps.
+  const chartRows = expandTimeGaps(
+    rows.map((row) => ({ ...row, ts: Date.parse(row.time) })),
+    (time): CombinedRow & { ts: number } => ({
+      time,
+      ts: Date.parse(time),
+    }),
+  );
+
+  const axis = computeTimeAxis(
+    chartRows.map((row) => row.ts).filter(Number.isFinite),
+  );
+  const spanMs = axis.domain[1] - axis.domain[0];
 
   // Several regions land in one slot, so the merged cell has to be classified
   // here — over the SUMMED up/total (buildCombinedRows), never over an average
@@ -390,7 +366,7 @@ export function ResponseTimeChart({
   // it buckets "all regions".
   const upThreshold = thresholds?.thresholdUp;
   const degradedThreshold = thresholds?.thresholdDegraded;
-  const multiSeriesCells: AvailabilityCell[] = rows.map((row) => {
+  const multiSeriesCells: AvailabilityCell[] = chartRows.map((row) => {
     const up = (row.availUp as number | undefined) ?? 0;
     const total = (row.availTotal as number | undefined) ?? 0;
     return {
@@ -406,9 +382,6 @@ export function ResponseTimeChart({
       pct: total > 0 ? (up / total) * 100 : undefined,
     };
   });
-
-  const ticks = pickTicks(rows.map((row) => row.time));
-  const tickLabels = buildTickLabels(ticks, spansDays, i18n.language);
 
   const regionLabel = (region?: string) =>
     region || t("unknownRegion", { defaultValue: "Unknown region" });
@@ -436,7 +409,7 @@ export function ResponseTimeChart({
         ))}
       </div>
       <ResponsiveContainer width="100%" height={100}>
-        <AreaChart data={rows} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+        <AreaChart data={chartRows} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
           <defs>
             {series.map((_, index) => (
               <linearGradient
@@ -461,15 +434,17 @@ export function ResponseTimeChart({
             ))}
           </defs>
           <XAxis
-            dataKey="time"
-            ticks={ticks}
+            dataKey="ts"
+            type="number"
+            scale="time"
+            domain={axis.domain}
+            ticks={axis.ticks}
             tickFormatter={(v) =>
-              tickLabels[v] ?? formatTick(v, spansDays, i18n.language)
+              formatAxisTick(Number(v), spanMs, i18n.language)
             }
             tick={{ fontSize: 10 }}
             tickLine={false}
             axisLine={false}
-            interval="preserveStartEnd"
           />
           <YAxis
             tickFormatter={formatDuration}
@@ -540,7 +515,7 @@ export function ResponseTimeChart({
               strokeWidth={1.5}
               fill={`url(#colorRegion${index})`}
               connectNulls={false}
-              dot={isolatedDot(rows, pointKey(index), seriesColor(index))}
+              dot={isolatedDot(chartRows, pointKey(index), seriesColor(index))}
             />
           ))}
         </AreaChart>

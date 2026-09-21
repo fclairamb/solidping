@@ -888,7 +888,10 @@ func TestBuildResponseTimeSeries_GroupsAndSortsByRegion(t *testing.T) {
 // the bug this spec fixes: previously the 100-result budget was shared across
 // every region interleaved on one check, so two busy regions split it roughly
 // 50/50 instead of getting their own 100. Seed 150 raw rows in each of two
-// regions and assert BOTH series come back with the full 100-point budget.
+// regions and assert BOTH series come back with the same windowed allocation —
+// the per-region budget rule of spec 2026-08-22-05, applied to the windowed
+// trim of spec 2026-09-21-03 (each region is sub-sampled to its own share of
+// the page's history window, independently of the other's row count).
 func TestFetchRecentResults_PerRegionBudgetNotStarved(t *testing.T) {
 	t.Parallel()
 
@@ -933,8 +936,14 @@ func TestFetchRecentResults_PerRegionBudgetNotStarved(t *testing.T) {
 		byRegion[*s.Region] = len(s.Points)
 	}
 
-	r.Equal(100, byRegion["eu2"], "eu2 must get its own full 100-point budget")
-	r.Equal(100, byRegion["us1"], "us1 must get its own full 100-point budget, not starved by eu2")
+	// The two regions have identical data, so the windowed allocation must
+	// give them identical series — eu2's 150 rows cannot starve us1's, and
+	// neither series is a 50/50 split of one shared budget.
+	r.Equal(byRegion["eu2"], byRegion["us1"],
+		"identical regions must get identical allocations")
+	r.Greater(byRegion["eu2"], 1, "each region keeps more than one point")
+	r.LessOrEqual(byRegion["eu2"], responseTimeLimit,
+		"each region stays within the responseTimeLimit budget")
 }
 
 // TestViewStatusPage_NullRegionSeries pins the legacy/single-region path: rows

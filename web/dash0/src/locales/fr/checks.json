@@ -1008,8 +1008,9 @@
     "burstOne": "Un seul paquet par exécution (ping simple)",
     "burstMany": "{{count}} paquets, espacés de {{interval}}, à chaque exécution",
     "burstCount": "Paquets par exécution",
-    "burstInterval": "Intervalle entre les paquets",
+    "burstInterval": "Intervalle entre les paquets (ms)",
     "burstIntervalNeedsCount": "Ne s'applique que si plus d'un paquet est envoyé",
+    "burstIntervalDenseWarning": "En dessous de 50 ms, certaines cibles limitent le débit des échos ICMP — la perte de paquets affichée peut être réelle, pas un artefact de mesure",
     "burstPacketSize": "Taille des paquets (octets)",
     "burstTtl": "TTL (sauts)"
   },

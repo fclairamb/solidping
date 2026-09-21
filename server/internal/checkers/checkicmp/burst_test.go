@@ -23,11 +23,13 @@ var errFakeListenDenied = errors.New("permission denied")
 // hook) — parallel tests must not race each other's hook.
 var burstHookMu sync.Mutex //nolint:gochecknoglobals // serializes the openBurstSocket hook across parallel tests
 
-// writeRecord is one packet the fake conn accepted, with its write time so
-// tests can check the send schedule.
+// writeRecord is one packet the fake conn accepted, with its write time and
+// the number of ReadFrom calls the conn had served by then, so tests can
+// check that the socket was being drained while the burst was still sending.
 type writeRecord struct {
-	data []byte
-	at   time.Time
+	data        []byte
+	at          time.Time
+	readsBefore int
 }
 
 // fakeICMPConn is an in-memory net.PacketConn standing in for the ICMP
@@ -37,6 +39,7 @@ type writeRecord struct {
 type fakeICMPConn struct {
 	mu           sync.Mutex
 	writes       []writeRecord
+	readCalls    int
 	readDeadline time.Time
 	closed       chan struct{}
 	closeOnce    sync.Once
@@ -53,15 +56,17 @@ func newFakeICMPConn(onWrite func(req []byte)) *fakeICMPConn {
 }
 
 func (c *fakeICMPConn) WriteTo(b []byte, _ net.Addr) (int, error) {
-	record := writeRecord{data: append([]byte(nil), b...), at: time.Now()}
-
 	c.mu.Lock()
-	c.writes = append(c.writes, record)
+	c.writes = append(c.writes, writeRecord{
+		data:        append([]byte(nil), b...),
+		at:          time.Now(),
+		readsBefore: c.readCalls,
+	})
 	hook := c.onWrite
 	c.mu.Unlock()
 
 	if hook != nil {
-		hook(record.data)
+		hook(b)
 	}
 
 	return len(b), nil
@@ -69,6 +74,7 @@ func (c *fakeICMPConn) WriteTo(b []byte, _ net.Addr) (int, error) {
 
 func (c *fakeICMPConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	c.mu.Lock()
+	c.readCalls++
 	deadline := c.readDeadline
 	c.mu.Unlock()
 
@@ -136,6 +142,19 @@ func (c *fakeICMPConn) writeTimes() []time.Time {
 	}
 
 	return times
+}
+
+// readsBeforeWrite returns the ReadFrom call count the conn had served when
+// write `index` happened.
+func (c *fakeICMPConn) readsBeforeWrite(index int) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if index < 0 || index >= len(c.writes) {
+		return -1
+	}
+
+	return c.writes[index].readsBefore
 }
 
 // echoReply builds an Echo Reply datagram answering an Echo Request.
@@ -237,6 +256,45 @@ func TestPerformICMPPingsAllPacketsAnsweredOnSchedule(t *testing.T) {
 	// Concurrency: the burst did NOT take count × timeout (the sequential
 	// worst case) — run time is (count-1) × interval + reply collection.
 	r.Less(time.Since(start), timeout*time.Duration(count))
+}
+
+func TestPerformICMPPingsReaderDrainsDuringSendPhase(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	burstHookMu.Lock()
+	defer burstHookMu.Unlock()
+
+	conn, restore := withEchoAll()
+	defer restore()
+
+	const (
+		count    = 25
+		interval = 20 * time.Millisecond
+		timeout  = time.Second
+	)
+
+	out, err := performICMPPings(context.Background(), net.IPv4(127, 0, 0, 1), false, count, timeout, interval)
+	r.NoError(err)
+
+	// The burst ran its full schedule and every packet was answered.
+	r.Len(out, count)
+
+	for _, res := range out {
+		r.True(res.Success)
+	}
+
+	// The reader must drain the socket WHILE the burst is still being sent.
+	// The reader goroutine used to be spawned only after sendBurst returned,
+	// so on a real socket nobody read during the entire sending schedule:
+	// replies piled into the kernel receive buffer, which drops datagrams
+	// once full — seen in production as ~60% phantom packet loss on a
+	// 50×100ms burst (packets_sent=50, packets_received≈19) with RTTs
+	// inflated to whole seconds. Half the writes must already have reads
+	// behind them; a reader that only starts after the last write leaves
+	// every snapshot at zero.
+	r.GreaterOrEqual(conn.readsBeforeWrite(count-1), count/2)
 }
 
 func TestPerformICMPPingsLostPacketsReportedAsLoss(t *testing.T) {
@@ -461,9 +519,9 @@ func TestBurstBudget(t *testing.T) {
 			want: 10*time.Second + 9*100*time.Millisecond,
 		},
 		{
-			name: "count 600, timeout 30s, interval 50ms",
-			cfg:  ICMPConfig{Count: 600, Timeout: 30 * time.Second, Interval: 50 * time.Millisecond},
-			want: 600*30*time.Second + 599*50*time.Millisecond,
+			name: "count 600, timeout 30s, interval 10ms",
+			cfg:  ICMPConfig{Count: 600, Timeout: 30 * time.Second, Interval: 10 * time.Millisecond},
+			want: 600*30*time.Second + 599*10*time.Millisecond,
 		},
 		{
 			name: "interval default (1s) applies when unset",

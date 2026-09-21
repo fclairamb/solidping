@@ -10,12 +10,17 @@ import (
 )
 
 // trimTestResult builds a minimal Result for exercising trimResponseTimeSeries
-// in isolation, without touching the database.
+// in isolation, without touching the database. It carries a real duration so
+// the windowed trim's signal rule treats it as a probe, not a lifecycle
+// marker.
 func trimTestResult(uid, periodType string, periodStart time.Time) *models.Result {
+	duration := float32(40)
+
 	return &models.Result{
 		UID:         uid,
 		PeriodType:  periodType,
 		PeriodStart: periodStart,
+		Duration:    &duration,
 	}
 }
 
@@ -62,7 +67,7 @@ func TestTrimResponseTimeSeries_RollupTieBreakDeterministic(t *testing.T) {
 				"check-1": {"": append([]*models.Result{}, tc.input...)},
 			}
 
-			trimResponseTimeSeries(recentByCheck)
+			trimResponseTimeSeries(recentByCheck, time.Time{}, time.Time{}, 0)
 
 			got := make([]string, 0, len(wantOrder))
 			for _, r := range recentByCheck["check-1"][""] {
@@ -92,7 +97,7 @@ func TestTrimResponseTimeSeries_RawBeatsRollupOnTie(t *testing.T) {
 		"check-1": {"": {rollup, raw}},
 	}
 
-	trimResponseTimeSeries(recentByCheck)
+	trimResponseTimeSeries(recentByCheck, time.Time{}, time.Time{}, 0)
 
 	got := recentByCheck["check-1"][""]
 	require.Len(t, got, 2)

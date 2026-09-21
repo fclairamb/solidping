@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Features
+
+* **badges:** **status badges now react to hover — availability percentages per segment and per-bucket response times, no JavaScript required.** The `uptime-bar` row's segments and the `response-time-graph` row's buckets each carry a hidden tooltip: hovering a bar segment dims it and shows its time range and availability percentage (`Wed Jan 7: 99.8%`), and hovering the graph shows a vertical band highlight, the bucket's average response time (`Wed Jan 7 → 304ms`) and a red marker dot pinned to the exact point on the line. Because this rides on CSS and `<title>` tooltips inside the SVG, no script is involved — but how much you get depends on the embedding: `<object>`, `<iframe>` and inline SVG give the full interaction in every browser, while Chrome and Safari render a plain `<img>` in a non-interactive static-image mode where hover never fires (Firefox still shows the tooltips). The badge builder's preview now defaults to the interactive `<object>` embed — with a switch to the plain image preview and a ready-to-paste interactive HTML snippet — so what you preview is what an interactive embed renders. A side effect: tooltips are not width-gated the way the printed in-bar percentages are, so 24h/30d/90d bars now expose every segment's percentage on hover even where the label never fit
 
 ## [0.30.0](https://github.com/fclairamb/solidping/compare/v0.29.2...v0.30.0) (2026-09-21)
 

@@ -304,4 +304,86 @@ test.describe("Public status page — response-time chart", () => {
     );
     expect(scrollWidth).toBeLessThanOrEqual(375);
   });
+
+  test("a retired region plus a live one render exactly one legend entry", async ({
+    page,
+  }) => {
+    // Spec 2026-09-21-03 A.3: the response-time series is bounded to the
+    // page's own history window SERVER-SIDE, so a region whose last point
+    // predates it is dropped from the payload entirely — no empty series, no
+    // legend entry. This payload is what the fixed server returns for a
+    // check whose "old" region stopped 39 days ago on a 7-day page: only the
+    // live region remains.
+    const eu2Points = [2, 1, 0].map((m) => ({
+      time: isoMinutesAgo(m * 10),
+      durationP95: 40,
+      status: "up",
+    }));
+    await mockStatusPage(page, [{ region: "eu2", points: eu2Points }]);
+
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("response-time-chart-legend")).toHaveCount(
+      0,
+      { timeout: 10000 },
+    );
+    await expect(page.locator(".recharts-area-curve")).toHaveCount(1);
+  });
+
+  test("the axis is monotonic in time even when series are disjoint", async ({
+    page,
+  }) => {
+    // Spec 2026-09-21-03 B: the x-axis is a real time axis. The payload
+    // below is the shape the PRE-fix server returned — one region's day
+    // rollups ending 39 days ago, one region's raw points from the last
+    // minutes — which on the old category axis rendered two neighbouring
+    // ticks 39 days apart ("21 sept. · 11:44 · 11:49"). The tick labels,
+    // parsed as dates, must now increase left-to-right, and the axis must
+    // start on a DATE from the old region's window, not a time-of-day.
+    const oldPoints = [0, 1, 2].map((i) => ({
+      time: new Date(Date.now() - (45 - i) * 24 * 60 * 60_000).toISOString(),
+      durationP95: 40,
+      status: "up",
+    }));
+    const eu2Points = [2, 1, 0].map((m) => ({
+      time: isoMinutesAgo(m * 10),
+      durationP95: 40,
+      status: "up",
+    }));
+    await mockStatusPage(page, [
+      { region: "old", points: oldPoints },
+      { region: "eu2", points: eu2Points },
+    ]);
+
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
+    await page.waitForLoadState("networkidle");
+
+    const ticks = page.locator("svg .recharts-cartesian-axis-tick-value");
+    await expect(ticks.first()).toBeAttached({ timeout: 10000 });
+
+    const labels = await ticks.allTextContents();
+    expect(labels.length).toBeGreaterThan(1);
+
+    // A multi-day span labels x ticks by date; parse each and require strict
+    // time order across the axis. A category axis sampling ROWS would read
+    // "Aug 13 · 11:44 · 11:49" — not parseable, and not monotonic. The
+    // y-axis labels ("0ms"…) don't parse as dates and are filtered out.
+    const parsed = labels
+      .map((label) => {
+        const date = new Date(label.replace(/\u202f|\u00a0/g, " "));
+        return Number.isNaN(date.getTime()) ? null : date.getTime();
+      })
+      .filter((ms): ms is number => ms != null);
+    expect(parsed.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < parsed.length; i++) {
+      expect(parsed[i]).toBeGreaterThanOrEqual(parsed[i - 1]);
+    }
+
+    // The first tick is at the old region's end of the window — the axis
+    // spans the 39-day gap instead of starting at the live region.
+    const first = parsed[0];
+    const ageDays = (Date.now() - first) / (24 * 60 * 60_000);
+    expect(ageDays).toBeGreaterThan(30);
+  });
 });

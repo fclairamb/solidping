@@ -167,7 +167,7 @@ func TestFetchRecentResults_ParityWithGlobalLimitFetch(t *testing.T) {
 	checkUIDs := []string{fast.UID, slow.UID}
 
 	want := legacyFetchRecentResults(ctx, t, svc, org.UID, checkUIDs)
-	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, uptimebar.Hints{})
+	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, time.Time{}, uptimebar.Hints{})
 
 	r.Len(got, len(want), "same set of checks")
 
@@ -238,7 +238,7 @@ func TestFetchRecentResults_DenseCheckCannotStarveSparseOne(t *testing.T) {
 
 	checkUIDs := []string{dense.UID, sparse.UID}
 
-	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, uptimebar.Hints{})
+	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, time.Time{}, uptimebar.Hints{})
 
 	r.Len(got[dense.UID]["eu2"], responseTimeLimit, "the dense check fills its budget")
 	r.Len(got[sparse.UID]["eu2"], responseTimeLimit,
@@ -305,7 +305,7 @@ func TestFetchRecentResults_RawBoundFollowsLiveRetention(t *testing.T) {
 	// Control: with the documented default the clamp cuts the series at
 	// 24 h + the 2 h aggregation-lag margin.
 	atDefault := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true,
-		svc.uptimebarHints(ctx, org.UID))
+		time.Time{}, svc.uptimebarHints(ctx, org.UID))
 	r.Len(atDefault[check.UID]["eu2"], 26,
 		"the default 24 h retention (+2 h margin) must clamp the raw branch: rows at "+
 			"0.5 h, 1.5 h ... 25.5 h survive, everything older is cut")
@@ -315,7 +315,7 @@ func TestFetchRecentResults_RawBoundFollowsLiveRetention(t *testing.T) {
 		string(systemconfig.KeyPerfAggRetentionRawHours), 168, false))
 
 	atLive := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true,
-		svc.uptimebarHints(ctx, org.UID))
+		time.Time{}, svc.uptimebarHints(ctx, org.UID))
 	r.Len(atLive[check.UID]["eu2"], responseTimeLimit,
 		"with performance.aggregation_retention_raw_hours=168 the whole series must survive — "+
 			"a koanf-only reader would still be clamping at 24 h")
@@ -334,8 +334,8 @@ func TestFetchRecentResults_DisabledChartIssuesNothing(t *testing.T) {
 	r.NoError(svc.db.CreateCheck(ctx, check))
 	seedRawSeries(ctx, t, svc, org.UID, check.UID, time.Now().UTC(), time.Minute, 10)
 
-	r.Empty(svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, false, uptimebar.Hints{}))
-	r.Empty(svc.fetchRecentResults(ctx, org.UID, nil, true, uptimebar.Hints{}))
+	r.Empty(svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, false, time.Time{}, uptimebar.Hints{}))
+	r.Empty(svc.fetchRecentResults(ctx, org.UID, nil, true, time.Time{}, uptimebar.Hints{}))
 }
 
 // TestResourceRecentResults_GroupsGetNoSeries pins the rule the rewrite feeds:
@@ -414,7 +414,8 @@ func TestResponseTimeBudgets_SizedFromCheckRegions(t *testing.T) {
 	r.NoError(svc.db.CreateCheck(ctx, undeclared))
 
 	budgets := svc.responseTimeBudgets(ctx, org.UID,
-		[]string{single.UID, multi.UID, sprawling.UID, undeclared.UID, "gone"})
+		[]string{single.UID, multi.UID, sprawling.UID, undeclared.UID, "gone"},
+		time.Time{}, time.Now().UTC(), uptimebar.Hints{})
 
 	r.Equal(2*responseTimeLimit, budgets[single.UID], "1 region + the NULL bucket")
 	r.Equal(4*responseTimeLimit, budgets[multi.UID], "3 regions + the NULL bucket")
@@ -459,7 +460,7 @@ func TestFetchRecentResults_ReadsAFractionOfWhatItUsedTo(t *testing.T) {
 		checkUIDs = append(checkUIDs, check.UID)
 	}
 
-	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, uptimebar.Hints{})
+	got := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true, time.Time{}, uptimebar.Hints{})
 
 	// No series loses points.
 	for _, checkUID := range checkUIDs {

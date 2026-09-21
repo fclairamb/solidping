@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
  * - Assumes the backend server is already running (make dev-backend)
  * - Assumes the frontend dev server is running (bun run dev)
  * - No global setup/teardown (server already running)
- * - Tests against http://localhost:5174/dash0/ (Vite dev server)
+ * - Tests against http://localhost:5174/d/ (Vite dev server)
  *
  * Usage:
  *   1. Start backend: make dev-backend (in project root)
@@ -26,7 +26,7 @@ export default defineConfig({
 
   use: {
     // Base URL for the dev server
-    baseURL: "http://localhost:5174/dash0/",
+    baseURL: "http://localhost:5174/d/",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

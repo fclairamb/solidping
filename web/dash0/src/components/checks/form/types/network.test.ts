@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { icmpModule, tcpModule } from "./network";
+import { icmpModule, intervalIsDense, tcpModule } from "./network";
 import { assembleSubmittedConfig, type CheckConfig } from "./common";
 
 // saveUntouched reproduces exactly what the shared form submits when a check is
@@ -193,7 +193,7 @@ describe("icmpModule — burst field round-trip", () => {
     expect(state).toMatchObject({
       host: "gw.acme.com",
       count: "10",
-      interval: "100ms",
+      interval: "100",
       packetSize: "1200",
       ttl: "64",
     });
@@ -323,12 +323,97 @@ describe("icmpModule — burst field round-trip", () => {
     const badInterval = icmpModule.toConfig({
       host: "h",
       count: "10",
-      interval: "100",
+      interval: "1sec",
       packetSize: "",
       ttl: "",
     });
     expect(badInterval.errors).toEqual([
-      { name: "interval", message: "Interval must be a duration like 100ms or 1s" },
+      {
+        name: "interval",
+        message: "Interval must be a duration like 100 or 100ms",
+      },
     ]);
+  });
+
+  it("a bare interval number is milliseconds (ms-default input)", () => {
+    // The form field is denominated in ms: "100" means 100ms, and the stored
+    // config keeps the Go duration string the checker expects.
+    const bare = icmpModule.toConfig({
+      host: "h",
+      count: "5",
+      interval: "100",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(bare.config).toEqual({ host: "h", count: 5, interval: "100ms" });
+
+    const decimal = icmpModule.toConfig({
+      host: "h",
+      count: "5",
+      interval: "0.5",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(decimal.config).toEqual({ host: "h", count: 5, interval: "0.5ms" });
+
+    // An explicit unit still passes through for power users / API habits.
+    const suffixed = icmpModule.toConfig({
+      host: "h",
+      count: "5",
+      interval: "1s",
+      packetSize: "",
+      ttl: "",
+    });
+    expect(suffixed.config).toEqual({ host: "h", count: 5, interval: "1s" });
+  });
+
+  it("fromConfig normalizes the stored duration to the ms display unit", () => {
+    const state = icmpModule.fromConfig({
+      host: "h",
+      count: 5,
+      interval: "1s",
+    });
+    expect(state.interval).toBe("1000");
+    expect(icmpModule.toConfig(state).config).toEqual({
+      host: "h",
+      count: 5,
+      interval: "1000ms",
+    });
+
+    // A value the parser cannot read is shown verbatim — the server's
+    // validation error, not a silent rewrite, tells the story.
+    const garbage = icmpModule.fromConfig({ host: "h", interval: "1sec" });
+    expect(garbage.interval).toBe("1sec");
+  });
+
+  describe("intervalIsDense — sub-50ms warning", () => {
+    it("warns only when the burst is enabled and the interval parses below 50ms", () => {
+      // A dense burst: the warning's whole point. The field is ms-default,
+      // so a bare number IS milliseconds.
+      expect(intervalIsDense("50", "49")).toBe(true);
+      expect(intervalIsDense("50", "10")).toBe(true);
+      expect(intervalIsDense("50", "49ms")).toBe(true);
+      expect(intervalIsDense("50", "10ms")).toBe(true);
+      expect(intervalIsDense("50", "0.04s")).toBe(true);
+
+      // At or above the threshold — including the old 50ms floor — stays
+      // silent.
+      expect(intervalIsDense("50", "50")).toBe(false);
+      expect(intervalIsDense("50", "100")).toBe(false);
+      expect(intervalIsDense("50", "50ms")).toBe(false);
+      expect(intervalIsDense("50", "100ms")).toBe(false);
+      expect(intervalIsDense("50", "0.1s")).toBe(false);
+      expect(intervalIsDense("50", "1s")).toBe(false);
+
+      // A single ping has no burst spacing: the interval is dead config.
+      expect(intervalIsDense("1", "10")).toBe(false);
+      expect(intervalIsDense("", "10ms")).toBe(false);
+
+      // Blank/malformed stays silent — the server's validation error, not a
+      // warning, is the right surface for those.
+      expect(intervalIsDense("50", "")).toBe(false);
+      expect(intervalIsDense("50", "1sec")).toBe(false);
+      expect(intervalIsDense("50", "s100")).toBe(false);
+    });
   });
 });

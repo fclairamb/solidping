@@ -154,6 +154,29 @@ func barOverlayText(centerX, baseline int, fill, opacity, value string) string {
 		centerX, baseline, fill, opacityAttr, fontFamily, escapeXML(value))
 }
 
+// Hover-state CSS, embedded once per row inside its <g>. CSS inside the SVG
+// document still applies when the badge is embedded via <img> (scripts and
+// external resources are disabled there, internal CSS is not), so the hover
+// highlight works everywhere the badge is used.
+const (
+	// uptimeBarHoverCSS dims the hovered availability segment (its percentage
+	// overlay and <title> tooltip travel with the group).
+	uptimeBarHoverCSS = ".seg{transition:opacity .15s}.seg:hover{opacity:.7}"
+	// graphHoverCSS drives the graph row's hover state: hovering a hit column
+	// tints its band and reveals the marker dot at the bucket's point on the
+	// line.
+	graphHoverCSS = ".hitcol rect{transition:fill-opacity .15s}" +
+		".hitcol:hover rect{fill-opacity:.1}" +
+		".hitcol circle{opacity:0;transition:opacity .15s}" +
+		".hitcol:hover circle{opacity:1}"
+)
+
+// graphDot is a hover marker's position for one graph bucket (nil for buckets
+// without data — no dot to point at).
+type graphDot struct {
+	cx, cy float64
+}
+
 // renderUptimeBarRow renders an N-segment availability strip as a positioned
 // <g> fragment translated to yOffset. The colored strip occupies the top
 // uptimeBarColorHeight px; the remaining height is a label band holding the
@@ -161,7 +184,13 @@ func barOverlayText(centerX, baseline int, fill, opacity, value string) string {
 // no label for that slot); a nil/short slice renders no labels. barValues, when
 // set for a segment, is drawn as a centered percentage overlay inside that
 // segment's colored bar — only periods with bars wide enough (7d) populate it.
-func renderUptimeBarRow(segments, labels, barValues []string, width, height, yOffset int, style string) string {
+// tooltips carries one hover tooltip per segment ("Mon Jan 5: 99.8%"); a
+// nil/short slice renders no <title>, and the segments keep working as plain
+// rects. Each segment is wrapped in a .seg group so the embedded hover CSS can
+// highlight it.
+func renderUptimeBarRow(
+	segments, labels, barValues, tooltips []string, width, height, yOffset int, style string,
+) string {
 	n := len(segments)
 	if n == 0 {
 		return fmt.Sprintf(`  <g transform="translate(0,%d)"></g>`, yOffset)
@@ -192,7 +221,16 @@ func renderUptimeBarRow(segments, labels, barValues []string, width, height, yOf
 		// edge landing on width.
 		rectWidth := (idx+1)*availableWidth/n - idx*availableWidth/n
 
-		fmt.Fprintf(&rects, `      <rect x="%d" width="%d" height="%d" fill="%s"/>`, posX, rectWidth, colorHeight, color)
+		// The .seg group carries the hover highlight (CSS opacity) and the
+		// native <title> tooltip; the percentage overlay travels inside it so
+		// it dims with the segment.
+		fmt.Fprintf(&rects, `      <g class="seg">`)
+		if idx < len(tooltips) && tooltips[idx] != "" {
+			fmt.Fprintf(&rects, `<title>%s</title>`, escapeXML(tooltips[idx]))
+		}
+
+		fmt.Fprintln(&rects)
+		fmt.Fprintf(&rects, `        <rect x="%d" width="%d" height="%d" fill="%s"/>`, posX, rectWidth, colorHeight, color)
 		fmt.Fprintln(&rects)
 
 		// In-bar percentage overlay (populated only for periods whose bars are
@@ -204,6 +242,8 @@ func renderUptimeBarRow(segments, labels, barValues []string, width, height, yOf
 			rects.WriteString(barOverlayText(centerX, textY+1, "#010101", ".3", barValues[idx]))
 			rects.WriteString(barOverlayText(centerX, textY, "#fff", "", barValues[idx]))
 		}
+
+		fmt.Fprintln(&rects, `      </g>`)
 
 		if idx < len(labels) && labels[idx] != "" {
 			centerX := posX + rectWidth/2
@@ -217,12 +257,13 @@ func renderUptimeBarRow(segments, labels, barValues []string, width, height, yOf
 	}
 
 	return fmt.Sprintf(`  <g transform="translate(0,%d)">
+    <style>%s</style>
     <clipPath id="bar%d">
       <rect width="%d" height="%d" rx="%s" fill="#fff"/>
     </clipPath>
     <g clip-path="url(#bar%d)">
 %s    </g>
-%s  </g>`, yOffset, yOffset, width, colorHeight, radius, yOffset, rects.String(), labelText.String())
+%s  </g>`, yOffset, uptimeBarHoverCSS, yOffset, width, colorHeight, radius, yOffset, rects.String(), labelText.String())
 }
 
 // paddedRange applies 10% padding around [minV, maxV] so the line never
@@ -319,15 +360,20 @@ func formatDurationMs(ms float64) string {
 // average response times oldest→newest; nil entries are gaps (no data) that
 // break the line into separate segments. The Y axis auto-scales to [min, max]
 // with 10% padding. A single data point (or a flat run) renders as a dot.
-func renderResponseTimeGraphRow(points []*float64, width, height, yOffset int, style string) string {
+// tooltips carries one hover tooltip per bucket ("Jan 5 → 304ms"); when
+// non-empty, invisible per-bucket hit columns are overlaid so hovering a
+// column highlights it (embedded hover CSS), shows its tooltip and reveals a
+// marker dot on the line at the bucket's exact position.
+func renderResponseTimeGraphRow(points []*float64, tooltips []string, width, height, yOffset int, style string) string {
 	radius := borderRadius(style)
 
 	actualMin, actualMax, hasData := pointsRange(points)
 	if !hasData {
-		// No data at all: render an empty framed area.
+		// No data at all: render an empty framed area. The hit columns still
+		// go on top so hovering an empty bucket explains why it is empty.
 		return fmt.Sprintf(`  <g transform="translate(0,%d)">
     <rect width="%d" height="%d" rx="%s" fill="#f5f5f5"/>
-  </g>`, yOffset, width, height, radius)
+%s  </g>`, yOffset, width, height, radius, renderGraphHitColumns(nil, tooltips, width, height, yOffset, radius))
 	}
 
 	minV, maxV := paddedRange(actualMin, actualMax)
@@ -362,14 +408,93 @@ func renderResponseTimeGraphRow(points []*float64, width, height, yOffset int, s
 	renderGraphGrid(actualMin, actualMax, width, yAt, &grid)
 	renderGraphSegments(buildGraphSegments(points), points, xAt, yAt, height, yOffset, &areas, &lines, &dots)
 
-	// Grid renders before the area/line/dot fragments so it sits behind the data.
+	// Hover marker positions: one per bucket with data, at the point's exact
+	// coordinates on the line.
+	hoverDots := make([]graphDot, n)
+	for i, point := range points {
+		if point != nil {
+			hoverDots[i] = graphDot{cx: xAt(i), cy: yAt(*point)}
+		}
+	}
+
+	// Grid renders before the area/line/dot fragments so it sits behind the
+	// data; the hit columns sit after it, INSIDE the translated row group (a
+	// fragment appended outside would land on the rows above — y is relative
+	// to the group's translate).
 	return fmt.Sprintf(`  <g transform="translate(0,%d)">
     <defs>
 %s
     </defs>
     <rect width="%d" height="%d" rx="%s" fill="#f5f5f5"/>
-%s%s%s%s  </g>`, yOffset, defs.String(), width, height, radius,
-		grid.String(), areas.String(), lines.String(), dots.String())
+%s%s%s%s%s  </g>`, yOffset, defs.String(), width, height, radius,
+		grid.String(), areas.String(), lines.String(), dots.String(),
+		renderGraphHitColumns(hoverDots, tooltips, width, height, yOffset, radius))
+}
+
+// renderGraphHitColumns overlays invisible per-bucket hover columns (each a
+// .hitcol group carrying a <title> tooltip, a transparent highlight band and
+// the .hitcol hover CSS) across the graph row. dots carries one marker per
+// bucket (nil = no data, no dot); hovering a column reveals its marker dot on
+// the line. Empty when tooltips is empty — legacy/standalone callers keep the
+// plain row. The returned fragment is self-contained: it must sit INSIDE the
+// row's translated <g>, after the data layers.
+func renderGraphHitColumns(
+	dots []graphDot, tooltips []string, width, height, yOffset int, radius string,
+) string {
+	if len(tooltips) == 0 {
+		return ""
+	}
+
+	var hits strings.Builder
+	fmt.Fprintf(&hits, `    <style>%s</style>
+    <clipPath id="hit%d">
+      <rect width="%d" height="%d" rx="%s" fill="#fff"/>
+    </clipPath>
+    <g clip-path="url(#hit%d)">`+"\n", graphHoverCSS, yOffset, width, height, radius, yOffset)
+
+	for i := range tooltips {
+		x0, x1 := hitColumnBounds(i, len(tooltips), width)
+		fmt.Fprintf(&hits, `      <g class="hitcol">`)
+		fmt.Fprintf(&hits, `<title>%s</title>`, escapeXML(tooltips[i]))
+		fmt.Fprintf(&hits, `<rect x="%.1f" width="%.1f" height="%d" fill="%s" fill-opacity="0"/>`,
+			x0, x1-x0, height, ColorGraph)
+		// The marker dot is a SIBLING of the band rect (a <rect> renders no
+		// children) sharing the .hitcol group, so the hover CSS can reveal it.
+		if i < len(dots) && dots[i] != (graphDot{}) {
+			fmt.Fprintf(&hits, `<circle cx="%.1f" cy="%.1f" r="3" fill="%s" stroke="#fff" stroke-width="1"/>`,
+				dots[i].cx, dots[i].cy, ColorRed)
+		}
+
+		hits.WriteString(`</g>` + "\n")
+	}
+
+	hits.WriteString(`    </g>` + "\n")
+
+	return hits.String()
+}
+
+// hitColumnBounds returns the [x0, x1) horizontal span of the hover column for
+// bucket i of n points spaced evenly across width: each column runs from the
+// midpoint of the previous point to the midpoint of the next, clamped to the
+// row edges. With a single point the column spans the whole row.
+func hitColumnBounds(i, n, width int) (float64, float64) {
+	if n <= 1 {
+		return 0, float64(width)
+	}
+
+	xStep := float64(width) / float64(n-1)
+
+	start := float64(i)*xStep - xStep/2
+	if start < 0 {
+		start = 0
+	}
+
+	end := float64(i)*xStep + xStep/2
+	if end > float64(width) {
+		end = float64(width)
+	}
+
+	return start, end
 }
 
 // pointsRange returns the min and max of the non-nil points and whether any
@@ -449,7 +574,7 @@ func GenerateSVG(label, value, valueColor, style string, minWidth int) string {
 // GenerateUptimeBarSVG creates a standalone uptime-bar SVG. Thin wrapper over
 // renderUptimeBarRow + ComposeBadgeSVG, kept for the existing test surface.
 func GenerateUptimeBarSVG(segments []string, width, height int, style string) string {
-	row := renderUptimeBarRow(segments, nil, nil, width, height, 0, style)
+	row := renderUptimeBarRow(segments, nil, nil, nil, width, height, 0, style)
 
 	return ComposeBadgeSVG([]string{row}, width, height)
 }

@@ -30,6 +30,30 @@ render as text segments on the first row, always in this order:
 `status` alone is the default. Combine several, e.g. `status,availability` for
 a two-segment badge, or add `uptime-bar` for a second row underneath.
 
+### Hover details
+
+The `uptime-bar` and `response-time-graph` rows are interactive, but **how
+much you get depends on how the badge is embedded**:
+
+- **`<object>`, `<iframe>`, or inline SVG** — full interactivity in every
+  browser: hovering a bar segment highlights it and shows a tooltip with the
+  bucket's time range and availability percentage (e.g. `Wed Jan 7: 99.8%` —
+  including buckets too narrow to print the percentage inside the bar), and
+  hovering the graph shows a vertical highlight with the bucket's average
+  response time (e.g. `Wed Jan 7 → 304ms`). Use:
+
+  ```html
+  <object type="image/svg+xml" data="https://status.acme.com/api/v1/orgs/acme/checks/my-api/badges/status,uptime-bar">
+    <img src="https://status.acme.com/api/v1/orgs/acme/checks/my-api/badges/status,uptime-bar" alt="My API badge" />
+  </object>
+  ```
+
+- **`<img>`** (including GitHub READMEs) — Chrome and Safari render the SVG
+  in a non-interactive "static image" mode where hover never fires; Firefox
+  shows the tooltips. The badge still renders perfectly — it just doesn't
+  react to hover there. This needs no JavaScript in any case, so the
+  interactive embeds above are as safe to use as the plain image.
+
 ## URL and parameters
 
 ```

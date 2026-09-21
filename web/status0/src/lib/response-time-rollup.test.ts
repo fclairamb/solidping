@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import type { ResponseTimeSeries } from "@/api/hooks";
 import {
   buildCombinedRows,
+  expandTimeGaps,
   pointKey,
   samplingInterval,
   severityRank,
@@ -396,5 +397,108 @@ describe("buildCombinedRows availability summing", () => {
 
     expect(rows[0].availTotal).toBeUndefined();
     expect(rows[0].availUp).toBeUndefined();
+  });
+});
+
+// Spec 2026-09-21-03, resolved open question: gap semantics on the numeric
+// time axis are an acceptance criterion. connectNulls={false} only breaks a
+// line at NULL rows, and a stretch where NO series reported contributes none
+// itself — so an explicit null row must be inserted into every real gap, or
+// the axis draws a straight line straight across an outage.
+describe("expandTimeGaps", () => {
+  const MIN = 60_000;
+  const base = Date.UTC(2026, 8, 21, 12, 0, 0);
+  const at = (ms: number) => ({ time: new Date(ms).toISOString() });
+
+  test("a stretch of silence becomes a null row — the line breaks there", () => {
+    // Samples at 1-minute cadence, then a 10-minute restart gap, then more
+    // samples. The median interval stays 1 minute, so 10 minutes is a gap.
+    const rows = [
+      { ...at(base), durationP95: 40 },
+      { ...at(base + MIN), durationP95: 41 },
+      { ...at(base + 12 * MIN), durationP95: 42 },
+      { ...at(base + 13 * MIN), durationP95: 43 },
+    ];
+
+    const expanded = expandTimeGaps(rows, (time) => ({ ...at(Date.parse(time)), durationP95: null }));
+
+    expect(expanded).toHaveLength(5);
+    // No value may straddle the gap: the inserted row is null, so the two
+    // surviving runs are separated and connectNulls={false} draws no line
+    // across the silence.
+    const mid = expanded[2];
+    expect(mid.durationP95).toBeNull();
+    expect(mid.time).toBe(new Date(base + 6.5 * MIN).toISOString());
+  });
+
+  test("ordinary phase jitter never reads as a gap", () => {
+    // Real worker phase spread: rows land seconds apart inside a 1-minute
+    // cadence. Inserting gap rows there would shred the series into dots.
+    const rows = [0, 1, 2, 3].map((i) => ({
+      ...at(base + i * MIN + 7_000),
+      durationP95: 40,
+    }));
+
+    expect(expandTimeGaps(rows, (time) => ({ ...at(Date.parse(time)), durationP95: null }))).toHaveLength(4);
+  });
+
+  test("a truly isolated sample stays isolated — it gets gaps on BOTH sides, not a bridge", () => {
+    // A lone sample in the middle of a long silence (worker paused, then a
+    // single probe, then silence again): the null rows on both sides keep
+    // the line from reaching it, so the isolated-dot renderer is what puts
+    // it on screen — and it must keep firing (it looks at the row array's
+    // null neighbours, which this row now guarantees). The surrounding rows
+    // are at the series' 1-minute cadence, so the median interval — and the
+    // gap threshold — stay at 1 minute.
+    const rows = [
+      { ...at(base), durationP95: 40 },
+      { ...at(base + MIN), durationP95: 40 },
+      { ...at(base + 2 * MIN), durationP95: 40 },
+      { ...at(base + 3 * MIN), durationP95: 40 },
+      { ...at(base + 30 * MIN), durationP95: 41 },
+      { ...at(base + 90 * MIN), durationP95: 42 },
+      { ...at(base + 91 * MIN), durationP95: 42 },
+    ];
+
+    const expanded = expandTimeGaps(rows, (time) => ({ ...at(Date.parse(time)), durationP95: null }));
+
+    expect(expanded).toHaveLength(9);
+    // The isolated sample's neighbours are BOTH null now.
+    expect(expanded[4].durationP95).toBeNull();
+    expect(expanded[6].durationP95).toBeNull();
+    expect(expanded[5].durationP95).toBe(41);
+  });
+
+  test("two regions covering disjoint time ranges (the 39-day fixture)", () => {
+    // Region A: day rollups ending 13 Aug. Region B: raw points from the
+    // last minutes. Merged rows jump 39 days mid-array; the expansion must
+    // break BOTH series across that jump instead of letting recharts draw
+    // one straight line from Aug 13 to Sep 21.
+    const DAY = 24 * 60 * 60_000;
+    const aRows = [0, 1, 2].map((i) => ({
+      ...at(base - 45 * DAY + i * DAY),
+      durationP95: 40,
+    }));
+    const bRows = [0, 1, 2].map((i) => ({
+      ...at(base - 2 * MIN + i * MIN),
+      durationP95: 90,
+    }));
+
+    const expanded = expandTimeGaps([...aRows, ...bRows], (time) => ({
+      ...at(Date.parse(time)),
+      durationP95: null,
+    }));
+
+    // 6 real rows + 1 gap row for the 39-day silence.
+    expect(expanded).toHaveLength(7);
+    const gap = expanded[3];
+    expect(gap.durationP95).toBeNull();
+    expect(Date.parse(gap.time)).toBeGreaterThan(Date.parse(expanded[2].time));
+    expect(Date.parse(gap.time)).toBeLessThan(Date.parse(expanded[4].time));
+  });
+
+  test("a one-row series is returned unchanged", () => {
+    const rows = [{ ...at(base), durationP95: 40 }];
+    expect(expandTimeGaps(rows, (time) => ({ ...at(Date.parse(time)) }))).toHaveLength(1);
   });
 });
