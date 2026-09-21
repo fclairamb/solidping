@@ -62,7 +62,7 @@ func TestTrimResponseTimeSeries_RollupTieBreakDeterministic(t *testing.T) {
 				"check-1": {"": append([]*models.Result{}, tc.input...)},
 			}
 
-			trimResponseTimeSeries(recentByCheck)
+			trimResponseTimeSeries(recentByCheck, time.Time{}, time.Time{}, 0)
 
 			got := make([]string, 0, len(wantOrder))
 			for _, r := range recentByCheck["check-1"][""] {
@@ -92,7 +92,7 @@ func TestTrimResponseTimeSeries_RawBeatsRollupOnTie(t *testing.T) {
 		"check-1": {"": {rollup, raw}},
 	}
 
-	trimResponseTimeSeries(recentByCheck)
+	trimResponseTimeSeries(recentByCheck, time.Time{}, time.Time{}, 0)
 
 	got := recentByCheck["check-1"][""]
 	require.Len(t, got, 2)

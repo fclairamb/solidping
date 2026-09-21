@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -2905,7 +2906,11 @@ func (s *Service) enrichWithAvailability(
 		return
 	}
 
-	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, hints)
+	// The response-time series is bounded to the SAME window the availability
+	// bar renders — the page's HistoryDays — so a chart advertising
+	// "the last 30 days" cannot carry 80 days of another region's rollups
+	// (spec 2026-09-21-03 A.1).
+	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, historyStart, hints)
 
 	// Build availability data for each resource
 	period := string(pagePeriod(page))
@@ -3038,6 +3043,13 @@ func responseTimeRollupTiers() []string {
 // a NULL/legacy region (spec 2026-08-14-04 — that budget is per region, so a
 // check running in N regions gets 100 points each, not 100/N).
 //
+// windowStart is the page's own history window (the same span the availability
+// bar renders — todayStart − (HistoryDays−1) for a daily page, the 24 hourly
+// buckets' start for a 24h page, spec 2026-09-21-03). A zero windowStart means
+// unbounded: the rollup branch falls back to the full responseTimeRollupSpan
+// and the trim keeps the newest responseTimeLimit rows per region, exactly as
+// before the window existed (the parity tests drive that path).
+//
 // It issues ONE query, with a per-check row budget and one tier-aligned,
 // time-bounded branch per side of the raw/rollup index split (spec
 // 2026-08-22-05). What it replaced had neither a period-type filter nor a time
@@ -3052,7 +3064,8 @@ func responseTimeRollupTiers() []string {
 // reader clamping to 24 h while the job keeps 168 h would silently drop six
 // days of raw rows that no rollup covers yet.
 func (s *Service) fetchRecentResults(
-	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool, hints uptimebar.Hints,
+	ctx context.Context, orgUID string, checkUIDs []string, showResponseTime bool,
+	windowStart time.Time, hints uptimebar.Hints,
 ) map[string]map[string][]*models.Result {
 	recentByCheck := make(map[string]map[string][]*models.Result)
 
@@ -3061,7 +3074,20 @@ func (s *Service) fetchRecentResults(
 	}
 
 	now := time.Now().UTC()
+
+	// The window is the page's own history span, hard-capped at
+	// responseTimeRollupSpan so an absurd HistoryDays cannot reintroduce an
+	// unbounded fetch (spec 2026-09-21-03 A.1). Zero keeps its sentinel
+	// meaning ("unbounded — legacy trim") all the way to the trim; the rollup
+	// branch then reads the full flat span.
 	rollupSince := now.Add(-responseTimeRollupSpan)
+	if !windowStart.IsZero() {
+		if windowStart.Before(rollupSince) {
+			windowStart = rollupSince
+		}
+
+		rollupSince = windowStart
+	}
 
 	filter := &models.RecentResultsPerCheckFilter{
 		OrganizationUID: orgUID,
@@ -3076,7 +3102,7 @@ func (s *Service) fetchRecentResults(
 			},
 			{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
 		},
-		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs),
+		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs, windowStart, now, hints),
 		DefaultPerCheckLimit: responseTimeLimit * regionFanoutCap,
 	}
 
@@ -3103,14 +3129,13 @@ func (s *Service) fetchRecentResults(
 		byRegion[regionKey] = append(byRegion[regionKey], result)
 	}
 
-	trimResponseTimeSeries(recentByCheck)
+	trimResponseTimeSeries(recentByCheck, windowStart, now, hints.RetentionRawHours)
 
 	return recentByCheck
 }
 
-// trimResponseTimeSeries merges the two tier branches into one per-(check,
-// region) series: newest period_start first, preferring the FINER tier on a
-// tie, truncated to responseTimeLimit points.
+// sortResponseTimeRows is the total order shared by every trim path: newest
+// period_start first, preferring the FINER tier on a tie, then uid DESC.
 //
 // Raw and rollups are disjoint by construction — the aggregation job compacts a
 // bucket and deletes its source raw rows in one transaction — so in practice
@@ -3126,31 +3151,261 @@ func (s *Service) fetchRecentResults(
 // determinism the pre-2026-08-22-05 query guaranteed
 // (ORDER BY period_start DESC, uid DESC), so it stays total (UIDs are unique)
 // without disturbing the raw-wins rung above it.
-func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result) {
+func sortResponseTimeRows(rows []*models.Result) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		if !rows[i].PeriodStart.Equal(rows[j].PeriodStart) {
+			return rows[i].PeriodStart.After(rows[j].PeriodStart)
+		}
+
+		iRaw := rows[i].PeriodType == models.PeriodTypeRaw
+		jRaw := rows[j].PeriodType == models.PeriodTypeRaw
+
+		if iRaw != jRaw {
+			return iRaw
+		}
+
+		return rows[i].UID > rows[j].UID // uid DESC — matches the pre-2026-08-22-05 query
+	})
+}
+
+// trimResponseTimeSeries merges the two tier branches into one per-(check,
+// region) series.
+//
+// Unbounded (zero windowStart): newest-responseTimeLimit rows per region,
+// exactly the pre-window behavior.
+//
+// Windowed (spec 2026-09-21-03): the series is bounded to the page's own
+// history window AND spread across it. Taking the newest 100 rows would hand
+// the live region ~100 minutes of raw while a slower one fills the same 100
+// from day rollups — the disjoint-in-time chart the spec fixes — so the
+// per-region budget is instead split across the tier buckets (raw seam / hour
+// rollups / day+month rollups) proportionally to the time span each tier
+// covers inside the window, and each bucket is evenly sub-sampled within its
+// span (newest and oldest always kept). Every region is subject to the same
+// window and the same allocation, which is what makes a live region and a
+// dead one comparable on one chart even though day rollups only exist for
+// days older than the hour retention.
+//
+// A region whose series comes out empty is DELETED: a region with no point
+// inside the window must not appear in the chart's legend at all.
+func trimResponseTimeSeries(
+	recentByCheck map[string]map[string][]*models.Result, windowStart, now time.Time, retentionRawHours int,
+) {
+	windowed := !windowStart.IsZero()
+
 	for _, byRegion := range recentByCheck {
 		for regionKey, rows := range byRegion {
-			sort.SliceStable(rows, func(i, j int) bool {
-				if !rows[i].PeriodStart.Equal(rows[j].PeriodStart) {
-					return rows[i].PeriodStart.After(rows[j].PeriodStart)
+			sortResponseTimeRows(rows)
+
+			if !windowed {
+				if len(rows) > responseTimeLimit {
+					rows = rows[:responseTimeLimit]
 				}
 
-				iRaw := rows[i].PeriodType == models.PeriodTypeRaw
-				jRaw := rows[j].PeriodType == models.PeriodTypeRaw
+				byRegion[regionKey] = rows
 
-				if iRaw != jRaw {
-					return iRaw
-				}
+				continue
+			}
 
-				return rows[i].UID > rows[j].UID // uid DESC — matches the pre-2026-08-22-05 query
-			})
+			rows = trimWindowedResponseTimeRows(rows, windowStart, now, retentionRawHours)
+			if len(rows) == 0 {
+				delete(byRegion, regionKey)
 
-			if len(rows) > responseTimeLimit {
-				rows = rows[:responseTimeLimit]
+				continue
 			}
 
 			byRegion[regionKey] = rows
 		}
 	}
+}
+
+// tierBudgetFloor is the smallest number of points a tier with rows inside the
+// window keeps, whatever its share of the window's span: a tier whose rows
+// cluster at one edge (a region that came back an hour ago) still shows.
+const tierBudgetFloor = 8
+
+// responseTimeRawFetchCap bounds how many raw rows the windowed fetch reads
+// per region. Covering the whole raw seam (RetentionRaw + the aggregation-lag
+// margin) needs one row per probe — 1 440 for a 1-minute check, 8 640 for a
+// 10-second one — and sub-minute cadences make the honest number unbounded, so
+// the seam is capped and a faster check than the cap allows simply shows a
+// shorter seam (it kept that limitation before the window too, at 100 rows).
+const responseTimeRawFetchCap = 2000
+
+// responseTimePerRegionBudget sizes the per-REGION row budget each tier branch
+// of the WINDOWED fetch may return. Both branches share one LIMIT, so it has
+// to cover the larger of the two appetites:
+//
+//   - the ROLLUP branch must return every bucket inside the window (one row per
+//     bucket per tier: ~25 rows per day — 24 hours + 1 day), or the day rollups
+//     that anchor the window's old end are truncated away at the DB and the
+//     budget split in trimWindowedResponseTimeRows never sees them;
+//   - the RAW branch must return the whole raw seam so it can be evenly
+//     sub-sampled to its (much smaller) chart budget — taking only the newest
+//     N raw rows would leave the older part of the seam unfetched and open a
+//     white gap between the newest hour rollup and the kept raw points.
+//
+// The result is capped at responseTimeRawFetchCap so a sub-minute check cannot
+// unbound the fetch. A zero windowStart keeps the legacy budget: the unbounded
+// path trims to the newest responseTimeLimit rows anyway, so reading more than
+// the legacy budget would only cost I/O.
+func responseTimePerRegionBudget(windowSpan, checkPeriod time.Duration, retentionRawHours int) int {
+	if windowSpan <= 0 {
+		return responseTimeLimit
+	}
+
+	// Rollup appetite: ~25 buckets per day, rounded up, plus slack for the
+	// month tier and the window's partial first day.
+	rollupAppetite := int(math.Ceil(windowSpan.Hours()/24))*25 + 2
+
+	// Raw appetite: one row per probe across the seam, at the check's own
+	// period, floored at a 1-minute period so sub-minute cadences scale with
+	// the cap rather than the seam.
+	seam := time.Duration(retentionRawHours)*time.Hour + rawSeamMargin
+	if seam > windowSpan {
+		seam = windowSpan
+	}
+
+	period := max(checkPeriod, time.Minute)
+	rawAppetite := int(math.Ceil(seam.Hours() * float64(time.Hour) / float64(period)))
+
+	return min(max(rollupAppetite, rawAppetite, responseTimeLimit), responseTimeRawFetchCap)
+}
+
+// rawSeamMargin mirrors uptimebar's aggregation-lag padding for the raw tier's
+// lower bound — the same 2 h the uptimebar clamp uses — so the raw appetite
+// covers exactly the span the raw branch can return rows from.
+const rawSeamMargin = 2 * time.Hour
+
+// trimWindowedResponseTimeRows spreads one region's in-window rows across the
+// window within responseTimeLimit points. rows arrive newest-first.
+func trimWindowedResponseTimeRows(
+	rows []*models.Result, windowStart, now time.Time, retentionRawHours int,
+) []*models.Result {
+	if len(rows) == 0 {
+		return rows
+	}
+
+	windowSpan := now.Sub(windowStart)
+	if windowSpan <= 0 {
+		return rows[:min(len(rows), responseTimeLimit)]
+	}
+
+	var rawRows, hourRows, dayRows []*models.Result
+
+	for _, row := range rows {
+		switch row.PeriodType {
+		case models.PeriodTypeRaw:
+			rawRows = append(rawRows, row)
+		case models.PeriodTypeHour:
+			hourRows = append(hourRows, row)
+		default:
+			dayRows = append(dayRows, row) // day + month — the coarse tail
+		}
+	}
+
+	rawBudget, hourBudget, dayBudget := responseTimeTierBudgets(
+		windowSpan, rawRows, hourRows, dayRows, now, windowStart, retentionRawHours,
+	)
+
+	kept := make([]*models.Result, 0, len(rawRows)+len(hourRows)+len(dayRows))
+	kept = append(kept, subsampleRows(rawRows, rawBudget)...)
+	kept = append(kept, subsampleRows(hourRows, hourBudget)...)
+	kept = append(kept, subsampleRows(dayRows, dayBudget)...)
+
+	// The buckets were sub-sampled independently; restore the shared newest-
+	// first order so the series and the client's pivot see one timeline.
+	sortResponseTimeRows(kept)
+
+	return kept
+}
+
+// responseTimeTierBudgets splits the per-region responseTimeLimit budget
+// across the three tier buckets, proportionally to the time span each tier
+// covers inside the window — floored, so a thin tier (a region that came back
+// an hour ago) still shows, and never above the tier's own row count. The raw
+// span is the theoretical seam — now − max(windowStart, now − (retention +
+// margin)) — rather than whatever span the returned raw rows happen to cover,
+// so a region that stopped probing mid-seam does not lose its seam budget to
+// its own silence. If the floored shares overflow the budget, the coarsest
+// tier gives points back first: it has the most rows to spare.
+func responseTimeTierBudgets(
+	windowSpan time.Duration, rawRows, hourRows, dayRows []*models.Result,
+	now, windowStart time.Time, retentionRawHours int,
+) (rawBudget, hourBudget, dayBudget int) {
+	limit := responseTimeLimit
+
+	rawSpan := now.Sub(uptimebar.RawTierStart(windowStart, now, retentionRawHours))
+	if rawSpan < 0 {
+		rawSpan = 0
+	}
+
+	// Rollup span is whatever the window has left after the raw seam; the
+	// hour/day split inside it comes from the rows each bucket actually covers.
+	rollupSpan := max(windowSpan-rawSpan, 0)
+	hourSpan, daySpan := tierRowSpan(hourRows), tierRowSpan(dayRows)
+
+	share := func(span, total time.Duration, count int) int {
+		if count == 0 {
+			return 0
+		}
+
+		points := 0
+		if total > 0 && span > 0 {
+			points = int(math.Round(float64(span) / float64(total) * float64(limit)))
+		}
+
+		return min(max(points, tierBudgetFloor), count, limit)
+	}
+
+	rawBudget = share(rawSpan, windowSpan, len(rawRows))
+	hourBudget = share(hourSpan, rollupSpan, len(hourRows))
+	dayBudget = share(daySpan, rollupSpan, len(dayRows))
+
+	if overflow := rawBudget + hourBudget + dayBudget - limit; overflow > 0 {
+		// Give back from the coarsest tier first, then the middle one, never
+		// below one point while the tier has rows at all.
+		dayBudget = max(min(dayBudget, len(dayRows))-overflow, min(1, len(dayRows)))
+		if still := rawBudget + hourBudget + dayBudget - limit; still > 0 {
+			hourBudget = max(min(hourBudget, len(hourRows))-still, min(1, len(hourRows)))
+		}
+	}
+
+	return rawBudget, hourBudget, dayBudget
+}
+
+// tierRowSpan is the time span a NEWEST-FIRST bucket of rows covers, from its
+// newest to its oldest row (0 when the bucket holds fewer than two rows).
+func tierRowSpan(rows []*models.Result) time.Duration {
+	if len(rows) < 2 {
+		return 0
+	}
+
+	return rows[0].PeriodStart.Sub(rows[len(rows)-1].PeriodStart)
+}
+
+// subsampleRows keeps `keep` rows evenly spaced across a NEWEST-FIRST slice,
+// always including the first (newest) and last (oldest) rows, so a tier's
+// sub-sample covers the tier's full span. keep >= len(rows) returns the slice
+// unchanged.
+func subsampleRows(rows []*models.Result, keep int) []*models.Result {
+	if keep >= len(rows) {
+		return rows
+	}
+
+	if keep <= 0 {
+		return nil
+	}
+
+	out := make([]*models.Result, 0, keep)
+	n := len(rows)
+
+	for i := range keep {
+		index := i * (n - 1) / (keep - 1)
+		out = append(out, rows[index])
+	}
+
+	return out
 }
 
 // responseTimeBudgets sizes each check's row budget from ITS OWN region
@@ -3181,7 +3436,15 @@ func trimResponseTimeSeries(recentByCheck map[string]map[string][]*models.Result
 // database — fixtures, seeds, very old rows. Same fallback for a check that
 // vanished between resource expansion and this lookup, and for a failed lookup
 // (every check then uses the default).
-func (s *Service) responseTimeBudgets(ctx context.Context, orgUID string, checkUIDs []string) map[string]int {
+//
+// The per-region budget itself is window-aware (spec 2026-09-21-03): a windowed
+// fetch must be able to pull every rollup bucket in the window and the whole
+// raw seam (responseTimePerRegionBudget), while a zero windowStart keeps the
+// legacy responseTimeLimit-per-region sizing the unbounded trim expects.
+func (s *Service) responseTimeBudgets(
+	ctx context.Context, orgUID string, checkUIDs []string,
+	windowStart, now time.Time, hints uptimebar.Hints,
+) map[string]int {
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to size status page response-time budgets from check regions; "+
@@ -3191,6 +3454,20 @@ func (s *Service) responseTimeBudgets(ctx context.Context, orgUID string, checkU
 		return nil
 	}
 
+	// The window the fetch will actually read, after the hard rollup-span
+	// ceiling — mirrors the clamp in fetchRecentResults. A zero windowStart
+	// keeps the LEGACY per-region budget: the unbounded path trims to the
+	// newest responseTimeLimit rows anyway, so a wider branch budget would
+	// only cost I/O.
+	windowed := !windowStart.IsZero()
+
+	budgetWindow := windowStart
+	if budgetWindow.Before(now.Add(-responseTimeRollupSpan)) {
+		budgetWindow = now.Add(-responseTimeRollupSpan)
+	}
+
+	windowSpan := now.Sub(budgetWindow)
+
 	budgets := make(map[string]int, len(checkUIDs))
 
 	for _, checkUID := range checkUIDs {
@@ -3199,7 +3476,16 @@ func (s *Service) responseTimeBudgets(ctx context.Context, orgUID string, checkU
 			continue
 		}
 
-		budgets[checkUID] = responseTimeLimit * min(len(check.Regions)+1, regionFanoutCap)
+		perRegion := responseTimeLimit
+
+		// The windowed budget is period-aware: the raw seam's appetite scales
+		// with the check's own period, the rollup appetite does not.
+		if windowed {
+			perRegion = responseTimePerRegionBudget(
+				windowSpan, time.Duration(check.Period), hints.RetentionRawHours)
+		}
+
+		budgets[checkUID] = perRegion * min(len(check.Regions)+1, regionFanoutCap)
 	}
 
 	return budgets
@@ -3231,7 +3517,7 @@ func (s *Service) enrichHourly(
 		return
 	}
 
-	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, hints)
+	recentByCheck := s.fetchRecentResults(ctx, orgUID, checkUIDs, page.ShowResponseTime, bucketStart, hints)
 	upThreshold, degradedThreshold := page.Settings.EffectiveThresholds()
 
 	for i := range sections {
@@ -3422,10 +3708,13 @@ func buildResponseTimeSeries(
 // responseTimePointsHaveSignal reports whether at least one point carries a
 // real duration — false for a region group made up entirely of lifecycle
 // markers (e.g. the check-creation "created" result) or other durationless
-// rows.
+// rows. A literal 0 counts as no signal too: a response time of exactly
+// 0 ms is what a marker with a zeroed duration column looks like after the
+// point builder, and a one-point 0 ms "series" is the phantom the chart must
+// never render (spec 2026-09-21-03 A.4).
 func responseTimePointsHaveSignal(points []ResponseTimePoint) bool {
 	for i := range points {
-		if points[i].DurationP95 != nil {
+		if points[i].DurationP95 != nil && *points[i].DurationP95 > 0 {
 			return true
 		}
 	}
@@ -3449,6 +3738,16 @@ func buildResponseTimeData(
 		var statusStr string
 		if recentResult.Status != nil {
 			statusStr = strings.ToLower(models.StatusToString(*recentResult.Status))
+		}
+
+		// A lifecycle marker (created/running, or the reaper's abandoned
+		// attempt) carries no duration signal even when a literal 0 leaked
+		// into the row — spec 2026-09-21-03 A.4. Left alone, one NULL-region
+		// 0 ms marker would survive responseTimePointsHaveSignal and
+		// manufacture a phantom one-point "unknown region" series.
+		if recentResult.Status != nil &&
+			(models.ResultStatus(*recentResult.Status)).ExcludedFromAvailability() {
+			duration = nil
 		}
 
 		// The canonical fold, never a local status count: lifecycle markers and
