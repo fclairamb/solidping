@@ -263,25 +263,50 @@ func TestICMPChecker_Validate(t *testing.T) {
 				Count: -1,
 			},
 			wantErr: true,
-			errMsg:  "count: must be between 1 and 10, got -1",
+			errMsg:  "count: must be between 1 and 600, got -1",
 		},
 		{
 			name: "count too high",
 			config: &ICMPConfig{
 				Host:  testHostExample,
-				Count: 11,
+				Count: 601,
 			},
 			wantErr: true,
-			errMsg:  "count: must be between 1 and 10, got 11",
+			errMsg:  "count: must be between 1 and 600, got 601",
+		},
+		{
+			name: "count at ceiling (600)",
+			config: &ICMPConfig{
+				Host:  testHostExample,
+				Count: 600,
+			},
+			wantErr: false,
 		},
 		{
 			name: "interval too short",
 			config: &ICMPConfig{
 				Host:     testHostExample,
-				Interval: 50 * time.Millisecond,
+				Interval: 49 * time.Millisecond,
 			},
 			wantErr: true,
-			errMsg:  "interval: must be between 100ms and 60s, got 50ms",
+			errMsg:  "interval: must be between 50ms and 1m0s, got 49ms",
+		},
+		{
+			name: "interval at floor (50ms)",
+			config: &ICMPConfig{
+				Host:     testHostExample,
+				Interval: 50 * time.Millisecond,
+			},
+			wantErr: false,
+		},
+		{
+			name: "legacy-valid dense burst (count 10, interval 100ms)",
+			config: &ICMPConfig{
+				Host:     testHostExample,
+				Count:    10,
+				Interval: 100 * time.Millisecond,
+			},
+			wantErr: false,
 		},
 		{
 			name: "interval too long",
@@ -290,7 +315,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 				Interval: 61 * time.Second,
 			},
 			wantErr: true,
-			errMsg:  "interval: must be between 100ms and 60s, got 1m1s",
+			errMsg:  "interval: must be between 50ms and 1m0s, got 1m1s",
 		},
 		{
 			name: "packet_size too small",
@@ -417,6 +442,15 @@ func TestICMPChecker_Execute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			// This test exercises the real socket opener; the fake-responder
+			// tests swap the openBurstSocket hook under burstHookMu. The lock
+			// lives inside the subtest — the parent's defers run as soon as it
+			// returns, which for parallel subtests is BEFORE they execute.
+			if tt.checkMetrics {
+				burstHookMu.Lock()
+				defer burstHookMu.Unlock()
+			}
 
 			checker := &ICMPChecker{}
 			ctx := context.Background()
