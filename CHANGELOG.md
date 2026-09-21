@@ -3,6 +3,20 @@
 ## Unreleased
 
 
+## [0.30.0](https://github.com/fclairamb/solidping/compare/v0.29.2...v0.30.0) (2026-09-21)
+
+
+### Features
+
+* add a super-admin user directory and page people on Discord ([#406](https://github.com/fclairamb/solidping/issues/406)) ([3506c8f](https://github.com/fclairamb/solidping/commit/3506c8fff9cba94e54c13c4eaba7ef71dab04df9))
+* **discord:** finish the bot migration — retire the webhook transport and close the frontend gaps ([#409](https://github.com/fclairamb/solidping/issues/409)) ([e89710d](https://github.com/fclairamb/solidping/commit/e89710ddcccb7768ee5106cb3c468bb172ce54fb))
+* group-based status page sections, ICMP burst sampling, and form exposure ([#411](https://github.com/fclairamb/solidping/issues/411)) ([e3c87e8](https://github.com/fclairamb/solidping/commit/e3c87e8752cae9575768c20543669aa14492ef64))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/urfave/cli/v3 to v3.13.0 ([#408](https://github.com/fclairamb/solidping/issues/408)) ([5c10ab5](https://github.com/fclairamb/solidping/commit/5c10ab519378004af14f221d7ca028724ede0019))
+
 ## [0.29.2](https://github.com/fclairamb/solidping/compare/v0.29.1...v0.29.2) (2026-09-19)
 
 
