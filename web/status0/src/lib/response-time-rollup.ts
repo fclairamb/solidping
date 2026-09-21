@@ -84,6 +84,58 @@ export function samplingInterval(series: ResponseTimeSeries[]): number | null {
   return finest;
 }
 
+// A row gap wider than GAP_RATIO × the sampling interval is a real hole in
+// the data (a worker restart, a paused check), not uneven sampling. On a
+// numeric time axis the line between the two surviving points would still be
+// drawn — connectNulls={false} only breaks at NULL rows, and none exist in a
+// stretch with no samples — so an explicit null row is inserted in the gap to
+// break every series there (spec 2026-09-21-03, resolved open question: gap
+// semantics are an acceptance criterion, not a design choice).
+const GAP_RATIO = 3;
+
+/**
+ * Inserts synthetic null rows into stretches where no series reported
+ * anything, so `connectNulls={false}` renders them as gaps instead of
+ * straight lines. `rows` must be time-ordered; `makeGapRow(time)` builds the
+ * null row for the gap's midpoint. Row spacing needs an interval — derived
+ * from the rows themselves (median consecutive delta) when not given — so
+ * ordinary phase jitter between slots never reads as a gap, while a
+ * multi-interval silence does.
+ */
+export function expandTimeGaps<T extends { time: string }>(
+  rows: readonly T[],
+  makeGapRow: (time: string) => T,
+): T[] {
+  if (rows.length < 2) return [...rows];
+
+  const times = rows.map((row) => Date.parse(row.time));
+  const interval = medianConsecutiveDelta(
+    times.filter((ms) => Number.isFinite(ms)).sort((a, b) => a - b),
+  );
+
+  if (interval == null || interval <= 0) return [...rows];
+
+  const threshold = interval * GAP_RATIO;
+
+  const out: T[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    out.push(rows[i]);
+
+    if (i + 1 >= rows.length) break;
+
+    const delta = times[i + 1] - times[i];
+    if (!Number.isFinite(delta) || delta <= threshold) continue;
+
+    // The midpoint, labelled with its own timestamp like every real slot, so
+    // the axis never prints a time the data never reported near.
+    out.push(
+      makeGapRow(new Date(times[i] + delta / 2).toISOString()),
+    );
+  }
+
+  return out;
+}
+
 // Pivots per-region series into ONE array of rows, one per time slot across
 // every series (recharts needs one shared data array to render several Areas
 // against the same x-axis). Each row also carries a rolled-up `status` — the
