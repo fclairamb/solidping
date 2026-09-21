@@ -88,6 +88,25 @@ func TestFetchRecentResults_RetiredRegionKeepsItsOwnWindow(t *testing.T) {
 	seedRegionRaw(ctx, t, svc, org.UID, check.UID, "eu2", now, 50)
 	seedRegionRaw(ctx, t, svc, org.UID, check.UID, "old", now.Add(-35*24*time.Hour), 50)
 
+	// Raw older than the retention clamp is fetched by nobody — in production
+	// it has been rolled up and deleted — so the retired region's in-window
+	// history survives as day rollups, exactly as the aggregator would have
+	// left it.
+	region := "old"
+	for i := 36; i <= 40; i++ {
+		row := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0)
+		row.PeriodType = models.PeriodTypeDay
+		row.PeriodStart = now.AddDate(0, 0, -i)
+		row.Region = &region
+
+		total, ok, p95 := 1440, 1440, float32(45)
+		row.TotalChecks = &total
+		row.SuccessfulChecks = &ok
+		row.DurationP95 = &p95
+
+		require.NoError(t, svc.db.CreateResult(ctx, row))
+	}
+
 	// A 90-day page still covers the region that stopped five weeks ago.
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	windowStart := todayStart.AddDate(0, 0, -89)
@@ -201,7 +220,7 @@ func TestFetchRecentResults_WindowedTrimSpreadsTheWindow(t *testing.T) {
 	newest := rows[0].PeriodStart
 	r.False(oldest.Before(windowStart.AddDate(0, 0, -1)),
 		"the oldest kept point reaches the window's old end")
-	r.Less(windowStart.AddDate(0, 0, 2), oldest,
+	r.Less(oldest, windowStart.AddDate(0, 0, 2),
 		"the oldest kept point is not the recent end — the window is covered")
 	r.True(newest.After(now.Add(-2*time.Hour)), "the newest kept point reaches now")
 
@@ -248,7 +267,8 @@ func TestTrimWindowedResponseTimeRows_Budgets(t *testing.T) {
 	r := require.New(t)
 
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
-	windowStart := now.AddDate(0, 0, -29)
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	windowStart := dayStart.AddDate(0, 0, -29) // ~30-day window, day-aligned
 
 	var rows []*models.Result
 
@@ -265,8 +285,8 @@ func TestTrimWindowedResponseTimeRows_Budgets(t *testing.T) {
 		rows = append(rows, trimTestResult("hour", models.PeriodTypeHour, now.Add(-time.Duration(i+10)*time.Hour)))
 	}
 
-	// 30 day rollups covering the whole window.
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	// 30 day rollups: 29 inside the window (dayStart−29 … dayStart−1) and one
+	// (dayStart−30) a day BEFORE windowStart, which the trim must drop.
 	for i := 1; i <= 30; i++ {
 		rows = append(rows, trimTestResult("day", models.PeriodTypeDay, dayStart.AddDate(0, 0, -i)))
 	}
@@ -284,16 +304,17 @@ func TestTrimWindowedResponseTimeRows_Budgets(t *testing.T) {
 		r.False(row.PeriodStart.Before(windowStart))
 	}
 
-	// The raw tier's newest point and the day tier's oldest point both
-	// survive — the sub-sample covers its tier's full span, not its recent
-	// end only.
+	// The raw tier's newest point and the day tier's oldest IN-WINDOW point
+	// (dayStart−29 = windowStart) both survive — the sub-sample covers its
+	// tier's full span, not its recent end only, and the out-of-window
+	// dayStart−30 rollup does not.
 	hasNewestRaw, hasOldestDay := false, false
 	for _, row := range kept {
 		if row.PeriodType == models.PeriodTypeRaw && row.PeriodStart.Equal(now) {
 			hasNewestRaw = true
 		}
 		if row.PeriodType == models.PeriodTypeDay &&
-			row.PeriodStart.Equal(dayStart.AddDate(0, 0, -30)) {
+			row.PeriodStart.Equal(dayStart.AddDate(0, 0, -29)) {
 			hasOldestDay = true
 		}
 	}
@@ -409,9 +430,12 @@ func TestBuildResponseTimeData_LifecycleMarkerDropsItsDuration(t *testing.T) {
 	up := int(models.ResultStatusUp)
 	real := float32(42)
 
+	// Newest-first, the order buildResponseTimeData consumes: the real probe
+	// is newer than the marker, so after the builder's reversal the probe is
+	// points[0] and the marker points[1].
 	rows := []*models.Result{
-		{UID: "real", PeriodType: models.PeriodTypeRaw, Duration: &real, Status: &up},
 		{UID: "marker", PeriodType: models.PeriodTypeRaw, Duration: &zero, Status: &created},
+		{UID: "real", PeriodType: models.PeriodTypeRaw, Duration: &real, Status: &up},
 	}
 
 	points := buildResponseTimeData(rows, 99.9, 99.0)

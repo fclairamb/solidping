@@ -10,12 +10,17 @@ import (
 )
 
 // trimTestResult builds a minimal Result for exercising trimResponseTimeSeries
-// in isolation, without touching the database.
+// in isolation, without touching the database. It carries a real duration so
+// the windowed trim's signal rule treats it as a probe, not a lifecycle
+// marker.
 func trimTestResult(uid, periodType string, periodStart time.Time) *models.Result {
+	duration := float32(40)
+
 	return &models.Result{
 		UID:         uid,
 		PeriodType:  periodType,
 		PeriodStart: periodStart,
+		Duration:    &duration,
 	}
 }
 

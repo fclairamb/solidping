@@ -3186,8 +3186,9 @@ func sortResponseTimeRows(rows []*models.Result) {
 // dead one comparable on one chart even though day rollups only exist for
 // days older than the hour retention.
 //
-// A region whose series comes out empty is DELETED: a region with no point
-// inside the window must not appear in the chart's legend at all.
+// A region whose series comes out empty — no point inside the window, or no
+// point carrying a duration — is DELETED: a region with no in-window signal
+// must not appear in the chart's legend at all.
 func trimResponseTimeSeries(
 	recentByCheck map[string]map[string][]*models.Result, windowStart, now time.Time, retentionRawHours int,
 ) {
@@ -3208,7 +3209,7 @@ func trimResponseTimeSeries(
 			}
 
 			rows = trimWindowedResponseTimeRows(rows, windowStart, now, retentionRawHours)
-			if len(rows) == 0 {
+			if len(rows) == 0 || !responseTimeRowsHaveSignal(rows) {
 				delete(byRegion, regionKey)
 
 				continue
@@ -3217,6 +3218,29 @@ func trimResponseTimeSeries(
 			byRegion[regionKey] = rows
 		}
 	}
+}
+
+// responseTimeRowsHaveSignal reports whether any row carries a usable
+// duration — the same rule buildResponseTimeData + responseTimePointsHaveSignal
+// apply to built points, applied one step earlier so a windowed series made up
+// only of lifecycle markers (the check-creation marker's NULL-region bucket,
+// possibly carrying a literal 0) never reaches the chart as a phantom region
+// series (spec 2026-09-21-03 A.4). The unbounded path keeps the legacy
+// behavior: the signal check happens at the series level there, and the parity
+// tests pin the raw map shape.
+func responseTimeRowsHaveSignal(rows []*models.Result) bool {
+	for _, row := range rows {
+		duration := row.DurationP95
+		if duration == nil {
+			duration = row.Duration
+		}
+
+		if duration != nil && *duration > 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // tierBudgetFloor is the smallest number of points a tier with rows inside the
@@ -3289,6 +3313,24 @@ func trimWindowedResponseTimeRows(
 	windowSpan := now.Sub(windowStart)
 	if windowSpan <= 0 {
 		return rows[:min(len(rows), responseTimeLimit)]
+	}
+
+	// A row outside the window never survives the trim, whatever tier fetched
+	// it: the rollup branch's Since already stops at windowStart, and this
+	// filter makes the trim enforce the same bound on whatever it is handed
+	// (a day rollup whose bucket starts before windowStart is out of the
+	// chart's span — spec 2026-09-21-03 A.3).
+	inWindow := make([]*models.Result, 0, len(rows))
+	for _, row := range rows {
+		if !row.PeriodStart.Before(windowStart) && !row.PeriodStart.After(now) {
+			inWindow = append(inWindow, row)
+		}
+	}
+
+	rows = inWindow
+
+	if len(rows) == 0 {
+		return nil
 	}
 
 	var rawRows, hourRows, dayRows []*models.Result
