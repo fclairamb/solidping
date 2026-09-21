@@ -30,6 +30,7 @@ export const SCOPE_LABELS: Record<string, string> = {
   worker: "Workers",
   workers: "Workers",
   sftp: "SFTP checks",
+  icmp: "ICMP checks",
   api: "API",
   openapi: "API",
   mcp: "MCP",
