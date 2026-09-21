@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { LabelInput } from "@/components/shared/label-input";
+import { CheckGroupPicker } from "@/components/shared/check-group-picker";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
@@ -18,17 +19,19 @@ import type { StatusPageSectionSelector } from "@/api/hooks";
  *   operator adds each component by hand.
  * - `all` — every check in the organization, now and in the future.
  * - `labels` — every check carrying ALL of the given key=value labels.
+ * - `group` — every check in a selected check group.
  *
  * The two dynamic modes MATERIALIZE real components, so a check created later
  * appears on the page with no manual action. That is the point: a board that
  * silently omits a new service — and therefore stays green while it is down —
  * is worse than no board.
  */
-export type MembershipMode = "manual" | "all" | "labels";
+export type MembershipMode = "manual" | "all" | "labels" | "group";
 
 export type SectionMembershipValue = {
   mode: MembershipMode;
-  labels: Record<string, string>;
+	labels: Record<string, string>;
+	checkGroupUid?: string;
 };
 
 /**
@@ -41,9 +44,10 @@ export function membershipFromSelector(
   selector: StatusPageSectionSelector | null | undefined,
 ): SectionMembershipValue {
   if (selector?.all) return { mode: "all", labels: {} };
-  if (selector?.labels && Object.keys(selector.labels).length > 0) {
-    return { mode: "labels", labels: selector.labels };
-  }
+	if (selector?.labels && Object.keys(selector.labels).length > 0) {
+		return { mode: "labels", labels: selector.labels };
+	}
+	if (selector?.checkGroupUid) return { mode: "group", labels: {}, checkGroupUid: selector.checkGroupUid };
   return { mode: "manual", labels: {} };
 }
 
@@ -58,15 +62,17 @@ export function selectorFromMembership(
   value: SectionMembershipValue,
 ): StatusPageSectionSelector | null {
   if (value.mode === "all") return { all: true };
-  if (value.mode === "labels" && Object.keys(value.labels).length > 0) {
-    return { labels: value.labels };
-  }
+	if (value.mode === "labels" && Object.keys(value.labels).length > 0) {
+		return { labels: value.labels };
+	}
+	if (value.mode === "group" && value.checkGroupUid) return { checkGroupUid: value.checkGroupUid };
   return null;
 }
 
 /** Whether the current editor state is a submittable membership rule. */
 export function membershipIsComplete(value: SectionMembershipValue): boolean {
-  return value.mode !== "labels" || Object.keys(value.labels).length > 0;
+	if (value.mode === "labels") return Object.keys(value.labels).length > 0;
+	return value.mode !== "group" || Boolean(value.checkGroupUid);
 }
 
 /**
@@ -111,6 +117,11 @@ export function SectionMembership({
       label: t("sections.membership.labels"),
       testId: "section-membership-labels",
     },
+	{
+		value: "group",
+		label: t("sections.membership.group"),
+		testId: "section-membership-group",
+	},
   ];
 
   const isPublic = visibility === "public";
@@ -125,7 +136,7 @@ export function SectionMembership({
           onValueChange={(mode) => onChange({ ...value, mode })}
           options={options}
           aria-label={t("sections.membership.title")}
-          className="w-full"
+		  className="w-full flex-wrap"
         />
         {/*
           Every mode gets its line, not just the selected one. A user who never
@@ -170,6 +181,21 @@ export function SectionMembership({
         </div>
       )}
 
+	  {value.mode === "group" && (
+		<div className="space-y-2">
+		  <Label>{t("sections.membership.groupField")}</Label>
+		  <CheckGroupPicker
+			org={org}
+			value={value.checkGroupUid}
+			onChange={(checkGroupUid) => onChange({ ...value, checkGroupUid })}
+			placeholder={t("resources.selectGroup")}
+			triggerTestId="section-membership-group-picker"
+			disabled={disabled}
+		  />
+		  <p className="text-xs text-muted-foreground">{t("sections.membership.groupHint")}</p>
+		</div>
+	  )}
+
       {showWarning && (
         <Alert
           variant="warning"
@@ -180,7 +206,9 @@ export function SectionMembership({
           <AlertDescription>
             {value.mode === "all"
               ? t("sections.membership.publicWarningAll")
-              : t("sections.membership.publicWarningLabels")}
+			  : value.mode === "group"
+				? t("sections.membership.publicWarningGroup")
+				: t("sections.membership.publicWarningLabels")}
           </AlertDescription>
         </Alert>
       )}

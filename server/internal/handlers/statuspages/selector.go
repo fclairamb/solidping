@@ -25,6 +25,7 @@ package statuspages
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -481,6 +482,19 @@ func (s *Service) materialize(
 func (s *Service) desiredChecks(
 	ctx context.Context, orgUID string, selector *models.SectionSelector, claimed map[string]struct{},
 ) ([]string, error) {
+	// Check rows retain their check_group_uid after a soft-delete. Verify the
+	// group itself before filtering so a deleted group selects nothing rather
+	// than continuing to publish its former members.
+	if selector.CheckGroupUID != "" {
+		group, err := s.db.GetCheckGroup(ctx, orgUID, selector.CheckGroupUID)
+		if errors.Is(err, sql.ErrNoRows) || group == nil {
+			return []string{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	checks, _, err := s.db.ListChecks(ctx, orgUID, selector.Filter())
 	if err != nil {
 		return nil, err
@@ -542,6 +556,7 @@ func selectorValidationError(err error) bool {
 	return errors.Is(err, ErrSelectorInvalid) ||
 		errors.Is(err, models.ErrSelectorEmpty) ||
 		errors.Is(err, models.ErrSelectorAmbiguous) ||
+		errors.Is(err, models.ErrSelectorGroupNotFound) ||
 		errors.Is(err, models.ErrSelectorLabelsEmpty) ||
 		errors.Is(err, models.ErrSelectorTooManyLabels) ||
 		errors.Is(err, models.ErrSelectorLabelKeyInvalid) ||
