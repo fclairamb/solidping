@@ -831,6 +831,21 @@ type CheckResponse struct {
 	FlapBackoffFactor        int  `json:"flapBackoffFactor"`
 	MaxRecoveryMultiplier    int  `json:"maxRecoveryMultiplier"`
 
+	// Degraded detection (spec 2026-09-22-03). ALWAYS emitted, never
+	// omitempty: 0 is a meaningful value for every one of them (it turns a rule
+	// off), so a missing field would leave the form unable to tell "off" from
+	// "not sent".
+	DegradedFailures       int `json:"degradedFailures"`
+	DegradedFailuresWindow int `json:"degradedFailuresWindow"`
+	DegradedSlow           int `json:"degradedSlow"`
+	DegradedSlowWindow     int `json:"degradedSlowWindow"`
+	SlowThresholdMs        int `json:"slowThresholdMs"`
+	DegradedEnabled        bool `json:"degradedEnabled"`
+	// DegradedWouldFireAt is the dry run's stamp: the check page turns it into
+	// the "this check would have been flagged degraded at …; enable?" banner.
+	// Omitted when the rules never fired on this check.
+	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
+
 	// FlapState is the check's LIVE adaptive-recovery state (spec
 	// 2026-08-24-05) — the effective (lazy-reset-aware) counterpart of the
 	// raw flapping_window_seconds/flap_backoff_factor/max_recovery_multiplier
@@ -956,8 +971,11 @@ type ListChecksOptions struct {
 	Types    []string
 	Internal *string
 	Statuses []models.CheckStatus
-	Cursor   string
-	Limit    int
+	// WouldHaveFired restricts to the checks the degraded dry run has flagged
+	// (spec 2026-09-22-03) — `?wouldHaveFired=true`.
+	WouldHaveFired bool
+	Cursor         string
+	Limit          int
 	// Sort opts into an alternate ordering. "group" = group sort_order asc,
 	// ungrouped last, then created_at DESC / uid DESC within a bucket.
 	// "targetHost" = targetHost ascending, none-of-host/url/target last, then
@@ -1006,6 +1024,7 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		Types:            opts.Types,
 		Internal:         opts.Internal,
 		Statuses:         opts.Statuses,
+		WouldHaveFired:   opts.WouldHaveFired,
 		Limit:            opts.Limit,
 		SortByGroup:      sortByGroup,
 		SortByTargetHost: sortByTargetHost,
@@ -1309,6 +1328,17 @@ type CreateCheckRequest struct {
 	FlapBackoffFactor        *int `json:"flapBackoffFactor,omitempty"`
 	MaxRecoveryMultiplier    *int `json:"maxRecoveryMultiplier,omitempty"`
 
+	// Degraded detection (spec 2026-09-22-03): M of the last N countable probes.
+	// 0 for an M turns that rule off; slowThresholdMs 0 turns the slow rule off.
+	// nil leaves the value untouched (create -> code default; update ->
+	// unchanged).
+	DegradedFailures       *int  `json:"degradedFailures,omitempty"`
+	DegradedFailuresWindow *int  `json:"degradedFailuresWindow,omitempty"`
+	DegradedSlow           *int  `json:"degradedSlow,omitempty"`
+	DegradedSlowWindow     *int  `json:"degradedSlowWindow,omitempty"`
+	SlowThresholdMs        *int  `json:"slowThresholdMs,omitempty"`
+	DegradedEnabled        *bool `json:"degradedEnabled,omitempty"`
+
 	// EscalationPolicyUID points to the escalation policy that fires when
 	// an incident on this check opens.
 	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
@@ -1453,6 +1483,10 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 	if req.MaxRecoveryMultiplier != nil {
 		check.MaxRecoveryMultiplier = *req.MaxRecoveryMultiplier
+	}
+
+	if vErr := applyDegradedCreate(check, &req); vErr != nil {
+		return CheckResponse{}, vErr
 	}
 
 	if req.ConfirmationPeriodSeconds != nil {
@@ -1629,6 +1663,17 @@ type UpdateCheckRequest struct {
 	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
 	FlapBackoffFactor        *int `json:"flapBackoffFactor,omitempty"`
 	MaxRecoveryMultiplier    *int `json:"maxRecoveryMultiplier,omitempty"`
+
+	// Degraded detection (spec 2026-09-22-03): M of the last N countable probes.
+	// 0 for an M turns that rule off; slowThresholdMs 0 turns the slow rule off.
+	// nil leaves the value untouched (create -> code default; update ->
+	// unchanged).
+	DegradedFailures       *int  `json:"degradedFailures,omitempty"`
+	DegradedFailuresWindow *int  `json:"degradedFailuresWindow,omitempty"`
+	DegradedSlow           *int  `json:"degradedSlow,omitempty"`
+	DegradedSlowWindow     *int  `json:"degradedSlowWindow,omitempty"`
+	SlowThresholdMs        *int  `json:"slowThresholdMs,omitempty"`
+	DegradedEnabled        *bool `json:"degradedEnabled,omitempty"`
 }
 
 // UpsertCheckRequest represents a request to create or update a check by slug.
@@ -1850,6 +1895,9 @@ func (s *Service) UpdateCheck(
 	}
 	if req.MaxRecoveryMultiplier != nil {
 		update.MaxRecoveryMultiplier = req.MaxRecoveryMultiplier
+	}
+	if vErr := applyDegradedUpdate(&update, req); vErr != nil {
+		return CheckResponse{}, vErr
 	}
 	if req.ConfirmationPeriodSeconds != nil {
 		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
@@ -3058,6 +3106,13 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		EscalationPolicyUID:       check.EscalationPolicyUID,
 		TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
 		FlapState:                 buildFlapStateResponse(check, time.Now()),
+		DegradedFailures:          check.DegradedFailures,
+		DegradedFailuresWindow:    check.DegradedFailuresWindow,
+		DegradedSlow:              check.DegradedSlow,
+		DegradedSlowWindow:        check.DegradedSlowWindow,
+		SlowThresholdMs:           check.SlowThresholdMs,
+		DegradedEnabled:           check.DegradedEnabled,
+		DegradedWouldFireAt:       check.DegradedWouldFireAt,
 	}
 }
 
@@ -4453,6 +4508,15 @@ func (s *Service) cloneBuildCheck(
 	clone.TracerouteOnFailure = source.TracerouteOnFailure
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
+	// Degraded detection is configuration, so a clone inherits it — including
+	// degraded_enabled. The dry-run stamp deliberately does NOT travel: it is an
+	// observation about the source check's own probe history.
+	clone.DegradedFailures = source.DegradedFailures
+	clone.DegradedFailuresWindow = source.DegradedFailuresWindow
+	clone.DegradedSlow = source.DegradedSlow
+	clone.DegradedSlowWindow = source.DegradedSlowWindow
+	clone.SlowThresholdMs = source.SlowThresholdMs
+	clone.DegradedEnabled = source.DegradedEnabled
 	clone.FlapBackoffFactor = source.FlapBackoffFactor
 	clone.MaxRecoveryMultiplier = source.MaxRecoveryMultiplier
 	clone.EscalationPolicyUID = source.EscalationPolicyUID

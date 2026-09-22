@@ -2541,6 +2541,21 @@ func (e ListChecksParamsInternal) Valid() bool {
 	}
 }
 
+// Defines values for ListChecksParamsWouldHaveFired.
+const (
+	ListChecksParamsWouldHaveFiredTrue ListChecksParamsWouldHaveFired = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListChecksParamsWouldHaveFired enum.
+func (e ListChecksParamsWouldHaveFired) Valid() bool {
+	switch e {
+	case ListChecksParamsWouldHaveFiredTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListChecksParamsSort.
 const (
 	ListChecksParamsSortGroup      ListChecksParamsSort = "group"
@@ -3168,6 +3183,24 @@ type Check struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds).
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off.
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes.
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
+	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
+	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
+
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -3227,7 +3260,10 @@ type Check struct {
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
-	Slug       *string          `json:"slug,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
+	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3393,6 +3429,24 @@ type CheckListItem struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds).
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off.
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes.
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
+	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
+	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
+
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -3452,7 +3506,10 @@ type CheckListItem struct {
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
-	Slug       *string          `json:"slug,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
+	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3671,6 +3728,21 @@ type CreateCheckRequest struct {
 	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds).
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off.
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes.
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -3698,6 +3770,9 @@ type CreateCheckRequest struct {
 
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or omitted) uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
+	SlowThresholdMs *int `json:"slowThresholdMs,omitempty"`
 
 	// Slug URL-friendly identifier (auto-generated from URL if not provided)
 	Slug *string `json:"slug,omitempty"`
@@ -3931,6 +4006,9 @@ type CreateStatusPageRequest struct {
 
 	// Password WRITE-ONLY. Required when visibility is "password". Minimum 6 characters. Never returned — reads expose hasPassword instead.
 	Password *string `json:"password,omitempty"`
+
+	// PublishDegraded Whether DEGRADED incidents auto-publish to this page. False everywhere by default: a page that announces outages has not thereby agreed to announce "7 of the last 60 probes failed, currently up".
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings `json:"settings,omitempty"`
@@ -6420,8 +6498,11 @@ type StatusPage struct {
 
 	// OverallStatus Page-level rollup computed server-side from the live status of every resource on the page, so the public views, the summary endpoint, and the SVG badge always agree. Only populated on the live public view paths (GET /api/v1/status-pages/{org} and GET /api/v1/status-pages/{org}/{slug}) — omitted on the authenticated admin listing, which doesn't load live resource data.
 	OverallStatus *StatusPageOverallStatus `json:"overallStatus,omitempty"`
-	RecentUpdates *[]StatusUpdatePublic    `json:"recentUpdates,omitempty"`
-	Sections      *[]StatusPageSection     `json:"sections,omitempty"`
+
+	// PublishDegraded Whether DEGRADED incidents auto-publish to this page. False everywhere by default: a page that announces outages has not thereby agreed to announce "7 of the last 60 probes failed, currently up".
+	PublishDegraded *bool                 `json:"publishDegraded,omitempty"`
+	RecentUpdates   *[]StatusUpdatePublic `json:"recentUpdates,omitempty"`
+	Sections        *[]StatusPageSection  `json:"sections,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings `json:"settings,omitempty"`
@@ -6866,6 +6947,21 @@ type UpdateCheckRequest struct {
 	CheckGroupUid *string                 `json:"checkGroupUid,omitempty"`
 	Config        *map[string]interface{} `json:"config,omitempty"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to leave unchanged.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Omit to leave unchanged.
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Omit to leave unchanged.
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Omit to leave unchanged.
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -6889,7 +6985,10 @@ type UpdateCheckRequest struct {
 
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
-	Slug         *string `json:"slug,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
+	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 	TracerouteOnFailure *UpdateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
@@ -7054,6 +7153,9 @@ type UpdateStatusPageRequest struct {
 
 	// Password WRITE-ONLY. A non-empty value sets/replaces the unlock password (invalidating every outstanding unlock cookie); "" clears it (refused while visibility is still "password"); omitting it leaves the stored one untouched.
 	Password *string `json:"password,omitempty"`
+
+	// PublishDegraded Whether DEGRADED incidents auto-publish to this page. False everywhere by default: a page that announces outages has not thereby agreed to announce "7 of the last 60 probes failed, currently up".
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings                `json:"settings,omitempty"`
@@ -7527,12 +7629,18 @@ type ListChecksParams struct {
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
 
+	// WouldHaveFired When "true", returns only the checks the degraded dry run has flagged (`degradedWouldFireAt` is set) — what enabling degraded detection would have caught. Any other value applies no filter.
+	WouldHaveFired *ListChecksParamsWouldHaveFired `form:"wouldHaveFired,omitempty" json:"wouldHaveFired,omitempty"`
+
 	// Sort Opt-in ordering. "group" orders by group sortOrder ascending with ungrouped checks last, then created_at descending within a bucket — matching the dashboard's display order. "targetHost" orders by the derived targetHost ascending (case-sensitive, byte/codepoint order — e.g. "Zebra.example.com" sorts before "api.example.com"), checks with no targetHost last, then name ascending as a tiebreaker — lets a by-host view paginate consistently server-side. Omitted keeps the default created_at descending ordering. Any other value is a validation error.
 	Sort *ListChecksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 }
 
 // ListChecksParamsInternal defines parameters for ListChecks.
 type ListChecksParamsInternal string
+
+// ListChecksParamsWouldHaveFired defines parameters for ListChecks.
+type ListChecksParamsWouldHaveFired string
 
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
@@ -19963,6 +20071,18 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 		if params.Internal != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "internal", *params.Internal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.WouldHaveFired != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "wouldHaveFired", *params.WouldHaveFired, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {

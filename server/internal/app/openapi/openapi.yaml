@@ -1392,6 +1392,15 @@ paths:
             type: string
             enum: ["true", "false", "all"]
             default: "false"
+        - name: wouldHaveFired
+          in: query
+          description: >-
+            When "true", returns only the checks the degraded dry run has
+            flagged (`degradedWouldFireAt` is set) — what enabling degraded
+            detection would have caught. Any other value applies no filter.
+          schema:
+            type: string
+            enum: ["true"]
         - name: sort
           in: query
           description: >-
@@ -9981,6 +9990,56 @@ components:
             before each auto-resolve. 0 = adaptive recovery off (constant
             recovery period).
           default: 21600
+        degradedFailures:
+          type: integer
+          minimum: 0
+          default: 5
+          description: >-
+            Degraded detection, failure rule: fires when this many of the last
+            `degradedFailuresWindow` countable probes failed. 0 = off.
+        degradedFailuresWindow:
+          type: integer
+          minimum: 0
+          default: 60
+          description: >-
+            Window of the failure rule, counted in countable probes (not
+            seconds).
+        degradedSlow:
+          type: integer
+          minimum: 0
+          default: 3
+          description: >-
+            Degraded detection, slow rule: fires when this many of the last
+            `degradedSlowWindow` successful probes took longer than
+            `slowThresholdMs`. 0 = off.
+        degradedSlowWindow:
+          type: integer
+          minimum: 0
+          default: 6
+          description: >-
+            Window of the slow rule, counted in countable probes.
+        slowThresholdMs:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >-
+            Response time above which a successful probe counts as slow, in
+            milliseconds. 0 = the slow rule is off. There is no auto-baselining;
+            around 2x the observed p95 is the usual starting point.
+        degradedEnabled:
+          type: boolean
+          description: >-
+            Whether degraded detection may OPEN incidents on this check. New
+            checks are on; every check that predates the feature is off, and
+            runs as a dry run that only stamps `degradedWouldFireAt`.
+        degradedWouldFireAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the dry run first saw a degraded condition on a check that has
+            `degradedEnabled` false. Absent when the rules never fired. Cleared
+            when degraded detection is enabled.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10282,6 +10341,49 @@ components:
           description: >-
             Flapping (adaptive recovery) window in seconds. Outages within this
             rolling window accumulate the recovery backoff. 0 = off.
+        degradedFailures:
+          type: integer
+          minimum: 0
+          default: 5
+          description: >-
+            Degraded detection, failure rule: fires when this many of the last
+            `degradedFailuresWindow` countable probes failed. 0 = off.
+        degradedFailuresWindow:
+          type: integer
+          minimum: 0
+          default: 60
+          description: >-
+            Window of the failure rule, counted in countable probes (not
+            seconds).
+        degradedSlow:
+          type: integer
+          minimum: 0
+          default: 3
+          description: >-
+            Degraded detection, slow rule: fires when this many of the last
+            `degradedSlowWindow` successful probes took longer than
+            `slowThresholdMs`. 0 = off.
+        degradedSlowWindow:
+          type: integer
+          minimum: 0
+          default: 6
+          description: >-
+            Window of the slow rule, counted in countable probes.
+        slowThresholdMs:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >-
+            Response time above which a successful probe counts as slow, in
+            milliseconds. 0 = the slow rule is off. There is no auto-baselining;
+            around 2x the observed p95 is the usual starting point.
+        degradedEnabled:
+          type: boolean
+          default: true
+          description: >-
+            Whether degraded detection may OPEN incidents on this check. New
+            checks are on; every check that predates the feature is off, and
+            runs as a dry run that only stamps `degradedWouldFireAt`.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10349,6 +10451,43 @@ components:
           description: >-
             Flapping (adaptive recovery) window in seconds. 0 = off. Omit to
             leave unchanged.
+        degradedFailures:
+          type: integer
+          minimum: 0
+          description: >-
+            Degraded detection, failure rule: fires when this many of the last
+            `degradedFailuresWindow` countable probes failed. 0 = off. Omit to leave unchanged.
+        degradedFailuresWindow:
+          type: integer
+          minimum: 0
+          description: >-
+            Window of the failure rule, counted in countable probes (not
+            seconds). Omit to leave unchanged.
+        degradedSlow:
+          type: integer
+          minimum: 0
+          description: >-
+            Degraded detection, slow rule: fires when this many of the last
+            `degradedSlowWindow` successful probes took longer than
+            `slowThresholdMs`. 0 = off. Omit to leave unchanged.
+        degradedSlowWindow:
+          type: integer
+          minimum: 0
+          description: >-
+            Window of the slow rule, counted in countable probes. Omit to leave unchanged.
+        slowThresholdMs:
+          type: integer
+          minimum: 0
+          description: >-
+            Response time above which a successful probe counts as slow, in
+            milliseconds. 0 = the slow rule is off. There is no auto-baselining;
+            around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
+        degradedEnabled:
+          type: boolean
+          description: >-
+            Whether degraded detection may OPEN incidents on this check. New
+            checks are on; every check that predates the feature is off, and
+            runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -12126,6 +12265,13 @@ components:
             Debounce before an incident becomes public. 0 publishes
             immediately; an incident that resolves inside this window is never
             published at all.
+        publishDegraded:
+          type: boolean
+          default: false
+          description: >-
+            Whether DEGRADED incidents auto-publish to this page. False
+            everywhere by default: a page that announces outages has not thereby
+            agreed to announce "7 of the last 60 probes failed, currently up".
         autoResolve:
           type: string
           enum: [always, if_untouched, never]
@@ -12688,6 +12834,13 @@ components:
             Debounce before an incident becomes public. 0 is legal and
             publishes immediately; an incident that resolves inside this window
             is never published at all. Outside 0–86400 is a VALIDATION_ERROR.
+        publishDegraded:
+          type: boolean
+          default: false
+          description: >-
+            Whether DEGRADED incidents auto-publish to this page. False
+            everywhere by default: a page that announces outages has not thereby
+            agreed to announce "7 of the last 60 probes failed, currently up".
         autoResolve:
           type: string
           enum: [always, if_untouched, never]
@@ -12779,6 +12932,13 @@ components:
             Debounce before an incident becomes public. 0 is legal and
             publishes immediately. Omit the field to leave it unchanged;
             outside 0–86400 is a VALIDATION_ERROR.
+        publishDegraded:
+          type: boolean
+          default: false
+          description: >-
+            Whether DEGRADED incidents auto-publish to this page. False
+            everywhere by default: a page that announces outages has not thereby
+            agreed to announce "7 of the last 60 probes failed, currently up".
         autoResolve:
           type: string
           enum: [always, if_untouched, never]

@@ -341,6 +341,12 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Internal = &internalParam
 	}
 
+	// Parse the degraded dry-run filter (spec 2026-09-22-03): the checks the
+	// evaluator WOULD have flagged. Only "true" turns it on — an absent or
+	// anything-else value means "no filter", so a typo never silently hides
+	// every check the way a strict boolean parse returning false would.
+	opts.WouldHaveFired = query.Get("wouldHaveFired") == "true"
+
 	// Parse status filter (comma-separated: up,down,created,validating,degraded,warning)
 	if statusParam := query.Get("status"); statusParam != "" {
 		statuses, err := parseStatusFilter(statusParam)

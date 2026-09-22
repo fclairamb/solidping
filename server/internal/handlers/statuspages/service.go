@@ -584,6 +584,10 @@ type StatusPageResponse struct {
 	AutoPublish             bool   `json:"autoPublish"`
 	AutoPublishDelaySeconds int    `json:"autoPublishDelaySeconds"`
 	AutoResolve             string `json:"autoResolve"`
+	// PublishDegraded is the degraded-incident opt-in (spec 2026-09-22-03).
+	// Always emitted: false is the meaningful default and the form has to be
+	// able to tell it from "not sent".
+	PublishDegraded bool `json:"publishDegraded"`
 	// HideBranding means different things on the two payload families, and
 	// that is deliberate.
 	//
@@ -935,6 +939,9 @@ type CreateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// PublishDegraded opts this page in to publishing degraded incidents
+	// (spec 2026-09-22-03). nil leaves it untouched; it defaults to false.
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 	// HideBranding opts the new page out of the "powered by SolidPing" footer.
 	// It only takes effect while the org holds the `whiteLabel` entitlement —
 	// the flag is stored either way, so an upgrade does not need the operator
@@ -982,6 +989,9 @@ type UpdateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// PublishDegraded opts this page in to publishing degraded incidents
+	// (spec 2026-09-22-03). nil leaves it untouched; it defaults to false.
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 	// HideBranding flips the page's white-label opt-in. nil leaves it.
 	HideBranding *bool `json:"hideBranding,omitempty"`
 	// Password sets, replaces or clears the unlock password: a non-empty
@@ -1154,6 +1164,10 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 
 	if req.AutoResolve != nil {
 		page.AutoResolve = *req.AutoResolve
+	}
+
+	if req.PublishDegraded != nil {
+		page.PublishDegraded = *req.PublishDegraded
 	}
 
 	// An empty stylesheet is "no stylesheet": leave the column NULL rather than
@@ -1499,6 +1513,7 @@ func (s *Service) UpdateStatusPage(
 		AutoPublish:             req.AutoPublish,
 		AutoPublishDelaySeconds: req.AutoPublishDelaySeconds,
 		AutoResolve:             req.AutoResolve,
+		PublishDegraded:         req.PublishDegraded,
 	}
 
 	// The period enum is the source of truth; keep history_days in sync for
@@ -4187,6 +4202,7 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		AutoPublish:             page.AutoPublish,
 		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
 		AutoResolve:             page.AutoResolve,
+		PublishDegraded:         page.PublishDegraded,
 		CustomCSS:               page.CustomCSS,
 		HideBranding:            page.Settings.HideBranding(),
 		HasPassword:             page.PasswordHash != nil && *page.PasswordHash != "",
