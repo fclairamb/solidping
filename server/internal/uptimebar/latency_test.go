@@ -224,7 +224,7 @@ func TestWindowAvailability_CarriesLatencyAcrossTiers(t *testing.T) {
 	now := time.Now().UTC()
 	start := now.Add(-72 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		// Older than the raw clamp: only reachable through the rollup tier.
 		aggRowWithDurations("c1", models.PeriodTypeDay, now.Add(-48*time.Hour), 1440, 1439, 45, 3300, 190),
 		// Inside the raw band.

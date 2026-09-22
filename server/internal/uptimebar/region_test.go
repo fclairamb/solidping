@@ -42,7 +42,7 @@ func TestBucketAvailabilityInRegions(t *testing.T) {
 
 	hour := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		regionRawRow(models.ResultStatusDown, hour.Add(time.Minute), "eu-1"),
 		regionRawRow(models.ResultStatusUp, hour.Add(2*time.Minute), "us-1"),
 		regionRawRow(models.ResultStatusUp, hour.Add(3*time.Minute), "us-1"),
@@ -59,7 +59,7 @@ func TestBucketAvailabilityInRegions(t *testing.T) {
 	// A fresh lister so the captured filters below belong to the FILTERED read
 	// only (filterFor returns the first tier match, and the unfiltered read above
 	// issued the same tier lists).
-	euLister := &fakeLister{results: lister.results}
+	euLister := &fakeAggregator{results: lister.results}
 
 	eu, err := BucketAvailabilityInRegions(
 		ctx, euLister, "org", []string{"c1"}, []string{"eu-1"}, time.Hour, hour, 1, hints())
@@ -100,7 +100,7 @@ func TestBucketAvailabilityInRegions_ReachesRollups(t *testing.T) {
 
 	hour := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		regionHourRow(60, 30, hour, "eu-1"),
 		regionHourRow(60, 60, hour, "us-1"),
 	}}
@@ -127,7 +127,7 @@ func TestWindowAvailabilityInRegions(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
 	end := start.Add(time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		regionRawRow(models.ResultStatusDown, start.Add(time.Minute), "eu-1"),
 		regionRawRow(models.ResultStatusUp, start.Add(2*time.Minute), "us-1"),
 		regionRawRow(models.ResultStatusUp, start.Add(3*time.Minute), "us-1"),

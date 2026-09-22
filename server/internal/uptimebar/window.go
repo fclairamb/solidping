@@ -7,11 +7,18 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// WindowAvailability runs two tier-aligned queries over [start, end) for all
-// checks and accumulates every row into a single BucketStats per check. Unlike
+// WindowAvailability runs two tier-aligned aggregates over [start, end) for all
+// checks and accumulates everything into a single BucketStats per check. Unlike
 // BucketAvailability (which keys per time-bucket for a tick strip), this folds
 // the whole window into one aggregate — exactly what a per-period availability
 // number needs.
+//
+// It asks the database for buckets one window-span wide and folds whatever comes
+// back, rather than for "one bucket". That is exact, not an approximation: the
+// bucket grid partitions the matched rows, and every BucketStats field is an
+// associative fold (sums, plus a min/max pair that BucketStats.Add merges while
+// carrying the real contribution count), so folding buckets gives the same answer
+// as folding rows. A span not aligned to the grid simply yields two buckets.
 //
 // The split is the same as BucketAvailability's and for the same reason (see the
 // package comment): rollups (hour+day+month) over the full window, plus raw
@@ -28,8 +35,8 @@ import (
 // see jobtypes' defaultRetention* constants). Without month in the union, a 365d
 // window on a default deployment silently saw only ~2 months of data.
 //
-// hints bound the raw clamp and size each tier's own safety row cap; the zero
-// value falls back to the documented defaults (see Hints).
+// hints bound the raw clamp; the zero value falls back to the documented default
+// (see Hints).
 //
 // The function holds no shared mutable state, so several windows may be computed
 // concurrently against the same Service.
@@ -47,7 +54,7 @@ import (
 // the returned map (or with BucketStats.Total == 0) had no data in the window —
 // the caller renders that as "no data", not "100%".
 func WindowAvailability(
-	ctx context.Context, db ResultsLister, orgUID string, checkUIDs []string,
+	ctx context.Context, db ResultBucketAggregator, orgUID string, checkUIDs []string,
 	start, end time.Time, hints Hints,
 ) (map[string]BucketStats, error) {
 	return WindowAvailabilityInRegions(ctx, db, orgUID, checkUIDs, nil, start, end, hints)
@@ -58,7 +65,7 @@ func WindowAvailability(
 // into the query and what nil/empty means (every region, summed rather than
 // averaged).
 func WindowAvailabilityInRegions(
-	ctx context.Context, db ResultsLister, orgUID string, checkUIDs, regions []string,
+	ctx context.Context, db ResultBucketAggregator, orgUID string, checkUIDs, regions []string,
 	start, end time.Time, hints Hints,
 ) (map[string]BucketStats, error) {
 	out := make(map[string]BucketStats, len(checkUIDs))
@@ -73,23 +80,18 @@ func WindowAvailabilityInRegions(
 	windowSpan := endUTC.Sub(startUTC)
 
 	// Rollup tiers over the whole window, answered by results_aggregated_idx.
-	// PeriodEndBefore filters on period_start < value (see ListResultsFilter),
-	// so it bounds the upper edge of the window to [start, end).
-	rollupRows, err := listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
+	// PeriodStartBefore bounds the upper edge to [start, end).
+	rollupBuckets, err := aggregateTier(ctx, db, &models.ResultBucketFilter{
 		OrganizationUID: orgUID,
 		CheckUIDs:       checkUIDs,
 		Regions:         regions,
 		PeriodTypes: []string{
 			models.PeriodTypeHour, models.PeriodTypeDay, models.PeriodTypeMonth,
 		},
-		PeriodStartAfter: &startUTC,
-		PeriodEndBefore:  &endUTC,
-		Limit:            rollupRowCap(hints, len(checkUIDs), windowSpan, true),
-		// Availability is computed from status/counts only — never from the
-		// metrics/output blobs — and these queries can pull thousands of rows per
-		// request, so skip them entirely (spec 2026-07-24-02 §5).
-		SkipBlobs: true,
-	}, models.PeriodTypeHour+"+"+models.PeriodTypeDay+"+"+models.PeriodTypeMonth, callsiteWindowAvailability)
+		PeriodStartAfter:  startUTC,
+		PeriodStartBefore: &endUTC,
+		BucketDuration:    windowSpan,
+	}, callsiteWindowAvailability)
 	if err != nil {
 		return nil, err
 	}
@@ -97,37 +99,32 @@ func WindowAvailabilityInRegions(
 	// Raw tier, clamped to the raw-retention band, answered by results_raw_idx.
 	rawStart := rawTierStart(startUTC, now, hints.RetentionRawHours)
 
-	var rawRows []*models.Result
+	var rawBuckets []models.ResultBucket
 
 	if rawStart.Before(endUTC) {
-		rawRows, err = listTier(ctx, db, orgUID, checkUIDs, &models.ListResultsFilter{
-			OrganizationUID:  orgUID,
-			CheckUIDs:        checkUIDs,
-			Regions:          regions,
-			PeriodTypes:      []string{models.PeriodTypeRaw},
-			PeriodStartAfter: &rawStart,
-			PeriodEndBefore:  &endUTC,
-			Limit:            rawRowCap(hints, len(checkUIDs), windowSpan),
-			SkipBlobs:        true,
-		}, models.PeriodTypeRaw, callsiteWindowAvailability)
+		rawBuckets, err = aggregateTier(ctx, db, &models.ResultBucketFilter{
+			OrganizationUID:   orgUID,
+			CheckUIDs:         checkUIDs,
+			Regions:           regions,
+			PeriodTypes:       []string{models.PeriodTypeRaw},
+			PeriodStartAfter:  rawStart,
+			PeriodStartBefore: &endUTC,
+			BucketDuration:    windowSpan,
+		}, callsiteWindowAvailability)
 		if err != nil {
 			return nil, err
 		}
 
-		warnIfRawLagging(ctx, orgUID, rawRows, now, hints.RetentionRawHours)
+		warnIfRawLagging(ctx, orgUID, rawBuckets, now, hints.RetentionRawHours)
 	}
 
-	for _, rows := range [][]*models.Result{rollupRows, rawRows} {
-		for _, result := range rows {
-			acc := out[result.CheckUID]
+	for _, buckets := range [][]models.ResultBucket{rollupBuckets, rawBuckets} {
+		for i := range buckets {
+			bucket := &buckets[i]
 
-			if result.PeriodType == models.PeriodTypeRaw {
-				acc.accumulateRaw(result)
-			} else {
-				acc.accumulateAgg(result)
-			}
-
-			out[result.CheckUID] = acc
+			acc := out[bucket.CheckUID]
+			acc.Add(StatsForBucket(bucket))
+			out[bucket.CheckUID] = acc
 		}
 	}
 

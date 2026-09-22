@@ -504,13 +504,12 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 // parameters, which never reach the koanf struct, so a stale hint would make
 // uptimebar clamp its raw-tier query shorter than the window the job actually
 // keeps raw for — silently dropping raw rows no rollup covers yet.
-func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+func (s *Service) uptimebarHints(ctx context.Context) uptimebar.Hints {
 	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 
 	return uptimebar.Hints{
 		RetentionRawHours: rawHours,
 		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
 	}
 }
 
@@ -2919,7 +2918,7 @@ func (s *Service) enrichWithAvailability(
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	historyStart := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
 
-	hints := s.uptimebarHints(ctx, orgUID)
+	hints := s.uptimebarHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, page.HistoryDays,
@@ -3572,7 +3571,7 @@ func (s *Service) enrichHourly(
 	// 23 hours earlier. -(n-1) keeps the current hour inside the window.
 	bucketStart := now.Truncate(time.Hour).Add(-time.Duration(hourlyBucketCount-1) * time.Hour)
 
-	hints := s.uptimebarHints(ctx, orgUID)
+	hints := s.uptimebarHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, time.Hour, bucketStart, hourlyBucketCount,

@@ -56,7 +56,7 @@ func TestFetchRecentResults_WindowDropsRetiredRegion(t *testing.T) {
 	windowStart := todayStart.AddDate(0, 0, -29)
 
 	got := svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, true,
-		windowStart, svc.uptimebarHints(ctx, org.UID))
+		windowStart, svc.uptimebarHints(ctx))
 
 	byRegion := got[check.UID]
 	r.Len(byRegion, 1, "the retired region must be dropped entirely — no empty series, no legend entry")
@@ -112,7 +112,7 @@ func TestFetchRecentResults_RetiredRegionKeepsItsOwnWindow(t *testing.T) {
 	windowStart := todayStart.AddDate(0, 0, -89)
 
 	got := svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, true,
-		windowStart, svc.uptimebarHints(ctx, org.UID))
+		windowStart, svc.uptimebarHints(ctx))
 
 	r.Len(got[check.UID], 2, "inside a wide enough window both regions are real series")
 }
@@ -159,7 +159,7 @@ func TestFetchRecentResults_WindowCeilPinsToRollupSpan(t *testing.T) {
 	windowStart := now.AddDate(0, 0, -400)
 
 	got := svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, true,
-		windowStart, svc.uptimebarHints(ctx, org.UID))
+		windowStart, svc.uptimebarHints(ctx))
 
 	rows := got[check.UID]["eu2"]
 	r.Len(rows, 1, "only the rollup inside the 200-day ceiling survives")
@@ -208,7 +208,7 @@ func TestFetchRecentResults_WindowedTrimSpreadsTheWindow(t *testing.T) {
 	windowStart := todayStart.AddDate(0, 0, -29)
 
 	got := svc.fetchRecentResults(ctx, org.UID, []string{check.UID}, true,
-		windowStart, svc.uptimebarHints(ctx, org.UID))
+		windowStart, svc.uptimebarHints(ctx))
 
 	rows := got[check.UID]["eu2"]
 	r.NotEmpty(rows)

@@ -86,7 +86,7 @@ func TestWindowAvailability(t *testing.T) {
 		{
 			// The regression this guards: with default retention the day tier keeps
 			// only ~2 months, so a 365d window's older data lives exclusively in
-			// month rows. fakeLister honors filter.PeriodTypes, so if the union
+			// month rows. fakeAggregator honors filter.PeriodTypes, so if the union
 			// query dropped the month tier these rows would vanish and the totals
 			// would silently shrink to the day-side numbers.
 			name: "window spanning the day→month boundary counts both tiers",
@@ -150,7 +150,7 @@ func TestWindowAvailability(t *testing.T) {
 
 			r := require.New(t)
 
-			lister := &fakeLister{results: tc.rows}
+			lister := &fakeAggregator{results: tc.rows}
 
 			out, err := WindowAvailability(
 				context.Background(), lister, "org", []string{"c1"}, start, now, hints())
@@ -174,7 +174,7 @@ func TestWindowAvailability_Empty(t *testing.T) {
 	r := require.New(t)
 
 	now := time.Now().UTC()
-	lister := &fakeLister{results: []*models.Result{rawRow("c1", models.ResultStatusUp, now, 10)}}
+	lister := &fakeAggregator{results: []*models.Result{rawRow("c1", models.ResultStatusUp, now, 10)}}
 
 	// No checks → empty, query never run.
 	out, err := WindowAvailability(context.Background(), lister, "org", nil, now.Add(-time.Hour), now, hints())
@@ -201,7 +201,7 @@ func TestWindowAvailability_RawTierClampedAndDisjoint(t *testing.T) {
 	now := time.Now().UTC()
 	start := now.Add(-90 * 24 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		dayRow("c1", 1000, 1000, now.Add(-10*24*time.Hour)),
 		// Same period as the rollup above, but raw: impossible in production
 		// (rollup + delete happen in one transaction) and excluded by the clamp.
@@ -223,18 +223,19 @@ func TestWindowAvailability_RawTierClampedAndDisjoint(t *testing.T) {
 	r.NotNil(rollup, "the rollup query spans hour+day+month")
 	r.NotContains(rollup.PeriodTypes, models.PeriodTypeRaw)
 	r.True(rollup.PeriodStartAfter.Equal(start))
-	r.True(rollup.PeriodEndBefore.Equal(now))
-	r.Equal(rollupRowCap(hints(), 1, now.Sub(start), true), rollup.Limit)
+	r.NotNil(rollup.PeriodStartBefore)
+	r.True(rollup.PeriodStartBefore.Equal(now))
 
 	raw := lister.filterFor(models.PeriodTypeRaw)
 	r.NotNil(raw)
-	r.WithinDuration(now.Add(-26*time.Hour), *raw.PeriodStartAfter, time.Minute,
+	r.WithinDuration(now.Add(-26*time.Hour), raw.PeriodStartAfter, time.Minute,
 		"raw is clamped to RetentionRaw + rawClampMargin, not the caller's 90-day window")
-	r.True(raw.PeriodEndBefore.Equal(now))
-	r.Equal(rawRowCap(hints(), 1, now.Sub(start)), raw.Limit)
+	r.NotNil(raw.PeriodStartBefore)
+	r.True(raw.PeriodStartBefore.Equal(now))
 
 	for _, filter := range lister.gotFilters {
-		r.True(filter.SkipBlobs, "both tier queries must project the blobs away (spec 2026-07-24-02)")
+		r.NoError(filter.Validate(),
+			"both tier aggregates must be filters the dialects will accept")
 	}
 }
 
@@ -251,7 +252,7 @@ func TestWindowAvailability_PastWindowSkipsRawQuery(t *testing.T) {
 	end := now.Add(-30 * 24 * time.Hour)
 	start := end.Add(-30 * 24 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{dayRow("c1", 100, 99, end.Add(-24*time.Hour))}}
+	lister := &fakeAggregator{results: []*models.Result{dayRow("c1", 100, 99, end.Add(-24*time.Hour))}}
 
 	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, end, hints())
 	r.NoError(err)
@@ -272,7 +273,7 @@ func TestWindowAvailability_NoDataIsNotHundredPercent(t *testing.T) {
 	now := time.Now().UTC()
 	start := now.Add(-24 * time.Hour)
 
-	lister := &fakeLister{}
+	lister := &fakeAggregator{}
 
 	out, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, hints())
 	r.NoError(err)
@@ -300,7 +301,7 @@ func TestWindowAvailability_Filter(t *testing.T) {
 	now := time.Now().UTC()
 	start := now.Add(-30 * 24 * time.Hour)
 
-	lister := &fakeLister{}
+	lister := &fakeAggregator{}
 	_, err := WindowAvailability(context.Background(), lister, "org", []string{"c1"}, start, now, hints())
 	r.NoError(err)
 
@@ -309,12 +310,11 @@ func TestWindowAvailability_Filter(t *testing.T) {
 	for _, filter := range lister.gotFilters {
 		r.Equal("org", filter.OrganizationUID)
 		r.Equal([]string{"c1"}, filter.CheckUIDs)
-		r.NotNil(filter.PeriodStartAfter)
-		r.NotNil(filter.PeriodEndBefore)
-		r.True(filter.PeriodEndBefore.Equal(now))
-		r.True(filter.SkipBlobs,
-			"availability is computed from status/counts, so the metrics/output blobs "+
-				"must be projected away (spec 2026-07-24-02)")
+		r.False(filter.PeriodStartAfter.IsZero())
+		r.NotNil(filter.PeriodStartBefore)
+		r.True(filter.PeriodStartBefore.Equal(now))
+		r.Positive(filter.BucketDuration,
+			"a zero bucket width has no grid to group by and the dialects reject it")
 
 		covered = append(covered, filter.PeriodTypes...)
 	}

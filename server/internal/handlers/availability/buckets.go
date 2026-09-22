@@ -254,7 +254,7 @@ func (s *Service) GetAvailabilityBuckets(
 		return nil, ErrCheckNotFound
 	}
 
-	hints := s.uptimebarHints(ctx, org.UID)
+	hints := s.uptimebarHints(ctx)
 
 	var regions []string
 	if opts.Region != "" {

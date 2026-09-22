@@ -78,13 +78,12 @@ func NewService(dbService db.Service, cfg *config.Config) *Service {
 // parameters, which never reach the koanf struct, so a stale hint would make
 // uptimebar clamp its raw-tier query shorter than the window the job actually
 // keeps raw for — silently dropping raw rows no rollup covers yet.
-func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+func (s *Service) uptimebarHints(ctx context.Context) uptimebar.Hints {
 	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 
 	return uptimebar.Hints{
 		RetentionRawHours: rawHours,
 		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
 	}
 }
 
@@ -160,7 +159,7 @@ func (s *Service) GetAvailability(
 	// re-resolving per window would multiply the parameter/probe-rate lookups by
 	// the number of requested periods (five on the check detail page) inside a
 	// spec whose whole point is removing per-request latency.
-	hints := s.uptimebarHints(ctx, org.UID)
+	hints := s.uptimebarHints(ctx)
 
 	// The windows are independent — each computePeriod only reads org.UID, check
 	// and its own window, and writes only its own slot. Fan them out concurrently

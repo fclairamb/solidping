@@ -305,7 +305,7 @@ func TestFetchRecentResults_RawBoundFollowsLiveRetention(t *testing.T) {
 	// Control: with the documented default the clamp cuts the series at
 	// 24 h + the 2 h aggregation-lag margin.
 	atDefault := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true,
-		time.Time{}, svc.uptimebarHints(ctx, org.UID))
+		time.Time{}, svc.uptimebarHints(ctx))
 	r.Len(atDefault[check.UID]["eu2"], 26,
 		"the default 24 h retention (+2 h margin) must clamp the raw branch: rows at "+
 			"0.5 h, 1.5 h ... 25.5 h survive, everything older is cut")
@@ -315,7 +315,7 @@ func TestFetchRecentResults_RawBoundFollowsLiveRetention(t *testing.T) {
 		string(systemconfig.KeyPerfAggRetentionRawHours), 168, false))
 
 	atLive := svc.fetchRecentResults(ctx, org.UID, checkUIDs, true,
-		time.Time{}, svc.uptimebarHints(ctx, org.UID))
+		time.Time{}, svc.uptimebarHints(ctx))
 	r.Len(atLive[check.UID]["eu2"], responseTimeLimit,
 		"with performance.aggregation_retention_raw_hours=168 the whole series must survive — "+
 			"a koanf-only reader would still be clamping at 24 h")

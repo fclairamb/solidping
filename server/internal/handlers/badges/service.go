@@ -73,13 +73,12 @@ func NewService(dbSvc db.Service, cfg *config.Config) *Service {
 // parameters, which never reach the koanf struct, so a stale hint would make
 // uptimebar clamp its raw-tier query shorter than the window the job actually
 // keeps raw for — silently dropping raw rows no rollup covers yet.
-func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+func (s *Service) uptimebarHints(ctx context.Context) uptimebar.Hints {
 	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.dbSvc, s.cfg)
 
 	return uptimebar.Hints{
 		RetentionRawHours: rawHours,
 		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.dbSvc, orgUID),
 	}
 }
 
@@ -292,7 +291,7 @@ func (s *Service) bucketStatsForPeriod(
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
-	hints := s.uptimebarHints(ctx, orgUID)
+	hints := s.uptimebarHints(ctx)
 
 	byCheck, err := uptimebar.BucketAvailability(
 		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,

@@ -280,7 +280,6 @@ func (b *Builder) Build(
 	hints := uptimebar.Hints{
 		RetentionRawHours: rawHours,
 		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, b.db, org.UID),
 	}
 
 	byCheck, err := uptimebar.WindowAvailability(ctx, b.db, org.UID, checkUIDs, window.Start, window.End, hints)
