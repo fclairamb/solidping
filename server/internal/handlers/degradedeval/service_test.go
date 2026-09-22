@@ -34,6 +34,11 @@ type evalSetup struct {
 
 const testPeriod = time.Minute
 
+// intPtr spells an EXPLICIT degraded setting. Leaving a field nil is the other
+// half of the contract these tests exercise: NULL means "use the code default",
+// so a test that wants 5-of-60 sets nothing at all.
+func intPtr(value int) *int { return &value }
+
 // newEvalSetup builds the world. `configure` gets the check before it is
 // written, so a test can retune the rules or turn the feature off.
 func newEvalSetup(t *testing.T, configure func(*models.Check)) *evalSetup {
@@ -244,7 +249,7 @@ func TestSlowRuleFiresBeforeFailureRule(t *testing.T) {
 	r := require.New(t)
 
 	s := newEvalSetup(t, func(check *models.Check) {
-		check.SlowThresholdMs = 1000 // ~2x the measured 453 ms baseline
+		check.SlowThresholdMs = intPtr(1000) // ~2x the measured 453 ms baseline
 	})
 
 	s.up(t, 20, 453)
@@ -288,10 +293,10 @@ func TestResolutionAfterCleanProbes(t *testing.T) {
 	r := require.New(t)
 
 	s := newEvalSetup(t, func(check *models.Check) {
-		check.DegradedFailures = 0 // failure rule off: this is the slow rule's test
-		check.DegradedSlow = 3
-		check.DegradedSlowWindow = 6
-		check.SlowThresholdMs = 1000
+		check.DegradedFailures = intPtr(0) // failure rule off: this is the slow rule's test
+		check.DegradedSlow = intPtr(3)
+		check.DegradedSlowWindow = intPtr(6)
+		check.SlowThresholdMs = intPtr(1000)
 	})
 
 	s.up(t, 6, 200)
@@ -333,8 +338,8 @@ func TestMaintenanceProbesAreNotSlots(t *testing.T) {
 	r := require.New(t)
 
 	s := newEvalSetup(t, func(check *models.Check) {
-		check.DegradedFailures = 3
-		check.DegradedFailuresWindow = 10
+		check.DegradedFailures = intPtr(3)
+		check.DegradedFailuresWindow = intPtr(10)
 	})
 
 	s.up(t, 10, 100)
@@ -524,9 +529,9 @@ func TestBothRulesOffEvaluatesNothing(t *testing.T) {
 	r := require.New(t)
 
 	s := newEvalSetup(t, func(check *models.Check) {
-		check.DegradedFailures = 0
-		check.DegradedSlow = 0
-		check.SlowThresholdMs = 0
+		check.DegradedFailures = intPtr(0)
+		check.DegradedSlow = intPtr(0)
+		check.SlowThresholdMs = intPtr(0)
 	})
 
 	s.up(t, 5, 9999)
