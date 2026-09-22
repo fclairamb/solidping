@@ -84,8 +84,11 @@ test.describe("Docs links", () => {
     await page.waitForLoadState("networkidle");
     await page.getByLabel("Badges").click();
     await page.waitForURL(/\/checks\/[^/]+\/badges/);
-    await page.waitForLoadState("networkidle");
-
+    // No networkidle: the badges page never reaches Playwright's network-idle
+    // state after a client-side navigation (page rendered, network quiet, the
+    // lifecycle event just never fires — deterministic on macOS headless,
+    // intermittent on loaded CI runners). The docs-link assertion below is
+    // the arrival gate.
     const docsLink = page.getByTestId("docs-link");
     await expect(docsLink).toBeVisible();
     await expect(docsLink).toHaveAttribute("href", "/docs/features/status-badges");
