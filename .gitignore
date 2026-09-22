@@ -58,6 +58,10 @@ bench-results/
 !server/internal/handlers/checks/importers/testdata/uptime-kuma-sqlite/kuma.db
 logs/
 agent-keys.json
+# `go build -o tmp/...` scratch output. A 173 MB server binary reached a commit
+# this way (spec 2026-09-22-03): the directory is a build scratchpad, and nothing
+# in it is ever meant to be tracked.
+server/tmp/
 
 # Claude Code
 .claude/scheduled_tasks.lock
