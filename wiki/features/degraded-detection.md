@@ -135,6 +135,16 @@ operator committing. `buildDegradedPayload` is the form's 0-vs-blank guard: a
 typed 0 reaches the server (that is how a rule is turned off), a blank field is
 omitted so the code default stands.
 
+The form's payload reaches the API through `lib/check-request.ts`. That module is
+here because of this feature: both check routes used to hand-pick which keys of
+the payload to forward, so the six fields rendered, saved without error and never
+reached the database — the same way `confirmationPeriodSeconds` was lost in spec
+2026-07-15-04, under a comment warning about precisely that. It is now a
+DENY-list (channel bindings, dependency edges and the diff baseline, all of which
+have their own endpoints), so a new form field reaches the server by default and
+dropping one has to be deliberate. `lib/check-request.test.ts` asserts the
+request BODY, not the form's internal state — that distinction is the whole bug.
+
 ## Rollout: the dry run
 
 Off for existing checks, on for new ones — upgrading must never start notifying
