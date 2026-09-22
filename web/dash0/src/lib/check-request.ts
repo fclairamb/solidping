@@ -27,11 +27,23 @@ const NON_REQUEST_KEYS = [
   "initialDependsOn",
 ] as const;
 
-/** Strips the non-request keys, leaving the request body. */
-function requestFields(data: CheckFormData): Record<string, unknown> {
+/**
+ * `type` is create-only: a check's type is immutable once it exists (the edit
+ * form renders it as a disabled input), and `UpdateCheckRequest` has no such
+ * field. The form still carries it in its payload, so the update direction drops
+ * it here rather than relying on `check-form.tsx` happening to leave it
+ * `undefined` on edit and JSON.stringify happening to omit that.
+ */
+const UPDATE_ONLY_EXCLUDED_KEYS = ["type"] as const;
+
+/** Strips the named keys, leaving the request body. */
+function requestFields(
+  data: CheckFormData,
+  alsoExclude: readonly string[] = [],
+): Record<string, unknown> {
   const out: Record<string, unknown> = { ...data };
 
-  for (const key of NON_REQUEST_KEYS) {
+  for (const key of [...NON_REQUEST_KEYS, ...alsoExclude]) {
     delete out[key];
   }
 
@@ -47,7 +59,7 @@ function requestFields(data: CheckFormData): Record<string, unknown> {
  * unconditionally is behaviour-preserving, not a widening.
  */
 export function toUpdateCheckRequest(data: CheckFormData): UpdateCheckRequest {
-  return requestFields(data) as UpdateCheckRequest;
+  return requestFields(data, UPDATE_ONLY_EXCLUDED_KEYS) as UpdateCheckRequest;
 }
 
 /**

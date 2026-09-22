@@ -31,7 +31,7 @@ function formData(overrides: Partial<CheckFormData> = {}): CheckFormData {
     slowThresholdMs: 900,
     degradedEnabled: true,
     connectionUids: ["conn-1"],
-    dependsOn: [{ uid: "parent-1", kind: "hard", description: "" }],
+    dependsOn: [{ parentCheckUid: "parent-1", kind: "hard", description: "" }],
     initialDependsOn: [],
     ...overrides,
   };
@@ -98,6 +98,19 @@ describe("toUpdateCheckRequest", () => {
     expect(body).not.toHaveProperty("connectionUids");
     expect(body).not.toHaveProperty("dependsOn");
     expect(body).not.toHaveProperty("initialDependsOn");
+  });
+
+  it("omits `type`, which a PATCH cannot change", () => {
+    // A check's type is immutable once it exists, and UpdateCheckRequest has no
+    // such field. The fixture sets one, so this is a real exclusion rather than
+    // an absence that happens to hold.
+    const body = toUpdateCheckRequest(formData()) as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty("type");
+    // ...while create, which is where the type is decided, still carries it.
+    expect(
+      toCreateCheckRequest(formData()) as Record<string, unknown>,
+    ).toHaveProperty("type", "http");
   });
 });
 
