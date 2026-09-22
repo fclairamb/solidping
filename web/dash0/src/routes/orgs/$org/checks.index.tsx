@@ -132,11 +132,18 @@ interface ChecksIndexSearch {
   groupBy?: GroupByMode;
   q?: string;
   /**
-   * "true" restricts the list to the checks the degraded dry run has flagged
-   * (spec 2026-09-22-03) — what enabling degraded detection would have caught.
-   * In the URL, not local state, because it is a view somebody shares.
+   * Restricts the list to the checks the degraded dry run has flagged (spec
+   * 2026-09-22-03) — what enabling degraded detection would have caught. In the
+   * URL, not local state, because it is a view somebody shares.
+   *
+   * A BOOLEAN, like graphFull on the check-detail route, not the string "true":
+   * TanStack Router's default stringifier JSON-encodes a string whose text is
+   * itself valid JSON, so a string "true" went into the URL as `%22true%22` and
+   * a hand-typed or shared `?wouldHaveFired=true` came back as the boolean
+   * `true`, which the string comparison then missed — the filter silently did
+   * nothing for exactly the people a shareable URL is for.
    */
-  wouldHaveFired?: string;
+  wouldHaveFired?: true;
 }
 
 // Status tokens the faceted filter offers, in display order. `degraded` is
@@ -192,7 +199,13 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
       ? (search.groupBy as GroupByMode)
       : undefined,
     q: typeof search.q === "string" && search.q ? search.q : undefined,
-    wouldHaveFired: search.wouldHaveFired === "true" ? "true" : undefined,
+    // Accept both spellings: the default parser hands us a native boolean for
+    // `?wouldHaveFired=true`, and the quoted form is what already-shared links
+    // from the string-typed version carry.
+    wouldHaveFired:
+      search.wouldHaveFired === true || search.wouldHaveFired === "true"
+        ? true
+        : undefined,
   }),
 });
 
@@ -1207,7 +1220,7 @@ function ChecksIndexPage() {
     // by the list error state) rather than silently vanish from the request.
     status: statusParam,
     type: typeParam,
-    wouldHaveFired: wouldHaveFiredParam,
+    wouldHaveFired: wouldHaveFiredParam ? "true" : undefined,
     limit: 100,
     // Load the stream in the exact order the page renders it, so the top of
     // the page fills first instead of arriving in unrelated created_at order:
@@ -1655,7 +1668,7 @@ function ChecksIndexPage() {
             void navigate({
               search: (prev) => ({
                 ...prev,
-                wouldHaveFired: prev.wouldHaveFired ? undefined : "true",
+                wouldHaveFired: prev.wouldHaveFired ? undefined : true,
               }),
               replace: true,
             })

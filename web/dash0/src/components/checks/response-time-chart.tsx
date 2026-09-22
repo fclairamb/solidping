@@ -1285,6 +1285,14 @@ export function ResponseTimeChart({
                     fillOpacity={0.14}
                     stroke="var(--chart-degraded, #d97706)"
                     strokeOpacity={0.35}
+                    // recharts defaults a ReferenceArea to ifOverflow="discard",
+                    // which DROPS the element entirely as soon as one edge falls
+                    // outside the domain. An episode that began before the
+                    // visible window — the common case for an hour-long degraded
+                    // span on a 24 h view — would vanish rather than shade its
+                    // overlapping part. "hidden" draws it clipped to the plot
+                    // area instead, which is what a band is for.
+                    ifOverflow="hidden"
                     data-testid="chart-degraded-span"
                   />
                 ))}
