@@ -3816,6 +3816,8 @@ func (s *Server) Handler() http.Handler {
 // tests can assert against it directly. Deliberately excludes
 // text/event-stream (the MCP endpoint's stream, see mcp/handler.go, would
 // break if buffered) and every binary type.
+//
+//nolint:gochecknoglobals // Effectively a constant table; Go has no const slices.
 var compressibleContentTypes = []string{
 	"application/json", "application/problem+json", "application/manifest+json",
 	"text/html", "text/css", "text/plain", "text/markdown", "text/csv",
