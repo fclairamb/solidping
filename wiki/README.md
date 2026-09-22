@@ -49,6 +49,7 @@ End-to-end pages for individual subsystems — read these before touching
 the relevant code.
 
 - [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
+- [features/degraded-detection.md](features/degraded-detection.md) — The second, statistical detector beside the confirmation period: the "M of the last N countable probes" rule over failures and over slow successes, the `degraded` incident kind (no cascade, no paging escalation, no auto-publish), the suppression rule that makes it shippable, the off-for-existing/dry-run rollout, and the availability-denominator regression to watch.
 - [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
 - [features/entitlements.md](features/entitlements.md) — Per-org limits (`maxChecks`, `maxUsers`, `maxChecksPerMinute`) and where each is enforced; defaults per deployment mode, resolution (defaults → row → live usage), sources, stale fallback, audit log. Note: there are **no** feature toggles.
 - [features/email-inbox-checks.md](features/email-inbox-checks.md) — Passive checks that succeed when an email arrives. JMAP supervisor, per-check token, status resolution priority, mailbox retention, distinction from email-as-channel.
@@ -107,6 +108,7 @@ Operational procedures for diagnosing the running system.
 
 - [distribution/casaos.md](distribution/casaos.md) — CasaOS/ZimaOS app store listing (`deploy/casaos/solidping/`): upstream `IceWhaleTech/CasaOS-AppStore` PR mechanics, the `x-casaos` metadata shape, and the per-release version/changelog bump recipe
 - [distribution/yunohost.md](distribution/yunohost.md) — YunoHost native package (`solidping_ynh`, an external repo, not created yet): catalog/`package_check` route, who merges the autoupdate bot's PRs, and why renaming the `solidping-linux-*` release assets silently breaks the package
+- [distribution/coolify.md](distribution/coolify.md) — Coolify one-click template (`deploy/coolify/solidping.yaml`, ready for direct "Docker Compose Empty" use): the 1,000-star catalog gate blocking `coollabsio/coolify`, and the three-part upstream PR recipe to run once it's crossed
 
 ## Research
 
@@ -120,9 +122,9 @@ Market analysis of uptime monitoring services.
 
 - Cross-competitor comparison — [competitors/comparison/](competitors/comparison/)
   - [comparison/README.md](competitors/comparison/README.md) — Index of the comparison set
-  - [comparison/overview.md](competitors/comparison/overview.md) — At-a-glance matrix across 7 uptime-first competitors, where SolidPing stands today, and the 2026-07 pricing/market-moves refresh
+  - [comparison/overview.md](competitors/comparison/overview.md) — At-a-glance matrix across 8 uptime-first competitors, where SolidPing stands today, and the 2026-07 pricing/market-moves refresh
   - [comparison/pricing.md](competitors/comparison/pricing.md) — Free, entry, mid-tier and 100-monitor pricing brackets with a winner per bracket
-  - [comparison/monitor-types.md](competitors/comparison/monitor-types.md) — Check-type matrix across 9 tools (HTTP → game servers, email inbox, custom JS)
+  - [comparison/monitor-types.md](competitors/comparison/monitor-types.md) — Check-type matrix across 10 tools (HTTP → game servers, email inbox, custom JS, RUM, third-party dependency monitoring)
   - [comparison/api.md](competitors/comparison/api.md) — Auth, API design, rate limits and endpoint coverage (BetterStack / UptimeRobot / Pingdom)
   - [comparison/features.md](competitors/comparison/features.md) — Monitoring capabilities, notification-channel matrix, advanced features, developer experience
   - [comparison/pros-cons.md](competitors/comparison/pros-cons.md) — Pros, cons and "best for" verdicts per vendor
@@ -172,6 +174,7 @@ Market analysis of uptime monitoring services.
   - [pingdom/comparison.md](competitors/pingdom/comparison.md) — vs SolidPing, technical considerations, limitations, API design patterns
   - [pingdom/examples.md](competitors/pingdom/examples.md) — Integration examples (HTTP, TCP, DNS, SMTP, results, summary, maintenance)
   - [pingdom/sources.md](competitors/pingdom/sources.md) — Source URLs
+- [competitors/pulsetic.md](competitors/pulsetic.md) — Pulsetic analysis (Designmodo; uptime + RUM + **dependency monitoring across 4,300+ third-party status pages**, white-label agency model, first-party MCP server, Team-plan-gated unversioned API)
 - [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)

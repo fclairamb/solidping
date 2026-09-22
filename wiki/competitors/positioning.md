@@ -53,6 +53,16 @@ Objections competitors or skeptics raise in comparisons — pre-think the answer
 - **"Oh Dear is EU-hosted / GDPR-friendly."** — Self-hosted means *you* pick the
   region — strictly more flexible than a single-region SaaS. Make this explicit in
   EU copy.
+- **"Pulsetic tells me when Stripe or GitHub is down — SolidPing doesn't."** —
+  True, and it is the one capability gap that runs the wrong way. Dependency
+  monitoring (4,300+ third-party status pages) is not a probe, so protocol breadth
+  doesn't answer it. Two honest replies: it is email-only and read-only on their
+  side, and it is a small enough feature that it belongs on our roadmap rather than
+  in a rebuttal. See [pulsetic.md](pulsetic.md).
+- **"Pulsetic has 13 monitoring types too."** — Thirteen marketing names over six
+  probe families (HTTP, ICMP, TCP, SSL, domain, heartbeat). No DNS, SMTP, IMAP, SSH,
+  FTP, gRPC, WebSocket, UDP, database, queue or SNMP. Our 40 is derivable from the
+  source tree; theirs is a landing-page count. Say the number, not the adjective.
 - **"failover.io requires explicit acknowledge before the chain stops."** —
   SolidPing has ack/snooze/manual-resolve plus multi-step escalation. failover.io's
   edge is ack via 10 channels without opening a dashboard; verify whether SolidPing
