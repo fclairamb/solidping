@@ -125,11 +125,12 @@ the Part 1 `.gz` twins on top.
   `ParseConfig` to the light one is the enforcement mechanism; a registry
   test asserting every `GetChecker` type is `IsKnownType` in the light one
   (and vice versa) pins it.
-- Follow-up (optional, cheap once the light layer exists): generate JSON
-  Schemas from the same `XConfig` structs (e.g. invopop/jsonschema) and
-  expose them in the OpenAPI spec or a `/checks/schema/{type}` route, for
-  editor autocomplete and third-party tooling — as a *description*, never as
-  the canonical validator.
+
+The machine-readable description of check configs (JSON Schema generation
+for editor autocomplete and third-party tooling) is a separate effort with
+its own spec:
+[2026-09-22-02-checker-config-json-schema.md](2026-09-22-02-checker-config-json-schema.md).
+It benefits from the light config layer but is not blocked by it.
 
 ## Decision
 
