@@ -470,6 +470,31 @@ type Service interface {
 	RecentResultsPerCheck(
 		ctx context.Context, filter *models.RecentResultsPerCheckFilter,
 	) ([]*models.Result, error)
+	// AggregateResultBuckets folds result rows into per-(check, bucket)
+	// counters SERVER-SIDE: one row per (check_uid, bucket_start), carrying the
+	// eleven numbers uptimebar.BucketStats holds. ONE tier side per call (raw
+	// XOR rollup), exactly like ListResults' index split — Validate rejects a
+	// straddling filter, for the same reason RecentResultsPerCheck does.
+	//
+	// It exists because the availability engine — behind the status page's bars,
+	// the badges, the SLO read path, the availability API and the uptime report
+	// — asked ListResults for every matching ROW and folded them in Go. Under
+	// the default 24 h raw retention the newest day of every check is always
+	// raw, so a 200-check public page shipped 267 449 rows, sorted to disk, to
+	// produce 400 buckets: ~3.2 s inside the request, of which ~2.2 s was
+	// transfer and bun scan (spec 2026-09-22-05).
+	//
+	// Rows are binned against the SAME origin Go's time.Truncate uses
+	// (0001-01-01, see models.ProlepticEpochOffsetSeconds), not the Unix epoch,
+	// so the grid is byte-identical to the Go fold for every bucket width —
+	// including widths that do not divide 24 h, which the availability API
+	// accepts. uptimebar's accumulateRaw / accumulateAgg remain the reference
+	// semantics; a per-dialect parity test folds the same fixture both ways.
+	//
+	// The returned buckets are NOT ordered: the callers accumulate into a map.
+	AggregateResultBuckets(
+		ctx context.Context, filter *models.ResultBucketFilter,
+	) ([]models.ResultBucket, error)
 	// CountResultsByPeriodType returns the total row count in `results` grouped
 	// by period_type, across every organization. Table-wide and uncached —
 	// only the aggregation-job-cadence gauge sampler may call this, never a
