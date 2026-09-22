@@ -288,6 +288,13 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 // A row that contributes nothing (a lifecycle marker, an abandoned attempt)
 // returns the zero BucketStats, whose AvailabilityPct reports ok=false — "no
 // data", explicitly not 100%.
+//
+// The dispatch is "raw, or everything else", which is what makes
+// models.PeriodTypeSeam — the in-memory bin the status page's response-time seam
+// materialises (spec 2026-09-22-06) — fold through accumulateAgg with no special
+// case: a seam row's TotalChecks/SuccessfulChecks are ALREADY the bin's summed
+// counts, exactly like a rollup's, so folding it as a raw probe would count it as
+// one sample and throw the other fifty-nine away.
 func StatsForResult(result *models.Result) BucketStats {
 	var stats BucketStats
 

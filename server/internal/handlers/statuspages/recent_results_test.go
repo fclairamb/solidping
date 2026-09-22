@@ -415,7 +415,7 @@ func TestResponseTimeBudgets_SizedFromCheckRegions(t *testing.T) {
 
 	budgets := svc.responseTimeBudgets(ctx, org.UID,
 		[]string{single.UID, multi.UID, sprawling.UID, undeclared.UID, "gone"},
-		time.Time{}, time.Now().UTC(), uptimebar.Hints{})
+		time.Time{}, time.Now().UTC())
 
 	r.Equal(2*responseTimeLimit, budgets[single.UID], "1 region + the NULL bucket")
 	r.Equal(4*responseTimeLimit, budgets[multi.UID], "3 regions + the NULL bucket")

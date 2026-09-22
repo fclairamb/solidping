@@ -224,13 +224,34 @@ func TestFetchRecentResults_WindowedTrimSpreadsTheWindow(t *testing.T) {
 		"the oldest kept point is not the recent end — the window is covered")
 	r.True(newest.After(now.Add(-2*time.Hour)), "the newest kept point reaches now")
 
-	// And both tiers contribute: raw for the seam, day rollups for the tail.
+	// And both tiers contribute: the SEAM for the recent end, day rollups for the
+	// tail. Since spec 2026-09-22-06 the seam arrives as models.PeriodTypeSeam
+	// bins — one p95 per bin computed in the database — rather than as individual
+	// raw probes, so this asserts on that tier and explicitly NOT on raw: a raw
+	// row reaching the windowed series again would mean the row fetch came back.
 	periodTypes := map[string]int{}
 	for _, row := range rows {
 		periodTypes[row.PeriodType]++
 	}
 	r.Positive(periodTypes[models.PeriodTypeDay], "day rollups anchor the window's old end")
-	r.Positive(periodTypes[models.PeriodTypeRaw], "raw covers the recent seam")
+	r.Positive(periodTypes[models.PeriodTypeSeam], "the binned seam covers the recent end")
+	r.Zero(periodTypes[models.PeriodTypeRaw],
+		"the windowed fetch must not read raw ROWS any more — that is the whole spec")
+
+	// Every seam point carries the bin's counts and a p95 over them, like the
+	// rollups beside it — not one arbitrary probe's duration.
+	for _, row := range rows {
+		if row.PeriodType != models.PeriodTypeSeam {
+			continue
+		}
+
+		r.NotNil(row.TotalChecks, "a seam point carries its bin's probe count")
+		r.Positive(*row.TotalChecks)
+		r.NotNil(row.DurationP95, "a seam point carries a p95 over its bin")
+		r.Nil(row.Duration, "a seam point is not a probe, so it has no single duration")
+		r.True(row.PeriodStart.Equal(row.PeriodStart.Truncate(seamBinWidth(now.Sub(windowStart)))),
+			"a seam point sits on the bin grid")
+	}
 }
 
 // TestTrimResponseTimeSeries_WindowDropsEmptyRegion pins the A.3 rule at the

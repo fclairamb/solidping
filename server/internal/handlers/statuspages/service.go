@@ -3072,12 +3072,25 @@ func responseTimeRollupTiers() []string {
 // and the trim keeps the newest responseTimeLimit rows per region, exactly as
 // before the window existed (the parity tests drive that path).
 //
-// It issues ONE query, with a per-check row budget and one tier-aligned,
-// time-bounded branch per side of the raw/rollup index split (spec
-// 2026-08-22-05). What it replaced had neither a period-type filter nor a time
-// bound, so no index on `results` was eligible and every public page view cost
-// a sequential scan of the largest table in the system plus an external merge
-// sort to disk.
+// A WINDOWED fetch issues TWO reads, one per tier, and they are deliberately
+// different shapes (spec 2026-09-22-06):
+//
+//   - the ROLLUP tier is a row fetch (RecentResultsPerCheck), because a rollup row
+//     already IS one chart point — one bucket per tier per region;
+//   - the SEAM (raw) tier is an AGGREGATE (AggregateResponseTimeBins): one row per
+//     (check, region, bin), with a p95 over the bin. Fetched as rows it was ~1 337
+//     probes per check — 292 843 on a 200-check, 7-day page — of which the trim
+//     kept roughly one in ninety and plotted them as individual probes.
+//
+// An UNBOUNDED fetch (zero windowStart) keeps the single row query with both
+// tiers: with no window there is no span to size a bin from, and that path's
+// contract is about rows.
+//
+// Both reads are tier-aligned and time-bounded, on the same side-of-the-split
+// reasoning (spec 2026-08-22-05). What all of this replaced had neither a
+// period-type filter nor a time bound, so no index on `results` was eligible and
+// every public page view cost a sequential scan of the largest table in the
+// system plus an external merge sort to disk.
 //
 // hints carries the org's LIVE raw retention, resolved once per request through
 // systemconfig by the caller's uptimebarHints. It must not be re-derived from
@@ -3111,20 +3124,32 @@ func (s *Service) fetchRecentResults(
 		rollupSince = windowStart
 	}
 
+	// The raw clamp, from the same resolved retention every other raw-tier
+	// reader uses: raw older than this has been rolled up and deleted, so a
+	// wider bound only widens the index descent — and a NARROWER one would open
+	// a gap between the newest hour rollup and the seam.
+	rawSince := uptimebar.RawTierStart(rollupSince, now, hints.RetentionRawHours)
+
+	tiers := []models.RecentResultsTier{
+		{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
+	}
+
+	// The UNBOUNDED path (zero windowStart — the legacy behavior the parity
+	// tests drive) keeps fetching raw ROWS: with no window there is no span to
+	// size a seam bin from, and that path's contract is "the newest
+	// responseTimeLimit rows per region", which is a statement about rows.
+	if windowStart.IsZero() {
+		tiers = append(tiers, models.RecentResultsTier{
+			PeriodTypes: []string{models.PeriodTypeRaw},
+			Since:       rawSince,
+		})
+	}
+
 	filter := &models.RecentResultsPerCheckFilter{
-		OrganizationUID: orgUID,
-		CheckUIDs:       checkUIDs,
-		Tiers: []models.RecentResultsTier{
-			{
-				PeriodTypes: []string{models.PeriodTypeRaw},
-				// Exactly uptimebar's raw clamp, from the same resolved
-				// retention: raw older than this has been rolled up and
-				// deleted, so a wider bound only widens the index descent.
-				Since: uptimebar.RawTierStart(rollupSince, now, hints.RetentionRawHours),
-			},
-			{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
-		},
-		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs, windowStart, now, hints),
+		OrganizationUID:      orgUID,
+		CheckUIDs:            checkUIDs,
+		Tiers:                tiers,
+		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs, windowStart, now),
 		DefaultPerCheckLimit: responseTimeLimit * regionFanoutCap,
 	}
 
@@ -3134,6 +3159,10 @@ func (s *Service) fetchRecentResults(
 			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
 
 		return recentByCheck
+	}
+
+	if !windowStart.IsZero() {
+		rows = append(rows, s.fetchResponseTimeSeam(ctx, orgUID, checkUIDs, rawSince, now.Sub(windowStart))...)
 	}
 
 	for _, result := range rows {
@@ -3154,6 +3183,136 @@ func (s *Service) fetchRecentResults(
 	trimResponseTimeSeries(recentByCheck, windowStart, now, hints.RetentionRawHours)
 
 	return recentByCheck
+}
+
+// seamBinWidth picks the raw seam's bin width so the seam alone never exceeds
+// the point budget, never goes below the probe period floor, and never gets
+// coarser than the hour tier it sits next to.
+//
+// The ideal is windowSpan / responseTimeLimit — one bin per point the chart can
+// hold — rounded UP to the next step of a fixed ladder, so the width is always a
+// round, human-readable interval a tooltip can name. Then clamped to
+// [1 min, 1 h]:
+//
+//   - 1 minute is the floor because it is the finest check period the product
+//     schedules; a narrower bin would hold one probe and buy nothing over the
+//     row fetch this replaces;
+//   - 1 hour is the ceiling because the seam sits immediately next to the HOUR
+//     rollups on the same chart. A coarser seam would make the recent end of the
+//     series less detailed than its middle, which reads as the chart degrading
+//     as data gets fresher.
+//
+// 24 h page → 15 min (~96 seam points, and the raw retention default is 24 h so
+// the seam is the whole window). 7, 30 and 90 day pages → 1 h, where the seam is
+// the newest ~26 h and the hour rollups continue at the same resolution.
+func seamBinWidth(windowSpan time.Duration) time.Duration {
+	steps := []time.Duration{
+		time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute,
+		15 * time.Minute, 30 * time.Minute, time.Hour,
+	}
+
+	ideal := windowSpan / responseTimeLimit
+
+	for _, step := range steps {
+		if step >= ideal {
+			return step
+		}
+	}
+
+	return time.Hour
+}
+
+// fetchResponseTimeSeam loads the seam half of the response-time series: the raw
+// probes newer than the rollups, pre-folded by the database into one point per
+// (check, region, bin), and materialised as in-memory models.PeriodTypeSeam rows
+// so the trim and the point builder downstream keep working on one []*Result.
+//
+// This is the spec's whole point. The seam used to be fetched as ROWS — ~1 337
+// raw probes per check on a 7-day page, 292 843 for a 200-check one — of which
+// subsampleRows kept about one in ninety and plotted them as if they were
+// representative. A probe picked every ninety minutes is not a response-time
+// series. Each bin is now a p95 over every probe in it, which is the same kind of
+// number the hour rollup beside it carries and the same kind of number the hour
+// rollup that eventually REPLACES it will carry.
+//
+// A failed fetch degrades to "no seam" rather than to no chart: the rollup tier
+// has already been read and still renders the older part of the window.
+func (s *Service) fetchResponseTimeSeam(
+	ctx context.Context, orgUID string, checkUIDs []string, since time.Time, windowSpan time.Duration,
+) []*models.Result {
+	bins, err := s.db.AggregateResponseTimeBins(
+		sloghook.WithCallsite(ctx, "statuspages.response_time_seam"),
+		&models.ResponseTimeBinFilter{
+			OrganizationUID: orgUID,
+			CheckUIDs:       checkUIDs,
+			Since:           since,
+			BinDuration:     seamBinWidth(windowSpan),
+		})
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load status page response-time seam bins",
+			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
+
+		return nil
+	}
+
+	rows := make([]*models.Result, 0, len(bins))
+
+	for i := range bins {
+		rows = append(rows, seamResult(&bins[i]))
+	}
+
+	return rows
+}
+
+// seamResult lifts one database-computed bin into the in-memory Result the rest
+// of the response-time path speaks. It is the seam's counterpart to
+// uptimebar.StatsForBucket, and the ONLY translation between the two shapes.
+//
+// The row is shaped like a ROLLUP, not like a probe, and that is deliberate:
+// TotalChecks/SuccessfulChecks carry the bin's counts so
+// uptimebar.StatsForResult's accumulateAgg folds it exactly as it folds an hour
+// row, and DurationP95 is what buildResponseTimeData already prefers over
+// Duration. `Duration` stays nil — a bin has no single response time, and filling
+// it with the average would hand a fallback to any reader that checked Duration
+// first.
+//
+// PeriodStart is the bin start, like a rollup's period_start, so the point's x
+// position is the bin and not the last probe in it. PeriodEnd stays nil: this row
+// is never persisted (see models.PeriodTypeSeam) and nothing on the read path
+// reads it.
+func seamResult(bin *models.ResponseTimeBin) *models.Result {
+	status := uptimebar.DominantStatus(bin.StatusCounts)
+	total, up := bin.Total, bin.Up
+
+	row := &models.Result{
+		PeriodType:       models.PeriodTypeSeam,
+		CheckUID:         bin.CheckUID,
+		Region:           bin.Region,
+		PeriodStart:      bin.BinStart,
+		TotalChecks:      &total,
+		SuccessfulChecks: &up,
+		DurationP95:      bin.DurationP95,
+		DurationAvg:      bin.DurationAvg,
+		DurationMin:      bin.DurationMin,
+		DurationMax:      bin.DurationMax,
+	}
+
+	// A bin with no countable probe at all has no status to report; leaving it
+	// nil is what makes buildResponseTimeData render the point as "no data"
+	// rather than inventing one.
+	if status != 0 {
+		row.Status = &status
+	}
+
+	return row
+}
+
+// isFineResponseTimeTier reports whether a row belongs to the FINE end of the
+// response-time series: a raw probe or a seam bin. Both sort ahead of a rollup on
+// a period_start tie and both draw from the same tier budget, because the seam IS
+// the raw tier — the same probes, folded in the database instead of in Go.
+func isFineResponseTimeTier(periodType string) bool {
+	return periodType == models.PeriodTypeRaw || periodType == models.PeriodTypeSeam
 }
 
 // sortResponseTimeRows is the total order shared by every trim path: newest
@@ -3179,11 +3338,11 @@ func sortResponseTimeRows(rows []*models.Result) {
 			return rows[i].PeriodStart.After(rows[j].PeriodStart)
 		}
 
-		iRaw := rows[i].PeriodType == models.PeriodTypeRaw
-		jRaw := rows[j].PeriodType == models.PeriodTypeRaw
+		iFine := isFineResponseTimeTier(rows[i].PeriodType)
+		jFine := isFineResponseTimeTier(rows[j].PeriodType)
 
-		if iRaw != jRaw {
-			return iRaw
+		if iFine != jFine {
+			return iFine
 		}
 
 		return rows[i].UID > rows[j].UID // uid DESC — matches the pre-2026-08-22-05 query
@@ -3270,58 +3429,36 @@ func responseTimeRowsHaveSignal(rows []*models.Result) bool {
 // cluster at one edge (a region that came back an hour ago) still shows.
 const tierBudgetFloor = 8
 
-// responseTimeRawFetchCap bounds how many raw rows the windowed fetch reads
-// per region. Covering the whole raw seam (RetentionRaw + the aggregation-lag
-// margin) needs one row per probe — 1 440 for a 1-minute check, 8 640 for a
-// 10-second one — and sub-minute cadences make the honest number unbounded, so
-// the seam is capped and a faster check than the cap allows simply shows a
-// shorter seam (it kept that limitation before the window too, at 100 rows).
-const responseTimeRawFetchCap = 2000
-
-// responseTimePerRegionBudget sizes the per-REGION row budget each tier branch
-// of the WINDOWED fetch may return. Both branches share one LIMIT, so it has
-// to cover the larger of the two appetites:
+// responseTimePerRegionBudget sizes the per-REGION row budget the WINDOWED
+// fetch's ROLLUP branch may return. It must cover every bucket inside the window
+// (one row per bucket per tier: ~25 rows per day — 24 hours + 1 day), or the day
+// rollups that anchor the window's old end are truncated away at the database and
+// the budget split in trimWindowedResponseTimeRows never sees them.
 //
-//   - the ROLLUP branch must return every bucket inside the window (one row per
-//     bucket per tier: ~25 rows per day — 24 hours + 1 day), or the day rollups
-//     that anchor the window's old end are truncated away at the DB and the
-//     budget split in trimWindowedResponseTimeRows never sees them;
-//   - the RAW branch must return the whole raw seam so it can be evenly
-//     sub-sampled to its (much smaller) chart budget — taking only the newest
-//     N raw rows would leave the older part of the seam unfetched and open a
-//     white gap between the newest hour rollup and the kept raw points.
+// It used to have to cover a second, much larger appetite: the RAW branch needed
+// one row per probe across the whole seam — 1 440 rows for a 1-minute check,
+// 8 640 for a 10-second one — because the seam was fetched as rows and had to
+// arrive whole before Go could sub-sample it evenly. That is gone (spec
+// 2026-09-22-06): the seam is now folded per bin in the database, so it is not
+// subject to this budget at all, and neither the check's period nor the raw
+// retention is an input here any more. The row cap that bounded the raw appetite
+// went with it — the rollup appetite is inherently bounded by
+// responseTimeRollupSpan and describes rows that really exist, rather than a
+// cadence that could be arbitrarily fast.
 //
-// The result is capped at responseTimeRawFetchCap so a sub-minute check cannot
-// unbound the fetch. A zero windowStart keeps the legacy budget: the unbounded
-// path trims to the newest responseTimeLimit rows anyway, so reading more than
-// the legacy budget would only cost I/O.
-func responseTimePerRegionBudget(windowSpan, checkPeriod time.Duration, retentionRawHours int) int {
+// A zero windowSpan keeps the legacy budget: the unbounded path trims to the
+// newest responseTimeLimit rows anyway, so reading more would only cost I/O.
+func responseTimePerRegionBudget(windowSpan time.Duration) int {
 	if windowSpan <= 0 {
 		return responseTimeLimit
 	}
 
-	// Rollup appetite: ~25 buckets per day, rounded up, plus slack for the
-	// month tier and the window's partial first day.
+	// ~25 buckets per day, rounded up, plus slack for the month tier and the
+	// window's partial first day.
 	rollupAppetite := int(math.Ceil(windowSpan.Hours()/24))*25 + 2
 
-	// Raw appetite: one row per probe across the seam, at the check's own
-	// period, floored at a 1-minute period so sub-minute cadences scale with
-	// the cap rather than the seam.
-	seam := time.Duration(retentionRawHours)*time.Hour + rawSeamMargin
-	if seam > windowSpan {
-		seam = windowSpan
-	}
-
-	period := max(checkPeriod, time.Minute)
-	rawAppetite := int(math.Ceil(seam.Hours() * float64(time.Hour) / float64(period)))
-
-	return min(max(rollupAppetite, rawAppetite, responseTimeLimit), responseTimeRawFetchCap)
+	return max(rollupAppetite, responseTimeLimit)
 }
-
-// rawSeamMargin mirrors uptimebar's aggregation-lag padding for the raw tier's
-// lower bound — the same 2 h the uptimebar clamp uses — so the raw appetite
-// covers exactly the span the raw branch can return rows from.
-const rawSeamMargin = 2 * time.Hour
 
 // trimWindowedResponseTimeRows spreads one region's in-window rows across the
 // window within responseTimeLimit points. rows arrive newest-first.
@@ -3359,7 +3496,13 @@ func trimWindowedResponseTimeRows(
 
 	for _, row := range rows {
 		switch row.PeriodType {
-		case models.PeriodTypeRaw:
+		// The seam is budgeted as the raw tier, because it IS the raw tier: the
+		// same probes over the same span, folded per bin in the database instead
+		// of streamed into Go. That keeps responseTimeTierBudgets' meaning
+		// intact — its raw share is the share of the window the raw clamp covers
+		// — and it is why the seam's own budget is now a formality: the
+		// aggregate already returns at most one bin per point.
+		case models.PeriodTypeRaw, models.PeriodTypeSeam:
 			rawRows = append(rawRows, row)
 		case models.PeriodTypeHour:
 			hourRows = append(hourRows, row)
@@ -3502,12 +3645,19 @@ func subsampleRows(rows []*models.Result, keep int) []*models.Result {
 // (every check then uses the default).
 //
 // The per-region budget itself is window-aware (spec 2026-09-21-03): a windowed
-// fetch must be able to pull every rollup bucket in the window and the whole
-// raw seam (responseTimePerRegionBudget), while a zero windowStart keeps the
-// legacy responseTimeLimit-per-region sizing the unbounded trim expects.
+// fetch must be able to pull every rollup bucket in the window
+// (responseTimePerRegionBudget), while a zero windowStart keeps the legacy
+// responseTimeLimit-per-region sizing the unbounded trim expects. It no longer
+// has to cover the raw seam as well — the seam is fetched as bins, outside this
+// budget (spec 2026-09-22-06) — which is also why the check's own period is no
+// longer an input.
+//
+// GetChecksByUIDs is still the one query this costs: the budget is per region
+// and the multiplier is the check's OWN region fan-out, which only the check row
+// carries.
 func (s *Service) responseTimeBudgets(
 	ctx context.Context, orgUID string, checkUIDs []string,
-	windowStart, now time.Time, hints uptimebar.Hints,
+	windowStart, now time.Time,
 ) map[string]int {
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
 	if err != nil {
@@ -3541,12 +3691,8 @@ func (s *Service) responseTimeBudgets(
 		}
 
 		perRegion := responseTimeLimit
-
-		// The windowed budget is period-aware: the raw seam's appetite scales
-		// with the check's own period, the rollup appetite does not.
 		if windowed {
-			perRegion = responseTimePerRegionBudget(
-				windowSpan, time.Duration(check.Period), hints.RetentionRawHours)
+			perRegion = responseTimePerRegionBudget(windowSpan)
 		}
 
 		budgets[checkUID] = perRegion * min(len(check.Regions)+1, regionFanoutCap)

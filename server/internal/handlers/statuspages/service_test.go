@@ -985,10 +985,20 @@ func TestViewStatusPage_NullRegionSeries(t *testing.T) {
 	r.NotNil(avail)
 	r.Len(avail.ResponseTimeSeries, 1, "NULL-region rows collapse into one series")
 	r.Nil(avail.ResponseTimeSeries[0].Region)
-	// 5 seeded points + the one "created" lifecycle marker CreateCheck always
-	// inserts (also NULL-region) — it rides along in this same group exactly
-	// like the old single-series behavior always tolerated it.
-	r.Len(avail.ResponseTimeSeries[0].Points, 6)
+
+	// ONE point, not six. Since spec 2026-09-22-06 the seam is binned in the
+	// database — 1 h bins on a 7-day page — so the five probes, all inside the same
+	// minute, are ONE point carrying all five. And the "created" lifecycle marker
+	// CreateCheck always inserts no longer rides along at all: the aggregate drops
+	// the statuses excluded from availability before binning, which is the marker
+	// phantom of spec 2026-09-21-03 A.4 disappearing at the source rather than
+	// being filtered downstream.
+	points := avail.ResponseTimeSeries[0].Points
+	r.Len(points, 1, "five probes in one bin are one seam point")
+	r.Equal(5, points[0].TotalChecks, "the point carries every probe in its bin")
+	r.Equal(5, points[0].SuccessfulChecks)
+	r.NotNil(points[0].DurationP95, "the point is a p95 over the bin, not one probe")
+	r.InDelta(42.0, *points[0].DurationP95, 0.001)
 }
 
 // TestValidateSlugLengthBoundaries pins the 3-100 char slug length window
