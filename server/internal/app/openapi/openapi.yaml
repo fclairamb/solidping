@@ -11329,6 +11329,14 @@ components:
           type: string
         checkName:
           type: string
+        kind:
+          type: string
+          enum: [check, slo_burn, degraded]
+          description: >-
+            What the incident is ABOUT: `check` (an outage), `slo_burn` (an
+            error-budget burn-rate alert) or `degraded` (a check that fails
+            intermittently or answers far slower than usual — the target may well
+            be up right now).
         state:
           type: string
           enum: [active, resolved]

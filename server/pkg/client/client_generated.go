@@ -1155,6 +1155,27 @@ func (e IncidentAttachmentTrigger) Valid() bool {
 	}
 }
 
+// Defines values for IncidentDetailKind.
+const (
+	IncidentDetailKindCheck    IncidentDetailKind = "check"
+	IncidentDetailKindDegraded IncidentDetailKind = "degraded"
+	IncidentDetailKindSloBurn  IncidentDetailKind = "slo_burn"
+)
+
+// Valid indicates whether the value is a known member of the IncidentDetailKind enum.
+func (e IncidentDetailKind) Valid() bool {
+	switch e {
+	case IncidentDetailKindCheck:
+		return true
+	case IncidentDetailKindDegraded:
+		return true
+	case IncidentDetailKindSloBurn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IncidentDetailState.
 const (
 	IncidentDetailStateActive   IncidentDetailState = "active"
@@ -4790,6 +4811,9 @@ type IncidentDetail struct {
 	// FlapLevel The check's flap count at the moment this incident opened or last reopened — a snapshot, not a live value. 0 (omitted) means it opened at the base level, not escalated by the adaptive-recovery flapping layer.
 	FlapLevel *int `json:"flapLevel,omitempty"`
 
+	// Kind What the incident is ABOUT: `check` (an outage), `slo_burn` (an error-budget burn-rate alert) or `degraded` (a check that fails intermittently or answers far slower than usual — the target may well be up right now).
+	Kind *IncidentDetailKind `json:"kind,omitempty"`
+
 	// Number Short per-organization incident reference, rendered as `#42` in the dashboard, Slack and Telegram. Assigned at creation, never reused.
 	Number     *int64               `json:"number,omitempty"`
 	ResolvedAt *time.Time           `json:"resolvedAt,omitempty"`
@@ -4798,6 +4822,9 @@ type IncidentDetail struct {
 	Title      *string              `json:"title,omitempty"`
 	Uid        *openapi_types.UUID  `json:"uid,omitempty"`
 }
+
+// IncidentDetailKind What the incident is ABOUT: `check` (an outage), `slo_burn` (an error-budget burn-rate alert) or `degraded` (a check that fails intermittently or answers far slower than usual — the target may well be up right now).
+type IncidentDetailKind string
 
 // IncidentDetailState defines model for IncidentDetail.State.
 type IncidentDetailState string

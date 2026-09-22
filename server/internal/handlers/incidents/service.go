@@ -1794,6 +1794,12 @@ type IncidentResponse struct {
 	CheckUID       string     `json:"checkUid"`
 	CheckSlug      *string    `json:"checkSlug,omitempty"`
 	CheckName      *string    `json:"checkName,omitempty"`
+	// Kind discriminates what the incident is ABOUT: `check` (an outage),
+	// `slo_burn` (an error-budget burn alert) or `degraded` (intermittence or
+	// latency, spec 2026-09-22-03). Always emitted — the dashboard cannot render
+	// an amber band for a degraded episode, or keep it out of an outage count,
+	// without being told which it is looking at.
+	Kind           string     `json:"kind"`
 	State          string     `json:"state"`
 	StartedAt      time.Time  `json:"startedAt"`
 	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
@@ -1888,6 +1894,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		UID:                 inc.UID,
 		Number:              inc.Number,
 		CheckUID:            inc.CheckUID,
+		Kind:                inc.Kind,
 		State:               stateToString(inc.State),
 		StartedAt:           inc.StartedAt,
 		ResolvedAt:          inc.ResolvedAt,
