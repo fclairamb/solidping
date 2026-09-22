@@ -28,10 +28,10 @@ var errDegradedWindowTooLarge = fmt.Errorf("must be <= %d probes", maxDegradedWi
 // defaults (5/60, 3/6, threshold 0, enabled).
 func applyDegradedCreate(check *models.Check, req *CreateCheckRequest) error {
 	values := degradedValues{
-		Failures:       req.DegradedFailures,
-		FailuresWindow: req.DegradedFailuresWindow,
-		Slow:           req.DegradedSlow,
-		SlowWindow:     req.DegradedSlowWindow,
+		Failures:        req.DegradedFailures,
+		FailuresWindow:  req.DegradedFailuresWindow,
+		Slow:            req.DegradedSlow,
+		SlowWindow:      req.DegradedSlowWindow,
 		SlowThresholdMs: req.SlowThresholdMs,
 	}
 	if err := validateDegradedFields(values); err != nil {

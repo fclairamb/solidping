@@ -5149,6 +5149,31 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 // 2026-08-21-07) to an UpdateStatusPage query. Split out of UpdateStatusPage
 // purely to keep that already-long one-branch-per-column function under the
 // statement budget.
+// applyStatusPagePublicationColumns sets the incident-publication settings: the
+// auto-publish trio (spec 2026-08-19-08) and the degraded-incident opt-in (spec
+// 2026-09-22-03). Split out of UpdateStatusPage to keep it under the funlen cap.
+func applyStatusPagePublicationColumnsSQLite(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
+	if update.AutoPublish != nil {
+		query = query.Set("auto_publish = ?", *update.AutoPublish)
+	}
+
+	if update.AutoPublishDelaySeconds != nil {
+		query = query.Set("auto_publish_delay_seconds = ?", *update.AutoPublishDelaySeconds)
+	}
+
+	if update.AutoResolve != nil {
+		query = query.Set("auto_resolve = ?", *update.AutoResolve)
+	}
+
+	if update.PublishDegraded != nil {
+		query = query.Set("publish_degraded = ?", *update.PublishDegraded)
+	}
+
+	return query
+}
+
 func applyStatusPageAccessColumns(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
 ) *bun.UpdateQuery {
@@ -5187,9 +5212,9 @@ func applyStatusPageKioskColumn(
 	return query.Set("kiosk_token_hash = ?", *update.KioskTokenHash)
 }
 
-// UpdateStatusPage updates a status page by UID.
-//
-//nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
+// UpdateStatusPage updates a status page by UID. The optional-column branches
+// that used to make this exceed the complexity cap now live in the
+// applyStatusPage*Columns helpers below.
 func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *models.StatusPageUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPage)(nil)).
@@ -5241,21 +5266,7 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("language = ?", *update.Language)
 	}
 
-	if update.AutoPublish != nil {
-		query = query.Set("auto_publish = ?", *update.AutoPublish)
-	}
-
-	if update.AutoPublishDelaySeconds != nil {
-		query = query.Set("auto_publish_delay_seconds = ?", *update.AutoPublishDelaySeconds)
-	}
-
-	if update.AutoResolve != nil {
-		query = query.Set("auto_resolve = ?", *update.AutoResolve)
-	}
-
-	if update.PublishDegraded != nil {
-		query = query.Set("publish_degraded = ?", *update.PublishDegraded)
-	}
+	query = applyStatusPagePublicationColumnsSQLite(query, update)
 
 	query = applyStatusPageAccessColumns(query, update)
 

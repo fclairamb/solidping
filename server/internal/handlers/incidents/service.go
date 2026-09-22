@@ -112,6 +112,12 @@ const (
 	keyParentIncidentUID          = "parent_incident_uid"
 	keyParentCheckUID             = "parent_check_uid"
 	keyRollupDepth                = "rollup_depth"
+	// keyResolutionType names HOW an incident closed (auto | manual | expired |
+	// escalated) in the resolved event's payload. A shared constant because
+	// three separate resolve paths write it — the check state machine, the burn
+	// evaluator and the degraded evaluator — and a typo in one of them would
+	// silently drop the field from that path's notifications only.
+	keyResolutionType = "resolution_type"
 )
 
 // AttachmentStore is the attachment side of the incident lifecycle (spec
@@ -1790,10 +1796,10 @@ type IncidentResponse struct {
 	UID string `json:"uid"`
 	// Number is the short per-org reference rendered as `#42`. Every human-facing
 	// surface (dashboard, Slack, Telegram) addresses the incident by this.
-	Number         int64      `json:"number"`
-	CheckUID       string     `json:"checkUid"`
-	CheckSlug      *string    `json:"checkSlug,omitempty"`
-	CheckName      *string    `json:"checkName,omitempty"`
+	Number    int64   `json:"number"`
+	CheckUID  string  `json:"checkUid"`
+	CheckSlug *string `json:"checkSlug,omitempty"`
+	CheckName *string `json:"checkName,omitempty"`
 	// Kind discriminates what the incident is ABOUT: `check` (an outage),
 	// `slo_burn` (an error-budget burn alert) or `degraded` (intermittence or
 	// latency, spec 2026-09-22-03). Always emitted — the dashboard cannot render
@@ -3461,7 +3467,7 @@ func (s *Service) resolveIncidentByOrgUID(
 	payload := models.JSONMap{
 		payloadKeyVia:     req.Via,
 		"note":            req.Note,
-		"resolution_type": resolutionType,
+		keyResolutionType: resolutionType,
 		keyCheckUID:       incident.CheckUID,
 	}
 	// Best-effort: the check may have been deleted since the incident opened;

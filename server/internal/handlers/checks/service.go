@@ -835,11 +835,11 @@ type CheckResponse struct {
 	// omitempty: 0 is a meaningful value for every one of them (it turns a rule
 	// off), so a missing field would leave the form unable to tell "off" from
 	// "not sent".
-	DegradedFailures       int `json:"degradedFailures"`
-	DegradedFailuresWindow int `json:"degradedFailuresWindow"`
-	DegradedSlow           int `json:"degradedSlow"`
-	DegradedSlowWindow     int `json:"degradedSlowWindow"`
-	SlowThresholdMs        int `json:"slowThresholdMs"`
+	DegradedFailures       int  `json:"degradedFailures"`
+	DegradedFailuresWindow int  `json:"degradedFailuresWindow"`
+	DegradedSlow           int  `json:"degradedSlow"`
+	DegradedSlowWindow     int  `json:"degradedSlowWindow"`
+	SlowThresholdMs        int  `json:"slowThresholdMs"`
 	DegradedEnabled        bool `json:"degradedEnabled"`
 	// DegradedWouldFireAt is the dry run's stamp: the check page turns it into
 	// the "this check would have been flagged degraded at …; enable?" banner.

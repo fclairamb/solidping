@@ -233,8 +233,8 @@ func TestEvaluateMaintenanceIsNotASlot(t *testing.T) {
 	maintenanceDown.Maintenance = true
 
 	probes := []degraded.Probe{
-		maintenanceDown,                    // skipped entirely
-		probe(2, models.ResultStatusUp, 10), // slot 1
+		maintenanceDown,                      // skipped entirely
+		probe(2, models.ResultStatusUp, 10),  // slot 1
 		probe(3, models.ResultStatusDown, 0), // slot 2
 		probe(4, models.ResultStatusDown, 0), // slot 3
 	}

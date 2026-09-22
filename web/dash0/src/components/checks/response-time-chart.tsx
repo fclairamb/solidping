@@ -82,11 +82,14 @@ interface ResponseTimeChartProps {
    * Degraded episodes to shade, as epoch-ms spans (spec 2026-09-22-03).
    *
    * A band, not dots: seven isolated red dots spread over an hour do not read
-   * as an event, which is exactly why the motivating episode went unnoticed. An
-   * open episode passes `to: Date.now()` from the caller — the chart does not
-   * invent an end.
+   * as an event, which is exactly why the motivating episode went unnoticed.
+   *
+   * An open episode passes an undefined `to` and is drawn to the chart's own
+   * right edge. The caller deliberately does NOT substitute `Date.now()`: that
+   * would be a clock read during render, and the domain edge is the honest
+   * answer anyway — the band means "still happening as far as this chart sees".
    */
-  degradedSpans?: Array<{ from: number; to: number; label?: string }>;
+  degradedSpans?: Array<{ from: number; to?: number; label?: string }>;
 }
 
 export interface ChartPoint {
@@ -1275,9 +1278,9 @@ export function ResponseTimeChart({
                   per check, exactly as the incident state machine is. */}
                 {(degradedSpans ?? []).map((span) => (
                   <ReferenceArea
-                    key={`degraded-${span.from}-${span.to}`}
+                    key={`degraded-${span.from}-${span.to ?? "open"}`}
                     x1={span.from}
-                    x2={span.to}
+                    x2={span.to ?? domainMax}
                     fill="var(--chart-degraded, #d97706)"
                     fillOpacity={0.14}
                     stroke="var(--chart-degraded, #d97706)"
@@ -1337,11 +1340,7 @@ export function ResponseTimeChart({
                       // Mutating a ref outside the React commit phase is safe —
                       // it doesn't trigger a re-render.
                       dotPositions.current[uid] = { cx, cy };
-                      const fill = dotFillColor(
-                        payload.status,
-                        COLOR_DOWN,
-                        COLOR_UP,
-                      );
+                      const fill = dotFillColor(payload.status, COLOR_DOWN, COLOR_UP);
                       const isSelected = selectedUid === uid;
                       return (
                         <circle
@@ -1379,11 +1378,7 @@ export function ResponseTimeChart({
                       // Always cache the active-dot anchor so the pinned-result box
                       // works even when per-point dots are off.
                       dotPositions.current[uid] = { cx, cy };
-                      const fill = dotFillColor(
-                        payload.status,
-                        COLOR_DOWN,
-                        COLOR_UP,
-                      );
+                      const fill = dotFillColor(payload.status, COLOR_DOWN, COLOR_UP);
                       return (
                         <circle
                           key={reactKey}
@@ -1449,11 +1444,7 @@ export function ResponseTimeChart({
                           // Down results stay visible as red dots on
                           // their line even though the line itself uses
                           // the region color, not the status gradient.
-                          const fill = dotFillColor(
-                            payload.status,
-                            COLOR_DOWN,
-                            color,
-                          );
+                          const fill = dotFillColor(payload.status, COLOR_DOWN, color);
                           const isSelected = selectedUid === uid;
                           return (
                             <circle
@@ -1496,11 +1487,7 @@ export function ResponseTimeChart({
                           }
                           const uid = payload.uid;
                           dotPositions.current[uid] = { cx, cy };
-                          const fill = dotFillColor(
-                            payload.status,
-                            COLOR_DOWN,
-                            color,
-                          );
+                          const fill = dotFillColor(payload.status, COLOR_DOWN, color);
                           return (
                             <circle
                               key={reactKey}

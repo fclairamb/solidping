@@ -55,6 +55,8 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"incident-resolved.html":           resolvedIncidentFixture,
 	"incident-burn-created.html":       burnIncidentFixture,
 	"incident-burn-resolved.html":      resolvedBurnIncidentFixture,
+	"incident-degraded-created.html":   degradedIncidentFixture,
+	"incident-degraded-resolved.html":  resolvedDegradedIncidentFixture,
 	"escalation.html":                  escalationFixture,
 	"test-email.html":                  testEmailFixture,
 	"paging-nudge.html":                pagingNudgeFixture,
@@ -144,6 +146,33 @@ func burnIncidentFixture() map[string]any {
 	fixture["BurnBudgetRemaining"] = "1h30m"
 	fixture["BurnProjectedExhaustion"] = "2026-07-05 14:30:00 UTC"
 	fixture["BurnTarget"] = "99.9%"
+
+	return fixture
+}
+
+// degradedIncidentFixture is the degraded-detection notice (spec 2026-09-22-03),
+// carrying the motivating episode's own numbers: 7 failures in 60 probes,
+// 93.8% availability, and a target that is up at this very moment.
+func degradedIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["DegradedReason"] = "7 failures in the last 60 probes (93.8%)"
+	fixture["DegradedStatus"] = "Currently up."
+	fixture["DegradedWindow"] = "14:35 – 15:28 UTC"
+	fixture["DegradedWindowURL"] = "https://solidping.example/d/orgs/acme/checks/acme-api" +
+		"?graphFrom=1790778900000&graphTo=1790782080000"
+	fixture["DegradedFailureLine"] = "7 failures in the last 60 probes (93.8%) (rule: 5 of 60 probes)"
+	fixture["DegradedSlowLine"] = "3 of the last 6 probes were slower than 1000ms (rule: 3 of 6 probes over 1000ms)"
+
+	return fixture
+}
+
+// resolvedDegradedIncidentFixture is the cleared half: the pattern stopped, so
+// there is nothing left to acknowledge.
+func resolvedDegradedIncidentFixture() map[string]any {
+	fixture := degradedIncidentFixture()
+	fixture["AckURL"] = ""
+	fixture["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fixture["Duration"] = "53m"
 
 	return fixture
 }

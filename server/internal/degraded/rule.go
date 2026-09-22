@@ -139,16 +139,18 @@ type Outcome struct {
 }
 
 // Firing reports whether either rule fired.
-func (o Outcome) Firing() bool {
+func (o *Outcome) Firing() bool {
 	return o.Failure.Fired || o.Slow.Fired
 }
 
 // StartedAt is when the degraded condition began: the oldest matching probe of
 // whichever fired rule reaches furthest back. Zero when nothing fired.
-func (o Outcome) StartedAt() time.Time {
+func (o *Outcome) StartedAt() time.Time {
 	var out time.Time
 
-	for _, rule := range []RuleOutcome{o.Failure, o.Slow} {
+	rules := [...]*RuleOutcome{&o.Failure, &o.Slow}
+
+	for _, rule := range rules {
 		if !rule.Fired || rule.FirstMatchAt.IsZero() {
 			continue
 		}
@@ -179,7 +181,7 @@ func Evaluate(probes []Probe, params Params, now time.Time) Outcome {
 		out.Slow = evaluateRule(probes, params, now, params.Slow, params.SlowWindow, slow)
 	}
 
-	out.ResolveWindow = resolveWindow(params, out)
+	out.ResolveWindow = resolveWindow(&out)
 	out.CleanStreak = cleanStreak(probes, params, now, out.ResolveWindow)
 	out.WindowStart = windowStart(probes, params, now, out.ResolveWindow)
 
@@ -194,7 +196,9 @@ func evaluateRule(
 	out := RuleOutcome{Active: true, Threshold: threshold, Window: window}
 	maxAge := maxAge(params.Period, window)
 
-	for _, probe := range probes {
+	for index := range probes {
+		probe := &probes[index]
+
 		if out.Slots >= window {
 			break
 		}
@@ -205,7 +209,7 @@ func evaluateRule(
 
 		out.Slots++
 
-		if matches(probe) {
+		if matches(*probe) {
 			out.Matches++
 			// probes run newest first, so every later assignment is older.
 			out.FirstMatchAt = probe.At
@@ -229,7 +233,9 @@ func cleanStreak(probes []Probe, params Params, now time.Time, window int) int {
 	maxAge := maxAge(params.Period, window)
 	streak := 0
 
-	for _, probe := range probes {
+	for index := range probes {
+		probe := &probes[index]
+
 		if streak >= window {
 			break
 		}
@@ -260,7 +266,9 @@ func windowStart(probes []Probe, params Params, now time.Time, window int) time.
 
 	var out time.Time
 
-	for _, probe := range probes {
+	for index := range probes {
+		probe := &probes[index]
+
 		if slots >= window {
 			break
 		}
@@ -277,10 +285,10 @@ func windowStart(probes []Probe, params Params, now time.Time, window int) time.
 }
 
 // resolveWindow picks the N that governs resolution.
-func resolveWindow(params Params, out Outcome) int {
+func resolveWindow(out *Outcome) int {
 	window := 0
 
-	consider := func(rule RuleOutcome, onlyFired bool) {
+	consider := func(rule *RuleOutcome, onlyFired bool) {
 		if !rule.Active || (onlyFired && !rule.Fired) {
 			return
 		}
@@ -291,14 +299,14 @@ func resolveWindow(params Params, out Outcome) int {
 	}
 
 	if out.Firing() {
-		consider(out.Failure, true)
-		consider(out.Slow, true)
+		consider(&out.Failure, true)
+		consider(&out.Slow, true)
 
 		return window
 	}
 
-	consider(out.Failure, false)
-	consider(out.Slow, false)
+	consider(&out.Failure, false)
+	consider(&out.Slow, false)
 
 	return window
 }
@@ -316,7 +324,7 @@ func maxAge(period time.Duration, window int) time.Duration {
 // maxAge (unknown period) disables the rule rather than dropping everything —
 // refusing to evaluate a check whose period we cannot read would be a silent
 // hole, and the window count still bounds the query.
-func tooOld(probe Probe, now time.Time, maxAge time.Duration) bool {
+func tooOld(probe *Probe, now time.Time, maxAge time.Duration) bool {
 	if maxAge <= 0 {
 		return false
 	}

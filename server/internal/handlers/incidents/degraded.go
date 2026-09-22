@@ -246,7 +246,7 @@ func (s *Service) AutoResolveDegradedIncident(
 // annotation, and overwriting it would silently detach the child from the rollup
 // that IS suppressing it.
 func (s *Service) EscalateDegradedIncident(
-	ctx context.Context, degradedIncident, outage *models.Incident, at time.Time,
+	ctx context.Context, degradedIncident, outage *models.Incident, resolvedAt time.Time,
 ) error {
 	if degradedIncident == nil || outage == nil {
 		return nil
@@ -260,7 +260,7 @@ func (s *Service) EscalateDegradedIncident(
 	details[keyEscalatedToIncidentUID] = outage.UID
 
 	if err := s.closeDegradedIncident(
-		ctx, degradedIncident, at, models.ResolutionTypeEscalated, details,
+		ctx, degradedIncident, resolvedAt, models.ResolutionTypeEscalated, details,
 	); err != nil {
 		return err
 	}
@@ -316,7 +316,7 @@ func (s *Service) closeDegradedIncident(
 		keyCheckUID:        incident.CheckUID,
 		keyResolvedAt:      resolvedAt,
 		keyDurationSeconds: int64(resolvedAt.Sub(incident.StartedAt).Seconds()),
-		"resolution_type":  resolutionType,
+		keyResolutionType:  resolutionType,
 	}
 
 	if check, err := s.db.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); err == nil && check != nil {

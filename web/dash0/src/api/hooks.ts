@@ -7530,11 +7530,7 @@ export interface IncidentPublication {
 export function useIncidentPublications(
   org: string,
   statusPageUid: string,
-  options?: {
-    activeOnly?: boolean;
-    staleOnly?: boolean;
-    refetchInterval?: number;
-  },
+  options?: { activeOnly?: boolean; staleOnly?: boolean; refetchInterval?: number },
 ) {
   return useQuery({
     queryKey: [
@@ -8299,10 +8295,7 @@ export function useSetOrgParameter(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      key,
-      ...request
-    }: SetOrgParameterRequest & { key: string }) =>
+    mutationFn: ({ key, ...request }: SetOrgParameterRequest & { key: string }) =>
       apiFetch<OrgParameter>(
         `/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`,
         { method: "PUT", body: JSON.stringify(request) },
@@ -8318,12 +8311,9 @@ export function useDeleteOrgParameter(org: string) {
 
   return useMutation({
     mutationFn: (key: string) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`,
-        {
-          method: "DELETE",
-        },
-      ),
+      apiFetch<void>(`/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orgParameters", org] });
     },

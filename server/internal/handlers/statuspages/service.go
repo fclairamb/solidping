@@ -1115,6 +1115,28 @@ func (s *Service) ListStatusPages(ctx context.Context, orgSlug string) ([]Status
 }
 
 // applyCreateFields sets optional fields from the create request onto the page model.
+// applyCreatePublicationFields copies the incident-publication settings — the
+// auto-publish trio (spec 2026-08-19-08) plus the degraded opt-in (spec
+// 2026-09-22-03) — off a create request. Split from applyCreateFields so neither
+// grows past the complexity cap as the publication policy gains flags.
+func applyCreatePublicationFields(page *models.StatusPage, req *CreateStatusPageRequest) {
+	if req.AutoPublish != nil {
+		page.AutoPublish = *req.AutoPublish
+	}
+
+	if req.AutoPublishDelaySeconds != nil {
+		page.AutoPublishDelaySeconds = *req.AutoPublishDelaySeconds
+	}
+
+	if req.AutoResolve != nil {
+		page.AutoResolve = *req.AutoResolve
+	}
+
+	if req.PublishDegraded != nil {
+		page.PublishDegraded = *req.PublishDegraded
+	}
+}
+
 func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	if req.Description != nil {
 		page.Description = req.Description
@@ -1154,21 +1176,7 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 		page.Settings.Branding = &models.BrandingSettings{HideBranding: *req.HideBranding}
 	}
 
-	if req.AutoPublish != nil {
-		page.AutoPublish = *req.AutoPublish
-	}
-
-	if req.AutoPublishDelaySeconds != nil {
-		page.AutoPublishDelaySeconds = *req.AutoPublishDelaySeconds
-	}
-
-	if req.AutoResolve != nil {
-		page.AutoResolve = *req.AutoResolve
-	}
-
-	if req.PublishDegraded != nil {
-		page.PublishDegraded = *req.PublishDegraded
-	}
+	applyCreatePublicationFields(page, req)
 
 	// An empty stylesheet is "no stylesheet": leave the column NULL rather than
 	// storing '', matching the update path's clear semantics.

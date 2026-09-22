@@ -499,8 +499,8 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 	blocks := s.buildIncidentCreatedBlocks(payload, headline, fields, checkURL, incidentURL)
 	blocks = prependMentionBlock(blocks, payload.OnCallMentions)
 
-	// Amber, not red, for a degraded incident: the colour is the fastest-read part
-	// of a Slack alert, and dressing intermittence in the outage colour is the
+	// Amber, not red, for a degraded incident: the color is the fastest-read part
+	// of a Slack alert, and dressing intermittence in the outage color is the
 	// same mistake as dressing it in the outage words.
 	color := colorDanger
 	if DegradedInfoFor(payload.Incident) != nil {

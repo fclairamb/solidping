@@ -146,49 +146,18 @@ func (s *Service) evaluateCheck(ctx context.Context, check *models.Check, now ti
 		return err
 	}
 
-	return s.applyLifecycle(ctx, check, outcome, open, now, &update)
+	return s.applyLifecycle(ctx, check, &outcome, open, now, &update)
 }
 
 // applyLifecycle is the fire / update / resolve / dry-run state machine.
 func (s *Service) applyLifecycle(
-	ctx context.Context, check *models.Check, outcome degraded.Outcome,
+	ctx context.Context, check *models.Check, outcome *degraded.Outcome,
 	open *models.Incident, now time.Time, update *models.CheckUpdate,
 ) error {
 	snapshot := snapshotFor(check, outcome)
 
 	if outcome.Firing() {
-		if !check.DegradedEnabled {
-			// The dry run. It opens NOTHING and only records the first moment the
-			// rules would have fired, which is what the check page's banner and the
-			// checks list's `wouldHaveFired` filter read. Earliest-wins: the banner
-			// is past tense ("would have been flagged degraded at 14:37"), so a
-			// later quiet sweep must not erase it.
-			if check.DegradedWouldFireAt == nil {
-				stamp := now
-				update.DegradedWouldFireAt = &stamp
-				update.ClearDegradedWouldFireAt = false
-			}
-
-			return nil
-		}
-
-		if open != nil {
-			return s.incidents.UpdateDegradedIncident(ctx, open, snapshot)
-		}
-
-		startedAt := outcome.StartedAt()
-		if startedAt.IsZero() {
-			startedAt = now
-		}
-
-		_, err := s.incidents.OpenDegradedIncident(ctx, &incidents.OpenDegradedIncidentRequest{
-			Check:     check,
-			StartedAt: startedAt,
-			Title:     Title(check, snapshot),
-			Snapshot:  snapshot,
-		})
-
-		return err
+		return s.applyFiring(ctx, check, outcome, open, now, update, snapshot)
 	}
 
 	if open == nil {
@@ -202,6 +171,47 @@ func (s *Service) applyLifecycle(
 	}
 
 	return s.incidents.AutoResolveDegradedIncident(ctx, open, now, snapshot)
+}
+
+// applyFiring is the firing half of the state machine: the dry-run stamp, the
+// in-place update of an already-open incident, or a fresh open.
+func (s *Service) applyFiring(
+	ctx context.Context, check *models.Check, outcome *degraded.Outcome,
+	open *models.Incident, now time.Time, update *models.CheckUpdate,
+	snapshot *incidents.DegradedSnapshot,
+) error {
+	if !check.DegradedEnabled {
+		// The dry run. It opens NOTHING and only records the first moment the
+		// rules would have fired, which is what the check page's banner and the
+		// checks list's `wouldHaveFired` filter read. Earliest-wins: the banner is
+		// past tense ("would have been flagged degraded at 14:37"), so a later
+		// quiet sweep must not erase it.
+		if check.DegradedWouldFireAt == nil {
+			stamp := now
+			update.DegradedWouldFireAt = &stamp
+			update.ClearDegradedWouldFireAt = false
+		}
+
+		return nil
+	}
+
+	if open != nil {
+		return s.incidents.UpdateDegradedIncident(ctx, open, snapshot)
+	}
+
+	startedAt := outcome.StartedAt()
+	if startedAt.IsZero() {
+		startedAt = now
+	}
+
+	_, err := s.incidents.OpenDegradedIncident(ctx, &incidents.OpenDegradedIncidentRequest{
+		Check:     check,
+		StartedAt: startedAt,
+		Title:     Title(check, snapshot),
+		Snapshot:  snapshot,
+	})
+
+	return err
 }
 
 // checkIncidentOpen reports whether a kind='check' incident is open on the check.
@@ -298,7 +308,7 @@ func paramsFor(check *models.Check) degraded.Params {
 }
 
 // snapshotFor packs an outcome into the incident/notification payload.
-func snapshotFor(check *models.Check, outcome degraded.Outcome) *incidents.DegradedSnapshot {
+func snapshotFor(check *models.Check, outcome *degraded.Outcome) *incidents.DegradedSnapshot {
 	snapshot := &incidents.DegradedSnapshot{
 		Failures:       outcome.Failure.Threshold,
 		FailuresWindow: outcome.Failure.Window,
@@ -329,7 +339,7 @@ func snapshotFor(check *models.Check, outcome degraded.Outcome) *incidents.Degra
 // current evaluation would pick: the rule that closes an incident is the rule it
 // opened under, or a config edit mid-episode would silently change the exit
 // condition.
-func resolveWindow(open *models.Incident, outcome degraded.Outcome) int {
+func resolveWindow(open *models.Incident, outcome *degraded.Outcome) int {
 	if window, ok := incidents.DegradedResolveWindow(open); ok && window > 0 {
 		return window
 	}

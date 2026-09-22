@@ -457,10 +457,10 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		// ON for a new check, OFF for every pre-existing row (the column
 		// default). See DegradedEnabled.
 		DegradedEnabled: true,
-		Status:                    CheckStatusCreated,
-		StatusStreak:              0,
-		CreatedAt:                 now,
-		UpdatedAt:                 now,
+		Status:          CheckStatusCreated,
+		StatusStreak:    0,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 }
 
@@ -609,20 +609,20 @@ func NewCheckLabel(checkUID, labelUID string) *CheckLabel {
 
 // ListChecksFilter provides filtering options for listing checks.
 type ListChecksFilter struct {
-	Labels          map[string]string // key:value pairs for AND filtering
-	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
-	Query           string            // search term for name/slug (case-insensitive substring)
-	Types           []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
-	Internal        *string           // "true", "false", or "all" — filter by internal status
-	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
+	Labels        map[string]string // key:value pairs for AND filtering
+	CheckGroupUID *string           // filter by check group UID; "none" = ungrouped checks only
+	Query         string            // search term for name/slug (case-insensitive substring)
+	Types         []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
+	Internal      *string           // "true", "false", or "all" — filter by internal status
+	Statuses      []CheckStatus     // optional filter by current status (up/down/etc.)
 	// WouldHaveFired restricts to checks the degraded dry run has flagged:
 	// `degraded_would_fire_at IS NOT NULL` (spec 2026-09-22-03). It is how an
 	// operator finds what enabling degraded detection would have caught, and it
 	// is the whole adoption path for a feature that ships off.
 	WouldHaveFired  bool
-	Limit           int               // max results to return (0 = no limit)
-	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
-	CursorUID       *string           // cursor: uid of last item from previous page
+	Limit           int        // max results to return (0 = no limit)
+	CursorCreatedAt *time.Time // cursor: created_at of last item from previous page
+	CursorUID       *string    // cursor: uid of last item from previous page
 
 	// SortByGroup opts into display-order pagination (sort=group): group
 	// sort_order asc, ungrouped last, then created_at DESC / uid DESC within a

@@ -71,10 +71,10 @@ func TestDegradedIncidentIsNotDowntime(t *testing.T) {
 // this spec, and a test that enumerates today's call sites cannot catch that. A
 // parser over the files that compute downtime can.
 var downtimeFilterFiles = map[string]string{ //nolint:gochecknoglobals // test fixture table
-	"../../uptimereport/report.go":                "the uptime report's incident section",
-	"../availability/service.go":                  "the availability API's downtime block",
-	"../slos/service.go":                          "the SLO status endpoint's incident context",
-	"../incidentpublications/group.go":            "status-page consolidation of group members",
+	"../../uptimereport/report.go":     "the uptime report's incident section",
+	"../availability/service.go":       "the availability API's downtime block",
+	"../slos/service.go":               "the SLO status endpoint's incident context",
+	"../incidentpublications/group.go": "status-page consolidation of group members",
 }
 
 // TestEveryDowntimeFilterRestrictsKind parses those files and requires every

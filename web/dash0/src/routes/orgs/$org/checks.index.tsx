@@ -105,10 +105,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { checkLabel, tunnelCheckUidOf } from "@/components/checks/tunnel";
-import {
-  CheckTypeBadge,
-  getCheckTypeIdentity,
-} from "@/components/shared/check-type-identity";
+import { CheckTypeBadge, getCheckTypeIdentity } from "@/components/shared/check-type-identity";
 import { ApiError, apiFetch, getApiErrorField } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
@@ -120,10 +117,7 @@ import {
 import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDemoEditCheck } from "@/lib/demo";
-import {
-  CHECKS_LIST_POLL_MS,
-  useLiveSubscription,
-} from "@/contexts/LiveEventsContext";
+import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 // The checks index can bucket its rows by check group (server-side entity,
 // the default) or by the derived targetHost (spec 2026-08-01-04) — no
@@ -151,13 +145,7 @@ interface ChecksIndexSearch {
 // (server/internal/db/models/check.go), so it would sit in the list as a dead
 // option nothing could ever match. `?status=degraded` still parses and 200s
 // if a caller hand-types it — this only decides what the popover renders.
-const STATUS_FILTER_VALUES = [
-  "up",
-  "down",
-  "validating",
-  "warning",
-  "created",
-] as const;
+const STATUS_FILTER_VALUES = ["up", "down", "validating", "warning", "created"] as const;
 
 // Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
 // letters/digits/hyphens. This mirrors slugRegex in
@@ -169,23 +157,12 @@ const groupSlugRegex = /^[a-z][a-z0-9-]{2,99}$/;
 // Import sources offered by the checks-list import flow: the native SolidPing
 // export document, plus the third-party converters served by
 // POST /checks/import/convert.
-const IMPORT_SOURCES = [
-  "solidping",
-  "gatus",
-  "betterstack",
-  "uptime-kuma",
-  "uptimerobot",
-] as const;
+const IMPORT_SOURCES = ["solidping", "gatus", "betterstack", "uptime-kuma", "uptimerobot"] as const;
 type ImportSourceId = (typeof IMPORT_SOURCES)[number];
 
 // Sources whose payload is a file the user pastes or uploads. Better Stack is
 // the odd one out: it takes an API token and the server does the fetching.
-const FILE_IMPORT_SOURCES: ImportSourceId[] = [
-  "solidping",
-  "gatus",
-  "uptime-kuma",
-  "uptimerobot",
-];
+const FILE_IMPORT_SOURCES: ImportSourceId[] = ["solidping", "gatus", "uptime-kuma", "uptimerobot"];
 
 // Accepted upload extensions per source.
 const IMPORT_ACCEPT: Record<ImportSourceId, string> = {
@@ -208,16 +185,9 @@ interface ImportPreview {
 export const Route = createFileRoute("/orgs/$org/checks/")({
   component: ChecksIndexPage,
   validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
-    labels:
-      typeof search.labels === "string" && search.labels
-        ? search.labels
-        : undefined,
-    status:
-      typeof search.status === "string" && search.status
-        ? search.status
-        : undefined,
-    type:
-      typeof search.type === "string" && search.type ? search.type : undefined,
+    labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
+    status: typeof search.status === "string" && search.status ? search.status : undefined,
+    type: typeof search.type === "string" && search.type ? search.type : undefined,
     groupBy: GROUP_BY_MODES.includes(search.groupBy as GroupByMode)
       ? (search.groupBy as GroupByMode)
       : undefined,
@@ -245,19 +215,12 @@ function readCollapsedGroups(org: string): Record<string, boolean> {
   }
 }
 
-function writeCollapsedGroup(
-  org: string,
-  groupUid: string,
-  collapsed: boolean,
-): void {
+function writeCollapsedGroup(org: string, groupUid: string, collapsed: boolean): void {
   if (typeof window === "undefined") return;
   try {
     const map = readCollapsedGroups(org);
     map[groupUid] = collapsed;
-    window.localStorage.setItem(
-      collapsedGroupsStorageKey(org),
-      JSON.stringify(map),
-    );
+    window.localStorage.setItem(collapsedGroupsStorageKey(org), JSON.stringify(map));
   } catch {
     // Ignore — private mode / storage disabled / quota exceeded. The toggle
     // still works for this session, it just won't survive a reload.
@@ -402,10 +365,7 @@ function HostSection({
 }) {
   const { t } = useTranslation("checks");
   const isNoHost = hostKey === null;
-  const { status, counts } = useMemo(
-    () => computeHostSectionStatus(checks),
-    [checks],
-  );
+  const { status, counts } = useMemo(() => computeHostSectionStatus(checks), [checks]);
   const memberSummary = formatMemberSummary(counts, t);
 
   const [manualOverride, setManualOverride] = useState<boolean | null>(null);
@@ -538,21 +498,13 @@ function CheckRow({
           <Link
             to="/orgs/$org/checks/$checkUid"
             params={{ org, checkUid: check.uid }}
-            search={{
-              graphPeriod: undefined,
-              graphFull: undefined,
-              region: undefined,
-            }}
+            search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
             className="flex items-center gap-2 hover:underline font-medium min-w-0"
           >
             <StatusDot
               status={check.status ?? check.lastResult?.status}
               enabled={check.enabled}
-              title={
-                check.enabled === false
-                  ? t("checks:detail.disabled")
-                  : undefined
-              }
+              title={check.enabled === false ? t("checks:detail.disabled") : undefined}
             />
             <span className="min-w-0 truncate">
               {check.name || check.slug || check.uid?.slice(0, 8)}
@@ -598,8 +550,8 @@ function CheckRow({
               durationMs < 50
                 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
                 : durationMs < 250
-                  ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
-                  : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
+                ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
             }`}
           >
             {Math.round(durationMs)}ms
@@ -620,11 +572,7 @@ function CheckRow({
               <Link
                 to="/orgs/$org/checks/$checkUid"
                 params={{ org, checkUid: check.uid }}
-                search={{
-                  graphPeriod: undefined,
-                  graphFull: undefined,
-                  region: undefined,
-                }}
+                search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
               >
                 <Eye className="mr-2 h-4 w-4" />
                 {t("menu.viewDetails")}
@@ -701,15 +649,9 @@ function ChecksTable({
       <TableHeader className="bg-muted/30">
         <TableRow>
           <TableHead>{t("table.name")}</TableHead>
-          <TableHead className="hidden sm:table-cell">
-            {t("table.type")}
-          </TableHead>
-          <TableHead className="hidden md:table-cell">
-            {t("table.target")}
-          </TableHead>
-          <TableHead className="hidden md:table-cell">
-            {t("table.status")}
-          </TableHead>
+          <TableHead className="hidden sm:table-cell">{t("table.type")}</TableHead>
+          <TableHead className="hidden md:table-cell">{t("table.target")}</TableHead>
+          <TableHead className="hidden md:table-cell">{t("table.status")}</TableHead>
           <TableHead>{t("table.response")}</TableHead>
           <TableHead className="w-[50px]" />
         </TableRow>
@@ -851,9 +793,7 @@ function CheckGroupSection({
               {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
             </TooltipContent>
           </Tooltip>
-          <span className="font-semibold truncate" data-testid="group-name">
-            {group.name}
-          </span>
+          <span className="font-semibold truncate" data-testid="group-name">{group.name}</span>
           <span data-testid="group-status-badge">
             <StatusBadge status={group.status} />
           </span>
@@ -1062,15 +1002,7 @@ function UngroupedChecksSection({
           {t("failedToLoadChecks")}
         </div>
       ) : checks.length > 0 ? (
-        <ChecksTable
-          checks={checks}
-          org={org}
-          onDelete={onDeleteCheck}
-          onChangeGroup={onChangeGroup}
-          groups={groups}
-          checksByUid={checksByUid}
-          elevated
-        />
+        <ChecksTable checks={checks} org={org} onDelete={onDeleteCheck} onChangeGroup={onChangeGroup} groups={groups} checksByUid={checksByUid} elevated />
       ) : isLoading ? (
         <div className="space-y-2">
           {[...Array(3)].map((_, i) => (
@@ -1116,42 +1048,23 @@ function ChecksIndexPage() {
   // status tokens are dropped rather than crashing the UI); the backend still
   // 400s a genuinely bad ?status= and the list error state covers that.
   const statusValues = useMemo(
-    () =>
-      parseFacetedFilterParam(
-        statusParam,
-        new Set<string>(STATUS_FILTER_VALUES),
-      ),
+    () => parseFacetedFilterParam(statusParam, new Set<string>(STATUS_FILTER_VALUES)),
     [statusParam],
   );
-  const typeValues = useMemo(
-    () => parseFacetedFilterParam(typeParam),
-    [typeParam],
-  );
+  const typeValues = useMemo(() => parseFacetedFilterParam(typeParam), [typeParam]);
 
   const statusOptions = useMemo(
-    () =>
-      STATUS_FILTER_VALUES.map((value) => ({
-        value,
-        label: t(`status.${value}`),
-      })),
+    () => STATUS_FILTER_VALUES.map((value) => ({ value, label: t(`status.${value}`) })),
     [t],
   );
-  const statusTriggerLabel = facetedFilterTriggerLabel(
-    statusValues,
-    statusOptions,
-    {
-      all: t("statusFilter.all"),
-      count: (count) => t("statusFilter.count", { count }),
-      plusOne: (label, extra) =>
-        t("statusFilter.plusOne", { label, count: extra }),
-    },
-  );
+  const statusTriggerLabel = facetedFilterTriggerLabel(statusValues, statusOptions, {
+    all: t("statusFilter.all"),
+    count: (count) => t("statusFilter.count", { count }),
+    plusOne: (label, extra) => t("statusFilter.plusOne", { label, count: extra }),
+  });
   const setStatusValues = (next: string[]) => {
     void navigate({
-      search: (prev) => ({
-        ...prev,
-        status: serializeFacetedFilterParam(next) || undefined,
-      }),
+      search: (prev) => ({ ...prev, status: serializeFacetedFilterParam(next) || undefined }),
       replace: true,
     });
   };
@@ -1160,10 +1073,7 @@ function ChecksIndexPage() {
   const typeOptions = useMemo(
     () =>
       (checkTypes ?? [])
-        .map((ct) => ({
-          value: ct.type,
-          label: getCheckTypeIdentity(ct.type).label,
-        }))
+        .map((ct) => ({ value: ct.type, label: getCheckTypeIdentity(ct.type).label }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [checkTypes],
   );
@@ -1174,10 +1084,7 @@ function ChecksIndexPage() {
   });
   const setTypeValues = (next: string[]) => {
     void navigate({
-      search: (prev) => ({
-        ...prev,
-        type: serializeFacetedFilterParam(next) || undefined,
-      }),
+      search: (prev) => ({ ...prev, type: serializeFacetedFilterParam(next) || undefined }),
       replace: true,
     });
   };
@@ -1192,10 +1099,7 @@ function ChecksIndexPage() {
   const groupBy = groupByParam ?? "groups";
   const setGroupByMode = (mode: GroupByMode) => {
     void navigate({
-      search: (prev) => ({
-        ...prev,
-        groupBy: mode === "groups" ? undefined : mode,
-      }),
+      search: (prev) => ({ ...prev, groupBy: mode === "groups" ? undefined : mode }),
     });
   };
 
@@ -1292,38 +1196,34 @@ function ChecksIndexPage() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-  } = useInfiniteChecks(
-    org,
-    {
-      with: "last_result",
-      q: debouncedSearch || undefined,
-      internal: internalFilter,
-      labels: labelsParam,
-      // Pass the raw URL params through untouched, not the leniently-parsed
-      // statusValues/typeValues used for the popover's checked state: an
-      // unknown ?status= token must still reach the backend and 400 (covered
-      // by the list error state) rather than silently vanish from the request.
-      status: statusParam,
-      type: typeParam,
-      wouldHaveFired: wouldHaveFiredParam,
-      limit: 100,
-      // Load the stream in the exact order the page renders it, so the top of
-      // the page fills first instead of arriving in unrelated created_at order:
-      // "group" sortOrder asc / ungrouped last in Groups mode, "targetHost"
-      // ascending / no-host last in Host mode. Distinct sort values give the two
-      // modes distinct query-cache entries (the queryKey includes this options
-      // object), so switching modes is a normal cache miss/hit, not a manual reset.
-      sort: groupBy === "host" ? "targetHost" : "group",
-    },
-    {
-      // A `results` live hint no longer invalidates this list (spec
-      // 2026-08-09-07 — it fired continuously and made one open tab worth ~0.5
-      // whole-list refetches per second). Status transitions still arrive as
-      // "checks" hints; this poll is what keeps the per-run cells (status dot,
-      // latency) fresh in between, bounded by one interval.
-      refetchInterval: CHECKS_LIST_POLL_MS,
-    },
-  );
+  } = useInfiniteChecks(org, {
+    with: "last_result",
+    q: debouncedSearch || undefined,
+    internal: internalFilter,
+    labels: labelsParam,
+    // Pass the raw URL params through untouched, not the leniently-parsed
+    // statusValues/typeValues used for the popover's checked state: an
+    // unknown ?status= token must still reach the backend and 400 (covered
+    // by the list error state) rather than silently vanish from the request.
+    status: statusParam,
+    type: typeParam,
+    wouldHaveFired: wouldHaveFiredParam,
+    limit: 100,
+    // Load the stream in the exact order the page renders it, so the top of
+    // the page fills first instead of arriving in unrelated created_at order:
+    // "group" sortOrder asc / ungrouped last in Groups mode, "targetHost"
+    // ascending / no-host last in Host mode. Distinct sort values give the two
+    // modes distinct query-cache entries (the queryKey includes this options
+    // object), so switching modes is a normal cache miss/hit, not a manual reset.
+    sort: groupBy === "host" ? "targetHost" : "group",
+  }, {
+    // A `results` live hint no longer invalidates this list (spec
+    // 2026-08-09-07 — it fired continuously and made one open tab worth ~0.5
+    // whole-list refetches per second). Status transitions still arrive as
+    // "checks" hints; this poll is what keeps the per-run cells (status dot,
+    // latency) fresh in between, bounded by one interval.
+    refetchInterval: CHECKS_LIST_POLL_MS,
+  });
 
   // A bucket that is still empty must read as *loading*, never as an empty
   // state, as long as the page-level stream can still deliver more rows
@@ -1357,11 +1257,7 @@ function ChecksIndexPage() {
         }
       }
     }
-    return {
-      checksByGroup: byGroup,
-      ungroupedChecks: ungrouped,
-      checksByUid: byUid,
-    };
+    return { checksByGroup: byGroup, ungroupedChecks: ungrouped, checksByUid: byUid };
   }, [checksData]);
 
   // Host-mode bucketing (spec 2026-08-01-04): every loaded check bucketed by
@@ -1398,7 +1294,7 @@ function ChecksIndexPage() {
         fetchNextPage();
       }
     },
-    [fetchNextPage, hasNextPage, isFetchingNextPage],
+    [fetchNextPage, hasNextPage, isFetchingNextPage]
   );
   useEffect(() => {
     const el = sentinelRef.current;
@@ -1423,9 +1319,7 @@ function ChecksIndexPage() {
   const [importText, setImportText] = useState("");
   const [importToken, setImportToken] = useState("");
   const [importFileName, setImportFileName] = useState("");
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(
-    null,
-  );
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const deleteCheck = useDeleteCheck(org);
@@ -1440,9 +1334,7 @@ function ChecksIndexPage() {
       toast.success(t("toast.deleted"));
       setDeleteCheckUid(null);
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t("toast.deleteFailed"),
-      );
+      toast.error(err instanceof ApiError ? err.message : t("toast.deleteFailed"));
     }
   };
 
@@ -1479,17 +1371,12 @@ function ChecksIndexPage() {
             : t("dialog.groupSlugInvalid"),
         );
       } else {
-        toast.error(
-          err instanceof ApiError ? err.message : t("toast.groupCreateFailed"),
-        );
+        toast.error(err instanceof ApiError ? err.message : t("toast.groupCreateFailed"));
       }
     }
   };
 
-  const handleMoveGroup = async (
-    group: CheckGroup,
-    direction: "up" | "down",
-  ) => {
+  const handleMoveGroup = async (group: CheckGroup, direction: "up" | "down") => {
     if (!groups) return;
     const idx = groups.findIndex((g) => g.uid === group.uid);
     const swapIdx = direction === "up" ? idx - 1 : idx + 1;
@@ -1526,9 +1413,7 @@ function ChecksIndexPage() {
       URL.revokeObjectURL(url);
       toast.success(t("toast.exportSuccess"));
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t("toast.exportFailed"),
-      );
+      toast.error(err instanceof ApiError ? err.message : t("toast.exportFailed"));
     }
   };
 
@@ -1567,10 +1452,7 @@ function ChecksIndexPage() {
     if (importSource === "solidping") {
       // Sent as raw text: /checks/import parses JSON *and* YAML server-side, so
       // parsing here would narrow the accepted formats to JSON only.
-      const result = await importChecks.mutateAsync({
-        body: importText,
-        dryRun,
-      });
+      const result = await importChecks.mutateAsync({ body: importText, dryRun });
       return {
         source: importSource,
         created: result.created,
@@ -1603,9 +1485,7 @@ function ChecksIndexPage() {
       setImportPreview(await runImport(true));
       setImportOpen(false);
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t("toast.parseFailed"),
-      );
+      toast.error(err instanceof ApiError ? err.message : t("toast.parseFailed"));
     }
   };
 
@@ -1613,19 +1493,11 @@ function ChecksIndexPage() {
     if (!importPreview) return;
     try {
       const result = await runImport(false);
-      toast.success(
-        t("toast.importSuccess", {
-          count: result.created + result.updated,
-          created: result.created,
-          updated: result.updated,
-        }),
-      );
+      toast.success(t("toast.importSuccess", { count: result.created + result.updated, created: result.created, updated: result.updated }));
       setImportPreview(null);
       closeImportDialog();
     } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : t("toast.importFailed"),
-      );
+      toast.error(err instanceof ApiError ? err.message : t("toast.importFailed"));
     }
   };
 
@@ -1660,11 +1532,7 @@ function ChecksIndexPage() {
               <Upload className="mr-2 h-4 w-4" />
               {t("import")}
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowNewGroup(true)}
-              data-testid="new-group-button"
-            >
+            <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>
             </Button>
@@ -1682,37 +1550,10 @@ function ChecksIndexPage() {
                 aria-label={t("scheduling.title")}
               >
                 <CalendarClock className="sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {t("scheduling.title")}
-                </span>
+                <span className="hidden sm:inline">{t("scheduling.title")}</span>
               </Link>
             </Button>
-            <Link
-              to="/orgs/$org/checks/new"
-              params={{ org }}
-              search={{
-                checkType: undefined,
-                checkPeriod: undefined,
-                checkName: undefined,
-                checkSlug: undefined,
-                httpUrl: undefined,
-                httpMethod: undefined,
-                host: undefined,
-                port: undefined,
-                url: undefined,
-                domain: undefined,
-                username: undefined,
-                database: undefined,
-                expectedStatus: undefined,
-                timeout: undefined,
-                label: undefined,
-                region: undefined,
-                group: undefined,
-                confirmationPeriod: undefined,
-                recoveryPeriod: undefined,
-                section: undefined,
-              }}
-            >
+            <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined, expectedStatus: undefined, timeout: undefined, label: undefined, region: undefined, group: undefined, confirmationPeriod: undefined, recoveryPeriod: undefined, section: undefined }}>
               <Button data-testid="new-check-button">
                 <Plus className="sm:mr-2 h-4 w-4" />
                 <span className="hidden sm:inline">{t("newCheck")}</span>
@@ -1835,19 +1676,14 @@ function ChecksIndexPage() {
           <span className="hidden sm:inline">{t("common:refresh")}</span>
         </Button>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">
-            Labels:
-          </span>
+          <span className="text-sm font-medium text-muted-foreground">Labels:</span>
           <LabelFilter
             org={org}
             value={labelFilters}
             onChange={(next) => {
               const serialized = serializeLabelsParam(next);
               void navigate({
-                search: (prev) => ({
-                  ...prev,
-                  labels: serialized || undefined,
-                }),
+                search: (prev) => ({ ...prev, labels: serialized || undefined }),
                 replace: true,
               });
             }}
@@ -1872,11 +1708,7 @@ function ChecksIndexPage() {
 
       {groupBy === "groups" ? (
         groupsError ? (
-          <QueryErrorView
-            error={groupsError}
-            org={org}
-            onRetry={() => refetchGroups()}
-          />
+          <QueryErrorView error={groupsError} org={org} onRetry={() => refetchGroups()} />
         ) : groupsLoading ? (
           <div className="space-y-2">
             {[...Array(6)].map((_, i) => (
@@ -1962,17 +1794,14 @@ function ChecksIndexPage() {
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               )}
             </div>
+
           </div>
         )
       ) : checksError && hostBuckets.length === 0 ? (
         <QueryErrorView
           error={checksError}
           org={org}
-          onRetry={() =>
-            queryClient.invalidateQueries({
-              queryKey: ["checks", "infinite", org],
-            })
-          }
+          onRetry={() => queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] })}
         />
       ) : checksLoading && hostBuckets.length === 0 ? (
         <div className="space-y-2">
@@ -2016,10 +1845,7 @@ function ChecksIndexPage() {
       )}
 
       {/* Delete Check Dialog */}
-      <AlertDialog
-        open={!!deleteCheckUid}
-        onOpenChange={() => setDeleteCheckUid(null)}
-      >
+      <AlertDialog open={!!deleteCheckUid} onOpenChange={() => setDeleteCheckUid(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("dialog.deleteTitle")}</AlertDialogTitle>
@@ -2125,12 +1951,7 @@ function ChecksIndexPage() {
       </Dialog>
 
       {/* Import source dialog: pick where the checks come from, then preview. */}
-      <Dialog
-        open={importOpen}
-        onOpenChange={(open) =>
-          open ? setImportOpen(true) : closeImportDialog()
-        }
-      >
+      <Dialog open={importOpen} onOpenChange={(open) => (open ? setImportOpen(true) : closeImportDialog())}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("dialog.importTitle")}</DialogTitle>
@@ -2152,11 +1973,7 @@ function ChecksIndexPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {IMPORT_SOURCES.map((source) => (
-                    <SelectItem
-                      key={source}
-                      value={source}
-                      data-testid={`import-source-${source}`}
-                    >
+                    <SelectItem key={source} value={source} data-testid={`import-source-${source}`}>
                       {t(`dialog.importSources.${source}`)}
                     </SelectItem>
                   ))}
@@ -2169,9 +1986,7 @@ function ChecksIndexPage() {
 
             {FILE_IMPORT_SOURCES.includes(importSource) ? (
               <div className="space-y-2">
-                <Label htmlFor="import-payload">
-                  {t("dialog.importPayload")}
-                </Label>
+                <Label htmlFor="import-payload">{t("dialog.importPayload")}</Label>
                 <Textarea
                   id="import-payload"
                   data-testid="import-payload"
@@ -2196,9 +2011,7 @@ function ChecksIndexPage() {
                     {t("dialog.importUpload")}
                   </Button>
                   {importFileName && (
-                    <span className="text-xs text-muted-foreground truncate">
-                      {importFileName}
-                    </span>
+                    <span className="text-xs text-muted-foreground truncate">{importFileName}</span>
                   )}
                 </div>
                 <input
@@ -2222,9 +2035,7 @@ function ChecksIndexPage() {
                 />
                 <Alert>
                   <AlertTitle>{t("dialog.importTokenNoticeTitle")}</AlertTitle>
-                  <AlertDescription>
-                    {t("dialog.importTokenNotice")}
-                  </AlertDescription>
+                  <AlertDescription>{t("dialog.importTokenNotice")}</AlertDescription>
                 </Alert>
               </div>
             )}
@@ -2254,58 +2065,35 @@ function ChecksIndexPage() {
       </Dialog>
 
       {/* Import Preview Dialog */}
-      <Dialog
-        open={!!importPreview}
-        onOpenChange={() => setImportPreview(null)}
-      >
+      <Dialog open={!!importPreview} onOpenChange={() => setImportPreview(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("dialog.importPreview")}</DialogTitle>
           </DialogHeader>
           {importPreview && (
-            <div
-              className="space-y-4 py-2 max-h-[60vh] overflow-y-auto"
-              data-testid="import-preview"
-            >
+            <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto" data-testid="import-preview">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <div
-                    className="text-2xl font-bold text-green-600"
-                    data-testid="import-preview-created"
-                  >
+                  <div className="text-2xl font-bold text-green-600" data-testid="import-preview-created">
                     {importPreview.created}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {t("dialog.toCreate")}
-                  </div>
+                  <div className="text-sm text-muted-foreground">{t("dialog.toCreate")}</div>
                 </div>
                 <div>
-                  <div
-                    className="text-2xl font-bold text-blue-600"
-                    data-testid="import-preview-updated"
-                  >
+                  <div className="text-2xl font-bold text-blue-600" data-testid="import-preview-updated">
                     {importPreview.updated}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {t("dialog.toUpdate")}
-                  </div>
+                  <div className="text-sm text-muted-foreground">{t("dialog.toUpdate")}</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-red-600">
-                    {importPreview.errors.length}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {t("dialog.errors")}
-                  </div>
+                  <div className="text-2xl font-bold text-red-600">{importPreview.errors.length}</div>
+                  <div className="text-sm text-muted-foreground">{t("dialog.errors")}</div>
                 </div>
               </div>
               {importPreview.errors.length > 0 && (
                 <div className="rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm">
                   {importPreview.errors.map((err) => (
-                    <div
-                      key={err.index}
-                      className="text-red-700 dark:text-red-300"
-                    >
+                    <div key={err.index} className="text-red-700 dark:text-red-300">
                       <span className="font-mono">{err.slug}</span>: {err.error}
                     </div>
                   ))}
@@ -2314,21 +2102,13 @@ function ChecksIndexPage() {
               {importPreview.warnings.length > 0 && (
                 <Alert variant="warning" data-testid="import-preview-warnings">
                   <AlertTitle>
-                    {t("dialog.importWarnings", {
-                      count: importPreview.warnings.length,
-                    })}
+                    {t("dialog.importWarnings", { count: importPreview.warnings.length })}
                   </AlertTitle>
                   <AlertDescription>
                     <ul className="list-disc space-y-1 pl-4">
                       {importPreview.warnings.map((warning, index) => (
-                        <li
-                          key={`${warning.item ?? ""}-${warning.field ?? ""}-${index}`}
-                        >
-                          {warning.item && (
-                            <span className="font-medium">
-                              {warning.item}:{" "}
-                            </span>
-                          )}
+                        <li key={`${warning.item ?? ""}-${warning.field ?? ""}-${index}`}>
+                          {warning.item && <span className="font-medium">{warning.item}: </span>}
                           {warning.message}
                         </li>
                       ))}
@@ -2361,19 +2141,14 @@ function ChecksIndexPage() {
       </Dialog>
 
       {/* Change Group Dialog */}
-      <Dialog
-        open={!!changeGroupCheck}
-        onOpenChange={() => setChangeGroupCheck(null)}
-      >
+      <Dialog open={!!changeGroupCheck} onOpenChange={() => setChangeGroupCheck(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("dialog.changeGroupTitle")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              {t("dialog.moveCheckDescription", {
-                name: changeGroupCheck?.name || changeGroupCheck?.slug,
-              })}
+              {t("dialog.moveCheckDescription", { name: changeGroupCheck?.name || changeGroupCheck?.slug })}
             </p>
             <div className="space-y-2">
               <Label>{t("dialog.group")}</Label>
@@ -2383,27 +2158,16 @@ function ChecksIndexPage() {
                   if (!changeGroupCheck) return;
                   const newGroupUid = value === "none" ? "" : value;
                   try {
-                    await apiFetch(
-                      `/api/v1/orgs/${org}/checks/${changeGroupCheck.uid}`,
-                      {
-                        method: "PATCH",
-                        body: JSON.stringify({ checkGroupUid: newGroupUid }),
-                      },
-                    );
-                    queryClient.invalidateQueries({
-                      queryKey: ["checks", "infinite", org],
+                    await apiFetch(`/api/v1/orgs/${org}/checks/${changeGroupCheck.uid}`, {
+                      method: "PATCH",
+                      body: JSON.stringify({ checkGroupUid: newGroupUid }),
                     });
-                    queryClient.invalidateQueries({
-                      queryKey: ["checkGroups", org],
-                    });
+                    queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+                    queryClient.invalidateQueries({ queryKey: ["checkGroups", org] });
                     toast.success(t("toast.checkMoved"));
                     setChangeGroupCheck(null);
                   } catch (err) {
-                    toast.error(
-                      err instanceof ApiError
-                        ? err.message
-                        : t("toast.moveFailed"),
-                    );
+                    toast.error(err instanceof ApiError ? err.message : t("toast.moveFailed"));
                   }
                 }}
               >
@@ -2426,3 +2190,4 @@ function ChecksIndexPage() {
     </div>
   );
 }
+

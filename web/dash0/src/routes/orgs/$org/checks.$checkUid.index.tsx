@@ -938,9 +938,9 @@ function CheckDetailPage() {
     enabled: !!check?.uid,
   });
 
-  // Degraded episodes, as chart bands. An OPEN episode has no resolvedAt, so it
-  // runs to now — the chart must not invent an end, and "it is still happening"
-  // is exactly what the operator needs to see.
+  // Degraded episodes, as chart bands. An OPEN episode has no `to`: the chart
+  // extends it to its own right edge rather than this component reading the
+  // clock during render (which is impure, and which the lint rules reject).
   const degradedSpans = useMemo(() => {
     const rows = incidents?.data ?? [];
     return rows
@@ -949,9 +949,13 @@ function CheckDetailPage() {
         from: new Date(incident.startedAt as string).getTime(),
         to: incident.resolvedAt
           ? new Date(incident.resolvedAt).getTime()
-          : Date.now(),
+          : undefined,
       }))
-      .filter((span) => Number.isFinite(span.from) && span.to > span.from);
+      .filter(
+        (span) =>
+          Number.isFinite(span.from) &&
+          (span.to == null || span.to > span.from),
+      );
   }, [incidents]);
 
   // The banner links into the window the dry run judged, not to a default 24 h

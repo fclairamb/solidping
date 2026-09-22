@@ -74,7 +74,7 @@ export function DegradedDryRunBanner({
               <Link
                 to="/orgs/$org/checks/$checkUid"
                 params={{ org, checkUid: check.uid }}
-                search={(prev) => ({ ...prev, ...windowUrl })}
+                search={windowUrl}
                 className="underline"
                 data-testid="degraded-dry-run-window-link"
               >

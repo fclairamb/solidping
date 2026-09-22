@@ -119,30 +119,7 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
-	// Ensure the uptime-report sweep exists (global, not per-org — one sweep
-	// serves every org's schedules). It self-reschedules hourly; this seeds the
-	// first run (spec 2026-08-20-01).
-	if err := r.ensureUptimeReportJob(ctx, jctx); err != nil {
-		return err
-	}
-
-	// Ensure the SLO burn-rate evaluation sweep exists. Self-reschedules every
-	// minute; this seeds the first run (spec 2026-08-21-08).
-	if err := r.ensureSLOBurnEvalJob(ctx, jctx); err != nil {
-		return err
-	}
-
-	// Ensure the degraded-detection sweep exists. Self-reschedules every minute;
-	// this seeds the first run (spec 2026-09-22-03).
-	if err := r.ensureDegradedEvalJob(ctx, jctx); err != nil {
-		return err
-	}
-
-	// Ensure the platform watchdog exists (global, not per-org). It
-	// self-reschedules hourly; this seeds the first run so an instance that
-	// went blind between two deploys is reported on the first cycle after the
-	// restart rather than an hour later (spec 2026-08-24-10).
-	return r.ensurePlatformWatchdogJob(ctx, jctx)
+	return r.ensureGlobalSweeps(ctx, jctx)
 }
 
 // ensurePlatformWatchdogJob provisions the global platform watchdog. The job
@@ -169,6 +146,36 @@ func (r *StartupJobRun) ensurePlatformWatchdogJob(ctx context.Context, jctx *job
 	}
 
 	return nil
+}
+
+// ensureGlobalSweeps seeds the first run of every GLOBAL (not per-org) sweep.
+// Each one self-reschedules from then on, so this only has to exist once per
+// process start — and each CreateJob dedupes on type+config+org+pending, so a
+// restart never stacks duplicates.
+//
+// Split out of Run purely to keep it under the complexity cap: the list only
+// grows, and "one more sweep to seed" must not mean "refactor Run again".
+func (r *StartupJobRun) ensureGlobalSweeps(ctx context.Context, jctx *jobdef.JobContext) error {
+	// Uptime reports: one sweep serves every org's schedules, hourly
+	// (spec 2026-08-20-01).
+	if err := r.ensureUptimeReportJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// SLO burn-rate evaluation, every minute (spec 2026-08-21-08).
+	if err := r.ensureSLOBurnEvalJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Degraded detection, every minute (spec 2026-09-22-03).
+	if err := r.ensureDegradedEvalJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// The platform watchdog, hourly: an instance that went blind between two
+	// deploys is reported on the first cycle after the restart rather than an
+	// hour later (spec 2026-08-24-10).
+	return r.ensurePlatformWatchdogJob(ctx, jctx)
 }
 
 // ensureSLOBurnEvalJob provisions the global SLO burn-rate evaluation sweep.

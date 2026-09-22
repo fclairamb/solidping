@@ -230,7 +230,7 @@ func (s *Service) AutoResolveSLOBurnIncident(
 		keyCheckUID:        incident.CheckUID,
 		keyResolvedAt:      resolvedAt,
 		keyDurationSeconds: int64(resolvedAt.Sub(incident.StartedAt).Seconds()),
-		"resolution_type":  resolutionType,
+		keyResolutionType:  resolutionType,
 	}
 
 	if check, err := s.db.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); err == nil && check != nil {
