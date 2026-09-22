@@ -156,7 +156,11 @@ evaluator, one code path, no review page.
 - The check page shows a banner ("this check would have been flagged degraded at
   …; enable?") with a deep link into the window —
   `components/checks/degraded-dry-run-banner.tsx`.
-- The checks list gets `?wouldHaveFired=true`.
+- The checks list gets `?wouldHaveFired=true`, a real URL boolean (the shape
+  `graphFull` already uses). A string-typed `"true"` is a trap here: TanStack
+  Router JSON-encodes a string whose text is itself valid JSON, so it reached the
+  address bar quoted and a pasted `?wouldHaveFired=true` parsed back as a boolean
+  the string comparison missed.
 - Enabling the feature retires the stamp, so "would have fired" and "is allowed
   to fire" can never both look true.
 
@@ -167,7 +171,11 @@ evaluator, one code path, no review page.
   `graphTo` deep link into the window. `internal/notifications/degraded.go`,
   wired into the Slack sender (amber, not red) and two dedicated email templates.
 - **Chart**: an amber `ReferenceArea` over the episode's span. Isolated red dots
-  do not read as an event; a band does.
+  do not read as an event; a band does. It carries `ifOverflow="hidden"`, because
+  recharts otherwise DISCARDS a band whose edge falls outside the domain — an
+  hour-long episode that began before a 24 h view would disappear, which is the
+  isolated-dots problem again. An open episode is drawn to the chart's own right
+  edge rather than to a clock read during render.
 - **Status pages**: per-page opt-in, never automatic.
 
 ## Fleet calibration (24 h of production `raw`, 159 checks, 21 orgs)
