@@ -36,7 +36,10 @@ const (
 	keyWide         = "Wide"
 	colorReportGood = "#15803d"
 	keyHasData      = "HasData"
-	keyAvailability = "AvailabilityPct"
+	// fixtureResolvedAt is the one resolution timestamp every resolved-incident
+	// fixture shows, so the previews of the resolved templates line up.
+	fixtureResolvedAt = "2026-07-05 10:15:00 UTC"
+	keyAvailability   = "AvailabilityPct"
 )
 
 // fixtureBuilders maps a shipped template name to the function that returns
@@ -171,7 +174,7 @@ func degradedIncidentFixture() map[string]any {
 func resolvedDegradedIncidentFixture() map[string]any {
 	fixture := degradedIncidentFixture()
 	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fixture["ResolvedAt"] = fixtureResolvedAt
 	fixture["Duration"] = "53m"
 
 	return fixture
@@ -182,7 +185,7 @@ func resolvedDegradedIncidentFixture() map[string]any {
 func resolvedBurnIncidentFixture() map[string]any {
 	fixture := burnIncidentFixture()
 	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fixture["ResolvedAt"] = fixtureResolvedAt
 	fixture["Duration"] = "15m"
 	fixture["BurnRate"] = "1.2x"
 
@@ -195,7 +198,7 @@ func resolvedBurnIncidentFixture() map[string]any {
 func resolvedIncidentFixture() map[string]any {
 	fx := incidentFixture()
 	fx["AckURL"] = ""
-	fx["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fx["ResolvedAt"] = fixtureResolvedAt
 	fx["Duration"] = "15m"
 
 	return fx
