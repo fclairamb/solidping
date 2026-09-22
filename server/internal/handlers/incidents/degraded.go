@@ -203,7 +203,7 @@ func (s *Service) UpdateDegradedIncident(
 ) error {
 	details := snapshot.Details()
 
-	if window, ok := degradedResolveWindow(incident); ok {
+	if window, ok := DegradedResolveWindow(incident); ok {
 		details[keyDegradedResolveWindow] = window
 	}
 
@@ -385,9 +385,11 @@ func (s *Service) resolveDegradedForOutage(ctx context.Context, outage *models.I
 	}
 }
 
-// degradedResolveWindow reads the governing resolution window recorded on an open
-// degraded incident.
-func degradedResolveWindow(incident *models.Incident) (int, bool) {
+// DegradedResolveWindow reads the governing resolution window recorded on an
+// open degraded incident. Exported for the evaluator, which must close an
+// incident under the rule it OPENED with rather than the rule the current
+// configuration would pick.
+func DegradedResolveWindow(incident *models.Incident) (int, bool) {
 	if incident == nil || incident.Details == nil {
 		return 0, false
 	}
