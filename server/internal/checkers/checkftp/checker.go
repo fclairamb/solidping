@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/jlaffaye/ftp"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkftp/config"
 )
 
 // FTPChecker implements the Checker interface for FTP checks.
@@ -23,34 +23,11 @@ func (c *FTPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeFTP
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *FTPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &FTPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		port := cfg.Port
-		if port == 0 {
-			port = defaultPort
-			if cfg.TLSMode == TLSModeImplicit {
-				port = implicitTLSPort
-			}
-		}
-
-		spec.Name = fmt.Sprintf("FTP: %s:%d", cfg.Host, port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "ftp-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the FTP check.

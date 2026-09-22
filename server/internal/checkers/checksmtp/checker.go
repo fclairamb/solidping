@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksmtp/config"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -33,26 +34,11 @@ func (c *SMTPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSMTP
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SMTPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SMTPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = "SMTP: " + cfg.Host
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "smtp-" + cfg.Host
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // execParams holds resolved execution parameters with defaults applied.
@@ -396,7 +382,7 @@ func (c *SMTPChecker) executeSendMode(
 	// CRLF-smuggled extra SMTP command or an injected header structurally
 	// impossible even if some future caller (or a config that predates this
 	// validation) bypasses it.
-	if err := ValidateMailFrom(cfg.MailFrom); err != nil {
+	if err := checkconfig.ValidateMailFrom(cfg.MailFrom); err != nil {
 		baseOutput[checkerdef.OutputKeyError] = "invalid mail_from: " + err.Error()
 
 		return &checkerdef.Result{
@@ -407,7 +393,7 @@ func (c *SMTPChecker) executeSendMode(
 		}
 	}
 
-	if err := ValidateDeliveryTo(cfg.DeliveryTo); err != nil {
+	if err := checkconfig.ValidateDeliveryTo(cfg.DeliveryTo); err != nil {
 		baseOutput[checkerdef.OutputKeyError] = "invalid delivery_to: " + err.Error()
 
 		return &checkerdef.Result{

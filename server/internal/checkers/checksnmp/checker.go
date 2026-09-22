@@ -11,6 +11,7 @@ import (
 	"github.com/gosnmp/gosnmp"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksnmp/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -23,31 +24,11 @@ func (c *SNMPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSNMP
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SNMPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SNMPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		port = defaultPort
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("SNMP %s:%d %s", cfg.Host, port, cfg.OID)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "snmp-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the SNMP check and returns the result.
