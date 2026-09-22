@@ -296,13 +296,17 @@ func (s *Service) applyCheckUpdate(ctx context.Context, check *models.Check, upd
 }
 
 // paramsFor projects a check onto the rule primitive's inputs.
+//
+// Through the EffectiveDegraded* accessors, never the raw columns: an
+// unconfigured check stores NULL for all five, and reading the pointers
+// directly would either panic or resolve nil to 0 — five rules silently off.
 func paramsFor(check *models.Check) degraded.Params {
 	return degraded.Params{
-		Failures:       check.DegradedFailures,
-		FailuresWindow: check.DegradedFailuresWindow,
-		Slow:           check.DegradedSlow,
-		SlowWindow:     check.DegradedSlowWindow,
-		SlowThreshold:  check.SlowThresholdMs,
+		Failures:       check.EffectiveDegradedFailures(),
+		FailuresWindow: check.EffectiveDegradedFailuresWindow(),
+		Slow:           check.EffectiveDegradedSlow(),
+		SlowWindow:     check.EffectiveDegradedSlowWindow(),
+		SlowThreshold:  check.EffectiveSlowThresholdMs(),
 		Period:         time.Duration(check.Period),
 	}
 }
@@ -320,7 +324,7 @@ func snapshotFor(check *models.Check, outcome *degraded.Outcome) *incidents.Degr
 		SlowSlots:      outcome.Slow.Slots,
 		SlowMatches:    outcome.Slow.Matches,
 		SlowFired:      outcome.Slow.Fired,
-		SlowThreshold:  check.SlowThresholdMs,
+		SlowThreshold:  check.EffectiveSlowThresholdMs(),
 		ResolveWindow:  outcome.ResolveWindow,
 		WindowFrom:     outcome.WindowStart,
 		WindowTo:       outcome.WindowEnd,

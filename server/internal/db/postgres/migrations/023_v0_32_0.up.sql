@@ -39,32 +39,54 @@
 -- starving the tail of a large install, exactly as
 -- slo_alert_policies.last_evaluated_at does for burn rates.
 --
--- The Go structs deliberately carry NO `default:` bun tag for any of these,
--- even though the columns have defaults — see the
--- StatusPage.AutoPublishDelaySeconds note. With `default:5` on the tag,
--- `degraded_failures: 0` would never reach the database and the failure rule
--- could not be turned off at creation time (spec 2026-08-30-04).
+-- THE FIVE NUMERIC COLUMNS ARE DELIBERATELY NULLABLE WITH NO DEFAULT CLAUSE,
+-- the same shape as user_contacts.team_id/dm_channel_id in 022_v0_30_0. NULL is
+-- the "unset" marker and the ONLY one: the code default (5 / 60, 3 / 6,
+-- threshold 0 — models.Default* in internal/db/models/check.go) is resolved at
+-- READ time by the Check.EffectiveDegraded* accessors, never written at INSERT
+-- time.
+--
+-- Why not `not null default 5`: a SQL default is only applied on an insert that
+-- omits the column, and the Go structs deliberately carry NO `default:` bun tag
+-- (see the StatusPage.AutoPublishDelaySeconds note — with `default:5` on the
+-- tag, `degraded_failures: 0` never reaches the database and the failure rule
+-- cannot be turned off at creation time, spec 2026-08-30-04). So bun always
+-- sends these columns, the SQL default never fires, and the real defaulting
+-- burden landed in Go: models.NewCheck had to hardcode 5/60/3/6/0, and any
+-- insert path building a models.Check without it silently wrote 0 for all five
+-- — five rules quietly off, which is the exact failure mode this feature
+-- exists to eliminate. With the columns nullable and the struct fields
+-- pointers, an unset field is NULL, NULL reads back as the documented default,
+-- and an explicit 0 still means "off". Having BOTH a SQL default and a nullable
+-- column would give "unset" two spellings, so there is exactly one.
+--
+-- `degraded_enabled` stays NOT NULL DEFAULT FALSE on purpose: NULL cannot carry
+-- the rollout rule. The backfill this ADD COLUMN performs is what turns the
+-- feature off on every pre-existing row, and a nil-means-true accessor would
+-- start paging on upgrade while a nil-means-false one would silently disable
+-- checks created by a path that does not set the flag. Non-nullable also makes
+-- a bypassing insert fail SAFE (dry run), which no numeric column can claim.
 -- ==========================================================================
 
-alter table checks add column if not exists degraded_failures integer not null default 5;
-alter table checks add column if not exists degraded_failures_window integer not null default 60;
-alter table checks add column if not exists degraded_slow integer not null default 3;
-alter table checks add column if not exists degraded_slow_window integer not null default 6;
-alter table checks add column if not exists slow_threshold_ms integer not null default 0;
+alter table checks add column if not exists degraded_failures integer;
+alter table checks add column if not exists degraded_failures_window integer;
+alter table checks add column if not exists degraded_slow integer;
+alter table checks add column if not exists degraded_slow_window integer;
+alter table checks add column if not exists slow_threshold_ms integer;
 alter table checks add column if not exists degraded_enabled boolean not null default false;
 alter table checks add column if not exists degraded_would_fire_at timestamptz;
 alter table checks add column if not exists degraded_evaluated_at timestamptz;
 
 comment on column checks.degraded_failures is
-  'M for the failure rule: fires when M of the last degraded_failures_window countable probes failed. 0 disables.';
+  'M for the failure rule: fires when M of the last degraded_failures_window countable probes failed. 0 disables. NULL = the code default (5).';
 comment on column checks.degraded_failures_window is
-  'N for the failure rule, counted in countable probes (not seconds).';
+  'N for the failure rule, counted in countable probes (not seconds). NULL = the code default (60).';
 comment on column checks.degraded_slow is
-  'M for the slow rule: fires when M of the last degraded_slow_window successful probes exceeded slow_threshold_ms. 0 disables.';
+  'M for the slow rule: fires when M of the last degraded_slow_window successful probes exceeded slow_threshold_ms. 0 disables. NULL = the code default (3).';
 comment on column checks.degraded_slow_window is
-  'N for the slow rule, counted in countable probes.';
+  'N for the slow rule, counted in countable probes. NULL = the code default (6).';
 comment on column checks.slow_threshold_ms is
-  'Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off.';
+  'Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. NULL = the code default (0, i.e. off).';
 comment on column checks.degraded_enabled is
   'Whether degraded detection may OPEN incidents on this check. FALSE = dry run (stamps degraded_would_fire_at only).';
 comment on column checks.degraded_would_fire_at is

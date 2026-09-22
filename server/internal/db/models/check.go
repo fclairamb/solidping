@@ -175,21 +175,43 @@ type Check struct {
 	// M = 0 disables a rule. SlowThresholdMs = 0 disables the slow rule
 	// outright (there is no threshold a duration could exceed).
 	//
-	// NONE of these carry a `default:` clause even though every column has one
-	// — see the StatusPage.AutoPublishDelaySeconds and FlappingWindowSeconds
-	// notes. With `default:5` on the tag, `degraded_failures: 0` never reaches
-	// the database and the failure rule cannot be turned off at creation time
-	// (spec 2026-08-30-04, and before it StatusPage.AutoPublishDelaySeconds).
-	// NewCheck supplies the 5/60/3/6/0 defaults instead.
-	DegradedFailures       int `bun:"degraded_failures,notnull"`
-	DegradedFailuresWindow int `bun:"degraded_failures_window,notnull"`
-	DegradedSlow           int `bun:"degraded_slow,notnull"`
-	DegradedSlowWindow     int `bun:"degraded_slow_window,notnull"`
-	SlowThresholdMs        int `bun:"slow_threshold_ms,notnull"`
+	// ALL FIVE ARE POINTERS, AND nil IS THE INTERESTING ONE: nil means "not
+	// configured", the column is NULL, and the code default
+	// (DefaultDegradedFailures & co) applies — read through the
+	// EffectiveDegraded* accessors below, never off the raw field.
+	//
+	// The three-way distinction is what the whole shape exists for:
+	//
+	//	nil   not configured -> the documented default (5 / 60, 3 / 6, 0)
+	//	&0    explicitly OFF (the documented way to disable a rule)
+	//	&7    explicitly 7
+	//
+	// A plain int could not tell "unset" from "off", which is why the columns
+	// used to be `not null default 5` while the struct carried no `default:`
+	// bun tag (with `default:5` on the tag, `degraded_failures: 0` never
+	// reaches the database and the rule cannot be turned off at creation time
+	// — spec 2026-08-30-04, and before it StatusPage.AutoPublishDelaySeconds).
+	// That combination worked but pushed the defaulting into Go at WRITE time:
+	// NewCheck hardcoded 5/60/3/6/0 and any other insert path silently wrote 0
+	// for all five, i.e. five rules quietly off. Resolving at READ time instead
+	// means a caller that does not mention these fields gets the defaults for
+	// free. Do not reintroduce a `default:` tag or a SQL default clause.
+	DegradedFailures       *int `bun:"degraded_failures"`
+	DegradedFailuresWindow *int `bun:"degraded_failures_window"`
+	DegradedSlow           *int `bun:"degraded_slow"`
+	DegradedSlowWindow     *int `bun:"degraded_slow_window"`
+	SlowThresholdMs        *int `bun:"slow_threshold_ms"`
 	// DegradedEnabled gates OPENING incidents, not evaluating. FALSE on every
 	// pre-existing row (the migration's column default) and TRUE on every check
 	// created from now on (NewCheck): upgrading must never start paging on its
 	// own, per the rule already written at SLOAlertPolicy's rollout.
+	//
+	// It is deliberately NOT a pointer, unlike the five above: NULL cannot
+	// carry that rollout rule. nil-means-true would start paging on upgrade,
+	// nil-means-false would silently disable checks created by a path that does
+	// not set the flag. A plain bool defaulting to false makes every such path
+	// fail SAFE — into the dry run, which stamps DegradedWouldFireAt and pages
+	// nobody.
 	DegradedEnabled bool `bun:"degraded_enabled,notnull"`
 	// DegradedWouldFireAt is the dry run's output: when the evaluator last saw
 	// a degraded condition on a check that has DegradedEnabled false. It is
@@ -407,6 +429,65 @@ func (c *Check) EffectiveRecoveryPeriodAt(now time.Time) time.Duration {
 	return c.effectiveRecoveryPeriodForFlapCount(c.EffectiveFlapCount(now))
 }
 
+// The fleet-calibrated degraded-detection defaults (spec 2026-09-22-03), which
+// a NULL column resolves to at read time.
+//
+// 5-of-60 is the only failure rule that catches the motivating episode. The
+// slow rule ships INERT — DefaultSlowThresholdMs is 0, so no duration can
+// exceed it — because there is no honest fleet-wide value for "too slow" and
+// auto-baselining one is an explicit non-goal. 3-of-6 is therefore the shape
+// the rule takes once an operator commits to a threshold, not a rule that runs
+// on its own.
+const (
+	DefaultDegradedFailures       = 5
+	DefaultDegradedFailuresWindow = 60
+	DefaultDegradedSlow           = 3
+	DefaultDegradedSlowWindow     = 6
+	DefaultSlowThresholdMs        = 0
+)
+
+// EffectiveDegradedFailures resolves M for the failure rule: the stored value
+// when the operator configured one (including an explicit 0, which turns the
+// rule off), the code default when the column is NULL.
+//
+// Every reader of the degraded configuration goes through these five accessors.
+// Dereferencing the raw pointer would panic on an unconfigured check, and
+// treating nil as 0 would silently disable the rules — the precise failure this
+// feature exists to eliminate.
+func (c *Check) EffectiveDegradedFailures() int {
+	return intOrDefault(c.DegradedFailures, DefaultDegradedFailures)
+}
+
+// EffectiveDegradedFailuresWindow resolves N for the failure rule.
+func (c *Check) EffectiveDegradedFailuresWindow() int {
+	return intOrDefault(c.DegradedFailuresWindow, DefaultDegradedFailuresWindow)
+}
+
+// EffectiveDegradedSlow resolves M for the slow rule.
+func (c *Check) EffectiveDegradedSlow() int {
+	return intOrDefault(c.DegradedSlow, DefaultDegradedSlow)
+}
+
+// EffectiveDegradedSlowWindow resolves N for the slow rule.
+func (c *Check) EffectiveDegradedSlowWindow() int {
+	return intOrDefault(c.DegradedSlowWindow, DefaultDegradedSlowWindow)
+}
+
+// EffectiveSlowThresholdMs resolves the duration above which a successful probe
+// counts as slow. 0 (stored or defaulted) means the slow rule is off.
+func (c *Check) EffectiveSlowThresholdMs() int {
+	return intOrDefault(c.SlowThresholdMs, DefaultSlowThresholdMs)
+}
+
+// intOrDefault returns *value when value is set, fallback otherwise.
+func intOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+
+	return *value
+}
+
 // NewCheck creates a new check with generated UID.
 //
 // Period is deliberately a FLAT one-minute constant here, not a type-aware
@@ -444,18 +525,17 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		FlappingWindowSeconds:     21600, // 6h
 		FlapBackoffFactor:         2,
 		MaxRecoveryMultiplier:     8,
-		// Degraded detection: the fleet-calibrated defaults (spec
-		// 2026-09-22-03). 5-of-60 is the only failure rule that catches the
-		// motivating episode; the slow rule stays inert until an operator
-		// commits to a threshold, because there is no honest fleet-wide value
-		// for "too slow" and auto-baselining it is an explicit non-goal.
-		DegradedFailures:       5,
-		DegradedFailuresWindow: 60,
-		DegradedSlow:           3,
-		DegradedSlowWindow:     6,
-		SlowThresholdMs:        0,
-		// ON for a new check, OFF for every pre-existing row (the column
-		// default). See DegradedEnabled.
+		// Degraded detection: the five numeric fields are deliberately left nil
+		// — NULL in the database, resolved to DefaultDegradedFailures & co by
+		// the EffectiveDegraded* accessors at read time. Assigning 5/60/3/6/0
+		// here would be the bug this shape replaced: it puts the defaults in
+		// ONE constructor, so every other insert path has to remember to repeat
+		// them or silently store five disabled rules. The assignments are
+		// absent on purpose — do not "fix" it by adding them back.
+		//
+		// degraded_enabled is the exception and must be written: ON for a new
+		// check, OFF for every pre-existing row (the migration's column
+		// default). See the DegradedEnabled field comment.
 		DegradedEnabled: true,
 		Status:          CheckStatusCreated,
 		StatusStreak:    0,

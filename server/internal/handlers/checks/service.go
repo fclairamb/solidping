@@ -835,6 +835,13 @@ type CheckResponse struct {
 	// omitempty: 0 is a meaningful value for every one of them (it turns a rule
 	// off), so a missing field would leave the form unable to tell "off" from
 	// "not sent".
+	//
+	// These are the RESOLVED values, not the raw columns. A check that never
+	// configured degraded detection stores NULL for all five, and the API
+	// answers with the code default it is actually running under — the wire
+	// contract is deliberately unchanged by the nullable-column switch, so a
+	// client never has to know where the number came from and the dash0 form's
+	// blank-means-default input keeps working.
 	DegradedFailures       int  `json:"degradedFailures"`
 	DegradedFailuresWindow int  `json:"degradedFailuresWindow"`
 	DegradedSlow           int  `json:"degradedSlow"`
@@ -1896,7 +1903,7 @@ func (s *Service) UpdateCheck(
 	if req.MaxRecoveryMultiplier != nil {
 		update.MaxRecoveryMultiplier = req.MaxRecoveryMultiplier
 	}
-	if vErr := applyDegradedUpdate(&update, req); vErr != nil {
+	if vErr := applyDegradedUpdate(&update, req, check); vErr != nil {
 		return CheckResponse{}, vErr
 	}
 	if req.ConfirmationPeriodSeconds != nil {
@@ -3106,11 +3113,11 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		EscalationPolicyUID:       check.EscalationPolicyUID,
 		TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
 		FlapState:                 buildFlapStateResponse(check, time.Now()),
-		DegradedFailures:          check.DegradedFailures,
-		DegradedFailuresWindow:    check.DegradedFailuresWindow,
-		DegradedSlow:              check.DegradedSlow,
-		DegradedSlowWindow:        check.DegradedSlowWindow,
-		SlowThresholdMs:           check.SlowThresholdMs,
+		DegradedFailures:          check.EffectiveDegradedFailures(),
+		DegradedFailuresWindow:    check.EffectiveDegradedFailuresWindow(),
+		DegradedSlow:              check.EffectiveDegradedSlow(),
+		DegradedSlowWindow:        check.EffectiveDegradedSlowWindow(),
+		SlowThresholdMs:           check.EffectiveSlowThresholdMs(),
 		DegradedEnabled:           check.DegradedEnabled,
 		DegradedWouldFireAt:       check.DegradedWouldFireAt,
 	}
@@ -4511,6 +4518,11 @@ func (s *Service) cloneBuildCheck(
 	// Degraded detection is configuration, so a clone inherits it — including
 	// degraded_enabled. The dry-run stamp deliberately does NOT travel: it is an
 	// observation about the source check's own probe history.
+	//
+	// The five numerics copy the RAW pointers, not the resolved values: a source
+	// that never configured them must clone to an unconfigured check too, or the
+	// clone would freeze today's defaults into its own row and stop tracking a
+	// future change to them.
 	clone.DegradedFailures = source.DegradedFailures
 	clone.DegradedFailuresWindow = source.DegradedFailuresWindow
 	clone.DegradedSlow = source.DegradedSlow

@@ -14,6 +14,11 @@ var (
 	// therefore a silently-off rule the operator believes is on — the exact
 	// failure mode this whole feature exists to eliminate.
 	errDegradedMExceedsN = errors.New("cannot exceed its window (M of N requires M <= N)")
+	// errDegradedNExceededByM is the same refusal seen from the other side: a
+	// PATCH that shrinks only the window below the M already stored would leave
+	// exactly the same dead rule behind.
+	errDegradedNExceededByM = errors.New(
+		"cannot be below the M already configured on this check (M of N requires M <= N)")
 )
 
 // maxDegradedWindow caps a window at 1000 probes. Past that the query stops
@@ -24,8 +29,10 @@ const maxDegradedWindow = 1000
 var errDegradedWindowTooLarge = fmt.Errorf("must be <= %d probes", maxDegradedWindow)
 
 // applyDegradedCreate copies the degraded configuration from a create request
-// onto the new check. Absent fields keep models.NewCheck's fleet-calibrated
-// defaults (5/60, 3/6, threshold 0, enabled).
+// onto the new check. An absent field stays nil — NULL in the database, which
+// reads back as the fleet-calibrated default (5/60, 3/6, threshold 0) through
+// models.Check's EffectiveDegraded* accessors. Nothing is written to store a
+// default.
 func applyDegradedCreate(check *models.Check, req *CreateCheckRequest) error {
 	values := degradedValues{
 		Failures:        req.DegradedFailures,
@@ -34,29 +41,22 @@ func applyDegradedCreate(check *models.Check, req *CreateCheckRequest) error {
 		SlowWindow:      req.DegradedSlowWindow,
 		SlowThresholdMs: req.SlowThresholdMs,
 	}
-	if err := validateDegradedFields(values); err != nil {
+	// A fresh check has no stored configuration, so the code defaults are what
+	// an unmentioned field will resolve to.
+	if err := validateDegradedFields(values, degradedEffective{
+		Failures:       models.DefaultDegradedFailures,
+		FailuresWindow: models.DefaultDegradedFailuresWindow,
+		Slow:           models.DefaultDegradedSlow,
+		SlowWindow:     models.DefaultDegradedSlowWindow,
+	}); err != nil {
 		return err
 	}
 
-	if req.DegradedFailures != nil {
-		check.DegradedFailures = *req.DegradedFailures
-	}
-
-	if req.DegradedFailuresWindow != nil {
-		check.DegradedFailuresWindow = *req.DegradedFailuresWindow
-	}
-
-	if req.DegradedSlow != nil {
-		check.DegradedSlow = *req.DegradedSlow
-	}
-
-	if req.DegradedSlowWindow != nil {
-		check.DegradedSlowWindow = *req.DegradedSlowWindow
-	}
-
-	if req.SlowThresholdMs != nil {
-		check.SlowThresholdMs = *req.SlowThresholdMs
-	}
+	check.DegradedFailures = req.DegradedFailures
+	check.DegradedFailuresWindow = req.DegradedFailuresWindow
+	check.DegradedSlow = req.DegradedSlow
+	check.DegradedSlowWindow = req.DegradedSlowWindow
+	check.SlowThresholdMs = req.SlowThresholdMs
 
 	if req.DegradedEnabled != nil {
 		check.DegradedEnabled = *req.DegradedEnabled
@@ -78,16 +78,28 @@ type degradedValues struct {
 // applyDegradedUpdate validates and copies the degraded configuration from a
 // PATCH onto the update.
 //
+// `check` is the stored row, needed so the M <= N rule is checked against the
+// values the check will actually run under: a PATCH that raises M alone must be
+// compared to the N already on the check (or the default N when that column is
+// NULL), not waved through because the request happens not to mention N.
+//
 // Turning the feature ON also retires the dry-run stamp, so the check page's
 // "would have fired — enable?" banner cannot keep asking for something the
 // operator has just done.
-func applyDegradedUpdate(update *models.CheckUpdate, req *UpdateCheckRequest) error {
+func applyDegradedUpdate(
+	update *models.CheckUpdate, req *UpdateCheckRequest, check *models.Check,
+) error {
 	if err := validateDegradedFields(degradedValues{
 		Failures:        req.DegradedFailures,
 		FailuresWindow:  req.DegradedFailuresWindow,
 		Slow:            req.DegradedSlow,
 		SlowWindow:      req.DegradedSlowWindow,
 		SlowThresholdMs: req.SlowThresholdMs,
+	}, degradedEffective{
+		Failures:       check.EffectiveDegradedFailures(),
+		FailuresWindow: check.EffectiveDegradedFailuresWindow(),
+		Slow:           check.EffectiveDegradedSlow(),
+		SlowWindow:     check.EffectiveDegradedSlowWindow(),
 	}); err != nil {
 		return err
 	}
@@ -106,9 +118,24 @@ func applyDegradedUpdate(update *models.CheckUpdate, req *UpdateCheckRequest) er
 	return nil
 }
 
+// degradedEffective carries the N values a request that omits them will end up
+// running under — the stored column, or the code default when it is NULL.
+type degradedEffective struct {
+	Failures       int
+	FailuresWindow int
+	Slow           int
+	SlowWindow     int
+}
+
 // validateDegradedFields rejects negative values, oversized windows, and an M
 // larger than its own N.
-func validateDegradedFields(values degradedValues) error {
+//
+// The M <= N comparison uses the EFFECTIVE N (request value if present,
+// `effective` otherwise). Comparing only when both arrive in the same request
+// would let "degradedFailures: 70" through against a window of 60 and store a
+// rule that can never fire — a silently-off rule the operator believes is on,
+// which is what errDegradedMExceedsN exists to prevent.
+func validateDegradedFields(values degradedValues, effective degradedEffective) error {
 	fields := []struct {
 		name  string
 		value *int
@@ -138,15 +165,36 @@ func validateDegradedFields(values degradedValues) error {
 		}
 	}
 
-	if values.Failures != nil && values.FailuresWindow != nil &&
-		*values.Failures > *values.FailuresWindow {
+	if values.Failures != nil &&
+		*values.Failures > intOr(values.FailuresWindow, effective.FailuresWindow) {
 		return fmt.Errorf("degradedFailures: %w", errDegradedMExceedsN)
 	}
 
-	if values.Slow != nil && values.SlowWindow != nil &&
-		*values.Slow > *values.SlowWindow {
+	if values.Slow != nil &&
+		*values.Slow > intOr(values.SlowWindow, effective.SlowWindow) {
 		return fmt.Errorf("degradedSlow: %w", errDegradedMExceedsN)
 	}
 
+	// The mirror case: a PATCH that only SHRINKS a window must not strand an M
+	// already stored above it.
+	if values.FailuresWindow != nil && values.Failures == nil &&
+		effective.Failures > *values.FailuresWindow {
+		return fmt.Errorf("degradedFailuresWindow: %w", errDegradedNExceededByM)
+	}
+
+	if values.SlowWindow != nil && values.Slow == nil &&
+		effective.Slow > *values.SlowWindow {
+		return fmt.Errorf("degradedSlowWindow: %w", errDegradedNExceededByM)
+	}
+
 	return nil
+}
+
+// intOr returns *value when set, fallback otherwise.
+func intOr(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+
+	return *value
 }

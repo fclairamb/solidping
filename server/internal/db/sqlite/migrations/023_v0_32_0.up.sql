@@ -24,15 +24,22 @@
 -- on its own) and adopted through a dry run that stamps degraded_would_fire_at.
 -- degraded_evaluated_at is evaluator rotation state, not configuration.
 --
+-- The five numeric columns are DELIBERATELY NULLABLE with no default clause —
+-- NULL is the single "unset" marker and the code default (5 / 60, 3 / 6,
+-- threshold 0) is resolved at read time by Check.EffectiveDegraded*, never
+-- written at insert time. `degraded_enabled` keeps NOT NULL DEFAULT FALSE
+-- because NULL cannot carry the rollout rule. The Postgres twin holds the full
+-- argument.
+--
 -- SQLite has no `add column if not exists`; these run once on a database that
 -- has never seen 023.
 -- ==========================================================================
 
-alter table checks add column degraded_failures integer not null default 5;
-alter table checks add column degraded_failures_window integer not null default 60;
-alter table checks add column degraded_slow integer not null default 3;
-alter table checks add column degraded_slow_window integer not null default 6;
-alter table checks add column slow_threshold_ms integer not null default 0;
+alter table checks add column degraded_failures integer;
+alter table checks add column degraded_failures_window integer;
+alter table checks add column degraded_slow integer;
+alter table checks add column degraded_slow_window integer;
+alter table checks add column slow_threshold_ms integer;
 alter table checks add column degraded_enabled boolean not null default false;
 alter table checks add column degraded_would_fire_at text;
 alter table checks add column degraded_evaluated_at text;
