@@ -216,3 +216,23 @@ func validatePrivateKey(key string) error {
 	// Accept anyway - golang.org/x/crypto/ssh can parse OpenSSH format keys
 	return nil
 }
+
+// SchemaNotes implements checkerdef.SchemaNoter: the rules Validate() enforces
+// that a schema reflected from this struct cannot state.
+func (c *SFTPConfig) SchemaNotes() []string {
+	return []string{
+		"Exactly one of `password` or `private_key` must be set. Both are `omitempty` in Go, so " +
+			"neither appears in `required`; the `oneOf` below encodes the rule, and `Validate()` " +
+			"enforces it.",
+		"`private_key` must be a PEM-encoded private key (PKCS#8, PKCS#1, EC or OpenSSH). The " +
+			"schema only says it is a string.",
+		"`host_key_fingerprint`, when set, must be the `SHA256:<base64>` form the check reports " +
+			"in its output.",
+	}
+}
+
+// SchemaExclusiveGroups implements checkerdef.SchemaExclusiveGrouper: exactly one
+// of password / private_key.
+func (c *SFTPConfig) SchemaExclusiveGroups() [][]string {
+	return [][]string{{"password", "private_key"}}
+}

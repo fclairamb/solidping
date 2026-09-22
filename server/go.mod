@@ -135,9 +135,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0 // indirect
 	github.com/aws/smithy-go v1.28.1 // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beevik/etree v1.6.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/caddyserver/zerossl v0.1.5 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -198,6 +200,7 @@ require (
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inbucket/html2text v1.0.0 // indirect
+	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.7.6 // indirect
@@ -234,6 +237,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/paulmach/orb v0.13.0 // indirect
+	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.30 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
@@ -271,6 +275,7 @@ require (
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

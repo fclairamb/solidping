@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/grpc.json",
+  "properties": {
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "tls": {
+      "type": "boolean"
+    },
+    "tlsSkipVerify": {
+      "type": "boolean"
+    },
+    "serviceName": {
+      "type": "string"
+    },
+    "timeout": {
+      "type": "string",
+      "x-solidping-go-type": "time.Duration"
+    },
+    "metadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "secretMetadata": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object",
+      "format": "solidping-secret-ref",
+      "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
+    },
+    "keyword": {
+      "type": "string"
+    },
+    "invertKeyword": {
+      "type": "boolean"
+    }
+  },
+  "type": "object",
+  "required": [
+    "host"
+  ],
+  "title": "grpc check config",
+  "description": "Check gRPC service health.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.",
+  "x-solidping-check-type": "grpc",
+  "x-solidping-notes": [],
+  "x-solidping-secret-fields": [
+    "secretMetadata"
+  ],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

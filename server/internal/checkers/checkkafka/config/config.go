@@ -9,6 +9,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -64,6 +65,12 @@ func (c *KafkaConfig) parseBrokers(configMap map[string]any) error {
 		}
 
 		c.Brokers = brokers
+	case []string:
+		// A config that never went through JSON — a sample config, a Go caller,
+		// the schema generator — hands us the native slice. Before this case
+		// existed the `default` branch rejected the checker's OWN sample config,
+		// so "create a kafka check from the sample" could not work at all.
+		c.Brokers = slices.Clone(brokerVal)
 	case string:
 		if brokerVal != "" {
 			c.Brokers = strings.Split(brokerVal, ",")

@@ -43,7 +43,11 @@ type KubernetesConfig struct {
 	// Namespace is the workload's namespace. Required.
 	Namespace string `json:"namespace"`
 	// Kind is the workload kind: "Deployment" or "ReplicaSet". Required.
-	Kind string `json:"kind"`
+	//
+	// The `jsonschema` tag mirrors the Validate() switch below into the
+	// generated JSON Schema (server/gen/checkerschema). Keep the two in step:
+	// the tag is documentation, the switch is the rule.
+	Kind string `json:"kind" jsonschema:"enum=Deployment,enum=ReplicaSet"`
 	// Name is the workload name. Required.
 	Name string `json:"name"`
 	// Timeout caps the API call(s); default 10s, max 60s.

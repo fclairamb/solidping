@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/ntp.json",
+  "properties": {
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "timeout": {
+      "type": "string",
+      "x-solidping-go-type": "time.Duration"
+    },
+    "version": {
+      "type": "integer"
+    },
+    "offset_warn_ms": {
+      "type": "integer"
+    },
+    "offset_crit_ms": {
+      "type": "integer"
+    },
+    "max_stratum": {
+      "type": "integer"
+    }
+  },
+  "type": "object",
+  "title": "ntp check config",
+  "description": "Monitor NTP time servers.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.\n\n`host` is not in `required` (its Go field carries `omitempty`), but `Validate()` rejects a config without it. The Go validator is authoritative.",
+  "x-solidping-check-type": "ntp",
+  "x-solidping-notes": [
+    "`host` is not in `required` (its Go field carries `omitempty`), but `Validate()` rejects a config without it. The Go validator is authoritative."
+  ],
+  "x-solidping-secret-fields": [],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

@@ -227,3 +227,17 @@ func (c *SIPConfig) Validate() error {
 
 	return nil
 }
+
+// SchemaNotes implements checkerdef.SchemaNoter: the rules Validate() enforces
+// that a schema reflected from this struct cannot state.
+func (c *SIPConfig) SchemaNotes() []string {
+	return []string{
+		"`mode` accepts \"options\" (default) or \"register\"; `transport` accepts \"udp\" " +
+			"(default), \"tcp\" or \"tls\". Both are optional, and an absent value takes the " +
+			"default — so the schema cannot express them as an `enum` without also rejecting " +
+			"the empty string the validator tolerates.",
+		"When `mode` is \"register\", `username` and `password` are both required. They are " +
+			"`omitempty` in Go and therefore absent from `required`; `Validate()` is what " +
+			"enforces the rule.",
+	}
+}

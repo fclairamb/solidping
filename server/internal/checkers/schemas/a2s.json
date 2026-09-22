@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/a2s.json",
+  "properties": {
+    "host": {
+      "type": "string"
+    },
+    "port": {
+      "type": "integer"
+    },
+    "timeout": {
+      "type": "string",
+      "x-solidping-go-type": "time.Duration"
+    },
+    "minPlayers": {
+      "type": "integer"
+    },
+    "maxPlayers": {
+      "type": "integer"
+    }
+  },
+  "type": "object",
+  "required": [
+    "host"
+  ],
+  "title": "a2s check config",
+  "description": "Monitor Source engine game servers via the A2S query protocol.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.",
+  "x-solidping-check-type": "a2s",
+  "x-solidping-notes": [],
+  "x-solidping-secret-fields": [],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}
