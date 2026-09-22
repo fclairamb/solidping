@@ -4,6 +4,8 @@
 
 ### Features
 
+* **cli:** **the `sp` binary is a third of its former size: ~32 MB bare, ~12 MB gzipped, down from ~99 MB and ~31 MB.** A config-validation CLI had no business being ~99 MB. It was linking every checker's *implementation* — Kubernetes client-go, Oracle's go-ora, the JS engine, gRPC, Docker, ClickHouse, Mongo, Kafka — because `sp checks validate` reaches the server's own validators through the checker registry, and Go links whole packages: asking for the config half dragged in the execution half with it. Each checker's config now lives in its own light `config` sub-package (the struct, its parsing, its key constants and its whole rule set, including the name/slug defaulting), and the CLI reaches them through a new config-only registry that links no protocol client. Nothing about validation changes: it is still the very same Go validators the live create/update path runs, still fully offline, and the server binary is unchanged. The `.gz` twins stay published alongside the bare files
+
 * **cli:** **every `sp` binary now ships with a gzip twin, cutting the download from ~99 MB to ~31 MB.** The bare-binary naming kept download URLs stable, but bare is also uncompressed — and `sp` links the server's whole checker registry (k8s, Oracle, JS, gRPC, …), so every release asked a metered or slow connection for ~99 MB. Each release now also publishes `sp_linux_amd64.gz` and friends — the same version-free names with `.gz` appended, listed in `sp-checksums.txt` like the rest — so `releases/latest/download/sp_linux_amd64.gz` is the same stable contract at a third of the size; decompress with `gunzip` and the bare files remain the canonical, unpinned URLs. The install docs show the `.gz` route
 
 

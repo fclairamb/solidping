@@ -34,7 +34,7 @@ On Windows, download `sp_windows_amd64.exe` and rename it to `sp.exe`:
 Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/sp_windows_amd64.exe" -OutFile "sp.exe"
 ```
 
-Every binary also has a gzip twin — same name with `.gz` appended (for example `sp_linux_amd64.gz`), so the same `latest/download/` URLs work. The CLI carries the server's full checker registry, which makes the bare files ~99 MB; the `.gz` twins are ~31 MB. Decompress with `gunzip sp_linux_amd64.gz && chmod +x sp_linux_amd64`.
+Every binary also has a gzip twin — same name with `.gz` appended (for example `sp_linux_amd64.gz`), so the same `latest/download/` URLs work. The bare files are ~32 MB and the `.gz` twins ~12 MB. Decompress with `gunzip sp_linux_amd64.gz && chmod +x sp_linux_amd64`.
 
 In CI, or anywhere you would rather not manage a binary, use the image:
 
