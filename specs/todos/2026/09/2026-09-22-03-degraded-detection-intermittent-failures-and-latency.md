@@ -256,3 +256,76 @@ already forbids it.
    resemble an outage or people mute both") — reusing the outage escalation
    policy (which may page on-call) undercuts that. Default to notify-only,
    no paging escalation, for degraded incidents.
+
+## Implementation Plan
+
+Sequenced so each step lands on a green build, committed separately.
+
+1. **Migration `023_v0_32_0.{up,down}.sql`, both dialects.** `022_v0_30_0` already
+   shipped (v0.30.0 / v0.31.1 are tagged), so 023 is the next free number and
+   `v0_32_0` is the upcoming release. One SECTION: `degraded-detection`.
+   - `checks`: `degraded_failures` (5), `degraded_failures_window` (60),
+     `degraded_slow` (3), `degraded_slow_window` (6), `slow_threshold_ms` (0),
+     `degraded_enabled` (**false**, so every existing row is off — the rollout
+     rule), `degraded_would_fire_at` (null), plus `degraded_evaluated_at` (null).
+     The last one is evaluator STATE, not configuration: it is the
+     `last_evaluated_at ASC NULLS FIRST` rotation the burn evaluator already
+     relies on to keep a bounded sweep from starving the tail. It is the only
+     column added beyond the spec's table and it stores no policy.
+   - `status_pages.publish_degraded` (false) — the per-page opt-in.
+   - `uq_active_degraded_incident` partial unique index on `check_uid`
+     `where state = 1 and kind = 'degraded' and deleted_at is null`, mirroring
+     `uq_active_slo_burn_incident`: two evaluator replicas on the same minute
+     must not double-open.
+2. **Models.** `IncidentKindDegraded`, `ResolutionTypeEscalated`; the seven check
+   columns + `DegradedEvaluatedAt` on `Check`/`CheckUpdate` — **no `default:`
+   clause on any bun tag** (`degraded_failures: 0` has to be writable at
+   creation); `NewCheck` supplies 5/60/3/6/0 and `DegradedEnabled: true` (on for
+   new checks); `StatusPage.PublishDegraded`; `ListChecksFilter.WouldHaveFired`.
+3. **DB layer (postgres + sqlite).** `ListChecksForDegradedEval(limit)` (enabled,
+   non-internal, live, oldest-evaluated first), `FindActiveDegradedIncident(checkUID)`,
+   the new `UpdateCheck` set-fields, and the `wouldHaveFired` predicate in
+   `ListChecks`.
+4. **Rule primitive** — `internal/degraded`: pure, table-driven-testable
+   `Evaluate(probes, params, now)`. Countable = status in (3,4,5,6,8) and not
+   `maintenance`; a maintenance/abandoned/lifecycle row is skipped, never a slot;
+   a probe older than `2 x N x period` is dropped; fires on M of the last N;
+   resolves after `max(N)` consecutive clean countable probes.
+5. **Evaluator service** — `internal/handlers/degraded`, shaped exactly like
+   `handlers/sloalerts`: bounded batch, per-check failures logged and skipped,
+   `EvaluateDegraded(ctx, now) (int, error)`. Drives: suppression while a
+   `kind = "check"` incident is open, open / resolve, and the dry run (stamp
+   `degraded_would_fire_at`, open nothing) when `degraded_enabled` is false.
+6. **Periodic job** — `jobdef.JobTypeDegradedEval` + `job_degraded_eval.go`
+   modelled on `job_slo_burn_eval.go` (self-rescheduling, one minute), registry
+   entry, `services.DegradedEvaluator` interface, server wiring, startup schedule.
+7. **Incident lifecycle** — `handlers/incidents/degraded.go`:
+   `OpenDegradedIncident` (no rollup/cascade call at all),
+   `AutoResolveDegradedIncident`, and `EscalateDegradedIncident` (resolve the
+   degraded one `resolution_type = "escalated"`, point the outage's
+   `caused_by_incident_uid` at it **only when rollup has not already claimed
+   that column**, never set `paging_suppressed`). Called from `createIncident` /
+   `tryReopenIncident`. Escalation policies are skipped for
+   `kind = "degraded"` in `queueLifecycleNotifications` — resolved open question
+   2: notify-only, no paging.
+8. **Cascade** — nothing to write: `FindActiveIncidentsForChecksInWindow` already
+   filters `kind = 'check'`, so a degraded incident can never be a cascade
+   ancestor, and the open path above never asks to be a descendant. Pinned by a
+   test.
+9. **Notification wording** — `internal/notifications/degraded.go` (`DegradedInfo`,
+   mirroring `BurnInfo`) wired into the two senders that already branch on kind
+   (slack, email): "<target> is degraded: 7 failures in the last 60 probes
+   (93.8%). Currently up." plus a `graphFrom`/`graphTo` deep link into the window.
+10. **Status pages** — `eligiblePages` skips a degraded incident unless
+    `page.publish_degraded`; the column is exposed on the status-page API.
+11. **API surface** — the seven config fields + `degradedWouldFireAt` on the check
+    create/update/response (and clone), `?wouldHaveFired=true` on the checks list,
+    `publishDegraded` on status pages, OpenAPI updated.
+12. **dash0** — check-page banner ("would have been flagged degraded at …; enable"),
+    `wouldHaveFired` filter on the checks list, amber `ReferenceArea` shading of a
+    degraded incident's span in `response-time-chart.tsx`, locale keys for all six
+    languages.
+13. **Tests** — every item in the spec's Testing section, including the
+    availability/SLO/uptime-report denominator assertion (a real query, not a code
+    read) and the dry-run assertion that no incident row is created.
+
