@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkmqtt/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -28,35 +28,11 @@ func (c *MQTTChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeMQTT
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *MQTTChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &MQTTConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		if cfg.TLS {
-			port = defaultTLSPort
-		} else {
-			port = defaultPort
-		}
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d", cfg.Host, port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "mqtt-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the MQTT broker health check and returns the result.
@@ -79,7 +55,7 @@ func (c *MQTTChecker) Execute(
 	metrics := map[string]any{}
 	output := map[string]any{
 		"host":  cfg.Host,
-		"topic": cfg.topic(),
+		"Topic": cfg.EffectiveTopic(),
 	}
 
 	if checkerdef.TunnelDialerFrom(ctx) != nil {
@@ -137,7 +113,7 @@ func (c *MQTTChecker) connect(
 	clientID := fmt.Sprintf("solidping-check-%d", time.Now().UnixNano())
 
 	opts := mqtt.NewClientOptions().
-		AddBroker(cfg.brokerURL()).
+		AddBroker(cfg.BrokerURL()).
 		SetClientID(clientID).
 		SetCleanSession(true).
 		SetAutoReconnect(false).
@@ -199,12 +175,12 @@ func (c *MQTTChecker) roundtrip(
 	cfg *MQTTConfig,
 	timeout time.Duration,
 ) checkerdef.Result {
-	topic := cfg.topic()
+	Topic := cfg.EffectiveTopic()
 	testMessage := fmt.Sprintf("solidping-check-%d", time.Now().UnixNano())
 	received := make(chan struct{}, 1)
 
 	// Subscribe
-	subToken := client.Subscribe(topic, 1, func(_ mqtt.Client, msg mqtt.Message) {
+	subToken := client.Subscribe(Topic, 1, func(_ mqtt.Client, msg mqtt.Message) {
 		if string(msg.Payload()) == testMessage {
 			select {
 			case received <- struct{}{}:
@@ -230,7 +206,7 @@ func (c *MQTTChecker) roundtrip(
 	// Publish
 	rtStart := time.Now()
 
-	pubToken := client.Publish(topic, 1, false, testMessage)
+	pubToken := client.Publish(Topic, 1, false, testMessage)
 	if !pubToken.WaitTimeout(timeout) {
 		return checkerdef.Result{
 			Status: checkerdef.StatusTimeout,

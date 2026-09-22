@@ -5,14 +5,13 @@ package checkclickhouse
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkclickhouse/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -26,26 +25,11 @@ func (c *ClickHouseChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeClickHouse
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *ClickHouseChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &ClickHouseConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d/%s", cfg.Host, cfg.resolvedPort(), cfg.resolvedDatabase())
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "clickhouse-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // buildOptions turns the config into native-protocol client options. The
@@ -53,14 +37,14 @@ func (c *ClickHouseChecker) Validate(spec *checkerdef.CheckSpec) error {
 // resolves the hostname; untunneled, DialContext stays nil and the driver uses
 // its own net.Dialer unchanged.
 func buildOptions(ctx context.Context, cfg *ClickHouseConfig) *clickhouse.Options {
-	timeout := cfg.resolvedTimeout()
+	timeout := cfg.ResolvedTimeout()
 
 	opts := &clickhouse.Options{
 		Protocol: clickhouse.Native,
-		Addr:     []string{net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.resolvedPort()))},
+		Addr:     []string{net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.ResolvedPort()))},
 		Auth: clickhouse.Auth{
-			Database: cfg.resolvedDatabase(),
-			Username: cfg.resolvedUsername(),
+			Database: cfg.ResolvedDatabase(),
+			Username: cfg.ResolvedUsername(),
 			Password: cfg.Password,
 		},
 		DialTimeout:  timeout,
@@ -95,7 +79,7 @@ func (c *ClickHouseChecker) Execute(
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, cfg.resolvedTimeout())
+	ctx, cancel := context.WithTimeout(ctx, cfg.ResolvedTimeout())
 	defer cancel()
 
 	start := time.Now()
@@ -103,8 +87,8 @@ func (c *ClickHouseChecker) Execute(
 	metrics := map[string]any{}
 	output := map[string]any{
 		checkerdef.OutputKeyHost: cfg.Host,
-		checkerdef.OutputKeyPort: cfg.resolvedPort(),
-		fieldDatabase:            cfg.resolvedDatabase(),
+		checkerdef.OutputKeyPort: cfg.ResolvedPort(),
+		fieldDatabase:            cfg.ResolvedDatabase(),
 		"secure":                 cfg.Secure,
 	}
 
@@ -139,9 +123,9 @@ func (c *ClickHouseChecker) Execute(
 
 	queryStart := time.Now()
 
-	output["query"] = cfg.resolvedQuery()
+	output["query"] = cfg.ResolvedQuery()
 
-	queryResult, err := executeQuery(ctx, conn, cfg.resolvedQuery())
+	queryResult, err := executeQuery(ctx, conn, cfg.ResolvedQuery())
 	if err != nil {
 		return failure(ctx, start, metrics, output, err.Error(), "query timeout"), nil
 	}

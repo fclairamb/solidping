@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -54,7 +54,7 @@ func (c *DNSBLChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the DNSBL check and returns the result.

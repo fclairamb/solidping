@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/checksleep/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksleep/config"
 )
 
 // Forced status values accepted by SleepConfig.Status.
@@ -29,7 +29,7 @@ func (c *SleepChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *SleepChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute sleeps for the configured (optionally jittered) duration, honoring

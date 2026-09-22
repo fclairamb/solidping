@@ -8,7 +8,7 @@ import (
 	"github.com/dreamscached/minequery/v2"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/checkminecraft/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkminecraft/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -25,7 +25,7 @@ func (c *MinecraftChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *MinecraftChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the Minecraft server health check and returns the result.

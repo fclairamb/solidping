@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/checkssl/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssl/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -31,7 +31,7 @@ func (c *SSLChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *SSLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // resolveHost resolves the hostname and picks the address to dial. The pick

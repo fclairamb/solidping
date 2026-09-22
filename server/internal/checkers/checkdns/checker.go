@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclairamb/solidping/server/internal/checkers/checkdns/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdns/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -33,7 +33,7 @@ func (c *DNSChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *DNSChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the DNS check and returns the result.

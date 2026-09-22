@@ -16,7 +16,7 @@ import (
 	"github.com/beevik/ntp"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/checkntp/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkntp/config"
 )
 
 const (
@@ -68,7 +68,7 @@ func (c *NTPChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *NTPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the NTP check and returns the result.

@@ -13,6 +13,7 @@ import (
 	"github.com/go-sql-driver/mysql" // MySQL driver registration + dial registry
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkmysql/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -39,7 +40,7 @@ func init() {
 
 // tunneledDSN rewrites the DSN's `tcp` protocol to the registered tunnel network
 // so go-sql-driver dials through the bastion via the globally-registered dial
-// func (which reads the tunnel dialer off the connection context). buildDSN
+// func (which reads the tunnel dialer off the connection context). BuildDSN
 // always emits `@tcp(`, so this single replacement is exact.
 func tunneledDSN(dsn string) string {
 	return strings.Replace(dsn, "@tcp(", "@"+tunnelNetwork+"(", 1)
@@ -53,35 +54,11 @@ func (c *MySQLChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeMySQL
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *MySQLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &MySQLConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		port = defaultPort
-	}
-
-	if spec.Name == "" {
-		if cfg.Database != "" {
-			spec.Name = fmt.Sprintf("%s:%d/%s", cfg.Host, port, cfg.Database)
-		} else {
-			spec.Name = fmt.Sprintf("%s:%d", cfg.Host, port)
-		}
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "mysql-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 type execParams struct {
@@ -96,7 +73,7 @@ func newExecParams(cfg *MySQLConfig) execParams {
 		timeout: cfg.Timeout,
 		query:   cfg.Query,
 		port:    cfg.Port,
-		dsn:     cfg.buildDSN(),
+		dsn:     cfg.BuildDSN(),
 	}
 
 	if params.timeout == 0 {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/rumblefrog/go-a2s"
 
-	"github.com/fclairamb/solidping/server/internal/checkers/checka2s/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checka2s/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -25,7 +25,7 @@ func (c *A2SChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *A2SChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the A2S query and returns the result.

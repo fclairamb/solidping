@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkicmp/config"
 )
 
 const (
@@ -49,7 +49,7 @@ func (c *ICMPChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the ICMP ping check and returns the result.

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
 )
 
 const (
@@ -29,7 +29,7 @@ func (c *UDPChecker) Type() checkerdef.CheckType {
 // `config` sub-package so an offline validator (`sp checks validate`) can run it
 // without linking this checker's execution client.
 func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	return config.ValidateSpec(spec)
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the UDP check and returns the result.
