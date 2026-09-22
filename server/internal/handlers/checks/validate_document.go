@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/secretref"
@@ -315,8 +315,7 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 		return issues
 	}
 
-	checker, ok := registry.GetChecker(checkerdef.CheckType(check.Type))
-	if !ok {
+	if !configregistry.IsKnownType(checkerdef.CheckType(check.Type)) {
 		issues = append(issues, DocumentIssue{
 			Where: where, Field: fieldType, Code: CodeUnknownType,
 			Message: fmt.Sprintf("unsupported check type %q", check.Type),
@@ -351,7 +350,9 @@ func validateCheckType(where string, check *ExportCheck, secretsStripped bool) [
 		return issues
 	}
 
-	if err := checker.Validate(&checkerdef.CheckSpec{Config: configCopy}); err != nil {
+	if err := configregistry.ValidateSpec(
+		checkerdef.CheckType(check.Type), &checkerdef.CheckSpec{Config: configCopy},
+	); err != nil {
 		if !strippedSecretComplaint(err, check, secretsStripped) {
 			issues = append(issues, configIssue(where, err))
 		}
@@ -452,7 +453,7 @@ func deepCopyConfig(config map[string]any) (map[string]any, error) {
 // export-redacted fields. hiddenExportConfigKeys is the row-aware version the
 // differ uses; this one is what an offline validator can know.
 func exportStrippedKeys(checkType string) []string {
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
 	if !ok {
 		return nil
 	}
@@ -486,7 +487,7 @@ func validateNoInlinedCredentials(where, checkType string, config map[string]any
 	var issues []DocumentIssue
 
 	declared := map[string]struct{}{}
-	_, knownType := registry.GetChecker(checkerdef.CheckType(checkType))
+	knownType := configregistry.IsKnownType(checkerdef.CheckType(checkType))
 
 	for _, key := range exportStrippedKeys(checkType) {
 		declared[key] = struct{}{}

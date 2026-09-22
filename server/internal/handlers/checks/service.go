@@ -24,7 +24,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/audit"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -308,7 +308,7 @@ func parsedConfigForType(checkType string, configMap map[string]any) checkerdef.
 		return nil
 	}
 
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
 	if !ok {
 		return nil
 	}
@@ -3624,7 +3624,7 @@ func stripSecretKeysForExport(check *models.Check) map[string]any {
 // split. A copy is returned so the cached model is never mutated.
 func redactSecretConfig(check *models.Check, privateKeys []string) (map[string]any, []string) {
 	secretSet := map[string]struct{}{}
-	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
+	if cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
 		for _, k := range credentials.SecretFieldsFor(cfg) {
 			secretSet[k] = struct{}{}
 		}
@@ -4049,7 +4049,7 @@ func validateImportedCheck(exportedCheck *ExportCheck, index int) *ImportError {
 	}
 
 	// Validate check type
-	if _, ok := registry.GetChecker(checkerdef.CheckType(exportedCheck.Type)); !ok {
+	if !configregistry.IsKnownType(checkerdef.CheckType(exportedCheck.Type)) {
 		return &ImportError{
 			Index: index, Slug: exportedCheck.Slug, Error: "invalid check type: " + exportedCheck.Type,
 		}
@@ -4567,7 +4567,7 @@ func (s *Service) cloneCopyConnections(ctx context.Context, sourceUID, cloneUID,
 // body: normalizing a patch would fold half a credential and then replace the
 // stored map with it.
 func normalizeCheckConfig(checkType string, effective map[string]any) (map[string]any, error) {
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
 	if !ok {
 		return effective, nil
 	}
@@ -4587,7 +4587,7 @@ func normalizeCheckConfig(checkType string, effective map[string]any) (map[strin
 // plaintext envelope keeps secrets out of the public column and out of API
 // responses even though it does not encrypt them at rest.
 func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effective map[string]any) error {
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
 	if !ok {
 		// Unknown checker — keep the existing behavior: store the map as
 		// plaintext and let validation fail elsewhere. Don't silently lose
@@ -4790,8 +4790,7 @@ const placeholderPrivateKeyPEM = "-----BEGIN PLACEHOLDER-----\n" +
 func (s *Service) validatePatchedConfig(
 	checkType string, merged map[string]any, wasSealedOnly bool, oldPrivateKeys *string,
 ) error {
-	checker, ok := registry.GetChecker(checkerdef.CheckType(checkType))
-	if !ok {
+	if !configregistry.IsKnownType(checkerdef.CheckType(checkType)) {
 		return nil
 	}
 
@@ -4804,7 +4803,7 @@ func (s *Service) validatePatchedConfig(
 		injectSecretPlaceholders(checkType, configCopy, parseConfigPrivateKeys(oldPrivateKeys))
 	}
 
-	return checker.Validate(&checkerdef.CheckSpec{Config: configCopy})
+	return configregistry.ValidateSpec(checkerdef.CheckType(checkType), &checkerdef.CheckSpec{Config: configCopy})
 }
 
 // parseConfigPrivateKeys decodes the ConfigPrivateKeys JSON-array-of-strings
@@ -4865,7 +4864,7 @@ func secretPlaceholderShapeFor(checkType, key string) any {
 		return placeholderPrivateKeyPEM
 	}
 
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType))
 	if !ok {
 		return placeholderSecretValue
 	}
@@ -5164,7 +5163,7 @@ func (s *Service) applyConfigPatch(
 		return nil, err
 	}
 
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
 	if !ok {
 		// Unknown checker — fall back to plain replace.
 		return patch, nil
@@ -5195,7 +5194,7 @@ func (s *Service) applyConfigPatch(
 // never a request to destroy it. Rotation is an explicit, separate operation
 // (RotateHeartbeatToken), which is the ONE supported way to change one.
 func preserveAbsentRedactedFields(check *models.Check, merged map[string]any) {
-	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(check.Type))
 	if !ok {
 		return
 	}

@@ -56,6 +56,7 @@ import (
 	tcpconfig "github.com/fclairamb/solidping/server/internal/checkers/checktcp/config"
 	udpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
 	websocketconfig "github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket/config"
+	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
 // ParseConfig returns a zero-value config for a check type, and true when the
@@ -257,4 +258,22 @@ func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) er
 	default:
 		return ErrUnknownType
 	}
+}
+
+// InferCheckType returns the check type a URL implies, or the empty CheckType
+// when none can be inferred. The inference lives in urlparse, which is pure
+// string work — the heavy registry exposes the same function and both forward
+// to it.
+func InferCheckType(urlStr string) checkerdef.CheckType {
+	return urlparse.InferCheckType(urlStr)
+}
+
+// InferCheckTypeFromConfig examines a config map and infers the check type.
+// Returns the empty CheckType when the type cannot be inferred.
+func InferCheckTypeFromConfig(config map[string]any) checkerdef.CheckType {
+	if url, ok := config["url"].(string); ok && url != "" {
+		return InferCheckType(url)
+	}
+
+	return ""
 }

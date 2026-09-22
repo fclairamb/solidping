@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/secretref"
@@ -459,7 +459,7 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 func hiddenExportConfigKeys(checkType string, configPrivateKeys *string) map[string]struct{} {
 	hidden := map[string]struct{}{}
 
-	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType)); ok {
+	if cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType)); ok {
 		for _, key := range credentials.SecretFieldsFor(cfg) {
 			hidden[key] = struct{}{}
 		}

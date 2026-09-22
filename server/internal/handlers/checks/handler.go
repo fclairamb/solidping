@@ -12,7 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -392,7 +392,7 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req *http.Request) err
 
 	// Infer type from URL if not specified
 	if createReq.Type == "" {
-		inferredType := registry.InferCheckTypeFromConfig(createReq.Config)
+		inferredType := configregistry.InferCheckTypeFromConfig(createReq.Config)
 		if inferredType == "" {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 				{Name: fieldType, Message: "Type is required when url is not provided or has unrecognized scheme"},
@@ -554,7 +554,7 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req *http.Request) err
 
 	// Infer type from URL if not specified
 	if upsertReq.Type == "" {
-		inferredType := registry.InferCheckTypeFromConfig(upsertReq.Config)
+		inferredType := configregistry.InferCheckTypeFromConfig(upsertReq.Config)
 		if inferredType == "" {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 				{Name: fieldType, Message: "Type is required when url is not provided or has unrecognized scheme"},

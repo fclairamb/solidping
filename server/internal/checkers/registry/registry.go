@@ -45,7 +45,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkudp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
-	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
 //nolint:gochecknoinits // Required to break import cycle between checkjs and registry
@@ -201,15 +200,11 @@ func GetAllSampleConfigs(opts *checkerdef.ListSampleOptions) map[checkerdef.Chec
 // InferCheckType returns the check type for a given URL.
 // Returns empty CheckType if type cannot be inferred.
 func InferCheckType(urlStr string) checkerdef.CheckType {
-	return urlparse.InferCheckType(urlStr)
+	return configregistry.InferCheckType(urlStr)
 }
 
 // InferCheckTypeFromConfig examines a config map and infers the check type.
 // Returns empty CheckType if type cannot be inferred.
 func InferCheckTypeFromConfig(config map[string]any) checkerdef.CheckType {
-	if url, ok := config["url"].(string); ok && url != "" {
-		return InferCheckType(url)
-	}
-
-	return ""
+	return configregistry.InferCheckTypeFromConfig(config)
 }
