@@ -57,6 +57,7 @@ the right place.
 | `SP_SERVER_LISTEN` | `:4000` | Listen address (e.g., `:4000`, `0.0.0.0:8080`) |
 | `SP_SERVER_JOB_WORKER_NB` | `2` | Number of job runner goroutines |
 | `SP_SERVER_CHECK_WORKER_NB` | `3` | Number of check runner goroutines |
+| `SP_SERVER_COMPRESSION` | `true` | Gzip-compress JSON, HTML, CSS, JS, SVG and XML/Atom/YAML responses above 1 KiB. SolidPing compresses its own responses, so no reverse-proxy-side compression is needed — enabling one anyway is harmless, since a response that already carries `Content-Encoding` passes through untouched |
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
@@ -81,6 +82,11 @@ the right place.
 Enabling `SP_ACME_ENABLED` makes the process bind two extra ports and removes
 the need for a TLS-terminating reverse proxy. Leave it off to keep TLS at your
 own edge. See [Custom Domains](/features/custom-domains) for the full setup.
+
+SolidPing also compresses its own responses (`SP_SERVER_COMPRESSION`, default
+`true`), so no reverse proxy in front of it needs to do so — enabling
+proxy-side compression anyway is harmless, since a response that already
+carries `Content-Encoding` passes through untouched.
 
 ### Distributed Workers
 

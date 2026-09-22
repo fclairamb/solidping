@@ -151,6 +151,11 @@ kubectl apply -f service.yaml
 kubectl apply -f ingress.yaml
 ```
 
+SolidPing gzip-compresses its own responses (`SP_SERVER_COMPRESSION`, default
+`true`), so the ingress needs no compression annotation of its own — and
+turning one on anyway is harmless, since a response that already carries
+`Content-Encoding` passes through untouched.
+
 ## File Storage
 
 SolidPing writes a handful of blobs outside the database — org logos,
