@@ -923,6 +923,22 @@ jobs:
             echo "::endgroup::"
           done
 
+          # Gzip twins alongside the bare binaries. sp links the server's whole
+          # checker registry (k8s, oracle, goja, grpc, ... — the config-only
+          # decoupling that would cut the binary itself is a separate batch),
+          # so the bare files are ~99 MB and a metered or slow connection pays
+          # for every byte. gzip brings the download to ~31 MB while the bare
+          # names stay the canonical, unpinned contract (the .gz twins mirror
+          # them 1:1, so both are version-free).
+          echo "::group::gzip the sp binaries"
+          for file in ../dist/sp-*; do
+            case "$file" in
+              *.gz) continue ;;
+            esac
+            gzip -9 -k "$file"
+          done
+          echo "::endgroup::"
+
           cd ../dist
           sha256sum sp-* > sp-checksums.txt
           ls -l

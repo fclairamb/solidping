@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+* **cli:** **every `sp` binary now ships with a gzip twin, cutting the download from ~99 MB to ~31 MB.** The bare-binary naming kept download URLs stable, but bare is also uncompressed — and `sp` links the server's whole checker registry (k8s, Oracle, JS, gRPC, …), so every release asked a metered or slow connection for ~99 MB. Each release now also publishes `sp_linux_amd64.gz` and friends — the same version-free names with `.gz` appended, listed in `sp-checksums.txt` like the rest — so `releases/latest/download/sp_linux_amd64.gz` is the same stable contract at a third of the size; decompress with `gunzip` and the bare files remain the canonical, unpinned URLs. The install docs show the `.gz` route
+
 
 ## [0.31.1](https://github.com/fclairamb/solidping/compare/v0.31.0...v0.31.1) (2026-09-22)
 
