@@ -11,6 +11,7 @@ import {
 import { apiFetch } from "@/api/client";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { fetchCheckPublications } from "@/lib/check-publication";
+import { toCreateCheckRequest } from "@/lib/check-request";
 import { isDemoReadOnlyError } from "@/lib/demo";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
@@ -181,32 +182,11 @@ function CheckNewPage() {
         });
       }}
       onSubmit={async (data) => {
-        // NOTE: this list must stay in sync with the fields CheckForm's
-        // onSubmit builder puts in `data` (check-form.tsx) that also belong
-        // in CreateCheckRequest (hooks.ts) — a field added to the form but
-        // missed here is silently dropped before the request is ever sent
-        // (see the identical warning in checks.$checkUid.edit.tsx, and spec
-        // 2026-07-15-04's confirmation/recovery period regression).
-        const check = await createCheck.mutateAsync({
-          type: data.type,
-          enabled: data.enabled,
-          name: data.name,
-          slug: data.slug,
-          checkGroupUid: data.checkGroupUid,
-          period: data.period,
-          config: data.config ?? {},
-          regions: data.regions,
-          ...(data.regionSpread !== undefined
-            ? { regionSpread: data.regionSpread }
-            : {}),
-          ...(data.escalationPolicyUid
-            ? { escalationPolicyUid: data.escalationPolicyUid }
-            : {}),
-          ...(data.tracerouteOnFailure
-            ? { tracerouteOnFailure: data.tracerouteOnFailure }
-            : {}),
-          ...(data.labels !== undefined ? { labels: data.labels } : {}),
-        });
+        // toCreateCheckRequest forwards every field the form collected, minus
+        // the three applied through their own endpoints below. It replaces a
+        // hand-picked list whose own comment warned about the bug it then
+        // shipped twice — see lib/check-request.ts.
+        const check = await createCheck.mutateAsync(toCreateCheckRequest(data));
         if (data.connectionUids && data.connectionUids.length > 0) {
           try {
             await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/channels`, {

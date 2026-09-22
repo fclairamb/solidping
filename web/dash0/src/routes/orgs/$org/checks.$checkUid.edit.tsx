@@ -18,6 +18,7 @@ import {
   useResults,
 } from "@/api/hooks";
 import { suggestSlowThresholdMs } from "@/lib/slow-threshold-suggestion";
+import { toUpdateCheckRequest } from "@/lib/check-request";
 import { diffDependencies } from "@/lib/dependency-diff";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { connectionBindingsChanged } from "@/lib/connection-bindings";
@@ -187,34 +188,15 @@ function CheckEditPage() {
         })
       }
       onSubmit={async (data) => {
-        // NOTE: this list must stay in sync with the fields CheckForm's
-        // onSubmit builder puts in `data` (check-form.tsx) that also belong
-        // in UpdateCheckRequest (hooks.ts) — a field added to the form but
-        // missed here is silently dropped before the request is ever sent.
-        // `connectionUids`/`dependsOn`/`initialDependsOn` are intentionally
-        // excluded: they're not part of UpdateCheckRequest and are applied
-        // separately below via setConnections and the dependency mutations.
-        await updateCheck.mutateAsync({
-          enabled: data.enabled,
-          name: data.name,
-          slug: data.slug,
-          checkGroupUid: data.checkGroupUid,
-          escalationPolicyUid: data.escalationPolicyUid,
-          period: data.period,
-          config: data.config,
-          regions: data.regions,
-          ...(data.regionSpread !== undefined
-            ? { regionSpread: data.regionSpread }
-            : {}),
-          tracerouteOnFailure: data.tracerouteOnFailure,
-          reopenCooldownMultiplier: data.reopenCooldownMultiplier,
-          flappingWindowSeconds: data.flappingWindowSeconds,
-          flapBackoffFactor: data.flapBackoffFactor,
-          maxRecoveryMultiplier: data.maxRecoveryMultiplier,
-          confirmationPeriodSeconds: data.confirmationPeriodSeconds,
-          recoveryPeriodSeconds: data.recoveryPeriodSeconds,
-          ...(data.labels !== undefined ? { labels: data.labels } : {}),
-        });
+        // toUpdateCheckRequest forwards EVERY field the form collected, minus
+        // the three that travel through their own endpoints. This used to be a
+        // hand-picked list with a comment warning that a field added to the form
+        // but missed here is silently dropped — and it was dropped, twice: once
+        // for confirmationPeriodSeconds (spec 2026-07-15-04) and once for the
+        // six degraded-detection fields (spec 2026-09-22-03), which rendered,
+        // saved without error, and never reached the database. The deny-list
+        // lives in lib/check-request.ts so there is no list to keep in sync.
+        await updateCheck.mutateAsync(toUpdateCheckRequest(data));
         // Only PUT the channel bindings when they actually changed.
         //
         // `connectionUids` is ALWAYS defined in edit mode — the form seeds it

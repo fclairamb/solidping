@@ -311,6 +311,24 @@ export interface CreateCheckRequest {
    * writable type here would only let a future edit compile its way into a
    * 422. It stays on `Check` (the response) and on the list filter. */
   period?: string;
+  /**
+   * Incident-tracking, flapping and degraded-detection settings. The server has
+   * accepted all of these on create for as long as they have existed; they were
+   * missing HERE, which is why the create form silently dropped them (the same
+   * hand-picked-field bug lib/check-request.ts exists to end).
+   */
+  confirmationPeriodSeconds?: number;
+  recoveryPeriodSeconds?: number;
+  reopenCooldownMultiplier?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
+  degradedFailures?: number;
+  degradedFailuresWindow?: number;
+  degradedSlow?: number;
+  degradedSlowWindow?: number;
+  slowThresholdMs?: number;
+  degradedEnabled?: boolean;
 }
 
 export interface UpdateCheckRequest {
