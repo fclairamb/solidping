@@ -3207,16 +3207,16 @@ type Check struct {
 	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
-	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off.
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Always the RESOLVED value and never null: a check that never configured degraded detection stores no value, and this reports the default the check is actually running under.
 	DegradedFailures *int `json:"degradedFailures,omitempty"`
 
-	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds).
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Always the resolved value, never null.
 	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
 
-	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off.
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Always the resolved value, never null.
 	DegradedSlow *int `json:"degradedSlow,omitempty"`
 
-	// DegradedSlowWindow Window of the slow rule, counted in countable probes.
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Always the resolved value, never null.
 	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
 
 	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
@@ -3453,16 +3453,16 @@ type CheckListItem struct {
 	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
-	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off.
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Always the RESOLVED value and never null: a check that never configured degraded detection stores no value, and this reports the default the check is actually running under.
 	DegradedFailures *int `json:"degradedFailures,omitempty"`
 
-	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds).
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Always the resolved value, never null.
 	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
 
-	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off.
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Always the resolved value, never null.
 	DegradedSlow *int `json:"degradedSlow,omitempty"`
 
-	// DegradedSlowWindow Window of the slow rule, counted in countable probes.
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Always the resolved value, never null.
 	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
 
 	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
@@ -3752,16 +3752,16 @@ type CreateCheckRequest struct {
 	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
-	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off.
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to store no value at all, which means "use the default" and keeps the check tracking that default if it ever changes. Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — the window in this same request if you sent one, the default of 60 otherwise — because "70 of 60" can never fire.
 	DegradedFailures *int `json:"degradedFailures,omitempty"`
 
-	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds).
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Omit to store no value at all, which means "use the default". Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedFailures` (this request's value if sent, the default of 5 otherwise); send both together to move the pair.
 	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
 
-	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off.
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Omit to store no value at all, which means "use the default". Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE `degradedSlowWindow` (this request's value if sent, the default of 6 otherwise).
 	DegradedSlow *int `json:"degradedSlow,omitempty"`
 
-	// DegradedSlowWindow Window of the slow rule, counted in countable probes.
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Omit to store no value at all, which means "use the default". Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedSlow` (this request's value if sent, the default of 3 otherwise).
 	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
 
 	// Description Optional documentation about the check
@@ -6977,16 +6977,16 @@ type UpdateCheckRequest struct {
 	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
 	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
 
-	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to leave unchanged.
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to leave unchanged; there is no spelling that resets it to "unset". Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — this request's `degradedFailuresWindow` if you sent one, otherwise the check's stored window, or the default of 60 when the check has never configured one. So raising this alone can fail even though the request looks self-consistent: "70 of 60" can never fire.
 	DegradedFailures *int `json:"degradedFailures,omitempty"`
 
-	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Omit to leave unchanged.
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Omit to leave unchanged. Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedFailures` (this request's value if sent, otherwise the check's stored value, or the default of 5) — shrinking the window alone would strand the M above it. Send both together to move the pair.
 	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
 
-	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Omit to leave unchanged.
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Omit to leave unchanged. Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE `degradedSlowWindow` (this request's value if sent, otherwise the check's stored value, or the default of 6).
 	DegradedSlow *int `json:"degradedSlow,omitempty"`
 
-	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Omit to leave unchanged.
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Omit to leave unchanged. Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedSlow` (this request's value if sent, otherwise the check's stored value, or the default of 3).
 	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
 
 	// Description Optional documentation about the check

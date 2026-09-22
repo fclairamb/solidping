@@ -13,13 +13,24 @@ var (
 	// errDegradedMExceedsN rejects "7 of 6", which can never fire and is
 	// therefore a silently-off rule the operator believes is on — the exact
 	// failure mode this whole feature exists to eliminate.
-	errDegradedMExceedsN = errors.New("cannot exceed its window (M of N requires M <= N)")
+	//
+	// Both this and its mirror below are sentinels wrapped with the concrete
+	// number they were compared against, because the other side of the
+	// comparison is usually NOT in the request: it is the EFFECTIVE value —
+	// the stored column, or the code default when that column is NULL. Saying
+	// "its window" or "already configured" would be wrong on a create, where
+	// nothing is configured yet and the default is what makes the rule
+	// unreachable. The word "effective" is the one that covers both.
+	errDegradedMExceedsN = errors.New("exceeds the effective window")
 	// errDegradedNExceededByM is the same refusal seen from the other side: a
-	// PATCH that shrinks only the window below the M already stored would leave
-	// exactly the same dead rule behind.
-	errDegradedNExceededByM = errors.New(
-		"cannot be below the M already configured on this check (M of N requires M <= N)")
+	// request that shrinks only the window below the effective M leaves exactly
+	// the same dead rule behind.
+	errDegradedNExceededByM = errors.New("is below the effective M")
 )
+
+// degradedRuleHint spells out the invariant both refusals violate, appended to
+// each so the message stands on its own in an API error body.
+const degradedRuleHint = "M of N requires M <= N, or set M to 0 to turn the rule off"
 
 // maxDegradedWindow caps a window at 1000 probes. Past that the query stops
 // being answerable from the 24 h raw-retention band for any realistic period,
@@ -185,14 +196,16 @@ func validateDegradedFields(values degradedValues, effective degradedEffective) 
 func validateDegradedRule(
 	matchName, windowName string, matches, window *int, effectiveMatches, effectiveWindow int,
 ) error {
-	if matches != nil && *matches > intOr(window, effectiveWindow) {
-		return fmt.Errorf("%s: %w", matchName, errDegradedMExceedsN)
+	if resolvedWindow := intOr(window, effectiveWindow); matches != nil && *matches > resolvedWindow {
+		return fmt.Errorf("%s: %d %w of %d (%s)",
+			matchName, *matches, errDegradedMExceedsN, resolvedWindow, degradedRuleHint)
 	}
 
 	// The mirror case: a request that only SHRINKS the window must not strand an
-	// M already stored above it.
+	// M already above it.
 	if matches == nil && window != nil && effectiveMatches > *window {
-		return fmt.Errorf("%s: %w", windowName, errDegradedNExceededByM)
+		return fmt.Errorf("%s: %d %w of %d (%s)",
+			windowName, *window, errDegradedNExceededByM, effectiveMatches, degradedRuleHint)
 	}
 
 	return nil

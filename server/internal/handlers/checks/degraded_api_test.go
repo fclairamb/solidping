@@ -217,12 +217,13 @@ func TestUpdateCheckDegradedValidation(t *testing.T) {
 		DegradedSlow:       intPtr(7),
 		DegradedSlowWindow: intPtr(6),
 	})
-	r.Error(err, "7 of 6 can never fire, so it must not be accepted as an enabled rule")
+	r.ErrorContains(err, "degradedSlow: 7 exceeds the effective window of 6",
+		"7 of 6 can never fire, so it must not be accepted as an enabled rule")
 
 	_, err = svc.UpdateCheck(ctx, org.Slug, check.UID, &checks.UpdateCheckRequest{
 		SlowThresholdMs: intPtr(-1),
 	})
-	r.Error(err)
+	r.ErrorContains(err, "slowThresholdMs: must be >= 0")
 
 	// A legal edit goes through, and enabling retires the dry-run stamp.
 	stamp := time.Now().Add(-time.Hour)
@@ -262,17 +263,26 @@ func TestUpdateCheckDegradedPartialValidation(t *testing.T) {
 	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
 	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
 
-	// M alone, above the default window of 60.
+	// M alone, above the default window of 60. Asserted on the exact message,
+	// not merely on "an error": a bare r.Error would also pass if the PATCH had
+	// failed for some unrelated reason, which is the whole risk with a service
+	// call that can reject for a dozen other causes. The sentinels are
+	// unexported, so the message — which now names both numbers — is the
+	// tightest handle a black-box test has.
 	_, err = svc.UpdateCheck(ctx, org.Slug, check.UID, &checks.UpdateCheckRequest{
 		DegradedFailures: intPtr(70),
 	})
-	r.Error(err, "70 of the default 60 can never fire")
+	r.ErrorContains(err, "degradedFailures: 70 exceeds the effective window of 60",
+		"70 of the default 60 can never fire, and the message must name the default it compared against")
 
-	// N alone, below the default M of 5.
+	// N alone, below the default M of 3.
 	_, err = svc.UpdateCheck(ctx, org.Slug, check.UID, &checks.UpdateCheckRequest{
 		DegradedSlowWindow: intPtr(2),
 	})
-	r.Error(err, "shrinking the window under the default M of 3 strands the rule")
+	r.ErrorContains(err, "degradedSlowWindow: 2 is below the effective M of 3",
+		"shrinking the window under the default M of 3 strands the rule")
+	r.NotContains(err.Error(), "already configured",
+		"nothing is configured on this check — the message must not claim otherwise")
 
 	// The legal shapes still pass: both together, and a positive control that
 	// the defaults themselves are not somehow self-contradictory.
@@ -287,10 +297,35 @@ func TestUpdateCheckDegradedPartialValidation(t *testing.T) {
 	_, err = svc.UpdateCheck(ctx, org.Slug, check.UID, &checks.UpdateCheckRequest{
 		DegradedFailuresWindow: intPtr(50),
 	})
-	r.Error(err, "50 is below the stored M of 70")
+	r.ErrorContains(err, "degradedFailuresWindow: 50 is below the effective M of 70",
+		"the stored 70 is now the effective M, not the default 5")
 
 	_, err = svc.UpdateCheck(ctx, org.Slug, check.UID, &checks.UpdateCheckRequest{
 		DegradedFailuresWindow: intPtr(120),
+	})
+	r.NoError(err)
+
+	// The CREATE path compares against the code defaults, since nothing is
+	// configured yet. Same refusal, and the message must not imply a stored
+	// value the check does not have.
+	_, err = svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name:               "narrow",
+		Type:               "http",
+		Config:             map[string]any{"url": "https://acme.com"},
+		DegradedSlowWindow: intPtr(2),
+	})
+	r.ErrorContains(err, "degradedSlowWindow: 2 is below the effective M of 3",
+		"a window of 2 under the default M of 3 is a rule that can never fire")
+	r.NotContains(err.Error(), "already configured",
+		"on a create nothing is configured — the default is what makes it unreachable")
+
+	// Saying so explicitly is accepted: turning the rule off is always legal.
+	_, err = svc.CreateCheck(ctx, org.Slug, checks.CreateCheckRequest{
+		Name:               "narrow-off",
+		Type:               "http",
+		Config:             map[string]any{"url": "https://acme.com"},
+		DegradedSlow:       intPtr(0),
+		DegradedSlowWindow: intPtr(2),
 	})
 	r.NoError(err)
 }
