@@ -1,3 +1,11 @@
+// Package config holds the snmp check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checksnmp package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -7,13 +15,21 @@ import (
 )
 
 const (
-	DefaultPort    = 161
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultPort = 161
+	// DefaultVersion is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultVersion = "2c"
 	// DefaultCommunity is the default SNMP community string.
 	DefaultCommunity = "public"
-	DefaultTimeout   = 10 * time.Second
-	maxTimeout       = 30 * time.Second
-	DefaultOperator  = "equals"
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
+	// DefaultOperator is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultOperator = "equals"
 )
 
 // SNMPConfig holds the configuration for SNMP health checks.

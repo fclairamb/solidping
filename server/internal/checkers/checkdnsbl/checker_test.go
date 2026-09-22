@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -73,7 +74,7 @@ func TestDNSBLConfig_FromMap(t *testing.T) {
 			validate: func(r *require.Assertions, cfg *DNSBLConfig) {
 				r.Equal("127.0.0.2", cfg.Target)
 				r.Empty(cfg.Blocklists)
-				r.Equal(defaultBlocklists, cfg.ResolveBlocklists())
+				r.Equal(checkconfig.DefaultBlocklists, cfg.ResolveBlocklists())
 			},
 		},
 		{

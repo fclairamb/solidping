@@ -12,18 +12,10 @@ type threshold = checkconfig.Threshold
 
 // Defined with the config; aliased so this package keeps the short name.
 const (
-	ModeAMQP = checkconfig.ModeAMQP
-	ModeManagement = checkconfig.ModeManagement
+	ModeAMQP              = checkconfig.ModeAMQP
+	ModeManagement        = checkconfig.ModeManagement
 	defaultManagementPort = checkconfig.DefaultManagementPort
-	defaultMode = checkconfig.DefaultMode
-	defaultPort = checkconfig.DefaultPort
-	defaultTimeout = checkconfig.DefaultTimeout
-)
-
-// Defined with the config; aliased so this package keeps the short name.
-const (
-	keyDiskFreeCritical = checkconfig.KeyDiskFreeCritical
-	keyDiskFreeWarning = checkconfig.KeyDiskFreeWarning
-	keyMemoryUsedCritical = checkconfig.KeyMemoryUsedCritical
-	keyMemoryUsedWarning = checkconfig.KeyMemoryUsedWarning
+	defaultMode           = checkconfig.DefaultMode
+	defaultPort           = checkconfig.DefaultPort
+	defaultTimeout        = checkconfig.DefaultTimeout
 )

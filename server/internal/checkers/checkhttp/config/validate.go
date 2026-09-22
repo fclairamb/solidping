@@ -13,6 +13,8 @@ import (
 // rule, and fills in the spec defaults (name, slug) the create path relies on. It
 // lives here rather than on the checker so `sp checks validate` reaches it without
 // linking the execution client.
+//
+//nolint:cyclop,funlen,gocognit // Config validation requires checking many fields
 func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	cfg := &HTTPConfig{}
 	if err := cfg.FromMap(spec.Config); err != nil {

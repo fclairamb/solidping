@@ -55,7 +55,7 @@ func (c *MQTTChecker) Execute(
 	metrics := map[string]any{}
 	output := map[string]any{
 		"host":  cfg.Host,
-		"Topic": cfg.EffectiveTopic(),
+		"topic": cfg.EffectiveTopic(),
 	}
 
 	if checkerdef.TunnelDialerFrom(ctx) != nil {

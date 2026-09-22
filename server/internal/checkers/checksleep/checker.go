@@ -16,7 +16,6 @@ import (
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksleep/config"
 )
 
-// Forced status values accepted by SleepConfig.Status.
 // SleepChecker implements the Checker interface for the synthetic sleep check.
 type SleepChecker struct{}
 

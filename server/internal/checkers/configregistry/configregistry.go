@@ -62,7 +62,7 @@ import (
 // ParseConfig returns a zero-value config for a check type, and true when the
 // type is known to this build.
 //
-//nolint:ireturn,cyclop,funlen,dupl // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen // Registry pattern requires interface return and growing switch
 func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
@@ -170,7 +170,7 @@ func IsKnownType(checkType checkerdef.CheckType) bool {
 // caller that has not already gone through IsKnownType cannot mistake "no
 // validator" for "valid".
 //
-//nolint:cyclop,funlen,dupl // Registry pattern requires a growing switch
+//nolint:cyclop,funlen // Registry pattern requires a growing switch
 func ValidateSpec(checkType checkerdef.CheckType, spec *checkerdef.CheckSpec) error {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:

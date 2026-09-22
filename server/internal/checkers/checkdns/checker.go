@@ -18,7 +18,6 @@ const (
 	defaultTimeout = 5 * time.Second
 )
 
-//nolint:gochecknoglobals // sentinel error
 var errSOANotSupported = errors.New("SOA record type not yet supported")
 
 // DNSChecker implements the Checker interface for DNS checks.

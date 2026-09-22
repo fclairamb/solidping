@@ -1,3 +1,14 @@
+// Package checkkubernetes provides a Kubernetes workload replica-health check.
+// The check references a stored "cluster connection" Integration of type
+// `kubernetes` by UID; at execution time the connection's encrypted
+// token/kubeconfig is resolved to a clientset via the package-level
+// ClientsetResolver indirection (wired from the API server at startup), exactly
+// like the freebox_line checker resolves its app_token.
+//
+// The check reports replica readiness for a single workload (Deployment or
+// ReplicaSet) — the structural analog of how the docker checker mirrors a
+// container's HEALTHCHECK. No secret ever lives in the check config: only the
+// cluster UID plus (namespace, kind, name).
 package checkkubernetes
 
 import (

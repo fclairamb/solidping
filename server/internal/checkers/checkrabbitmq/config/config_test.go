@@ -25,7 +25,7 @@ func TestRabbitMQConfig_ThresholdParsing(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "Percent memory thresholds are valid",
+			name: "percent memory thresholds are valid",
 			mutate: func(c *checkrabbitmq.RabbitMQConfig) {
 				c.MemoryUsedWarning = "70%"
 				c.MemoryUsedCritical = "90%"
@@ -65,14 +65,14 @@ func TestRabbitMQConfig_ThresholdParsing(t *testing.T) {
 			wantErr: "memoryUsedCritical",
 		},
 		{
-			name: "Percent out of range is rejected",
+			name: "percent out of range is rejected",
 			mutate: func(c *checkrabbitmq.RabbitMQConfig) {
 				c.MemoryUsedCritical = "150%"
 			},
 			wantErr: "memoryUsedCritical",
 		},
 		{
-			name: "Percent is rejected on a disk key",
+			name: "percent is rejected on a disk key",
 			mutate: func(c *checkrabbitmq.RabbitMQConfig) {
 				c.DiskFreeCritical = "10%"
 			},

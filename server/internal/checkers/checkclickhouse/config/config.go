@@ -1,3 +1,11 @@
+// Package config holds the clickhouse check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkclickhouse package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -13,10 +21,14 @@ const (
 	defaultSecurePort = 9440
 	defaultTimeout    = 10 * time.Second
 	maxTimeout        = 30 * time.Second
-	DefaultQuery      = "SELECT 1"
+	// DefaultQuery is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultQuery = "SELECT 1"
 	// DefaultUser and DefaultDatabase are ClickHouse's own out-of-the-box
 	// defaults, so neither field is required in the check config.
-	DefaultUser     = "default"
+	DefaultUser = "default"
+	// DefaultDatabase is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultDatabase = "default"
 	maxPort         = 65535
 )

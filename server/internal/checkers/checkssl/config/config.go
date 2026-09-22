@@ -1,3 +1,11 @@
+// Package config holds the ssl check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkssl package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -10,13 +18,17 @@ import (
 var errHostRequired = errors.New("host is required")
 
 const (
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultPort          = 443
 	defaultCriticalDays  = 30
 	defaultWarningDays   = 30
 	defaultThresholdDays = defaultCriticalDays
 	maxThresholdDays     = 3650 // 10 years — generous sanity cap
-	DefaultTimeout       = 10 * time.Second
-	maxTimeout           = 30 * time.Second
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
 )
 
 // SSLConfig defines the configuration for SSL certificate checks.

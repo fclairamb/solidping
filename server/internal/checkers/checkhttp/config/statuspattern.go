@@ -8,8 +8,6 @@ import (
 )
 
 // Sentinels for the `expectedStatusCodes` pattern grammar.
-//
-//nolint:gochecknoglobals // sentinel errors
 var (
 	errPatternEmpty    = errors.New("pattern cannot be empty")
 	errInvalidWildcard = errors.New("invalid wildcard pattern: prefix must be 1-5")

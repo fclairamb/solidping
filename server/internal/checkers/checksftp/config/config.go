@@ -1,3 +1,11 @@
+// Package config holds the sftp check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checksftp package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -10,9 +18,15 @@ import (
 )
 
 const (
-	DefaultPort       = 22
-	DefaultTimeout    = 10 * time.Second
-	maxTimeout        = 30 * time.Second
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultPort = 22
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
+	// MicrosecondsPerMs is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	MicrosecondsPerMs = 1000.0
 
 	// fingerprintPrefix is the prefix checkssh.Fingerprint emits; the SFTP pin

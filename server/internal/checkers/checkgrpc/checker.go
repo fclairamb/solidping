@@ -298,6 +298,12 @@ func (c *GRPCChecker) checkHealth(
 // Deprecated behavior, kept decoding-compatible for checks created before the
 // serving status made it redundant: it is not exposed by the dashboard and not
 // documented as a supported option.
+//
+// The deprecation only became visible to staticcheck when the config moved to
+// its own package; the fields are still decoded and still honored, so this is
+// the one place allowed to read them.
+//
+//nolint:staticcheck // SA1019: reading the deprecated fields is this function's job
 func keywordFailure(exec *execContext, servingStatus string) *checkerdef.Result {
 	if exec.cfg.Keyword == "" {
 		return nil

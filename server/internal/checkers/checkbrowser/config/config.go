@@ -1,3 +1,11 @@
+// Package config holds the browser check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkbrowser package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -150,6 +158,9 @@ func (c *BrowserConfig) Validate() error {
 	return nil
 }
 
+// ResolveTimeout resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *BrowserConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout

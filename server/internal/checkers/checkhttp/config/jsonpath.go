@@ -11,14 +11,32 @@ import (
 	"github.com/ohler55/ojg/jp"
 )
 
+// Defaults, bounds and config keys this check's rules are expressed in. The
+// exported ones are aliased by the parent checker package.
 const (
-	OpEq          = "eq"
-	OpGt          = "gt"
-	OpGte         = "gte"
-	OpLt          = "lt"
-	OpLte         = "lte"
-	OpNeq         = "neq"
-	OpContains    = "contains"
+	// OpEq is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpEq = "eq"
+	// OpGt is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpGt = "gt"
+	// OpGte is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpGte = "gte"
+	// OpLt is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpLt = "lt"
+	// OpLte is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpLte = "lte"
+	// OpNeq is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpNeq = "neq"
+	// OpContains is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	OpContains = "contains"
+	// OpNotContains is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	OpNotContains = "not_contains"
 	OpRegex       = "regex"
 	OpExists      = "exists"

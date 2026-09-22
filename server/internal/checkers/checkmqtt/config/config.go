@@ -1,3 +1,11 @@
+// Package config holds the mqtt check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkmqtt package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -9,9 +17,13 @@ import (
 )
 
 const (
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultPort    = 1883
 	defaultTLSPort = 8883
 	defaultTopic   = "solidping/healthcheck"
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultTimeout = 10 * time.Second
 	maxTimeout     = 30 * time.Second
 )
@@ -22,7 +34,7 @@ type MQTTConfig struct {
 	Port     int           `json:"port,omitempty"`
 	Username string        `json:"username,omitempty"`
 	Password string        `json:"password,omitempty"`
-	Topic    string        `json:"Topic,omitempty"`
+	Topic    string        `json:"topic,omitempty"`
 	TLS      bool          `json:"tls,omitempty"`
 	Timeout  time.Duration `json:"timeout,omitempty"`
 }
@@ -57,10 +69,10 @@ func (c *MQTTConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
-	if Topic, ok := configMap["Topic"].(string); ok {
-		c.Topic = Topic
-	} else if configMap["Topic"] != nil {
-		return checkerdef.NewConfigError("Topic", "must be a string")
+	if topic, ok := configMap["topic"].(string); ok {
+		c.Topic = topic
+	} else if configMap["topic"] != nil {
+		return checkerdef.NewConfigError("topic", "must be a string")
 	}
 
 	if tlsVal, ok := configMap["tls"].(bool); ok {
@@ -102,7 +114,7 @@ func (c *MQTTConfig) GetConfig() map[string]any {
 	}
 
 	if c.Topic != "" && c.Topic != defaultTopic {
-		cfg["Topic"] = c.Topic
+		cfg["topic"] = c.Topic
 	}
 
 	if c.TLS {
@@ -133,7 +145,7 @@ func (c *MQTTConfig) Validate() error {
 	}
 
 	if c.Topic != "" && (strings.Contains(c.Topic, "#") || strings.Contains(c.Topic, "+")) {
-		return checkerdef.NewConfigError("Topic", "must not contain wildcards (# or +)")
+		return checkerdef.NewConfigError("topic", "must not contain wildcards (# or +)")
 	}
 
 	return nil
@@ -157,7 +169,7 @@ func (c *MQTTConfig) BrokerURL() string {
 	return fmt.Sprintf("%s://%s:%d", scheme, c.Host, port)
 }
 
-// Topic returns the configured Topic or the default.
+// EffectiveTopic returns the configured topic, or the default when none is set.
 func (c *MQTTConfig) EffectiveTopic() string {
 	if c.Topic != "" {
 		return c.Topic

@@ -5,9 +5,13 @@ effort: medium
 
 # Coolify: a one-click SolidPing is gated on 1,000 GitHub stars, so ship the Coolify-ready compose now and park the upstream PR
 
-> Shelved to `specs/backlog/` on 2026-09-16: the listing is blocked on the star
-> gate, and the healthcheck subcommand it needs moved to spec
-> `2026-09-16-03-casaos-app-store-listing` (section B).
+> Shelved to `specs/backlog/` on 2026-09-16, un-shelved to `specs/todos/` on
+> 2026-09-22. The star gate still holds, so the upstream PR stays parked — but
+> the dependency that made the work unbuildable is gone: spec
+> `2026-09-16-03-casaos-app-store-listing` has landed, so the `healthcheck`
+> subcommand (`server/internal/healthcheck/`), the Dockerfile `HEALTHCHECK`
+> (`Dockerfile:163`) and `linux/arm64` images all exist. Everything below is
+> buildable as written.
 
 ## Problem
 
@@ -16,8 +20,8 @@ in `coollabsio/coolify` (PR against the `next` branch), a logo at
 `svgs/<service>.svg`, and a matching docs PR (`content/docs/services/<slug>.mdx`)
 that must land together. Its contribution guide sets one hard eligibility rule:
 **the service repository must have at least 1,000 GitHub stars**. SolidPing has
-5 (checked 2026-09-16 with `gh api repos/fclairamb/solidping`). The listing is
-blocked on stars, not on work.
+7 (re-checked 2026-09-22 with `gh api repos/fclairamb/solidping`; it was 5 on
+2026-09-16). The listing is blocked on stars, not on work.
 
 Coolify users can still deploy any compose file through "Docker Compose Empty",
 but nothing in our docs helps them:
@@ -26,14 +30,14 @@ but nothing in our docs helps them:
   dev-flavoured example (`LOG_LEVEL: debug`, a `postgres-data` volume) that
   needs `SP_FILESTORAGE_LOCAL_ROOT` spelled out. There is no single-container
   SQLite compose anywhere in the docs.
-- Nothing in the image can answer a container healthcheck. The final stage is
-  `gcr.io/distroless/base-debian13:nonroot` (`Dockerfile:118`): no shell, no
-  curl. The server exposes `/api/mgmt/health`
-  (`server/internal/app/server.go:2134-2135`, 503 during the shutdown window
-  per `server.go:216`), but no process inside the container can call it. Coolify
-  surfaces per-service health and waits on it during deploys; Uptime Kuma's
-  template ships `extra/healthcheck` for exactly this. Without one, Coolify
-  shows SolidPing as "running, health unknown".
+- ~~Nothing in the image can answer a container healthcheck.~~ **Resolved
+  2026-09-22.** The final stage is still distroless (no shell, no curl), but
+  the binary now probes itself: `solidping healthcheck`
+  (`server/internal/healthcheck/`) calls `/api/mgmt/health` over loopback and
+  the Dockerfile wires it as a container `HEALTHCHECK` (`Dockerfile:163`). It
+  returns 503 during the graceful-shutdown window, which is the signal Coolify
+  wants — it surfaces per-service health and waits on it during deploys. The
+  template below only has to reference it.
 
 Two things we do *not* need: a generated secret (when `SP_AUTH_JWT_SECRET` is
 unset and the config still carries the `change-me-in-production` placeholder,
@@ -44,12 +48,12 @@ served relative to whatever host reaches it).
 
 ## Proposal
 
-### 1. Healthcheck: delivered by spec `2026-09-16-03-casaos-app-store-listing`
+### 1. Healthcheck: already done, nothing to build
 
-The `solidping healthcheck` subcommand and the Dockerfile `HEALTHCHECK` this
-template relies on live in the CasaOS spec, section B. Nothing to build here.
-If that spec has not landed when this one is picked up, lift its section B
-into this spec first.
+Delivered by spec `2026-09-16-03-casaos-app-store-listing` (section B), which
+landed before this spec was un-shelved: `server/internal/healthcheck/`,
+`Dockerfile:163`, and `linux/arm64` in the `docker` job. Verify the three are
+still in place, then move on to section 2.
 
 ### 2. The Coolify compose file, kept in this repo
 
@@ -67,7 +71,7 @@ rules from day one:
 
 services:
   solidping:
-    image: ghcr.io/fclairamb/solidping:0.28
+    image: ghcr.io/fclairamb/solidping:0.31
     environment:
       - SERVICE_URL_SOLIDPING_4000
     volumes:
@@ -88,10 +92,14 @@ volumes:
 Decisions baked in:
 
 - **Image tag.** Coolify refuses floating tags. CI already publishes a
-  `{major}.{minor}` tag (`.github/workflows/ci.yml:809`), so pin `:0.28`: it is
-  a pinned line that still receives patch releases, the same trade Uptime
-  Kuma's template makes with `:2`. Bumping it is a per-minor-release chore;
-  add it to the pin list in `wiki/` next to the fleet pins.
+  `{major}.{minor}` tag (`.github/workflows/ci.yml:809`), so pin the current
+  minor line: it stays pinned while still receiving patch releases, the same
+  trade Uptime Kuma's template makes with `:2`. Bumping it is a
+  per-minor-release chore; add it to the pin list in `wiki/` next to the fleet
+  pins. **Set this to the latest released minor at implementation time, not to
+  the value written above** — `:0.31` was current on 2026-09-22 (latest release
+  `v0.31.1`, with `v0.32.0` already open as a release PR), and this line goes
+  stale roughly weekly. Check `gh release list --limit 1` first.
 - **`SERVICE_URL_SOLIDPING_4000` as a bare entry** is how Coolify assigns the
   generated domain to the `solidping` service and routes the proxy to port
   4000. Nothing in SolidPing consumes it; it is there for Coolify.
@@ -99,7 +107,9 @@ Decisions baked in:
   the image defaults from spec `2026-09-15-10-docker-image-persist-data-defaults`
   (`/data` for the database and uploads), which is done. Postgres is a
   documented override, not a second template.
-- **`NET_RAW`** per `web/docs/docs/features/check-types.md:207`.
+- **`NET_RAW`** per `web/docs/docs/features/check-types.md:306` (the line moved
+  since this spec was written) and the worked compose examples in
+  `web/docs/docs/features/traceroute-diagnostics.md:136,144`.
 
 Add a CI step that runs `docker compose -f deploy/coolify/solidping.yaml config`
 so a malformed file cannot ship (Coolify magic variables are plain env names,
@@ -107,7 +117,8 @@ so `config` passes).
 
 ### 3. Docs page: `web/docs/docs/installation/coolify.md`
 
-`sidebar_position: 6` (after Windows, `installation/windows.md:2`). Content, in
+`sidebar_position: 6` (after Windows, `installation/windows.md:2`; still free
+as of 2026-09-22 — `casaos.md` took 7 and `yunohost.md` took 8). Content, in
 this order: what you get (one container, SQLite, a volume), the
 "Docker Compose Empty" flow with the file pasted verbatim from
 `deploy/coolify/solidping.yaml` (import it, do not copy it, so the two cannot
@@ -118,8 +129,10 @@ One paragraph on switching to Postgres. No competitor content: the
 
 ### 4. The upstream PR, prepared and parked
 
-`wiki/distribution/coolify.md` (new; add `wiki/distribution/` to
-`wiki/README.md`) records: the star gate and today's count, the three-part PR
+`wiki/distribution/coolify.md` (new; the `## Distribution` section already
+exists at `wiki/README.md:106` alongside `casaos.md` and `yunohost.md`, so this
+is one more line under it, not a new section) records: the star gate and the
+count on the day you write it, the three-part PR
 recipe (template PR to `next` + `svgs/solidping.svg` from `res/logo.svg`, docs
 PR, link them), the draft PR bodies, and the trigger "open both PRs the week
 the repo crosses 1,000 stars". Keep the wiki page short; the template file is
@@ -140,9 +153,11 @@ the deliverable.
 
 ## Open questions
 
-- Is `:0.28` the right pin, or should the file track `:latest` until the
-  upstream PR exists (where the rule bites)? Default: `:0.28`, it is what the
-  upstream file will need anyway.
+- ~~Is `:0.28` the right pin, or should the file track `:latest` until the
+  upstream PR exists?~~ **Settled 2026-09-22: pin the current minor line.** It
+  is what the upstream file needs anyway, and keeping `:latest` in the repo
+  means the file would have to be rewritten at PR time. See the image-tag
+  decision above for how to pick the value.
 - Should `NET_RAW` stay in the template or move to the docs as an opt-in?
   Default: keep it, commented as above; Coolify users are on VPSes where it is
   harmless.
@@ -150,4 +165,5 @@ the deliverable.
 ## Delivery
 
 Branch `feat/coolify-template`. PR title
-`feat(deploy): Coolify-ready compose, healthcheck subcommand and docs`.
+`feat(deploy): Coolify-ready compose and docs` (the healthcheck subcommand the
+original title mentioned already shipped with the CasaOS spec).

@@ -1,3 +1,5 @@
+// Package checksip provides SIP server reachability (OPTIONS) and
+// registration (REGISTER) monitoring checks.
 package checksip
 
 import (

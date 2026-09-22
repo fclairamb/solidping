@@ -1,3 +1,11 @@
+// Package config holds the oracle check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkoracle package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -11,9 +19,15 @@ import (
 )
 
 const (
-	DefaultPort        = 1521
-	DefaultTimeout     = 10 * time.Second
-	maxTimeout         = 30 * time.Second
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultPort = 1521
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
+	// DefaultQuery is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultQuery       = "SELECT 1 FROM DUAL"
 	defaultServiceName = "ORCL"
 )

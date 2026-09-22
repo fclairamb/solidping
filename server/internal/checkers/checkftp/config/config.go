@@ -1,3 +1,11 @@
+// Package config holds the ftp check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkftp package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -7,11 +15,21 @@ import (
 )
 
 const (
-	DefaultPort       = 21
-	DefaultTimeout    = 10 * time.Second
-	maxTimeout        = 30 * time.Second
-	DefaultUsername   = "anonymous"
-	ImplicitTLSPort   = 990
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultPort = 21
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
+	// DefaultUsername is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultUsername = "anonymous"
+	// ImplicitTLSPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	ImplicitTLSPort = 990
+	// MicrosecondsPerMs is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	MicrosecondsPerMs = 1000.0
 )
 

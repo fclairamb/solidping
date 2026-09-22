@@ -1,3 +1,13 @@
+// Package checkprometheus provides a check that reads one numeric value out of
+// a Prometheus metrics endpoint (or a Prometheus server, via PromQL) and grades
+// it against warning/critical thresholds.
+//
+// It is the first check type that inspects a *value* rather than a service:
+// every other type answers "is it up?", while this one answers "is the number
+// the target reports still acceptable?" — a queue depth, a free-disk gauge, an
+// error counter. The graded outcome uses the shared two-tier model:
+// critical breached → StatusDown (pages), warning breached → StatusWarning
+// (amber, counts as up, no incident), otherwise StatusUp.
 package checkprometheus
 
 import (

@@ -1,3 +1,11 @@
+// Package config holds the a2s check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checka2s package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -10,6 +18,8 @@ import (
 )
 
 const (
+	// DefaultPort is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultPort    = 27015
 	defaultTimeout = 10 * time.Second
 	maxTimeout     = 30 * time.Second
@@ -118,6 +128,9 @@ func (c *A2SConfig) Validate() error {
 	return nil
 }
 
+// ResolvePort resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *A2SConfig) ResolvePort() int {
 	if c.Port != 0 {
 		return c.Port
@@ -126,6 +139,9 @@ func (c *A2SConfig) ResolvePort() int {
 	return DefaultPort
 }
 
+// ResolveTimeout resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *A2SConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
@@ -134,6 +150,9 @@ func (c *A2SConfig) ResolveTimeout() time.Duration {
 	return defaultTimeout
 }
 
+// ResolveTarget resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *A2SConfig) ResolveTarget() string {
 	return net.JoinHostPort(c.Host, strconv.Itoa(c.ResolvePort()))
 }

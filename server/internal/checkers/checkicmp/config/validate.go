@@ -11,6 +11,8 @@ import (
 // rule, and fills in the spec defaults (name, slug) the create path relies on. It
 // lives here rather than on the checker so `sp checks validate` reaches it without
 // linking the execution client.
+//
+//nolint:cyclop // Validation requires checking multiple fields
 func ValidateSpec(spec *checkerdef.CheckSpec) error {
 	cfg := &ICMPConfig{}
 	if err := cfg.FromMap(spec.Config); err != nil {

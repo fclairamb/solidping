@@ -1,3 +1,11 @@
+// Package config holds the js check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkjs package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -22,10 +30,16 @@ import (
 var browserOpenRE = regexp.MustCompile(`\bbrowser\s*\.\s*open\s*\(`)
 
 const (
-	maxScriptSize  = 64 * 1024 // 64KB max script size
+	maxScriptSize = 64 * 1024 // 64KB max script size
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
 	DefaultTimeout = 30 * time.Second
-	MaxTimeout     = 30 * time.Second
-	MaxEnvEntries  = 50
+	// MaxTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	MaxTimeout = 30 * time.Second
+	// MaxEnvEntries is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	MaxEnvEntries = 50
 
 	fieldScript  = "script"
 	fieldEnv     = "env"

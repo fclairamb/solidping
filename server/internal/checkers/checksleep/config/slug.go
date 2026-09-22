@@ -1,6 +1,6 @@
 package config
 
-// statusLabel returns the effective status label (defaulting to up).
+// StatusLabel returns the effective status label (defaulting to up).
 func (c *SleepConfig) StatusLabel() string {
 	if c.Status == "" {
 		return StatusUp

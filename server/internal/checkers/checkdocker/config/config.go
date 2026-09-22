@@ -1,3 +1,11 @@
+// Package config holds the docker check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkdocker package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
 package config
 
 import (
@@ -180,6 +188,9 @@ func (c *DockerConfig) ResolveRestartLoopWindow() time.Duration {
 	return defaultRestartLoopWindow
 }
 
+// ResolveHost resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *DockerConfig) ResolveHost() string {
 	if c.Host != "" {
 		return c.Host
@@ -188,6 +199,9 @@ func (c *DockerConfig) ResolveHost() string {
 	return defaultHost
 }
 
+// ResolveTimeout resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *DockerConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
@@ -196,6 +210,9 @@ func (c *DockerConfig) ResolveTimeout() time.Duration {
 	return defaultTimeout
 }
 
+// ResolveContainerRef resolves the effective value, applying this config's default when the
+// field is unset. It lives with the config; the checker reads it at execution
+// time.
 func (c *DockerConfig) ResolveContainerRef() string {
 	if c.ContainerID != "" {
 		return c.ContainerID
