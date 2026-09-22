@@ -125,6 +125,16 @@ database and the rule cannot be turned off at creation (the
 No auto-baselined thresholds: the operator commits to a number. On the motivating
 check, 1000 ms detects at 14:37 and 1400 ms at 14:47.
 
+All six knobs are editable in the check form's own "Degraded detection" section
+(`web/dash0/src/components/shared/check-form.tsx`). The threshold field shows a
+suggestion of about 2x the check's observed p95 — read from the hour rollups'
+`DurationP95` via `lib/slow-threshold-suggestion.ts`, which needs at least three
+samples and otherwise suggests nothing — behind a one-click "use suggestion". It
+is never auto-applied: auto-baselining is the non-goal, and the click IS the
+operator committing. `buildDegradedPayload` is the form's 0-vs-blank guard: a
+typed 0 reaches the server (that is how a rule is turned off), a blank field is
+omitted so the code default stands.
+
 ## Rollout: the dry run
 
 Off for existing checks, on for new ones — upgrading must never start notifying
