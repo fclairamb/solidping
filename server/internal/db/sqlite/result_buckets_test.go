@@ -13,12 +13,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
-// resultBucketWidths are every bucket width the callers use, plus the case that
-// makes the ORIGIN matter: 7 h does not divide 24 h, so an epoch-aligned grid and
-// time.Truncate's proleptic-origin grid put the same row in different buckets.
-// The availability API accepts any whole multiple of its minimum bucket
+// resultBucketWidths returns every bucket width the callers use, plus the case
+// that makes the ORIGIN matter: 7 h does not divide 24 h, so an epoch-aligned
+// grid and time.Truncate's proleptic-origin grid put the same row in different
+// buckets. The availability API accepts any whole multiple of its minimum bucket
 // (resolveBucket), so this is a real configuration, not a hypothetical.
-var resultBucketWidths = []time.Duration{time.Hour, 24 * time.Hour, 7 * time.Hour, 90 * time.Minute}
+func resultBucketWidths() []time.Duration {
+	return []time.Duration{time.Hour, 24 * time.Hour, 7 * time.Hour, 90 * time.Minute}
+}
 
 // newResultBucketService spins up an in-memory database with one org and returns
 // both.
@@ -62,7 +64,7 @@ func TestResultBucketExprMatchesGoTruncate(t *testing.T) {
 	// Deterministic pseudo-random timestamps spread over ~10 years, including
 	// sub-second components (the expression truncates to whole seconds, which
 	// cannot change the bucket for any width of a minute or more).
-	source := rand.New(rand.NewPCG(0x5011d, 0x9143)) //nolint:gosec // fixture spread, not security
+	source := rand.New(rand.NewPCG(0x5011d, 0x9143))
 	base := time.Date(2021, time.March, 3, 4, 5, 6, 0, time.UTC)
 
 	const sampleCount = 300
@@ -80,7 +82,7 @@ func TestResultBucketExprMatchesGoTruncate(t *testing.T) {
 		r.NoError(s.CreateResult(ctx, row))
 	}
 
-	for _, width := range resultBucketWidths {
+	for _, width := range resultBucketWidths() {
 		seconds := int64(width / time.Second)
 
 		var rows []struct {
@@ -91,7 +93,7 @@ func TestResultBucketExprMatchesGoTruncate(t *testing.T) {
 		r.NoError(s.db.NewSelect().
 			Model((*models.Result)(nil)).
 			ColumnExpr("result.period_start AS period_start").
-			ColumnExpr(resultBucketExpr+" AS bucket_start", seconds, seconds).
+			ColumnExpr(resultBucketExpr()+" AS bucket_start", seconds, seconds).
 			Where("result.organization_uid = ?", org.UID).
 			Scan(ctx, &rows))
 
@@ -554,7 +556,7 @@ func TestAggregateResultBucketsSeeksIndexes_SQLite(t *testing.T) {
 	control := s.DB().NewSelect().
 		Model((*models.Result)(nil)).
 		ColumnExpr("result.check_uid AS check_uid").
-		ColumnExpr(resultBucketExpr+" AS bucket_start", int64(86400), int64(86400)).
+		ColumnExpr(resultBucketExpr()+" AS bucket_start", int64(86400), int64(86400)).
 		ColumnExpr("COUNT(*) AS total").
 		Where("result.organization_uid = ?", org.UID).
 		Where("result.check_uid IN (?)", bun.List(checkUIDs)).

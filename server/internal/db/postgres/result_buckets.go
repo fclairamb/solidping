@@ -58,7 +58,7 @@ type resultBucketRow struct {
 //     outright, so there is always a side to restate.
 //   - It has NO ORDER BY. That is the second half of the win: the row path
 //     inherited applyResultsFilter's `ORDER BY period_start DESC, uid DESC`,
-//     which a bucket fold never needed and which the planner honoured with an
+//     which a bucket fold never needed and which the planner answered with an
 //     external merge sort to disk (12.8 MB measured on a 200-check page).
 //   - It never touches `metrics` / `output`. A bucket is eleven numbers; the
 //     two JSONB blobs were the widest part of every row shipped.

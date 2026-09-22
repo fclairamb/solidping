@@ -42,7 +42,7 @@ func TestResultBucketExprMatchesGoTruncate_Postgres(t *testing.T) {
 	// Deterministic pseudo-random timestamps spread over ~10 years, with
 	// sub-second components: the bin must land on the same multiple of the width
 	// as time.Truncate for each one.
-	source := rand.New(rand.NewPCG(0x5011d, 0x9143)) //nolint:gosec // fixture spread, not security
+	source := rand.New(rand.NewPCG(0x5011d, 0x9143))
 	base := time.Date(2021, time.March, 3, 4, 5, 6, 0, time.UTC)
 
 	const sampleCount = 300

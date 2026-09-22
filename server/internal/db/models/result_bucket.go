@@ -55,28 +55,31 @@ const ProlepticEpochOffsetSeconds = 62135596800
 // threshold had to move.
 const SlowSampleThresholdMillis = 1000.0
 
-// allResultStatuses is every status a persisted result row may carry. It backs
-// the two status-set helpers below, so a status added to the ResultStatus block
-// has to be listed here once and then reaches every SQL predicate derived from
-// it (TestResultStatusSetsCoverEveryStatus pins that it stays complete).
-var allResultStatuses = []ResultStatus{
-	ResultStatusCreated,
-	ResultStatusRunning,
-	ResultStatusUp,
-	ResultStatusDown,
-	ResultStatusTimeout,
-	ResultStatusError,
-	ResultStatusDegraded,
-	ResultStatusWarning,
-	ResultStatusAbandoned,
+// allResultStatuses returns every status a persisted result row may carry. It
+// backs the two status-set helpers below, so a status added to the ResultStatus
+// block has to be listed here once and then reaches every SQL predicate derived
+// from it (TestResultStatusSetsCoverEveryStatus pins that it stays complete).
+func allResultStatuses() []ResultStatus {
+	return []ResultStatus{
+		ResultStatusCreated,
+		ResultStatusRunning,
+		ResultStatusUp,
+		ResultStatusDown,
+		ResultStatusTimeout,
+		ResultStatusError,
+		ResultStatusDegraded,
+		ResultStatusWarning,
+		ResultStatusAbandoned,
+	}
 }
 
 // resultStatusesWhere materializes the status codes matching a predicate, as the
 // ints the columns actually store.
 func resultStatusesWhere(match func(ResultStatus) bool) []int {
-	codes := make([]int, 0, len(allResultStatuses))
+	statuses := allResultStatuses()
+	codes := make([]int, 0, len(statuses))
 
-	for _, status := range allResultStatuses {
+	for _, status := range statuses {
 		if match(status) {
 			codes = append(codes, int(status))
 		}

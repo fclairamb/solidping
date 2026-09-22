@@ -11,7 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// resultBucketOffset is models.ProlepticEpochOffsetSeconds as a SQL literal:
+// resultBucketOffset returns models.ProlepticEpochOffsetSeconds as a SQL literal:
 // the seconds from 0001-01-01 00:00:00 UTC (the origin Go's time.Truncate
 // rounds down to) to the Unix epoch.
 //
@@ -20,9 +20,11 @@ import (
 // the Unix epoch as the origin instead — the obvious thing — silently disagrees
 // with time.Truncate for every bucket width that does not divide 24 h, and the
 // availability API accepts such widths (7 h, 90 min).
-var resultBucketOffset = strconv.FormatInt(models.ProlepticEpochOffsetSeconds, 10)
+func resultBucketOffset() string {
+	return strconv.FormatInt(models.ProlepticEpochOffsetSeconds, 10)
+}
 
-// resultBucketExpr is the bucket-start expression, as EPOCH SECONDS, taking the
+// resultBucketExpr returns the bucket-start expression, as EPOCH SECONDS, taking the
 // bucket width in seconds twice (divide, then multiply back). The caller
 // converts to a time.Time in Go, because `period_start` is ISO text here and
 // re-rendering the bin as text only to re-parse it in Go would add a format
@@ -34,8 +36,11 @@ var resultBucketOffset = strconv.FormatInt(models.ProlepticEpochOffsetSeconds, 1
 //
 // unixepoch() needs SQLite >= 3.38; both bundled drivers ship newer engines
 // (TestResultBucketExprMatchesGoTruncate would fail loudly on an older one).
-var resultBucketExpr = "(((unixepoch(result.period_start) + " + resultBucketOffset +
-	") / ?) * ?) - " + resultBucketOffset
+func resultBucketExpr() string {
+	offset := resultBucketOffset()
+
+	return "(((unixepoch(result.period_start) + " + offset + ") / ?) * ?) - " + offset
+}
 
 // resultBucketRow is the aggregate's wire shape. `bucket_start` and
 // `oldest_period_start` arrive as epoch seconds: `period_start` is ISO TEXT in
@@ -81,7 +86,7 @@ func aggregateResultBucketsQuery(db bun.IDB, filter *models.ResultBucketFilter) 
 	query := db.NewSelect().
 		Model((*models.Result)(nil)).
 		ColumnExpr("result.check_uid AS check_uid").
-		ColumnExpr(resultBucketExpr+" AS bucket_start", bucketSeconds, bucketSeconds)
+		ColumnExpr(resultBucketExpr()+" AS bucket_start", bucketSeconds, bucketSeconds)
 
 	if filter.TierSide() == models.PeriodTierRaw {
 		query = aggregateRawBucketColumns(query)

@@ -22,8 +22,10 @@ func TestResultStatusSetsCoverEveryStatus(t *testing.T) {
 	// This is what catches a new constant: ResultStatus is a dense 1..N block,
 	// so a gap means either a deliberate hole (there is none today) or an
 	// omission.
-	seen := make(map[ResultStatus]bool, len(allResultStatuses))
-	for _, status := range allResultStatuses {
+	statuses := allResultStatuses()
+
+	seen := make(map[ResultStatus]bool, len(statuses))
+	for _, status := range statuses {
 		r.False(seen[status], "status %d listed twice", status)
 		seen[status] = true
 	}
