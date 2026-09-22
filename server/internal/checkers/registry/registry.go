@@ -44,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checktcp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkudp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 )
 
@@ -160,96 +161,17 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 // ParseConfig creates the appropriate config struct for a given check type.
 // Returns the config interface and true if the type is known, nil and false otherwise.
 //
+// It delegates to configregistry, the light twin that knows only the configs.
+// That is deliberate: there is ONE switch mapping a type to its config, so the
+// offline validator in `sp` and the server can never disagree about what a
+// check type accepts. Adding a checker means adding it there and to GetChecker
+// below; TestRegistriesAgree fails if only one of the two is done.
+//
 // TODO: Remove it
 //
-//nolint:ireturn,cyclop,funlen,dupl // Registry pattern requires interface return and growing switch
+//nolint:ireturn // Registry pattern requires interface return
 func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
-	switch checkType {
-	case checkerdef.CheckTypeHTTP:
-		return &checkhttp.HTTPConfig{}, true
-	case checkerdef.CheckTypeICMP:
-		return &checkicmp.ICMPConfig{}, true
-	case checkerdef.CheckTypeDNS:
-		return &checkdns.DNSConfig{}, true
-	case checkerdef.CheckTypeTCP:
-		return &checktcp.TCPConfig{}, true
-	case checkerdef.CheckTypeHeartbeat:
-		return &checkheartbeat.HeartbeatConfig{}, true
-	case checkerdef.CheckTypeEmail:
-		return &checkemail.EmailConfig{}, true
-	case checkerdef.CheckTypeDomain:
-		return &checkdomain.DomainConfig{}, true
-	case checkerdef.CheckTypeSSL:
-		return &checkssl.SSLConfig{}, true
-	case checkerdef.CheckTypeSMTP:
-		return &checksmtp.SMTPConfig{}, true
-	case checkerdef.CheckTypeUDP:
-		return &checkudp.UDPConfig{}, true
-	case checkerdef.CheckTypeSSH:
-		return &checkssh.SSHConfig{}, true
-	case checkerdef.CheckTypePOP3:
-		return &checkpop3.POP3Config{}, true
-	case checkerdef.CheckTypeIMAP:
-		return &checkimap.IMAPConfig{}, true
-	case checkerdef.CheckTypeWebSocket:
-		return &checkwebsocket.WebSocketConfig{}, true
-	case checkerdef.CheckTypePostgreSQL:
-		return &checkpostgres.PostgreSQLConfig{}, true
-	case checkerdef.CheckTypeFTP:
-		return &checkftp.FTPConfig{}, true
-	case checkerdef.CheckTypeSFTP:
-		return &checksftp.SFTPConfig{}, true
-	case checkerdef.CheckTypeJS:
-		return &checkjs.JSConfig{}, true
-	case checkerdef.CheckTypeMySQL:
-		return &checkmysql.MySQLConfig{}, true
-	case checkerdef.CheckTypeRedis:
-		return &checkredis.RedisConfig{}, true
-	case checkerdef.CheckTypeMongoDB:
-		return &checkmongodb.MongoDBConfig{}, true
-	case checkerdef.CheckTypeMSSQL:
-		return &checkmssql.MSSQLConfig{}, true
-	case checkerdef.CheckTypeOracle:
-		return &checkoracle.OracleConfig{}, true
-	case checkerdef.CheckTypeClickHouse:
-		return &checkclickhouse.ClickHouseConfig{}, true
-	case checkerdef.CheckTypeGRPC:
-		return &checkgrpc.GRPCConfig{}, true
-	case checkerdef.CheckTypeKafka:
-		return &checkkafka.KafkaConfig{}, true
-	case checkerdef.CheckTypeMQTT:
-		return &checkmqtt.MQTTConfig{}, true
-	case checkerdef.CheckTypeA2S:
-		return &checka2s.A2SConfig{}, true
-	case checkerdef.CheckTypeMinecraft:
-		return &checkminecraft.MinecraftConfig{}, true
-	case checkerdef.CheckTypeRabbitMQ:
-		return &checkrabbitmq.RabbitMQConfig{}, true
-	case checkerdef.CheckTypeSNMP:
-		return &checksnmp.SNMPConfig{}, true
-	case checkerdef.CheckTypeDocker:
-		return &checkdocker.DockerConfig{}, true
-	case checkerdef.CheckTypeBrowser:
-		return &checkbrowser.BrowserConfig{}, true
-	case checkerdef.CheckTypeFreeboxLine:
-		return &checkfreeboxline.FreeboxLineConfig{}, true
-	case checkerdef.CheckTypeDNSBL:
-		return &checkdnsbl.DNSBLConfig{}, true
-	case checkerdef.CheckTypeSIP:
-		return &checksip.SIPConfig{}, true
-	case checkerdef.CheckTypeKubernetes:
-		return &checkkubernetes.KubernetesConfig{}, true
-	case checkerdef.CheckTypeNTP:
-		return &checkntp.NTPConfig{}, true
-	case checkerdef.CheckTypePrometheus:
-		return &checkprometheus.PrometheusConfig{}, true
-	case checkerdef.CheckTypeRDP:
-		return &checkrdp.RDPConfig{}, true
-	case checkerdef.CheckTypeSleep:
-		return &checksleep.SleepConfig{}, true
-	default:
-		return nil, false
-	}
+	return configregistry.ParseConfig(checkType)
 }
 
 // GetAllSampleConfigs collects sample configurations from all checker types that implement CheckerSamplesProvider.
