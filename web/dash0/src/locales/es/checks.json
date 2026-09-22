@@ -655,6 +655,14 @@
         "down": "Caído",
         "noData": "Sin datos"
       }
+    },
+    "degraded": {
+      "bannerTitle": "Este check se habría marcado como degradado",
+      "bannerDescription": "La detección de degradación está desactivada para este check, así que no se informó nada, pero las reglas se habrían activado el {{when}}.",
+      "bannerWindowLink": "Ver el periodo",
+      "enableAction": "Activar la detección de degradación",
+      "enabled": "Detección de degradación activada para este check",
+      "enableFailed": "No se pudo activar la detección de degradación"
     }
   },
   "endpoints": {
@@ -1127,5 +1135,6 @@
   "noGroupsYet": {
     "title": "Aún no hay grupos de checks",
     "description": "Un grupo reúne checks relacionados en un contenedor exclusivo: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno con el botón Nuevo grupo de arriba."
-  }
+  },
+  "wouldHaveFiredFilter": "Se habría activado"
 }

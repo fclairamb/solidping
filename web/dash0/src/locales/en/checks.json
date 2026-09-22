@@ -699,6 +699,14 @@
         "down": "Down",
         "noData": "No data"
       }
+    },
+    "degraded": {
+      "bannerTitle": "This check would have been flagged degraded",
+      "bannerDescription": "Degraded detection is off for this check, so nothing was reported — but the rules would have fired at {{when}}.",
+      "bannerWindowLink": "See the window",
+      "enableAction": "Enable degraded detection",
+      "enabled": "Degraded detection enabled for this check",
+      "enableFailed": "Could not enable degraded detection"
     }
   },
   "endpoints": {
@@ -1127,5 +1135,6 @@
   "noGroupsYet": {
     "title": "No check groups yet",
     "description": "A group gathers related checks into one exclusive bucket — it drives escalation, incident correlation and status-page rollups. Create one with the New group button above."
-  }
+  },
+  "wouldHaveFiredFilter": "Would have fired"
 }

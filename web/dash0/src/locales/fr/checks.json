@@ -699,6 +699,14 @@
         "down": "Hors service",
         "noData": "Aucune donnée"
       }
+    },
+    "degraded": {
+      "bannerTitle": "Ce check aurait été signalé comme dégradé",
+      "bannerDescription": "La détection de dégradation est désactivée pour ce check, donc rien n'a été signalé — mais les règles se seraient déclenchées le {{when}}.",
+      "bannerWindowLink": "Voir la période",
+      "enableAction": "Activer la détection de dégradation",
+      "enabled": "Détection de dégradation activée pour ce check",
+      "enableFailed": "Impossible d'activer la détection de dégradation"
     }
   },
   "endpoints": {
@@ -1127,5 +1135,6 @@
   "noGroupsYet": {
     "title": "Aucun groupe de checks",
     "description": "Un groupe rassemble des checks liés dans un ensemble exclusif : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un avec le bouton Nouveau groupe ci-dessus."
-  }
+  },
+  "wouldHaveFiredFilter": "Aurait été signalé"
 }

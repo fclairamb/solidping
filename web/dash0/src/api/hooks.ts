@@ -160,6 +160,25 @@ export interface Check {
   enabled?: boolean;
   internal?: boolean;
   period?: string;
+  /**
+   * Degraded detection (spec 2026-09-22-03): one rule primitive, "M of the last
+   * N countable probes match", over failures and over slow successes. A 0 for
+   * an M turns that rule off; `slowThresholdMs` 0 turns the slow rule off.
+   */
+  degradedFailures?: number;
+  degradedFailuresWindow?: number;
+  degradedSlow?: number;
+  degradedSlowWindow?: number;
+  slowThresholdMs?: number;
+  /**
+   * Whether degraded detection may OPEN incidents on this check. Every check
+   * that predates the feature is off and runs as a DRY RUN instead, which only
+   * stamps `degradedWouldFireAt` — the banner on the check page and the
+   * `wouldHaveFired` filter on the list are what turn that into adoption.
+   */
+  degradedEnabled?: boolean;
+  /** When the dry run first saw a degraded condition. Absent = never. */
+  degradedWouldFireAt?: string | null;
   createdAt?: string;
   /**
    * The uid of whoever created this check, absent when nobody did — the
@@ -319,6 +338,14 @@ export interface UpdateCheckRequest {
   maxRecoveryMultiplier?: number | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
+  /** Degraded detection (spec 2026-09-22-03). 0 for an M turns that rule off. */
+  degradedFailures?: number;
+  degradedFailuresWindow?: number;
+  degradedSlow?: number;
+  degradedSlowWindow?: number;
+  slowThresholdMs?: number;
+  /** Setting this to true also retires the dry-run stamp server-side. */
+  degradedEnabled?: boolean;
 }
 
 export interface OrgResult {
@@ -531,6 +558,13 @@ export interface IncidentDetail {
     type?: string;
     config?: Record<string, unknown>;
   };
+  /**
+   * What the incident is ABOUT (spec 2026-09-22-03): "check" = an outage,
+   * "slo_burn" = an error-budget burn alert, "degraded" = a check that fails
+   * intermittently or answers far slower than usual, and which may well be up
+   * right now. Older API builds omit it; treat absent as "check".
+   */
+  kind?: "check" | "slo_burn" | "degraded";
   state?: "active" | "resolved";
   title?: string;
   description?: string;
@@ -615,6 +649,8 @@ function buildChecksUrl(
     checkGroupUid?: string;
     internal?: string;
     status?: string;
+    /** "true" restricts to the checks the degraded dry run has flagged. */
+    wouldHaveFired?: string;
     limit?: number;
     cursor?: string;
     /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
@@ -631,6 +667,8 @@ function buildChecksUrl(
     params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
   if (options?.status) params.set("status", options.status);
+  if (options?.wouldHaveFired)
+    params.set("wouldHaveFired", options.wouldHaveFired);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
   if (options?.sort) params.set("sort", options.sort);
@@ -722,6 +760,8 @@ export function useInfiniteChecks(
     checkGroupUid?: string;
     internal?: string;
     status?: string;
+    /** "true" restricts to the checks the degraded dry run has flagged. */
+    wouldHaveFired?: string;
     limit?: number;
     /** Opt-in ordering; "group" loads in the page's display order. */
     sort?: string;
@@ -7490,7 +7530,11 @@ export interface IncidentPublication {
 export function useIncidentPublications(
   org: string,
   statusPageUid: string,
-  options?: { activeOnly?: boolean; staleOnly?: boolean; refetchInterval?: number },
+  options?: {
+    activeOnly?: boolean;
+    staleOnly?: boolean;
+    refetchInterval?: number;
+  },
 ) {
   return useQuery({
     queryKey: [
@@ -8255,7 +8299,10 @@ export function useSetOrgParameter(org: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ key, ...request }: SetOrgParameterRequest & { key: string }) =>
+    mutationFn: ({
+      key,
+      ...request
+    }: SetOrgParameterRequest & { key: string }) =>
       apiFetch<OrgParameter>(
         `/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`,
         { method: "PUT", body: JSON.stringify(request) },
@@ -8271,9 +8318,12 @@ export function useDeleteOrgParameter(org: string) {
 
   return useMutation({
     mutationFn: (key: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`, {
-        method: "DELETE",
-      }),
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/parameters/${encodeURIComponent(key)}`,
+        {
+          method: "DELETE",
+        },
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orgParameters", org] });
     },
