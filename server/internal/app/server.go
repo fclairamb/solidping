@@ -1047,6 +1047,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
 	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
 	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
+	// Generated JSON Schemas for each check type's `config` object — public and
+	// auth-free like /check-types, because they describe this build rather than
+	// any organization's data. Read-only, and DESCRIPTIVE ONLY: validation stays
+	// with the Go Validate() reached through /checks/validate (spec 2026-09-22-02).
+	api.GET("/checks/schema", checkTypesHandler.ListConfigSchemas)
+	api.GET("/checks/schema/:type", checkTypesHandler.GetConfigSchema)
 	orgCheckTypes := orgGroup("/orgs/:org/check-types")
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 

@@ -3293,6 +3293,25 @@ type CheckChannelListResponse struct {
 	Data *[]CheckChannel `json:"data,omitempty"`
 }
 
+// CheckConfigSchemaListResponse defines model for CheckConfigSchemaListResponse.
+type CheckConfigSchemaListResponse struct {
+	Data []CheckConfigSchemaRef `json:"data"`
+
+	// Note Reminder that these schemas describe a config for editors and tooling and are not the validator.
+	Note string `json:"note"`
+}
+
+// CheckConfigSchemaRef defines model for CheckConfigSchemaRef.
+type CheckConfigSchemaRef struct {
+	// CheckType Example: kubernetes
+	CheckType string `json:"checkType"`
+
+	// Ref Path of the schema document
+	//
+	// Example: /api/v1/checks/schema/kubernetes
+	Ref string `json:"ref"`
+}
+
 // CheckFieldChange One field an update would change, rendered as strings (JSON for anything structured). Secret-bearing values and any value containing a ${env:}/${param:} reference are masked as "***" — a plan is printed in CI logs and pasted into tickets.
 type CheckFieldChange struct {
 	Field string `json:"field"`
@@ -8847,6 +8866,37 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 	ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListCheckConfigSchemas List the published config JSON Schemas
+	//
+	// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+	// check type's `config` object, with the URL of each one.
+	//
+	// **These schemas are a description, not a validator.** They exist so an
+	// editor can complete a config-as-code manifest and third-party tooling can
+	// generate or lint one. SolidPing validates a config with the Go
+	// `Validate()` of its checker, which enforces formats, bounds and
+	// cross-field rules that reflection over a struct cannot express — a config
+	// that satisfies the schema may still be rejected. Use
+	// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+	// find out whether a config is accepted; never wire a CI gate onto the JSON
+	// instead.
+	//
+	// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+	ListCheckConfigSchemas(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckConfigSchema Get a check type's config JSON Schema
+	//
+	// The generated JSON Schema (draft 2020-12) of one check type's `config`
+	// object, served as `application/schema+json`.
+	//
+	// **Descriptive only** — see the catalog endpoint above. Each document
+	// repeats it in its own `description` and `x-solidping-validation`, and
+	// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+	// keys carry `"format": "solidping-secret-ref"`.
+	//
+	// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+	GetCheckConfigSchema(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetPublicConfig Public browser-safe configuration
 	//
 	// Unauthenticated configuration blob the dashboard reads at boot, before
@@ -11964,6 +12014,57 @@ func (c *Client) ListCheckTypes(ctx context.Context, reqEditors ...RequestEditor
 // Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 func (c *Client) ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListCheckTypeSamplesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCheckConfigSchemas List the published config JSON Schemas
+//
+// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+// check type's `config` object, with the URL of each one.
+//
+// **These schemas are a description, not a validator.** They exist so an
+// editor can complete a config-as-code manifest and third-party tooling can
+// generate or lint one. SolidPing validates a config with the Go
+// `Validate()` of its checker, which enforces formats, bounds and
+// cross-field rules that reflection over a struct cannot express — a config
+// that satisfies the schema may still be rejected. Use
+// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+// find out whether a config is accepted; never wire a CI gate onto the JSON
+// instead.
+//
+// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+func (c *Client) ListCheckConfigSchemas(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckConfigSchemasRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCheckConfigSchema Get a check type's config JSON Schema
+//
+// The generated JSON Schema (draft 2020-12) of one check type's `config`
+// object, served as `application/schema+json`.
+//
+// **Descriptive only** — see the catalog endpoint above. Each document
+// repeats it in its own `description` and `x-solidping-validation`, and
+// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+// keys carry `"format": "solidping-secret-ref"`.
+//
+// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+func (c *Client) GetCheckConfigSchema(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckConfigSchemaRequest(c.Server, pType)
 	if err != nil {
 		return nil, err
 	}
@@ -18732,6 +18833,67 @@ func NewListCheckTypeSamplesRequest(server string, params *ListCheckTypeSamplesP
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCheckConfigSchemasRequest constructs an http.Request for the ListCheckConfigSchemas method
+func NewListCheckConfigSchemasRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/checks/schema")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckConfigSchemaRequest constructs an http.Request for the GetCheckConfigSchema method
+func NewGetCheckConfigSchemaRequest(server string, pType string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "type", pType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/checks/schema/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -31929,6 +32091,41 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 	ListCheckTypeSamplesWithResponse(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*ListCheckTypeSamplesResult, error)
 
+	// ListCheckConfigSchemasWithResponse List the published config JSON Schemas
+	//
+	// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+	// check type's `config` object, with the URL of each one.
+	//
+	// **These schemas are a description, not a validator.** They exist so an
+	// editor can complete a config-as-code manifest and third-party tooling can
+	// generate or lint one. SolidPing validates a config with the Go
+	// `Validate()` of its checker, which enforces formats, bounds and
+	// cross-field rules that reflection over a struct cannot express — a config
+	// that satisfies the schema may still be rejected. Use
+	// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+	// find out whether a config is accepted; never wire a CI gate onto the JSON
+	// instead.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+	ListCheckConfigSchemasWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCheckConfigSchemasResult, error)
+
+	// GetCheckConfigSchemaWithResponse Get a check type's config JSON Schema
+	//
+	// The generated JSON Schema (draft 2020-12) of one check type's `config`
+	// object, served as `application/schema+json`.
+	//
+	// **Descriptive only** — see the catalog endpoint above. Each document
+	// repeats it in its own `description` and `x-solidping-validation`, and
+	// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+	// keys carry `"format": "solidping-secret-ref"`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+	GetCheckConfigSchemaWithResponse(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*GetCheckConfigSchemaResult, error)
+
 	// GetPublicConfigWithResponse Public browser-safe configuration
 	//
 	// Unauthenticated configuration blob the dashboard reads at boot, before
@@ -36102,6 +36299,95 @@ func (r ListCheckTypeSamplesResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListCheckTypeSamplesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCheckConfigSchemasResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckConfigSchemaListResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCheckConfigSchemasResult) GetJSON200() *CheckConfigSchemaListResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCheckConfigSchemasResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckConfigSchemasResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckConfigSchemasResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCheckConfigSchemasResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCheckConfigSchemaResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationschemaJSON200 the response for an HTTP 200 `application/schema+json` response
+	ApplicationschemaJSON200 *map[string]interface{}
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetApplicationschemaJSON200 returns the response for an HTTP 200 `application/schema+json` response
+func (r GetCheckConfigSchemaResult) GetApplicationschemaJSON200() *map[string]interface{} {
+	return r.ApplicationschemaJSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCheckConfigSchemaResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCheckConfigSchemaResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckConfigSchemaResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckConfigSchemaResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCheckConfigSchemaResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -50724,6 +51010,53 @@ func (c *ClientWithResponses) ListCheckTypeSamplesWithResponse(ctx context.Conte
 	return ParseListCheckTypeSamplesResult(rsp)
 }
 
+// ListCheckConfigSchemasWithResponse List the published config JSON Schemas
+//
+// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+// check type's `config` object, with the URL of each one.
+//
+// **These schemas are a description, not a validator.** They exist so an
+// editor can complete a config-as-code manifest and third-party tooling can
+// generate or lint one. SolidPing validates a config with the Go
+// `Validate()` of its checker, which enforces formats, bounds and
+// cross-field rules that reflection over a struct cannot express — a config
+// that satisfies the schema may still be rejected. Use
+// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+// find out whether a config is accepted; never wire a CI gate onto the JSON
+// instead.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+func (c *ClientWithResponses) ListCheckConfigSchemasWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCheckConfigSchemasResult, error) {
+	rsp, err := c.ListCheckConfigSchemas(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckConfigSchemasResult(rsp)
+}
+
+// GetCheckConfigSchemaWithResponse Get a check type's config JSON Schema
+//
+// The generated JSON Schema (draft 2020-12) of one check type's `config`
+// object, served as `application/schema+json`.
+//
+// **Descriptive only** — see the catalog endpoint above. Each document
+// repeats it in its own `description` and `x-solidping-validation`, and
+// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+// keys carry `"format": "solidping-secret-ref"`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+func (c *ClientWithResponses) GetCheckConfigSchemaWithResponse(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*GetCheckConfigSchemaResult, error) {
+	rsp, err := c.GetCheckConfigSchema(ctx, pType, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckConfigSchemaResult(rsp)
+}
+
 // GetPublicConfigWithResponse Public browser-safe configuration
 //
 // Unauthenticated configuration blob the dashboard reads at boot, before
@@ -56393,6 +56726,65 @@ func ParseListCheckTypeSamplesResult(rsp *http.Response) (*ListCheckTypeSamplesR
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCheckConfigSchemasResult parses an HTTP response from a ListCheckConfigSchemasWithResponse call
+func ParseListCheckConfigSchemasResult(rsp *http.Response) (*ListCheckConfigSchemasResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckConfigSchemasResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckConfigSchemaListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckConfigSchemaResult parses an HTTP response from a GetCheckConfigSchemaWithResponse call
+func ParseGetCheckConfigSchemaResult(rsp *http.Response) (*GetCheckConfigSchemaResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckConfigSchemaResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationschemaJSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

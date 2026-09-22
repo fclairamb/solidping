@@ -6737,6 +6737,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/CheckTypeSamplesListResponse"
 
+  /api/v1/checks/schema:
+    get:
+      tags: [Check Types]
+      summary: List the published config JSON Schemas
+      description: |
+        Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+        check type's `config` object, with the URL of each one.
+
+        **These schemas are a description, not a validator.** They exist so an
+        editor can complete a config-as-code manifest and third-party tooling can
+        generate or lint one. SolidPing validates a config with the Go
+        `Validate()` of its checker, which enforces formats, bounds and
+        cross-field rules that reflection over a struct cannot express — a config
+        that satisfies the schema may still be rejected. Use
+        `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+        find out whether a config is accepted; never wire a CI gate onto the JSON
+        instead.
+      operationId: listCheckConfigSchemas
+      responses:
+        "200":
+          description: The published config schemas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckConfigSchemaListResponse"
+
+  /api/v1/checks/schema/{type}:
+    get:
+      tags: [Check Types]
+      summary: Get a check type's config JSON Schema
+      description: |
+        The generated JSON Schema (draft 2020-12) of one check type's `config`
+        object, served as `application/schema+json`.
+
+        **Descriptive only** — see the catalog endpoint above. Each document
+        repeats it in its own `description` and `x-solidping-validation`, and
+        lists what it knowingly does not encode in `x-solidping-notes`. Secret
+        keys carry `"format": "solidping-secret-ref"`.
+      operationId: getCheckConfigSchema
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: Check type, as returned by `GET /api/v1/check-types`
+          schema:
+            type: string
+          example: kubernetes
+      responses:
+        "200":
+          description: The check type's config schema
+          content:
+            application/schema+json:
+              schema:
+                type: object
+                description: A JSON Schema document (draft 2020-12)
+                additionalProperties: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/on-call-schedules:
     get:
       tags: [On-Call Schedules]
@@ -14958,6 +15017,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CheckTypeSamples"
+
+    CheckConfigSchemaRef:
+      type: object
+      required: [checkType, ref]
+      properties:
+        checkType:
+          type: string
+          example: kubernetes
+        ref:
+          type: string
+          description: Path of the schema document
+          example: /api/v1/checks/schema/kubernetes
+
+    CheckConfigSchemaListResponse:
+      type: object
+      required: [data, note]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckConfigSchemaRef"
+        note:
+          type: string
+          description: >-
+            Reminder that these schemas describe a config for editors and tooling
+            and are not the validator.
 
     # On-call schedule schemas
     OncallUserRef:

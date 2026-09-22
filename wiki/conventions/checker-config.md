@@ -4,6 +4,24 @@ Complete reference for all 39 checker types and their configuration fields. Fiel
 
 **Legend**: (R) = required, (O) = optional. Duration fields accept Go duration strings (e.g., `"10s"`, `"1m"`).
 
+> **Machine-readable version.** Every table below also exists as a generated JSON
+> Schema: `server/internal/checkers/schemas/<type>.json`, served at
+> `GET /api/v1/checks/schema/<type>` and attached to each release as
+> `check-config-schemas.tar.gz`. They are produced by reflection over the same
+> `XConfig` structs this page documents (`server/gen/checkerschema`, run with
+> `go generate ./internal/checkers/schemas/...`), and CI fails when they are
+> stale — so point an editor at them rather than transcribing a table.
+>
+> They are a **description, not a validator**: formats, bounds and cross-field
+> rules live in the Go `Validate()`, which stays the only authority. Each schema
+> lists what it does not encode in `x-solidping-notes`. Validate a manifest with
+> `sp checks validate`, never with a JSON Schema validator alone.
+>
+> When you change a config struct here, regenerate. When a rule cannot be
+> reflected (sftp's password-xor-key, sip's register-mode credentials), declare it
+> next to the validator via `checkerdef.SchemaNoter` /
+> `checkerdef.SchemaExclusiveGrouper` — never by hand-editing a generated file.
+
 ---
 
 ## Shared keys

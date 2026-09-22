@@ -14,17 +14,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 )
 
-// collectNotes assembles the `x-solidping-notes` array: what the config itself
-// declares it enforces beyond the struct shape, plus every place the reflected
-// `required` list and the Go validator disagree.
+// reconcileRequired rewrites the schema's `required` list to what the Go
+// validator actually enforces, and returns the `x-solidping-notes` array: what
+// the config declares it enforces beyond the struct shape, plus one note per
+// place the struct's `omitempty` tags and the validator disagreed.
 //
-// Recording the disagreement rather than "fixing" the schema is deliberate. The
-// schema's `required` comes from the struct's `omitempty` tags, which is what a
-// reflection-generated schema can honestly claim; the validator is the
-// authority. Hand-editing the generated file to match would break the one
-// property that makes these files trustworthy — that they are derived, not
-// maintained.
-func collectNotes(
+// `omitempty` is the only thing reflection can go on, and it is wrong in both
+// directions here: ssl's `port` has no `omitempty` yet `Validate()` accepts a
+// config without it (so a reflected schema would reject a config the server
+// takes — the harmful direction), while tcp's `host` carries `omitempty` and is
+// nonetheless mandatory. The struct's `Validate()` wins, and the correction is
+// recorded rather than silently applied: a reader needs to know the list was
+// derived from behaviour, not from tags. What is never allowed is hand-editing
+// the generated file, which would break the one property that makes these files
+// trustworthy — that they are derived, not maintained.
+func reconcileRequired(
 	checkType checkerdef.CheckType,
 	cfg checkerdef.Config,
 	schema *jsonschema.Schema,
@@ -35,9 +39,11 @@ func collectNotes(
 		notes = append(notes, noter.SchemaNotes()...)
 	}
 
-	gaps, warning := requiredGaps(checkType, schema, exclusiveKeys(cfg))
+	required, gaps, warning := requiredFromValidator(checkType, schema, exclusiveKeys(cfg))
 	if warning != "" {
 		notes = append(notes, warning)
+	} else {
+		schema.Required = required
 	}
 
 	return append(notes, gaps...)
@@ -63,22 +69,32 @@ func exclusiveKeys(cfg checkerdef.Config) map[string]bool {
 	return out
 }
 
-// requiredGaps compares the schema's reflected `required` list against what the
-// Go validator actually enforces, and returns one note per disagreement.
+// requiredFromValidator returns the `required` list the Go validator actually
+// enforces, plus one note per key where that differs from the struct's
+// `omitempty` tags.
 //
 // The probe needs a config the validator accepts, and the checkers already ship
-// one: their sample configs. Starting from a valid sample and removing one key
+// one: their sample configs. Starting from a valid config and removing one key
 // at a time answers "does Validate() reject a config without this key?" exactly,
-// with no guessed placeholder values. A key absent from a valid sample is, by
+// with no guessed placeholder values. A key absent from a valid config is, by
 // that same token, not required.
-func requiredGaps(
+//
+// Keys in an exclusive group are left alone: their required-ness is already
+// encoded in the group's `oneOf`, and removing one of them from a valid config
+// naturally fails, which would wrongly mark it unconditionally required.
+//
+// The probe runs over EVERY valid config the type offers, not one, and only a key
+// that is indispensable to all of them lands in `required`. prometheus is why: its
+// `metric` is mandatory in `metric` mode and meaningless in `promql` mode, and a
+// single baseline would have published whichever of the two it happened to pick.
+func requiredFromValidator(
 	checkType checkerdef.CheckType,
 	schema *jsonschema.Schema,
 	skip map[string]bool,
-) ([]string, string) {
-	sample, warning := baseline(checkType, schema)
-	if sample == nil {
-		return nil, warning
+) ([]string, []string, string) {
+	bases, warning := baselines(checkType, schema)
+	if len(bases) == 0 {
+		return nil, nil, warning
 	}
 
 	reflected := map[string]bool{}
@@ -87,49 +103,83 @@ func requiredGaps(
 	}
 
 	notes := make([]string, 0, 2)
+	required := make([]string, 0, len(schema.Required))
 
 	for _, key := range schemaKeys(schema) {
+		indispensable, sometimes := requiredAcross(checkType, bases, key)
+
+		enforced := indispensable
 		if skip[key] {
-			continue
+			enforced = reflected[key]
 		}
 
-		enforced := validatorRequires(checkType, sample, key)
+		if enforced {
+			required = append(required, key)
+		}
 
 		switch {
+		case skip[key]:
 		case enforced && !reflected[key]:
 			notes = append(notes, fmt.Sprintf(
-				"`%s` is not in `required` (its Go field carries `omitempty`), but `Validate()` "+
-					"rejects a config without it. The Go validator is authoritative.", key))
+				"`%s` carries `omitempty` in Go, but `Validate()` rejects a config without it, so it "+
+					"IS listed in `required`. The Go validator is authoritative.", key))
 		case !enforced && reflected[key]:
 			notes = append(notes, fmt.Sprintf(
-				"`%s` is listed in `required` (its Go field has no `omitempty`), but `Validate()` "+
-					"accepts a config without it. The Go validator is authoritative.", key))
+				"`%s` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is "+
+					"NOT listed in `required`. The Go validator is authoritative.", key))
+		case sometimes && !enforced:
+			notes = append(notes, fmt.Sprintf(
+				"`%s` is required only in some configurations — `Validate()` decides from other keys — "+
+					"so it is not in `required`. The Go validator is authoritative.", key))
 		}
 	}
 
-	return notes, warning
+	return required, notes, warning
 }
 
-// baseline returns a config the validator accepts, to remove keys from. It tries
-// the checker's own sample configs first — real data, no guessing — and falls
-// back to building one from the schema's declared property types for the types
-// that ship no sample (or ship a template with a placeholder the validator
-// rejects, like freebox_line's empty `connectionUid`).
+// requiredAcross reports whether a key is indispensable to every valid config
+// (so it belongs in `required`), and whether it is indispensable to at least one
+// (so it is conditionally required and worth a note).
+func requiredAcross(checkType checkerdef.CheckType, bases []map[string]any, key string) (bool, bool) {
+	needed := 0
+
+	for _, base := range bases {
+		if validatorRequires(checkType, base, key) {
+			needed++
+		}
+	}
+
+	return needed == len(bases), needed > 0
+}
+
+// baselines returns every config the validator accepts, to remove keys from. It
+// uses the checker's own sample configs — real data, no guessing — and falls back
+// to building one from the schema's declared property types for the types that
+// ship no sample (or ship a template with a placeholder the validator rejects,
+// like freebox_line's empty `connectionUid`).
 //
-// When neither works it returns nil plus the note that says so. An unprobeable
+// When neither works it returns nothing plus the note that says so. An unprobeable
 // type is surfaced rather than silently treated as gap-free: a schema that
 // quietly stopped being checked is worse than one that admits it.
-func baseline(checkType checkerdef.CheckType, schema *jsonschema.Schema) (map[string]any, string) {
+func baselines(checkType checkerdef.CheckType, schema *jsonschema.Schema) ([]map[string]any, string) {
 	opts := &checkerdef.ListSampleOptions{Type: checkerdef.Default, BaseURL: "https://example.com"}
+	specs := registry.GetAllSampleConfigs(opts)[checkType]
 
-	for _, spec := range registry.GetAllSampleConfigs(opts)[checkType] {
-		if configregistry.ValidateSpec(checkType, &spec) == nil { //nolint:gosec,exportloopref // Go 1.22+ loop var
-			return spec.Config, ""
+	out := make([]map[string]any, 0, len(specs))
+
+	for idx := range specs {
+		spec := specs[idx]
+		if configregistry.ValidateSpec(checkType, &spec) == nil {
+			out = append(out, spec.Config)
 		}
+	}
+
+	if len(out) > 0 {
+		return out, ""
 	}
 
 	if cfg := constructBaseline(checkType, schema); cfg != nil {
-		return cfg, ""
+		return []map[string]any{cfg}, ""
 	}
 
 	return nil, "Required-field parity against `Validate()` was not verified for this type: the " +

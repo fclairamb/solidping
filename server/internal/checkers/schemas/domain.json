@@ -20,18 +20,15 @@
   },
   "type": "object",
   "required": [
-    "domain",
-    "warningDays",
-    "criticalDays",
-    "thresholdDays"
+    "domain"
   ],
   "title": "domain check config",
-  "description": "Monitor domain expiration.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.\n\n`criticalDays` is listed in `required` (its Go field has no `omitempty`), but `Validate()` accepts a config without it. The Go validator is authoritative.\n\n`thresholdDays` is listed in `required` (its Go field has no `omitempty`), but `Validate()` accepts a config without it. The Go validator is authoritative.\n\n`warningDays` is listed in `required` (its Go field has no `omitempty`), but `Validate()` accepts a config without it. The Go validator is authoritative.",
+  "description": "Monitor domain expiration.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.\n\n`criticalDays` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is NOT listed in `required`. The Go validator is authoritative.\n\n`thresholdDays` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is NOT listed in `required`. The Go validator is authoritative.\n\n`warningDays` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is NOT listed in `required`. The Go validator is authoritative.",
   "x-solidping-check-type": "domain",
   "x-solidping-notes": [
-    "`criticalDays` is listed in `required` (its Go field has no `omitempty`), but `Validate()` accepts a config without it. The Go validator is authoritative.",
-    "`thresholdDays` is listed in `required` (its Go field has no `omitempty`), but `Validate()` accepts a config without it. The Go validator is authoritative.",
-    "`warningDays` is listed in `required` (its Go field has no `omitempty`), but `Validate()` accepts a config without it. The Go validator is authoritative."
+    "`criticalDays` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is NOT listed in `required`. The Go validator is authoritative.",
+    "`thresholdDays` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is NOT listed in `required`. The Go validator is authoritative.",
+    "`warningDays` has no `omitempty` in Go, but `Validate()` accepts a config without it, so it is NOT listed in `required`. The Go validator is authoritative."
   ],
   "x-solidping-secret-fields": [],
   "x-solidping-validation": {

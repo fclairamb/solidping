@@ -151,6 +151,22 @@ jobs:
       - name: Verify the freshly generated client still builds
         run: go build ./...
 
+      # internal/checkers/schemas/*.json is generated from the checker config
+      # structs and COMMITTED, so unlike the OpenAPI client above it may never
+      # lag: the files are served by the API and attached to releases, and a stale
+      # one tells an editor about a config field that no longer exists. A byte
+      # diff is therefore the right check here — change a config struct, run
+      # `go generate ./internal/checkers/schemas/...`, commit the result
+      # (spec 2026-09-22-02).
+      - name: Verify the committed checker schemas are current
+        run: |
+          set -euo pipefail
+          go generate ./internal/checkers/schemas/...
+          if ! git diff --exit-code -- internal/checkers/schemas; then
+            echo "::error::internal/checkers/schemas is stale — run \`go generate ./internal/checkers/schemas/...\` in server/ and commit the result"
+            exit 1
+          fi
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
         with:
@@ -943,6 +959,23 @@ jobs:
           sha256sum sp-* > sp-checksums.txt
           ls -l
 
+      # The generated JSON Schemas of every check type's `config`, as a release
+      # asset next to `sp` itself. The API serves them one at a time
+      # (GET /api/v1/checks/schema/<type>), but a CI linter or an editor plugin
+      # wants the whole set from a stable URL without reaching a SolidPing
+      # instance first — releases/latest/download/check-config-schemas.tar.gz is
+      # that URL. They are a DESCRIPTION, not a validator: the validator is
+      # `sp checks validate`, shipped right beside them (spec 2026-09-22-02).
+      - name: Bundle the check config schemas
+        working-directory: server
+        run: |
+          set -euo pipefail
+          tar -czf ../dist/check-config-schemas.tar.gz \
+            -C internal/checkers/schemas $(cd internal/checkers/schemas && ls *.json | sort)
+          cd ../dist
+          sha256sum check-config-schemas.tar.gz > check-config-schemas-checksums.txt
+          ls -l check-config-schemas*
+
       # release-please creates the GitHub release from the same tag push that
       # triggered this run, so the release may not exist yet. Wait for it rather
       # than racing it — and if it never appears (a hand-pushed tag), create it,
@@ -969,7 +1002,8 @@ jobs:
               --title "$TAG_NAME" --notes "Automated release." --target "${GITHUB_SHA}"
           fi
 
-          gh release upload "$TAG_NAME" dist/sp-* \
+          gh release upload "$TAG_NAME" dist/sp-* dist/check-config-schemas.tar.gz \
+            dist/check-config-schemas-checksums.txt \
             --repo "${{ github.repository }}" --clobber
 
       - name: Log in to the Container registry

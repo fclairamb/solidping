@@ -63,7 +63,7 @@ func buildSchema(checkType checkerdef.CheckType) ([]byte, error) {
 	annotateSecrets(schema, secrets)
 	applyExclusiveGroups(schema, cfg)
 
-	notes := collectNotes(checkType, cfg, schema)
+	notes := reconcileRequired(checkType, cfg, schema)
 
 	schema.Description = describe(checkType, notes)
 	schema.Extras = map[string]any{

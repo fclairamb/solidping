@@ -39,4 +39,20 @@ Each protocol has its own package (e.g., `checkhttp`, `checkicmp`, `checktcp`):
    - Add to `GetChecker()` switch
    - Add to `ParseConfig()` switch
 5. Add constant to `checkerdef.CheckType`
-6. Run the lint and tests and fix any issues
+6. Regenerate the config JSON Schemas: `go generate ./internal/checkers/schemas/...`, and commit
+   `internal/checkers/schemas/<type>.json` (CI fails when they are stale). Never hand-edit one —
+   a rule reflection cannot see goes on the config via `checkerdef.SchemaNoter` /
+   `checkerdef.SchemaExclusiveGrouper`
+7. Run the lint and tests and fix any issues
+
+## Config JSON Schemas
+
+`schemas/` holds one generated JSON Schema (draft 2020-12) per check type,
+produced by `server/gen/checkerschema` from the same `XConfig` structs the
+validators run on, enumerated through `configregistry`. They are served at
+`GET /api/v1/checks/schema/<type>` and attached to releases.
+
+They are a **description for editors and tooling, never a validator** — validation
+authority stays with the Go `Validate()`. Details, including what the
+`x-solidping-*` keys mean and how `required` is derived from the validator rather
+than from `omitempty`, are in `wiki/api-specification/checks.md`.
