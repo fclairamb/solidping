@@ -29,7 +29,7 @@ func TestCommittedSchemasAreCurrent(t *testing.T) {
 
 		path := filepath.Join(schemaDir, string(checkType)+".json")
 
-		got, err := os.ReadFile(path) //nolint:gosec // fixed test path
+		got, err := os.ReadFile(path)
 		r.NoErrorf(err, "%s is missing — run `go generate ./internal/checkers/schemas/...`", path)
 
 		r.Equalf(string(want), string(got),

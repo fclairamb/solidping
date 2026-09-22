@@ -128,7 +128,7 @@ func TestSecretFieldsAreMarked(t *testing.T) {
 				Format      string `json:"format"`
 				Description string `json:"description"`
 			} `json:"properties"`
-			SecretFields []string `json:"x-solidping-secret-fields"`
+			SecretFields []string `json:"x-solidping-secret-fields"` //nolint:tagliatelle // JSON Schema extension keyword
 		}
 
 		r.NoError(json.Unmarshal(raw, &doc))

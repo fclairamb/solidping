@@ -20,6 +20,8 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +31,14 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
+)
+
+// Static errors the generator can fail with. The message always names the fix,
+// because "run go generate" is the only useful thing to say to whoever hit it.
+var (
+	errNoCheckTypes = errors.New("configregistry knows no check type")
+	errStaleSchema  = errors.New("stale — run `go generate ./internal/checkers/schemas/...` and commit the result")
+	errOrphanSchema = errors.New("no matching check type — run `go generate ./internal/checkers/schemas/...`")
 )
 
 func main() {
@@ -47,7 +57,7 @@ func main() {
 func run(outDir string, checkOnly bool) error {
 	types := knownTypes()
 	if len(types) == 0 {
-		return fmt.Errorf("configregistry knows no check type") //nolint:err113 // one-off fatal in a generator
+		return errNoCheckTypes
 	}
 
 	wanted := make(map[string]struct{}, len(types))
@@ -102,14 +112,13 @@ func knownTypes() []checkerdef.CheckType {
 // compareFile reports a stale or missing committed schema as an error naming the
 // fix, because "run go generate" is the only useful thing to say here.
 func compareFile(path string, want []byte) error {
-	got, err := os.ReadFile(path) //nolint:gosec // generator reads its own output directory
+	got, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("%s is missing — run `go generate ./internal/checkers/schemas/...`: %w", path, err)
 	}
 
-	if string(got) != string(want) {
-		return fmt.Errorf( //nolint:err113 // one-off fatal in a generator
-			"%s is stale — run `go generate ./internal/checkers/schemas/...` and commit the result", path)
+	if !bytes.Equal(got, want) {
+		return fmt.Errorf("%s is %w", path, errStaleSchema)
 	}
 
 	return nil
@@ -130,8 +139,7 @@ func pruneOrReport(outDir string, wanted map[string]struct{}, checkOnly bool) er
 		}
 
 		if checkOnly {
-			return fmt.Errorf( //nolint:err113 // one-off fatal in a generator
-				"%s has no matching check type — run `go generate ./internal/checkers/schemas/...`", path)
+			return fmt.Errorf("%s has %w", path, errOrphanSchema)
 		}
 
 		if err := os.Remove(path); err != nil {

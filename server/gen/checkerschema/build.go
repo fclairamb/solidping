@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -47,11 +48,16 @@ const (
 		"still be rejected."
 )
 
+// errUnknownCheckType guards the impossible case: knownTypes() filters on
+// IsKnownType, so a type reaching buildSchema without a config means the two
+// disagree.
+var errUnknownCheckType = errors.New("configregistry has no config for check type")
+
 // buildSchema returns the formatted JSON Schema document for one check type.
 func buildSchema(checkType checkerdef.CheckType) ([]byte, error) {
 	cfg, ok := configregistry.ParseConfig(checkType)
 	if !ok {
-		return nil, fmt.Errorf("configregistry has no config for %q", checkType) //nolint:err113 // generator fatal
+		return nil, fmt.Errorf("%w: %q", errUnknownCheckType, checkType)
 	}
 
 	schema := reflectConfig(cfg)

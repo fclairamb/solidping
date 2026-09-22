@@ -69,7 +69,7 @@ func notesOf(t *testing.T, checkType string) string {
 	require.NoError(t, err)
 
 	var doc struct {
-		Notes []string `json:"x-solidping-notes"`
+		Notes []string `json:"x-solidping-notes"` //nolint:tagliatelle // JSON Schema extension keyword
 	}
 
 	require.NoError(t, json.Unmarshal(raw, &doc))

@@ -25,7 +25,7 @@ import (
 // takes — the harmful direction), while tcp's `host` carries `omitempty` and is
 // nonetheless mandatory. The struct's `Validate()` wins, and the correction is
 // recorded rather than silently applied: a reader needs to know the list was
-// derived from behaviour, not from tags. What is never allowed is hand-editing
+// derived from behavior, not from tags. What is never allowed is hand-editing
 // the generated file, which would break the one property that makes these files
 // trustworthy — that they are derived, not maintained.
 func reconcileRequired(

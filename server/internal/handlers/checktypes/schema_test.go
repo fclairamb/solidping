@@ -21,9 +21,14 @@ func schemaRouter(t *testing.T) http.Handler {
 	handler := NewHandler(nil, &config.Config{})
 	router := chi.NewRouter()
 
+	// A handler error is surfaced as a 500 rather than asserted inside the
+	// handler goroutine: an assertion there would race the test's own failure
+	// reporting, and every test below already asserts on the status.
 	wrap := func(fn func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {
 		return func(writer http.ResponseWriter, req *http.Request) {
-			require.NoError(t, fn(writer, req))
+			if err := fn(writer, req); err != nil {
+				http.Error(writer, err.Error(), http.StatusInternalServerError)
+			}
 		}
 	}
 
@@ -37,7 +42,7 @@ func get(t *testing.T, router http.Handler, target string) *httptest.ResponseRec
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil))
 
 	return rec
 }
@@ -88,7 +93,7 @@ func TestGetConfigSchemaUnknownTypeIs404(t *testing.T) {
 
 // TestListConfigSchemasIsACatalog pins the discovery endpoint: wrapped in
 // `data`, one entry per published type, each carrying a fetchable path, plus the
-// note that keeps a reader from mistaking these for the validator.
+// reminder that keeps a reader from mistaking these for the validator.
 func TestListConfigSchemasIsACatalog(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
