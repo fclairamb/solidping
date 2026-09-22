@@ -3290,7 +3290,10 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
 	// shell varies on it exactly like the custom-domain one. Hashed assets do
 	// not, so they keep their unqualified year-long entry.
-	writer.Header().Set("Vary", statuspagecache.VaryPublic)
+	// Add, not Set: the process-wide compression wrapper (server.compression)
+	// runs outside this handler and already added its own
+	// "Vary: Accept-Encoding" — Set would silently discard it.
+	writer.Header().Add("Vary", statuspagecache.VaryPublic)
 	writer.Header().Set("Content-Type", contentTypeHTML)
 
 	if _, err := writer.Write(data); err != nil {

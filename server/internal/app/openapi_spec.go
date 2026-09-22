@@ -39,7 +39,10 @@ func (s *Server) serveOpenAPISpec(files embed.FS, fileName string) func(http.Res
 		// The body varies with the origin the client used, and X-Forwarded-Proto
 		// is the one request header that can change it (requestScheme). Without
 		// this a shared cache could hand an http:// spec to an https:// client.
-		writer.Header().Set("Vary", "X-Forwarded-Proto")
+		// Add, not Set: the process-wide compression wrapper (server.compression)
+		// runs outside this handler and already added its own
+		// "Vary: Accept-Encoding" — Set would silently discard it.
+		writer.Header().Add("Vary", "X-Forwarded-Proto")
 		writer.WriteHeader(http.StatusOK)
 
 		if _, err := writer.Write(rewriteOpenAPIServers(fileData, req)); err != nil {

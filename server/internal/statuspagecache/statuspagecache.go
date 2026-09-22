@@ -29,6 +29,18 @@
 // front of them holds no such cookie and serves everybody. So the directive is
 // keyed on the page's visibility alone and never on whether the caller got in:
 // an unlocked password page is still `private, no-store`.
+//
+// # Accept-Encoding is not this package's Vary
+//
+// Exactly one request header changes such a body per the reasoning above
+// (X-Forwarded-Proto). That is still true after the process-wide gzip wrapper
+// (server.compression, internal/app's compressionWrapper) was added: the
+// wrapper sits OUTSIDE every handler in this package and appends
+// Accept-Encoding to Vary itself, on the response this package already wrote.
+// The handler-level VaryPublic/VaryGated constants below are unchanged and
+// stay exactly what the pinning tests assert — the transport layer's
+// Accept-Encoding is a separate, additive fact about the wire representation,
+// not a new source of body variation this package needs to account for.
 package statuspagecache
 
 import (
@@ -108,7 +120,12 @@ func Apply(header http.Header, visibility string, maxAge time.Duration) {
 	}
 
 	header.Set("Cache-Control", Control(visibility, maxAge))
-	header.Set("Vary", VaryPublic)
+	// Add, not Set: the process-wide compression wrapper (server.compression)
+	// sits OUTSIDE every handler and adds its own "Vary: Accept-Encoding"
+	// before this handler ever runs. Set would silently wipe that entry out,
+	// leaving a compressed response that a CDN could key incorrectly on. See
+	// the package doc's "Accept-Encoding is not this package's Vary" note.
+	header.Add("Vary", VaryPublic)
 }
 
 // ApplyGated writes the never-shared directive. Used where no page is in hand
@@ -116,5 +133,6 @@ func Apply(header http.Header, visibility string, maxAge time.Duration) {
 // error replies into a map of which pages exist.
 func ApplyGated(header http.Header) {
 	header.Set("Cache-Control", Gated)
-	header.Set("Vary", VaryGated)
+	// Add, not Set — see the comment in Apply above.
+	header.Add("Vary", VaryGated)
 }
