@@ -4,27 +4,20 @@ package checkicmp
 import (
 	"context"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp/config"
 )
 
 const (
 	// Default values from spec.
-	defaultTimeout    = 5 * time.Second
-	defaultCount      = 1
-	defaultInterval   = 1 * time.Second
 	defaultPacketSize = 56
 
 	// Burst limits (spec 2026-09-21-01). The interval floor is 10ms (fping
 	// territory) because interval only ever adds delay — lowering it shortens
 	// the burst — and the count ceiling of 600 at 10ms spans a 6-second
 	// window.
-	minCount    = 1
-	maxCount    = 600
-	minInterval = 10 * time.Millisecond
-	maxInterval = 60 * time.Second
 
 	// Network constants.
 	percentageMultiplier = 100    // Multiplier for percentage calculations
@@ -52,51 +45,11 @@ func (c *ICMPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeICMP
 }
 
-// Validate checks if the configuration is valid.
-//
-//nolint:cyclop // Validation requires checking multiple fields
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &ICMPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	// Validate Host
-	if cfg.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
-	}
-
-	// Validate Count (1-600) - check the original value if set
-	if cfg.Count != 0 && (cfg.Count < minCount || cfg.Count > maxCount) {
-		return checkerdef.NewConfigErrorf("count", "must be between %d and %d, got %d", minCount, maxCount, cfg.Count)
-	}
-
-	// Validate Interval (10ms - 60s) - check the original value if set
-	if cfg.Interval != 0 && (cfg.Interval < minInterval || cfg.Interval > maxInterval) {
-		return checkerdef.NewConfigErrorf(
-			"interval", "must be between %s and %s, got %s", minInterval, maxInterval, cfg.Interval)
-	}
-
-	// Validate PacketSize (0 - 65507)
-	if cfg.PacketSize < 0 || cfg.PacketSize > 65507 {
-		return checkerdef.NewConfigErrorf("packet_size", "must be between 0 and 65507 bytes, got %d", cfg.PacketSize)
-	}
-
-	// Validate TTL (1 - 255) - check the original value if set
-	if cfg.TTL != 0 && (cfg.TTL < 1 || cfg.TTL > 255) {
-		return checkerdef.NewConfigErrorf("ttl", "must be between 1 and 255, got %d", cfg.TTL)
-	}
-
-	// Validate Timeout (> 0 and <= 30s) - check the original value if set
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "icmp-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return config.ValidateSpec(spec)
 }
 
 // Execute performs the ICMP ping check and returns the result.

@@ -1,4 +1,4 @@
-package checkntp
+package config
 
 import (
 	"time"
@@ -8,10 +8,10 @@ import (
 
 // Config field defaults and bounds.
 const (
-	defaultPort    = 123
-	defaultTimeout = 5 * time.Second
+	DefaultPort    = 123
+	DefaultTimeout = 5 * time.Second
 	maxTimeout     = 30 * time.Second
-	defaultVersion = 4
+	DefaultVersion = 4
 	minVersion     = 3
 	maxVersion     = 4
 	minPort        = 1
@@ -175,7 +175,7 @@ func (c *NTPConfig) Validate() error {
 	}
 
 	if c.Port == 0 {
-		c.Port = defaultPort
+		c.Port = DefaultPort
 	}
 
 	if c.Port < minPort || c.Port > maxPort {
@@ -187,7 +187,7 @@ func (c *NTPConfig) Validate() error {
 	}
 
 	if c.Version == 0 {
-		c.Version = defaultVersion
+		c.Version = DefaultVersion
 	}
 
 	if c.Version < minVersion || c.Version > maxVersion {

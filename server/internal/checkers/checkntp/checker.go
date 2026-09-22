@@ -16,6 +16,7 @@ import (
 	"github.com/beevik/ntp"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkntp/config"
 )
 
 const (
@@ -63,42 +64,11 @@ func (c *NTPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeNTP
 }
 
-// Validate checks if the configuration is valid (no network operations).
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *NTPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &NTPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = "NTP: " + cfg.Host
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "ntp-" + sanitizeSlug(cfg.Host)
-	}
-
-	return nil
-}
-
-// sanitizeSlug turns a host into a slug-friendly fragment.
-func sanitizeSlug(host string) string {
-	out := make([]rune, 0, len(host))
-
-	for _, r := range host {
-		switch r {
-		case '.', ':':
-			out = append(out, '-')
-		default:
-			out = append(out, r)
-		}
-	}
-
-	return string(out)
+	return config.ValidateSpec(spec)
 }
 
 // Execute performs the NTP check and returns the result.

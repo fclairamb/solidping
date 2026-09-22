@@ -1,4 +1,4 @@
-package checkudp
+package config
 
 import (
 	"time"

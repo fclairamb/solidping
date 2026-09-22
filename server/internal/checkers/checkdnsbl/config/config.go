@@ -1,4 +1,4 @@
-package checkdnsbl
+package config
 
 import (
 	"time"
@@ -6,27 +6,27 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-// keyTarget is the config/output map key for the check target.
-const keyTarget = "target"
+// KeyTarget is the config/output map key for the check target.
+const KeyTarget = "target"
 
 // Known IP-based DNS blocklist zones used as defaults and in tests.
 const (
-	zoneSpamhaus   = "zen.spamhaus.org"
-	zoneSpamcop    = "bl.spamcop.net"
-	zoneBarracuda  = "b.barracudacentral.org"
-	zoneUCEProtect = "dnsbl-1.uceprotect.net"
+	ZoneSpamhaus   = "zen.spamhaus.org"
+	ZoneSpamcop    = "bl.spamcop.net"
+	ZoneBarracuda  = "b.barracudacentral.org"
+	ZoneUCEProtect = "dnsbl-1.uceprotect.net"
 )
 
-// defaultBlocklists are the IP-based DNS blocklist zones queried when the
+// DefaultBlocklists are the IP-based DNS blocklist zones queried when the
 // config provides none. SORBS (dnsbl.sorbs.net) is intentionally excluded —
 // it shut down in 2024.
 //
 //nolint:gochecknoglobals // read-only default list
-var defaultBlocklists = []string{
-	zoneSpamhaus,
-	zoneSpamcop,
-	zoneBarracuda,
-	zoneUCEProtect,
+var DefaultBlocklists = []string{
+	ZoneSpamhaus,
+	ZoneSpamcop,
+	ZoneBarracuda,
+	ZoneUCEProtect,
 }
 
 // DNSBLConfig holds the configuration for DNSBL (blocklist) checks.
@@ -40,10 +40,10 @@ type DNSBLConfig struct {
 // FromMap populates the configuration from a map.
 func (c *DNSBLConfig) FromMap(configMap map[string]any) error {
 	// Extract Target (required string)
-	if target, ok := configMap[keyTarget].(string); ok {
+	if target, ok := configMap[KeyTarget].(string); ok {
 		c.Target = target
-	} else if configMap[keyTarget] != nil {
-		return checkerdef.NewConfigError(keyTarget, "must be a string")
+	} else if configMap[KeyTarget] != nil {
+		return checkerdef.NewConfigError(KeyTarget, "must be a string")
 	}
 
 	// Extract Nameserver (optional string)
@@ -89,7 +89,7 @@ func (c *DNSBLConfig) FromMap(configMap map[string]any) error {
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
 func (c *DNSBLConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		keyTarget: c.Target,
+		KeyTarget: c.Target,
 	}
 
 	if len(c.Blocklists) > 0 {
@@ -107,11 +107,11 @@ func (c *DNSBLConfig) GetConfig() map[string]any {
 	return cfg
 }
 
-// resolveBlocklists returns the configured zones, or the defaults when empty.
-func (c *DNSBLConfig) resolveBlocklists() []string {
+// ResolveBlocklists returns the configured zones, or the defaults when empty.
+func (c *DNSBLConfig) ResolveBlocklists() []string {
 	if len(c.Blocklists) > 0 {
 		return c.Blocklists
 	}
 
-	return defaultBlocklists
+	return DefaultBlocklists
 }

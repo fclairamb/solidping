@@ -1,4 +1,4 @@
-package checkssl
+package config
 
 import (
 	"errors"
@@ -10,12 +10,12 @@ import (
 var errHostRequired = errors.New("host is required")
 
 const (
-	defaultPort          = 443
+	DefaultPort          = 443
 	defaultCriticalDays  = 30
 	defaultWarningDays   = 30
 	defaultThresholdDays = defaultCriticalDays
 	maxThresholdDays     = 3650 // 10 years — generous sanity cap
-	defaultTimeout       = 10 * time.Second
+	DefaultTimeout       = 10 * time.Second
 	maxTimeout           = 30 * time.Second
 )
 
@@ -135,7 +135,7 @@ func (c *SSLConfig) GetConfig() map[string]any {
 		checkerdef.OutputKeyHost: c.Host,
 	}
 
-	if c.Port != 0 && c.Port != defaultPort {
+	if c.Port != 0 && c.Port != DefaultPort {
 		config["port"] = c.Port
 	}
 
@@ -227,10 +227,10 @@ func (c *SSLConfig) validateThresholds() error {
 	return nil
 }
 
-// effectiveThresholds resolves the warning/critical days that will actually be
+// EffectiveThresholds resolves the warning/critical days that will actually be
 // used, applying the legacy alias and per-tier defaults. Used by execution.
 // Returns (warning, critical).
-func (c *SSLConfig) effectiveThresholds() (int, int) {
+func (c *SSLConfig) EffectiveThresholds() (int, int) {
 	critical := c.CriticalDays
 	if critical == 0 {
 		critical = c.ThresholdDays

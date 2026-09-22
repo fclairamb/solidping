@@ -1,4 +1,4 @@
-package checkicmp
+package config
 
 import (
 	"time"
@@ -143,17 +143,17 @@ func (c *ICMPConfig) GetConfig() map[string]any {
 func (c *ICMPConfig) BurstBudget() time.Duration {
 	timeout := c.Timeout
 	if timeout == 0 {
-		timeout = defaultTimeout
+		timeout = DefaultTimeout
 	}
 
 	count := c.Count
 	if count == 0 {
-		count = defaultCount
+		count = DefaultCount
 	}
 
 	interval := c.Interval
 	if interval == 0 {
-		interval = defaultInterval
+		interval = DefaultInterval
 	}
 
 	return time.Duration(count)*timeout + time.Duration(count-1)*interval

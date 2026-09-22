@@ -73,7 +73,7 @@ func TestDNSBLConfig_FromMap(t *testing.T) {
 			validate: func(r *require.Assertions, cfg *DNSBLConfig) {
 				r.Equal("127.0.0.2", cfg.Target)
 				r.Empty(cfg.Blocklists)
-				r.Equal(defaultBlocklists, cfg.resolveBlocklists())
+				r.Equal(defaultBlocklists, cfg.ResolveBlocklists())
 			},
 		},
 		{

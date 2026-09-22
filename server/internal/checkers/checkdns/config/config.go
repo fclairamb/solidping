@@ -1,4 +1,4 @@
-package checkdns
+package config
 
 import (
 	"time"

@@ -8,6 +8,7 @@ import (
 	"github.com/dreamscached/minequery/v2"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkminecraft/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -20,26 +21,11 @@ func (c *MinecraftChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeMinecraft
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *MinecraftChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &MinecraftConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = cfg.resolveTarget()
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = cfg.resolveSlug()
-	}
-
-	return nil
+	return config.ValidateSpec(spec)
 }
 
 // Execute performs the Minecraft server health check and returns the result.
@@ -56,14 +42,14 @@ func (c *MinecraftChecker) Execute(
 
 	output := map[string]any{
 		checkerdef.OutputKeyHost: cfg.Host,
-		checkerdef.OutputKeyPort: cfg.resolvePort(),
-		"edition":                cfg.resolveEdition(),
+		checkerdef.OutputKeyPort: cfg.ResolvePort(),
+		"edition":                cfg.ResolveEdition(),
 	}
 
 	metrics := map[string]any{}
 
 	var queryErr error
-	if cfg.resolveEdition() == EditionBedrock {
+	if cfg.ResolveEdition() == EditionBedrock {
 		queryErr = pingBedrock(ctx, cfg, metrics, output)
 	} else {
 		queryErr = pingJava(cfg, metrics, output)
@@ -91,9 +77,9 @@ func (c *MinecraftChecker) Execute(
 }
 
 func pingJava(cfg *MinecraftConfig, metrics, output map[string]any) error {
-	pinger := minequery.NewPinger(minequery.WithTimeout(cfg.resolveTimeout()))
+	pinger := minequery.NewPinger(minequery.WithTimeout(cfg.ResolveTimeout()))
 
-	status, err := pinger.Ping17(cfg.Host, cfg.resolvePort())
+	status, err := pinger.Ping17(cfg.Host, cfg.ResolvePort())
 	if err != nil {
 		return err
 	}
@@ -121,7 +107,7 @@ func pingJava(cfg *MinecraftConfig, metrics, output map[string]any) error {
 }
 
 func pingBedrock(ctx context.Context, cfg *MinecraftConfig, metrics, output map[string]any) error {
-	status, err := bedrockUnconnectedPing(ctx, cfg.Host, cfg.resolvePort(), cfg.resolveTimeout())
+	status, err := bedrockUnconnectedPing(ctx, cfg.Host, cfg.ResolvePort(), cfg.ResolveTimeout())
 	if err != nil {
 		return err
 	}

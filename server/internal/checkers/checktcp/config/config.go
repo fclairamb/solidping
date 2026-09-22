@@ -1,4 +1,4 @@
-package checktcp
+package config
 
 import (
 	"time"

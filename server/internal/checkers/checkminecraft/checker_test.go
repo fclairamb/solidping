@@ -136,12 +136,12 @@ func TestMinecraftConfig_DefaultPortByEdition(t *testing.T) {
 	r := require.New(t)
 
 	java := &MinecraftConfig{Host: "h", Edition: "java"}
-	r.Equal(25565, java.resolvePort())
+	r.Equal(25565, java.ResolvePort())
 
 	bedrock := &MinecraftConfig{Host: "h", Edition: "bedrock"}
-	r.Equal(19132, bedrock.resolvePort())
+	r.Equal(19132, bedrock.ResolvePort())
 
 	// Explicit port wins over default
 	custom := &MinecraftConfig{Host: "h", Edition: "bedrock", Port: 30000}
-	r.Equal(30000, custom.resolvePort())
+	r.Equal(30000, custom.ResolvePort())
 }

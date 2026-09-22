@@ -7,6 +7,7 @@ import (
 
 	"github.com/rumblefrog/go-a2s"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checka2s/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -20,26 +21,11 @@ func (c *A2SChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeA2S
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *A2SChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &A2SConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = cfg.resolveTarget()
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = cfg.resolveSlug()
-	}
-
-	return nil
+	return config.ValidateSpec(spec)
 }
 
 // Execute performs the A2S query and returns the result.
@@ -57,7 +43,7 @@ func (c *A2SChecker) Execute(
 	metrics := map[string]any{}
 	output := map[string]any{
 		checkerdef.OutputKeyHost: cfg.Host,
-		checkerdef.OutputKeyPort: cfg.resolvePort(),
+		checkerdef.OutputKeyPort: cfg.ResolvePort(),
 	}
 
 	info, queryErr := queryServer(cfg)
@@ -84,9 +70,9 @@ func (c *A2SChecker) Execute(
 
 func queryServer(cfg *A2SConfig) (*a2s.ServerInfo, error) {
 	client, err := a2s.NewClient(
-		cfg.resolveTarget(),
+		cfg.ResolveTarget(),
 		a2s.SetMaxPacketSize(14000),
-		a2s.TimeoutOption(cfg.resolveTimeout()),
+		a2s.TimeoutOption(cfg.ResolveTimeout()),
 	)
 	if err != nil {
 		return nil, err

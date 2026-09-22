@@ -1,4 +1,4 @@
-package checka2s
+package config
 
 import (
 	"net"
@@ -10,22 +10,31 @@ import (
 )
 
 const (
-	defaultPort    = 27015
-	defaultTimeout = 10 * time.Second
-	maxTimeout     = 30 * time.Second
+	// EditionJava represents Java Edition (TCP/25565).
+	EditionJava = "java"
+	// EditionBedrock represents Bedrock Edition (RakNet UDP/19132).
+	EditionBedrock = "bedrock"
 )
 
-// A2SConfig holds the configuration for Source engine A2S query checks.
-type A2SConfig struct {
+const (
+	defaultJavaPort    = 25565
+	defaultBedrockPort = 19132
+	defaultTimeout     = 10 * time.Second
+	maxTimeout         = 30 * time.Second
+)
+
+// MinecraftConfig holds the configuration for Minecraft server health checks.
+type MinecraftConfig struct {
 	Host       string        `json:"host"`
 	Port       int           `json:"port,omitempty"`
+	Edition    string        `json:"edition,omitempty"`
 	Timeout    time.Duration `json:"timeout,omitempty"`
 	MinPlayers int           `json:"minPlayers,omitempty"`
 	MaxPlayers int           `json:"maxPlayers,omitempty"`
 }
 
 // FromMap populates the configuration from a map.
-func (c *A2SConfig) FromMap(configMap map[string]any) error {
+func (c *MinecraftConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
 	} else if configMap[checkerdef.OutputKeyHost] != nil {
@@ -38,6 +47,12 @@ func (c *A2SConfig) FromMap(configMap map[string]any) error {
 		c.Port = int(portFloat)
 	} else if configMap["port"] != nil {
 		return checkerdef.NewConfigError("port", "must be a number")
+	}
+
+	if edition, ok := configMap["edition"].(string); ok {
+		c.Edition = edition
+	} else if configMap["edition"] != nil {
+		return checkerdef.NewConfigError("edition", "must be a string")
 	}
 
 	if timeout, ok := configMap["timeout"].(string); ok {
@@ -67,13 +82,17 @@ func (c *A2SConfig) FromMap(configMap map[string]any) error {
 }
 
 // GetConfig returns the configuration as a map.
-func (c *A2SConfig) GetConfig() map[string]any {
+func (c *MinecraftConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		checkerdef.OutputKeyHost: c.Host,
 	}
 
-	if c.Port != 0 && c.Port != defaultPort {
+	if c.Port != 0 && c.Port != c.defaultPort() {
 		cfg["port"] = c.Port
+	}
+
+	if c.Edition != "" && c.Edition != EditionJava {
+		cfg["edition"] = c.Edition
 	}
 
 	if c.Timeout != 0 {
@@ -92,13 +111,19 @@ func (c *A2SConfig) GetConfig() map[string]any {
 }
 
 // Validate checks if the configuration is valid.
-func (c *A2SConfig) Validate() error {
+func (c *MinecraftConfig) Validate() error {
 	if c.Host == "" {
 		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {
-		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", c.Port)
+		return checkerdef.NewConfigErrorf("port", "must be between 0 and 65535, got %d", c.Port)
+	}
+
+	if c.Edition != "" && c.Edition != EditionJava && c.Edition != EditionBedrock {
+		return checkerdef.NewConfigErrorf(
+			"edition", "must be %q or %q, got %q", EditionJava, EditionBedrock, c.Edition,
+		)
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
@@ -118,15 +143,31 @@ func (c *A2SConfig) Validate() error {
 	return nil
 }
 
-func (c *A2SConfig) resolvePort() int {
+func (c *MinecraftConfig) ResolveEdition() string {
+	if c.Edition == EditionBedrock {
+		return EditionBedrock
+	}
+
+	return EditionJava
+}
+
+func (c *MinecraftConfig) defaultPort() int {
+	if c.ResolveEdition() == EditionBedrock {
+		return defaultBedrockPort
+	}
+
+	return defaultJavaPort
+}
+
+func (c *MinecraftConfig) ResolvePort() int {
 	if c.Port != 0 {
 		return c.Port
 	}
 
-	return defaultPort
+	return c.defaultPort()
 }
 
-func (c *A2SConfig) resolveTimeout() time.Duration {
+func (c *MinecraftConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
 	}
@@ -134,10 +175,10 @@ func (c *A2SConfig) resolveTimeout() time.Duration {
 	return defaultTimeout
 }
 
-func (c *A2SConfig) resolveTarget() string {
-	return net.JoinHostPort(c.Host, strconv.Itoa(c.resolvePort()))
+func (c *MinecraftConfig) resolveTarget() string {
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.ResolvePort()))
 }
 
-func (c *A2SConfig) resolveSlug() string {
-	return "a2s-" + strings.ReplaceAll(c.Host, ".", "-")
+func (c *MinecraftConfig) resolveSlug() string {
+	return "mc-" + strings.ReplaceAll(c.Host, ".", "-")
 }

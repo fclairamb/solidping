@@ -9,29 +9,14 @@ package checksleep
 
 import (
 	"context"
-	"fmt"
 	"math/rand/v2"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-)
-
-const (
-	// maxSleepMs is the upper bound on the configured sleep, in milliseconds.
-	maxSleepMs = 120000
-
-	// slugMaxLen bounds the auto-generated slug length.
-	slugMaxLen = 50
+	"github.com/fclairamb/solidping/server/internal/checkers/checksleep/config"
 )
 
 // Forced status values accepted by SleepConfig.Status.
-const (
-	statusUp      = "up"
-	statusDown    = "down"
-	statusTimeout = "timeout"
-	statusError   = "error"
-)
-
 // SleepChecker implements the Checker interface for the synthetic sleep check.
 type SleepChecker struct{}
 
@@ -40,45 +25,11 @@ func (c *SleepChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSleep
 }
 
-// Validate checks if the configuration is valid. It performs no network I/O.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SleepChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SleepConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if cfg.SleepMs <= 0 {
-		return checkerdef.NewConfigError("sleep_ms", "is required and must be > 0")
-	}
-
-	if cfg.SleepMs > maxSleepMs {
-		return checkerdef.NewConfigErrorf("sleep_ms", "must be <= %d, got %d", maxSleepMs, cfg.SleepMs)
-	}
-
-	if cfg.JitterMs < 0 {
-		return checkerdef.NewConfigError("jitter_ms", "must be >= 0")
-	}
-
-	if cfg.JitterMs >= cfg.SleepMs {
-		return checkerdef.NewConfigErrorf("jitter_ms", "must be < sleep_ms (%d), got %d", cfg.SleepMs, cfg.JitterMs)
-	}
-
-	switch cfg.Status {
-	case "", statusUp, statusDown, statusTimeout, statusError:
-		// valid
-	default:
-		return checkerdef.NewConfigErrorf("status", "must be one of up|down|timeout|error, got %q", cfg.Status)
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("sleep-%dms", cfg.SleepMs)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = truncateSlug(fmt.Sprintf("sleep-%dms", cfg.SleepMs))
-	}
-
-	return nil
+	return config.ValidateSpec(spec)
 }
 
 // Execute sleeps for the configured (optionally jittered) duration, honoring
@@ -120,7 +71,7 @@ func (c *SleepChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		Status:   forcedStatus(cfg.Status),
 		Duration: slept,
 		Metrics:  map[string]any{configKeySleepMs: sleepFor.Milliseconds()},
-		Output:   map[string]any{"status": cfg.statusLabel()},
+		Output:   map[string]any{"status": cfg.StatusLabel()},
 	}, nil
 }
 
@@ -155,22 +106,4 @@ func forcedStatus(status string) checkerdef.Status {
 	default:
 		return checkerdef.StatusUp
 	}
-}
-
-// statusLabel returns the effective status label (defaulting to up).
-func (c *SleepConfig) statusLabel() string {
-	if c.Status == "" {
-		return statusUp
-	}
-
-	return c.Status
-}
-
-// truncateSlug bounds a slug to slugMaxLen runes.
-func truncateSlug(s string) string {
-	if len(s) <= slugMaxLen {
-		return s
-	}
-
-	return s[:slugMaxLen]
 }
