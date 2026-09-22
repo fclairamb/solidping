@@ -1367,7 +1367,13 @@ type ServerConfig struct {
 	// the timeout. Exceeded requests get a 504 REQUEST_TIMEOUT response.
 	MaxRequestDuration time.Duration   `koanf:"max_request_duration"`
 	RateLimiting       RateLimitConfig `koanf:"rate_limiting"` // Per-IP HTTP rate and concurrency limits
-	Redirects          []RedirectRule  `koanf:"-"`             // Parsed from SP_REDIRECTS env var
+	// Compression gzips every response the server emits (JSON, HTML, CSS, JS,
+	// SVG, XML/Atom/RSS, YAML) above a small minimum size, at the outermost
+	// handler — see compressionWrapper in internal/app. Default true: there is
+	// no correctness reason to disable it, only an operator preference to
+	// spend the CPU at a reverse proxy instead. SP_SERVER_COMPRESSION.
+	Compression bool           `koanf:"compression"`
+	Redirects   []RedirectRule `koanf:"-"` // Parsed from SP_REDIRECTS env var
 	// CORSAllowedOrigins lists the exact origins (scheme://host[:port]) that
 	// may make a CREDENTIALED cross-origin request — echoed back as
 	// Access-Control-Allow-Origin with Access-Control-Allow-Credentials: true.
@@ -1549,6 +1555,7 @@ func Load() (*Config, error) {
 			DocsHost:           "docs.solidping.io",
 			ShutdownTimeout:    30 * time.Second,
 			MaxRequestDuration: 30 * time.Second,
+			Compression:        true,
 			JobWorker: JobWorkerConfig{
 				FetchMaxAhead: 5 * time.Minute,
 				Nb:            2,

@@ -2,6 +2,7 @@
 package app
 
 import (
+	"compress/gzip"
 	"context"
 	"embed"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
@@ -186,10 +188,15 @@ var docsFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService                db.Service
-	jobSvc                   jobsvc.Service
-	services                 *services.Registry
-	router                   *httpx.Router
+	dbService db.Service
+	jobSvc    jobsvc.Service
+	services  *services.Registry
+	router    *httpx.Router
+	// handler is s.router, optionally wrapped by compressionWrapper (see
+	// SetupRoutes). It is the outermost handler: Server.Handler() and
+	// handlerWithDocsHost's fallthrough both serve this, never s.router
+	// directly, so every caller gets compression on the same terms.
+	handler                  http.Handler
 	config                   *config.Config
 	authService              *auth.Service
 	mcpHandler               *mcp.Handler
@@ -2333,6 +2340,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/*path", s.serveAppRoot)
 
 	s.router = router
+	s.handler = compressionWrapper(s.config.Server.Compression)(router)
 }
 
 // initSentry initializes the Sentry SDK for error tracking.
@@ -2642,7 +2650,7 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 func (s *Server) handlerWithDocsHost() http.Handler {
 	docsHost := strings.ToLower(strings.TrimSpace(s.config.Server.DocsHost))
 	if docsHost == "" {
-		return s.router
+		return s.handler
 	}
 
 	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
@@ -2656,7 +2664,7 @@ func (s *Server) handlerWithDocsHost() http.Handler {
 			return
 		}
 
-		s.router.ServeHTTP(writer, req)
+		s.handler.ServeHTTP(writer, req)
 	})
 }
 
@@ -3793,9 +3801,61 @@ func (s *Server) Close(ctx context.Context) error {
 	return closeErr
 }
 
-// Handler returns the HTTP handler for the server.
+// Handler returns the HTTP handler for the server, wrapped with response
+// compression (server.compression, default true) when enabled.
 func (s *Server) Handler() http.Handler {
-	return s.router
+	return s.handler
+}
+
+// compressibleContentTypes is the allowlist gzhttp encodes. Everything else
+// (images, fonts, event streams, WebSocket upgrades, and anything not in this
+// list) passes through the wrapper untouched. Kept as a package-level slice so
+// tests can assert against it directly. Deliberately excludes
+// text/event-stream (the MCP endpoint's stream, see mcp/handler.go, would
+// break if buffered) and every binary type.
+var compressibleContentTypes = []string{
+	"application/json", "application/problem+json", "application/manifest+json",
+	"text/html", "text/css", "text/plain", "text/markdown", "text/csv",
+	"text/javascript", "application/javascript",
+	"image/svg+xml",
+	"application/xml", "text/xml", "application/atom+xml", "application/rss+xml",
+	"application/yaml", "application/x-yaml",
+}
+
+// compressionMinSize is the minimum response body size gzhttp will encode.
+// Bodies below this pass through unmodified — the gzip framing overhead isn't
+// worth it on small responses (e.g. /api/mgmt/health).
+const compressionMinSize = 1024
+
+// compressionWrapper returns a function that wraps a handler with gzip
+// response compression (github.com/klauspost/compress/gzhttp) when enabled is
+// true, or returns the handler unchanged when it is false — the
+// server.compression / SP_SERVER_COMPRESSION kill switch.
+//
+// It must wrap the OUTERMOST handler (see SetupRoutes and Handler()), outside
+// the httpx router and its middleware chain, so the logging and metrics
+// middlewares keep observing the uncompressed body size. Level is BestSpeed:
+// on a multi-megabyte JSON body it lands within a few percent of level 6's
+// ratio at a fraction of the CPU.
+func compressionWrapper(enabled bool) func(http.Handler) http.Handler {
+	if !enabled {
+		return func(h http.Handler) http.Handler { return h }
+	}
+
+	wrapper, err := gzhttp.NewWrapper(
+		gzhttp.MinSize(compressionMinSize),
+		gzhttp.CompressionLevel(gzip.BestSpeed),
+		gzhttp.ContentTypes(compressibleContentTypes),
+	)
+	if err != nil {
+		// Only returned for invalid static options above; a startup-time bug,
+		// never an operator-facing failure mode.
+		panic(fmt.Sprintf("compressionWrapper: invalid gzhttp options: %v", err))
+	}
+
+	return func(h http.Handler) http.Handler {
+		return wrapper(h)
+	}
 }
 
 // Initialize initializes the database (runs migrations).
