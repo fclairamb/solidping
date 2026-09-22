@@ -120,6 +120,13 @@ type StatusPage struct {
 	// AutoResolve decides what an auto-created publication does when its
 	// incident resolves: always | if_untouched | never.
 	AutoResolve string `bun:"auto_resolve,notnull"`
+	// PublishDegraded opts this page in to publishing DEGRADED incidents (spec
+	// 2026-09-22-03). FALSE everywhere, including on new pages: "3 of the last 6
+	// probes were slow" is an internal operations signal, and a page that agreed
+	// to announce outages has not thereby agreed to announce intermittence.
+	// Deliberately a second flag rather than a widening of AutoPublish, which is
+	// why NewStatusPage leaves it at the zero value.
+	PublishDegraded bool `bun:"publish_degraded,notnull"`
 	// CustomCSS is operator-authored CSS injected into the public status page
 	// as a <style> text node (never dangerouslySetInnerHTML). nil = none.
 	// Capped at 64 KB and @import-free by API validation; unlike the
@@ -250,6 +257,8 @@ type StatusPageUpdate struct {
 	AutoPublish             *bool
 	AutoPublishDelaySeconds *int
 	AutoResolve             *string
+	// PublishDegraded flips the degraded-incident opt-in (spec 2026-09-22-03).
+	PublishDegraded *bool
 	// CustomCSS updates the page's custom stylesheet. A pointer to the empty
 	// string clears the column (the appearance editor's "empty textarea"), a
 	// nil pointer leaves it untouched.

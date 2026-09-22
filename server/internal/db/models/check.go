@@ -166,6 +166,44 @@ type Check struct {
 	FlapBackoffFactor     int `bun:"flap_backoff_factor,notnull"`
 	MaxRecoveryMultiplier int `bun:"max_recovery_multiplier,notnull"`
 
+	// Degraded detection — spec 2026-09-22-03. One rule primitive, "M of the
+	// last N countable probes match", applied to two populations on this check:
+	// failures (status not in up/warning) and slow successes (up/warning with
+	// duration above SlowThresholdMs). Evaluated by a periodic sweep, never by
+	// the worker; the result status is not touched.
+	//
+	// M = 0 disables a rule. SlowThresholdMs = 0 disables the slow rule
+	// outright (there is no threshold a duration could exceed).
+	//
+	// NONE of these carry a `default:` clause even though every column has one
+	// — see the StatusPage.AutoPublishDelaySeconds and FlappingWindowSeconds
+	// notes. With `default:5` on the tag, `degraded_failures: 0` never reaches
+	// the database and the failure rule cannot be turned off at creation time
+	// (spec 2026-08-30-04, and before it StatusPage.AutoPublishDelaySeconds).
+	// NewCheck supplies the 5/60/3/6/0 defaults instead.
+	DegradedFailures       int `bun:"degraded_failures,notnull"`
+	DegradedFailuresWindow int `bun:"degraded_failures_window,notnull"`
+	DegradedSlow           int `bun:"degraded_slow,notnull"`
+	DegradedSlowWindow     int `bun:"degraded_slow_window,notnull"`
+	SlowThresholdMs        int `bun:"slow_threshold_ms,notnull"`
+	// DegradedEnabled gates OPENING incidents, not evaluating. FALSE on every
+	// pre-existing row (the migration's column default) and TRUE on every check
+	// created from now on (NewCheck): upgrading must never start paging on its
+	// own, per the rule already written at SLOAlertPolicy's rollout.
+	DegradedEnabled bool `bun:"degraded_enabled,notnull"`
+	// DegradedWouldFireAt is the dry run's output: when the evaluator last saw
+	// a degraded condition on a check that has DegradedEnabled false. It is
+	// what the check page's "this check would have been flagged degraded at
+	// 14:37 — enable?" banner and the checks list's `wouldHaveFired` filter
+	// read. Cleared once the check is enabled, so the two states can never both
+	// look true.
+	DegradedWouldFireAt *time.Time `bun:"degraded_would_fire_at"`
+	// DegradedEvaluatedAt is evaluator rotation STATE, not configuration: the
+	// sweep reads checks oldest-evaluated first so a bounded per-sweep batch
+	// still gives every check a turn on a large install, exactly as
+	// slo_alert_policies.last_evaluated_at does for burn rates.
+	DegradedEvaluatedAt *time.Time `bun:"degraded_evaluated_at"`
+
 	// Flap state, updated only on the rare incident-open/reopen (never per
 	// result). FlapCount is the number of outages accumulated inside the
 	// rolling flapping window; LastOutageAt is the wall-clock of the most
@@ -406,6 +444,19 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		FlappingWindowSeconds:     21600, // 6h
 		FlapBackoffFactor:         2,
 		MaxRecoveryMultiplier:     8,
+		// Degraded detection: the fleet-calibrated defaults (spec
+		// 2026-09-22-03). 5-of-60 is the only failure rule that catches the
+		// motivating episode; the slow rule stays inert until an operator
+		// commits to a threshold, because there is no honest fleet-wide value
+		// for "too slow" and auto-baselining it is an explicit non-goal.
+		DegradedFailures:       5,
+		DegradedFailuresWindow: 60,
+		DegradedSlow:           3,
+		DegradedSlowWindow:     6,
+		SlowThresholdMs:        0,
+		// ON for a new check, OFF for every pre-existing row (the column
+		// default). See DegradedEnabled.
+		DegradedEnabled: true,
 		Status:                    CheckStatusCreated,
 		StatusStreak:              0,
 		CreatedAt:                 now,
@@ -476,6 +527,19 @@ type CheckUpdate struct {
 	FlappingWindowSeconds *int
 	FlapBackoffFactor     *int
 	MaxRecoveryMultiplier *int
+
+	// Degraded detection config — spec 2026-09-22-03.
+	DegradedFailures       *int
+	DegradedFailuresWindow *int
+	DegradedSlow           *int
+	DegradedSlowWindow     *int
+	SlowThresholdMs        *int
+	DegradedEnabled        *bool
+	// DegradedWouldFireAt / DegradedEvaluatedAt are written by the evaluator
+	// sweep, never by an API caller. Clear* sets the column to NULL.
+	DegradedWouldFireAt      *time.Time
+	ClearDegradedWouldFireAt bool
+	DegradedEvaluatedAt      *time.Time
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string
@@ -551,6 +615,11 @@ type ListChecksFilter struct {
 	Types           []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
 	Internal        *string           // "true", "false", or "all" — filter by internal status
 	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
+	// WouldHaveFired restricts to checks the degraded dry run has flagged:
+	// `degraded_would_fire_at IS NOT NULL` (spec 2026-09-22-03). It is how an
+	// operator finds what enabling degraded detection would have caught, and it
+	// is the whole adoption path for a feature that ships off.
+	WouldHaveFired  bool
 	Limit           int               // max results to return (0 = no limit)
 	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
 	CursorUID       *string           // cursor: uid of last item from previous page
