@@ -495,6 +495,39 @@ type Service interface {
 	AggregateResultBuckets(
 		ctx context.Context, filter *models.ResultBucketFilter,
 	) ([]models.ResultBucket, error)
+	// AggregateResponseTimeBins bins RAW probes per (check, region, bin) for the
+	// status page's response-time SEAM: one row carrying a probe count, an up
+	// count, a nearest-rank p95 / avg / min / max duration and the per-status mix,
+	// computed over every probe in the bin.
+	//
+	// It is the response-time twin of AggregateResultBuckets, and the differences
+	// are the reason it is a separate method rather than a flag on that one:
+	// region is a GROUP BY key here (each region is its own series on that chart,
+	// where the availability bar sums across them), it computes a percentile, and
+	// it reads the raw tier only — the chart's rollup half stays a row fetch,
+	// because a rollup row already IS one point.
+	//
+	// Statuses excluded from availability (created/running/abandoned) are dropped
+	// BEFORE binning, so Total is the availability denominator. A bin whose probes
+	// all lack a duration still comes back, with counts and NULL durations: the
+	// point's availability colouring must stay honest even when there is no
+	// response time to plot.
+	//
+	// The p95 is NEAREST-RANK, at exactly the index the aggregation job's
+	// duration_p95 uses (models.ResponseTimeBinP95Index) — not an interpolating
+	// percentile_cont. A seam point sits on the chart immediately next to the hour
+	// rollups that will replace it as raw is compacted away; if the two disagreed,
+	// every aggregation run would visibly step the chart.
+	//
+	// Probes are binned against the SAME origin Go's time.Truncate uses
+	// (models.ProlepticEpochOffsetSeconds), reusing the availability aggregate's
+	// bin expression, so all three grids coincide.
+	//
+	// The returned bins are NOT ordered: the caller maps them per (check, region)
+	// and sorts the merged series itself. Spec 2026-09-22-06.
+	AggregateResponseTimeBins(
+		ctx context.Context, filter *models.ResponseTimeBinFilter,
+	) ([]models.ResponseTimeBin, error)
 	// CountResultsByPeriodType returns the total row count in `results` grouped
 	// by period_type, across every organization. Table-wide and uncached —
 	// only the aggregation-job-cadence gauge sampler may call this, never a
