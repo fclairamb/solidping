@@ -165,26 +165,34 @@ func validateDegradedFields(values degradedValues, effective degradedEffective) 
 		}
 	}
 
-	if values.Failures != nil &&
-		*values.Failures > intOr(values.FailuresWindow, effective.FailuresWindow) {
-		return fmt.Errorf("degradedFailures: %w", errDegradedMExceedsN)
+	if err := validateDegradedRule(
+		"degradedFailures", "degradedFailuresWindow",
+		values.Failures, values.FailuresWindow, effective.Failures, effective.FailuresWindow,
+	); err != nil {
+		return err
 	}
 
-	if values.Slow != nil &&
-		*values.Slow > intOr(values.SlowWindow, effective.SlowWindow) {
-		return fmt.Errorf("degradedSlow: %w", errDegradedMExceedsN)
+	return validateDegradedRule(
+		"degradedSlow", "degradedSlowWindow",
+		values.Slow, values.SlowWindow, effective.Slow, effective.SlowWindow,
+	)
+}
+
+// validateDegradedRule checks M <= N for ONE rule, blaming whichever side the
+// request actually moved: raising M is reported against M, shrinking N against
+// N. A request that moves neither is always legal, because the stored pair was
+// validated when it was written.
+func validateDegradedRule(
+	matchName, windowName string, matches, window *int, effectiveMatches, effectiveWindow int,
+) error {
+	if matches != nil && *matches > intOr(window, effectiveWindow) {
+		return fmt.Errorf("%s: %w", matchName, errDegradedMExceedsN)
 	}
 
-	// The mirror case: a PATCH that only SHRINKS a window must not strand an M
-	// already stored above it.
-	if values.FailuresWindow != nil && values.Failures == nil &&
-		effective.Failures > *values.FailuresWindow {
-		return fmt.Errorf("degradedFailuresWindow: %w", errDegradedNExceededByM)
-	}
-
-	if values.SlowWindow != nil && values.Slow == nil &&
-		effective.Slow > *values.SlowWindow {
-		return fmt.Errorf("degradedSlowWindow: %w", errDegradedNExceededByM)
+	// The mirror case: a request that only SHRINKS the window must not strand an
+	// M already stored above it.
+	if matches == nil && window != nil && effectiveMatches > *window {
+		return fmt.Errorf("%s: %w", windowName, errDegradedNExceededByM)
 	}
 
 	return nil
