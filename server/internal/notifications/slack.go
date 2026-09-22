@@ -487,15 +487,30 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 		headline = fmt.Sprintf("%s: %s burning at %s", burn.PolicyLabel, burn.SLOName, burn.RateText())
 	}
 
+	// A degraded incident must not be announced as a new incident either: the
+	// check is usually up at this instant, and a message that reads like an
+	// outage is one people mute — and then they have muted the real thing too.
+	if info := DegradedInfoFor(payload.Incident); info != nil {
+		headline = info.Headline(checkName)
+	}
+
 	fallbackText := headline
 	fields := s.buildIncidentFields(payload, checkName, checkURL)
 	blocks := s.buildIncidentCreatedBlocks(payload, headline, fields, checkURL, incidentURL)
 	blocks = prependMentionBlock(blocks, payload.OnCallMentions)
 
+	// Amber, not red, for a degraded incident: the colour is the fastest-read part
+	// of a Slack alert, and dressing intermittence in the outage colour is the
+	// same mistake as dressing it in the outage words.
+	color := colorDanger
+	if DegradedInfoFor(payload.Incident) != nil {
+		color = colorWarning
+	}
+
 	return &slack.MessageResponse{
 		Text: fallbackText,
 		Attachments: []slack.Attachment{
-			{Color: colorDanger, Fallback: fallbackText, Blocks: blocks},
+			{Color: color, Fallback: fallbackText, Blocks: blocks},
 		},
 	}
 }
@@ -515,6 +530,20 @@ func (s *SlackSender) buildIncidentFields(payload *Payload, checkName, checkURL 
 			{Type: slack.BlockTypeMrkdwn, Text: "*Budget remaining:*\n" + burn.BudgetRemainingText()},
 			{Type: slack.BlockTypeMrkdwn, Text: "*Projected exhaustion:*\n" + burn.ProjectedExhaustionText()},
 			{Type: slack.BlockTypeMrkdwn, Text: "*Detected on:*\n" + slackLink(checkURL, checkName)},
+		}
+	}
+
+	// A degraded incident's "cause" is a count over a window, and the link has to
+	// land ON that window — seven failures spread over an hour are seven pixels in
+	// a default 24 h view.
+	if info := DegradedInfoFor(payload.Incident); info != nil {
+		windowURL := DegradedCheckWindowURL(payload.AppBaseURL, payload.OrgSlug, payload.Check, info)
+
+		return []slack.Text{
+			{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
+			{Type: slack.BlockTypeMrkdwn, Text: "*Pattern:*\n" + info.Reason()},
+			{Type: slack.BlockTypeMrkdwn, Text: "*Right now:*\n" + info.StatusText()},
+			{Type: slack.BlockTypeMrkdwn, Text: "*Window:*\n" + slackLink(windowURL, info.WindowText())},
 		}
 	}
 
@@ -762,6 +791,14 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 			":large_green_circle: %s%s stopped burning after %s — now %s, %s budget remaining.",
 			incidentRefLink(payload.Incident, incidentURL), burn.SLOName, duration,
 			burn.RateText(), burn.BudgetRemainingText(),
+		)}
+	}
+
+	if info := DegradedInfoFor(payload.Incident); info != nil {
+		return &slack.MessageResponse{Text: fmt.Sprintf(
+			":large_green_circle: %s%s is steady again after %s — the degraded pattern cleared.",
+			incidentRefLink(payload.Incident, incidentURL),
+			checkNameLink(checkURL, incidentURL, checkName, payload.Incident), duration,
 		)}
 	}
 
