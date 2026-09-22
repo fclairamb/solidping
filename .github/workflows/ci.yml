@@ -448,6 +448,15 @@ jobs:
           path: web/docs/build
           retention-days: 1
 
+      # deploy/coolify/solidping.yaml is embedded verbatim in
+      # installation/coolify.md, so a malformed file must fail CI here rather
+      # than ship broken to users doing a "Docker Compose Empty" import.
+      # `config` also validates Coolify's bare-name magic variables
+      # (SERVICE_URL_SOLIDPING_4000) fine — they're just env names to it.
+      - name: Validate Coolify compose template
+        working-directory: ${{ github.workspace }}
+        run: docker compose -f deploy/coolify/solidping.yaml config
+
   build:
     name: Build Binary
     runs-on: ubuntu-26.04
