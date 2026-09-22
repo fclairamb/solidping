@@ -5,6 +5,7 @@ import (
 	"html"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -232,6 +233,19 @@ func (s *Server) resolveCustomDomain(ctx context.Context, host string) customDom
 // lookupCustomDomain hits the DB and enforces the verified+enabled+public gate,
 // distinguishing "not ours" from "ours but not currently servable".
 func (s *Server) lookupCustomDomain(ctx context.Context, host string) customDomainResolution {
+	if s.dbService == nil {
+		// A production Server is always wired with a non-nil dbService — this
+		// guard exists for tests that build a Server around a pre-seeded
+		// customDomainCache and never expect a real DB call. Reaching here means
+		// the cache missed for this host (an unseeded host, a TTL expiry, or a
+		// scheduling-dependent miss under t.Parallel()). Log loudly and answer
+		// "not ours" rather than dereferencing the nil dbService below, which
+		// would panic the whole test binary instead of failing just this case.
+		slog.ErrorContext(ctx, "customDomainRouting: cache miss for host with nil dbService", "host", host)
+
+		return customDomainResolution{}
+	}
+
 	statusPage, err := s.dbService.GetStatusPageByCustomDomain(ctx, host)
 	if err != nil || statusPage == nil {
 		return customDomainResolution{}
