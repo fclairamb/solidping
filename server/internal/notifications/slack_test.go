@@ -395,6 +395,12 @@ func (m *mockDBService) AggregateResultBuckets(
 	panic("not implemented")
 }
 
+func (m *mockDBService) AggregateResponseTimeBins(
+	_ context.Context, _ *models.ResponseTimeBinFilter,
+) ([]models.ResponseTimeBin, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CountResultsByPeriodType(_ context.Context) (map[string]int64, error) {
 	panic("not implemented")
 }
