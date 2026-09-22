@@ -35,6 +35,16 @@ Consequences every consumer relies on:
 - **Availability is never stored.** It is derived at read time as
   `successful_checks / total_checks × 100`
   (`handlers/results/service.go`, spec `2026-07-24-02`).
+- **Consumers bucket IN THE DATABASE.** The per-(check, bucket) counters every
+  availability surface reads come from `db.AggregateResultBuckets`
+  (`internal/db/{postgres,sqlite}/result_buckets.go`), one `GROUP BY` per tier
+  side, not from folding rows in Go: a 200-check public page used to ship
+  267 449 rows to produce 400 buckets (spec `2026-09-22-05`). `uptimebar`'s
+  `accumulateRaw` / `accumulateAgg` remain the **reference semantics** — the SQL
+  mirrors them field for field and a per-dialect parity test folds the same
+  fixture both ways. Rows are binned against Go's `time.Truncate` origin
+  (0001-01-01, `models.ProlepticEpochOffsetSeconds`), not the Unix epoch, so the
+  grid is identical for bucket widths that do not divide 24 h.
 - **Rollups carry no `output` blob** (raw failure text is gone once a bucket
   rolls up — only status, counts and duration stats survive) and no
   per-execution `worker_uid` unless the bucket had exactly one worker.

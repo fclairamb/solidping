@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/uptimebar"
@@ -485,4 +486,84 @@ func TestAggregateResultBuckets_RejectsMixedTier(t *testing.T) {
 	filter.PeriodStartAfter = time.Time{}
 	_, err = s.AggregateResultBuckets(ctx, filter)
 	r.ErrorIs(err, models.ErrResultBucketsNoPeriodStart)
+}
+
+// resultBucketPlanFilter is one tier side of the filter the availability engine
+// builds, over a fixture-sized window.
+func resultBucketPlanFilter(orgUID string, checkUIDs, periodTypes []string) *models.ResultBucketFilter {
+	now := time.Now().UTC()
+	since := now.Add(-26 * time.Hour)
+
+	if models.PeriodTypesTierSide(periodTypes) != models.PeriodTierRaw {
+		since = now.AddDate(0, 0, -200)
+	}
+
+	return &models.ResultBucketFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        checkUIDs,
+		PeriodTypes:      periodTypes,
+		PeriodStartAfter: since,
+		BucketDuration:   24 * time.Hour,
+	}
+}
+
+// TestAggregateResultBucketsSeeksIndexes_SQLite is the SQLite plan regression.
+// The statement EXPLAINed here is the very one AggregateResultBuckets executes —
+// same builder, same arguments — so it cannot drift from production by
+// transcription.
+//
+// The restated `period_type = 'raw'` / `!= 'raw'` beside the IN list is not
+// belt-and-braces on this engine: SQLite does NOT derive a partial index's own
+// predicate from an IN list, so the IN list alone scans the whole table (spec
+// 2026-08-22-04). The positive control below drops the restatement and requires
+// that it DOES scan — without it a fixture SQLite found too small to index would
+// make this pass vacuously.
+func TestAggregateResultBucketsSeeksIndexes_SQLite(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	s, org, checks := seedRecentResultsFixture(t, 3)
+
+	checkUIDs := make([]string, len(checks))
+	for i, check := range checks {
+		checkUIDs[i] = check.UID
+	}
+
+	for _, tier := range [][]string{
+		{models.PeriodTypeRaw},
+		{models.PeriodTypeHour, models.PeriodTypeDay},
+	} {
+		filter := resultBucketPlanFilter(org.UID, checkUIDs, tier)
+		plan := explainSQLiteQuery(ctx, t, s, aggregateResultBucketsQuery(s.DB(), filter).String())
+
+		wantIndex := "results_aggregated_idx"
+		if models.PeriodTypesTierSide(tier) == models.PeriodTierRaw {
+			wantIndex = "results_raw_idx"
+		}
+
+		r.NotContains(plan, "SCAN result",
+			"the %v aggregate must not scan `results` — that is the whole defect:\n%s", tier, plan)
+		r.Contains(plan, wantIndex,
+			"the %v aggregate must ride %s:\n%s", tier, wantIndex, plan)
+	}
+
+	// Positive control: the identical aggregate with the restated tier side
+	// dropped, leaving only `period_type IN (...)`. SQLite must still scan.
+	control := s.DB().NewSelect().
+		Model((*models.Result)(nil)).
+		ColumnExpr("result.check_uid AS check_uid").
+		ColumnExpr(resultBucketExpr+" AS bucket_start", int64(86400), int64(86400)).
+		ColumnExpr("COUNT(*) AS total").
+		Where("result.organization_uid = ?", org.UID).
+		Where("result.check_uid IN (?)", bun.List(checkUIDs)).
+		Where("result.period_type IN (?)", bun.List([]string{models.PeriodTypeRaw})).
+		Where("result.period_start >= ?", time.Now().UTC().Add(-26*time.Hour)).
+		GroupExpr("1, 2")
+
+	controlPlan := explainSQLiteQuery(ctx, t, s, control.String())
+	r.Contains(controlPlan, "SCAN result",
+		"an IN-list-only predicate MUST still scan on SQLite — otherwise the assertions "+
+			"above prove nothing about the restated tier side:\n%s", controlPlan)
 }

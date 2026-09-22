@@ -68,8 +68,7 @@ func NewService(dbService db.Service, cfg *config.Config) *Service {
 }
 
 // uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
-// per request: the live raw/hour aggregation retention and the org's measured
-// probe rate.
+// per request: the live raw/hour aggregation retention.
 //
 // Retention is resolved with the same precedence as the aggregation job itself —
 // env > performance.* global parameter > legacy koanf field > documented default

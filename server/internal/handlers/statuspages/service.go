@@ -494,8 +494,7 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 }
 
 // uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
-// per request: the live raw/hour aggregation retention and the org's measured
-// probe rate.
+// per request: the live raw/hour aggregation retention.
 //
 // Retention is resolved with the same precedence as the aggregation job itself —
 // env > performance.* global parameter > legacy koanf field > documented default
@@ -3021,8 +3020,9 @@ func resourceRecentResults(
 // regionFanoutCap generously bounds the number of distinct regions
 // fetchRecentResults assumes for a check whose own region set it cannot see.
 // Real deployments run a handful of regions (2-5 is typical for a multi-region
-// check); this mirrors uptimebar.capMaxRegionsPerCheck's "generous, never bites
-// under realistic topology" reasoning for the same class of problem.
+// check); it is generous enough never to bite under a realistic topology, the
+// same reasoning uptimebar's row caps used before spec 2026-09-22-05 removed
+// them by folding buckets in the database instead.
 //
 // It used to multiply a GLOBAL row limit (responseTimeLimit x regionFanoutCap x
 // len(checkUIDs) = 40 000 rows for a 20-check page, ~85 % of them discarded).

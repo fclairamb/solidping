@@ -120,9 +120,18 @@ func seedPlanRollups(ctx context.Context, t *testing.T, s *Service, orgUID, chec
 //
 // The fix is the tier split in uptimebar. This test pins it at the level that
 // actually matters — the query PLAN — because a timing assertion would be flaky.
-// The final subtest is the positive control: it runs the OLD combined predicate
-// against the SAME dataset and requires that it DOES seq-scan, proving the
-// fixture is dense enough for the "no Seq Scan" assertions to have teeth.
+//
+// Spec 2026-09-22-05 extended it: the tier split fixed WHICH rows are read, and
+// the split queries still shipped every one of them into Go to be folded there
+// (267 449 rows on a 200-check page, with a 12.8 MB external merge sort on the
+// way, to produce 400 buckets). The engine now issues GROUP BY aggregates, so
+// this asserts three things per statement: the right partial index, no sort to
+// disk, and — the headline — that the statement returns one row per
+// (check, bucket) rather than one per source row.
+//
+// The last two subtests are the positive controls: they run the row-shaped reads
+// against the SAME dataset and require that they DO seq-scan and DO sort, proving
+// the fixture is dense enough for the assertions above to have teeth.
 //
 //nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
@@ -206,11 +215,30 @@ func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
 		// and which the planner answered with an external merge sort to disk
 		// (12.8 MB measured on the 200-check page). A GROUP BY that the planner
 		// chooses to answer by sorting would give that cost straight back.
-		r.NotContains(plan, "Sort Method",
-			"%s must not sort — the aggregate has no ORDER BY and must hash-aggregate "+
+		// Never a sort to DISK. That is the measured defect: the row path's
+		// inherited `ORDER BY period_start DESC, uid DESC` made the planner
+		// spill an external merge of 12.8 MB on the 200-check page.
+		r.NotContains(plan, "Sort Method: external",
+			"%s must never sort to disk (plan:\n%s)", name, plan)
+
+		// The RAW tier — the hot one, 267 449 rows on the measured page — must
+		// hash-aggregate straight off the bitmap scan, with no Sort node at all.
+		// The rollup tier is allowed one: it is ~750 rows here and the planner
+		// picks GroupAggregate over an in-memory quicksort of them, which is a
+		// cost decision about a bounded set, not the unbounded spill above.
+		if models.PeriodTypesTierSide(filter.PeriodTypes) == models.PeriodTierRaw {
+			r.Contains(plan, "HashAggregate",
+				"%s must hash-aggregate (plan:\n%s)", name, plan)
+			r.NotContains(plan, "->  Sort",
+				"%s must contain no Sort node — nothing about a bucket fold needs order "+
+					"(plan:\n%s)", name, plan)
+		}
+
+		// And the headline: what reaches Go is bounded by checks x buckets, not
+		// by how many rows the window holds. One check, at most 31 buckets.
+		r.LessOrEqual(planActualRows(plan), 31,
+			"%s must return one row per (check, bucket), not one per source row "+
 				"(plan:\n%s)", name, plan)
-		r.NotContains(plan, "->  Sort",
-			"%s must not contain a Sort node (plan:\n%s)", name, plan)
 	}
 
 	// Positive control 1: the row-shaped read this spec replaced, on the very

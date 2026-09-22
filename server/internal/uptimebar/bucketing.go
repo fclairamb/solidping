@@ -4,9 +4,12 @@
 // They MUST bucket from the same data so they never disagree for the same check +
 // period.
 //
-// The core is BucketAvailability: TWO tier-aligned queries (rollups over the
-// whole window, raw clamped to the raw-retention band) merged into one bucket
-// map. Because the aggregation job deletes source rows after each rollup
+// The core is BucketAvailability: TWO tier-aligned GROUP BY aggregates (rollups
+// over the whole window, raw clamped to the raw-retention band) merged into one
+// bucket map. The counters are computed in the database — the accumulators in
+// this file are the reference semantics the SQL mirrors field for field, pinned
+// by a parity test per dialect (spec 2026-09-22-05). Because the aggregation job
+// deletes source rows after each rollup
 // (raw → hour → day → month), the tiers cover non-overlapping age bands, so
 // unioning them never double-counts. A bucket whose raw rows haven't been rolled
 // up yet is still filled immediately from raw — this is what fixes status-page
@@ -94,10 +97,10 @@ type BucketStats struct {
 	// so the struct has to stay small enough for that to be cheap. float32 is
 	// also exactly what the source columns are (models.Result.Duration /
 	// DurationMin / DurationMax); widening them here would fabricate
-	// precision. The counters are per-bucket and bounded by uptimebar's own
-	// safety row caps, so int32 is orders of magnitude more headroom than any
-	// window can produce. A future field should keep the total under
-	// gocritic's by-value threshold rather than widening these back.
+	// precision. The counters are per-bucket — one bucket of one check, of one
+	// window — so int32 is orders of magnitude more headroom than any window
+	// can produce. A future field should keep the total under gocritic's
+	// by-value threshold rather than widening these back.
 	DurMin        float32
 	DurMax        float32
 	DurExtremaCnt int32
