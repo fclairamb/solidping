@@ -1,4 +1,4 @@
-package checkkubernetes_test
+package config_test
 
 import (
 	"testing"

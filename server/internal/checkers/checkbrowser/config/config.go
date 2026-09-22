@@ -1,4 +1,4 @@
-package checkbrowser
+package config
 
 import (
 	"net/url"
@@ -150,7 +150,7 @@ func (c *BrowserConfig) Validate() error {
 	return nil
 }
 
-func (c *BrowserConfig) resolveTimeout() time.Duration {
+func (c *BrowserConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkbrowser/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -116,26 +117,11 @@ func (c *BrowserChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeBrowser
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *BrowserChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &BrowserConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = hostnameFromURL(cfg.URL)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "browser-" + strings.ReplaceAll(hostnameFromURL(cfg.URL), ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the browser health check and returns the result.
@@ -148,7 +134,7 @@ func (c *BrowserChecker) Execute(
 		return nil, err
 	}
 
-	timeout := cfg.resolveTimeout()
+	timeout := cfg.ResolveTimeout()
 
 	// TWO nested budgets, and the distinction is load-bearing.
 	//

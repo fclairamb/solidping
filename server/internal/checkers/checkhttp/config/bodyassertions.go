@@ -1,4 +1,4 @@
-package checkhttp
+package config
 
 import (
 	"errors"
@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// maxAssertionActualRunes caps what a body assertion reports as its actual
+// MaxAssertionActualRunes caps what a body assertion reports as its actual
 // value. The body is read up to maxBodySize (10 MB) and the assertion result
 // is persisted with the check result, so the whole body must never end up in
 // there — 256 runes is enough to see a health word, a short error page banner
 // or the start of an unexpected HTML response.
-const maxAssertionActualRunes = 256
+const MaxAssertionActualRunes = 256
 
 var (
 	errBodyOperatorUnsupported = errors.New(
@@ -27,7 +27,7 @@ var (
 // same fail-open shape this whole feature exists to avoid.
 func bodyOperatorAllowed(operator string) bool {
 	switch operator {
-	case opEq, opNeq, opContains, opNotContains, opRegex:
+	case OpEq, OpNeq, OpContains, OpNotContains, OpRegex:
 		return true
 	default:
 		return false
@@ -44,21 +44,21 @@ func bodyOperatorAllowed(operator string) bool {
 // finding something inside the body, where trimming the ends would be
 // surprising and where an author who cares can anchor with \s* themselves.
 func bodySubject(operator, body string) string {
-	if operator == opEq || operator == opNeq {
+	if operator == OpEq || operator == OpNeq {
 		return strings.TrimSpace(body)
 	}
 
 	return body
 }
 
-// truncateActual shortens a reported actual value to maxAssertionActualRunes.
+// truncateActual shortens a reported actual value to MaxAssertionActualRunes.
 func truncateActual(value string) string {
 	runes := []rune(value)
-	if len(runes) <= maxAssertionActualRunes {
+	if len(runes) <= MaxAssertionActualRunes {
 		return value
 	}
 
-	return string(runes[:maxAssertionActualRunes]) + "…"
+	return string(runes[:MaxAssertionActualRunes]) + "…"
 }
 
 // EvaluateBody evaluates the assertion AST against the raw response body.
@@ -96,7 +96,7 @@ func (n *AssertionNode) evaluateBodyLeaf(body string) AssertionResult {
 	subject := bodySubject(n.Operator, body)
 	result.Actual = truncateActual(subject)
 
-	if n.Operator == opRegex {
+	if n.Operator == OpRegex {
 		if _, err := compileAssertionRegex(n.Value, n.IgnoreCase); err != nil {
 			result.Error = fmt.Sprintf("invalid regex pattern: %s", err)
 
@@ -161,7 +161,7 @@ func (n *AssertionNode) validateBodyLeaf() error {
 		return fmt.Errorf("%w: %s", errBodyValueRequired, n.Operator)
 	}
 
-	if n.Operator == opRegex {
+	if n.Operator == OpRegex {
 		if _, err := compileAssertionRegex(n.Value, n.IgnoreCase); err != nil {
 			return fmt.Errorf("%w: %w", errInvalidRegex, err)
 		}

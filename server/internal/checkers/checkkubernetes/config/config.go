@@ -1,15 +1,4 @@
-// Package checkkubernetes provides a Kubernetes workload replica-health check.
-// The check references a stored "cluster connection" Integration of type
-// `kubernetes` by UID; at execution time the connection's encrypted
-// token/kubeconfig is resolved to a clientset via the package-level
-// ClientsetResolver indirection (wired from the API server at startup), exactly
-// like the freebox_line checker resolves its app_token.
-//
-// The check reports replica readiness for a single workload (Deployment or
-// ReplicaSet) — the structural analog of how the docker checker mirrors a
-// container's HEALTHCHECK. No secret ever lives in the check config: only the
-// cluster UID plus (namespace, kind, name).
-package checkkubernetes
+package config
 
 import (
 	"time"
@@ -152,8 +141,8 @@ func (c *KubernetesConfig) SecretFields() []string {
 	return []string{}
 }
 
-// resolveTimeout returns the per-execution timeout, defaulting to 10s.
-func (c *KubernetesConfig) resolveTimeout() time.Duration {
+// ResolveTimeout returns the per-execution timeout, defaulting to 10s.
+func (c *KubernetesConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
 	}

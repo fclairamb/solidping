@@ -1,4 +1,4 @@
-package checkdocker
+package config
 
 import (
 	"strings"
@@ -139,7 +139,7 @@ func (c *DockerConfig) Validate() error {
 		return checkerdef.NewConfigError("containerName", "at least one of containerName or containerID is required")
 	}
 
-	host := c.resolveHost()
+	host := c.ResolveHost()
 	if !strings.HasPrefix(host, "unix://") && !strings.HasPrefix(host, "tcp://") {
 		return checkerdef.NewConfigError("host", "must start with unix:// or tcp://")
 	}
@@ -165,14 +165,14 @@ func (c *DockerConfig) Validate() error {
 	return nil
 }
 
-// restartLoopEnabled reports whether opt-in restart-loop detection is active.
-func (c *DockerConfig) restartLoopEnabled() bool {
+// RestartLoopEnabled reports whether opt-in restart-loop detection is active.
+func (c *DockerConfig) RestartLoopEnabled() bool {
 	return c.RestartLoopMinRestarts > 0
 }
 
-// resolveRestartLoopWindow returns the recency window to apply, defaulting to
+// ResolveRestartLoopWindow returns the recency window to apply, defaulting to
 // 120s when detection is enabled but no window was configured.
-func (c *DockerConfig) resolveRestartLoopWindow() time.Duration {
+func (c *DockerConfig) ResolveRestartLoopWindow() time.Duration {
 	if c.RestartLoopWindow != 0 {
 		return c.RestartLoopWindow
 	}
@@ -180,7 +180,7 @@ func (c *DockerConfig) resolveRestartLoopWindow() time.Duration {
 	return defaultRestartLoopWindow
 }
 
-func (c *DockerConfig) resolveHost() string {
+func (c *DockerConfig) ResolveHost() string {
 	if c.Host != "" {
 		return c.Host
 	}
@@ -188,7 +188,7 @@ func (c *DockerConfig) resolveHost() string {
 	return defaultHost
 }
 
-func (c *DockerConfig) resolveTimeout() time.Duration {
+func (c *DockerConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
 	}
@@ -196,7 +196,7 @@ func (c *DockerConfig) resolveTimeout() time.Duration {
 	return defaultTimeout
 }
 
-func (c *DockerConfig) resolveContainerRef() string {
+func (c *DockerConfig) ResolveContainerRef() string {
 	if c.ContainerID != "" {
 		return c.ContainerID
 	}

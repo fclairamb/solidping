@@ -19,47 +19,12 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkhttp/config"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 // Status pattern validation errors.
-var (
-	errPatternEmpty    = errors.New("pattern cannot be empty")
-	errInvalidWildcard = errors.New("invalid wildcard pattern: prefix must be 1-5")
-	errInvalidPattern  = errors.New("pattern must be a number or wildcard like 2XX")
-	errStatusCodeRange = errors.New("status code must be between 100 and 599")
-)
-
-// validateStatusPattern validates a single status code pattern.
-// Valid patterns: exact codes like "200", "404", or wildcards like "2XX", "3XX".
-func validateStatusPattern(pattern string) error {
-	pattern = strings.ToUpper(strings.TrimSpace(pattern))
-	if pattern == "" {
-		return errPatternEmpty
-	}
-
-	// Check for wildcard pattern (e.g., "2XX")
-	if strings.HasSuffix(pattern, "XX") && len(pattern) == 3 {
-		prefix := pattern[0]
-		if prefix >= '1' && prefix <= '5' {
-			return nil
-		}
-
-		return fmt.Errorf("%w: %s", errInvalidWildcard, pattern)
-	}
-
-	// Check for exact status code
-	code, err := strconv.Atoi(pattern)
-	if err != nil {
-		return fmt.Errorf("%w: %s", errInvalidPattern, pattern)
-	}
-
-	if code < 100 || code > 599 {
-		return fmt.Errorf("%w: %d", errStatusCodeRange, code)
-	}
-
-	return nil
-}
+var ()
 
 const (
 	maxRedirects  = 10                          // Maximum number of HTTP redirects to follow
@@ -81,11 +46,6 @@ const (
 	// outputKeyBodyAssertions is the Output key the evaluated body-assertion
 	// tree is attached to on failure. The dashboard renders it by this name.
 	outputKeyBodyAssertions = "body_assertions"
-
-	// methodQuery is the IETF QUERY method (draft-ietf-httpbis-safe-method-w-body):
-	// a safe, idempotent verb that carries a request body, like a cacheable POST.
-	// net/http has no http.MethodQuery constant, so it is defined here.
-	methodQuery = "QUERY"
 )
 
 // HTTPChecker implements the Checker interface for HTTP checks.
@@ -96,128 +56,11 @@ func (c *HTTPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeHTTP
 }
 
-// Validate checks if the configuration is valid.
-//
-//nolint:cyclop,funlen,gocognit // Config validation requires checking many fields
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &HTTPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	// Validate URL
-	if cfg.URL == "" {
-		return checkerdef.NewConfigError("url", "is required")
-	}
-
-	if !strings.HasPrefix(cfg.URL, "http://") && !strings.HasPrefix(cfg.URL, "https://") {
-		return checkerdef.NewConfigError("url", "must start with http:// or https://")
-	}
-
-	parsedURL, err := url.Parse(cfg.URL)
-	if err != nil {
-		return checkerdef.NewConfigError("url", "invalid URL format")
-	}
-
-	// Auto-generate name and slug from URL if not provided
-	if spec.Name == "" || spec.Slug == "" {
-		// Extract hostname (without port)
-		hostname := parsedURL.Hostname()
-
-		// Set name to hostname if empty
-		if spec.Name == "" {
-			spec.Name = hostname
-		}
-
-		// Set slug to hostname with dots replaced by hyphens if empty
-		if spec.Slug == "" {
-			spec.Slug = "http-" + strings.ReplaceAll(hostname, ".", "-")
-		}
-	}
-
-	// Validate HTTP method
-	if cfg.Method != "" {
-		validMethods := map[string]bool{
-			http.MethodGet:     true,
-			http.MethodPost:    true,
-			http.MethodPut:     true,
-			http.MethodDelete:  true,
-			http.MethodHead:    true,
-			http.MethodOptions: true,
-			http.MethodPatch:   true,
-			methodQuery:        true,
-		}
-
-		method := strings.ToUpper(cfg.Method)
-		if !validMethods[method] {
-			return checkerdef.NewConfigErrorf("method", "invalid HTTP method: %s", cfg.Method)
-		}
-	}
-
-	// Validate expected status (deprecated, but still supported)
-	if cfg.ExpectedStatus != 0 && (cfg.ExpectedStatus < 100 || cfg.ExpectedStatus > 599) {
-		return checkerdef.NewConfigErrorf("expected_status", "must be between 100 and 599, got %d", cfg.ExpectedStatus)
-	}
-
-	// Validate expected status codes patterns
-	for i, pattern := range cfg.ExpectedStatusCodes {
-		if err := validateStatusPattern(pattern); err != nil {
-			return checkerdef.NewConfigErrorf("expected_status_codes", "element %d: %v", i, err)
-		}
-	}
-
-	// Compile and validate regex patterns
-	if cfg.BodyPattern != "" {
-		regex, err := regexp.Compile(cfg.BodyPattern)
-		if err != nil {
-			return checkerdef.NewConfigErrorf("body_pattern", "invalid regex pattern: %v", err)
-		}
-		cfg.bodyPatternRegex = regex
-	}
-
-	if cfg.BodyPatternReject != "" {
-		regex, err := regexp.Compile(cfg.BodyPatternReject)
-		if err != nil {
-			return checkerdef.NewConfigErrorf("body_pattern_reject", "invalid regex pattern: %v", err)
-		}
-		cfg.bodyPatternRejectRegex = regex
-	}
-
-	if len(cfg.HeadersPattern) > 0 {
-		cfg.headersPatternRegex = make(map[string]*regexp.Regexp, len(cfg.HeadersPattern))
-		for headerName, pattern := range cfg.HeadersPattern {
-			regex, err := regexp.Compile(pattern)
-			if err != nil {
-				return checkerdef.NewConfigErrorf("headers_pattern", "invalid regex pattern for header %q: %v", headerName, err)
-			}
-			cfg.headersPatternRegex[headerName] = regex
-		}
-	}
-
-	// Validate JSONPath assertions
-	if cfg.JSONPathAssertions != nil {
-		if err := cfg.JSONPathAssertions.Validate(); err != nil {
-			return checkerdef.NewConfigError("json_path_assertions", err.Error())
-		}
-	}
-
-	// Validate body assertions. ValidateBody is deliberately NOT Validate:
-	// it requires no Path and rejects the operators that cannot fail against
-	// a raw body (exists/not_exists and the numeric comparisons).
-	if cfg.BodyAssertions != nil {
-		if err := cfg.BodyAssertions.ValidateBody(); err != nil {
-			return checkerdef.NewConfigError("bodyAssertions", err.Error())
-		}
-	}
-
-	// Validate SecretHeaders names
-	for k := range cfg.SecretHeaders {
-		if k == "" {
-			return checkerdef.NewConfigError("secretHeaders", "header name must not be empty")
-		}
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the HTTP check and returns the result.
@@ -548,7 +391,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	}
 
 	// Compile regex patterns if not already compiled
-	if cfg.BodyPattern != "" && cfg.bodyPatternRegex == nil {
+	if cfg.BodyPattern != "" && cfg.BodyPatternRegex == nil {
 		regex, err := regexp.Compile(cfg.BodyPattern)
 		if err != nil {
 			return failed(map[string]any{
@@ -558,10 +401,10 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 				checkerdef.OutputKeyMethod:     method,
 			}), nil
 		}
-		cfg.bodyPatternRegex = regex
+		cfg.BodyPatternRegex = regex
 	}
 
-	if cfg.BodyPatternReject != "" && cfg.bodyPatternRejectRegex == nil {
+	if cfg.BodyPatternReject != "" && cfg.BodyPatternRejectRegex == nil {
 		regex, err := regexp.Compile(cfg.BodyPatternReject)
 		if err != nil {
 			return failed(map[string]any{
@@ -571,11 +414,11 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 				checkerdef.OutputKeyMethod:     method,
 			}), nil
 		}
-		cfg.bodyPatternRejectRegex = regex
+		cfg.BodyPatternRejectRegex = regex
 	}
 
-	if len(cfg.HeadersPattern) > 0 && len(cfg.headersPatternRegex) == 0 {
-		cfg.headersPatternRegex = make(map[string]*regexp.Regexp, len(cfg.HeadersPattern))
+	if len(cfg.HeadersPattern) > 0 && len(cfg.HeadersPatternRegex) == 0 {
+		cfg.HeadersPatternRegex = make(map[string]*regexp.Regexp, len(cfg.HeadersPattern))
 		for headerName, pattern := range cfg.HeadersPattern {
 			regex, err := regexp.Compile(pattern)
 			if err != nil {
@@ -586,7 +429,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 					checkerdef.OutputKeyMethod:     method,
 				}), nil
 			}
-			cfg.headersPatternRegex[headerName] = regex
+			cfg.HeadersPatternRegex[headerName] = regex
 		}
 	}
 
@@ -613,8 +456,8 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		}
 	}
 
-	if cfg.bodyPatternRegex != nil {
-		if !cfg.bodyPatternRegex.MatchString(respBody) {
+	if cfg.BodyPatternRegex != nil {
+		if !cfg.BodyPatternRegex.MatchString(respBody) {
 			return failed(map[string]any{
 				checkerdef.OutputKeyError:      fmt.Sprintf("Expected pattern %q not found in response body", cfg.BodyPattern),
 				checkerdef.OutputKeyURL:        cfg.URL,
@@ -624,8 +467,8 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 		}
 	}
 
-	if cfg.bodyPatternRejectRegex != nil {
-		if cfg.bodyPatternRejectRegex.MatchString(respBody) {
+	if cfg.BodyPatternRejectRegex != nil {
+		if cfg.BodyPatternRejectRegex.MatchString(respBody) {
 			return failed(map[string]any{
 				checkerdef.OutputKeyError:      fmt.Sprintf("Rejected pattern %q found in response body", cfg.BodyPatternReject),
 				checkerdef.OutputKeyURL:        cfg.URL,
@@ -636,8 +479,8 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	}
 
 	// Apply header pattern matching
-	if len(cfg.headersPatternRegex) > 0 {
-		for headerName, headerRegex := range cfg.headersPatternRegex {
+	if len(cfg.HeadersPatternRegex) > 0 {
+		for headerName, headerRegex := range cfg.HeadersPatternRegex {
 			headerValue := resp.Header.Get(headerName)
 			if headerValue == "" {
 				return failed(map[string]any{
@@ -741,7 +584,7 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 
 // withTLSVerifySkipped adds the tls_verify_skipped marker to a result output
 // map when the check ran with certificate verification disabled, so the
-// reduced trust is visible in result details rather than only in config.
+// reduced trust is visible in result details rather than only in checkconfig.
 func withTLSVerifySkipped(output map[string]any, skipped bool) map[string]any {
 	if skipped {
 		output[checkerdef.OutputKeyTLSVerifySkipped] = true

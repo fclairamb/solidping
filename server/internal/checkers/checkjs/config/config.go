@@ -1,4 +1,4 @@
-package checkjs
+package config
 
 import (
 	"fmt"
@@ -23,9 +23,9 @@ var browserOpenRE = regexp.MustCompile(`\bbrowser\s*\.\s*open\s*\(`)
 
 const (
 	maxScriptSize  = 64 * 1024 // 64KB max script size
-	defaultTimeout = 30 * time.Second
-	maxTimeout     = 30 * time.Second
-	maxEnvEntries  = 50
+	DefaultTimeout = 30 * time.Second
+	MaxTimeout     = 30 * time.Second
+	MaxEnvEntries  = 50
 
 	fieldScript  = "script"
 	fieldEnv     = "env"
@@ -207,19 +207,19 @@ func (c *JSConfig) Validate() error {
 			"must be at most %d bytes, got %d", maxScriptSize, len(c.Script))
 	}
 
-	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
+	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > MaxTimeout) {
 		return checkerdef.NewConfigErrorf("timeout",
-			"must be > 0 and <= %s, got %s", maxTimeout, c.Timeout)
+			"must be > 0 and <= %s, got %s", MaxTimeout, c.Timeout)
 	}
 
-	if len(c.Env) > maxEnvEntries {
+	if len(c.Env) > MaxEnvEntries {
 		return checkerdef.NewConfigErrorf(fieldEnv,
-			"must have at most %d entries, got %d", maxEnvEntries, len(c.Env))
+			"must have at most %d entries, got %d", MaxEnvEntries, len(c.Env))
 	}
 
-	if len(c.Secrets) > maxEnvEntries {
+	if len(c.Secrets) > MaxEnvEntries {
 		return checkerdef.NewConfigErrorf(fieldSecrets,
-			"must have at most %d entries, got %d", maxEnvEntries, len(c.Secrets))
+			"must have at most %d entries, got %d", MaxEnvEntries, len(c.Secrets))
 	}
 
 	// Check for JavaScript syntax errors via Goja compilation

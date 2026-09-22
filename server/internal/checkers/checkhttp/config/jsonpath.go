@@ -1,4 +1,4 @@
-package checkhttp
+package config
 
 import (
 	"errors"
@@ -12,17 +12,17 @@ import (
 )
 
 const (
-	opEq          = "eq"
-	opGt          = "gt"
-	opGte         = "gte"
-	opLt          = "lt"
-	opLte         = "lte"
-	opNeq         = "neq"
-	opContains    = "contains"
-	opNotContains = "not_contains"
-	opRegex       = "regex"
-	opExists      = "exists"
-	opNotExists   = "not_exists"
+	OpEq          = "eq"
+	OpGt          = "gt"
+	OpGte         = "gte"
+	OpLt          = "lt"
+	OpLte         = "lte"
+	OpNeq         = "neq"
+	OpContains    = "contains"
+	OpNotContains = "not_contains"
+	OpRegex       = "regex"
+	OpExists      = "exists"
+	OpNotExists   = "not_exists"
 
 	errPathNotFound = "path not found"
 )
@@ -106,7 +106,7 @@ func (n *AssertionNode) evaluateLeaf(data any) AssertionResult {
 	results := expr.Get(data)
 
 	// Handle exists/not_exists operators
-	if n.Operator == opExists {
+	if n.Operator == OpExists {
 		result.Pass = len(results) > 0
 		if !result.Pass {
 			result.Error = errPathNotFound
@@ -114,7 +114,7 @@ func (n *AssertionNode) evaluateLeaf(data any) AssertionResult {
 		return result
 	}
 
-	if n.Operator == opNotExists {
+	if n.Operator == OpNotExists {
 		result.Pass = len(results) == 0
 		if !result.Pass {
 			result.Actual = fmt.Sprintf("%v", results[0])
@@ -174,21 +174,21 @@ func (n *AssertionNode) evaluateOr(data any) AssertionResult {
 
 func compareValues(operator, actual, expected string, ignoreCase bool) bool {
 	switch operator {
-	case opEq:
+	case OpEq:
 		return stringsEqual(actual, expected, ignoreCase)
-	case opNeq:
+	case OpNeq:
 		return !stringsEqual(actual, expected, ignoreCase)
-	case opContains:
+	case OpContains:
 		return stringsContain(actual, expected, ignoreCase)
-	case opNotContains:
+	case OpNotContains:
 		return !stringsContain(actual, expected, ignoreCase)
-	case opRegex:
+	case OpRegex:
 		re, err := compileAssertionRegex(expected, ignoreCase)
 		if err != nil {
 			return false
 		}
 		return re.MatchString(actual)
-	case opGt, opGte, opLt, opLte:
+	case OpGt, OpGte, OpLt, OpLte:
 		return compareNumeric(operator, actual, expected)
 	default:
 		return false
@@ -244,13 +244,13 @@ func compareNumeric(operator, actual, expected string) bool {
 	}
 
 	switch operator {
-	case opGt:
+	case OpGt:
 		return actualFloat > expectedFloat
-	case opGte:
+	case OpGte:
 		return actualFloat >= expectedFloat
-	case opLt:
+	case OpLt:
 		return actualFloat < expectedFloat
-	case opLte:
+	case OpLte:
 		return actualFloat <= expectedFloat
 	default:
 		return false
@@ -285,9 +285,9 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	validOps := map[string]bool{
-		opEq: true, opNeq: true, opGt: true, opGte: true,
-		opLt: true, opLte: true, opContains: true, opNotContains: true,
-		opRegex: true, opExists: true, opNotExists: true,
+		OpEq: true, OpNeq: true, OpGt: true, OpGte: true,
+		OpLt: true, OpLte: true, OpContains: true, OpNotContains: true,
+		OpRegex: true, OpExists: true, OpNotExists: true,
 	}
 
 	if !validOps[n.Operator] {
@@ -295,7 +295,7 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	// exists/not_exists must have empty value
-	if (n.Operator == opExists || n.Operator == opNotExists) && n.Value != "" {
+	if (n.Operator == OpExists || n.Operator == OpNotExists) && n.Value != "" {
 		return errExistsNoValue
 	}
 
@@ -307,7 +307,7 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	// Regex must compile
-	if n.Operator == opRegex {
+	if n.Operator == OpRegex {
 		if _, err := compileAssertionRegex(n.Value, n.IgnoreCase); err != nil {
 			return fmt.Errorf("%w: %w", errInvalidRegex, err)
 		}
@@ -319,7 +319,7 @@ func (n *AssertionNode) validateLeaf() error {
 // isNumericOperator reports whether the operator compares two numbers.
 func isNumericOperator(operator string) bool {
 	switch operator {
-	case opGt, opGte, opLt, opLte:
+	case OpGt, OpGte, OpLt, OpLte:
 		return true
 	default:
 		return false

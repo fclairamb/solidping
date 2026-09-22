@@ -17,6 +17,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
 )
 
 // JS result map keys.
@@ -34,7 +35,7 @@ const (
 	logLevelInfo  = "info"
 )
 
-// CheckerResolver is a function type that resolves a check type to a checker and config.
+// CheckerResolver is a function type that resolves a check type to a checker and checkconfig.
 // It is set by the registry package during init to break the import cycle.
 type CheckerResolver func(checkType checkerdef.CheckType) (checkerdef.Checker, checkerdef.Config, bool)
 
@@ -90,26 +91,11 @@ func (c *JSChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeJS
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *JSChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &JSConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = "JS Script"
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "js-script"
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the JavaScript check and returns the result.
@@ -304,7 +290,7 @@ func (r *jsRuntime) closeSockets() {
 	}
 }
 
-// newJSRuntime creates a new jsRuntime with the given context and config.
+// newJSRuntime creates a new jsRuntime with the given context and checkconfig.
 func newJSRuntime(ctx context.Context, cfg *JSConfig) *jsRuntime {
 	return &jsRuntime{
 		execCtx: ctx,
@@ -328,7 +314,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerWebSocket()
 }
 
-// registerEnv exposes config.Env as a read-only "env" object.
+// registerEnv exposes checkconfig.Env as a read-only "env" object.
 func (r *jsRuntime) registerEnv() {
 	envObj := r.vm.NewObject()
 
@@ -339,7 +325,7 @@ func (r *jsRuntime) registerEnv() {
 	_ = r.vm.Set("env", envObj)
 }
 
-// registerSecrets exposes config.Secrets as a read-only "secrets" object.
+// registerSecrets exposes checkconfig.Secrets as a read-only "secrets" object.
 //
 // Deliberately a mirror of registerEnv rather than a merge into it: the call
 // site is meant to read what the value IS — `secrets.PASSWORD` next to

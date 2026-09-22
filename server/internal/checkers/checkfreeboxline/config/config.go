@@ -1,9 +1,4 @@
-// Package checkfreeboxline provides Freebox xDSL/FTTH line-quality checks
-// backed by the Freebox OS /api/v4/ endpoints. The check references an
-// IntegrationConnection of type `freebox` by UID; at execution time the
-// connection's encrypted app_token is resolved via the package-level
-// ConnectionResolver indirection (wired from the API server at startup).
-package checkfreeboxline
+package config
 
 import (
 	"errors"

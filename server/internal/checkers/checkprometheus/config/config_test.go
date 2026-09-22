@@ -1,4 +1,4 @@
-package checkprometheus_test
+package config_test
 
 import (
 	"testing"

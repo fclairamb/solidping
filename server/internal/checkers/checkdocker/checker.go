@@ -4,12 +4,12 @@ package checkdocker
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdocker/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -23,47 +23,11 @@ func (c *DockerChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeDocker
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *DockerChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &DockerConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = resolveSpecName(cfg)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = resolveSpecSlug(cfg)
-	}
-
-	return nil
-}
-
-func resolveSpecName(cfg *DockerConfig) string {
-	if cfg.ContainerName != "" {
-		return cfg.ContainerName
-	}
-
-	return cfg.ContainerID
-}
-
-func resolveSpecSlug(cfg *DockerConfig) string {
-	if cfg.ContainerName != "" {
-		return "docker-" + strings.ReplaceAll(cfg.ContainerName, ".", "-")
-	}
-
-	short := cfg.ContainerID
-	if len(short) > 12 {
-		short = short[:12]
-	}
-
-	return "docker-" + short
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the Docker container health check and returns the result.
@@ -76,7 +40,7 @@ func (c *DockerChecker) Execute(
 		return nil, err
 	}
 
-	timeout := cfg.resolveTimeout()
+	timeout := cfg.ResolveTimeout()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -97,7 +61,7 @@ func (c *DockerChecker) Execute(
 
 	defer func() { _ = cli.Close() }()
 
-	inspected, err := cli.ContainerInspect(ctx, cfg.resolveContainerRef(), client.ContainerInspectOptions{})
+	inspected, err := cli.ContainerInspect(ctx, cfg.ResolveContainerRef(), client.ContainerInspectOptions{})
 	if err != nil {
 		return handleInspectError(ctx, err, start, metrics), nil
 	}
@@ -111,7 +75,7 @@ func createClient(cfg *DockerConfig) (*client.Client, error) {
 	// API-version negotiation is on by default in this client, so the endpoint
 	// host is the only thing worth configuring: an older daemon (or Podman's
 	// Docker-compatible socket) is negotiated down on the first request.
-	return client.New(client.WithHost(cfg.resolveHost()))
+	return client.New(client.WithHost(cfg.ResolveHost()))
 }
 
 func handleInspectError(
@@ -185,7 +149,7 @@ func buildResult(
 	// (counts as up, does not page). secondsSinceStart is always emitted when
 	// detection is enabled so the dashboard can show flap context even below
 	// threshold.
-	if cfg.restartLoopEnabled() && info.State.Running {
+	if cfg.RestartLoopEnabled() && info.State.Running {
 		return detectRestartLoop(cfg, info, start, metrics, output)
 	}
 
@@ -204,7 +168,7 @@ func detectRestartLoop(
 	metrics map[string]any,
 	output map[string]any,
 ) *checkerdef.Result {
-	window := cfg.resolveRestartLoopWindow()
+	window := cfg.ResolveRestartLoopWindow()
 
 	started, err := time.Parse(time.RFC3339Nano, info.State.StartedAt)
 	if err != nil {

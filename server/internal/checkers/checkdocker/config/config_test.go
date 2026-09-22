@@ -1,4 +1,4 @@
-package checkdocker
+package config
 
 import (
 	"testing"
@@ -139,8 +139,8 @@ func TestDockerConfig_ResolveRestartLoopWindow(t *testing.T) {
 	r := require.New(t)
 
 	enabledNoWindow := &DockerConfig{RestartLoopMinRestarts: 3}
-	r.Equal(defaultRestartLoopWindow, enabledNoWindow.resolveRestartLoopWindow())
+	r.Equal(defaultRestartLoopWindow, enabledNoWindow.ResolveRestartLoopWindow())
 
 	withWindow := &DockerConfig{RestartLoopMinRestarts: 3, RestartLoopWindow: 90 * time.Second}
-	r.Equal(90*time.Second, withWindow.resolveRestartLoopWindow())
+	r.Equal(90*time.Second, withWindow.ResolveRestartLoopWindow())
 }

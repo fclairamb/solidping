@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -82,26 +83,11 @@ func (c *KubernetesChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeKubernetes
 }
 
-// Validate runs config-only validation. Networking is reserved for Execute.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *KubernetesChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &KubernetesConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = cfg.Kind + " " + cfg.Namespace + "/" + cfg.Name
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "k8s-" + cfg.Namespace + "-" + cfg.Name
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // workloadStatus is the normalized replica view extracted from a Deployment or
@@ -141,7 +127,7 @@ func (c *KubernetesChecker) Execute(
 		return nil, ErrResolverNotConfigured
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, cfg.resolveTimeout())
+	ctx, cancel := context.WithTimeout(ctx, cfg.ResolveTimeout())
 	defer cancel()
 
 	start := time.Now()

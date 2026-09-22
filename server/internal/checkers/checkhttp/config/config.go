@@ -1,4 +1,4 @@
-package checkhttp
+package config
 
 import (
 	"encoding/json"
@@ -133,9 +133,9 @@ type HTTPConfig struct {
 	CaptureFailureResponse bool `json:"capture_failure_response,omitempty"` //nolint:tagliatelle // API uses snake_case
 
 	// Compiled regex patterns (not serialized, populated during validation)
-	bodyPatternRegex       *regexp.Regexp            `json:"-"`
-	bodyPatternRejectRegex *regexp.Regexp            `json:"-"`
-	headersPatternRegex    map[string]*regexp.Regexp `json:"-"`
+	BodyPatternRegex       *regexp.Regexp            `json:"-"`
+	BodyPatternRejectRegex *regexp.Regexp            `json:"-"`
+	HeadersPatternRegex    map[string]*regexp.Regexp `json:"-"`
 }
 
 // resolveKey returns the value of the first matching key. The frontend writes

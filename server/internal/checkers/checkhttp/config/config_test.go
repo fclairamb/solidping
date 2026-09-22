@@ -1,4 +1,4 @@
-package checkhttp
+package config
 
 import (
 	"testing"
@@ -499,3 +499,6 @@ func TestNormalizeConfigFor_Probe(t *testing.T) {
 	r.NoError(err)
 	r.Equal(in, got)
 }
+
+// boolPtr is the local pointer helper for the optional boolean fields.
+func boolPtr(b bool) *bool { return &b }

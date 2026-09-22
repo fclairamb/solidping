@@ -1,4 +1,4 @@
-package checkhttp
+package config
 
 import "net/url"
 

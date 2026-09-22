@@ -1,4 +1,4 @@
-package checkgrpc
+package config
 
 import (
 	"net"
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	defaultPort    = 50051
+	DefaultPort    = 50051
 	defaultTimeout = 10 * time.Second
 	maxTimeout     = 30 * time.Second
 
@@ -175,7 +175,7 @@ func (c *GRPCConfig) GetConfig() map[string]any {
 		"host": c.Host,
 	}
 
-	if c.Port != 0 && c.Port != defaultPort {
+	if c.Port != 0 && c.Port != DefaultPort {
 		cfg["port"] = c.Port
 	}
 
@@ -302,15 +302,15 @@ func validateMetadata(configKey string, metadata map[string]string) error {
 	return nil
 }
 
-func (c *GRPCConfig) resolvePort() int {
+func (c *GRPCConfig) ResolvePort() int {
 	if c.Port != 0 {
 		return c.Port
 	}
 
-	return defaultPort
+	return DefaultPort
 }
 
-func (c *GRPCConfig) resolveTimeout() time.Duration {
+func (c *GRPCConfig) ResolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
 	}
@@ -318,6 +318,6 @@ func (c *GRPCConfig) resolveTimeout() time.Duration {
 	return defaultTimeout
 }
 
-func (c *GRPCConfig) resolveTarget() string {
-	return net.JoinHostPort(c.Host, strconv.Itoa(c.resolvePort()))
+func (c *GRPCConfig) ResolveTarget() string {
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.ResolvePort()))
 }

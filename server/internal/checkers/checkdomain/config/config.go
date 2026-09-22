@@ -1,4 +1,4 @@
-package checkdomain
+package config
 
 import (
 	"errors"
@@ -201,10 +201,10 @@ func (c *DomainConfig) validateThresholds() error {
 	return nil
 }
 
-// effectiveThresholds resolves the warning/critical days that will actually
+// EffectiveThresholds resolves the warning/critical days that will actually
 // be used, applying the legacy alias and per-tier defaults. Used by
 // execution. Returns (warning, critical).
-func (c *DomainConfig) effectiveThresholds() (int, int) {
+func (c *DomainConfig) EffectiveThresholds() (int, int) {
 	critical := c.CriticalDays
 	if critical == 0 {
 		critical = c.ThresholdDays
@@ -227,9 +227,9 @@ func (c *DomainConfig) effectiveThresholds() (int, int) {
 	return warning, critical
 }
 
-// effectiveMethod returns the resolved lookup method, treating the zero
+// EffectiveMethod returns the resolved lookup method, treating the zero
 // value as MethodAuto.
-func (c *DomainConfig) effectiveMethod() string {
+func (c *DomainConfig) EffectiveMethod() string {
 	if c.Method == "" {
 		return MethodAuto
 	}
