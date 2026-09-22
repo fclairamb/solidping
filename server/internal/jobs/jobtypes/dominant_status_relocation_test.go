@@ -11,7 +11,7 @@ import (
 // replace it.
 //
 // This alias exists so the relocation is pinned by the tests that already
-// covered the behaviour, with their bodies UNCHANGED
+// covered the behavior, with their bodies UNCHANGED
 // (TestCalculateDominantStatusPromotesWarning and the aggregateResults-level
 // cases in job_aggregation_warning_test.go). Rewriting those tests to call the
 // new name would have meant "the new function passes new tests", which proves
@@ -20,4 +20,9 @@ import (
 //
 // It is test-only on purpose: production code in this package calls
 // uptimebar.DominantStatus directly.
+//
+// func would defeat the point, which is that the OLD tests call the NEW code with
+// no indirection of their own.
+//
+//nolint:gochecknoglobals // a test-only alias for a relocated function; a wrapper
 var calculateDominantStatus = uptimebar.DominantStatus

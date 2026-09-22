@@ -376,7 +376,7 @@ func TestAggregateResponseTimeBinsNearestRankP95(t *testing.T) {
 
 // TestSeamPeriodTypeIsNeverPersisted pins the in-memory-only contract of
 // models.PeriodTypeSeam at the level that matters — the writers. The status page
-// materialises seam rows as *models.Result, which makes it one careless
+// materializes seam rows as *models.Result, which makes it one careless
 // `CreateResult(row)` away from a period_type no migration knows and no reader
 // expects.
 //

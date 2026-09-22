@@ -61,7 +61,7 @@ type responseTimeBinRow struct {
 //
 // The p95 is NEAREST-RANK, picked by ROW_NUMBER, and not percentile_cont. This is
 // the single most load-bearing line in the file: percentile_cont INTERPOLATES
-// between the two neighbouring samples, while the aggregation job's
+// between the two neighboring samples, while the aggregation job's
 // calculateRawMetrics sorts and takes the sample at index
 // `int(float64(n) * 0.95)`. A seam point sits on the chart immediately next to the
 // hour rollups that will replace it as raw is compacted away, so an interpolating

@@ -17,7 +17,7 @@ import (
 // window from asking for sub-minute bins, which would hold one probe each and buy
 // nothing over the row fetch this replaces. The ceiling keeps the seam from ever
 // being COARSER than the hour rollups it sits next to on the same chart — a
-// 90-day page's ideal bin is 21.6 h, and honouring that would make the newest
+// 90-day page's ideal bin is 21.6 h, and honoring that would make the newest
 // part of the series less detailed than its middle.
 func TestSeamBinWidth(t *testing.T) {
 	t.Parallel()
@@ -28,17 +28,25 @@ func TestSeamBinWidth(t *testing.T) {
 		want   time.Duration
 		reason string
 	}{
-		{"24h page", 24 * time.Hour, 15 * time.Minute,
-			"ideal 14.4 min rounds up one step; ~96 seam points across the day"},
+		{
+			"24h page", 24 * time.Hour, 15 * time.Minute,
+			"ideal 14.4 min rounds up one step; ~96 seam points across the day",
+		},
 		{"7d page", 7 * 24 * time.Hour, time.Hour, "ideal 100.8 min is past the ceiling"},
 		{"30d page", 30 * 24 * time.Hour, time.Hour, "clamped to the hour ceiling"},
-		{"90d page", 90 * 24 * time.Hour, time.Hour,
-			"never coarser than the hour rollups beside it, whatever the ideal says"},
+		{
+			"90d page", 90 * 24 * time.Hour, time.Hour,
+			"never coarser than the hour rollups beside it, whatever the ideal says",
+		},
 		{"1h window", time.Hour, time.Minute, "ideal 36 s is under the floor"},
-		{"exactly at a step", 100 * 5 * time.Minute, 5 * time.Minute,
-			"the ideal IS a step, so it is taken rather than rounded past"},
-		{"just over a step", 100*5*time.Minute + time.Second, 10 * time.Minute,
-			"a hair over 5 min takes the next step up, never a finer one"},
+		{
+			"exactly at a step", 100 * 5 * time.Minute, 5 * time.Minute,
+			"the ideal IS a step, so it is taken rather than rounded past",
+		},
+		{
+			"just over a step", 100*5*time.Minute + time.Second, 10 * time.Minute,
+			"a hair over 5 min takes the next step up, never a finer one",
+		},
 		{"zero span", 0, time.Minute, "degenerate input still yields the floor, never 0"},
 		{"negative span", -time.Hour, time.Minute, "and so does a reversed window"},
 	}
@@ -77,15 +85,16 @@ func TestSeamBinWidthNeverExceedsTheBudget(t *testing.T) {
 	}
 }
 
-// seamTestResult builds a seam row the way seamResult does, for the trim tests.
-func seamTestResult(periodStart time.Time, total, up int, p95 float32, status int) *models.Result {
+// seamTestResult builds an all-up seam row the way seamResult does, for the trim
+// tests. The cases that need a mixed status mix build the bin inline.
+func seamTestResult(periodStart time.Time, total, up int, p95 float32) *models.Result {
 	return seamResult(&models.ResponseTimeBin{
 		CheckUID:     "check-1",
 		BinStart:     periodStart,
 		Total:        total,
 		Up:           up,
 		DurationP95:  &p95,
-		StatusCounts: map[int]int{status: total},
+		StatusCounts: map[int]int{int(models.ResultStatusUp): total},
 	})
 }
 
@@ -102,7 +111,7 @@ func TestSeamResultFoldsLikeARollup(t *testing.T) {
 
 	r := require.New(t)
 
-	row := seamTestResult(time.Now().UTC().Truncate(time.Hour), 60, 59, 210, int(models.ResultStatusUp))
+	row := seamTestResult(time.Now().UTC().Truncate(time.Hour), 60, 59, 210)
 
 	stats := uptimebar.StatsForResult(row)
 	r.Equal(60, stats.Total, "a seam point's bin count is its denominator")
@@ -169,8 +178,7 @@ func TestTrimWindowedResponseTimeRows_SeamIsBudgetedAsTheRawTier(t *testing.T) {
 	// 26 hourly seam bins — what a 7-day page's seam really looks like: the raw
 	// clamp is 24 h + a 2 h margin, and seamBinWidth(7d) is 1 h.
 	for i := range 26 {
-		rows = append(rows, seamTestResult(now.Add(-time.Duration(i)*time.Hour), 60, 60, 120,
-			int(models.ResultStatusUp)))
+		rows = append(rows, seamTestResult(now.Add(-time.Duration(i)*time.Hour), 60, 60, 120))
 	}
 
 	// Hour rollups just past the seam, then day rollups to the window's old end.
@@ -217,7 +225,7 @@ func TestTrimWindowedResponseTimeRows_SeamIsBudgetedAsTheRawTier(t *testing.T) {
 
 // TestTrimWindowedResponseTimeRows_SeamOnlyRegionStillRenders pins that a region
 // whose ONLY in-window points are seam bins is kept. It is the common case for a
-// young check — nothing has been rolled up yet — and a trim that recognised only
+// young check — nothing has been rolled up yet — and a trim that recognized only
 // raw and rollup rows would classify seam into the coarse tail, give it the day
 // tier's budget, and (worse) a signal check that did not understand the seam's
 // DurationP95 would delete the region outright.
@@ -231,8 +239,7 @@ func TestTrimWindowedResponseTimeRows_SeamOnlyRegionStillRenders(t *testing.T) {
 
 	rows := make([]*models.Result, 0, 96)
 	for i := range 96 {
-		rows = append(rows, seamTestResult(now.Add(-time.Duration(i)*15*time.Minute), 15, 15, 88,
-			int(models.ResultStatusUp)))
+		rows = append(rows, seamTestResult(now.Add(-time.Duration(i)*15*time.Minute), 15, 15, 88))
 	}
 
 	byRegion := map[string]map[string][]*models.Result{
@@ -259,7 +266,7 @@ func TestTrimWindowedResponseTimeRows_SeamOnlyRegionStillRenders(t *testing.T) {
 // The phantom was a NULL-region series made of nothing but the one-time "Check
 // created" lifecycle marker, which can carry a literal 0 duration and would
 // otherwise render as a one-point 0 ms chart series. The seam aggregate drops the
-// excluded statuses before binning, so such a bin never materialises at all — but
+// excluded statuses before binning, so such a bin never materializes at all — but
 // the downstream guard must still hold for a seam bin that legitimately has probes
 // and no durations (a region that was fully down), which is the case below.
 func TestTrimWindowedResponseTimeRows_SeamMarkerPhantomStaysDropped(t *testing.T) {
@@ -295,8 +302,8 @@ func TestTrimWindowedResponseTimeRows_SeamMarkerPhantomStaysDropped(t *testing.T
 		"check-1": {
 			"": {durationless, zeroed},
 			"eu2": {
-				seamTestResult(now, 15, 15, 88, int(models.ResultStatusUp)),
-				seamTestResult(now.Add(-15*time.Minute), 15, 15, 91, int(models.ResultStatusUp)),
+				seamTestResult(now, 15, 15, 88),
+				seamTestResult(now.Add(-15*time.Minute), 15, 15, 91),
 			},
 		},
 	}
@@ -325,7 +332,7 @@ func TestBuildAvailabilityData_SeamRowsRenderAsPoints(t *testing.T) {
 	now := time.Now().UTC().Truncate(15 * time.Minute)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
-	healthy := seamTestResult(now.Add(-15*time.Minute), 15, 15, 88, int(models.ResultStatusUp))
+	healthy := seamTestResult(now.Add(-15*time.Minute), 15, 15, 88)
 	degraded := seamResult(&models.ResponseTimeBin{
 		CheckUID:    "check-1",
 		BinStart:    now,

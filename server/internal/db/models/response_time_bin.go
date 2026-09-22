@@ -79,7 +79,7 @@ func (f *ResponseTimeBinFilter) Validate() error {
 // Every duration pointer is nil — not zero — when no probe in the bin carried a
 // duration. A bin like that still comes back (a check that was down for fifteen
 // minutes recorded probes and no response times), because the point's
-// availability colouring is computed from Total/Up and must stay honest; it is
+// availability coloring is computed from Total/Up and must stay honest; it is
 // the DURATION that is missing, and the chart drops a point with no duration on
 // its own.
 type ResponseTimeBin struct {

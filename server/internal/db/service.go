@@ -510,7 +510,7 @@ type Service interface {
 	// Statuses excluded from availability (created/running/abandoned) are dropped
 	// BEFORE binning, so Total is the availability denominator. A bin whose probes
 	// all lack a duration still comes back, with counts and NULL durations: the
-	// point's availability colouring must stay honest even when there is no
+	// point's availability coloring must stay honest even when there is no
 	// response time to plot.
 	//
 	// The p95 is NEAREST-RANK, at exactly the index the aggregation job's

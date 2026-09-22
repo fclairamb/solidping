@@ -3224,7 +3224,7 @@ func seamBinWidth(windowSpan time.Duration) time.Duration {
 
 // fetchResponseTimeSeam loads the seam half of the response-time series: the raw
 // probes newer than the rollups, pre-folded by the database into one point per
-// (check, region, bin), and materialised as in-memory models.PeriodTypeSeam rows
+// (check, region, bin), and materialized as in-memory models.PeriodTypeSeam rows
 // so the trim and the point builder downstream keep working on one []*Result.
 //
 // This is the spec's whole point. The seam used to be fetched as ROWS — ~1 337
@@ -3282,15 +3282,15 @@ func (s *Service) fetchResponseTimeSeam(
 // reads it.
 func seamResult(bin *models.ResponseTimeBin) *models.Result {
 	status := uptimebar.DominantStatus(bin.StatusCounts)
-	total, up := bin.Total, bin.Up
+	totalChecks, successfulChecks := bin.Total, bin.Up
 
 	row := &models.Result{
 		PeriodType:       models.PeriodTypeSeam,
 		CheckUID:         bin.CheckUID,
 		Region:           bin.Region,
 		PeriodStart:      bin.BinStart,
-		TotalChecks:      &total,
-		SuccessfulChecks: &up,
+		TotalChecks:      &totalChecks,
+		SuccessfulChecks: &successfulChecks,
 		DurationP95:      bin.DurationP95,
 		DurationAvg:      bin.DurationAvg,
 		DurationMin:      bin.DurationMin,

@@ -59,7 +59,7 @@ const (
 	// migration knows the value, no writer accepts it (BeforeAppendModel below
 	// refuses it outright), and nothing reads it back out of `results`.
 	//
-	// It labels a Result the status page's response-time fetch MATERIALISES from
+	// It labels a Result the status page's response-time fetch MATERIALIZES from
 	// a database-side aggregate over raw probes — one row per
 	// (check, region, bin), carrying the same p95/avg/min/max/count shape a
 	// rollup row carries (spec 2026-09-22-06). The reason it is a distinct value
@@ -303,7 +303,7 @@ type Result struct {
 // repeated ten times and would be silently incomplete the first time someone
 // adds an eleventh.
 //
-// It refuses rather than sanitising: a seam row reaching a writer means a
+// It refuses rather than sanitizing: a seam row reaching a writer means a
 // caller confused an in-memory chart point for a stored result, and quietly
 // rewriting its period_type would persist a row no reader expects.
 func (r *Result) BeforeAppendModel(_ context.Context, query bun.Query) error {
