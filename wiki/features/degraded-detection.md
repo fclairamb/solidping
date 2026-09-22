@@ -104,23 +104,69 @@ evaluator simply runs again.
 
 Per check, code defaults, no org-level layer:
 
-| Column | Default | Meaning |
-|---|---|---|
-| `degraded_failures` | 5 | M for failures; 0 disables |
-| `degraded_failures_window` | 60 | N for failures |
-| `degraded_slow` | 3 | M for slow |
-| `degraded_slow_window` | 6 | N for slow |
-| `slow_threshold_ms` | 0 | 0 = slow rule off; the form suggests ~2× the observed p95 |
-| `degraded_enabled` | false on existing rows, true on new | opens incidents |
-| `degraded_would_fire_at` | null | stamped by the dry run |
-| `degraded_evaluated_at` | null | evaluator rotation state, not configuration |
+| Column | Type | Default | Meaning |
+|---|---|---|---|
+| `degraded_failures` | `integer` NULL | 5 | M for failures; 0 disables |
+| `degraded_failures_window` | `integer` NULL | 60 | N for failures |
+| `degraded_slow` | `integer` NULL | 3 | M for slow |
+| `degraded_slow_window` | `integer` NULL | 6 | N for slow |
+| `slow_threshold_ms` | `integer` NULL | 0 | 0 = slow rule off; the form suggests ~2× the observed p95 |
+| `degraded_enabled` | `boolean NOT NULL` | false on existing rows, true on new | opens incidents |
+| `degraded_would_fire_at` | `timestamptz` NULL | null | stamped by the dry run |
+| `degraded_evaluated_at` | `timestamptz` NULL | null | evaluator rotation state, not configuration |
 
-**None of these carries a bun `default:` clause**, even though every column has
-one. With `default:5` on the tag, `degraded_failures: 0` never reaches the
-database and the rule cannot be turned off at creation (the
+### NULL is the unset marker; the default is resolved at READ time
+
+**The five numeric columns are nullable with no SQL default clause**, and the
+struct fields are `*int`. Three states, and `nil` is the interesting one:
+
+| Value | Column | Means |
+|---|---|---|
+| `nil` | NULL | not configured → the code default (`models.Default*`) |
+| `&0` | 0 | explicitly OFF (the documented way to disable a rule) |
+| `&7` | 7 | explicitly 7 |
+
+Every reader goes through `Check.EffectiveDegradedFailures()` and its four
+siblings — never the raw pointer. `paramsFor`/`snapshotFor` in
+`internal/handlers/degradedeval/service.go` and the API's `CheckResponse`
+mapping are the three call sites.
+
+**Why not `not null default 5`.** None of these carries a bun `default:` clause:
+with `default:5` on the tag, `degraded_failures: 0` never reaches the database
+and the rule cannot be turned off at creation (the
 `StatusPage.AutoPublishDelaySeconds` / `flappingWindowSeconds: 0` trap, spec
-2026-08-30-04). `models.NewCheck` supplies the defaults instead, and
-`internal/db/models/default_tag_guard_test.go` enforces it.
+2026-08-30-04; `internal/db/models/default_tag_guard_test.go` enforces the
+absence). But without the tag bun always SENDS the column, so the SQL default
+never fired either and the defaulting burden landed in Go at write time:
+`models.NewCheck` hardcoded 5/60/3/6/0, and any other insert path building a
+`models.Check` silently wrote 0 for all five — five rules quietly off, the exact
+failure mode this feature exists to eliminate. Resolving at read time instead
+means a caller that never mentions these fields gets the documented defaults for
+free. `NewCheck` now leaves them nil on purpose; do not add a SQL default back
+alongside the nullable column, or "unset" gets two spellings.
+
+**`degraded_enabled` is the deliberate exception** and stays `NOT NULL DEFAULT
+false`: NULL cannot carry the rollout rule. The `ADD COLUMN` backfill is what
+turns the feature off on every pre-existing row, nil-means-true would start
+paging on upgrade, and nil-means-false would silently disable checks created by
+a path that does not set the flag. A plain bool makes every such path fail SAFE,
+into the dry run.
+
+**M ≤ N is validated against the EFFECTIVE window**, not only when both arrive
+in the same request: a PATCH raising M alone (or shrinking N alone) would
+otherwise store a rule that can never fire. `validateDegradedRule` in
+`internal/handlers/checks/degraded.go`.
+
+There is currently **no way to put a configured column back to NULL** over the
+API — `nil` in an `UpdateCheckRequest` means "leave unchanged", as it does for
+every other field. Re-typing the default value is the workaround; a dedicated
+clear spelling would need its own design.
+
+Pinned by `internal/db/models/check_degraded_test.go` (the accessors' three
+states), `internal/handlers/checks/degraded_api_test.go` (NULL in the row, a
+resolved default on the wire, a bypassing insert, the partial-PATCH validation)
+and `internal/db/postgres/degraded_nullable_postgres_test.go` (the catalog shape
+and the NULL round-trip on the production dialect).
 
 No auto-baselined thresholds: the operator commits to a number. On the motivating
 check, 1000 ms detects at 14:37 and 1400 ms at 14:47.
