@@ -132,6 +132,12 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
+	// Ensure the degraded-detection sweep exists. Self-reschedules every minute;
+	// this seeds the first run (spec 2026-09-22-03).
+	if err := r.ensureDegradedEvalJob(ctx, jctx); err != nil {
+		return err
+	}
+
 	// Ensure the platform watchdog exists (global, not per-org). It
 	// self-reschedules hourly; this seeds the first run so an instance that
 	// went blind between two deploys is reported on the first cycle after the
@@ -182,6 +188,28 @@ func (r *StartupJobRun) ensureSLOBurnEvalJob(ctx context.Context, jctx *jobdef.J
 		log.InfoContext(ctx, "Failed to create SLO burn evaluation job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured SLO burn evaluation job exists")
+	}
+
+	return nil
+}
+
+// ensureDegradedEvalJob provisions the global degraded-detection sweep.
+// CreateJob dedupes on type+config+org+pending, so a restart won't stack a
+// duplicate.
+func (r *StartupJobRun) ensureDegradedEvalJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping degraded evaluation provisioning (services not available)")
+
+		return nil
+	}
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeDegradedEval), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create degraded evaluation job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured degraded evaluation job exists")
 	}
 
 	return nil

@@ -61,6 +61,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
+	"github.com/fclairamb/solidping/server/internal/handlers/degradedeval"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
@@ -1889,6 +1890,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService, sloService, incidentsService, s.services.Clock, slog.Default(),
 	)
 	s.services.SLOBurn = sloAlertsService
+
+	// Degraded detection (spec 2026-09-22-03). Registered through the
+	// DegradedEvaluator interface for the same import-cycle reason as the burn
+	// evaluator above. There is no HTTP surface of its own: the configuration
+	// lives on the check, and the incidents it opens are ordinary incidents.
+	s.services.Degraded = degradedeval.NewService(
+		s.dbService, incidentsService, s.services.Clock, slog.Default(),
+	)
 	sloAlertsHandler := sloalerts.NewHandler(sloAlertsService, s.config)
 	orgSLOs.GET("/:uid/alert-policies", sloAlertsHandler.List)
 	orgSLOs.GET("/:uid/alert-policies/:policyUid", sloAlertsHandler.Get)

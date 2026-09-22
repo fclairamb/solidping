@@ -148,6 +148,14 @@ const (
 	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
 	// and therefore pages people.
 	JobTypeSLOBurnEval JobType = "slo_burn_eval"
+	// JobTypeDegradedEval evaluates every check's degraded-detection rules
+	// (spec 2026-09-22-03). Global and self-rescheduling every minute: the
+	// detector exists to notice an intermittence pattern the per-probe path
+	// cannot, and sweeping less often than checks run would add pure latency.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
+	// and therefore notifies people.
+	JobTypeDegradedEval JobType = "degraded_eval"
 	// JobTypePlatformWatchdog is the hourly internal watchdog (spec
 	// 2026-08-24-10): it evaluates the platform's own vitals — dark regions
 	// with assigned work, a collapse in fleet execution rate, active incidents
