@@ -183,6 +183,86 @@ export function formatPeriod(value: number, unit: PeriodUnit): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * The degraded-detection fields as the form holds them: strings, because "" has
+ * to stay distinguishable from a typed 0.
+ */
+export interface DegradedFormFields {
+  degradedFailures: string;
+  degradedFailuresWindow: string;
+  degradedSlow: string;
+  degradedSlowWindow: string;
+  slowThresholdMs: string;
+  degradedEnabled: boolean;
+}
+
+/** The PATCH/POST fragment buildDegradedPayload produces. */
+export interface DegradedPayload {
+  degradedFailures?: number;
+  degradedFailuresWindow?: number;
+  degradedSlow?: number;
+  degradedSlowWindow?: number;
+  slowThresholdMs?: number;
+  degradedEnabled: boolean;
+}
+
+/**
+ * buildDegradedPayload turns those strings into the request fragment.
+ *
+ * The contract it exists to pin (spec 2026-09-22-03, and the `default:`-tag trap
+ * behind it): a typed **0 must reach the server** — it is the documented way to
+ * turn a rule off — while a **blank field must be omitted**, so the server's own
+ * code default stands and editing a check's name never silently rewrites its
+ * rules. `degradedEnabled` is always sent: a boolean has no "unset" spelling,
+ * and switching it on is what retires the dry-run banner.
+ */
+export function buildDegradedPayload(fields: DegradedFormFields): DegradedPayload {
+  const numeric = (raw: string): number | undefined => {
+    if (raw.trim() === "") return undefined;
+    const parsed = parseInt(raw, 10);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  const out: DegradedPayload = { degradedEnabled: fields.degradedEnabled };
+
+  const failures = numeric(fields.degradedFailures);
+  if (failures !== undefined) out.degradedFailures = failures;
+
+  const failuresWindow = numeric(fields.degradedFailuresWindow);
+  if (failuresWindow !== undefined) out.degradedFailuresWindow = failuresWindow;
+
+  const slow = numeric(fields.degradedSlow);
+  if (slow !== undefined) out.degradedSlow = slow;
+
+  const slowWindow = numeric(fields.degradedSlowWindow);
+  if (slowWindow !== undefined) out.degradedSlowWindow = slowWindow;
+
+  const threshold = numeric(fields.slowThresholdMs);
+  if (threshold !== undefined) out.slowThresholdMs = threshold;
+
+  return out;
+}
+
+/**
+ * degradedFieldsCustomized drives the section's "customized" badge and whether
+ * it opens by default: any numeric override, or an enabled flag that differs
+ * from what this check currently stores.
+ */
+export function degradedFieldsCustomized(
+  fields: DegradedFormFields,
+  storedEnabled: boolean,
+): boolean {
+  const overridden = [
+    fields.degradedFailures,
+    fields.degradedFailuresWindow,
+    fields.degradedSlow,
+    fields.degradedSlowWindow,
+    fields.slowThresholdMs,
+  ].some((value) => value.trim() !== "");
+
+  return overridden || fields.degradedEnabled !== storedEnabled;
+}
+
 export function secondsToHMS(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -313,6 +393,17 @@ export interface CheckFormData {
   maxRecoveryMultiplier?: number | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
+  /**
+   * Degraded detection (spec 2026-09-22-03). A numeric field is omitted when the
+   * form left it blank, but a typed 0 IS sent — it is how a rule is turned off.
+   * See buildDegradedPayload.
+   */
+  degradedFailures?: number;
+  degradedFailuresWindow?: number;
+  degradedSlow?: number;
+  degradedSlowWindow?: number;
+  slowThresholdMs?: number;
+  degradedEnabled?: boolean;
   labels?: Record<string, string>;
   connectionUids?: string[];
   /** Staged "depends on" edges, with the kind + description for each. */
@@ -336,6 +427,14 @@ interface CheckFormProps {
   onTypeChange?: (type: CheckType) => void;
   /** `?section=<name>` deep-link: expand + scroll that collapsible on mount. */
   initialSection?: string;
+  /**
+   * Suggested slow-rule threshold in ms — about 2x the check's observed p95
+   * (spec 2026-09-22-03). Shown beside the field with a one-click "use this";
+   * never applied automatically, because auto-baselining a latency threshold is
+   * an explicit non-goal and the operator is the one who commits to the number.
+   * Undefined when there is not enough history to suggest anything.
+   */
+  slowThresholdSuggestionMs?: number;
 }
 
 export function CheckForm({
@@ -350,6 +449,7 @@ export function CheckForm({
   onCancel,
   onTypeChange,
   initialSection,
+  slowThresholdSuggestionMs,
 }: CheckFormProps) {
   const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
@@ -624,6 +724,30 @@ export function CheckForm({
   );
   const [recoveryPeriodSeconds, setRecoveryPeriodSeconds] = useState(
     initialData?.recoveryPeriodSeconds?.toString() ?? "",
+  );
+  // Degraded detection (spec 2026-09-22-03). Held as strings like every other
+  // numeric field here, so "" means "leave it alone" and a typed 0 — which is
+  // the documented way to turn a rule OFF — survives to the payload.
+  const [degradedFailures, setDegradedFailures] = useState(
+    initialData?.degradedFailures?.toString() ?? "",
+  );
+  const [degradedFailuresWindow, setDegradedFailuresWindow] = useState(
+    initialData?.degradedFailuresWindow?.toString() ?? "",
+  );
+  const [degradedSlow, setDegradedSlow] = useState(
+    initialData?.degradedSlow?.toString() ?? "",
+  );
+  const [degradedSlowWindow, setDegradedSlowWindow] = useState(
+    initialData?.degradedSlowWindow?.toString() ?? "",
+  );
+  const [slowThresholdMs, setSlowThresholdMs] = useState(
+    initialData?.slowThresholdMs?.toString() ?? "",
+  );
+  // The one boolean of the set. Defaults ON for a new check and OFF for a check
+  // that predates the feature, which is exactly what the server stores — the
+  // rollout rule, reflected here rather than re-decided.
+  const [degradedEnabled, setDegradedEnabled] = useState(
+    initialData?.degradedEnabled ?? mode === "create",
   );
   const [error, setError] = useState<string | null>(null);
   // Bumped on every submit attempt; collapsible sections that own a live
@@ -964,6 +1088,9 @@ export function CheckForm({
         ...(recoveryPeriodSeconds !== ""
           ? { recoveryPeriodSeconds: parseInt(recoveryPeriodSeconds, 10) }
           : {}),
+        // Degraded detection — see buildDegradedPayload for the 0-vs-blank
+        // contract it enforces.
+        ...buildDegradedPayload(degradedFields),
         ...(mode === "create" || labelsDirty ? { labels } : {}),
         ...(connectionUids !== null ? { connectionUids } : {}),
         ...(dependsOnParents !== null
@@ -1052,6 +1179,46 @@ export function CheckForm({
     confirm: confirmationPeriodSeconds.trim() || "120",
     recover: recoveryPeriodSeconds.trim() || "120",
   }) + (incidentCustomized ? "" : t("form.summaryDefaultsSuffix"));
+
+  // Degraded detection's own summary. It leads with the slow rule's state
+  // because that is the half nothing else in the product reports, and an unarmed
+  // threshold is the difference between the feature working and being inert.
+  const degradedFields: DegradedFormFields = {
+    degradedFailures,
+    degradedFailuresWindow,
+    degradedSlow,
+    degradedSlowWindow,
+    slowThresholdMs,
+    degradedEnabled,
+  };
+
+  const degradedCustomized = degradedFieldsCustomized(
+    degradedFields,
+    initialData?.degradedEnabled ?? mode === "create",
+  );
+
+  const degradedNumber = (raw: string, fallback: number) =>
+    raw.trim() !== "" ? parseInt(raw, 10) || 0 : fallback;
+  const degradedFailuresValue = degradedNumber(degradedFailures, 5);
+  const degradedFailuresWindowValue = degradedNumber(degradedFailuresWindow, 60);
+  const degradedSlowValue = degradedNumber(degradedSlow, 3);
+  const degradedSlowWindowValue = degradedNumber(degradedSlowWindow, 6);
+  const slowThresholdValue = degradedNumber(slowThresholdMs, 0);
+
+  const degradedSummary = !degradedEnabled
+    ? t("form.degraded.summaryOff")
+    : t("form.degraded.summaryOn", {
+        failures: degradedFailuresValue,
+        failuresWindow: degradedFailuresWindowValue,
+        slow:
+          slowThresholdValue > 0
+            ? t("form.degraded.summarySlowArmed", {
+                slow: degradedSlowValue,
+                slowWindow: degradedSlowWindowValue,
+                threshold: slowThresholdValue,
+              })
+            : t("form.degraded.summarySlowOff"),
+      });
 
   const flappingCustomized = [
     reopenCooldownMultiplier,
@@ -1765,6 +1932,166 @@ export function CheckForm({
                       "recovery",
                       t,
                     )}
+                  </p>
+                )}
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Degraded detection (spec 2026-09-22-03). A section of its own rather
+              than more fields under "incident tracking": this is a SECOND,
+              statistical detector beside the confirmation period, not a tuning
+              knob on it — it fires on checks that never confirm an outage at
+              all. */}
+          <CollapsibleSection
+            id="degraded"
+            data-testid="section-degraded-trigger"
+            title={t("form.degraded.title")}
+            summary={degradedSummary}
+            customized={degradedCustomized}
+            defaultOpen={sectionOpen("degraded", degradedCustomized)}
+          >
+            <p className="text-xs text-muted-foreground">
+              {t("form.degraded.help")}
+            </p>
+            <label
+              htmlFor="degradedEnabled"
+              className="flex items-center justify-between gap-4 py-1 text-sm font-medium"
+            >
+              <span>
+                {t("form.degraded.enabled")}
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {t("form.degraded.enabledHelp")}
+                </span>
+              </span>
+              <Switch
+                id="degradedEnabled"
+                checked={degradedEnabled}
+                onCheckedChange={setDegradedEnabled}
+                data-testid="degraded-enabled-switch"
+              />
+            </label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="degradedFailures" className="text-sm">
+                  {t("form.degraded.failures")}
+                </Label>
+                <Input
+                  id="degradedFailures"
+                  data-testid="degraded-failures-input"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  placeholder={t("form.defaultPlaceholder", { value: 5 })}
+                  value={degradedFailures}
+                  onChange={(e) => setDegradedFailures(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("form.degraded.failuresHelp")}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="degradedFailuresWindow" className="text-sm">
+                  {t("form.degraded.failuresWindow")}
+                </Label>
+                <Input
+                  id="degradedFailuresWindow"
+                  data-testid="degraded-failures-window-input"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  placeholder={t("form.defaultPlaceholder", { value: 60 })}
+                  value={degradedFailuresWindow}
+                  onChange={(e) => setDegradedFailuresWindow(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("form.degraded.failuresWindowHelp")}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="degradedSlow" className="text-sm">
+                  {t("form.degraded.slow")}
+                </Label>
+                <Input
+                  id="degradedSlow"
+                  data-testid="degraded-slow-input"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  placeholder={t("form.defaultPlaceholder", { value: 3 })}
+                  value={degradedSlow}
+                  onChange={(e) => setDegradedSlow(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("form.degraded.slowHelp")}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="degradedSlowWindow" className="text-sm">
+                  {t("form.degraded.slowWindow")}
+                </Label>
+                <Input
+                  id="degradedSlowWindow"
+                  data-testid="degraded-slow-window-input"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  placeholder={t("form.defaultPlaceholder", { value: 6 })}
+                  value={degradedSlowWindow}
+                  onChange={(e) => setDegradedSlowWindow(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("form.degraded.slowWindowHelp")}
+                </p>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="slowThresholdMs" className="text-sm">
+                  {t("form.degraded.slowThreshold")}
+                </Label>
+                <Input
+                  id="slowThresholdMs"
+                  data-testid="slow-threshold-input"
+                  type="number"
+                  min={0}
+                  placeholder={t("form.defaultPlaceholder", { value: 0 })}
+                  value={slowThresholdMs}
+                  onChange={(e) => setSlowThresholdMs(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("form.degraded.slowThresholdHelp")}
+                </p>
+                {/* The suggestion, never an auto-fill: auto-baselining a latency
+                    threshold is an explicit non-goal, so the operator commits to
+                    the number by clicking. */}
+                {slowThresholdSuggestionMs != null && (
+                  <div
+                    className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                    data-testid="slow-threshold-suggestion"
+                  >
+                    <span>
+                      {t("form.degraded.slowThresholdSuggestion", {
+                        value: slowThresholdSuggestionMs,
+                      })}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setSlowThresholdMs(String(slowThresholdSuggestionMs))
+                      }
+                      data-testid="slow-threshold-suggestion-apply"
+                    >
+                      {t("form.degraded.slowThresholdSuggestionApply")}
+                    </Button>
+                  </div>
+                )}
+                {slowThresholdValue <= 0 && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="slow-threshold-off-notice"
+                  >
+                    {t("form.degraded.slowThresholdOff")}
                   </p>
                 )}
               </div>

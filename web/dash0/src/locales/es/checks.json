@@ -332,7 +332,30 @@
     "summarySoftDeps_one": "{{count}} suave",
     "summarySoftDeps_other": "{{count}} suaves",
     "regionsIpv6Hint": "Esta comprobación está fijada a IPv6. Las regiones cuyos workers activos informan salida IPv6 se listan primero — las demás siguen siendo seleccionables, y una región marcada como «IPv6 desconocido» simplemente aún no ha informado.",
-    "groupEmptyHint": "Todavía no tienes grupos. Un grupo es un contenedor exclusivo de checks relacionados: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno para empezar."
+    "groupEmptyHint": "Todavía no tienes grupos. Un grupo es un contenedor exclusivo de checks relacionados: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno para empezar.",
+    "degraded": {
+      "title": "Detección de degradación",
+      "help": "Un segundo detector junto al periodo de confirmación: informa de un check que falla de forma intermitente, o que responde mucho más lento de lo habitual, incluso cuando ningún fallo dura lo suficiente para confirmar una caída. Ambas reglas cuentan SONDAS, no segundos.",
+      "enabled": "Abrir incidencias de degradación",
+      "enabledHelp": "Desactivado significa simulación: las reglas se siguen evaluando y la página del check indica cuándo se habrían activado, pero no se abre nada ni se notifica a nadie.",
+      "failures": "Sondas fallidas (M)",
+      "failuresHelp": "Se activa cuando este número de las últimas N sondas ha fallado. 0 desactiva la regla de fallos.",
+      "failuresWindow": "Ventana de fallos (N sondas)",
+      "failuresWindowHelp": "Cuántas sondas recientes mira la regla de fallos. Con un periodo de un minuto, 60 sondas son alrededor de una hora.",
+      "slow": "Sondas lentas (M)",
+      "slowHelp": "Se activa cuando este número de las últimas N sondas correctas superó el umbral. 0 desactiva la regla de lentitud.",
+      "slowWindow": "Ventana de lentitud (N sondas)",
+      "slowWindowHelp": "Cuántas sondas recientes mira la regla de lentitud. Tres sondas lentas en una hora no son nada; tres seguidas son el principio de un problema.",
+      "slowThreshold": "Umbral de lentitud (ms)",
+      "slowThresholdHelp": "Una sonda correcta más lenta que esto cuenta como lenta. 0 deja la regla de lentitud desactivada.",
+      "slowThresholdOff": "La regla de lentitud está desactivada hasta que fijes un umbral: la latencia no se informa en ningún otro sitio.",
+      "slowThresholdSuggestion": "Sugerencia: {{value}} ms, alrededor del doble del p95 observado de este check.",
+      "slowThresholdSuggestionApply": "Usar la sugerencia",
+      "summaryOff": "Simulación: no se abre nada",
+      "summaryOn": "{{failures}} de {{failuresWindow}} sondas fallidas, {{slow}}",
+      "summarySlowArmed": "{{slow}} de {{slowWindow}} sondas por encima de {{threshold}} ms",
+      "summarySlowOff": "regla de lentitud desactivada"
+    }
   },
   "types": {
     "http": "HTTP",

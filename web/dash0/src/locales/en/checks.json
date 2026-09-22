@@ -332,7 +332,30 @@
     "summarySoftDeps_one": "{{count}} soft",
     "summarySoftDeps_other": "{{count}} soft",
     "regionsIpv6Hint": "This check is pinned to IPv6. Regions whose live workers report IPv6 egress are listed first — the others stay selectable, and a region marked “IPv6 unknown” has simply not reported yet.",
-    "groupEmptyHint": "You have no groups yet. A group is an exclusive bucket for related checks — it drives escalation, incident correlation and status-page rollups. Create one to get started."
+    "groupEmptyHint": "You have no groups yet. A group is an exclusive bucket for related checks — it drives escalation, incident correlation and status-page rollups. Create one to get started.",
+    "degraded": {
+      "title": "Degraded detection",
+      "help": "A second detector beside the confirmation period: it reports a check that fails intermittently, or answers far slower than usual, even when no single failure lasts long enough to confirm an outage. Both rules count PROBES, not seconds.",
+      "enabled": "Open degraded incidents",
+      "enabledHelp": "Off means dry run: the rules are still evaluated and the check page tells you when they would have fired, but nothing is opened and nobody is notified.",
+      "failures": "Failed probes (M)",
+      "failuresHelp": "Fires when this many of the last N probes failed. 0 turns the failure rule off.",
+      "failuresWindow": "Failure window (N probes)",
+      "failuresWindowHelp": "How many recent probes the failure rule looks at. At a 1-minute period, 60 probes is about an hour.",
+      "slow": "Slow probes (M)",
+      "slowHelp": "Fires when this many of the last N successful probes were slower than the threshold. 0 turns the slow rule off.",
+      "slowWindow": "Slow window (N probes)",
+      "slowWindowHelp": "How many recent probes the slow rule looks at. Three slow probes in an hour is nothing; three in a row is the leading edge of a problem.",
+      "slowThreshold": "Slow threshold (ms)",
+      "slowThresholdHelp": "A successful probe slower than this counts as slow. 0 leaves the slow rule off.",
+      "slowThresholdOff": "The slow rule is off until you set a threshold — latency is reported nowhere else.",
+      "slowThresholdSuggestion": "Suggested: {{value}} ms, about twice this check's observed p95.",
+      "slowThresholdSuggestionApply": "Use suggestion",
+      "summaryOff": "Dry run — nothing is opened",
+      "summaryOn": "{{failures}} of {{failuresWindow}} failed probes, {{slow}}",
+      "summarySlowArmed": "{{slow}} of {{slowWindow}} probes over {{threshold}} ms",
+      "summarySlowOff": "slow rule off"
+    }
   },
   "types": {
     "http": "HTTP",

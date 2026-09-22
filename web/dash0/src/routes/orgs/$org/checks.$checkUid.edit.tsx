@@ -15,7 +15,9 @@ import {
   useCheckDependencies,
   useDependencyGraph,
   useCloneCheck,
+  useResults,
 } from "@/api/hooks";
+import { suggestSlowThresholdMs } from "@/lib/slow-threshold-suggestion";
 import { diffDependencies } from "@/lib/dependency-diff";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { connectionBindingsChanged } from "@/lib/connection-bindings";
@@ -45,6 +47,18 @@ function CheckEditPage() {
   const { user: authUser } = useAuth();
   const isDemoSession = useIsDemoSession();
   const cloneCheck = useCloneCheck(org);
+  // The slow rule needs a threshold and there is deliberately no auto-baselining
+  // (spec 2026-09-22-03), so the form suggests ~2x the check's observed p95 and
+  // the operator commits to it. Read from the HOUR rollups, which is where
+  // `DurationP95` lives; a check with too little history simply gets no
+  // suggestion rather than a number invented from three probes.
+  const { data: recentRollups } = useResults(org, {
+    checkUid,
+    periodType: "hour",
+    with: "durationP95Ms",
+    size: 48,
+  });
+  const slowThresholdSuggestionMs = suggestSlowThresholdMs(recentRollups?.data);
   // refetchOnMount "always": the form below seeds its field state ONCE from
   // initialData, so it must never seed from a stale cache entry (e.g.
   // re-opening the editor right after a save, when react-query returns the
@@ -156,6 +170,7 @@ function CheckEditPage() {
       mode="edit"
       initialData={check}
       initialSection={section}
+      slowThresholdSuggestionMs={slowThresholdSuggestionMs ?? undefined}
       checkGroups={checkGroups}
       availableRegions={regionsData?.regions}
       defaultRegions={regionsData?.defaultRegions}
