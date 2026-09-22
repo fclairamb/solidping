@@ -293,6 +293,26 @@ Status pages are managed per organization from the dashboard (**Settings → Sta
 | Publication delay | Debounce before an incident goes public (default 60 s) |
 | When the incident resolves | `always` / `if_untouched` / `never` |
 
+### What a response-time point is
+
+Every point on a component's response-time chart is a **p95 over a period**, not
+a single probe, and the period depends on how old the point is:
+
+| Where on the chart | One point covers | Computed from |
+|---|---|---|
+| The recent end (the last ~26 h) | 15 minutes on a 24 h page, 1 hour on any longer one | every probe in that bin |
+| The middle | 1 hour | the hourly rollup |
+| The old end | 1 day | the daily rollup |
+
+So the whole chart is the same kind of number end to end, and the tooltip's probe
+count ("58/60") tells you how many probes the point was computed from. The newest
+point is the bin that is still open, and it moves as probes land.
+
+Before SolidPing 0.30 the recent end worked differently: it plotted individual
+probes, thinned out to fit the chart, so a point could be one arbitrary probe
+standing in for ninety minutes of monitoring. Those charts were noisier, and
+their spikes were not necessarily representative of anything.
+
 ## Branding
 
 A status page can wear your brand rather than ours.

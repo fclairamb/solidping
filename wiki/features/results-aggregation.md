@@ -48,6 +48,15 @@ Consequences every consumer relies on:
 - **Rollups carry no `output` blob** (raw failure text is gone once a bucket
   rolls up — only status, counts and duration stats survive) and no
   per-execution `worker_uid` unless the bucket had exactly one worker.
+- **`seam` is a FIFTH `period_type` value that is never persisted.**
+  `models.PeriodTypeSeam` exists only in memory: no migration knows it, and a
+  `bun` `BeforeAppendModel` hook on `models.Result` refuses any INSERT/UPDATE
+  carrying it, which covers every writer in both dialects from one place. It
+  labels a row the status page's response-time fetch **materialises on read**
+  from a database-side aggregate over raw probes — see the seam paragraph under
+  *Consumers* — and it is distinct from `raw` and `hour` because it must fold
+  like a ROLLUP (its counters are already summed) while being budgeted like the
+  raw tier it stands in for.
 
 ## The aggregation job
 
@@ -226,6 +235,52 @@ check.
 **Status pages** (`handlers/statuspages/service.go`) — hourly view builds 24
 buckets (newest = the in-progress hour, filled from raw); daily view and group
 components merge member checks per bucket.
+
+**The response-time seam is BINNED ON READ** (`fetchRecentResults`, spec
+`2026-09-22-06`). The per-component response-time chart is a series of at most
+100 points across the page's own window, and it is fed by two reads of different
+shapes:
+
+- the **rollup** half is a row fetch (`db.RecentResultsPerCheck`), because a
+  rollup row already *is* one point;
+- the **seam** — the raw probes newer than the newest rollup, bounded by
+  `uptimebar.RawTierStart` — is an **aggregate**
+  (`db.AggregateResponseTimeBins`, `internal/db/{postgres,sqlite}/response_time_bins.go`):
+  one row per `(check, region, bin)` with a probe count, an up count, p95 / avg /
+  min / max and the per-status mix. `seamBinWidth` picks the bin: the smallest of
+  1/2/5/10/15/30 min or 1 h that is at least `windowSpan / 100`, clamped to
+  `[1 min, 1 h]` — 15 min on a 24 h page, 1 h on anything longer, never coarser
+  than the `hour` rollups it sits next to. Each bin is then materialised as a
+  `period_type = seam` `*models.Result` and merged into the same series.
+
+Two things about it are load-bearing:
+
+1. **The bin grid is the same grid.** It reuses the availability aggregate's bin
+   expression, so it is aligned to `time.Truncate`'s 0001-01-01 origin like every
+   other binned read.
+2. **The p95 is NEAREST-RANK, at exactly the aggregation job's index.** The job's
+   `calculateRawMetrics` sorts the bucket's durations and takes the sample at
+   `int(float64(n) * 0.95)`; the SQL selects the row at rank
+   `(n * 19) / 20 + 1` (`models.ResponseTimeBinP95Index` + 1, integer arithmetic
+   in both dialects — Postgres would evaluate `n * 0.95` in exact NUMERIC, and a
+   float product landing a hair under a whole number shifts the rank). Postgres'
+   `percentile_cont` *interpolates* and is deliberately not used. The equality is
+   pinned by `TestRawMetricsP95UsesTheSharedNearestRankIndex`, against the job's
+   own helper. It matters because a seam bin is eventually **replaced** by the
+   hour rollup covering the same probes: if the two disagreed, the chart would
+   visibly step every time the aggregation job ran.
+
+The classification follows the same logic: a bin's displayed status comes from
+`uptimebar.DominantStatus` — the aggregation job's own promotion rule, moved to a
+shared home by this spec and still called by the job — over the mix the SQL
+returns, so a bin with one warning in it reads `degraded` exactly as its future
+hour rollup will.
+
+What this replaced: the seam was fetched as **rows**, ~1 337 raw probes per check
+(292 843 for a 200-check 7-day page), and `subsampleRows` kept roughly one in
+ninety and plotted them as individual probes. That was both the cost (2.4–3.0 s
+inside the request) and a correctness problem — one probe every ninety minutes is
+not a response-time series.
 
 **Badges** (`handlers/badges/service.go`) — same engine for the availability
 bars; separate raw-only queries for latest-status and response-time parts.
