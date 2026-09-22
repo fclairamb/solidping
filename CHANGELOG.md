@@ -8,6 +8,15 @@
 * **discord:** **pressing Acknowledge on a Discord alert now posts the acknowledgment into the incident's thread, not just the channel.** The alert card in the channel was rewritten in place ("✅ #100 … acknowledged by @you") and the button-press handler also posted a follow-up — but into the alerts channel, never into the incident's thread, even though the comment that opened the thread and every later follow-up ("Incident resolved", …) land there. The acknowledgment notice now resolves the incident's thread from the same mapping the notification sender wrote when the alert was posted — un-archiving it first, the way a late resolve already had to — so the conversation about the incident carries its own acknowledgment. An incident with no thread (thread creation denied, or a DM destination) still gets the notice next to the alert, as before
 
 
+## [0.31.1](https://github.com/fclairamb/solidping/compare/v0.31.0...v0.31.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* **cli:** publish sp as bare, version-free binaries and add a Windows build ([#417](https://github.com/fclairamb/solidping/issues/417)) ([a6ed0e1](https://github.com/fclairamb/solidping/commit/a6ed0e1cab03dff2f6b6b4d3bb7ae1e43bb9e5ad))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.113.2 ([#416](https://github.com/fclairamb/solidping/issues/416)) ([7e24d89](https://github.com/fclairamb/solidping/commit/7e24d895b3d57df129b05b1f4769549af432eba4))
+* **discord:** post the button-press acknowledgment into the incident's thread ([#420](https://github.com/fclairamb/solidping/issues/420)) ([4722147](https://github.com/fclairamb/solidping/commit/47221474a2360d590d1febfb11ad12041b5c238e))
+
 ## [0.31.0](https://github.com/fclairamb/solidping/compare/v0.30.0...v0.31.0) (2026-09-21)
 
 
