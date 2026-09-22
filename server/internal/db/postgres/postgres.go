@@ -2025,6 +2025,14 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
+		// Apply the degraded dry-run filter (spec 2026-09-22-03): the checks the
+		// evaluator would have flagged. Applied to BOTH queries, or the
+		// pagination total would disagree with the rows.
+		if filter.WouldHaveFired {
+			query = query.Where("degraded_would_fire_at IS NOT NULL")
+			countQuery = countQuery.Where("degraded_would_fire_at IS NOT NULL")
+		}
+
 		// Apply cursor (keyset) — composite for sort=group, two-part otherwise.
 		query = applyChecksCursor(query, filter)
 
@@ -2165,6 +2173,43 @@ func applyAdaptiveAndIncidentTrackingPg(
 	}
 	if update.RecoveryPeriodSeconds != nil {
 		query = query.Set("recovery_period_seconds = ?", *update.RecoveryPeriodSeconds)
+	}
+
+	return applyDegradedFieldsPg(query, update)
+}
+
+// applyDegradedFieldsPg sets the degraded-detection configuration and the two
+// evaluator-owned state columns (spec 2026-09-22-03). Every one of them is
+// explicitly pointer-gated: a PATCH that does not mention degraded_failures must
+// not rewrite it, and the evaluator's stamp writes must not disturb the config.
+func applyDegradedFieldsPg(query *bun.UpdateQuery, update *models.CheckUpdate) *bun.UpdateQuery {
+	if update.DegradedFailures != nil {
+		query = query.Set("degraded_failures = ?", *update.DegradedFailures)
+	}
+	if update.DegradedFailuresWindow != nil {
+		query = query.Set("degraded_failures_window = ?", *update.DegradedFailuresWindow)
+	}
+	if update.DegradedSlow != nil {
+		query = query.Set("degraded_slow = ?", *update.DegradedSlow)
+	}
+	if update.DegradedSlowWindow != nil {
+		query = query.Set("degraded_slow_window = ?", *update.DegradedSlowWindow)
+	}
+	if update.SlowThresholdMs != nil {
+		query = query.Set("slow_threshold_ms = ?", *update.SlowThresholdMs)
+	}
+	if update.DegradedEnabled != nil {
+		query = query.Set("degraded_enabled = ?", *update.DegradedEnabled)
+	}
+
+	if update.ClearDegradedWouldFireAt {
+		query = query.Set("degraded_would_fire_at = NULL")
+	} else if update.DegradedWouldFireAt != nil {
+		query = query.Set("degraded_would_fire_at = ?", *update.DegradedWouldFireAt)
+	}
+
+	if update.DegradedEvaluatedAt != nil {
+		query = query.Set("degraded_evaluated_at = ?", *update.DegradedEvaluatedAt)
 	}
 
 	return query
@@ -5300,6 +5345,10 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 
 	if update.AutoResolve != nil {
 		query = query.Set("auto_resolve = ?", *update.AutoResolve)
+	}
+
+	if update.PublishDegraded != nil {
+		query = query.Set("publish_degraded = ?", *update.PublishDegraded)
 	}
 
 	query = applyStatusPageAccessColumns(query, update)

@@ -1151,6 +1151,16 @@ type Service interface {
 	// oldest-evaluated first so a large install still makes progress under a
 	// bounded per-sweep limit.
 	ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error)
+	// ListChecksForDegradedEval is the degraded evaluator's work queue (spec
+	// 2026-09-22-03): every enabled, non-internal, live check, oldest-evaluated
+	// first so a bounded per-sweep limit still gives every check a turn.
+	// `degraded_enabled` is deliberately NOT a filter — it gates opening an
+	// incident, not evaluating, and the dry run has to sweep disabled checks in
+	// order to stamp them.
+	ListChecksForDegradedEval(ctx context.Context, limit int) ([]*models.Check, error)
+	// FindActiveDegradedIncident returns the open degraded incident for a check,
+	// if any. sql.ErrNoRows when there is none.
+	FindActiveDegradedIncident(ctx context.Context, checkUID string) (*models.Incident, error)
 	// FindActiveBurnIncident returns the open burn incident for one
 	// (SLO, policy) pair, if any. sql.ErrNoRows when there is none.
 	FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error)
