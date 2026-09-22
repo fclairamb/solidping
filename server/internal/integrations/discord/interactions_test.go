@@ -52,7 +52,7 @@ func (f *fakeIncidents) AcknowledgeIncidentFromDiscord(
 		title = "acme api is down"
 	}
 
-	return &models.Incident{UID: incidentUID, Number: 42, Title: &title}, nil
+	return &models.Incident{UID: incidentUID, OrganizationUID: orgUID, Number: 42, Title: &title}, nil
 }
 
 func (f *fakeIncidents) GetIncidentByUID(
@@ -90,6 +90,19 @@ func (f *fakeIncidents) AddCommentFromDiscordCommand(
 func installedService(t *testing.T) (context.Context, *Service, *fakeIncidents, string) {
 	t.Helper()
 
+	ctx, svc, incidents, orgUID, _ := installedServiceWithDiscord(t)
+
+	return ctx, svc, incidents, orgUID
+}
+
+// installedServiceWithDiscord is installedService, plus the fake Discord the
+// service's bot client points at, so a test can assert on the messages the
+// flow posted (e.g. where the acknowledgment notice lands).
+func installedServiceWithDiscord(t *testing.T) (
+	context.Context, *Service, *fakeIncidents, string, *fakeDiscord,
+) {
+	t.Helper()
+
 	ctx, svc, fake := setupDiscordService(t)
 
 	incidents := &fakeIncidents{}
@@ -106,7 +119,7 @@ func installedService(t *testing.T) (context.Context, *Service, *fakeIncidents, 
 
 	require.NoError(t, svc.SetDefaultChannel(ctx, fake.guild.ID, "C-ALERTS", false))
 
-	return ctx, svc, incidents, org.UID
+	return ctx, svc, incidents, org.UID, fake
 }
 
 // seedCheck creates a check so incidents can reference it, and returns its uid.
@@ -194,6 +207,80 @@ func TestDispatchInteraction_AcknowledgeButton(t *testing.T) {
 	// The embeds key, by contrast, must stay ABSENT: omitting it preserves the
 	// incident card, while sending `[]` would erase it.
 	r.NotContains(string(encoded), `"embeds"`)
+}
+
+// TestDispatchInteraction_AcknowledgeNoticePostsInTheThread pins where the
+// acknowledgment notice lands: the incident's thread — the conversation the
+// resolved and unacknowledged follow-ups join — not the channel the button
+// lives in. The thread is resolved from the forward incident→thread state
+// entry the notification sender wrote when it posted the alert.
+func TestDispatchInteraction_AcknowledgeNoticePostsInTheThread(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _, orgUID, fake := installedServiceWithDiscord(t)
+
+	// The forward entry the notification sender would have written when the
+	// alert was posted: alert message in the alerts channel, thread opened off
+	// it and recorded alongside.
+	r.NoError(svc.db.SetStateEntry(ctx, &orgUID,
+		IncidentThreadStateKey("inc-1"),
+		&models.JSONMap{
+			IncidentStateKeyChannelID: "C-ALERTS",
+			IncidentStateKeyMessageID: "M-1",
+			IncidentStateKeyThreadID:  "T-INC-1",
+		}, nil))
+
+	_, err := DispatchInteraction(ctx, svc, &Interaction{
+		Type:      InteractionTypeMessageComponent,
+		GuildID:   "G-ACME",
+		ChannelID: "C-ALERTS",
+		Member:    &InteractionMember{User: &User{ID: "U-ALICE", Username: "alice"}, Nick: "alice"},
+		Message:   &InteractionMessage{ID: "M-1", ChannelID: "C-ALERTS"},
+		Data:      &InteractionData{CustomID: BuildCustomID(ActionAcknowledge, "inc-1"), ComponentType: 2},
+	})
+	r.NoError(err)
+
+	var threadNotices []postedMessage
+	for _, msg := range fake.messages() {
+		if content, _ := msg.Body["content"].(string); strings.Contains(content, "acknowledged the incident") {
+			threadNotices = append(threadNotices, msg)
+		}
+	}
+
+	r.Len(threadNotices, 1, "the acknowledgment notice must be posted exactly once")
+	r.Equal("T-INC-1", threadNotices[0].ChannelID,
+		"the acknowledgment notice must go into the incident's thread, not the alerts channel")
+}
+
+// TestDispatchInteraction_AcknowledgeNoticeFallsBackToTheChannel pins the
+// no-thread fallback: with no recorded thread (thread creation denied at post
+// time, or a DM destination) the notice still lands next to the alert rather
+// than vanishing.
+func TestDispatchInteraction_AcknowledgeNoticeFallsBackToTheChannel(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, _, _, fake := installedServiceWithDiscord(t)
+
+	_, err := DispatchInteraction(ctx, svc, &Interaction{
+		Type:      InteractionTypeMessageComponent,
+		GuildID:   "G-ACME",
+		ChannelID: "C-ALERTS",
+		Member:    &InteractionMember{User: &User{ID: "U-ALICE", Username: "alice"}, Nick: "alice"},
+		Message:   &InteractionMessage{ID: "M-1", ChannelID: "C-ALERTS"},
+		Data:      &InteractionData{CustomID: BuildCustomID(ActionAcknowledge, "inc-1"), ComponentType: 2},
+	})
+	r.NoError(err)
+
+	var notices []string
+	for _, msg := range fake.messages() {
+		if content, _ := msg.Body["content"].(string); strings.Contains(content, "acknowledged the incident") {
+			notices = append(notices, msg.ChannelID)
+		}
+	}
+
+	r.Equal([]string{"C-ALERTS"}, notices)
 }
 
 // TestDispatchInteraction_AcknowledgeFromUnknownGuildIsRefused proves the

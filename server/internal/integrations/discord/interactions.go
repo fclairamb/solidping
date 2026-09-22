@@ -289,7 +289,7 @@ func acknowledgeFromInteraction(
 
 	// Announce it in the incident's thread so the acknowledgment is part of the
 	// conversation rather than a private confirmation only the acker sees.
-	postAcknowledgmentNotice(ctx, svc, interaction, userID)
+	postAcknowledgmentNotice(ctx, svc, interaction, incident, userID)
 
 	return InteractionResponse{
 		Type: InteractionCallbackUpdateMessage,
@@ -385,9 +385,17 @@ func ackOrgUID(
 }
 
 // postAcknowledgmentNotice posts "<@user> acknowledged the incident" into the
-// incident's thread. Best-effort: the acknowledgment already succeeded.
+// incident's thread — the same thread the notification sender opened for the
+// alert, resolved from the forward incident→thread state entry the sender
+// wrote at post time. Resolved and unacknowledged follow-ups land in that
+// thread too, so the acknowledgment belongs there; posting into the channel
+// the button lives in (where the alert card itself is) is only the fallback
+// for an incident with no recorded thread — thread creation denied, or a DM
+// destination, which can never have one.
+//
+// Best-effort: the acknowledgment already succeeded.
 func postAcknowledgmentNotice(
-	ctx context.Context, svc *Service, interaction *Interaction, userID string,
+	ctx context.Context, svc *Service, interaction *Interaction, incident *models.Incident, userID string,
 ) {
 	if interaction.Message == nil || interaction.Message.ID == "" {
 		return
@@ -398,16 +406,32 @@ func postAcknowledgmentNotice(
 		return
 	}
 
-	channelID := interaction.ChannelID
-	if channelID == "" {
-		channelID = interaction.Message.ChannelID
+	target := interaction.ChannelID
+	if target == "" {
+		target = interaction.Message.ChannelID
 	}
 
-	if channelID == "" {
+	if target == "" {
 		return
 	}
 
-	if _, err := client.CreateMessage(ctx, channelID, &Message{
+	if entry, entryErr := svc.db.GetStateEntry(
+		ctx, &incident.OrganizationUID, IncidentThreadStateKey(incident.UID),
+	); entryErr == nil && entry != nil && entry.Value != nil {
+		if threadID, _ := (*entry.Value)[IncidentStateKeyThreadID].(string); threadID != "" {
+			target = threadID
+
+			// A thread Discord auto-archived (inactivity) rejects new posts:
+			// un-archive first, the same dance the notification sender's
+			// postThreadReply does for every follow-up.
+			if err := client.UnarchiveThread(ctx, target); err != nil {
+				slog.WarnContext(ctx, "Could not un-archive the Discord incident thread for the acknowledgment notice",
+					"incident_uid", incident.UID, "thread_id", target, "error", err)
+			}
+		}
+	}
+
+	if _, err := client.CreateMessage(ctx, target, &Message{
 		Content:         fmt.Sprintf("<@%s> acknowledged the incident", userID),
 		Components:      []Component{},
 		AllowedMentions: &AllowedMentions{Parse: []string{}},

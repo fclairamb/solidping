@@ -68,11 +68,9 @@ test.describe("Badges", () => {
     // The builder is reached from the check it belongs to, not from a global
     // sidebar entry.
     await page.goto(`${DASH_BASE}/orgs/test/checks/${check.uid}`);
-    await page.waitForLoadState("networkidle");
     await page.getByLabel("Badges").click();
 
     await page.waitForURL(`**${badgesUrl(check.uid)}`);
-    await page.waitForLoadState("networkidle");
 
     // Verify page heading
     await expect(
@@ -112,7 +110,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
 
     // Verify preview appears
     await expect(page.getByTestId("badge-preview")).toBeVisible({
@@ -146,7 +143,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -178,7 +174,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -201,7 +196,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -233,7 +227,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     const img = page.getByTestId("badge-preview");
     await expect(img).toBeVisible({ timeout: 10000 });
 
@@ -268,7 +261,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -293,7 +285,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -313,7 +304,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -333,7 +323,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -351,7 +340,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -387,7 +375,6 @@ test.describe("Badges", () => {
         "?components=availability&period=7d&style=flat-square&label=My+Badge"
       )
     );
-    await page.waitForLoadState("networkidle");
 
     // Availability should be checked
     await expect(page.getByTestId("badge-component-availability")).toBeChecked();
@@ -424,7 +411,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -454,7 +440,6 @@ test.describe("Badges", () => {
     await page.goto(
       badgesUrl(check.uid, "?components=availability&period=7d&style=flat-square")
     );
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -489,7 +474,6 @@ test.describe("Badges", () => {
 
     // Enable uptime-bar so the width input is visible
     await page.goto(badgesUrl(check.uid, "?components=status,uptime-bar"));
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -526,7 +510,6 @@ test.describe("Badges", () => {
     const check = await createCheck(page, token, checkName);
 
     await page.goto(badgesUrl(check.uid));
-    await page.waitForLoadState("networkidle");
 
     const header = page.locator("header");
 
@@ -556,7 +539,6 @@ test.describe("Badges", () => {
     await page.goto(
       badgesUrl(check.uid, "?components=status,uptime-bar,response-time-graph")
     );
-    await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview")).toBeVisible({
       timeout: 10000,
     });
@@ -589,7 +571,6 @@ test.describe("Badges", () => {
       `${DASH_BASE}/orgs/test/badges?check=${target.slug}&components=availability&period=7d`
     );
     await page.waitForURL(`**${badgesUrl(target.uid)}*`, { timeout: 15000 });
-    await page.waitForLoadState("networkidle");
 
     // The slug resolved to the canonical uid path...
     expect(new URL(page.url()).pathname).toBe(
@@ -623,7 +604,6 @@ test.describe("Badges", () => {
     // A uid deep link resolves identically to the slug case.
     await page.goto(`${DASH_BASE}/orgs/test/badges?check=${target.uid}`);
     await page.waitForURL(`**${badgesUrl(target.uid)}`, { timeout: 15000 });
-    await page.waitForLoadState("networkidle");
 
     expect(new URL(page.url()).pathname).toBe(
       `${DASH_BASE}/orgs/test/checks/${target.uid}/badges`
@@ -641,7 +621,6 @@ test.describe("Badges", () => {
 
     await page.goto(`${DASH_BASE}/orgs/test/badges`);
     await page.waitForURL(`**${DASH_BASE}/orgs/test/checks`, { timeout: 15000 });
-    await page.waitForLoadState("networkidle");
 
     expect(new URL(page.url()).pathname).toBe(`${DASH_BASE}/orgs/test/checks`);
     // No builder is rendered by the legacy route — it only redirects.
@@ -655,7 +634,6 @@ test.describe("Badges", () => {
 
     const missing = `does-not-exist-${Date.now()}`;
     await page.goto(badgesUrl(missing));
-    await page.waitForLoadState("networkidle");
 
     // The route's 404: the not-found alert, no preview, and no redirect away.
     await expect(page.getByTestId("badge-check-not-found")).toBeVisible({
@@ -675,7 +653,6 @@ test.describe("Badges", () => {
     const missing = `does-not-exist-${Date.now()}`;
     await page.goto(`${DASH_BASE}/orgs/test/badges?check=${missing}`);
     await page.waitForURL(`**${badgesUrl(missing)}`, { timeout: 15000 });
-    await page.waitForLoadState("networkidle");
 
     // One not-found state, owned by the builder route — the legacy URL has
     // none of its own.
