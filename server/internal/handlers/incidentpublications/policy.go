@@ -121,6 +121,16 @@ func (s *Service) eligiblePages(ctx context.Context, incident *models.Incident) 
 			continue
 		}
 
+		// A degraded incident (spec 2026-09-22-03) needs its own opt-in, which is
+		// false on every page including new ones. "7 of the last 60 probes failed,
+		// currently up" is an internal operations signal; a page that agreed to
+		// announce outages has not agreed to announce intermittence, and this
+		// check comes AFTER the auto-publish gate so turning auto-publish off
+		// still silences everything.
+		if incident.Kind == models.IncidentKindDegraded && !page.PublishDegraded {
+			continue
+		}
+
 		seen[target.PageUID] = struct{}{}
 
 		name := ""

@@ -1145,6 +1145,11 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	// normal ordering (spec 2026-08-24-15), so re-evaluate them now.
 	s.rollUpExistingChildren(ctx, check, incident, incident.StartedAt)
 
+	// A real outage supersedes any open degraded incident on the same check: the
+	// degraded one resolves as `escalated` and this incident carries the
+	// provenance pointer (spec 2026-09-22-03). No kind mutation, no promotion.
+	s.resolveDegradedForOutage(ctx, incident)
+
 	s.publishOpened(ctx, incident)
 
 	return nil
@@ -1374,6 +1379,10 @@ func (s *Service) reopenIncident(
 	// which still holds the ORIGINAL onset — is the correlation anchor.
 	s.rollUpExistingChildren(ctx, check, incident, result.PeriodStart)
 
+	// A relapse is a real outage onset too, so it supersedes any degraded
+	// incident that opened while this one was resolved.
+	s.resolveDegradedForOutage(ctx, incident)
+
 	s.publishReopened(ctx, incident)
 
 	return nil
@@ -1466,6 +1475,16 @@ func (s *Service) queueLifecycleNotifications(
 			return nil
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
+
+		// A degraded incident notifies but never PAGES (spec 2026-09-22-03,
+		// resolved open question 2). Its wording is required to read differently
+		// from an outage — "people mute both" otherwise — and routing it through
+		// the check's escalation policy, which may wake on-call, would undo that
+		// on the only surface where it matters. Channel fan-out above already
+		// ran, so this is notify-only, not silent.
+		if incident.Kind == models.IncidentKindDegraded {
+			return nil
+		}
 
 		// Escalation policy fan-out: only on initial open. Resolved /
 		// reopened don't start a new paging cycle (resolved is final;
