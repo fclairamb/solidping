@@ -251,18 +251,18 @@ func (s *Service) setCustomDomain(
 		State: models.CustomDomainStatePending,
 	}
 
-	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
+	// The page's public URL lives in the summary payload (page.url), so a
+	// domain change evicts — otherwise the summary keeps advertising the old
+	// hostname, or the path-based URL the page has just stopped using.
+	if writeErr := s.writeStatusPageCustomDomainRow(
+		ctx, WritePathSetCustomDomain, page.UID, update,
+	); writeErr != nil {
 		if isUniqueViolation(writeErr) {
 			return ErrCustomDomainTaken
 		}
 
 		return writeErr
 	}
-
-	// The page's public URL lives in the summary payload (page.url), so a
-	// domain change has to evict — otherwise the summary keeps advertising the
-	// old hostname, or the path-based URL the page has just stopped using.
-	s.invalidatePageMemo(WritePathSetCustomDomain, page.UID)
 
 	// Moving to a different hostname leaves the previous one unmapped, so drop
 	// its TLS material the same way clearing does. The unchanged-domain case
@@ -278,11 +278,11 @@ func (s *Service) clearCustomDomain(ctx context.Context, page *models.StatusPage
 		return nil
 	}
 
-	if err := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, &models.StatusPageCustomDomainUpdate{}); err != nil {
+	if err := s.writeStatusPageCustomDomainRow(
+		ctx, WritePathClearCustomDomain, page.UID, &models.StatusPageCustomDomainUpdate{},
+	); err != nil {
 		return err
 	}
-
-	s.invalidatePageMemo(WritePathClearCustomDomain, page.UID)
 
 	// Drop the certificate and private key too. The edge already refuses to
 	// serve a host with no mapping, so this is not what stops the domain
@@ -327,13 +327,13 @@ func (s *Service) VerifyCustomDomain(
 	now := time.Now()
 	update, hardDemoted := customDomainVerifyUpdate(page, &diag, now)
 
-	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
-		return StatusPageResponse{}, writeErr
-	}
-
 	// Verification is what promotes the custom domain into the summary's
 	// page.url — and a demotion is what takes it back out.
-	s.invalidatePageMemo(WritePathVerifyCustomDomain, page.UID)
+	if writeErr := s.writeStatusPageCustomDomainRow(
+		ctx, WritePathVerifyCustomDomain, page.UID, update,
+	); writeErr != nil {
+		return StatusPageResponse{}, writeErr
+	}
 
 	// A hard demotion reached by clicking Verify takes the page just as dark as
 	// one the sweep reaches on its own, so it alerts identically. Requirement 4

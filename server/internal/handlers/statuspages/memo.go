@@ -127,9 +127,11 @@ type memoEntry struct {
 // pageMemo is the TTL-bound map plus the singleflight group that collapses
 // concurrent misses.
 //
-// A nil *pageMemo is usable and simply computes through: the MCP wiring and the
-// tests that build a Service literal must keep working without knowing this
-// exists.
+// A nil *pageMemo is usable and simply computes through, so a Service built as a
+// struct literal (tests) keeps working without knowing this exists. Every
+// NewService gets a real one — including the MCP surface's own Service, which is
+// why that one is pointed at the HTTP server's memo in server.go (SharePageMemo)
+// rather than left to evict a map nobody reads.
 type pageMemo struct {
 	mu      sync.Mutex
 	entries map[memoKey]memoEntry

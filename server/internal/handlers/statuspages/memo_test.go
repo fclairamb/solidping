@@ -531,7 +531,7 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 			},
 		},
 		{
-			path: WritePathSelectorReconcile,
+			path: WritePathSelectorMaterialize,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
 				t.Helper()
 
@@ -703,6 +703,15 @@ func bodyCallsAny(body *ast.BlockStmt, names []string) bool {
 // TestPageMemo_SingleflightCollapsesConcurrentMisses is the incident load shape:
 // everybody opens the page at once, on a cold memo, and the database sees ONE
 // computation.
+//
+// The barrier matters. A first draft released the computation as soon as it
+// started, which made the assertion depend on all fifty goroutines having been
+// scheduled by then — it passed, then failed at 4 computations when unrelated
+// work shifted the timing. Singleflight only collapses callers that arrive while
+// the flight is open, so the flight is now held open until every caller has
+// entered, plus a settle long enough for the last one to reach the call. A
+// caller arriving after the flight closed would simply find the stored entry, so
+// a second computation can only mean the collapsing itself broke.
 func TestPageMemo_SingleflightCollapsesConcurrentMisses(t *testing.T) {
 	t.Parallel()
 
@@ -711,11 +720,12 @@ func TestPageMemo_SingleflightCollapsesConcurrentMisses(t *testing.T) {
 	memo := newPageMemo()
 	key := pageViewKey("org", "page", AllViewOptions())
 
-	release := make(chan struct{})
-
-	var computations atomic.Int64
-
 	const callers = 50
+
+	var (
+		entered      atomic.Int64
+		computations atomic.Int64
+	)
 
 	results := make([]StatusPageResponse, callers)
 	errs := make([]error, callers)
@@ -728,19 +738,20 @@ func TestPageMemo_SingleflightCollapsesConcurrentMisses(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 
+			entered.Add(1)
+
 			results[idx], errs[idx] = memoDo(memo, key, func() (StatusPageResponse, error) {
 				computations.Add(1)
-				<-release
+
+				// Hold the flight open until every caller is in.
+				waitFor(t, func() bool { return entered.Load() == callers })
+				time.Sleep(50 * time.Millisecond)
 
 				return StatusPageResponse{UID: "computed"}, nil
 			})
 		}(i)
 	}
 
-	// Let every goroutine pile onto the same key before the one computation is
-	// allowed to finish. Without singleflight this is fifty computations.
-	waitFor(t, func() bool { return computations.Load() >= 1 })
-	close(release)
 	wg.Wait()
 
 	r.Equal(int64(1), computations.Load(), "fifty concurrent misses must cost one computation")
@@ -947,4 +958,181 @@ func TestPageMemo_KioskWarmedMemoDoesNotOpenAPrivatePage(t *testing.T) {
 	r.NoError(err)
 	r.Zero(counting.computeReads())
 	r.Equal(warm, again)
+}
+
+// --- The write choke points ---
+
+// statusPageWritePrefixes are the db.Service verbs that mutate a status page or
+// anything under it.
+//
+//nolint:gochecknoglobals // a declarative table for the scan below
+var statusPageWritePrefixes = []string{"Create", "Update", "Delete", "Reorder", "SoftDelete"}
+
+// TestPageMemoWrites_NoDirectStatusPageWrites is the completeness mechanism the
+// spec actually asked for, and the one the first version of this change did not
+// have.
+//
+// The first version listed the write sites in a table and asserted each one
+// still evicted. That catches a deleted eviction. It does NOT catch a write path
+// nobody added to the table — and one existed: clearDefaultStatusPage demoted
+// the previous default page's `isDefault`, which is a public field, on a page
+// the caller never named, and evicted nothing.
+//
+// So the rule is now structural: no production function in this package may call
+// a status-page row write on s.db unless it is one of the choke-point wrappers
+// in memo_writes.go, each of which performs the write and evicts. A new write
+// path therefore cannot reach the database without naming the page it changed,
+// and the wrapper does the rest.
+func TestPageMemoWrites_NoDirectStatusPageWrites(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	allowed := make(map[string]bool, len(PageMemoWriteWrappers))
+	for _, name := range PageMemoWriteWrappers {
+		allowed[name] = true
+	}
+
+	files, err := filepath.Glob("*.go")
+	r.NoError(err)
+	r.NotEmpty(files)
+
+	offenders := make([]string, 0)
+	wrappersSeen := make(map[string]bool, len(allowed))
+
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		fset := token.NewFileSet()
+
+		file, parseErr := parser.ParseFile(fset, name, nil, parser.SkipObjectResolution)
+		r.NoError(parseErr)
+
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+
+			writes := statusPageDBWrites(fn.Body)
+			if len(writes) == 0 {
+				continue
+			}
+
+			if allowed[fn.Name.Name] {
+				wrappersSeen[fn.Name.Name] = true
+
+				continue
+			}
+
+			offenders = append(offenders,
+				name+":"+fn.Name.Name+" calls "+strings.Join(writes, ", "))
+		}
+	}
+
+	r.Empty(offenders,
+		"these functions write a status-page row without going through a memo-evicting "+
+			"choke point from memo_writes.go — every such write has to name the page it "+
+			"changes so the page's memoized public view can be evicted:\n%s",
+		strings.Join(offenders, "\n"))
+
+	// The other direction: a wrapper that no longer performs its write is a
+	// wrapper the list is lying about.
+	for _, name := range PageMemoWriteWrappers {
+		r.True(wrappersSeen[name],
+			"%s is listed as a write choke point but issues no status-page row write", name)
+	}
+}
+
+// statusPageDBWrites returns the `s.db.X` status-page write calls a function
+// body makes.
+func statusPageDBWrites(body *ast.BlockStmt) []string {
+	found := make([]string, 0)
+
+	ast.Inspect(body, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+
+		method, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+
+		// Match `<something>.db.Method(...)`.
+		receiver, ok := method.X.(*ast.SelectorExpr)
+		if !ok || receiver.Sel.Name != "db" {
+			return true
+		}
+
+		if isStatusPageWrite(method.Sel.Name) {
+			found = append(found, "s.db."+method.Sel.Name)
+		}
+
+		return true
+	})
+
+	return found
+}
+
+// isStatusPageWrite reports whether a db.Service method name is a mutating
+// status-page call.
+func isStatusPageWrite(name string) bool {
+	if !strings.Contains(name, "StatusPage") {
+		return false
+	}
+
+	for _, prefix := range statusPageWritePrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TestPageMemo_PromotingADefaultEvictsTheDemotedPage is the regression test for
+// the write path the table missed.
+//
+// Promoting page B demotes page A. A's public body carries `isDefault`, so a
+// reader of A must stop being told it is the default the moment B takes over —
+// not up to fifteen seconds later.
+func TestPageMemo_PromotingADefaultEvictsTheDemotedPage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, counting, org := memoTestSetup(t)
+
+	isDefault := true
+
+	first, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "First", Slug: "first", IsDefault: &isDefault,
+	})
+	r.NoError(err)
+
+	second, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Second", Slug: "second",
+	})
+	r.NoError(err)
+
+	// Warm the page that IS the default, and confirm it says so.
+	warm, err := svc.ViewStatusPage(ctx, org.Slug, first.Slug, AllViewOptions())
+	r.NoError(err)
+	r.True(warm.IsDefault, "the fixture needs the first page to actually be the default")
+
+	// Promote the other one. Nothing here names the first page.
+	_, err = svc.UpdateStatusPage(ctx, org.Slug, second.UID, &UpdateStatusPageRequest{IsDefault: &isDefault})
+	r.NoError(err)
+
+	counting.reset()
+
+	demoted, err := svc.ViewStatusPage(ctx, org.Slug, first.Slug, AllViewOptions())
+	r.NoError(err)
+	r.Positive(counting.computeReads(),
+		"the demoted page's memoized view must have been evicted, not reused")
+	r.False(demoted.IsDefault,
+		"a reader of the demoted page must not still be told it is the default")
 }

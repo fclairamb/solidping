@@ -1346,7 +1346,7 @@ func (s *Service) CreateStatusPage(
 		resources[i] = models.NewStatusPageResource(section.UID, checkUID, i)
 	}
 
-	if errCreate := s.db.CreateStatusPageWithDefaultSection(ctx, page, section, resources); errCreate != nil {
+	if errCreate := s.createStatusPageRow(ctx, WritePathCreateStatusPage, page, section, resources); errCreate != nil {
 		return StatusPageResponse{}, errCreate
 	}
 
@@ -1539,11 +1539,9 @@ func (s *Service) UpdateStatusPage(
 		update.HistoryPeriod = &derived
 	}
 
-	if errUpdate := s.db.UpdateStatusPage(ctx, page.UID, &update); errUpdate != nil {
+	if errUpdate := s.writeStatusPageRow(ctx, WritePathUpdateStatusPage, page.UID, &update); errUpdate != nil {
 		return StatusPageResponse{}, errUpdate
 	}
-
-	s.invalidatePageMemo(WritePathUpdateStatusPage, page.UID)
 
 	updated, err := s.db.GetStatusPage(ctx, org.UID, page.UID)
 	if err != nil {
@@ -1648,11 +1646,9 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 		return ErrStatusPageNotFound
 	}
 
-	if delErr := s.db.DeleteStatusPage(ctx, page.UID); delErr != nil {
+	if delErr := s.deleteStatusPageRow(ctx, WritePathDeleteStatusPage, page.UID); delErr != nil {
 		return delErr
 	}
-
-	s.invalidatePageMemo(WritePathDeleteStatusPage, page.UID)
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageDeleted,
 		auditTarget(page), models.JSONMap{fieldSlug: page.Slug})
@@ -1834,11 +1830,11 @@ func (s *Service) CreateSection(
 	section := models.NewStatusPageSection(page.UID, req.Name, slug, position)
 	section.Selector = selector
 
-	if errCreate := s.db.CreateStatusPageSection(ctx, section); errCreate != nil {
+	if errCreate := s.createStatusPageSectionRow(
+		ctx, WritePathCreateSection, page.UID, section,
+	); errCreate != nil {
 		return StatusPageSectionResponse{}, errCreate
 	}
-
-	s.invalidatePageMemo(WritePathCreateSection, page.UID)
 
 	// A dynamic section must be populated by the time the operator looks at
 	// it. Best-effort: the section was created either way, and the page-view
@@ -1934,11 +1930,11 @@ func (s *Service) UpdateSection(
 		update.Selector = selector
 	}
 
-	if errUpdate := s.db.UpdateStatusPageSection(ctx, section.UID, &update); errUpdate != nil {
+	if errUpdate := s.writeStatusPageSectionRow(
+		ctx, WritePathUpdateSection, page.UID, section.UID, &update,
+	); errUpdate != nil {
 		return StatusPageSectionResponse{}, errUpdate
 	}
-
-	s.invalidatePageMemo(WritePathUpdateSection, page.UID)
 
 	updated, err := s.db.GetStatusPageSection(ctx, page.UID, section.UID)
 	if err != nil {
@@ -2019,11 +2015,11 @@ func (s *Service) DeleteSection(
 		return err
 	}
 
-	if errDelete := s.db.DeleteStatusPageSection(ctx, section.UID); errDelete != nil {
+	if errDelete := s.deleteStatusPageSectionRow(
+		ctx, WritePathDeleteSection, page.UID, section.UID,
+	); errDelete != nil {
 		return errDelete
 	}
-
-	s.invalidatePageMemo(WritePathDeleteSection, page.UID)
 
 	return nil
 }
@@ -2137,16 +2133,16 @@ func (s *Service) CreateResource(
 	// a constraint failure. Dropping the managed row hands ownership over —
 	// the reconciler then skips the check, because it is manual now.
 	if checkUID != nil {
-		if errDrop := s.dropManagedRowForCheck(ctx, section.UID, *checkUID); errDrop != nil {
+		if errDrop := s.dropManagedRowForCheck(ctx, page.UID, section.UID, *checkUID); errDrop != nil {
 			return StatusPageResourceResponse{}, errDrop
 		}
 	}
 
-	if err := s.db.CreateStatusPageResource(ctx, resource); err != nil {
+	if err := s.createStatusPageResourceRow(
+		ctx, WritePathCreateResource, page.UID, resource,
+	); err != nil {
 		return StatusPageResourceResponse{}, fmt.Errorf("failed to create resource: %w", err)
 	}
-
-	s.invalidatePageMemo(WritePathCreateResource, page.UID)
 
 	// Manual placement wins: if a selector had already materialized this check
 	// somewhere on the page, the reconcile below drops that managed row so the
@@ -2230,11 +2226,11 @@ func (s *Service) UpdateResource(
 		update.CheckGroupUID = groupUID
 	}
 
-	if errUpdate := s.db.UpdateStatusPageResource(ctx, resourceUID, &update); errUpdate != nil {
+	if errUpdate := s.writeStatusPageResourceRow(
+		ctx, WritePathUpdateResource, page.UID, resourceUID, &update,
+	); errUpdate != nil {
 		return StatusPageResourceResponse{}, errUpdate
 	}
-
-	s.invalidatePageMemo(WritePathUpdateResource, page.UID)
 
 	updated, err := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
 	if err != nil {
@@ -2287,11 +2283,11 @@ func (s *Service) ReorderResources(
 		return errManaged
 	}
 
-	if errReorder := s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs); errReorder != nil {
+	if errReorder := s.reorderStatusPageResourceRows(
+		ctx, WritePathReorderResources, page.UID, section.UID, orderedUIDs,
+	); errReorder != nil {
 		return errReorder
 	}
-
-	s.invalidatePageMemo(WritePathReorderResources, page.UID)
 
 	return nil
 }
@@ -2383,11 +2379,11 @@ func (s *Service) ReorderSections(
 		seen[uid] = struct{}{}
 	}
 
-	if errReorder := s.db.ReorderStatusPageSections(ctx, page.UID, orderedUIDs); errReorder != nil {
+	if errReorder := s.reorderStatusPageSectionRows(
+		ctx, WritePathReorderSections, page.UID, orderedUIDs,
+	); errReorder != nil {
 		return errReorder
 	}
-
-	s.invalidatePageMemo(WritePathReorderSections, page.UID)
 
 	return nil
 }
@@ -2411,11 +2407,11 @@ func (s *Service) DeleteResource(
 		return ErrResourceManagedBySelector
 	}
 
-	if err := s.db.DeleteStatusPageResource(ctx, resourceUID); err != nil {
+	if err := s.deleteStatusPageResourceRow(
+		ctx, WritePathDeleteResource, page.UID, resourceUID,
+	); err != nil {
 		return err
 	}
-
-	s.invalidatePageMemo(WritePathDeleteResource, page.UID)
 
 	// Removing the MANUAL row releases the check back to the selectors: if one
 	// of them matches it, the next reconcile re-adopts it as a managed row.
@@ -4200,18 +4196,30 @@ func (s *Service) validatePageSlugChange(
 	return nil
 }
 
+// clearDefaultStatusPage demotes whatever page is currently the org's default,
+// so the one being promoted can take the flag.
+//
+// The demoted page is a SECOND page this write changes, and its public body
+// carries `isDefault` — so it has to be evicted too, not just the page the
+// caller is promoting. It wasn't, until the write choke points made "write
+// without naming the page you changed" impossible: the demotion is the write
+// path nobody thought to list, and a reader of the old default page kept being
+// told it was the default for up to the TTL (spec 2026-09-22-09).
 func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) error {
 	pages, err := s.db.ListStatusPages(ctx, orgUID)
 	if err != nil {
 		return err
 	}
 
-	for _, p := range pages {
-		if p.IsDefault {
-			falseVal := false
-			if err := s.db.UpdateStatusPage(ctx, p.UID, &models.StatusPageUpdate{IsDefault: &falseVal}); err != nil {
-				return err
-			}
+	for _, page := range pages {
+		if !page.IsDefault {
+			continue
+		}
+
+		falseVal := false
+		if err := s.writeStatusPageRow(ctx, WritePathClearDefaultStatusPage, page.UID,
+			&models.StatusPageUpdate{IsDefault: &falseVal}); err != nil {
+			return err
 		}
 	}
 

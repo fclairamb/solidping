@@ -37,6 +37,16 @@ type PageMemoWritePath string
 
 // The status-page CRUD write paths, in this package.
 const (
+	// WritePathCreateStatusPage creates the page and its default section. There
+	// is nothing memoized for a page that did not exist a moment ago; it is here
+	// because every row write in this package goes through a choke point, and an
+	// exception is the hole the next write path slips through.
+	WritePathCreateStatusPage PageMemoWritePath = "statuspages.CreateStatusPage"
+	// WritePathClearDefaultStatusPage demotes the page that WAS the default when
+	// another is promoted. It evicts a page the caller never named — which is
+	// why it was missed until the write choke points made naming the changed
+	// page mandatory.
+	WritePathClearDefaultStatusPage PageMemoWritePath = "statuspages.clearDefaultStatusPage"
 	// WritePathUpdateStatusPage covers every page-level setting a public read
 	// reflects: name, visibility, history period, availability toggles,
 	// branding, custom CSS.
@@ -72,11 +82,23 @@ const (
 	// WritePathVerifyCustomDomain is the synchronous Verify button: it is what
 	// promotes a configured domain into page.url, and what demotes it back out.
 	WritePathVerifyCustomDomain PageMemoWritePath = "statuspages.VerifyCustomDomain"
-	// WritePathSelectorReconcile is selector materialization — the one write
-	// path that is also a READ path (maybeReconcileOnView). It evicts only when
-	// it actually wrote something, because the backstop runs on every view and
-	// an unconditional eviction there would defeat the memo entirely.
-	WritePathSelectorReconcile PageMemoWritePath = "statuspages.reconcilePage"
+	// The four selector-materialization writes. This is the one write path that
+	// is also a READ path (maybeReconcileOnView), so it must evict only when it
+	// actually wrote something — an unconditional eviction on every view of every
+	// selector-bearing page would defeat the memo entirely. That falls out of the
+	// choke points rather than being tracked: no row written, no wrapper called,
+	// nothing evicted.
+	//
+	// They are four rows rather than one for reconcilePage because reconcilePage
+	// itself writes nothing; these are the functions that do.
+	WritePathSelectorDropManagedRows PageMemoWritePath = "statuspages.dropManagedRows"
+	// WritePathSelectorReconcileSection drops a row a selector stopped matching.
+	WritePathSelectorReconcileSection PageMemoWritePath = "statuspages.reconcileSection"
+	// WritePathSelectorMaterialize creates and renumbers the managed rows.
+	WritePathSelectorMaterialize PageMemoWritePath = "statuspages.materialize"
+	// WritePathSelectorDropRowForCheck hands a check from a selector to a manual
+	// placement.
+	WritePathSelectorDropRowForCheck PageMemoWritePath = "statuspages.dropManagedRowForCheck"
 )
 
 // The brand-asset write paths, in package statuspageassets. A page's public
@@ -160,6 +182,8 @@ const (
 //
 //nolint:gochecknoglobals // a declarative table, read-only after init
 var PageMemoWritePaths = []pageMemoWritePathSite{
+	{WritePathCreateStatusPage, fileStatusPagesService, "CreateStatusPage"},
+	{WritePathClearDefaultStatusPage, fileStatusPagesService, "clearDefaultStatusPage"},
 	{WritePathUpdateStatusPage, fileStatusPagesService, "UpdateStatusPage"},
 	{WritePathDeleteStatusPage, fileStatusPagesService, "DeleteStatusPage"},
 	{WritePathCreateSection, fileStatusPagesService, "CreateSection"},
@@ -173,7 +197,10 @@ var PageMemoWritePaths = []pageMemoWritePathSite{
 	{WritePathSetCustomDomain, fileStatusPagesDomain, "setCustomDomain"},
 	{WritePathClearCustomDomain, fileStatusPagesDomain, "clearCustomDomain"},
 	{WritePathVerifyCustomDomain, fileStatusPagesDomain, "VerifyCustomDomain"},
-	{WritePathSelectorReconcile, fileStatusPagesSel, "reconcilePage"},
+	{WritePathSelectorDropManagedRows, fileStatusPagesSel, "dropManagedRows"},
+	{WritePathSelectorReconcileSection, fileStatusPagesSel, "reconcileSection"},
+	{WritePathSelectorMaterialize, fileStatusPagesSel, "materialize"},
+	{WritePathSelectorDropRowForCheck, fileStatusPagesSel, "dropManagedRowForCheck"},
 
 	{WritePathAssetUpload, fileAssetsService, "Upload"},
 	{WritePathAssetClear, fileAssetsService, "Clear"},
@@ -201,7 +228,7 @@ var PageMemoWritePaths = []pageMemoWritePathSite{
 // injected PageMemoInvalidator.
 //
 //nolint:gochecknoglobals // a declarative table, read-only after init
-var PageMemoEvictionCalls = []string{
+var PageMemoEvictionCalls = append([]string{
 	"invalidatePageMemo",
 	"Invalidate",
 	"InvalidateOrg",
@@ -213,7 +240,7 @@ var PageMemoEvictionCalls = []string{
 	"updatePublicationRow",
 	"softDeletePublicationRow",
 	"createPageStatusUpdate",
-}
+}, PageMemoWriteWrappers...)
 
 // invalidatePageMemo evicts one page's memoized views.
 //
@@ -229,6 +256,26 @@ func (s *Service) invalidatePageMemo(_ PageMemoWritePath, pageUID string) {
 // paths: they know the page UID and nothing about this package's internals.
 func (s *Service) Invalidate(pageUID string) {
 	s.memo.invalidate(pageUID)
+}
+
+// SharePageMemo points this Service at another Service's view memo.
+//
+// It exists because a process can hold more than one statuspages.Service: the
+// HTTP server builds one, and the MCP surface builds a second with its own
+// dependencies (internal/mcp.NewHandler). Each NewService starts with its own
+// memo, so without this an MCP write tool evicted a map nobody ever reads while
+// the HTTP server kept serving the page it just edited — for up to the TTL.
+//
+// One memo, one truth. pageMemo is mutex-guarded, so sharing it across services
+// in one process is safe; it is shared rather than duplicated because "which of
+// the two memos did that write evict" is not a question anybody should have to
+// ask.
+func (s *Service) SharePageMemo(other *Service) {
+	if other == nil || other.memo == nil {
+		return
+	}
+
+	s.memo = other.memo
 }
 
 // InvalidateOrg evicts every memoized view in an organization. For a write path

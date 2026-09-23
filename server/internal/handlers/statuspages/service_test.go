@@ -970,10 +970,19 @@ func TestViewStatusPage_NullRegionSeries(t *testing.T) {
 	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
 	r.NoError(err)
 
-	now := time.Now().UTC()
-	for i := 0; i < 5; i++ {
+	// Half an hour into the PREVIOUS hour, five probes a second apart.
+	//
+	// Anchored rather than relative to now: the seam bins by the hour on a 7-day
+	// page, and "now minus 0..4 minutes" straddles an hour boundary whenever the
+	// suite runs in the first four minutes of one — which made the one-point
+	// assertion below fail for four minutes out of every sixty, with a two-bin
+	// answer that was entirely correct. Anchoring puts every probe in one bin
+	// whatever the wall clock says, and keeps them in the past and inside both
+	// the 7-day window and the raw-retention window.
+	base := time.Now().UTC().Truncate(time.Hour).Add(-30 * time.Minute)
+	for i := range 5 {
 		res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
-		res.PeriodStart = now.Add(-time.Duration(i) * time.Minute)
+		res.PeriodStart = base.Add(-time.Duration(i) * time.Second)
 		// Region left nil — legacy/pre-region data.
 		r.NoError(svc.db.CreateResult(ctx, res))
 	}
@@ -988,7 +997,7 @@ func TestViewStatusPage_NullRegionSeries(t *testing.T) {
 
 	// ONE point, not six. Since spec 2026-09-22-06 the seam is binned in the
 	// database — 1 h bins on a 7-day page — so the five probes, all inside the same
-	// minute, are ONE point carrying all five. And the "created" lifecycle marker
+	// bin, are ONE point carrying all five. And the "created" lifecycle marker
 	// CreateCheck always inserts no longer rides along at all: the aggregate drops
 	// the statuses excluded from availability before binning, which is the marker
 	// phantom of spec 2026-09-21-03 A.4 disappearing at the source rather than

@@ -439,35 +439,66 @@ assembled in the handler.
 #### Invalidation
 
 Every write that changes a page's public body evicts that page's entries — both
-products, every key variant. The list is a table in code,
-`statuspages.PageMemoWritePaths`, covering `statuspages` CRUD and selector
-reconcile, `statuspageassets` upload/clear, the three custom-domain writes, the
-`incidentpublications` write paths (manual, auto-publish, auto-resolve, reopen)
-and `statusupdates` create/update/delete. Other packages reach the memo through
-a `PageMemoInvalidator` interface injected in `server.go` next to
-`SetPublicIncidentProvider`, so the compile-time dependency still points one
-way.
+products, every key variant. It is enforced structurally rather than remembered:
 
-Two tests guard the table: an end-to-end one that warms, writes and asserts the
-next read recomputed, and one that parses each row's named function and fails
-when the eviction call is gone — which is what catches a refactor in another
-package.
+- **Inside `statuspages`**, no code may call `s.db.{Create,Update,Delete,Reorder}StatusPage…`
+  directly. Every such write goes through a choke-point wrapper in
+  `memo_writes.go` that performs the write and then evicts the page it was told
+  it changed, and `TestPageMemoWrites_NoDirectStatusPageWrites` parses the
+  package and fails, naming the function, if one reaches past them. A write path
+  therefore cannot exist without naming the page whose body it changed.
+  A body-neutral write opts out loudly, with `WritePathNoPublicChange` — today
+  only kiosk-token mint and revoke, whose `HasKioskToken` never reaches a public
+  payload.
+- **`incidentpublications`** does the same thing for its own row writes
+  (`createPublicationRow` / `updatePublicationRow` / `softDeletePublicationRow` /
+  `createPageStatusUpdate`), with the notify-budget counter deliberately writing
+  through `s.db`: nothing public renders it.
+- **The other packages** (`statuspageassets`, `statusupdates`) reach the memo
+  through a `PageMemoInvalidator` interface injected in `server.go` next to
+  `SetPublicIncidentProvider`, so the compile-time dependency still points one
+  way.
 
-Not covered, knowingly: a **direct database edit** and the **custom-domain
-verification sweep** (`jobs/jobtypes/job_custom_domain_verify.go`, which writes
-through `DBService` and holds no handle on the status-pages service). Both are
-bounded by the 15 s TTL. Kiosk-token rotation, unlock-cookie changes and
-organisation renames change no body and evict nothing — the key is the page UID,
-not the slug.
+`statuspages.PageMemoWritePaths` remains the declared list of write paths, now
+covering the page/section/component CRUD, the four selector-materialization
+writes, the three custom-domain writes, `clearDefaultStatusPage`, the asset
+upload/clear, the publication paths (manual, auto-publish, auto-resolve, reopen)
+and the status-update writes. Two tests guard it: an end-to-end one that warms,
+writes and asserts the next read recomputed, and one that parses each row's named
+function and fails when the eviction is gone — which is what catches a refactor in
+another package.
+
+The choke points exist because the table alone was not enough.
+`clearDefaultStatusPage` — which demotes the page that WAS the default when
+another is promoted, changing a second page's public `isDefault` that the caller
+never named — was missed by the table and shipped a bug: a reader of the demoted
+page kept being told it was the default for up to the TTL. That write path could
+not exist today.
+
+Not covered, knowingly, all three bounded by the 15 s TTL rather than being
+leaks:
+
+1. A **direct database edit**, which no eviction could have known about.
+2. The **custom-domain verification sweep**
+   (`jobs/jobtypes/job_custom_domain_verify.go`), which writes through
+   `DBService` and holds no handle on the status-pages service.
+3. A **second process** — the memo is per process, so several API replicas each
+   warm and evict independently. Within one process there is exactly one memo:
+   the MCP surface builds its own `statuspages.Service`, and `server.go` points it
+   at the HTTP server's memo (`SharePageMemo`), so an MCP write tool evicts the
+   map the public page actually reads.
+
+Kiosk-token rotation, unlock-cookie changes and organisation renames change no
+body and evict nothing — the key is the page UID, not the slug.
 
 Metrics: `solidping_statuspage_memo_hits_total`,
 `_misses_total` and `_singleflight_shared_total`, labelled by product. Misses are
 counted per caller, so a collapsed herd reads as many misses and one
 computation.
 
-The memo is **per process**. Several API replicas each warm independently, which
-is fine at 15 s; there is no cross-replica cache and nothing authenticated is
-memoized.
+The memo is **per process** — one per process, shared by the HTTP and MCP
+services. Several API replicas each warm independently, which is fine at 15 s;
+there is no cross-replica cache and nothing authenticated is memoized.
 
 ### GET /api/v1/status-pages/:org/:slug/badge
 SVG badge (shields.io style) for the page's overall status — the static,

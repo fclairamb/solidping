@@ -288,7 +288,10 @@ func (s *Service) ReconcilePage(ctx context.Context, orgUID, pageUID string) err
 // then (spec 2026-09-22-09): this runs on the READ path too
 // (maybeReconcileOnView), so an unconditional eviction here would clear the memo
 // on every view of every selector-bearing page and leave the whole thing doing
-// nothing.
+// nothing. "Only when it wrote" needs no bookkeeping — every row write below
+// goes through a choke point that evicts (memo_writes.go), so a reconcile that
+// writes nothing touches nothing. That is why the page UID is threaded down to
+// the row writes rather than handled here.
 func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) error {
 	states, err := s.loadPageState(ctx, pageUID)
 	if err != nil {
@@ -298,14 +301,6 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 	if !needsReconcile(states) {
 		return nil
 	}
-
-	changed := false
-
-	defer func() {
-		if changed {
-			s.invalidatePageMemo(WritePathSelectorReconcile, pageUID)
-		}
-	}()
 
 	// Manual placement wins, page-wide: a check an operator put somewhere by
 	// hand is never duplicated by a selector, wherever on the page it sits.
@@ -317,20 +312,14 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 		// what removes them — skipping selector-less sections here would leave
 		// a page advertising checks under a rule that no longer exists.
 		if states[i].section.Selector == nil {
-			dropped, dropErr := s.dropManagedRows(ctx, &states[i])
-			changed = changed || dropped
-
-			if dropErr != nil {
+			if dropErr := s.dropManagedRows(ctx, pageUID, &states[i]); dropErr != nil {
 				return dropErr
 			}
 
 			continue
 		}
 
-		wrote, sectionErr := s.reconcileSection(ctx, orgUID, &states[i], claimed)
-		changed = changed || wrote
-
-		if sectionErr != nil {
+		if sectionErr := s.reconcileSection(ctx, orgUID, pageUID, &states[i], claimed); sectionErr != nil {
 			return sectionErr
 		}
 	}
@@ -359,22 +348,20 @@ func needsReconcile(states []sectionState) bool {
 
 // dropManagedRows removes every selector-owned row from a section that has no
 // selector any more. Manual rows in the same section are untouched.
-func (s *Service) dropManagedRows(ctx context.Context, state *sectionState) (bool, error) {
-	dropped := false
-
+func (s *Service) dropManagedRows(ctx context.Context, pageUID string, state *sectionState) error {
 	for _, resource := range state.resources {
 		if !resource.ManagedBySelector {
 			continue
 		}
 
-		if err := s.db.DeleteStatusPageResource(ctx, resource.UID); err != nil {
-			return dropped, err
+		if err := s.deleteStatusPageResourceRow(
+			ctx, WritePathSelectorDropManagedRows, pageUID, resource.UID,
+		); err != nil {
+			return err
 		}
-
-		dropped = true
 	}
 
-	return dropped, nil
+	return nil
 }
 
 // manualCheckUIDs collects every check the operator placed by hand anywhere on
@@ -403,11 +390,11 @@ func manualCheckUIDs(states []sectionState) map[string]struct{} {
 // selectors on one page produce no duplicate component: the earlier section
 // (by position) wins, deterministically.
 func (s *Service) reconcileSection(
-	ctx context.Context, orgUID string, state *sectionState, claimed map[string]struct{},
-) (bool, error) {
+	ctx context.Context, orgUID, pageUID string, state *sectionState, claimed map[string]struct{},
+) error {
 	desired, err := s.desiredChecks(ctx, orgUID, state.section.Selector, claimed)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	for _, checkUID := range desired {
@@ -440,25 +427,21 @@ func (s *Service) reconcileSection(
 	// dropping out of a selector is byte-for-byte the same event downstream as
 	// an operator removing it by hand — including what a past publication's
 	// affectedResources then renders.
-	changed := false
-
 	for checkUID, resource := range existing {
 		if _, keep := wanted[checkUID]; keep {
 			continue
 		}
 
-		if delErr := s.db.DeleteStatusPageResource(ctx, resource.UID); delErr != nil {
-			return changed, delErr
+		if delErr := s.deleteStatusPageResourceRow(
+			ctx, WritePathSelectorReconcileSection, pageUID, resource.UID,
+		); delErr != nil {
+			return delErr
 		}
 
 		delete(existing, checkUID)
-
-		changed = true
 	}
 
-	wrote, err := s.materialize(ctx, state.section.UID, desired, existing, maxManualPosition)
-
-	return changed || wrote, err
+	return s.materialize(ctx, pageUID, state.section.UID, desired, existing, maxManualPosition)
 }
 
 // materialize inserts the missing managed rows and renumbers the managed rows
@@ -467,25 +450,23 @@ func (s *Service) reconcileSection(
 // the database too.
 func (s *Service) materialize(
 	ctx context.Context,
+	pageUID string,
 	sectionUID string,
 	desired []string,
 	existing map[string]*models.StatusPageResource,
 	maxManualPosition int,
-) (bool, error) {
-	changed := false
-
+) error {
 	for i, checkUID := range desired {
 		position := maxManualPosition + 1 + i
 
 		resource, found := existing[checkUID]
 		if !found {
-			if err := s.db.CreateStatusPageResource(
-				ctx, models.NewManagedStatusPageResource(sectionUID, checkUID, position),
+			if err := s.createStatusPageResourceRow(
+				ctx, WritePathSelectorMaterialize, pageUID,
+				models.NewManagedStatusPageResource(sectionUID, checkUID, position),
 			); err != nil {
-				return changed, err
+				return err
 			}
-
-			changed = true
 
 			continue
 		}
@@ -495,14 +476,14 @@ func (s *Service) materialize(
 		}
 
 		update := &models.StatusPageResourceUpdate{Position: &position}
-		if err := s.db.UpdateStatusPageResource(ctx, resource.UID, update); err != nil {
-			return changed, err
+		if err := s.writeStatusPageResourceRow(
+			ctx, WritePathSelectorMaterialize, pageUID, resource.UID, update,
+		); err != nil {
+			return err
 		}
-
-		changed = true
 	}
 
-	return changed, nil
+	return nil
 }
 
 // desiredChecks resolves a selector to the ordered list of check UIDs it should
@@ -609,7 +590,7 @@ func selectorValidationError(err error) bool {
 // the same check: the two cannot coexist (a partial unique index on
 // (section_uid, check_uid) forbids it), and between the two the manual row is
 // the one that wins.
-func (s *Service) dropManagedRowForCheck(ctx context.Context, sectionUID, checkUID string) error {
+func (s *Service) dropManagedRowForCheck(ctx context.Context, pageUID, sectionUID, checkUID string) error {
 	resources, err := s.db.ListStatusPageResources(ctx, sectionUID)
 	if err != nil {
 		return err
@@ -620,7 +601,9 @@ func (s *Service) dropManagedRowForCheck(ctx context.Context, sectionUID, checkU
 			continue
 		}
 
-		if errDelete := s.db.DeleteStatusPageResource(ctx, resource.UID); errDelete != nil {
+		if errDelete := s.deleteStatusPageResourceRow(
+			ctx, WritePathSelectorDropRowForCheck, pageUID, resource.UID,
+		); errDelete != nil {
 			return errDelete
 		}
 	}

@@ -1799,6 +1799,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// page-view backstop as the safety net.
 	checksService.SetStatusPageReconciler(statusPagesService)
 	checkGroupsService.SetStatusPageReconciler(statusPagesService)
+	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
+	// far earlier in this function), and every NewService starts with its own
+	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map
+	// nobody reads and the public page serves the pre-edit body for up to
+	// statuspagecache.PageMemoTTL (spec 2026-09-22-09).
+	if s.mcpHandler != nil {
+		s.mcpHandler.ShareStatusPageMemo(statusPagesService)
+	}
+
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService

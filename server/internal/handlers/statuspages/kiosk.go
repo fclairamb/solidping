@@ -39,7 +39,10 @@ func (s *Service) GenerateKioskToken(
 		return KioskTokenResponse{}, err
 	}
 
-	if err := s.db.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{
+	// WritePathNoPublicChange: the token hash is operator state and
+	// HasKioskToken never reaches a public payload, so minting one must not
+	// throw away a hot wallboard page's memoized view (spec 2026-09-22-09).
+	if err := s.writeStatusPageRow(ctx, WritePathNoPublicChange, page.UID, &models.StatusPageUpdate{
 		KioskTokenHash: &hash,
 	}); err != nil {
 		return KioskTokenResponse{}, err
@@ -60,7 +63,9 @@ func (s *Service) RevokeKioskToken(ctx context.Context, orgSlug, identifier stri
 
 	empty := ""
 
-	return s.db.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{KioskTokenHash: &empty})
+	// Body-neutral, exactly like minting — see GenerateKioskToken.
+	return s.writeStatusPageRow(ctx, WritePathNoPublicChange, page.UID,
+		&models.StatusPageUpdate{KioskTokenHash: &empty})
 }
 
 // GenerateKioskToken handles POST

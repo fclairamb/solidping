@@ -454,8 +454,7 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 
 // TestCustomHostShellCacheControl covers the SPA shell served on a custom
 // domain, which embeds the page's name and description as OG metadata. It used
-// to send `public, max-age=60, stale-while-revalidate=30` for every resolved
-// host, including the
+// to send `public, max-age=60` for every resolved host, including the
 // password-protected ones — so a shared cache in front of a customer's status
 // domain could hand a gated page's identity to anyone who asked
 // (spec 2026-08-22-06).
