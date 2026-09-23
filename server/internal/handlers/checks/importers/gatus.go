@@ -143,7 +143,7 @@ func (c *GatusConverter) Convert(input []byte) (*ConversionResult, error) {
 // endpoint can yield extra checks when it carries certificate/domain expiration
 // conditions, which SolidPing models as dedicated ssl/domain checks.
 //
-//nolint:cyclop,funlen,exhaustive // one linear pass; the default arm rejects unmapped types
+//nolint:cyclop,funlen // one linear pass
 func (c *GatusConverter) convertEndpoint(
 	endpoint *gatusEndpoint, slugs *slugSet, warn *warnings,
 ) []checks.ExportCheck {
@@ -171,6 +171,12 @@ func (c *GatusConverter) convertEndpoint(
 
 	timeout := gatusClientTimeout(endpoint, name, warn)
 
+	// exhaustive's own ignore directive, not a golangci waiver: nolintlint
+	// flags a waiver as unused whenever exhaustive stays silent, and that
+	// depends on enum facts golangci-lint may serve from its cache, which
+	// failed CI on an unrelated change.
+	//
+	//exhaustive:ignore // the default arm rejects unmapped types
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
 		base.Config = gatusHTTPConfig(endpoint, timeout)
