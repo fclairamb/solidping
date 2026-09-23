@@ -308,6 +308,22 @@ or the SVG badge. Sets `Cache-Control` per the shared visibility rule
 active, otherwise the absolute `/s/{org}/{slug}` URL derived from the
 request host.
 
+`overallAvailabilityPct` is also present — omitted above because it is omitted
+whenever the page hides availability or nothing has reported. It is the same
+page-level mean the full view carries, computed by `summaryAvailability` from
+the same enrichment with response time forced off, so the two surfaces cannot
+disagree about it. It is **not** free: it costs the same per-bucket
+availability query the full page view pays, which is why the SVG badge (the
+hottest caller of this method, and one with nowhere to put a percentage) asks
+for the summary without it.
+
+This is the endpoint the TV wallboard reads the number from (spec
+2026-09-22-08). The board narrows its page read to `include=` and polls this
+one every 5 minutes instead, because the number is a 7- or 90-day mean that
+cannot move between two 30-second polls. That makes the wallboard three public
+reads on one visibility gate: this one, the page view, and the public incident
+history — the last of which is what the board now paints from first.
+
 ### Caching on the public surface
 
 Every public read of a status page — the page view, the summary, the SVG
