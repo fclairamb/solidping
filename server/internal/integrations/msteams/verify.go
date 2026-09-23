@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 // DefaultMetadataURL is Microsoft's Bot Framework OpenID metadata document.
@@ -173,7 +174,7 @@ func NewVerifier(appID string) *Verifier {
 	return &Verifier{
 		MetadataURL: DefaultMetadataURL,
 		AppID:       appID,
-		httpClient:  &http.Client{Timeout: metadataTimeout},
+		httpClient:  httpclientpool.NewClient(metadataTimeout),
 	}
 }
 
@@ -236,7 +237,7 @@ func (v *Verifier) fetchMetadata(ctx context.Context, metadataURL string) (*meta
 
 	client := v.httpClient
 	if client == nil {
-		client = &http.Client{Timeout: metadataTimeout}
+		client = httpclientpool.NewClient(metadataTimeout)
 	}
 
 	resp, err := client.Do(req)
