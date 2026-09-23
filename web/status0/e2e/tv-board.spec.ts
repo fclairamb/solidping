@@ -60,7 +60,9 @@ async function mock(
   overrides: Record<string, unknown>,
   incidents: unknown[] = [],
 ) {
-  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
+  // TV mode requests `?include=` (spec 2026-09-22-07) so the pattern must
+  // tolerate the query string, not just the bare path.
+  await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}*`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

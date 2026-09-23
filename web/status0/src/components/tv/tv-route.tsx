@@ -82,13 +82,25 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
   const [state, setState] = useState<TvState>("operational");
   const interval = pollIntervalMs(state);
 
+  // TV mode never renders a resource's availability bar or response-time
+  // chart (spec 2026-09-22-07) — only `overallStatus`, `activeIncidents` and
+  // the page's own check/group live status, none of which `include` gates.
+  // Narrowing to neither section skips both the ~3 MB payload and the
+  // server-side query that builds it on every 15-30s poll. This DOES mean
+  // the page-level `overallAvailabilityPct` number below is never populated
+  // either (it is gated on the `availability` section like everything else)
+  // — the board's rendering keeps handling that exactly like a page with
+  // `showAvailability` off, until spec 2026-09-22-08 decides what, if
+  // anything, TV mode shows in its place.
   const slugQuery = usePublicStatusPage(org, slug ?? "", {
     kioskToken: token,
     refetchInterval: interval,
+    include: [],
   });
   const defaultQuery = useDefaultStatusPage(slug ? "" : org, {
     kioskToken: token,
     refetchInterval: interval,
+    include: [],
   });
 
   const pageQuery = slug ? slugQuery : defaultQuery;

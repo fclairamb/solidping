@@ -822,7 +822,7 @@ It's public (no authentication), caches like the page it summarizes (see [Cachin
 
 ### Fetch less
 
-The two public page views (`GET /api/v1/status-pages/{org}/{slug}` and the default-page equivalent) accept `?include=availability,responseTime` to leave out one or both of the optional, expensive sections. A caller that renders neither the availability bar nor the response-time chart — the TV wallboard is the example: it only reads status, incidents and the page-level uptime number — can ask for `?include=` and skip both the payload and the server-side query that builds it. The parameter is omit-only: leaving it out returns exactly what every existing integration already gets, and it can never turn on a section the page's own settings have hidden.
+The two public page views (`GET /api/v1/status-pages/{org}/{slug}` and the default-page equivalent) accept `?include=availability,responseTime` to leave out one or both of the optional, expensive sections. A caller that renders neither the availability bar nor the response-time chart can ask for `?include=` and skip both the payload and the server-side query that builds it. The [TV wallboard](#tv-mode) does exactly this: it polls every 15-30s and never draws either chart, so it always requests `?include=` — the cost of that is the page-level uptime number going along with it (it lives inside the `availability` section too), which the board currently just omits, the same way it already does for a page with availability turned off. The parameter is omit-only: leaving it out returns exactly what every existing integration already gets, and it can never turn on a section the page's own settings have hidden.
 
 ## Badge
 
