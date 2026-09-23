@@ -820,6 +820,10 @@ For integrators who just want "is this service up right now?" without the full p
 
 It's public (no authentication), caches like the page it summarizes (see [Caching](#caching)), and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
 
+### Fetch less
+
+The two public page views (`GET /api/v1/status-pages/{org}/{slug}` and the default-page equivalent) accept `?include=availability,responseTime` to leave out one or both of the optional, expensive sections. A caller that renders neither the availability bar nor the response-time chart — the TV wallboard is the example: it only reads status, incidents and the page-level uptime number — can ask for `?include=` and skip both the payload and the server-side query that builds it. The parameter is omit-only: leaving it out returns exactly what every existing integration already gets, and it can never turn on a section the page's own settings have hidden.
+
 ## Badge
 
 `GET /api/v1/status-pages/{org}/{slug}/badge` returns an SVG badge showing the page's overall status — the static, script-free counterpart to the JS embed widget, for places scripts can't run (a GitHub README, a wiki, an email footer):

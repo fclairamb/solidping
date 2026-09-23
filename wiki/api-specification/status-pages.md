@@ -258,6 +258,23 @@ history. Also carries `overallStatus` and `statusCounts` — the page-level
 rollup computed server-side (see below). Sets `Cache-Control` per the shared
 visibility rule described in **Caching on the public surface** below.
 
+Both this route and the default-page route above accept `?include=` (spec
+2026-09-22-07) to leave out one or both of the expensive optional sections —
+on a 200-resource page the full payload runs ~3.2 MB uncompressed, almost all
+of it `availability`/`responseTime` history a caller like the TV wallboard
+never renders. Comma-separated, unordered, duplicates ignored; tokens
+`availability` and `responseTime` (case-sensitive — they mirror the JSON field
+names). Absent means both, byte-for-byte identical to a request with no
+`include` at all — every pre-existing consumer's payload is unaffected.
+`include=` (present, empty) means neither: a resource then carries no
+`availability` key at all, and the page has no `overallAvailabilityPct`. An
+unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The
+parameter can only **narrow** what the page's own `showAvailability` /
+`showResponseTime` settings would already produce — those two response fields
+keep describing the page's settings, not what was requested, so
+`include=availability` on a page with `showAvailability=false` still omits
+availability. Composes with `?kiosk=` in either order.
+
 Each `responseTimeSeries[].points[]` entry carries, alongside `time`,
 `durationP95` and the probe's own `status`, the **availability** of the slice
 it covers (spec 2026-08-26-10): `availabilityPct` (null when the row has no
