@@ -333,7 +333,7 @@ badge, the public incident history, the Atom feed and both status0 SPA shells
 
 | page visibility | `Cache-Control` |
 |---|---|
-| `public` | `public, max-age=60` (`max-age=300` on the feed) |
+| `public` | `public, max-age=60, stale-while-revalidate=30` (`max-age=300` on the feed) |
 | `password` | `private, no-store` |
 | `private` | `private, no-store` |
 | 401 / 404 answers | `private, no-store` |
@@ -364,15 +364,110 @@ replies into a map of which pages exist.
 the page row, not the one the browser asks for.
 
 The path-based shell (`/s/...`) is the one surface that stays
-unconditionally `public, max-age=60`, and it is safe: `status0MetaForPath`
+unconditionally public, and it is safe: `status0MetaForPath`
 resolves the page **without** installing the request's unlock grant, so
 `statuspagelock.Allows` denies by default and a gated page's name or
 description is never injected into it. Its custom-domain twin injects
 unconditionally — there the host *is* the page — so that one follows visibility.
 
+`stale-while-revalidate=30` (spec 2026-09-22-09) lets a browser or CDN answer
+an EXPIRED entry immediately and refresh it in the background. It is on the
+public branch only: a grace window for serving a stored body is meaningless next
+to `no-store`, and a mixed message is something a proxy resolves in its own
+favour. Worst case for a reader polling every 30 s, the page they look at is
+about 90 s old instead of 60 s in the unlucky alignment — inside what the
+wallboard's own stale indicator tolerates, and what it buys is that the reader
+whose copy expired one second before the incident spike does not block on a cold
+origin render.
+
 Deliberately out of scope: `ETag`/conditional requests (revalidation would
-still have to compute the body to hash it), server-side response caching and
-`stale-while-revalidate`.
+still have to compute the body to hash it).
+
+### The server-side view memo
+
+The HTTP directives above bound how stale a READER's copy may be. They say
+nothing about how often the server recomputes, and before spec 2026-09-22-09 the
+answer was "every request": two wallboards, a README badge and a customer
+refreshing were four independent recomputations of one answer, queueing on the
+same connection pool.
+
+`statuspages.Service` now memoizes the computed view in process
+(`internal/handlers/statuspages/memo.go`):
+
+| product | key | shared by |
+|---|---|---|
+| `StatusPageResponse` | page UID + the `include` set (`ViewOptions`) | the slug route and the default-page route |
+| `StatusPageSummary` | page UID + `withAvailability` | the summary endpoint (`true`) and the SVG badge (`false`) |
+
+- **TTL: 15 seconds**, `statuspagecache.PageMemoTTL`, declared next to
+  `PageMaxAge` so the two freshness numbers cannot drift apart. A quarter of the
+  60 s the directive already promises, so the memo adds no staleness a reader
+  could notice.
+- **The value is the computed struct**, not encoded bytes: building the answer is
+  the expensive part, encoding it is milliseconds, and the struct is what lets
+  four entry points share one computation. It is handed to every caller inside
+  the window, so a caller must treat it as read-only.
+- **Concurrent misses collapse** through `singleflight`, keyed identically. Fifty
+  readers arriving on a cold page cost one computation — which is the load shape
+  of an incident. An erroring computation is not stored and does not poison the
+  key.
+- **Bounds**: lazy expiry on read plus a sweep (oldest first) on insert above 256
+  entries. No configuration knob: how stale a status page may be is a product
+  decision.
+- **Check status flips are NOT invalidation events.** There are thousands a
+  minute on a large installation, and the reader is already inside the 60 s
+  contract.
+
+#### Gate first, always
+
+The access gate — `GetOrganizationBySlug`, `GetStatusPageBySlug`,
+`publicAccessError` (visibility, unlock cookie, kiosk token) and the selector
+backstop `maybeReconcileOnView` — runs on **every** request, **before** the memo
+is consulted. `Service.resolveAndGate` exists to make that order impossible to
+skip, and nothing that can deny a request may live inside a memoized closure.
+
+A `password` page's body is the same for everybody who typed the password, so
+sharing it in process is safe. What must never happen is answering somebody who
+did not, and the ordering is the only thing that prevents it — so
+`TestPageMemo_GateRunsBeforeTheMemo` warms the memo through an unlocked request
+and then requires the un-cookied one to 401 with zero queries past the page
+lookup. Consulting the memo before the gate makes that test fail.
+
+Anything request-derived stays out: `publicPageURL` (scheme and host) is
+assembled in the handler.
+
+#### Invalidation
+
+Every write that changes a page's public body evicts that page's entries — both
+products, every key variant. The list is a table in code,
+`statuspages.PageMemoWritePaths`, covering `statuspages` CRUD and selector
+reconcile, `statuspageassets` upload/clear, the three custom-domain writes, the
+`incidentpublications` write paths (manual, auto-publish, auto-resolve, reopen)
+and `statusupdates` create/update/delete. Other packages reach the memo through
+a `PageMemoInvalidator` interface injected in `server.go` next to
+`SetPublicIncidentProvider`, so the compile-time dependency still points one
+way.
+
+Two tests guard the table: an end-to-end one that warms, writes and asserts the
+next read recomputed, and one that parses each row's named function and fails
+when the eviction call is gone — which is what catches a refactor in another
+package.
+
+Not covered, knowingly: a **direct database edit** and the **custom-domain
+verification sweep** (`jobs/jobtypes/job_custom_domain_verify.go`, which writes
+through `DBService` and holds no handle on the status-pages service). Both are
+bounded by the 15 s TTL. Kiosk-token rotation, unlock-cookie changes and
+organisation renames change no body and evict nothing — the key is the page UID,
+not the slug.
+
+Metrics: `solidping_statuspage_memo_hits_total`,
+`_misses_total` and `_singleflight_shared_total`, labelled by product. Misses are
+counted per caller, so a collapsed herd reads as many misses and one
+computation.
+
+The memo is **per process**. Several API replicas each warm independently, which
+is fine at 15 s; there is no cross-replica cache and nothing authenticated is
+memoized.
 
 ### GET /api/v1/status-pages/:org/:slug/badge
 SVG badge (shields.io style) for the page's overall status — the static,
