@@ -892,3 +892,59 @@ func waitFor(t *testing.T, cond func() bool) {
 
 	t.Fatal("condition never held")
 }
+
+// TestPageMemo_KioskWarmedMemoDoesNotOpenAPrivatePage is the gate-first rule
+// again, through the credential that makes it most tempting to get wrong: the
+// kiosk token.
+//
+// A wallboard holding a valid token is the ONE reader allowed into a `private`
+// page, and it polls — so it is exactly the request that keeps that page's body
+// warm in the memo. Every other request must still get the `private` answer,
+// which is byte-identical to "no such page". Nothing about somebody else's
+// screen may turn into an existence oracle for this page.
+func TestPageMemo_KioskWarmedMemoDoesNotOpenAPrivatePage(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, counting, org := memoTestSetup(t)
+	page := seedMemoPage(ctx, t, svc, org)
+
+	private := models.StatusPageVisibilityPrivate
+	_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{Visibility: &private})
+	r.NoError(err)
+
+	token := mintKioskToken(ctx, t, svc)
+
+	// The wallboard's own read: allowed, and it warms the memo.
+	warm, err := svc.ViewStatusPage(kioskCtx(ctx, token), org.Slug, page.Slug, AllViewOptions())
+	r.NoError(err)
+	r.NotEmpty(warm.Sections)
+	r.Positive(svc.memo.size())
+
+	counting.reset()
+
+	// No token: 404, with nothing of the view touched.
+	_, err = svc.ViewStatusPage(noKioskCtx(ctx), org.Slug, page.Slug, AllViewOptions())
+	r.ErrorIs(err, ErrStatusPageNotFound)
+
+	// A wrong token must answer identically — that is the invariant the kiosk
+	// tests pin, and a warm memo must not give it a second way to differ.
+	_, wrongErr := svc.ViewStatusPage(kioskCtx(ctx, token+"x"), org.Slug, page.Slug, AllViewOptions())
+	r.ErrorIs(wrongErr, ErrStatusPageNotFound)
+
+	_, err = svc.ViewStatusPageSummary(noKioskCtx(ctx), org.Slug, page.Slug)
+	r.ErrorIs(err, ErrStatusPageNotFound)
+
+	_, err = svc.GenerateBadge(noKioskCtx(ctx), org.Slug, page.Slug, BadgeOptions{})
+	r.ErrorIs(err, ErrStatusPageNotFound)
+
+	r.Zero(counting.computeReads(),
+		"a request without the token must be refused before the view is touched, warm memo or not")
+
+	// Positive control: the token still works, and still hits the memo.
+	counting.reset()
+	again, err := svc.ViewStatusPage(kioskCtx(ctx, token), org.Slug, page.Slug, AllViewOptions())
+	r.NoError(err)
+	r.Zero(counting.computeReads())
+	r.Equal(warm, again)
+}
