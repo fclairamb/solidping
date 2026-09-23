@@ -65,11 +65,44 @@ func TestDegradedConfigRoundTripsThroughExportImport(t *testing.T) {
 	r.Equal(1500, *exported.SlowThresholdMs)
 	r.False(exported.DegradedEnabled)
 
-	// A REAL import (dryRun=false) of the org's own export, onto the SAME
-	// check. This is exactly the shape a naive fix (exporting Effective*()
-	// instead of the raw pointer) would still pass — the interesting
-	// assertion is the companion test below.
-	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, false)
+	// Through the ACTUAL wire format (MarshalExportDocument / UnmarshalJSON),
+	// not just the in-memory ExportDocument: the real /export endpoint emits
+	// v2, which projects ExportCheck onto its own wire struct (exportCheckV2)
+	// with its own field list — carrying the six fields through the canonical
+	// struct is not enough on its own.
+	rendered, err := checks.MarshalExportDocument(doc)
+	r.NoError(err)
+
+	var wireCheck map[string]any
+	{
+		var generic struct {
+			Checks []map[string]any `json:"checks"`
+		}
+		r.NoError(json.Unmarshal(rendered, &generic))
+		r.Len(generic.Checks, 1)
+		wireCheck = generic.Checks[0]
+	}
+	// JSON numbers decode to float64 in a map[string]any; InDelta (not Equal)
+	// is what testifylint wants for a float comparison.
+	r.InDelta(10, wireCheck["degradedFailures"], 0, "the rendered document must carry the customized value")
+	r.InDelta(80, wireCheck["degradedFailuresWindow"], 0)
+	r.InDelta(4, wireCheck["degradedSlow"], 0)
+	r.InDelta(9, wireCheck["degradedSlowWindow"], 0)
+	r.InDelta(1500, wireCheck["slowThresholdMs"], 0)
+
+	var roundTripped checks.ExportDocument
+	r.NoError(json.Unmarshal(rendered, &roundTripped))
+	r.Len(roundTripped.Checks, 1)
+	r.NotNil(roundTripped.Checks[0].DegradedFailures)
+	r.Equal(10, *roundTripped.Checks[0].DegradedFailures)
+	r.False(roundTripped.Checks[0].DegradedEnabled)
+
+	// A REAL import (dryRun=false) of the RE-PARSED document — the same bytes
+	// a `solidping-config import` run over a git-committed file would consume
+	// — onto the SAME check. This is exactly the shape a naive fix (exporting
+	// Effective*() instead of the raw pointer) would still pass — the
+	// interesting assertion is the companion test below.
+	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, &roundTripped, false)
 	r.NoError(err)
 	r.Empty(result.Errors, "%+v", result.Errors)
 
@@ -146,10 +179,15 @@ func TestUnconfiguredDegradedConfigStaysNullThroughExportImport(t *testing.T) {
 			"the rendered export document must omit %q for an unconfigured check", key)
 	}
 
-	// A REAL import (dryRun=false) of the org's own export, onto the SAME
-	// check. This is the assertion a naive Effective*()-based fix fails: it
-	// would write 5/60/3/6/0 here instead of leaving the columns NULL.
-	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, doc, false)
+	var roundTripped checks.ExportDocument
+	r.NoError(json.Unmarshal(rendered, &roundTripped))
+	r.Len(roundTripped.Checks, 1)
+	r.Nil(roundTripped.Checks[0].DegradedFailures, "re-parsing the wire document must not manufacture a value")
+
+	// A REAL import (dryRun=false) of the RE-PARSED wire document, onto the
+	// SAME check. This is the assertion a naive Effective*()-based fix fails:
+	// it would write 5/60/3/6/0 here instead of leaving the columns NULL.
+	result, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, &roundTripped, false)
 	r.NoError(err)
 	r.Empty(result.Errors, "%+v", result.Errors)
 

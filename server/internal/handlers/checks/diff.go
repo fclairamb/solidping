@@ -281,11 +281,11 @@ func (s *Service) diffCheck(
 		// Degraded detection (spec 2026-09-22-03): compared the same way as
 		// the adaptive-resolution knobs above — a document that omits a field
 		// (wanted == nil) has no opinion, so it is not a diff.
-		{"degradedFailures", current.DegradedFailures, desired.DegradedFailures},
-		{"degradedFailuresWindow", current.DegradedFailuresWindow, desired.DegradedFailuresWindow},
-		{"degradedSlow", current.DegradedSlow, desired.DegradedSlow},
-		{"degradedSlowWindow", current.DegradedSlowWindow, desired.DegradedSlowWindow},
-		{"slowThresholdMs", current.SlowThresholdMs, desired.SlowThresholdMs},
+		{fieldDegradedFailures, current.DegradedFailures, desired.DegradedFailures},
+		{fieldDegradedFailuresWindow, current.DegradedFailuresWindow, desired.DegradedFailuresWindow},
+		{fieldDegradedSlow, current.DegradedSlow, desired.DegradedSlow},
+		{fieldDegradedSlowWindow, current.DegradedSlowWindow, desired.DegradedSlowWindow},
+		{fieldSlowThresholdMs, current.SlowThresholdMs, desired.SlowThresholdMs},
 	}
 
 	for i := range alerting {
@@ -299,7 +299,7 @@ func (s *Service) diffCheck(
 	// DegradedEnabled is a plain, always-present bool on the document (unlike
 	// the five numerics above), so it is compared unconditionally — the same
 	// way "enabled" is a few lines up.
-	add("degradedEnabled", strconv.FormatBool(current.DegradedEnabled), strconv.FormatBool(desired.DegradedEnabled))
+	add(fieldDegradedEnabled, strconv.FormatBool(current.DegradedEnabled), strconv.FormatBool(desired.DegradedEnabled))
 
 	if len(desired.Regions) > 0 {
 		// ResolveRegionsForCheck is what folds the accepted long

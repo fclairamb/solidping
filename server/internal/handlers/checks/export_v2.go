@@ -81,12 +81,25 @@ type exportCheckV2 struct {
 	// default would either be noise on every document or, worse, silently
 	// re-derive an `off` into an `inherit` on a document where `off` happened
 	// to be the majority.
-	TracerouteOnFailure      string               `json:"tracerouteOnFailure,omitempty"`
-	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindow           string               `json:"flappingWindow,omitempty"`
-	FlapBackoffFactor        *int                 `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier    *int                 `json:"maxRecoveryMultiplier,omitempty"`
-	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
+	TracerouteOnFailure      string `json:"tracerouteOnFailure,omitempty"`
+	ReopenCooldownMultiplier *int   `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindow           string `json:"flappingWindow,omitempty"`
+	FlapBackoffFactor        *int   `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int   `json:"maxRecoveryMultiplier,omitempty"`
+	// Degraded detection (spec 2026-09-22-03): DELIBERATELY NOT part of the
+	// defaults block, for the same reason as ReopenCooldownMultiplier above —
+	// each is a per-check pointer that must round-trip as-is (nil stays nil,
+	// an explicit 0 stays 0), so passing it through the modal-default
+	// machinery (which collapses a value equal to the document's most common
+	// one to "absent") would risk exactly the silent-revert bug this spec
+	// exists to fix.
+	DegradedFailures       *int                 `json:"degradedFailures,omitempty"`
+	DegradedFailuresWindow *int                 `json:"degradedFailuresWindow,omitempty"`
+	DegradedSlow           *int                 `json:"degradedSlow,omitempty"`
+	DegradedSlowWindow     *int                 `json:"degradedSlowWindow,omitempty"`
+	SlowThresholdMs        *int                 `json:"slowThresholdMs,omitempty"`
+	DegradedEnabled        bool                 `json:"degradedEnabled,omitempty"`
+	DependsOn              []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // MarshalExportDocument renders a canonical ExportDocument as pretty-printed
@@ -190,7 +203,15 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 			Internal:                 check.Internal,
 			TracerouteOnFailure:      tracerouteWireValue(check.TracerouteOnFailure),
 			ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
-			DependsOn:                check.DependsOn,
+			// Raw pointer/bool copies, not modal-defaulted — see the field
+			// comment on exportCheckV2 above.
+			DegradedFailures:       check.DegradedFailures,
+			DegradedFailuresWindow: check.DegradedFailuresWindow,
+			DegradedSlow:           check.DegradedSlow,
+			DegradedSlowWindow:     check.DegradedSlowWindow,
+			SlowThresholdMs:        check.SlowThresholdMs,
+			DegradedEnabled:        check.DegradedEnabled,
+			DependsOn:              check.DependsOn,
 		}
 
 		if !equalStringSlice(check.Regions, defRegions) {
@@ -300,7 +321,16 @@ func resolveCheckV2(wire *exportCheckV2, defaults *exportDefaultsV2) (ExportChec
 		Internal:                 wire.Internal,
 		TracerouteOnFailure:      wire.TracerouteOnFailure,
 		ReopenCooldownMultiplier: wire.ReopenCooldownMultiplier,
-		DependsOn:                wire.DependsOn,
+		// Direct pass-through, like ReopenCooldownMultiplier above — no
+		// document-default resolution for these (see the field comment on
+		// exportCheckV2).
+		DegradedFailures:       wire.DegradedFailures,
+		DegradedFailuresWindow: wire.DegradedFailuresWindow,
+		DegradedSlow:           wire.DegradedSlow,
+		DegradedSlowWindow:     wire.DegradedSlowWindow,
+		SlowThresholdMs:        wire.SlowThresholdMs,
+		DegradedEnabled:        wire.DegradedEnabled,
+		DependsOn:              wire.DependsOn,
 	}
 
 	// Regions: check value → document default → absent.
