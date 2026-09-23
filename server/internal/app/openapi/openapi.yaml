@@ -2004,6 +2004,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/KioskTokenQuery"
+        - $ref: "#/components/parameters/IncludeQuery"
       responses:
         "200":
           description: The default status page
@@ -2011,6 +2012,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/StatusPageLocked"
         "404":
@@ -2043,6 +2046,7 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/KioskTokenQuery"
+        - $ref: "#/components/parameters/IncludeQuery"
       responses:
         "200":
           description: The status page
@@ -2050,6 +2054,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/StatusPageLocked"
         "404":
@@ -8469,6 +8475,30 @@ components:
         401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so
         the parameter is never an oracle for whether a page or a token exists.
         A disabled page stays 404 regardless.
+
+    IncludeQuery:
+      name: include
+      in: query
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [availability, responseTime]
+      description: >-
+        Narrows which optional, expensive sections the response carries.
+        Comma-separated, unordered, duplicates ignored. Absent means both
+        `availability` and `responseTime` — today's payload, byte-for-byte.
+        `include=` (present, empty) means neither: no resource carries an
+        `availability` key at all, and the page has no
+        `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON
+        field names. An unrecognized token is `400 VALIDATION_ERROR` naming
+        it and the valid set. The parameter can only NARROW what the page's
+        own `showAvailability` / `showResponseTime` settings would already
+        produce, never widen it — those two fields keep describing the
+        page's settings regardless of what was requested.
 
     StatusPageUidPath:
       name: statusPageUid

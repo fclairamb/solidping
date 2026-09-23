@@ -2685,6 +2685,42 @@ func (e ListStatusPageIncidentsParamsState) Valid() bool {
 	}
 }
 
+// Defines values for ViewDefaultStatusPageParamsInclude.
+const (
+	ViewDefaultStatusPageParamsIncludeAvailability ViewDefaultStatusPageParamsInclude = "availability"
+	ViewDefaultStatusPageParamsIncludeResponseTime ViewDefaultStatusPageParamsInclude = "responseTime"
+)
+
+// Valid indicates whether the value is a known member of the ViewDefaultStatusPageParamsInclude enum.
+func (e ViewDefaultStatusPageParamsInclude) Valid() bool {
+	switch e {
+	case ViewDefaultStatusPageParamsIncludeAvailability:
+		return true
+	case ViewDefaultStatusPageParamsIncludeResponseTime:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ViewStatusPageParamsInclude.
+const (
+	ViewStatusPageParamsIncludeAvailability ViewStatusPageParamsInclude = "availability"
+	ViewStatusPageParamsIncludeResponseTime ViewStatusPageParamsInclude = "responseTime"
+)
+
+// Valid indicates whether the value is a known member of the ViewStatusPageParamsInclude enum.
+func (e ViewStatusPageParamsInclude) Valid() bool {
+	switch e {
+	case ViewStatusPageParamsIncludeAvailability:
+		return true
+	case ViewStatusPageParamsIncludeResponseTime:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetStatusPageBadgeParamsStyle.
 const (
 	GetStatusPageBadgeParamsStyleFlat       GetStatusPageBadgeParamsStyle = "flat"
@@ -7459,6 +7495,9 @@ type IncidentUidNamedPath = openapi_types.UUID
 // IncidentUidPath defines model for IncidentUidPath.
 type IncidentUidPath = openapi_types.UUID
 
+// IncludeQuery defines model for IncludeQuery.
+type IncludeQuery = []string
+
 // InvitationUidPath defines model for InvitationUidPath.
 type InvitationUidPath = openapi_types.UUID
 
@@ -8117,13 +8156,25 @@ type CustomDomainAllowedParams struct {
 type ViewDefaultStatusPageParams struct {
 	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
 	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+
+	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means both `availability` and `responseTime` — today's payload, byte-for-byte. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
+	Include *IncludeQuery `form:"include,omitempty" json:"include,omitempty"`
 }
+
+// ViewDefaultStatusPageParamsInclude defines parameters for ViewDefaultStatusPage.
+type ViewDefaultStatusPageParamsInclude string
 
 // ViewStatusPageParams defines parameters for ViewStatusPage.
 type ViewStatusPageParams struct {
 	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
 	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+
+	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means both `availability` and `responseTime` — today's payload, byte-for-byte. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
+	Include *IncludeQuery `form:"include,omitempty" json:"include,omitempty"`
 }
+
+// ViewStatusPageParamsInclude defines parameters for ViewStatusPage.
+type ViewStatusPageParamsInclude string
 
 // GetStatusPageBadgeParams defines parameters for GetStatusPageBadge.
 type GetStatusPageBadgeParams struct {
@@ -30052,6 +30103,18 @@ func NewViewDefaultStatusPageRequest(server string, org OrgPath, params *ViewDef
 
 		}
 
+		if params.Include != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "include", *params.Include, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -30158,6 +30221,18 @@ func NewViewStatusPageRequest(server string, org OrgPath, slug string, params *V
 		if params.Kiosk != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kiosk", *params.Kiosk, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Include != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "include", *params.Include, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -48317,6 +48392,8 @@ type ViewDefaultStatusPageResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -48326,6 +48403,11 @@ type ViewDefaultStatusPageResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewDefaultStatusPageResult) GetJSON200() *StatusPage {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ViewDefaultStatusPageResult) GetJSON400() *ValidationError {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -48441,6 +48523,8 @@ type ViewStatusPageResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -48450,6 +48534,11 @@ type ViewStatusPageResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewStatusPageResult) GetJSON200() *StatusPage {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ViewStatusPageResult) GetJSON400() *ValidationError {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -65746,6 +65835,13 @@ func ParseViewDefaultStatusPageResult(rsp *http.Response) (*ViewDefaultStatusPag
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest StatusPageLocked
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -65848,6 +65944,13 @@ func ParseViewStatusPageResult(rsp *http.Response) (*ViewStatusPageResult, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest StatusPageLocked
