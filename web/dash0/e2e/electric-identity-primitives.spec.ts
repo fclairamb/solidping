@@ -81,14 +81,18 @@ test.describe("electric identity primitives", () => {
     await expect(create).toBeFocused();
     expect(await create.evaluate((el) => el.matches(":focus-visible"))).toBe(true);
 
+    // ring-offset-2 paints a 2px page-colored band, ring-2 a 2px ring around
+    // it: the ring layer's spread is offset + width = 4px. The button carries
+    // `transition`, so box-shadow animates in: poll for the settled value
+    // rather than sampling the first frame that differs from rest.
     await expect
       .poll(async () => (await paint(create)).shadow, { timeout: 3000 })
-      .not.toBe(rest.shadow);
+      .toContain("0px 0px 0px 4px");
     const focused = await paint(create);
-    // ring-offset-2 paints a 2px page-colored band, ring-2 a 2px ring around
-    // it: the ring layer's spread is offset + width = 4px.
+    expect(focused.shadow).not.toBe(rest.shadow);
     expect(focused.shadow).toContain("0px 0px 0px 2px");
-    expect(focused.shadow).toContain("0px 0px 0px 4px");
+    // The inset highlight and the tinted drop shadow survive alongside it.
+    expect(focused.shadow).toContain("inset");
   });
 
   test("the hover lift only moves the button when motion is allowed", async ({
