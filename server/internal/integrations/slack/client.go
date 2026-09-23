@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 var (
@@ -70,11 +72,9 @@ func NewClient(token string) *Client {
 // URL. Intended for tests that point the client at an httptest fake server.
 func NewClientWithBaseURL(token, baseURL string) *Client {
 	return &Client{
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
-		token:   token,
-		baseURL: baseURL,
+		httpClient: httpclientpool.NewClient(DefaultTimeout),
+		token:      token,
+		baseURL:    baseURL,
 	}
 }
 
@@ -98,7 +98,7 @@ func ExchangeCode(
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{Timeout: DefaultTimeout}
+	client := httpclientpool.NewClient(DefaultTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
@@ -318,7 +318,7 @@ func FetchOpenIDUserInfo(ctx context.Context, endpoint, userAccessToken string) 
 
 	req.Header.Set("Authorization", "Bearer "+userAccessToken)
 
-	client := &http.Client{Timeout: DefaultTimeout}
+	client := httpclientpool.NewClient(DefaultTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call API: %w", err)
@@ -633,7 +633,7 @@ func RespondToWebhook(ctx context.Context, responseURL string, msg *MessageRespo
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: DefaultTimeout}
+	client := httpclientpool.NewClient(DefaultTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send response: %w", err)
