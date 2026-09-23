@@ -313,3 +313,68 @@ the dark sidebar from spec 02. `background_color` becomes `#f5f9fc`.
   - `listing-pages-style.spec.ts`
 - A side-by-side of the design reference, before and after, in both themes.
   Put the screenshots in the PR.
+
+## Implementation Plan
+
+1. **Tokens** (`web/dash0/src/index.css`): replace the §1 values in `:root` and
+   `.dark`; add `--primary-gradient`, `--accent-gradient`, `--hero-gradient`,
+   `--page-glow`, `--gradient-foreground` and `--chart-degraded` to both blocks.
+   Map `--color-gradient-foreground` and `--color-chart-degraded` in
+   `@theme inline` (so `text-gradient-foreground` exists), add an
+   `--inset-shadow-highlight` theme value for the button's 1px top highlight,
+   and the three `@utility bg-*-gradient` blocks. Sidebar tokens are left to
+   spec 02.
+   - Deliberate deviation: `--gradient-foreground` is `oklch(1 0 0)` (pure
+     white), not `oklch(0.99 0 0)`. The start stop of `--primary-gradient`
+     clips to `#007bce`; pure white on it is 4.44:1, `oklch(0.99 0 0)` only
+     4.31:1, which would fail the "≥ 4.4:1 at every stop" criterion.
+2. **`cn()` knows the gradient utilities** (`src/lib/utils.ts`): with stock
+   tailwind-merge, `bg-primary-gradient` is classified as a background
+   *color*, so `cn("bg-primary bg-primary-gradient")` silently drops
+   `bg-primary` (the fallback fill the spec requires). Extend twMerge with a
+   `bg-gradient-token` group: it never removes a `bg-<color>`, and a later
+   `bg-<color>` / `bg-none` / `bg-linear-*` removes it. Existing call sites that
+   recolor a default Button/Badge (19 `AlertDialogAction`s with
+   `bg-destructive`, the onboarding checklist's emerald progress bar, the rate
+   meter's warning bar) keep working through `cn` without edits. Unit-tested.
+3. **Button** (`ui/button.tsx`): default = `bg-primary bg-primary-gradient
+   text-gradient-foreground inset-shadow-highlight shadow-primary
+   hover:brightness-105 hover:shadow-primary-hover
+   motion-safe:hover:-translate-y-px`. Focus for every variant:
+   `ring-2 ring-ring ring-offset-2 ring-offset-background` on
+   `focus-visible` (the Switch's recipe), so the ring sits outside the
+   gradient. Other variants unchanged.
+4. **Controls**: Switch / Checkbox checked, Progress fill, Stepper done dot and
+   connector take `bg-accent-gradient` over `bg-primary`; checkbox glyph uses
+   `text-gradient-foreground`. Progress full + `destructiveWhenFull` =
+   `bg-none bg-destructive`. Badge default = `bg-primary bg-primary-gradient
+   text-gradient-foreground`. Input / Textarea / Select trigger focus:
+   `focus-visible:border-ring focus-visible:ring-[3px]
+   focus-visible:ring-ring/25`. Segmented control, tabs and tab-nav untouched.
+5. **Raw blue triage** (§4): stat-tile info, status-update-kind monitoring,
+   event-display tone + two icons, dependency soft badge, both latency pills,
+   status-page visibility dot, email-inbox mode pill, import-preview "updated"
+   count and the empty-state onboarding card → `primary` tokens. Kept as
+   category colors, with a comment: check-type-identity tones and the on-call
+   participant palette (`text-white` sits on it, and dark `--primary` is a
+   light blue that white text cannot sit on).
+6. **Chart**: `response-time-chart.tsx` reads `var(--chart-degraded)` without
+   the hex fallback.
+7. **Design reference**: gradient swatches (`Swatch` gains an `image` mode),
+   `--gradient-foreground` and `--chart-degraded` swatches; "Brand" copy (blue
+   is the product color, crimson the logo only); "Buttons & badges" gains a
+   "Gradients" block (gradient default next to outline / ghost / destructive,
+   the allowed/forbidden list, the `bg-none` gotcha, the focus-ring recipe,
+   the "on" states of switch / checkbox / progress / stepper and a full
+   destructive progress); "Elevation" copy mentions the inset highlight and
+   stays neutral about the aurora colors (spec 03 owns them).
+8. **Browser chrome**: `theme-color` and manifest `theme_color` `#0a1731`,
+   `background_color` `#f5f9fc`.
+9. **Tests**: unit tests for the twMerge extension, the button/badge/progress
+   classes, and a token test that parses `index.css` and checks the contrast
+   acceptance criteria (oklch → clipped sRGB → WCAG). E2E
+   `electric-identity-primitives.spec.ts` on the design reference: gradient
+   background-image + primary background-color on the default button, a
+   visible ring-offset focus ring, and a red, gradient-free full destructive
+   progress bar. Re-run `control-surface-elevation` and
+   `destructive-button-shadow`.
