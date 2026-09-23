@@ -48,6 +48,7 @@ const (
 	TemplatePagingNudge             = "paging-nudge.html"
 	TemplatePasswordChanged         = "password-changed.html"
 	TemplatePasswordReset           = "password-reset.html"
+	TemplatePasswordResetSSO        = "password-reset-sso.html"
 	TemplateRegistration            = "registration.html"
 	TemplateStatusSubscriberConfirm = "status-subscriber-confirm.html"
 	TemplateStatusSubscriberUpdate  = "status-subscriber-update.html"
@@ -111,6 +112,7 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateInvitation:              false,
 	TemplatePasswordChanged:         false,
 	TemplatePasswordReset:           false,
+	TemplatePasswordResetSSO:        false,
 	TemplateRegistration:            false,
 	TemplateStatusSubscriberConfirm: false,
 }
