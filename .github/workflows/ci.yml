@@ -117,6 +117,16 @@ jobs:
           # TestServeEmbedWidgetV1 404s (spec 2026-08-08-08).
           mkdir -p internal/app/status0res/embed/v1
           echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          # TestCompressionEncodesEmbeddedStatus0JS walks status0res for a real
+          # bundle .js file and needs one whose GZIPPED size clears net/http's
+          # ~2 KiB before-chunking buffer, or the whole response still fits in
+          # one write and Go re-derives a Content-Length the test asserts is
+          # gone. A real Vite bundle clears that easily; repeated text here
+          # would compress to nothing and pass for the wrong reason, so this
+          # is 16 KiB of random (near-incompressible) bytes under assets/,
+          # matching the real build's layout (spec 2026-09-22-04).
+          mkdir -p internal/app/status0res/assets
+          head -c 16384 /dev/urandom | base64 > internal/app/status0res/assets/placeholder.js
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
           # Docusaurus emits 404.html into the real docs build; serveDocsFile
           # falls back to it for an unknown path and only degrades to a plain
@@ -235,6 +245,8 @@ jobs:
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
           mkdir -p internal/app/status0res/embed/v1
           echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          mkdir -p internal/app/status0res/assets
+          head -c 16384 /dev/urandom | base64 > internal/app/status0res/assets/placeholder.js
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
           echo "placeholder" > internal/app/docsres/404.html
           echo "placeholder" > internal/app/docsres/llms.txt
