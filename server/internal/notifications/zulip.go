@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -95,7 +96,7 @@ func (s *ZulipSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *P
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", productName)
 
-	client := newHTTPClient(zulipTimeout)
+	client := httpclientpool.NewClient(zulipTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

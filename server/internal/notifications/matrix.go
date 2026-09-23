@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -56,7 +57,7 @@ func (s *MatrixSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *
 		return err
 	}
 
-	client := newHTTPClient(matrixTimeout)
+	client := httpclientpool.NewClient(matrixTimeout)
 
 	roomID, err := s.resolveRoomID(ctx, client, settings)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -301,7 +302,7 @@ func (s *PagerDutySender) doRequest(ctx context.Context, event map[string]any) e
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", productName)
 
-	client := newHTTPClient(pagerdutyTimeout)
+	client := httpclientpool.NewClient(pagerdutyTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

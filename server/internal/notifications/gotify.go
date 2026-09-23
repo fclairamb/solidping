@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -84,7 +85,7 @@ func (s *GotifySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", productName)
 
-	client := newHTTPClient(gotifyTimeout)
+	client := httpclientpool.NewClient(gotifyTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

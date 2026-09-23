@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -52,7 +53,7 @@ func (s *NtfySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Pa
 		req.Header.Set("Authorization", "Bearer "+settings.AccessToken)
 	}
 
-	client := newHTTPClient(ntfyTimeout)
+	client := httpclientpool.NewClient(ntfyTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

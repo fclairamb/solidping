@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -76,7 +77,7 @@ func (s *PushoverSender) doRequest(ctx context.Context, data url.Values) error {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", productName)
 
-	client := newHTTPClient(pushoverTimeout)
+	client := httpclientpool.NewClient(pushoverTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

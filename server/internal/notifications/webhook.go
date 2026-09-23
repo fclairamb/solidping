@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
@@ -225,7 +226,7 @@ func buildWebhookRequest(
 // stripped of its query string and credentials before being recorded; the
 // signing secret and any auth/custom headers are never stored.
 func (s *WebhookSender) sendAndCapture(req *http.Request, url string, body []byte, payload *Payload) error {
-	client := newHTTPClient(webhookTimeout)
+	client := httpclientpool.NewClient(webhookTimeout)
 
 	details := &models.DeliveryDetails{
 		RequestURL:  redactURL(url),
