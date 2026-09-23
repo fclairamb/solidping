@@ -267,7 +267,10 @@ describe("the audit families read as their own colour blocks", () => {
     "config.applied",
     "org.settings_updated",
   ])("%s reads as a configuration change", (eventType) => {
-    expect(getEventTone(eventType)).toContain("blue");
+    // Configuration is the product blue, the --primary token (spec
+    // 2026-09-24-01 moved it off the raw Tailwind blue-500 tint).
+    expect(getEventTone(eventType)).toContain("text-primary");
+    expect(getEventTone(eventType)).not.toContain("blue-");
   });
 
   it("a failed login does not read like anything else", () => {
