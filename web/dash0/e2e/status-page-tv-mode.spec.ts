@@ -70,7 +70,9 @@ test.describe("Status page TV mode", () => {
       // of that number is what this test is about, so the payload is stubbed
       // with a page that HAS data — the arithmetic producing it is covered in
       // server/internal/handlers/statuspages/page_availability_test.go.
-      await page.route(`**/api/v1/status-pages/test/${slug}`, async (route) => {
+      // TV mode requests `?include=` on this URL (spec 2026-09-22-07/-08), so
+      // the glob must match the query string too, not just the bare path.
+      await page.route(`**/api/v1/status-pages/test/${slug}*`, async (route) => {
         const response = await route.fetch();
         const body = await response.json();
 
@@ -80,10 +82,26 @@ test.describe("Status page TV mode", () => {
             ...body,
             overallStatus: "operational",
             historyPeriod: "30d",
-            overallAvailabilityPct: 99.87,
           },
         });
       });
+
+      // Since spec 2026-09-22-08, the uptime tile no longer reads
+      // overallAvailabilityPct off the page response above — the TV board
+      // loads it last, from the dedicated summary endpoint, on its own
+      // cadence. Stub that endpoint too.
+      await page.route(
+        `**/api/v1/status-pages/test/${slug}/summary*`,
+        async (route) => {
+          const response = await route.fetch();
+          const body = await response.json();
+
+          await route.fulfill({
+            response,
+            json: { ...body, overallAvailabilityPct: 99.87 },
+          });
+        },
+      );
 
       await page.goto(`${STATUS_BASE}/test/${slug}/tv`);
 
