@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
