@@ -72,6 +72,30 @@ type emailJobConfig struct {
 	Text    string   `json:"text"`
 }
 
+// BuildOption customizes a single Build call. The only option today is the
+// Discord bot client factory, which tests use to point SendDiscordDM at an
+// httptest stand-in instead of the real Discord API.
+type BuildOption func(*buildOptions)
+
+type buildOptions struct {
+	newDiscordBotClient func(token string) *discord.BotClient
+}
+
+// WithDiscordBotClientFactory overrides the Discord bot client constructor
+// for this Build call only.
+//
+// It exists so a test can drive the real 50007 classification against an
+// httptest stand-in — the whole "unavailable, not failed" policy is decided
+// by that branch, and a test that stubbed the closure instead would be
+// asserting its own fixture. Unlike the package-level variable this replaces,
+// the factory is resolved ONCE per Build call and captured by the closure
+// sendDiscordDM returns, so two opsnotify.Deps built with different options
+// can never see each other's client — no shared mutable state, hence no need
+// for a mutex or a restore-on-cleanup dance.
+func WithDiscordBotClientFactory(factory func(token string) *discord.BotClient) BuildOption {
+	return func(o *buildOptions) { o.newDiscordBotClient = factory }
+}
+
 // Build assembles the transport dependencies.
 //
 // Every argument is allowed to be nil: the matching closure is then left nil,
@@ -79,13 +103,18 @@ type emailJobConfig struct {
 // type" — a WARN and a `skipped` metric, never a silent drop. Closures capture
 // the registry POINTER rather than its fields, so a service wired after Build
 // (the boot order does exactly that) is still picked up at send time.
-func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config) opsnotify.Deps {
+func Build(dbSvc db.Service, registry *services.Registry, cfg *config.Config, opts ...BuildOption) opsnotify.Deps {
+	options := buildOptions{newDiscordBotClient: discord.NewBotClient}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	return opsnotify.Deps{
 		DB:            dbSvc,
 		EnqueueEmail:  enqueueEmail(registry),
 		SendTelegram:  sendTelegram(cfg),
 		SendSlackDM:   sendSlackDM(dbSvc, registry),
-		SendDiscordDM: sendDiscordDM(dbSvc, cfg),
+		SendDiscordDM: sendDiscordDM(dbSvc, cfg, options.newDiscordBotClient),
 		SendWebPush:   sendWebPush(registry),
 		SendSMS:       sendSMS(registry),
 	}
@@ -183,7 +212,9 @@ func sendSlackDM(dbSvc db.Service, registry *services.Registry) opsnotify.SendSl
 // its buttons reach us through the signature-verified interactions endpoint. An
 // instance with a token but no public key would DM an Acknowledge button that
 // does nothing when pressed.
-func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDMFunc {
+func sendDiscordDM(
+	dbSvc db.Service, cfg *config.Config, newBotClient func(token string) *discord.BotClient,
+) opsnotify.SendDiscordDMFunc {
 	return func(ctx context.Context, contact *models.UserContact, text string) error {
 		if cfg == nil || !cfg.Discord.BotConfigured() {
 			return errNoDiscordBot
@@ -193,7 +224,7 @@ func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDM
 			return errNoDiscordBot
 		}
 
-		client := newDiscordBotClient(cfg.Discord.BotToken)
+		client := newBotClient(cfg.Discord.BotToken)
 
 		_, err := discord.SendContactDM(ctx, client, dbSvc, contact, &discord.Message{Content: text})
 		if err == nil {
@@ -207,15 +238,6 @@ func sendDiscordDM(dbSvc db.Service, cfg *config.Config) opsnotify.SendDiscordDM
 		return fmt.Errorf("send discord dm: %w", err)
 	}
 }
-
-// newDiscordBotClient builds the bot client. A package-level function variable
-// so a test can drive the real 50007 classification against an httptest
-// stand-in — the whole "unavailable, not failed" policy is decided by that
-// branch, and a test that stubbed the closure instead would be asserting its own
-// fixture.
-//
-//nolint:gochecknoglobals // test seam for the Discord REST API endpoint
-var newDiscordBotClient = discord.NewBotClient
 
 // sendWebPush pushes the headline to a stored browser subscription.
 func sendWebPush(registry *services.Registry) opsnotify.SendWebPushFunc {

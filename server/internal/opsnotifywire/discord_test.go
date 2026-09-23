@@ -68,12 +68,15 @@ func newFakeDiscordDM(t *testing.T) *fakeDiscordDM {
 	return fake
 }
 
-func (f *fakeDiscordDM) install(t *testing.T) {
-	t.Helper()
-
-	t.Cleanup(opsnotifywire.SetDiscordBotClientFactory(func(token string) *discord.BotClient {
+// buildOption returns the opsnotifywire.Build option that points the Discord
+// bot client at this fake's httptest server. Each caller builds its own
+// opsnotify.Deps with its own fake, so nothing here is shared mutable state:
+// two tests running in parallel each get a factory closing over their own
+// *fakeDiscordDM, resolved once when Build constructs SendDiscordDM.
+func (f *fakeDiscordDM) buildOption() opsnotifywire.BuildOption {
+	return opsnotifywire.WithDiscordBotClientFactory(func(token string) *discord.BotClient {
 		return discord.NewBotClient(token).WithBaseURL(f.server.URL)
-	}))
+	})
 }
 
 // discordEnv is a real sqlite database with one org, one member, and a verified
@@ -121,9 +124,8 @@ func TestSendDiscordDMOpensCachesAndPosts(t *testing.T) {
 	env := newDiscordEnv(t)
 
 	fake := newFakeDiscordDM(t)
-	fake.install(t)
 
-	deps := opsnotifywire.Build(env.db, nil, discordBotConfig())
+	deps := opsnotifywire.Build(env.db, nil, discordBotConfig(), fake.buildOption())
 	r.NotNil(deps.SendDiscordDM, "a configured bot must wire the Discord medium")
 
 	contact := env.contact
@@ -192,9 +194,8 @@ func TestSendDiscordDM50007IsUnavailableAnd5xxIsNot(t *testing.T) {
 			fake := newFakeDiscordDM(t)
 			fake.postStatus = testCase.status
 			fake.postBody = testCase.body
-			fake.install(t)
 
-			deps := opsnotifywire.Build(env.db, nil, discordBotConfig())
+			deps := opsnotifywire.Build(env.db, nil, discordBotConfig(), fake.buildOption())
 
 			sendErr := deps.SendDiscordDM(ctx, env.contact, "page")
 			r.Error(sendErr)
