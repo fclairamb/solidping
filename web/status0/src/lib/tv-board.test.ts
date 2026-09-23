@@ -1,6 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import {
   STALE_AFTER_MS,
+  SUMMARY_POLL_MS,
+  activeIncidents,
   cycleWindow,
   daysSince,
   durationParts,
@@ -247,6 +249,88 @@ describe("lastResolvedAt", () => {
     expect(lastResolvedAt([])).toBeNull();
     expect(lastResolvedAt(undefined)).toBeNull();
     expect(lastResolvedAt([incident({})])).toBeNull();
+  });
+});
+
+describe("activeIncidents", () => {
+  test("keeps everything that is not resolved", () => {
+    const got = activeIncidents([
+      incident({ uid: "a", state: "investigating" }),
+      incident({ uid: "b", state: "resolved", resolvedAt: "2026-08-01T00:00:00Z" }),
+      incident({ uid: "c", state: "identified" }),
+      incident({ uid: "d", state: "monitoring" }),
+    ]);
+
+    expect(got.map((i) => i.uid)).toEqual(["a", "c", "d"]);
+  });
+
+  // The order is the API's, and the panel renders it as given. Re-sorting here
+  // would silently disagree with the order the ordinary public page shows.
+  test("preserves source order rather than re-sorting", () => {
+    const got = activeIncidents([
+      incident({ uid: "newest", startedAt: "2026-08-30T10:00:00Z" }),
+      incident({ uid: "middle", startedAt: "2026-08-20T10:00:00Z" }),
+      incident({ uid: "oldest", startedAt: "2026-08-10T10:00:00Z" }),
+    ]);
+
+    expect(got.map((i) => i.uid)).toEqual(["newest", "middle", "oldest"]);
+  });
+
+  // Erring towards "open" is the right default for a wallboard: a state this
+  // client has never heard of must not make an incident vanish from the screen.
+  test("treats an unknown state as open", () => {
+    expect(
+      activeIncidents([incident({ uid: "x", state: "postmortem" })]).map(
+        (i) => i.uid,
+      ),
+    ).toEqual(["x"]);
+  });
+
+  // A resolved publication that the server left a resolvedAt off of is still
+  // resolved: `state` is the authority, not the timestamp.
+  test("filters on state, not on resolvedAt", () => {
+    expect(
+      activeIncidents([
+        incident({ uid: "no-timestamp", state: "resolved" }),
+        incident({
+          uid: "open-with-timestamp",
+          state: "monitoring",
+          resolvedAt: "2026-08-01T00:00:00Z",
+        }),
+      ]).map((i) => i.uid),
+    ).toEqual(["open-with-timestamp"]);
+  });
+
+  test("an absent or empty history is empty, never undefined", () => {
+    expect(activeIncidents(undefined)).toEqual([]);
+    expect(activeIncidents([])).toEqual([]);
+  });
+
+  // The same list the resolved strip reads, so one response can feed both.
+  test("partitions the history with recentResolved, losing nothing", () => {
+    const history = [
+      incident({ uid: "open", state: "investigating" }),
+      incident({
+        uid: "closed",
+        state: "resolved",
+        resolvedAt: "2026-08-01T00:00:00Z",
+      }),
+    ];
+
+    expect([
+      ...activeIncidents(history).map((i) => i.uid),
+      ...recentResolved(history, 3).map((i) => i.uid),
+    ].sort()).toEqual(["closed", "open"]);
+  });
+});
+
+describe("SUMMARY_POLL_MS", () => {
+  // Ten times the healthy board poll. The number itself is a 7- or 90-day
+  // mean; polling it at the board's cadence would spend the whole availability
+  // enrichment the include= narrowing exists to skip.
+  test("is five minutes, an order of magnitude slower than the board", () => {
+    expect(SUMMARY_POLL_MS).toBe(300_000);
+    expect(SUMMARY_POLL_MS).toBe(pollIntervalMs("operational") * 10);
   });
 });
 
