@@ -2789,7 +2789,10 @@ func (s *Service) providerLabel(providerType models.ProviderType) string {
 
 // providerLabelList turns a user's linked providers into a deduplicated,
 // human-joined list ("Google", or "Google or GitHub" for two, or
-// "Google, GitHub or Microsoft" for three or more).
+// "Google, GitHub or Microsoft" for three or more). Labels are sorted
+// alphabetically first so the email is deterministic regardless of the
+// order ListUserProvidersByUser happens to return (created_at DESC, which
+// ties when two providers are linked in the same request).
 func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 	seen := make(map[string]bool, len(providers))
 	labels := make([]string, 0, len(providers))
@@ -2803,6 +2806,8 @@ func (s *Service) providerLabelList(providers []*models.UserProvider) string {
 		seen[label] = true
 		labels = append(labels, label)
 	}
+
+	sort.Strings(labels)
 
 	switch len(labels) {
 	case 0:

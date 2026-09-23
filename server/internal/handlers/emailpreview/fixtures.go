@@ -288,7 +288,7 @@ func passwordResetFixture() map[string]any {
 func passwordResetSSOFixture() map[string]any {
 	return map[string]any{
 		"ResetURL":  fixtureDashboardURL + "/reset-password?token=preview-token",
-		"Providers": "Google or GitHub",
+		"Providers": "GitHub or Google",
 	}
 }
 
