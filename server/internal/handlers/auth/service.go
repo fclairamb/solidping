@@ -2746,10 +2746,18 @@ func (s *Service) RequestPasswordReset(
 	return successMsg, nil
 }
 
+// ssoFallbackLabel is the display name used for a SAML/OIDC provider with no
+// configured DisplayName — shared between the login-providers list
+// (ListProviders, providers_available.go) and the SSO password-reset email
+// (providerLabel below).
+const ssoFallbackLabel = "SSO"
+
 // providerTypeLabels maps a linked-provider type to the human-readable name
 // used in the SSO password-reset email (spec 2026-09-23-02). SAML and OIDC
 // are deliberately absent here: they use their configured DisplayName, not a
 // static label — see providerLabel.
+//
+//nolint:gochecknoglobals // read-only dispatch table, not mutable state (matches emailpreview's fixtureBuilders).
 var providerTypeLabels = map[models.ProviderType]string{
 	models.ProviderTypeGoogle:    "Google",
 	models.ProviderTypeGitHub:    "GitHub",
@@ -2764,6 +2772,8 @@ var providerTypeLabels = map[models.ProviderType]string{
 // providerLabel returns the human-readable name for one linked provider.
 // SAML and OIDC use their configured DisplayName, falling back to "SSO"
 // when it's blank — same fallback ListProviders uses for the login page.
+//
+//nolint:exhaustive // SAML/OIDC only; everything else falls to providerTypeLabels via default.
 func (s *Service) providerLabel(providerType models.ProviderType) string {
 	switch providerType {
 	case models.ProviderTypeSAML:
@@ -2771,19 +2781,19 @@ func (s *Service) providerLabel(providerType models.ProviderType) string {
 			return s.fullCfg.SAML.DisplayName
 		}
 
-		return "SSO"
+		return ssoFallbackLabel
 	case models.ProviderTypeOIDC:
 		if s.fullCfg.OIDC.DisplayName != "" {
 			return s.fullCfg.OIDC.DisplayName
 		}
 
-		return "SSO"
+		return ssoFallbackLabel
 	default:
 		if label, ok := providerTypeLabels[providerType]; ok {
 			return label
 		}
 
-		return "SSO"
+		return ssoFallbackLabel
 	}
 }
 

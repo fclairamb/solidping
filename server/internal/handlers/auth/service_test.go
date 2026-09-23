@@ -688,6 +688,8 @@ func setupAuthTestServiceWithJobs(t *testing.T, fullCfg *config.Config) (*Servic
 
 // latestEmailJobTemplateData returns the template name and template data of
 // the most recently enqueued email job. Fails the test if there is none.
+//
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
 func latestEmailJobTemplateData(t *testing.T, ctx context.Context, dbSvc db.Service) (string, map[string]any) {
 	t.Helper()
 	r := require.New(t)
