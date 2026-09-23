@@ -269,17 +269,23 @@
    fails to paint). Gotcha: bg-transparent / bg-muted / bg-destructive only
    set background-COLOR, so an element carrying one of these keeps the
    gradient on top unless the override also sets bg-none. cn() resolves that
-   for you (see extendTailwindMerge in lib/utils.ts); raw class strings don't. */
+   for you (see extendTailwindMerge in lib/utils.ts); raw class strings don't.
+   background-origin: border-box sizes the image to the border box, so a
+   transparent border (switch, badge, checkbox) shows the gradient's own edge
+   instead of a repeated sliver of its opposite end. */
 @utility bg-primary-gradient {
   background-image: var(--primary-gradient);
+  background-origin: border-box;
 }
 
 @utility bg-accent-gradient {
   background-image: var(--accent-gradient);
+  background-origin: border-box;
 }
 
 @utility bg-hero-gradient {
   background-image: var(--hero-gradient);
+  background-origin: border-box;
 }
 
 @utility radar-ping {

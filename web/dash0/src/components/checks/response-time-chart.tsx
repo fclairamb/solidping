@@ -1275,15 +1275,17 @@ export function ResponseTimeChart({
                   under the line: the check was UP for most of these minutes, so
                   the band says "this stretch was unreliable", not "this stretch
                   was an outage". Rendered in every series mode — the episode is
-                  per check, exactly as the incident state machine is. */}
+                  per check, exactly as the incident state machine is. The
+                  color is the --chart-degraded token (index.css, = the
+                  theme's --status-warning); there is no hex fallback. */}
                 {(degradedSpans ?? []).map((span) => (
                   <ReferenceArea
                     key={`degraded-${span.from}-${span.to ?? "open"}`}
                     x1={span.from}
                     x2={span.to ?? domainMax}
-                    fill="var(--chart-degraded, #d97706)"
+                    fill="var(--chart-degraded)"
                     fillOpacity={0.14}
-                    stroke="var(--chart-degraded, #d97706)"
+                    stroke="var(--chart-degraded)"
                     strokeOpacity={0.35}
                     // recharts defaults a ReferenceArea to ifOverflow="discard",
                     // which DROPS the element entirely as soon as one edge falls
