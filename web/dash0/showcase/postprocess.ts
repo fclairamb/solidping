@@ -151,13 +151,12 @@ const CUE_OFFSET_S = Number(process.env.SHOWCASE_CUE_OFFSET_MS ?? 0) / 1000;
  *   itself after the rotation, and the seconds the pipeline spends provisioning
  *   its org over the API while the dashboard sits still. None of that is the
  *   product, and a jump cut needs no apology.
- * - **The speed-up** is the dwell on the detail page, which exists so the two
- *   plotted results are a genuine interval apart. That one is *tagged*: it is
- *   product footage played faster, and an untagged speed-up would misrepresent
- *   how fast the check reports. The form's floor is a 10-second interval
- *   (`globalMinPeriodSeconds` in `check-form.tsx`), so the honest dwell is ~12 s
- *   and this fires on every take today; a 5-second interval would leave it
- *   under `minSpanS` and the plan would decline it on its own.
+ * - **The speed-up** is the dwell on the detail page, held for four full check
+ *   periods so the plotted results are genuine intervals apart. That one is
+ *   *tagged*: it is product footage played faster, and an untagged speed-up
+ *   would misrepresent how fast the check reports. The form's floor is a
+ *   10-second interval (`globalMinPeriodSeconds` in `check-form.tsx`), so the
+ *   honest dwell is ~43 s and this fires on every take.
  */
 const EDITS: EditSpec[] = [
   {
