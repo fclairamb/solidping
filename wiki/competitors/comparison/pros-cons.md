@@ -73,3 +73,30 @@
 - ❌ SolarWinds ownership concerns
 
 **Best For**: Enterprises with large budgets needing RUM, page speed, and transaction monitoring
+
+## Pulsetic
+
+**Pros**:
+- ✅ Dependency monitoring across 4,300+ third-party providers — unique in this set
+- ✅ Real User Monitoring bundled (Core Web Vitals + JS error tracking), not a separate SKU
+- ✅ Status pages: custom domain, SSO/password gating, translations, PDF export, badges
+- ✅ Coherent white-label story — one account, many branded client pages, no client logins
+- ✅ Cheap and legible: $9 / $19 / $49 with published per-unit add-on rates
+- ✅ 30-second checks from 15 regions on Team ($19)
+- ✅ Rate limit scales with the plan (`monitors × 3/min`, capped at 7,000/min)
+- ✅ First-party MCP server ([`designmodo/pulsetic-mcp`](https://github.com/designmodo/pulsetic-mcp), MIT)
+
+**Cons**:
+- ❌ Six probe families behind thirteen marketing names — no DNS, SMTP, IMAP/POP3, SSH, FTP, gRPC, WebSocket, UDP, database, queue or SNMP checks
+- ❌ No scripted browser transactions (screenshots are captures, not flows)
+- ❌ No self-hosting and no private locations — nothing behind a VPN is reachable
+- ❌ API is Team-and-up, so the $9 plan is click-ops only
+- ❌ API path is unversioned — no migration story
+- ❌ Free tier includes zero status pages
+- ❌ Add-on pricing is linear and uncapped
+- ❌ On-call schedules / escalation policies unverified — no product page found
+- ❌ One product in a design-tooling portfolio (Designmodo), not a monitoring company
+
+**Best For**: Agencies and small teams with an HTTP-shaped stack who want uptime, a branded status page and third-party incident awareness on one cheap bill
+
+Full analysis: [../pulsetic.md](../pulsetic.md)

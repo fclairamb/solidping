@@ -51,7 +51,13 @@ These services have full analysis documents in this directory:
    - Focus: All-in-one mid-market monitoring (uptime + infra + APM + RUM + logs)
    - Pricing: Free-$45+/month (50 free monitors), 100+ monitor types, 130+ probe locations
 
-10. **Maintenant** - [maintenant.md](maintenant.md)
+10. **Pulsetic** - [pulsetic.md](pulsetic.md)
+    - URL: https://pulsetic.com
+    - Focus: Uptime + brandable status pages + RUM + dependency monitoring (4,300+ third-party providers)
+    - Pricing: $0 / $9 / $19 / $49 per month, plus linear add-ons ($0.20 per extra monitor)
+    - Notable: the only tool surveyed that watches *other vendors'* status pages; first-party MCP server; white-label agency model
+
+11. **Maintenant** - [maintenant.md](maintenant.md)
     - URL: https://maintenant.dev (repo: https://github.com/kOlapsis/maintenant)
     - Focus: Self-hosted Go all-in-one — container observability + HTTP/TCP + SSL + heartbeat + MCP
     - Pricing: Community (free, capped) / Pro €29/mo · €290/yr (AGPL-3.0 open-core), SQLite-only, <30 MB RAM
@@ -197,14 +203,14 @@ These services have full analysis documents in this directory:
     - API: Yes
     - Check Intervals: Configurable
 
-19. **Pulsetic**
+19. **Pulsetic** — *promoted to a full analysis, see [pulsetic.md](pulsetic.md)*
     - URL: https://pulsetic.com
-    - Focus: Simple uptime monitoring
-    - Pricing: $0-$59/month
-    - Free Tier: 5 monitors
-    - Notable: Beautiful status pages
-    - API: Yes
-    - Check Intervals: 30 seconds
+    - Focus: Uptime + status pages + RUM + dependency monitoring
+    - Pricing: $0 / $9 / $19 / $49 per month (+ $0.20 per extra monitor)
+    - Free Tier: 10 monitors @ 5-min from 3 regions, **no status pages**
+    - Notable: watches 4,300+ third-party providers' own status pages
+    - API: Team plan and up only, unversioned path
+    - Check Intervals: 30 seconds (Team+), 60 seconds (Solo), 5 minutes (Free)
 
 20. **Upptime**
     - URL: https://upptime.js.org
@@ -608,4 +614,4 @@ Professional-grade self-hosted solution with PostgreSQL backend, comprehensive A
 
 ## Last Updated
 
-2026-03-21
+2026-09-22 (Pulsetic promoted to a full analysis and its stale Tier-2 stub corrected; everything else is the 2026-03-21 baseline)
