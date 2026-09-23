@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 const (
@@ -177,7 +178,7 @@ func NewClient(opts Options) (*Client, error) {
 	}
 
 	return &Client{
-		httpClient: &http.Client{Timeout: DefaultTimeout},
+		httpClient: httpclientpool.NewClient(DefaultTimeout),
 		baseURL:    baseURL,
 		token:      token,
 	}, nil
