@@ -122,9 +122,9 @@ Market analysis of uptime monitoring services.
 
 - Cross-competitor comparison — [competitors/comparison/](competitors/comparison/)
   - [comparison/README.md](competitors/comparison/README.md) — Index of the comparison set
-  - [comparison/overview.md](competitors/comparison/overview.md) — At-a-glance matrix across 7 uptime-first competitors, where SolidPing stands today, and the 2026-07 pricing/market-moves refresh
+  - [comparison/overview.md](competitors/comparison/overview.md) — At-a-glance matrix across 8 uptime-first competitors, where SolidPing stands today, and the 2026-07 pricing/market-moves refresh
   - [comparison/pricing.md](competitors/comparison/pricing.md) — Free, entry, mid-tier and 100-monitor pricing brackets with a winner per bracket
-  - [comparison/monitor-types.md](competitors/comparison/monitor-types.md) — Check-type matrix across 9 tools (HTTP → game servers, email inbox, custom JS)
+  - [comparison/monitor-types.md](competitors/comparison/monitor-types.md) — Check-type matrix across 10 tools (HTTP → game servers, email inbox, custom JS, RUM, third-party dependency monitoring)
   - [comparison/api.md](competitors/comparison/api.md) — Auth, API design, rate limits and endpoint coverage (BetterStack / UptimeRobot / Pingdom)
   - [comparison/features.md](competitors/comparison/features.md) — Monitoring capabilities, notification-channel matrix, advanced features, developer experience
   - [comparison/pros-cons.md](competitors/comparison/pros-cons.md) — Pros, cons and "best for" verdicts per vendor
@@ -174,6 +174,7 @@ Market analysis of uptime monitoring services.
   - [pingdom/comparison.md](competitors/pingdom/comparison.md) — vs SolidPing, technical considerations, limitations, API design patterns
   - [pingdom/examples.md](competitors/pingdom/examples.md) — Integration examples (HTTP, TCP, DNS, SMTP, results, summary, maintenance)
   - [pingdom/sources.md](competitors/pingdom/sources.md) — Source URLs
+- [competitors/pulsetic.md](competitors/pulsetic.md) — Pulsetic analysis (Designmodo; uptime + RUM + **dependency monitoring across 4,300+ third-party status pages**, white-label agency model, first-party MCP server, Team-plan-gated unversioned API)
 - [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)

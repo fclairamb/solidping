@@ -2,15 +2,15 @@
 
 ## Quick Overview
 
-| Feature | BetterStack Uptime | Hyperping | UptimeRobot | Pingdom | StatusCake | Checkly | Healthchecks.io |
-|---------|-------------------|-----------|-------------|---------|------------|---------|-----------------|
-| **Founded** | 2021 (as Better Uptime) | 2018 | 2010 | 2007 | 2010 | 2018 | 2015 |
-| **Owner** | Independent | Independent (bootstrapped) | Independent | SolarWinds | Accel-KKR | Independent (VC) | Independent |
-| **Primary Market** | Modern DevOps teams | SMB / mid-market | Budget-conscious users | Enterprise | Mid-market | Developer teams | Cron/heartbeat |
-| **Pricing Model** | Modular/component | Tiered (per-feature) | Monitor-based | Monitor + feature | Monitor-based | Usage-based (runs) | Check-based |
-| **Best Known For** | Incident management | Outage-vs-incident split, multi-region confirm | 50 free monitors | RUM + Enterprise | Broad protocol support | Monitoring as code | Cron monitoring |
-| **Self-hosted** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (BSD) |
-| **API Version** | v2 (v3 for incidents) | mixed v1/v2/v3 per resource | v2 (v3 available) | 3.1 (2.1 legacy) | v1 | v1 | v3 |
+| Feature | BetterStack Uptime | Hyperping | UptimeRobot | Pingdom | StatusCake | Checkly | Healthchecks.io | Pulsetic |
+|---------|-------------------|-----------|-------------|---------|------------|---------|-----------------|----------|
+| **Founded** | 2021 (as Better Uptime) | 2018 | 2010 | 2007 | 2010 | 2018 | 2015 | ~2022 (unverified) |
+| **Owner** | Independent | Independent (bootstrapped) | Independent | SolarWinds | Accel-KKR | Independent (VC) | Independent | Designmodo Inc. |
+| **Primary Market** | Modern DevOps teams | SMB / mid-market | Budget-conscious users | Enterprise | Mid-market | Developer teams | Cron/heartbeat | Agencies / small teams |
+| **Pricing Model** | Modular/component | Tiered (per-feature) | Monitor-based | Monitor + feature | Monitor-based | Usage-based (runs) | Check-based | Tiered + linear add-ons |
+| **Best Known For** | Incident management | Outage-vs-incident split, multi-region confirm | 50 free monitors | RUM + Enterprise | Broad protocol support | Monitoring as code | Cron monitoring | Dependency monitoring + white-label status pages |
+| **Self-hosted** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (BSD) | ❌ |
+| **API Version** | v2 (v3 for incidents) | mixed v1/v2/v3 per resource | v2 (v3 available) | 3.1 (2.1 legacy) | v1 | v1 | v3 | **unversioned** (Team+ only) |
 
 > **Also analyzed**: [Site24x7](../site24x7.md) (Zoho/ManageEngine) — all-in-one mid-market alternative with 100+ monitor types, 130+ probe locations, 50-monitor free tier, and built-in APM/RUM. Not included in tables below to keep them focused on uptime-first competitors.
 

@@ -11,8 +11,11 @@
 | **StatusCake** | 10 monitors | 5 minutes | ✅ | ✅ Push | 75 free SMS/month |
 | **Checkly** | 10k API + 1k browser runs | N/A (run-based) | ✅ | ✅ | 1 user |
 | **Healthchecks.io** | 20 checks | N/A (passive) | ❌ | ✅ (core feature) | Cron/heartbeat only |
+| **Pulsetic** | 10 monitors | 5 minutes | ❌ **none** | ✅ (shares the monitor pool) | 3 regions, 1 webhook/monitor, no API, 1k RUM page views |
 
 **Winner**: UptimeRobot for active monitoring (50 free monitors), Healthchecks.io for cron monitoring (20 free checks)
+
+**Worst-designed free tier**: Pulsetic — status pages are the product's best feature and the free plan has zero of them.
 
 ## Entry-Level Paid
 
@@ -21,8 +24,9 @@
 | **BetterStack** | $25 (monitors) + $34 (responder) | 50 | 30 seconds | Modular pricing, on-call |
 | **UptimeRobot** | $7 | 10 | 1 minute | Basic features |
 | **Pingdom** | ~$15 | 10 | 1 minute | 1 advanced check, 50 SMS |
+| **Pulsetic** | $9 (Solo) | 10 | 60 seconds | 5 regions, 3 status pages, 30 SMS/calls — **no API** |
 
-**Winner**: UptimeRobot ($7 vs $18 vs $10)
+**Winner**: UptimeRobot ($7) on price; Pulsetic ($9) if you want status pages bundled at entry
 
 ## Mid-Tier
 
@@ -31,8 +35,9 @@
 | **BetterStack** | ~$59+ (modular) | 50 | 30 seconds | Modular pricing, unlimited alerts |
 | **UptimeRobot** | $29-34 | 50-100 | 1 minute | Team features |
 | **Pingdom** | ~$35 | 50 | 1 minute | 5 advanced checks, 500 SMS |
+| **Pulsetic** | $19 (Team) | 50 | 30 seconds | 15 regions, unlimited status pages, 100 SMS/calls, API unlocked |
 
-**Winner**: UptimeRobot ($29 vs $89 vs $32)
+**Winner**: Pulsetic ($19 for 50 monitors at 30-sec from 15 regions) undercuts UptimeRobot at this bracket
 
 ## Value for 100 Monitors
 
@@ -41,5 +46,10 @@
 | **BetterStack** | $269 | 30 seconds | 6 users, unlimited alerts, on-call |
 | **UptimeRobot** | ~$29-34 | 1 minute | 100 monitors included |
 | **Pingdom** | ~$50-60 | 1 minute | Transaction monitoring available |
+| **Pulsetic** | $29 ($19 + 50 × $0.20) | 30 seconds | Add-on monitors are linear and uncapped |
 
-**Winner**: UptimeRobot (best price/monitor ratio)
+**Winner**: UptimeRobot (best price/monitor ratio); Pulsetic is close and buys a faster interval
+
+> **Read the `+` signs.** Every Pulsetic plan is a floor, not a bundle: monitors are $0.20/mo
+> each, SMS/calls $0.10, teammates $8, status-page subscribers $0.01. 500 monitors on
+> Organization is $49 + 200 × $0.20 = **$89/mo**. See [../pulsetic.md](../pulsetic.md).
