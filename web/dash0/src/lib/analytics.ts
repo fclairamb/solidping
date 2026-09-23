@@ -11,14 +11,16 @@
  * no request to any PostHog host. There is deliberately no `<script>` tag in
  * `index.html`.
  *
- * # Privacy
+ * # No field obfuscation
  *
- * - The distinct id is pseudonymous and built from UUIDs only — it must match
- *   `analytics.DistinctID` in `server/internal/analytics/analytics.go` exactly
- *   so browser sessions and server-side events stitch together.
- * - Autocapture masks input values and element attributes.
- * - SolidPing URLs embed org slugs and check UIDs, so every captured URL and
- *   pathname is rewritten to a route template before it leaves the browser.
+ * Autocapture, session replay and event properties are all captured in the
+ * clear — no text masking, no input masking, no URL/path scrubbing. A masked
+ * or scrubbed event stream is not readable: reconstructing what a session
+ * actually did from a redacted `elements_chain` or a templated pathname costs
+ * more than the analytics are worth. The distinct id is still pseudonymous
+ * and built from UUIDs only (see `distinctId` below) — it must match
+ * `analytics.DistinctID` in `server/internal/analytics/analytics.go` exactly
+ * so browser sessions and server-side events stitch together.
  */
 
 /** Browser-safe PostHog settings, as returned by GET /api/v1/config. */
@@ -131,64 +133,6 @@ export function distinctId(orgUid?: string | null, userUid?: string | null): str
   return `org:${org}/user:${user}`;
 }
 
-const UUID_RE =
-  /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
-
-/**
- * Rewrites a dashboard pathname into a route template. Org slugs and resource
- * identifiers are identifying/sensitive, so they never leave the browser:
- * `/d/orgs/acme-corp/checks/8f0e…` becomes `/d/orgs/:org/checks/:uid`.
- */
-export function scrubPath(path: string): string {
-  return path
-    .replace(/\/orgs\/[^/]+/g, "/orgs/:org")
-    .replace(UUID_RE, ":uid")
-    .replace(
-      /\/(checks|incidents|status-pages|integrations|maintenance-windows|escalation-policies|on-call|check-groups|groups|members|tokens|labels|severities|agents|files|jobs|results)\/(?!:)[^/?#]+/g,
-      "/$1/:id",
-    );
-}
-
-/** Rewrites a full URL to origin + scrubbed pathname, dropping query and hash. */
-export function scrubUrl(rawUrl: string): string {
-  try {
-    const url = new URL(rawUrl);
-    return `${url.origin}${scrubPath(url.pathname)}`;
-  } catch {
-    return scrubPath(rawUrl);
-  }
-}
-
-const URL_PROPERTY_KEYS = [
-  "$current_url",
-  "$referrer",
-  "$initial_current_url",
-  "$initial_referrer",
-];
-
-/**
- * Strips identifying path segments out of every URL-ish autocapture property
- * before the event is queued.
- */
-export function sanitizeProperties(
-  properties: Record<string, unknown>,
-): Record<string, unknown> {
-  const out = { ...properties };
-
-  for (const key of URL_PROPERTY_KEYS) {
-    const value = out[key];
-    if (typeof value === "string" && value !== "" && value !== "$direct") {
-      out[key] = scrubUrl(value);
-    }
-  }
-
-  if (typeof out.$pathname === "string") {
-    out.$pathname = scrubPath(out.$pathname);
-  }
-
-  return out;
-}
-
 // Minimal structural type for the bits of posthog-js we use. Declared locally
 // so no module-level `import type` from "posthog-js" can drag the package into
 // the main bundle graph.
@@ -234,35 +178,18 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           // Defaults to the first-party proxy path so ad blockers do not drop
           // events; the backend sends an explicit host when one is configured.
           api_host: settings.host || "/ingest",
-          // Conservative autocapture: never ship typed values or element
-          // attributes.
           autocapture: true,
-          mask_all_element_attributes: true,
-          mask_all_text: true,
-          // Session replay, fully masked. It exists for ONE question the event
-          // stream cannot answer — where a first-run user stalls before their
-          // first check — and the 2026-09-09 signup is why: reconstructing six
-          // clicks took an evening of decoding `elements_chain`, and the three
-          // minutes he sat still stayed dark.
-          //
-          // Masking is not optional decoration here. Every replay is recorded
-          // with all text and all inputs masked, so a session shows layout,
-          // cursor, scroll and which control was clicked — never a check name,
-          // a monitored URL, an incident, or anything typed. That keeps replay
-          // inside the same promise the rest of this config makes: SolidPing
-          // learns how its UI is used, never what a customer monitors.
+          // Session replay, fully unmasked. It exists for ONE question the
+          // event stream cannot answer — where a first-run user stalls before
+          // their first check — and the 2026-09-09 signup is why:
+          // reconstructing six clicks from a masked, redacted replay took an
+          // evening of decoding `elements_chain`, and the three minutes he sat
+          // still stayed dark. A masked replay is not a usable tool, so this
+          // records layout, cursor, scroll, typed values and clicked text
+          // as-is.
           disable_session_recording: false,
-          session_recording: {
-            maskAllInputs: true,
-            // Mask every text node, matching mask_all_text above. Without this
-            // a replay would render check names and target URLs verbatim — the
-            // exact data sanitizeProperties strips from event properties.
-            maskTextSelector: "*",
-          },
           // Only create person profiles for users we explicitly identify.
           person_profiles: "identified_only",
-          // Scrub org slugs / resource UIDs out of every captured URL.
-          sanitize_properties: sanitizeProperties,
         };
         // When api_host is the first-party proxy path, posthog-js cannot derive
         // the PostHog app host, so toolbar and "view in PostHog" links need it
@@ -321,14 +248,9 @@ export function resetAnalytics(): void {
  * Captures a custom product event. A pure no-op when analytics was never
  * initialized (kill switch off, no credentials, or a blocked/failed load) —
  * callers never need to check `isAnalyticsEnabled` themselves.
- *
- * Properties pass through the same `sanitizeProperties` autocaptured events
- * get, in case a URL-shaped value ever slips in; callers must still never
- * pass an actual check target/hostname, which sanitizeProperties does not
- * scrub.
  */
 export function captureEvent(event: string, properties?: Record<string, unknown>): void {
-  client?.capture(event, sanitizeProperties(properties ?? {}));
+  client?.capture(event, properties ?? {});
 }
 
 /** Test seam: forgets any loaded client. Used by unit tests only. */
