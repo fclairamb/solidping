@@ -552,5 +552,11 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		DegradedFailures:          req.DegradedFailures,
+		DegradedFailuresWindow:    req.DegradedFailuresWindow,
+		DegradedSlow:              req.DegradedSlow,
+		DegradedSlowWindow:        req.DegradedSlowWindow,
+		SlowThresholdMs:           req.SlowThresholdMs,
+		DegradedEnabled:           req.DegradedEnabled,
 	}
 }

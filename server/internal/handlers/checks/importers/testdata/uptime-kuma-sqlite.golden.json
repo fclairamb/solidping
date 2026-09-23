@@ -22,7 +22,8 @@
         "enabled": true,
         "period": "1m",
         "group": "Production",
-        "confirmationPeriodSeconds": 60
+        "confirmationPeriodSeconds": 60,
+        "degradedEnabled": false
       },
       {
         "name": "Docs keyword",
@@ -40,7 +41,8 @@
         "enabled": true,
         "period": "2m",
         "group": "Production",
-        "confirmationPeriodSeconds": 86400
+        "confirmationPeriodSeconds": 86400,
+        "degradedEnabled": false
       },
       {
         "name": "API json query",
@@ -61,7 +63,8 @@
         },
         "enabled": true,
         "period": "1m",
-        "confirmationPeriodSeconds": 20
+        "confirmationPeriodSeconds": 20,
+        "degradedEnabled": false
       },
       {
         "name": "Database port",
@@ -73,7 +76,8 @@
           "timeout": "10s"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Router",
@@ -83,7 +87,8 @@
           "host": "192.0.2.1"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "DNS check",
@@ -95,7 +100,8 @@
           "record_type": "A"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "App container",
@@ -105,7 +111,8 @@
           "containerName": "acme-app"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Cron heartbeat",
@@ -113,7 +120,8 @@
         "type": "heartbeat",
         "config": {},
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "gRPC service",
@@ -128,7 +136,8 @@
           "tls": true
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "MQTT broker",
@@ -141,7 +150,8 @@
           "username": "acme-user"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Postgres primary",
@@ -155,7 +165,8 @@
           "username": "acmeuser"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "MySQL replica",
@@ -168,7 +179,8 @@
           "username": "acmeuser"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Redis cache",
@@ -180,7 +192,8 @@
           "port": 6379
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "SQL Server",
@@ -193,7 +206,8 @@
           "username": "acmeuser"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Mongo primary",
@@ -206,7 +220,8 @@
           "username": "acmeuser"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Game server",
@@ -217,7 +232,8 @@
           "port": 27015
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Marketing site (browser)",
@@ -227,7 +243,8 @@
           "url": "https://acme.com/pricing"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       }
     ]
   },
