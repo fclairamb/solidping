@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   isLockedError,
+  isNotFoundError,
   useDefaultStatusPage,
   usePublicIncidentHistory,
   usePublicStatusPage,
+  usePublicStatusPageSummary,
   type PublicIncident,
   type StatusPage,
 } from "@/api/hooks";
 import { useLanguageFromPage } from "@/hooks/useLanguageFromPage";
 import { captureKioskToken } from "@/lib/kiosk";
 import {
+  SUMMARY_POLL_MS,
+  activeIncidents,
   isStale,
   pollIntervalMs,
   resolveTvState,
@@ -83,15 +87,13 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
   const interval = pollIntervalMs(state);
 
   // TV mode never renders a resource's availability bar or response-time
-  // chart (spec 2026-09-22-07) — only `overallStatus`, `activeIncidents` and
-  // the page's own check/group live status, none of which `include` gates.
+  // chart (spec 2026-09-22-07) — only `overallStatus`, the counts and the
+  // page's own check/group live status, none of which `include` gates.
   // Narrowing to neither section skips both the ~3 MB payload and the
-  // server-side query that builds it on every 15-30s poll. This DOES mean
-  // the page-level `overallAvailabilityPct` number below is never populated
-  // either (it is gated on the `availability` section like everything else)
-  // — the board's rendering keeps handling that exactly like a page with
-  // `showAvailability` off, until spec 2026-09-22-08 decides what, if
-  // anything, TV mode shows in its place.
+  // server-side query that builds it on every 15-30s poll. It also means the
+  // page-level `overallAvailabilityPct` is never populated here: the one
+  // number the board did want out of that section now comes from the summary
+  // endpoint instead, five minutes apart (spec 2026-09-22-08).
   const slugQuery = usePublicStatusPage(org, slug ?? "", {
     kioskToken: token,
     refetchInterval: interval,
@@ -106,14 +108,11 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
   const pageQuery = slug ? slugQuery : defaultQuery;
   const page: StatusPage | undefined = pageQuery.data;
 
-  // Derive-during-render rather than in an effect: the cadence has to be right
-  // on the render that first learns about an incident, not one render later.
-  const liveState = resolveTvState(page?.overallStatus, page?.activeIncidents);
-  if (liveState !== state) setState(liveState);
-
-  // The history endpoint has no slug-free variant, so it can only be polled
-  // once the page has resolved its own slug — which is also the moment the
-  // default-page route learns what it is looking at.
+  // The history endpoint has no slug-free variant, so the default-page route
+  // can only poll it once the page has resolved its own slug. The slug route —
+  // which is what a wallboard URL actually is — has it at mount, so its
+  // incidents request leaves at the same instant as the page's and lands
+  // roughly 7 s earlier.
   const resolvedSlug = slug ?? page?.slug ?? "";
   const historyQuery = usePublicIncidentHistory(org, resolvedSlug, {
     kioskToken: token,
@@ -125,26 +124,42 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
     refetchInterval: interval,
   });
 
-  useLanguageFromPage(page?.language);
-
   const incidents: PublicIncident[] | undefined = historyQuery.data?.data;
+  // ONE source for the open publications, and it is the fast one (spec
+  // 2026-09-22-08). The page payload's own `activeIncidents` is deliberately
+  // ignored: reading the two lists off two payloads fetched seconds apart is
+  // how the headline and the panel came to disagree.
+  const active = activeIncidents(incidents);
+
+  // Derive-during-render rather than in an effect: the cadence has to be right
+  // on the render that first learns about an incident, not one render later.
+  const liveState = resolveTvState(page?.overallStatus, active);
+  if (liveState !== state) setState(liveState);
+
+  // The uptime number, last and slowest. Held back until the page has landed
+  // AND says it publishes availability — asking a page that hides it would
+  // spend the server's whole availability enrichment on a `null`.
+  const summaryQuery = usePublicStatusPageSummary(org, resolvedSlug, {
+    kioskToken: token,
+    enabled: page?.showAvailability === true,
+    refetchInterval: SUMMARY_POLL_MS,
+  });
+
+  useLanguageFromPage(page?.language);
 
   const lastSuccessAt = pageQuery.dataUpdatedAt || undefined;
   const stale = useStaleness(lastSuccessAt);
-
-  if (pageQuery.isLoading && page === undefined) {
-    return (
-      <TvShell>
-        <p className="text-3xl opacity-70">{t("loading")}</p>
-      </TvShell>
-    );
-  }
 
   // A locked page on a TV means the URL is missing (or carrying a dead) kiosk
   // token. There is deliberately NO password form here: nobody is standing at
   // the screen to fill one in, and rendering an input on a wallboard would
   // just be an unusable box. Say what an operator has to do instead.
-  if (isLockedError(pageQuery.error)) {
+  //
+  // Checked on BOTH reads, and ahead of the loading shell: the page and the
+  // incidents are behind one visibility gate on the server, so whichever
+  // answers 401 first is already the truth about the whole screen. Waiting for
+  // the other one would only delay the sentence an operator needs.
+  if (isLockedError(pageQuery.error) || isLockedError(historyQuery.error)) {
     return (
       <TvShell>
         <div data-testid="tv-locked">
@@ -157,11 +172,25 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
     );
   }
 
-  // Never render a confident board over a page we could not load at all. Once
-  // a page HAS loaded, a later failure is handled by the stale treatment
-  // instead — the board keeps the last known state, greyed, rather than
-  // collapsing to "not found" on one bad poll.
-  if (page === undefined) {
+  // Never render a confident board over a read that FAILED and has nothing
+  // cached. Same rule as before for the page; extended to the incidents,
+  // because the board now renders off that read alone and a 404 there is the
+  // same fact about the same page — the URL on the wall is wrong.
+  //
+  // The incidents side is restricted to a 404 on purpose. The page side keeps
+  // the older, broader rule (any error with no data at all), but promoting a
+  // 5xx on the SECOND read to a full-screen "not found" would replace a board
+  // that is rendering correctly with a false statement about the page.
+  //
+  // A query that merely has not answered yet is not this case — it has no
+  // error — and a query that failed AFTER succeeding once still has its data,
+  // which is what keeps one bad poll from collapsing the board into "not
+  // found" instead of greying it.
+  const pageFailed = pageQuery.error !== null && page === undefined;
+  const incidentsFailed =
+    isNotFoundError(historyQuery.error) && incidents === undefined;
+
+  if (pageFailed || incidentsFailed) {
     return (
       <TvShell>
         <div data-testid="tv-not-found">
@@ -174,10 +203,22 @@ export function TvPage({ org, slug }: { org: string; slug?: string }) {
     );
   }
 
+  // Nothing at all yet. The board goes up as soon as EITHER read lands —
+  // incidents first in practice, which is the whole point of this spec — and
+  // renders only what that read can honestly say.
+  if (page === undefined && incidents === undefined) {
+    return (
+      <TvShell>
+        <p className="text-3xl opacity-70">{t("loading")}</p>
+      </TvShell>
+    );
+  }
+
   return (
     <TvBoard
       page={page}
       incidents={incidents}
+      availabilityPct={summaryQuery.data?.overallAvailabilityPct}
       stale={stale}
       lastUpdatedAt={lastSuccessAt}
     />

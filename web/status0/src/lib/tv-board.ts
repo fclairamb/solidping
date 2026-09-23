@@ -228,6 +228,43 @@ export function lastResolvedAt(
 }
 
 /**
+ * The open publications inside a page's incident history (spec 2026-09-22-08).
+ *
+ * TV mode used to read `page.activeIncidents` off the page payload while
+ * reading the history off a second endpoint, which meant the board's headline
+ * and its incident panel were built from two payloads fetched at two different
+ * instants: the panel could name an incident the severity floor knew nothing
+ * about, and vice versa. Both lists come from the same server-side
+ * `ListPublicIncidents` — `activeOnly=true` is a filter, not a different
+ * query — so the fast endpoint can feed both, and the derivation belongs here.
+ *
+ * `state` is the publication's own public state, so "not resolved" is the
+ * whole test: `investigating`, `identified` and `monitoring` are all open, and
+ * so is any state the server grows later. Erring towards "open" is the right
+ * default for a wallboard — a state this client does not recognize must not
+ * silently vanish from the screen.
+ *
+ * Source order is preserved rather than re-sorted: it is the order the API
+ * chose (most recent publication first), and the ordinary public page renders
+ * the same list in the same order.
+ */
+export function activeIncidents(
+  incidents: PublicIncident[] | undefined,
+): PublicIncident[] {
+  return (incidents ?? []).filter((incident) => incident.state !== "resolved");
+}
+
+/**
+ * How often the page-level uptime number is refreshed, in ms.
+ *
+ * Ten times slower than the board's own poll, deliberately: the number is a 7-
+ * or 90-day mean, it cannot move enough in five minutes for anyone in the room
+ * to notice, and on the server it costs the whole availability enrichment the
+ * board otherwise skips (`include=`, spec 2026-09-22-07).
+ */
+export const SUMMARY_POLL_MS = 300_000;
+
+/**
  * The N most recently resolved incidents, newest first.
  */
 export function recentResolved(
