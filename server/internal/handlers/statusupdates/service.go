@@ -89,7 +89,8 @@ type SubscriberUpdateEvent struct {
 // Service provides business logic for status update management.
 type Service struct {
 	db       db.Service
-	notifier SubscriberNotifier	// pageMemo evicts the status page's memoized public view after a write
+	notifier SubscriberNotifier
+	// pageMemo evicts the status page's memoized public view after a write
 	// (spec 2026-09-22-09). Optional; nil means no memo to evict.
 	pageMemo PageMemoInvalidator
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -126,6 +127,15 @@ type countingDB struct {
 
 	aggregateResultBucketsCalls int
 	recentResultsPerCheckCalls  int
+
+	// The view-fan-out counters, added by spec 2026-09-22-09's memo tests
+	// (methods in memo_test.go). Atomic because those tests read them while a
+	// request is in flight; the two counters above predate that and stay plain.
+	orgLookups   atomic.Int64
+	pageLookups  atomic.Int64
+	sectionReads atomic.Int64
+	resourceRead atomic.Int64
+	updateReads  atomic.Int64
 }
 
 func (c *countingDB) AggregateResultBuckets(

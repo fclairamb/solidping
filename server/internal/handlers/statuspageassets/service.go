@@ -131,7 +131,8 @@ func allowedType(kind Kind, mimeType string) bool {
 // Service implements the status-page asset upload/clear/serve operations.
 type Service struct {
 	db    db.Service
-	files *files.Service	// pageMemo evicts the status page's memoized public view after a write
+	files *files.Service
+	// pageMemo evicts the status page's memoized public view after a write
 	// (spec 2026-09-22-09). Optional; nil means no memo to evict.
 	pageMemo PageMemoInvalidator
 }

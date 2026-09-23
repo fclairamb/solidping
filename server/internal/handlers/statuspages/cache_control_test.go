@@ -291,3 +291,55 @@ func TestGatedDirectiveIsWhatTheHelperSays(t *testing.T) {
 	r.Equal("X-Forwarded-Proto", statuspagecache.VaryPublic)
 	r.Equal("Cookie, X-Forwarded-Proto", statuspagecache.VaryGated)
 }
+
+// TestGatedResponseCarriesNoStaleWhileRevalidate pins the one asymmetry spec
+// 2026-09-22-09 introduced: the public directive gained
+// stale-while-revalidate, and the gated one must not have.
+//
+// The grace window tells a cache "serve the copy you are holding while you
+// refresh it". On a page somebody has to type a password for there is no copy
+// to serve, because no-store said so — and a directive that talks about serving
+// a stored body is exactly the kind of mixed message a proxy resolves in its
+// own favour. The whole surface is checked, every gated visibility and the
+// 404/401 answers with it, because they share one helper and one helper is what
+// stops them drifting.
+func TestGatedResponseCarriesNoStaleWhileRevalidate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for _, visibility := range []string{
+		models.StatusPageVisibilityPassword,
+		models.StatusPageVisibilityPrivate,
+	} {
+		control := statuspagecache.Control(visibility, statuspagecache.PageMaxAge)
+		r.Equal(statuspagecache.Gated, control, visibility)
+		r.NotContains(control, "stale-while-revalidate", visibility)
+	}
+
+	r.NotContains(statuspagecache.Gated, "stale-while-revalidate")
+
+	// End to end, over every public endpoint, for both a password page (401)
+	// and a private one (404).
+	for _, visibility := range []string{
+		models.StatusPageVisibilityPassword,
+		models.StatusPageVisibilityPrivate,
+	} {
+		ctx, dbService, svc, org := passwordSetup(t)
+		seedPageAtPublicSlug(ctx, t, dbService, svc, org.UID, visibility)
+
+		h := NewHandler(svc, &config.Config{})
+
+		for _, endpoint := range publicEndpoints() {
+			req, rec := endpoint.request("acme", testPublicSlug)
+
+			r.NoError(endpoint.call(h, rec, req), endpoint.name)
+			r.NotEqual(http.StatusOK, rec.Code,
+				"%s/%s: this response is supposed to be refused", endpoint.name, visibility)
+			r.Equal("private, no-store", rec.Header().Get("Cache-Control"),
+				"%s/%s", endpoint.name, visibility)
+			r.NotContains(rec.Header().Get("Cache-Control"), "stale-while-revalidate",
+				"%s/%s: a gated answer must offer a cache no grace window", endpoint.name, visibility)
+		}
+	}
+}
