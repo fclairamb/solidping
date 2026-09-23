@@ -241,7 +241,6 @@ func TestPageMemo_GateRunsBeforeTheMemo(t *testing.T) {
 
 	_, err = svc.ViewDefaultStatusPage(ctx, org.Slug, AllViewOptions())
 	r.Error(err, "the default-page route must be gated identically")
-	r.NotErrorIs(err, nil)
 
 	_, err = svc.ViewStatusPageSummary(ctx, org.Slug, page.Slug)
 	r.ErrorIs(err, statuspagelock.ErrLocked, "the summary must not answer from a warm memo either")
@@ -373,6 +372,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathUpdateStatusPage,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				name := "Renamed"
 				_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID, &UpdateStatusPageRequest{Name: &name})
 				require.NoError(t, err)
@@ -381,12 +382,16 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathDeleteStatusPage,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				require.NoError(t, svc.DeleteStatusPage(ctx, org.Slug, page.UID))
 			},
 		},
 		{
 			path: WritePathCreateSection,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				_, err := svc.CreateSection(ctx, org.Slug, page.UID,
 					CreateSectionRequest{Name: "Extra", Slug: "extra"})
 				require.NoError(t, err)
@@ -395,6 +400,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathUpdateSection,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				section := firstSection(ctx, t, svc, page.UID)
 				name := "Core renamed"
 				_, err := svc.UpdateSection(ctx, org.Slug, page.UID, section.UID,
@@ -405,6 +412,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathDeleteSection,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				section := firstSection(ctx, t, svc, page.UID)
 				require.NoError(t, svc.DeleteSection(ctx, org.Slug, page.UID, section.UID))
 			},
@@ -412,6 +421,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathReorderSections,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				_, err := svc.CreateSection(ctx, org.Slug, page.UID,
 					CreateSectionRequest{Name: "Second", Slug: "second"})
 				require.NoError(t, err)
@@ -432,6 +443,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathCreateResource,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				section := firstSection(ctx, t, svc, page.UID)
 				check := models.NewCheck(org.UID, "second", "http")
 				require.NoError(t, svc.db.CreateCheck(ctx, check))
@@ -444,6 +457,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathUpdateResource,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				section := firstSection(ctx, t, svc, page.UID)
 				resource := firstResource(ctx, t, svc, section.UID)
 				publicName := "Public API"
@@ -455,6 +470,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathDeleteResource,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				section := firstSection(ctx, t, svc, page.UID)
 				resource := firstResource(ctx, t, svc, section.UID)
 				require.NoError(t, svc.DeleteResource(ctx, org.Slug, page.UID, section.UID, resource.UID))
@@ -463,6 +480,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathReorderResources,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				section := firstSection(ctx, t, svc, page.UID)
 				check := models.NewCheck(org.UID, "second", "http")
 				require.NoError(t, svc.db.CreateCheck(ctx, check))
@@ -484,6 +503,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathSetCustomDomain,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				domain := "status.acme.com"
 				_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID,
 					&UpdateStatusPageRequest{CustomDomain: &domain, CustomDomainSet: true})
@@ -493,6 +514,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathClearCustomDomain,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				domain := "status.acme.com"
 				_, err := svc.UpdateStatusPage(ctx, org.Slug, page.UID,
 					&UpdateStatusPageRequest{CustomDomain: &domain, CustomDomainSet: true})
@@ -510,6 +533,8 @@ func TestPageMemo_WritePathsEvict(t *testing.T) {
 		{
 			path: WritePathSelectorReconcile,
 			write: func(ctx context.Context, t *testing.T, svc *Service, org *models.Organization, page StatusPageResponse) {
+				t.Helper()
+
 				// Give the page a selector section and a check it matches, then
 				// let the reconcile materialize the row. The reconcile is the
 				// write here — nothing else touches the page.
@@ -594,7 +619,7 @@ func firstResource(
 // invalidation table: for every row, the named function must still contain an
 // eviction call.
 //
-// It parses the source rather than asserting behaviour because the rows that
+// It parses the source rather than asserting behavior because the rows that
 // most need guarding live in other packages, where a refactor can quietly drop
 // the one line that matters and every test in sight stays green. A failure here
 // names the file and function, which is all anybody needs.

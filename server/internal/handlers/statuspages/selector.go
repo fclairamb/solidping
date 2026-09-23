@@ -144,7 +144,7 @@ func (s *Service) ReconcileOrgSelectors(ctx context.Context, orgUID string) {
 	for _, pageUID := range pageUIDs {
 		s.reconcileMarks.invalidate(pageUID)
 
-		if _, err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
+		if err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
 			slog.ErrorContext(ctx, "Failed to reconcile status page selectors",
 				"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
 		}
@@ -157,7 +157,7 @@ func (s *Service) ReconcileOrgSelectors(ctx context.Context, orgUID string) {
 func (s *Service) reconcilePageBestEffort(ctx context.Context, orgUID, pageUID string) {
 	s.reconcileMarks.invalidate(pageUID)
 
-	if _, err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
+	if err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
 		slog.ErrorContext(ctx, "Failed to reconcile status page selectors",
 			"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
 	}
@@ -172,7 +172,7 @@ func (s *Service) maybeReconcileOnView(ctx context.Context, orgUID, pageUID stri
 		return
 	}
 
-	if _, err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
+	if err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
 		slog.ErrorContext(ctx, "Backstop reconcile of status page selectors failed",
 			"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
 	}
@@ -277,28 +277,26 @@ func claimedElsewhereBySection(
 // tests that pin idempotence and ordering; production callers go through
 // ReconcileOrgSelectors / reconcilePageBestEffort / maybeReconcileOnView.
 func (s *Service) ReconcilePage(ctx context.Context, orgUID, pageUID string) error {
-	_, err := s.reconcilePage(ctx, orgUID, pageUID)
-
-	return err
+	return s.reconcilePage(ctx, orgUID, pageUID)
 }
 
 // reconcilePage is the idempotent core. Reconciling an unchanged page twice
 // issues ZERO writes — that is what keeps public row order stable between two
 // polls, and it is asserted by a test rather than assumed.
 //
-// It reports whether it wrote anything, and evicts the page's memoized public
-// views when it did (spec 2026-09-22-09). Only when it did: this runs on the
-// READ path too (maybeReconcileOnView), so an unconditional eviction here would
-// clear the memo on every view of every selector-bearing page and leave the
-// whole thing doing nothing.
-func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) (bool, error) {
+// It evicts the page's memoized public views when it wrote something, and only
+// then (spec 2026-09-22-09): this runs on the READ path too
+// (maybeReconcileOnView), so an unconditional eviction here would clear the memo
+// on every view of every selector-bearing page and leave the whole thing doing
+// nothing.
+func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) error {
 	states, err := s.loadPageState(ctx, pageUID)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	if !needsReconcile(states) {
-		return false, nil
+		return nil
 	}
 
 	changed := false
@@ -319,25 +317,25 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) (bo
 		// what removes them — skipping selector-less sections here would leave
 		// a page advertising checks under a rule that no longer exists.
 		if states[i].section.Selector == nil {
-			dropped, err := s.dropManagedRows(ctx, &states[i])
+			dropped, dropErr := s.dropManagedRows(ctx, &states[i])
 			changed = changed || dropped
 
-			if err != nil {
-				return changed, err
+			if dropErr != nil {
+				return dropErr
 			}
 
 			continue
 		}
 
-		wrote, err := s.reconcileSection(ctx, orgUID, &states[i], claimed)
+		wrote, sectionErr := s.reconcileSection(ctx, orgUID, &states[i], claimed)
 		changed = changed || wrote
 
-		if err != nil {
-			return changed, err
+		if sectionErr != nil {
+			return sectionErr
 		}
 	}
 
-	return changed, nil
+	return nil
 }
 
 // needsReconcile reports whether the page has anything to reconcile — a
@@ -449,8 +447,8 @@ func (s *Service) reconcileSection(
 			continue
 		}
 
-		if err := s.db.DeleteStatusPageResource(ctx, resource.UID); err != nil {
-			return changed, err
+		if delErr := s.db.DeleteStatusPageResource(ctx, resource.UID); delErr != nil {
+			return changed, delErr
 		}
 
 		delete(existing, checkUID)

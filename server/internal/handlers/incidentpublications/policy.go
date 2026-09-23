@@ -261,7 +261,7 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 	pub.IncidentUID = &incident.UID
 	pub.AutoCreated = true
 
-	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
+	if err := s.createPublicationRow(ctx, pub); err != nil {
 		if isUniqueViolation(err) {
 			// Lost the race to a concurrent fire or a manual publish. The other
 			// writer's row is the publication; ours never existed.
@@ -270,10 +270,6 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 
 		return fmt.Errorf("auto-publish: create publication: %w", err)
 	}
-
-	// Evict the page's memoized public view: an auto-published banner has to
-	// appear now, not in fifteen seconds.
-	s.invalidatePageMemo(pub.StatusPageUID)
 
 	tpl := templatesFor(page.Language)
 
@@ -411,7 +407,7 @@ func (s *Service) applyResolvePolicy(
 	}
 
 	resolved := models.PublicationStateResolved
-	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+	if err := s.updatePublicationRow(ctx, pub, &models.IncidentPublicationUpdate{
 		PublicState: &resolved,
 		ResolvedAt:  &now,
 	}); err != nil {
@@ -420,8 +416,6 @@ func (s *Service) applyResolvePolicy(
 
 		return
 	}
-
-	s.invalidatePageMemo(pub.StatusPageUID)
 
 	pub.PublicState = resolved
 	pub.ResolvedAt = &now
@@ -485,7 +479,7 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 		}
 
 		investigating := models.PublicationStateInvestigating
-		if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+		if err := s.updatePublicationRow(ctx, pub, &models.IncidentPublicationUpdate{
 			PublicState:     &investigating,
 			ClearResolvedAt: true,
 		}); err != nil {
@@ -494,8 +488,6 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 
 			continue
 		}
-
-		s.invalidatePageMemo(pub.StatusPageUID)
 
 		pub.PublicState = investigating
 		pub.ResolvedAt = nil

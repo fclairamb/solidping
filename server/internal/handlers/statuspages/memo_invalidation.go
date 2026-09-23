@@ -72,7 +72,7 @@ const (
 	// WritePathVerifyCustomDomain is the synchronous Verify button: it is what
 	// promotes a configured domain into page.url, and what demotes it back out.
 	WritePathVerifyCustomDomain PageMemoWritePath = "statuspages.VerifyCustomDomain"
-	// WritePathSelectorReconcile is selector materialisation — the one write
+	// WritePathSelectorReconcile is selector materialization — the one write
 	// path that is also a READ path (maybeReconcileOnView). It evicts only when
 	// it actually wrote something, because the backstop runs on every view and
 	// an unconditional eviction there would defeat the memo entirely.
@@ -141,44 +141,57 @@ type pageMemoWritePathSite struct {
 	Func string
 }
 
-// PageMemoWritePaths is THE list of write paths that evict the view memo.
-// Ordered as the spec lists them: this package, then assets, publications and
-// status updates.
+// The files the table points at. Named constants because the same path appears
+// on every row of a package's block, and because a typo in one of them is a row
+// the completeness test can no longer check.
+const (
+	fileStatusPagesService = "internal/handlers/statuspages/service.go"
+	fileStatusPagesDomain  = "internal/handlers/statuspages/custom_domain.go"
+	fileStatusPagesSel     = "internal/handlers/statuspages/selector.go"
+	fileAssetsService      = "internal/handlers/statuspageassets/service.go"
+	filePublicationsSvc    = "internal/handlers/incidentpublications/service.go"
+	filePublicationsPolicy = "internal/handlers/incidentpublications/policy.go"
+	fileStatusUpdatesSvc   = "internal/handlers/statusupdates/service.go"
+)
+
+// PageMemoWritePaths is THE list of write paths that evict the view memo, each
+// with the file and function that must carry the eviction. Ordered as the spec
+// lists them: this package, then assets, publications and status updates.
 //
 //nolint:gochecknoglobals // a declarative table, read-only after init
 var PageMemoWritePaths = []pageMemoWritePathSite{
-	{WritePathUpdateStatusPage, "internal/handlers/statuspages/service.go", "UpdateStatusPage"},
-	{WritePathDeleteStatusPage, "internal/handlers/statuspages/service.go", "DeleteStatusPage"},
-	{WritePathCreateSection, "internal/handlers/statuspages/service.go", "CreateSection"},
-	{WritePathUpdateSection, "internal/handlers/statuspages/service.go", "UpdateSection"},
-	{WritePathDeleteSection, "internal/handlers/statuspages/service.go", "DeleteSection"},
-	{WritePathReorderSections, "internal/handlers/statuspages/service.go", "ReorderSections"},
-	{WritePathCreateResource, "internal/handlers/statuspages/service.go", "CreateResource"},
-	{WritePathUpdateResource, "internal/handlers/statuspages/service.go", "UpdateResource"},
-	{WritePathDeleteResource, "internal/handlers/statuspages/service.go", "DeleteResource"},
-	{WritePathReorderResources, "internal/handlers/statuspages/service.go", "ReorderResources"},
-	{WritePathSetCustomDomain, "internal/handlers/statuspages/custom_domain.go", "setCustomDomain"},
-	{WritePathClearCustomDomain, "internal/handlers/statuspages/custom_domain.go", "clearCustomDomain"},
-	{WritePathVerifyCustomDomain, "internal/handlers/statuspages/custom_domain.go", "VerifyCustomDomain"},
-	{WritePathSelectorReconcile, "internal/handlers/statuspages/selector.go", "reconcilePage"},
+	{WritePathUpdateStatusPage, fileStatusPagesService, "UpdateStatusPage"},
+	{WritePathDeleteStatusPage, fileStatusPagesService, "DeleteStatusPage"},
+	{WritePathCreateSection, fileStatusPagesService, "CreateSection"},
+	{WritePathUpdateSection, fileStatusPagesService, "UpdateSection"},
+	{WritePathDeleteSection, fileStatusPagesService, "DeleteSection"},
+	{WritePathReorderSections, fileStatusPagesService, "ReorderSections"},
+	{WritePathCreateResource, fileStatusPagesService, "CreateResource"},
+	{WritePathUpdateResource, fileStatusPagesService, "UpdateResource"},
+	{WritePathDeleteResource, fileStatusPagesService, "DeleteResource"},
+	{WritePathReorderResources, fileStatusPagesService, "ReorderResources"},
+	{WritePathSetCustomDomain, fileStatusPagesDomain, "setCustomDomain"},
+	{WritePathClearCustomDomain, fileStatusPagesDomain, "clearCustomDomain"},
+	{WritePathVerifyCustomDomain, fileStatusPagesDomain, "VerifyCustomDomain"},
+	{WritePathSelectorReconcile, fileStatusPagesSel, "reconcilePage"},
 
-	{WritePathAssetUpload, "internal/handlers/statuspageassets/service.go", "Upload"},
-	{WritePathAssetClear, "internal/handlers/statuspageassets/service.go", "Clear"},
+	{WritePathAssetUpload, fileAssetsService, "Upload"},
+	{WritePathAssetClear, fileAssetsService, "Clear"},
 
-	{WritePathCreatePublication, "internal/handlers/incidentpublications/service.go", "CreatePublication"},
-	{WritePathUpdatePublication, "internal/handlers/incidentpublications/service.go", "UpdatePublication"},
-	{WritePathAppendUpdate, "internal/handlers/incidentpublications/service.go", "AppendUpdate"},
-	{WritePathPublishIncident, "internal/handlers/incidentpublications/service.go", "PublishIncident"},
-	{WritePathUnpublishIncident, "internal/handlers/incidentpublications/service.go", "UnpublishIncident"},
-	{WritePathResolveRetroactively, "internal/handlers/incidentpublications/service.go", "resolveRetroactively"},
-	{WritePathPostUpdate, "internal/handlers/incidentpublications/service.go", "postUpdate"},
-	{WritePathAutoPublish, "internal/handlers/incidentpublications/policy.go", "AutoPublish"},
-	{WritePathApplyResolvePolicy, "internal/handlers/incidentpublications/policy.go", "applyResolvePolicy"},
-	{WritePathOnIncidentReopened, "internal/handlers/incidentpublications/policy.go", "OnIncidentReopened"},
+	{WritePathCreatePublication, filePublicationsSvc, "CreatePublication"},
+	{WritePathUpdatePublication, filePublicationsSvc, "UpdatePublication"},
+	{WritePathAppendUpdate, filePublicationsSvc, "AppendUpdate"},
+	{WritePathPublishIncident, filePublicationsSvc, "PublishIncident"},
+	{WritePathUnpublishIncident, filePublicationsSvc, "UnpublishIncident"},
+	{WritePathResolveRetroactively, filePublicationsSvc, "resolveRetroactively"},
+	{WritePathPostUpdate, filePublicationsSvc, "postUpdate"},
+	{WritePathAutoPublish, filePublicationsPolicy, "AutoPublish"},
+	{WritePathApplyResolvePolicy, filePublicationsPolicy, "applyResolvePolicy"},
+	{WritePathOnIncidentReopened, filePublicationsPolicy, "OnIncidentReopened"},
 
-	{WritePathCreateStatusUpdate, "internal/handlers/statusupdates/service.go", "CreateStatusUpdate"},
-	{WritePathUpdateStatusUpdate, "internal/handlers/statusupdates/service.go", "UpdateStatusUpdate"},
-	{WritePathDeleteStatusUpdate, "internal/handlers/statusupdates/service.go", "DeleteStatusUpdate"},
+	{WritePathCreateStatusUpdate, fileStatusUpdatesSvc, "CreateStatusUpdate"},
+	{WritePathUpdateStatusUpdate, fileStatusUpdatesSvc, "UpdateStatusUpdate"},
+	{WritePathDeleteStatusUpdate, fileStatusUpdatesSvc, "DeleteStatusUpdate"},
 }
 
 // PageMemoEvictionCalls are the method names that count as an eviction when the
@@ -192,6 +205,14 @@ var PageMemoEvictionCalls = []string{
 	"invalidatePageMemo",
 	"Invalidate",
 	"InvalidateOrg",
+	// incidentpublications pairs each publication row write with its eviction in
+	// one helper, so the write path calls the helper rather than the eviction.
+	// Naming them here keeps the scan honest without asking that package to
+	// un-pair what is better paired.
+	"createPublicationRow",
+	"updatePublicationRow",
+	"softDeletePublicationRow",
+	"createPageStatusUpdate",
 }
 
 // invalidatePageMemo evicts one page's memoized views.
@@ -199,7 +220,7 @@ var PageMemoEvictionCalls = []string{
 // It takes the write path purely so the call site names its row in
 // PageMemoWritePaths: the parameter is unused at runtime, and that is the
 // point — it costs one identifier at each call site and buys a grep from the
-// table to the code that honours it.
+// table to the code that honors it.
 func (s *Service) invalidatePageMemo(_ PageMemoWritePath, pageUID string) {
 	s.memo.invalidate(pageUID)
 }

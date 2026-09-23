@@ -2545,6 +2545,12 @@ func (s *Service) resolveAndGate(
 	return org, page, nil
 }
 
+// ViewStatusPage returns a public view of a status page with sections,
+// resources, and live check status. opts narrows which optional sections
+// (availability, response time) are computed and returned — see
+// ParseViewOptions and ViewOptions.
+//
+// Gate first, then memo: see the block comment above resolveAndGate.
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string, opts ViewOptions,
 ) (StatusPageResponse, error) {

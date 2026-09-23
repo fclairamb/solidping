@@ -300,7 +300,7 @@ func TestGatedDirectiveIsWhatTheHelperSays(t *testing.T) {
 // refresh it". On a page somebody has to type a password for there is no copy
 // to serve, because no-store said so — and a directive that talks about serving
 // a stored body is exactly the kind of mixed message a proxy resolves in its
-// own favour. The whole surface is checked, every gated visibility and the
+// own favor. The whole surface is checked, every gated visibility and the
 // 404/401 answers with it, because they share one helper and one helper is what
 // stops them drifting.
 func TestGatedResponseCarriesNoStaleWhileRevalidate(t *testing.T) {

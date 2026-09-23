@@ -47,7 +47,7 @@ func TestFeedCacheControlFollowsVisibility(t *testing.T) {
 	// shared cache is welcome to hold it for the feed's own five minutes.
 	rec := feedRequest(t, h, h.page.Slug, nil)
 	r.Equal(http.StatusOK, rec.Code)
-	r.Equal("public, max-age=300", rec.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=300, stale-while-revalidate=30", rec.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", rec.Header().Get("Vary"))
 
 	// Same page, now behind a password.

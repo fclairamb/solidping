@@ -196,8 +196,8 @@ func (m *pageMemo) store(key memoKey, value any) {
 func (m *pageMemo) sweepLocked() {
 	now := m.clock()
 
-	for key, entry := range m.entries {
-		if now.Sub(entry.computedAt) >= statuspagecache.PageMemoTTL {
+	for key := range m.entries {
+		if now.Sub(m.entries[key].computedAt) >= statuspagecache.PageMemoTTL {
 			delete(m.entries, key)
 		}
 	}
@@ -215,8 +215,8 @@ func (m *pageMemo) sweepLocked() {
 		return m.entries[keys[i]].computedAt.Before(m.entries[keys[j]].computedAt)
 	})
 
-	for _, key := range keys[:len(m.entries)-memoMaxEntries] {
-		delete(m.entries, key)
+	for i := range len(m.entries) - memoMaxEntries {
+		delete(m.entries, keys[i])
 	}
 }
 
