@@ -2667,8 +2667,33 @@ func (s *Service) RequestPasswordReset(
 
 	// Look up user by email — return success even if not found (anti-enumeration)
 	user, _ := s.db.GetUserByEmail(ctx, req.Email)
-	if user == nil || user.PasswordHash == nil || *user.PasswordHash == "" {
+	if user == nil {
 		return successMsg, nil
+	}
+
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
+	// An SSO-only user (no password hash) still has a recoverable account
+	// as long as they have at least one linked provider — the reset link
+	// lets them set a password without losing their existing SSO login.
+	// A user with neither a password nor a linked provider isn't a real
+	// account to recover, so this keeps today's do-nothing behavior.
+	var ssoProviderLabel string
+
+	if !hasPassword {
+		providers, err := s.db.ListUserProvidersByUser(ctx, user.UID)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to list user providers for password reset",
+				"error", err, "userUID", user.UID)
+
+			return successMsg, nil
+		}
+
+		if len(providers) == 0 {
+			return successMsg, nil
+		}
+
+		ssoProviderLabel = s.providerLabelList(providers)
 	}
 
 	// Per-user cap: drop silently above the limit. Returning success keeps
@@ -2700,14 +2725,93 @@ func (s *Service) RequestPasswordReset(
 		return nil, fmt.Errorf("failed to store password reset: %w", err)
 	}
 
-	// Send reset email asynchronously via the email job
+	// Send reset email asynchronously via the email job. An SSO-only user
+	// gets a dedicated template that names their current sign-in method(s)
+	// so they aren't just confused by a bare "reset your password" email —
+	// the plain password-reset.html template, and the email a password user
+	// receives, are both left untouched.
 	resetURL := fmt.Sprintf("%s%s/reset-password/%s",
 		s.fullCfg.Server.BaseURL, config.DashboardBasePath, token)
-	s.enqueueEmail(ctx, "", req.Email, "password-reset.html",
-		map[string]any{"ResetURL": resetURL},
-	)
+
+	emailTemplate := "password-reset.html"
+	templateData := map[string]any{"ResetURL": resetURL}
+
+	if !hasPassword {
+		emailTemplate = "password-reset-sso.html"
+		templateData["Providers"] = ssoProviderLabel
+	}
+
+	s.enqueueEmail(ctx, "", req.Email, emailTemplate, templateData)
 
 	return successMsg, nil
+}
+
+// providerTypeLabels maps a linked-provider type to the human-readable name
+// used in the SSO password-reset email (spec 2026-09-23-02). SAML and OIDC
+// are deliberately absent here: they use their configured DisplayName, not a
+// static label — see providerLabel.
+var providerTypeLabels = map[models.ProviderType]string{
+	models.ProviderTypeGoogle:    "Google",
+	models.ProviderTypeGitHub:    "GitHub",
+	models.ProviderTypeGitLab:    "GitLab",
+	models.ProviderTypeMicrosoft: "Microsoft",
+	models.ProviderTypeTwitter:   "Twitter",
+	models.ProviderTypeSlack:     "Slack",
+	models.ProviderTypeDiscord:   "Discord",
+	models.ProviderTypeLDAP:      "LDAP",
+}
+
+// providerLabel returns the human-readable name for one linked provider.
+// SAML and OIDC use their configured DisplayName, falling back to "SSO"
+// when it's blank — same fallback ListProviders uses for the login page.
+func (s *Service) providerLabel(providerType models.ProviderType) string {
+	switch providerType {
+	case models.ProviderTypeSAML:
+		if s.fullCfg.SAML.DisplayName != "" {
+			return s.fullCfg.SAML.DisplayName
+		}
+
+		return "SSO"
+	case models.ProviderTypeOIDC:
+		if s.fullCfg.OIDC.DisplayName != "" {
+			return s.fullCfg.OIDC.DisplayName
+		}
+
+		return "SSO"
+	default:
+		if label, ok := providerTypeLabels[providerType]; ok {
+			return label
+		}
+
+		return "SSO"
+	}
+}
+
+// providerLabelList turns a user's linked providers into a deduplicated,
+// human-joined list ("Google", or "Google or GitHub" for two, or
+// "Google, GitHub or Microsoft" for three or more).
+func (s *Service) providerLabelList(providers []*models.UserProvider) string {
+	seen := make(map[string]bool, len(providers))
+	labels := make([]string, 0, len(providers))
+
+	for _, p := range providers {
+		label := s.providerLabel(p.ProviderType)
+		if seen[label] {
+			continue
+		}
+
+		seen[label] = true
+		labels = append(labels, label)
+	}
+
+	switch len(labels) {
+	case 0:
+		return ""
+	case 1:
+		return labels[0]
+	default:
+		return strings.Join(labels[:len(labels)-1], ", ") + " or " + labels[len(labels)-1]
+	}
 }
 
 // counterValue extracts the integer value from a state entry that holds
