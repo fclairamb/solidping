@@ -117,7 +117,9 @@ type ResponseTimeBin struct {
 // ResponseTimeBinP95Index is the p95 nearest-rank index expressed as
 // integer arithmetic: the 0-based index the aggregation job's calculateRawMetrics
 // picks is `int(float64(n) * 0.95)`, and `(n * 19) / 20` is that same value for
-// every n (pinned by TestResponseTimeBinP95IndexMatchesAggregationJob).
+// every n (pinned by TestRawMetricsP95UsesTheSharedNearestRankIndex in
+// internal/jobs/jobtypes, which drives the job's OWN helper and requires the
+// sample it returns to be the one at this index).
 //
 // The integer form is what the SQL uses, in both dialects, for two reasons:
 // Postgres would evaluate `count * 0.95` in exact NUMERIC rather than in IEEE

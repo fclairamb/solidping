@@ -279,8 +279,12 @@ hour rollup will.
 What this replaced: the seam was fetched as **rows**, ~1 337 raw probes per check
 (292 843 for a 200-check 7-day page), and `subsampleRows` kept roughly one in
 ninety and plotted them as individual probes. That was both the cost (2.4–3.0 s
-inside the request) and a correctness problem — one probe every ninety minutes is
-not a response-time series.
+inside the request, measured on the dev deployment BEFORE the change) and a
+correctness problem — one probe every ninety minutes is not a response-time
+series. The post-change figure has not been measured on a live deployment; what
+is pinned is the row count, by `TestResponseTimeBinsUseIndexes_Postgres`: one row
+per `(check, region, bin)`, with a positive control showing the row-shaped read
+of the same window shipping thousands.
 
 **Badges** (`handlers/badges/service.go`) — same engine for the availability
 bars; separate raw-only queries for latest-status and response-time parts.
