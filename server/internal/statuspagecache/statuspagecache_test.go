@@ -22,7 +22,7 @@ func TestControlIsPublicOnlyForPublicPages(t *testing.T) {
 		visibility string
 		want       string
 	}{
-		{models.StatusPageVisibilityPublic, "public, max-age=60"},
+		{models.StatusPageVisibilityPublic, "public, max-age=60, stale-while-revalidate=30"},
 		{models.StatusPageVisibilityPassword, "private, no-store"},
 		{models.StatusPageVisibilityPrivate, "private, no-store"},
 		{"", "private, no-store"},
@@ -37,7 +37,7 @@ func TestControlIsPublicOnlyForPublicPages(t *testing.T) {
 			got := statuspagecache.Control(testCase.visibility, statuspagecache.PageMaxAge)
 			require.Equal(t, testCase.want, got)
 
-			if testCase.want != "public, max-age=60" {
+			if testCase.want != "public, max-age=60, stale-while-revalidate=30" {
 				require.NotContains(t, got, "public")
 			}
 		})
@@ -52,9 +52,9 @@ func TestMaxAgeIsRenderedInSeconds(t *testing.T) {
 
 	r := require.New(t)
 
-	r.Equal("public, max-age=300",
+	r.Equal("public, max-age=300, stale-while-revalidate=30",
 		statuspagecache.Control(models.StatusPageVisibilityPublic, statuspagecache.FeedMaxAge))
-	r.Equal("public, max-age=90",
+	r.Equal("public, max-age=90, stale-while-revalidate=30",
 		statuspagecache.Control(models.StatusPageVisibilityPublic, 90*time.Second))
 
 	// A gated page ignores the budget entirely — there is no "cache it for a
@@ -75,7 +75,7 @@ func TestApplySetsBothHeaders(t *testing.T) {
 
 	public := http.Header{}
 	statuspagecache.Apply(public, models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge)
-	r.Equal("public, max-age=60", public.Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", public.Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", public.Get("Vary"))
 	r.NotContains(public.Get("Vary"), "Cookie")
 

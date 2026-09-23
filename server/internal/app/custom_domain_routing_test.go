@@ -454,7 +454,8 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 
 // TestCustomHostShellCacheControl covers the SPA shell served on a custom
 // domain, which embeds the page's name and description as OG metadata. It used
-// to send `public, max-age=60` for every resolved host, including the
+// to send `public, max-age=60, stale-while-revalidate=30` for every resolved
+// host, including the
 // password-protected ones — so a shared cache in front of a customer's status
 // domain could hand a gated page's identity to anyone who asked
 // (spec 2026-08-22-06).
@@ -474,7 +475,7 @@ func TestCustomHostShellCacheControl(t *testing.T) {
 	handler.ServeHTTP(openRec, openReq)
 
 	r.Equal(http.StatusOK, openRec.Code)
-	r.Equal("public, max-age=60", openRec.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", openRec.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", openRec.Header().Get("Vary"))
 
 	lockedRec := httptest.NewRecorder()
@@ -569,7 +570,7 @@ func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
 	}
 
 	shell := serve("/s/acme/main")
-	r.Equal("public, max-age=60", shell.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", shell.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", shell.Header().Get("Vary"))
 
 	// The same value the custom-domain shell sends for a public page.

@@ -417,6 +417,11 @@ type Service struct {
 	// sections (spec 2026-08-29-11). Process-local: it only throttles an
 	// idempotent operation, so replicas converge on the same rows regardless.
 	reconcileMarks selectorReconcileMarks
+	// memo holds the computed public views for statuspagecache.PageMemoTTL
+	// (spec 2026-09-22-09). Per process, never consulted before the access gate
+	// has passed — see memo.go. nil is valid and computes through, which is what
+	// a Service built as a struct literal gets.
+	memo *pageMemo
 }
 
 // SetJobsService wires the job queue used to deliver the custom-domain
@@ -490,6 +495,7 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 		verifier:      domainverify.New(),
 		verifyLimiter: newVerifyRateLimiter(customDomainVerifyPerMinute, time.Minute),
 		unlockLimiter: newUnlockRateLimiter(),
+		memo:          newPageMemo(),
 	}
 }
 
@@ -1537,6 +1543,8 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errUpdate
 	}
 
+	s.invalidatePageMemo(WritePathUpdateStatusPage, page.UID)
+
 	updated, err := s.db.GetStatusPage(ctx, org.UID, page.UID)
 	if err != nil {
 		return StatusPageResponse{}, err
@@ -1643,6 +1651,8 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 	if delErr := s.db.DeleteStatusPage(ctx, page.UID); delErr != nil {
 		return delErr
 	}
+
+	s.invalidatePageMemo(WritePathDeleteStatusPage, page.UID)
 
 	audit.Record(ctx, s.db, org.UID, models.EventTypeStatusPageDeleted,
 		auditTarget(page), models.JSONMap{fieldSlug: page.Slug})
@@ -1828,6 +1838,8 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, errCreate
 	}
 
+	s.invalidatePageMemo(WritePathCreateSection, page.UID)
+
 	// A dynamic section must be populated by the time the operator looks at
 	// it. Best-effort: the section was created either way, and the page-view
 	// backstop will fill it in if this fails.
@@ -1926,6 +1938,8 @@ func (s *Service) UpdateSection(
 		return StatusPageSectionResponse{}, errUpdate
 	}
 
+	s.invalidatePageMemo(WritePathUpdateSection, page.UID)
+
 	updated, err := s.db.GetStatusPageSection(ctx, page.UID, section.UID)
 	if err != nil {
 		return StatusPageSectionResponse{}, err
@@ -2005,7 +2019,13 @@ func (s *Service) DeleteSection(
 		return err
 	}
 
-	return s.db.DeleteStatusPageSection(ctx, section.UID)
+	if errDelete := s.db.DeleteStatusPageSection(ctx, section.UID); errDelete != nil {
+		return errDelete
+	}
+
+	s.invalidatePageMemo(WritePathDeleteSection, page.UID)
+
+	return nil
 }
 
 // --- Resource CRUD ---
@@ -2126,6 +2146,8 @@ func (s *Service) CreateResource(
 		return StatusPageResourceResponse{}, fmt.Errorf("failed to create resource: %w", err)
 	}
 
+	s.invalidatePageMemo(WritePathCreateResource, page.UID)
+
 	// Manual placement wins: if a selector had already materialized this check
 	// somewhere on the page, the reconcile below drops that managed row so the
 	// component is not listed twice.
@@ -2212,6 +2234,8 @@ func (s *Service) UpdateResource(
 		return StatusPageResourceResponse{}, errUpdate
 	}
 
+	s.invalidatePageMemo(WritePathUpdateResource, page.UID)
+
 	updated, err := s.db.GetStatusPageResource(ctx, section.UID, resourceUID)
 	if err != nil {
 		return StatusPageResourceResponse{}, err
@@ -2263,7 +2287,13 @@ func (s *Service) ReorderResources(
 		return errManaged
 	}
 
-	return s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs)
+	if errReorder := s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs); errReorder != nil {
+		return errReorder
+	}
+
+	s.invalidatePageMemo(WritePathReorderResources, page.UID)
+
+	return nil
 }
 
 // assertManagedOrderPreserved refuses a reorder that would move a
@@ -2353,7 +2383,13 @@ func (s *Service) ReorderSections(
 		seen[uid] = struct{}{}
 	}
 
-	return s.db.ReorderStatusPageSections(ctx, page.UID, orderedUIDs)
+	if errReorder := s.db.ReorderStatusPageSections(ctx, page.UID, orderedUIDs); errReorder != nil {
+		return errReorder
+	}
+
+	s.invalidatePageMemo(WritePathReorderSections, page.UID)
+
+	return nil
 }
 
 // DeleteResource removes a check from a section (hard delete).
@@ -2378,6 +2414,8 @@ func (s *Service) DeleteResource(
 	if err := s.db.DeleteStatusPageResource(ctx, resourceUID); err != nil {
 		return err
 	}
+
+	s.invalidatePageMemo(WritePathDeleteResource, page.UID)
 
 	// Removing the MANUAL row releases the check back to the selectors: if one
 	// of them matches it, the next reconcile re-adopts it as a managed row.
@@ -2447,17 +2485,37 @@ func publicAccessError(ctx context.Context, page *models.StatusPage) error {
 // resources, and live check status. opts narrows which optional sections
 // (availability, response time) are computed and returned — see
 // ParseViewOptions and ViewOptions.
-func (s *Service) ViewStatusPage(
-	ctx context.Context, orgSlug, slug string, opts ViewOptions,
-) (StatusPageResponse, error) {
+// The gate, the memo, and the order between them (spec 2026-09-22-09)
+//
+// ViewStatusPage, ViewDefaultStatusPage, ViewStatusPageSummary and
+// GenerateBadge all follow the same three steps, in this order and no other:
+//
+//  1. RESOLVE — org slug and page slug to rows. Never memoized: it is two
+//     indexed lookups, and it is what the gate reads.
+//  2. GATE — publicAccessError, on EVERY request. Never memoized, never
+//     skipped, never reordered behind anything.
+//  3. COMPUTE — the expensive body, memoized for statuspagecache.PageMemoTTL.
+//
+// Step 3 producing a shared answer is safe precisely because step 2 already
+// ran for this caller: the memo holds a body, not a permission. Moving the memo
+// above step 2 would turn a page somebody has to type a password for into a
+// page anybody can read for fifteen seconds, which is why resolveAndGate below
+// is a separate function whose only job is to be impossible to skip.
+
+// resolveAndGate resolves the org and page for a public read and applies the
+// access gate, plus the selector backstop. Every public surface starts here and
+// nothing it does is memoized.
+func (s *Service) resolveAndGate(
+	ctx context.Context, orgSlug, slug string,
+) (*models.Organization, *models.StatusPage, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
-		return StatusPageResponse{}, ErrOrganizationNotFound
+		return nil, nil, ErrOrganizationNotFound
 	}
 
 	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
 	if err != nil || page == nil {
-		return StatusPageResponse{}, ErrStatusPageNotFound
+		return nil, nil, ErrStatusPageNotFound
 	}
 
 	// One gate for every public surface (statuspagekiosk.Decide): disabled or
@@ -2465,19 +2523,51 @@ func (s *Service) ViewStatusPage(
 	// KNOWN to exist and answers 401, and a valid kiosk token overrides both
 	// for the one screen holding it. An invalid token is byte-identical to no
 	// token.
+	//
+	// This runs before the memo is consulted, on every request. A warm memo
+	// changes nothing here — a caller without the unlock cookie gets the 401
+	// whether or not somebody else's request already computed the body.
 	if accessErr := publicAccessError(ctx, page); accessErr != nil {
-		return StatusPageResponse{}, accessErr
+		return nil, nil, accessErr
 	}
-
-	response := convertPageToResponse(page)
-	s.resolvePublicBranding(ctx, org.UID, &response)
 
 	// Backstop (spec 2026-08-29-11): even if every write-path trigger were
 	// missed — a direct database edit, a crashed process, a replica that was
 	// down — a selector section cannot stay stale for longer than
 	// selectorBackstopInterval. Rate-limited, so a hot page pays this at most
 	// once a minute, and best-effort, so it can never take the page down.
+	//
+	// It sits here, ahead of the memo, so a reconcile that DID change rows has
+	// already evicted the stale view by the time this very request looks the
+	// page up.
 	s.maybeReconcileOnView(ctx, org.UID, page.UID)
+
+	return org, page, nil
+}
+
+func (s *Service) ViewStatusPage(
+	ctx context.Context, orgSlug, slug string, opts ViewOptions,
+) (StatusPageResponse, error) {
+	org, page, err := s.resolveAndGate(ctx, orgSlug, slug)
+	if err != nil {
+		return StatusPageResponse{}, err
+	}
+
+	return memoDo(s.memo, pageViewKey(org.UID, page.UID, opts),
+		func() (StatusPageResponse, error) {
+			return s.computeStatusPageView(ctx, org, page, opts)
+		})
+}
+
+// computeStatusPageView builds the public payload for an ALREADY-RESOLVED,
+// ALREADY-GATED page. It is the memoized half of ViewStatusPage and must stay
+// free of any lookup that could deny the request: everything it touches is
+// derived from the page row it was handed.
+func (s *Service) computeStatusPageView(
+	ctx context.Context, org *models.Organization, page *models.StatusPage, opts ViewOptions,
+) (StatusPageResponse, error) {
+	response := convertPageToResponse(page)
+	s.resolvePublicBranding(ctx, org.UID, &response)
 
 	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
@@ -2627,28 +2717,31 @@ func (s *Service) ViewStatusPageSummary(
 // badge (GenerateBadge), which is embedded in READMEs and is the hottest
 // caller of this method. So the JSON summary endpoint asks for it and the
 // badge does not.
+// The same gate-then-memo order as ViewStatusPage, for the same reason: the
+// summary and the badge answer for gated pages too, and resolveAndGate — which
+// also carries the selector backstop the summary and badge need, since for many
+// pages they are the ONLY surface anybody looks at — runs before the memo on
+// every request.
 func (s *Service) viewStatusPageSummary(
 	ctx context.Context, orgSlug, slug string, withAvailability bool,
 ) (StatusPageSummary, error) {
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	org, page, err := s.resolveAndGate(ctx, orgSlug, slug)
 	if err != nil {
-		return StatusPageSummary{}, ErrOrganizationNotFound
+		return StatusPageSummary{}, err
 	}
 
-	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
-	if err != nil || page == nil {
-		return StatusPageSummary{}, ErrStatusPageNotFound
-	}
+	return memoDo(s.memo, summaryKey(org.UID, page.UID, withAvailability),
+		func() (StatusPageSummary, error) {
+			return s.computeStatusPageSummary(ctx, org, page, withAvailability)
+		})
+}
 
-	if accessErr := publicAccessError(ctx, page); accessErr != nil {
-		return StatusPageSummary{}, accessErr
-	}
-
-	// Same backstop as the full view — the summary and the badge are often the
-	// ONLY thing anyone looks at (a README badge, a wallboard tile), so a page
-	// nobody opens in full must still self-heal.
-	s.maybeReconcileOnView(ctx, org.UID, page.UID)
-
+// computeStatusPageSummary builds the rollup for an ALREADY-RESOLVED,
+// ALREADY-GATED page. Memoized half of viewStatusPageSummary; shared by the
+// summary endpoint and the SVG badge.
+func (s *Service) computeStatusPageSummary(
+	ctx context.Context, org *models.Organization, page *models.StatusPage, withAvailability bool,
+) (StatusPageSummary, error) {
 	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageSummary{}, err

@@ -144,7 +144,7 @@ func (s *Service) ReconcileOrgSelectors(ctx context.Context, orgUID string) {
 	for _, pageUID := range pageUIDs {
 		s.reconcileMarks.invalidate(pageUID)
 
-		if err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
+		if _, err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
 			slog.ErrorContext(ctx, "Failed to reconcile status page selectors",
 				"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
 		}
@@ -157,7 +157,7 @@ func (s *Service) ReconcileOrgSelectors(ctx context.Context, orgUID string) {
 func (s *Service) reconcilePageBestEffort(ctx context.Context, orgUID, pageUID string) {
 	s.reconcileMarks.invalidate(pageUID)
 
-	if err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
+	if _, err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
 		slog.ErrorContext(ctx, "Failed to reconcile status page selectors",
 			"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
 	}
@@ -172,7 +172,7 @@ func (s *Service) maybeReconcileOnView(ctx context.Context, orgUID, pageUID stri
 		return
 	}
 
-	if err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
+	if _, err := s.reconcilePage(ctx, orgUID, pageUID); err != nil {
 		slog.ErrorContext(ctx, "Backstop reconcile of status page selectors failed",
 			"error", err, "orgUid", orgUID, "statusPageUid", pageUID)
 	}
@@ -277,21 +277,37 @@ func claimedElsewhereBySection(
 // tests that pin idempotence and ordering; production callers go through
 // ReconcileOrgSelectors / reconcilePageBestEffort / maybeReconcileOnView.
 func (s *Service) ReconcilePage(ctx context.Context, orgUID, pageUID string) error {
-	return s.reconcilePage(ctx, orgUID, pageUID)
+	_, err := s.reconcilePage(ctx, orgUID, pageUID)
+
+	return err
 }
 
 // reconcilePage is the idempotent core. Reconciling an unchanged page twice
 // issues ZERO writes — that is what keeps public row order stable between two
 // polls, and it is asserted by a test rather than assumed.
-func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) error {
+//
+// It reports whether it wrote anything, and evicts the page's memoized public
+// views when it did (spec 2026-09-22-09). Only when it did: this runs on the
+// READ path too (maybeReconcileOnView), so an unconditional eviction here would
+// clear the memo on every view of every selector-bearing page and leave the
+// whole thing doing nothing.
+func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) (bool, error) {
 	states, err := s.loadPageState(ctx, pageUID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if !needsReconcile(states) {
-		return nil
+		return false, nil
 	}
+
+	changed := false
+
+	defer func() {
+		if changed {
+			s.invalidatePageMemo(WritePathSelectorReconcile, pageUID)
+		}
+	}()
 
 	// Manual placement wins, page-wide: a check an operator put somewhere by
 	// hand is never duplicated by a selector, wherever on the page it sits.
@@ -303,19 +319,25 @@ func (s *Service) reconcilePage(ctx context.Context, orgUID, pageUID string) err
 		// what removes them — skipping selector-less sections here would leave
 		// a page advertising checks under a rule that no longer exists.
 		if states[i].section.Selector == nil {
-			if err := s.dropManagedRows(ctx, &states[i]); err != nil {
-				return err
+			dropped, err := s.dropManagedRows(ctx, &states[i])
+			changed = changed || dropped
+
+			if err != nil {
+				return changed, err
 			}
 
 			continue
 		}
 
-		if err := s.reconcileSection(ctx, orgUID, &states[i], claimed); err != nil {
-			return err
+		wrote, err := s.reconcileSection(ctx, orgUID, &states[i], claimed)
+		changed = changed || wrote
+
+		if err != nil {
+			return changed, err
 		}
 	}
 
-	return nil
+	return changed, nil
 }
 
 // needsReconcile reports whether the page has anything to reconcile — a
@@ -339,18 +361,22 @@ func needsReconcile(states []sectionState) bool {
 
 // dropManagedRows removes every selector-owned row from a section that has no
 // selector any more. Manual rows in the same section are untouched.
-func (s *Service) dropManagedRows(ctx context.Context, state *sectionState) error {
+func (s *Service) dropManagedRows(ctx context.Context, state *sectionState) (bool, error) {
+	dropped := false
+
 	for _, resource := range state.resources {
 		if !resource.ManagedBySelector {
 			continue
 		}
 
 		if err := s.db.DeleteStatusPageResource(ctx, resource.UID); err != nil {
-			return err
+			return dropped, err
 		}
+
+		dropped = true
 	}
 
-	return nil
+	return dropped, nil
 }
 
 // manualCheckUIDs collects every check the operator placed by hand anywhere on
@@ -380,10 +406,10 @@ func manualCheckUIDs(states []sectionState) map[string]struct{} {
 // (by position) wins, deterministically.
 func (s *Service) reconcileSection(
 	ctx context.Context, orgUID string, state *sectionState, claimed map[string]struct{},
-) error {
+) (bool, error) {
 	desired, err := s.desiredChecks(ctx, orgUID, state.section.Selector, claimed)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	for _, checkUID := range desired {
@@ -416,19 +442,25 @@ func (s *Service) reconcileSection(
 	// dropping out of a selector is byte-for-byte the same event downstream as
 	// an operator removing it by hand — including what a past publication's
 	// affectedResources then renders.
+	changed := false
+
 	for checkUID, resource := range existing {
 		if _, keep := wanted[checkUID]; keep {
 			continue
 		}
 
 		if err := s.db.DeleteStatusPageResource(ctx, resource.UID); err != nil {
-			return err
+			return changed, err
 		}
 
 		delete(existing, checkUID)
+
+		changed = true
 	}
 
-	return s.materialize(ctx, state.section.UID, desired, existing, maxManualPosition)
+	wrote, err := s.materialize(ctx, state.section.UID, desired, existing, maxManualPosition)
+
+	return changed || wrote, err
 }
 
 // materialize inserts the missing managed rows and renumbers the managed rows
@@ -441,7 +473,9 @@ func (s *Service) materialize(
 	desired []string,
 	existing map[string]*models.StatusPageResource,
 	maxManualPosition int,
-) error {
+) (bool, error) {
+	changed := false
+
 	for i, checkUID := range desired {
 		position := maxManualPosition + 1 + i
 
@@ -450,8 +484,10 @@ func (s *Service) materialize(
 			if err := s.db.CreateStatusPageResource(
 				ctx, models.NewManagedStatusPageResource(sectionUID, checkUID, position),
 			); err != nil {
-				return err
+				return changed, err
 			}
+
+			changed = true
 
 			continue
 		}
@@ -462,11 +498,13 @@ func (s *Service) materialize(
 
 		update := &models.StatusPageResourceUpdate{Position: &position}
 		if err := s.db.UpdateStatusPageResource(ctx, resource.UID, update); err != nil {
-			return err
+			return changed, err
 		}
+
+		changed = true
 	}
 
-	return nil
+	return changed, nil
 }
 
 // desiredChecks resolves a selector to the ordered list of check UIDs it should

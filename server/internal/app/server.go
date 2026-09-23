@@ -1778,6 +1778,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
 	statusPagesService.SetPublicIncidentProvider(publicIncidentAdapter{svc: incidentPublicationsService})
+	// The other side of the same seam (spec 2026-09-22-09): the public page read
+	// memoizes its computed body for statuspagecache.PageMemoTTL, so every write
+	// path in another package that changes that body has to be able to evict it.
+	// Injected exactly like the provider above, and for the same reason — the
+	// dependency only ever points one way at compile time.
+	//
+	// A service that is NOT wired here simply never evicts, which is a stale
+	// status page rather than a crash. The invalidation table
+	// (statuspages.PageMemoWritePaths) is the list these three lines have to
+	// keep up with.
+	incidentPublicationsService.SetPageMemoInvalidator(statusPagesService)
+	statusUpdatesService.SetPageMemoInvalidator(statusPagesService)
 	// A hard demotion reached through the synchronous Verify button alerts the
 	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
 	statusPagesService.SetJobsService(s.services.Jobs)
@@ -1805,6 +1817,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// public-asset route registered further up, authorized by the file's topic
 	// (spec 2026-08-22-03).
 	statusPageAssetsService := statuspageassets.NewService(s.dbService, filesService)
+	statusPageAssetsService.SetPageMemoInvalidator(statusPagesService)
 	statusPageAssetsHandler := statuspageassets.NewHandler(statusPageAssetsService, s.config)
 	orgStatusPages.POST("/:statusPageUid/logo", statusPageAssetsHandler.UploadLogo)
 	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
@@ -3240,12 +3253,21 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	if !embeddedFileExists(fsys, filePath) {
 		// Not a file (missing, or a directory such as the bare "/s/"):
 		// the SPA shell handles it.
-		maxAgeSeconds = 60
 		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
 	}
 
-	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	// The shell's directive comes from statuspagecache, not a literal: it is a
+	// public status-page surface and has to carry the same freshness contract as
+	// its custom-domain twin, stale-while-revalidate included (spec
+	// 2026-09-22-09). A pinning test asserts the two shells agree, and a literal
+	// here is how they stopped agreeing.
+	if servingIndexFallback {
+		writer.Header().Set("Cache-Control",
+			statuspagecache.Control(models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge))
+	} else {
+		writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	}
 
 	if !servingIndexFallback {
 		// Hashed assets are streamed rather than copied onto the heap: the

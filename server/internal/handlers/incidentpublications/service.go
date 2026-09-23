@@ -84,6 +84,9 @@ type Service struct {
 	// which is what unit tests and a zero delay both want.
 	scheduler PublishScheduler
 	logger    *slog.Logger
+	// pageMemo evicts the status page's memoized public view after a
+	// publication write (spec 2026-09-22-09). Optional; nil means no memo.
+	pageMemo PageMemoInvalidator
 }
 
 // PublishScheduler enqueues the debounced auto-publish job. It is an interface
@@ -116,6 +119,37 @@ func (s *Service) SetSubscriberNotifier(n statusupdates.SubscriberNotifier) {
 // production (it defeats the debounce) and is why server.go always wires one.
 func (s *Service) SetScheduler(sched PublishScheduler) {
 	s.scheduler = sched
+}
+
+// PageMemoInvalidator evicts a status page's memoized public view
+// (spec 2026-09-22-09).
+//
+// A publication IS the part of a status page a reader came for during an
+// incident, so this is the eviction that matters most: a banner that takes
+// fifteen seconds to appear is fifteen seconds of a page claiming everything is
+// fine. Injected rather than imported — the statuspages package reads
+// publications through PublicIncidentProvider, so importing it back would be a
+// cycle. Optional; nil disables eviction.
+type PageMemoInvalidator interface {
+	// Invalidate drops every memoized view of one page.
+	Invalidate(pageUID string)
+	// InvalidateOrg drops every memoized view in an organization, for a write
+	// path that cannot name the page it changed.
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
+}
+
+// invalidatePageMemo evicts one page, if a memo is wired.
+func (s *Service) invalidatePageMemo(pageUID string) {
+	if s.pageMemo == nil || pageUID == "" {
+		return
+	}
+
+	s.pageMemo.Invalidate(pageUID)
 }
 
 // SetLogger overrides the default logger.
@@ -562,6 +596,8 @@ func (s *Service) CreatePublication(
 		return PublicationResponse{}, err
 	}
 
+	s.invalidatePageMemo(pub.StatusPageUID)
+
 	hasBody := req.BodyMarkdown != nil && strings.TrimSpace(*req.BodyMarkdown) != ""
 	if hasBody {
 		if err := validateBody(*req.BodyMarkdown); err != nil {
@@ -691,6 +727,8 @@ func (s *Service) UpdatePublication(
 		return PublicationResponse{}, err
 	}
 
+	s.invalidatePageMemo(pub.StatusPageUID)
+
 	pub.HumanTouchedAt = &now
 
 	eventType := models.EventTypeStatusPageIncidentUpdated
@@ -761,6 +799,8 @@ func (s *Service) AppendUpdate(
 	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, stateUpdate); err != nil {
 		return PublicationUpdateResponse{}, err
 	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
 
 	pub.HumanTouchedAt = &now
 
@@ -879,6 +919,8 @@ func (s *Service) PublishIncident(
 		return PublicationResponse{}, err
 	}
 
+	s.invalidatePageMemo(pub.StatusPageUID)
+
 	tpl := templatesFor(page.Language)
 	name := s.affectedName(ctx, org.UID, page, incident)
 	s.postUpdate(ctx, page, pub, models.StatusUpdateKindInvestigating,
@@ -924,6 +966,8 @@ func (s *Service) resolveRetroactively(
 
 		return
 	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
 
 	pub.PublicState = resolved
 	pub.ResolvedAt = &resolvedAt
@@ -990,6 +1034,8 @@ func (s *Service) UnpublishIncident(
 	if err := s.db.SoftDeleteIncidentPublication(ctx, pub.UID); err != nil {
 		return err
 	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
 
 	s.emit(ctx, org.UID, models.EventTypeStatusPageIncidentResolved, pub, actorUID)
 	s.publishHint(ctx, org.UID)
@@ -1062,6 +1108,10 @@ func (s *Service) postUpdate(
 
 		return nil
 	}
+
+	// Evict the page's memoized public view: the publication just posted onto
+	// the page's timeline.
+	s.invalidatePageMemo(pub.StatusPageUID)
 
 	s.fanOut(ctx, page, pub, update)
 

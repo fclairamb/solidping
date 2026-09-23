@@ -89,12 +89,49 @@ type SubscriberUpdateEvent struct {
 // Service provides business logic for status update management.
 type Service struct {
 	db       db.Service
-	notifier SubscriberNotifier
+	notifier SubscriberNotifier	// pageMemo evicts the status page's memoized public view after a write
+	// (spec 2026-09-22-09). Optional; nil means no memo to evict.
+	pageMemo PageMemoInvalidator
 }
 
 // NewService creates a new status updates service.
 func NewService(dbService db.Service) *Service {
 	return &Service{db: dbService}
+}
+
+// PageMemoInvalidator evicts a status page's memoized public view
+// (spec 2026-09-22-09).
+//
+// The public status-page read memoizes its computed body for a few seconds. A
+// write here changes that body, so it has to evict — otherwise an operator's
+// edit appears to have done nothing for up to the TTL, which reads as a bug in
+// the editor rather than as a cache.
+//
+// A small interface, and injected rather than imported, for the same reason
+// SubscriberNotifier above is an interface: the status-pages
+// package is the one that owns the memo, and depending on it from here would be
+// a cycle. Optional — nil simply means nothing is memoized (most tests, the MCP
+// wiring).
+type PageMemoInvalidator interface {
+	// Invalidate drops every memoized view of one page.
+	Invalidate(pageUID string)
+	// InvalidateOrg drops every memoized view in an organization, for a write
+	// path that cannot name the page it changed.
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
+}
+
+// invalidatePageMemo evicts one page, if a memo is wired.
+func (s *Service) invalidatePageMemo(pageUID string) {
+	if s.pageMemo == nil || pageUID == "" {
+		return
+	}
+
+	s.pageMemo.Invalidate(pageUID)
 }
 
 // SetSubscriberNotifier wires the subscriber fan-out notifier. Optional —
@@ -354,6 +391,9 @@ func (s *Service) CreateStatusUpdate( //nolint:cyclop // validation requires che
 	if err := s.db.CreateStatusUpdate(ctx, update); err != nil {
 		return StatusUpdateResponse{}, err
 	}
+
+	// The page's recentUpdates timeline just changed.
+	s.invalidatePageMemo(update.StatusPageUID)
 
 	event := models.NewEvent(org.UID, models.EventTypeStatusUpdateCreated, models.ActorTypeUser)
 	event.ActorUID = &authorUID
@@ -679,6 +719,8 @@ func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional field
 		return StatusUpdateResponse{}, err
 	}
 
+	s.invalidatePageMemo(update.StatusPageUID)
+
 	event := models.NewEvent(org.UID, models.EventTypeStatusUpdateUpdated, models.ActorTypeUser)
 	event.ActorUID = &actorUID
 	event.Payload["status_update_uid"] = update.UID
@@ -712,6 +754,8 @@ func (s *Service) DeleteStatusUpdate(
 	if err := s.db.SoftDeleteStatusUpdate(ctx, uid); err != nil {
 		return err
 	}
+
+	s.invalidatePageMemo(update.StatusPageUID)
 
 	event := models.NewEvent(org.UID, models.EventTypeStatusUpdateDeleted, models.ActorTypeUser)
 	event.ActorUID = &actorUID

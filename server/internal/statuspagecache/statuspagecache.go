@@ -30,6 +30,21 @@
 // keyed on the page's visibility alone and never on whether the caller got in:
 // an unlocked password page is still `private, no-store`.
 //
+// # Two freshness numbers, declared together
+//
+// A reader's page can be stale for two independent reasons: the cache in front
+// of them is holding a copy (PageMaxAge, plus the PageStaleWhileRevalidate
+// grace window), and the server reused a computed view rather than recomputing
+// it (PageMemoTTL, spec 2026-09-22-09). Whoever changes one has to see the
+// other, so both live here rather than one of them next to the code that
+// implements the memo — a 15 s server-side reuse window under a 60 s browser
+// copy adds nothing a reader could notice, and that claim only survives if the
+// two numbers cannot drift apart unnoticed.
+//
+// stale-while-revalidate is on the PUBLIC directive only. A gated page answers
+// `private, no-store`, and a grace window on a body nothing may store is
+// meaningless; the pinning tests assert the absence.
+//
 // # Accept-Encoding is not this package's Vary
 //
 // Exactly one request header changes such a body per the reasoning above
@@ -96,6 +111,41 @@ const VaryGated = "Cookie, " + VaryPublic
 // failing at its one job.
 const PageMaxAge = 60 * time.Second
 
+// PageMemoTTL is how long the SERVER may reuse a computed public status-page
+// view before recomputing it (spec 2026-09-22-09). It sits here, next to
+// PageMaxAge, because the two are one freshness story told at two layers and
+// reading either one alone gives the wrong answer about how stale a reader's
+// page can be.
+//
+// Fifteen seconds is a quarter of PageMaxAge, so the memo can never add
+// staleness a reader could notice on top of what the HTTP directive already
+// permits: a browser holding a 60 s copy is the binding constraint, and the
+// server-side reuse window disappears inside it. It is also half the fastest
+// poll any SolidPing surface makes (TV mode's 30 s status refresh), so a
+// wallboard still sees a fresh computation on every other tick.
+//
+// Not configurable, deliberately. A knob here is a knob on how out of date a
+// status page may be, which is a product decision rather than a deployment
+// one; the invalidation list (statuspages.PageMemoWritePaths) is what makes an
+// operator's own edit visible immediately regardless of this number.
+const PageMemoTTL = 15 * time.Second
+
+// PageStaleWhileRevalidate is the grace window a shared or browser cache may
+// serve an EXPIRED public page for while it refreshes in the background
+// (spec 2026-09-22-09).
+//
+// It exists because the alternative is worse than staleness: with max-age
+// alone, the reader whose copy expired one second before an incident spike
+// blocks on a cold origin render — the very moment the page matters most and
+// the infrastructure behind it is least able to answer. Thirty seconds of
+// "show the old number, fetch the new one" turns that block into a background
+// fetch, and the server-side memo above makes that fetch cheap.
+//
+// Worst-case staleness for a reader polling every 30 s therefore rises from
+// 60 s to about 90 s in the unlucky alignment, which stays inside what the
+// wallboard's own stale indicator tolerates.
+const PageStaleWhileRevalidate = 30 * time.Second
+
 // FeedMaxAge is the Atom feed's budget, unchanged from what it already sent: a
 // feed reader polls on its own schedule and a status-update timeline moves far
 // more slowly than a rollup.
@@ -103,12 +153,18 @@ const FeedMaxAge = 5 * time.Minute
 
 // Control returns the Cache-Control value for a public status-page response
 // serving a page of this visibility.
+//
+// A world-readable answer carries stale-while-revalidate (see
+// PageStaleWhileRevalidate); a gated one carries Gated and therefore no grace
+// window at all — there is nothing to serve stale from a cache that was told
+// not to store the body in the first place.
 func Control(visibility string, maxAge time.Duration) string {
 	if visibility != models.StatusPageVisibilityPublic {
 		return Gated
 	}
 
-	return "public, max-age=" + strconv.Itoa(int(maxAge.Seconds()))
+	return "public, max-age=" + strconv.Itoa(int(maxAge.Seconds())) +
+		", stale-while-revalidate=" + strconv.Itoa(int(PageStaleWhileRevalidate.Seconds()))
 }
 
 // Apply writes Cache-Control and Vary onto a public status-page response.

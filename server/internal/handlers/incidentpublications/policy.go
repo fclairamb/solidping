@@ -271,6 +271,10 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 		return fmt.Errorf("auto-publish: create publication: %w", err)
 	}
 
+	// Evict the page's memoized public view: an auto-published banner has to
+	// appear now, not in fifteen seconds.
+	s.invalidatePageMemo(pub.StatusPageUID)
+
 	tpl := templatesFor(page.Language)
 
 	name := s.affectedName(ctx, orgUID, page, incident)
@@ -417,6 +421,8 @@ func (s *Service) applyResolvePolicy(
 		return
 	}
 
+	s.invalidatePageMemo(pub.StatusPageUID)
+
 	pub.PublicState = resolved
 	pub.ResolvedAt = &now
 
@@ -488,6 +494,8 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 
 			continue
 		}
+
+		s.invalidatePageMemo(pub.StatusPageUID)
 
 		pub.PublicState = investigating
 		pub.ResolvedAt = nil

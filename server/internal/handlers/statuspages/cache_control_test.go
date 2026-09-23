@@ -127,7 +127,7 @@ func TestPublicCacheControlFollowsVisibility(t *testing.T) {
 			name:         "public page is shared-cacheable for 60s",
 			visibility:   models.StatusPageVisibilityPublic,
 			wantStatus:   http.StatusOK,
-			wantCache:    "public, max-age=60",
+			wantCache:    "public, max-age=60, stale-while-revalidate=30",
 			wantPublicOK: true,
 		},
 		{
@@ -215,7 +215,7 @@ func TestUnlockedPasswordPageIsStillNotSharedCacheable(t *testing.T) {
 
 		r.NoError(endpoint.call(h, controlRec, controlReq), endpoint.name)
 		r.Equal(http.StatusOK, controlRec.Code, endpoint.name)
-		r.Equal("public, max-age=60", controlRec.Header().Get("Cache-Control"),
+		r.Equal("public, max-age=60, stale-while-revalidate=30", controlRec.Header().Get("Cache-Control"),
 			"%s: positive control — an ordinary public page stays shared-cacheable", endpoint.name)
 	}
 }
@@ -286,7 +286,7 @@ func TestGatedDirectiveIsWhatTheHelperSays(t *testing.T) {
 	r := require.New(t)
 
 	r.Equal("private, no-store", statuspagecache.Gated)
-	r.Equal("public, max-age=60",
+	r.Equal("public, max-age=60, stale-while-revalidate=30",
 		statuspagecache.Control(models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge))
 	r.Equal("X-Forwarded-Proto", statuspagecache.VaryPublic)
 	r.Equal("Cookie, X-Forwarded-Proto", statuspagecache.VaryGated)

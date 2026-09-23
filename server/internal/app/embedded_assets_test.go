@@ -340,17 +340,32 @@ func TestSPARootsServeTheShell(t *testing.T) {
 
 	srv := &Server{}
 
+	// The two shells differ in ONE way, deliberately: status0 is a public
+	// status-page surface and takes its directive from statuspagecache, which
+	// carries stale-while-revalidate (spec 2026-09-22-09). dash0 is the
+	// authenticated dashboard and carries none. Both still refuse the hashed
+	// assets' year-long entry, which is what this test is really about.
+	const dashShellCache = "public, max-age=60"
+	const statusShellCache = "public, max-age=60, stale-while-revalidate=30"
+
 	tests := []struct {
-		name    string
-		path    string
-		shell   string
-		files   embed.FS
-		handler func(http.ResponseWriter, *http.Request) error
+		name      string
+		path      string
+		shell     string
+		wantCache string
+		files     embed.FS
+		handler   func(http.ResponseWriter, *http.Request) error
 	}{
-		{"dash0 root", "/d/", "dash0res/index.html", dash0Files, srv.serveDash0Static},
-		{"dash0 client route", "/d/orgs/acme/checks", "dash0res/index.html", dash0Files, srv.serveDash0Static},
-		{"status0 root", "/s/", "status0res/index.html", status0Files, srv.serveStatus0Static},
-		{"status0 client route", "/s/acme/status", "status0res/index.html", status0Files, srv.serveStatus0Static},
+		{"dash0 root", "/d/", "dash0res/index.html", dashShellCache, dash0Files, srv.serveDash0Static},
+		{
+			"dash0 client route", "/d/orgs/acme/checks", "dash0res/index.html",
+			dashShellCache, dash0Files, srv.serveDash0Static,
+		},
+		{"status0 root", "/s/", "status0res/index.html", statusShellCache, status0Files, srv.serveStatus0Static},
+		{
+			"status0 client route", "/s/acme/status", "status0res/index.html",
+			statusShellCache, status0Files, srv.serveStatus0Static,
+		},
 	}
 
 	for _, testCase := range tests {
@@ -364,7 +379,7 @@ func TestSPARootsServeTheShell(t *testing.T) {
 			r.NoError(testCase.handler(rec, req))
 			r.Equal(http.StatusOK, rec.Code, "the SPA shell must be served, not a 404")
 			r.Contains(rec.Header().Get("Content-Type"), "text/html")
-			r.Equal("public, max-age=60", rec.Header().Get("Cache-Control"),
+			r.Equal(testCase.wantCache, rec.Header().Get("Cache-Control"),
 				"the shell must not inherit the hashed assets' year-long cache")
 
 			// Compare against whatever the embedded FS actually holds rather
