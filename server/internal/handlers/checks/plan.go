@@ -455,7 +455,7 @@ func (s *Service) planUpdateConfig(
 	// On a COPY: `normalized` can be the caller's own map when the type needs
 	// no normalization, and a planner must not write into the document it is
 	// checking.
-	planned := make(map[string]any, len(normalized)+1)
+	planned := make(map[string]any, len(normalized))
 	for key, value := range normalized {
 		planned[key] = value
 	}

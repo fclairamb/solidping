@@ -5173,7 +5173,7 @@ func (s *Service) loadDecryptedConfig(ctx context.Context, check *models.Check) 
 // are preserved unless the request explicitly sends them. Sending a key
 // with null or empty-string clears it.
 func mergePatchConfig(existing, patch map[string]any, secretFields []string) map[string]any {
-	merged := make(map[string]any, len(existing)+len(patch))
+	merged := make(map[string]any, max(len(existing), len(patch)))
 
 	// Keep all of existing as the base.
 	for k, v := range existing {
@@ -5366,7 +5366,7 @@ func withInjectedConfig(config, injected map[string]any) map[string]any {
 		return config
 	}
 
-	out := make(map[string]any, len(config)+len(injected))
+	out := make(map[string]any, max(len(config), len(injected)))
 	for k, v := range config {
 		out[k] = v
 	}
