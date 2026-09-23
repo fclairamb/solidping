@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 )
 
 // Sentinel errors callers can branch on. Each one maps to a known
@@ -93,12 +95,10 @@ func NewClientWithAppID(baseURL, appID, appToken string) *Client {
 	}
 
 	return &Client{
-		baseURL:  strings.TrimRight(baseURL, "/"),
-		appID:    appID,
-		appToken: appToken,
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		appID:      appID,
+		appToken:   appToken,
+		httpClient: httpclientpool.NewClient(DefaultTimeout),
 	}
 }
 
