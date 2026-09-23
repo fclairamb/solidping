@@ -126,7 +126,8 @@ renders the operator UI — when working on subscriber-facing UX, switch repos.
 
 ### Theming
 - Light/dark mode support via CSS variables
-- Blue-based color scheme for monitoring context
+- Electric-blue identity (spec 2026-09-24-01): `--primary` is the product color, crimson `--brand` is the logo only
+- Gradients are rationed: `bg-primary-gradient` (anything with a label), `bg-accent-gradient` (decorative "on" states, no text), `bg-hero-gradient` (one hero tile). They set `background-image` only, so a flat `bg-*` override needs `bg-none` unless it goes through `cn()` (which is taught about them in `lib/utils.ts`). Rules: design reference → Buttons & badges → Gradients
 - Status colors: green (ok), yellow (warning), red (error)
 
 ## Design Reference
