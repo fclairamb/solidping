@@ -70,7 +70,7 @@ func TestPasswordPageIsLockedNotMissing(t *testing.T) {
 	ctx, dbService, svc, org := passwordSetup(t)
 	createProtectedPage(ctx, t, svc)
 
-	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, statuspagelock.ErrLocked)
 
 	// Negative control: the same page made `private` 404s instead.
@@ -80,7 +80,7 @@ func TestPasswordPageIsLockedNotMissing(t *testing.T) {
 	private := models.StatusPageVisibilityPrivate
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{Visibility: &private}))
 
-	_, err = svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, ErrStatusPageNotFound)
 }
 
@@ -93,7 +93,7 @@ func TestUnlockedContextSeesThePage(t *testing.T) {
 	ctx, _, svc, _ := passwordSetup(t)
 	createProtectedPage(ctx, t, svc)
 
-	page, err := svc.ViewStatusPage(grantedCtx(ctx), "acme", testPublicSlug)
+	page, err := svc.ViewStatusPage(grantedCtx(ctx), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Equal(testPublicSlug, page.Slug)
 	r.True(page.HasPassword)
@@ -109,7 +109,7 @@ func TestEveryPublicReadIsGated(t *testing.T) {
 	ctx, _, svc, _ := passwordSetup(t)
 	createProtectedPage(ctx, t, svc)
 
-	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, statuspagelock.ErrLocked, "page view")
 
 	_, err = svc.ViewStatusPageSummary(ctx, "acme", testPublicSlug)
@@ -118,14 +118,14 @@ func TestEveryPublicReadIsGated(t *testing.T) {
 	_, err = svc.GenerateBadge(ctx, "acme", testPublicSlug, BadgeOptions{})
 	r.ErrorIs(err, statuspagelock.ErrLocked, "badge")
 
-	_, err = svc.ViewDefaultStatusPage(ctx, "acme")
+	_, err = svc.ViewDefaultStatusPage(ctx, "acme", AllViewOptions())
 	r.ErrorIs(err, statuspagelock.ErrLocked, "default page view")
 
 	// Positive controls: all four succeed once unlocked, so the assertions
 	// above are proving the gate rather than a broken fixture.
 	granted := grantedCtx(ctx)
 
-	_, err = svc.ViewStatusPage(granted, "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(granted, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 
 	_, err = svc.ViewStatusPageSummary(granted, "acme", testPublicSlug)
@@ -134,7 +134,7 @@ func TestEveryPublicReadIsGated(t *testing.T) {
 	_, err = svc.GenerateBadge(granted, "acme", testPublicSlug, BadgeOptions{})
 	r.NoError(err)
 
-	_, err = svc.ViewDefaultStatusPage(granted, "acme")
+	_, err = svc.ViewDefaultStatusPage(granted, "acme", AllViewOptions())
 	r.NoError(err)
 }
 
@@ -163,7 +163,8 @@ func TestUnlockMintsAUsableToken(t *testing.T) {
 	r.True(statuspagelock.RequestUnlocks(req, page))
 
 	// ...and the page really renders behind that request's grant.
-	view, err := svc.ViewStatusPage(statuspagelock.WithGrant(ctx, statuspagelock.FromRequest(req)), "acme", testPublicSlug)
+	view, err := svc.ViewStatusPage(
+		statuspagelock.WithGrant(ctx, statuspagelock.FromRequest(req)), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Equal(testPublicSlug, view.Slug)
 }
@@ -226,7 +227,7 @@ func TestPasswordVisibilityRequiresAPassword(t *testing.T) {
 	})
 	r.NoError(err)
 
-	page, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	page, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(page.HasPassword)
 }
@@ -244,7 +245,7 @@ func TestSavingAnUnrelatedFieldKeepsThePassword(t *testing.T) {
 	_, err := svc.UpdateStatusPage(ctx, "acme", testPublicSlug, &UpdateStatusPageRequest{Name: &name})
 	r.NoError(err)
 
-	_, err = svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, statuspagelock.ErrLocked)
 }
 

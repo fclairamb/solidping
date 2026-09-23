@@ -583,7 +583,7 @@ func TestEnrichHourly_HealthyCheckReads100(t *testing.T) {
 		r.NoError(svc.db.CreateResult(ctx, res))
 	}
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 	r.Equal("24h", view.HistoryPeriod)
 	r.Len(view.Sections, 1)
@@ -641,7 +641,7 @@ func TestEnrichHourly_PreviousHourFilledFromRaw(t *testing.T) {
 	down.PeriodStart = prevHour.Add(11 * time.Minute)
 	r.NoError(svc.db.CreateResult(ctx, down))
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 
 	avail := view.Sections[0].Resources[0].Availability
@@ -695,7 +695,7 @@ func TestEnrichDaily_RecentDayFilledFromRaw(t *testing.T) {
 		r.NoError(svc.db.CreateResult(ctx, res))
 	}
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 
 	avail := view.Sections[0].Resources[0].Availability
@@ -774,7 +774,7 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 	r.NoError(err)
 
 	// Status page path: the public view's hourly availability points.
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 	statusPoints := view.Sections[0].Resources[0].Availability.DailyAvailability
 	r.Len(statusPoints, hourlyBucketCount)
@@ -923,7 +923,7 @@ func TestFetchRecentResults_PerRegionBudgetNotStarved(t *testing.T) {
 		}
 	}
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 
 	avail := view.Sections[0].Resources[0].Availability
@@ -978,7 +978,7 @@ func TestViewStatusPage_NullRegionSeries(t *testing.T) {
 		r.NoError(svc.db.CreateResult(ctx, res))
 	}
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 
 	avail := view.Sections[0].Resources[0].Availability

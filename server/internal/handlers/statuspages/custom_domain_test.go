@@ -354,7 +354,7 @@ func TestPublicViewOmitsCustomDomain(t *testing.T) {
 	r.NoError(err)
 
 	// Public view must never carry the custom domain or its records/token.
-	pub, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	pub, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 	r.Nil(pub.CustomDomain)
 	r.Empty(pub.CustomDomainStatus)

@@ -67,7 +67,7 @@ func TestViewStatusPageSummary_ResponseShapeAndCounts(t *testing.T) {
 	r.False(resp.GeneratedAt.IsZero())
 
 	// Same rollup the full page view returns, from the exact same live data.
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 	r.Equal(view.OverallStatus, resp.Status)
 	r.Equal(*view.StatusCounts, resp.Counts)

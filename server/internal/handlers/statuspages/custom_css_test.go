@@ -164,13 +164,13 @@ func TestViewStatusPage_CustomCSSIsPublic(t *testing.T) {
 	r.NoError(err)
 	r.True(created.IsDefault, "the first page of an org becomes the default")
 
-	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.NotNil(public.CustomCSS, "the public view must carry the stylesheet")
 	r.Equal(css, *public.CustomCSS)
 	r.Nil(public.CustomDomain, "the custom-domain fields stay auth-only")
 
-	byDefault, err := svc.ViewDefaultStatusPage(ctx, org.Slug)
+	byDefault, err := svc.ViewDefaultStatusPage(ctx, org.Slug, AllViewOptions())
 	r.NoError(err)
 	r.NotNil(byDefault.CustomCSS)
 	r.Equal(css, *byDefault.CustomCSS)

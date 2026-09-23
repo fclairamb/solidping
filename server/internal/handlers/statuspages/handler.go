@@ -578,7 +578,12 @@ func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req *http.Request) 
 	orgSlug := httpx.Param(req, "org")
 	slug := httpx.Param(req, "slug")
 
-	page, err := h.svc.ViewStatusPage(req.Context(), orgSlug, slug)
+	opts, err := ParseViewOptions(req.URL.Query())
+	if err != nil {
+		return h.handlePublicError(writer, req, err)
+	}
+
+	page, err := h.svc.ViewStatusPage(req.Context(), orgSlug, slug, opts)
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}
@@ -592,7 +597,12 @@ func (h *Handler) ViewStatusPage(writer http.ResponseWriter, req *http.Request) 
 func (h *Handler) ViewDefaultStatusPage(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")
 
-	page, err := h.svc.ViewDefaultStatusPage(req.Context(), orgSlug)
+	opts, err := ParseViewOptions(req.URL.Query())
+	if err != nil {
+		return h.handlePublicError(writer, req, err)
+	}
+
+	page, err := h.svc.ViewDefaultStatusPage(req.Context(), orgSlug, opts)
 	if err != nil {
 		return h.handlePublicError(writer, req, err)
 	}
@@ -1083,7 +1093,14 @@ func (h *Handler) handlePublicError(writer http.ResponseWriter, request *http.Re
 	// about.
 	statuspagecache.ApplyGated(writer.Header())
 
+	var invalidInclude *InvalidIncludeError
+
 	switch {
+	case errors.As(err, &invalidInclude):
+		// A malformed `include` param is a client mistake, not evidence the
+		// page exists or doesn't — the gated Cache-Control set above still
+		// applies so a shared cache never retains this answer either.
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, invalidInclude.Error())
 	case errors.Is(err, ErrOrganizationNotFound), errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteErrorErr(
 			writer, request, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)

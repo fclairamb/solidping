@@ -227,7 +227,7 @@ func TestViewStatusPageNeverLeaksIncidentDetails(t *testing.T) {
 	})
 	r.NoError(err)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 
 	rawView, err := json.Marshal(view)

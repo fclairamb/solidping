@@ -177,7 +177,7 @@ func TestPageOverallAvailabilityIsTheMeanOfItsRows(t *testing.T) {
 	ctx, svc, org := setupStatusPagesTest(t)
 	buildAggregatePage(ctx, t, svc, org, true)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.NotNil(view.OverallAvailabilityPct)
 
@@ -212,7 +212,7 @@ func TestPageOverallAvailabilityOmittedWhenHidden(t *testing.T) {
 	ctx, svc, org := setupStatusPagesTest(t)
 	buildAggregatePage(ctx, t, svc, org, false)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Nil(view.OverallAvailabilityPct)
 
@@ -230,7 +230,7 @@ func TestSummaryAndPageAgreeOnTheNumber(t *testing.T) {
 	ctx, svc, org := setupStatusPagesTest(t)
 	buildAggregatePage(ctx, t, svc, org, true)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.NotNil(view.OverallAvailabilityPct)
 

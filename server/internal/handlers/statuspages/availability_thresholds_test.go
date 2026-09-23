@@ -358,7 +358,7 @@ func TestViewStatusPage_ExposesEffectiveThresholds(t *testing.T) {
 	})
 	r.NoError(err)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.InDelta(99.5, view.AvailabilityThresholds.ThresholdUp, 0.001)
 	r.InDelta(98.0, view.AvailabilityThresholds.ThresholdDegraded, 0.001)
@@ -368,7 +368,7 @@ func TestViewStatusPage_ExposesEffectiveThresholds(t *testing.T) {
 	_, err = svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{Name: "Bare", Slug: "bare"})
 	r.NoError(err)
 
-	bareView, err := svc.ViewStatusPage(ctx, org.Slug, "bare")
+	bareView, err := svc.ViewStatusPage(ctx, org.Slug, "bare", AllViewOptions())
 	r.NoError(err)
 	r.InDelta(models.DefaultAvailabilityThresholdUp, bareView.AvailabilityThresholds.ThresholdUp, 0.001)
 	r.InDelta(models.DefaultAvailabilityThresholdDegraded, bareView.AvailabilityThresholds.ThresholdDegraded, 0.001)

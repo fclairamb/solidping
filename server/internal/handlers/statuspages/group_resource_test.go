@@ -290,7 +290,7 @@ func TestViewStatusPage_GroupRollupStatus(t *testing.T) {
 				CreateResourceRequest{CheckGroupUID: group.UID})
 			r.NoError(err)
 
-			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 			r.NoError(err)
 			r.Len(view.Sections, 1)
 			r.Len(view.Sections[0].Resources, 1)
@@ -330,7 +330,7 @@ func TestViewStatusPage_GroupHidesTopology(t *testing.T) {
 		CreateResourceRequest{CheckGroupUID: group.UID})
 	r.NoError(err)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 
 	resource := view.Sections[0].Resources[0]
@@ -415,7 +415,7 @@ func TestViewStatusPage_GroupWeightedAvailability(t *testing.T) {
 	// nothing, so the bucket is 100%, not 50%.
 	seed(sparse.UID, dayBefore, 2, 0)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 
 	avail := view.Sections[0].Resources[0].Availability
@@ -497,7 +497,7 @@ func TestViewStatusPage_GroupMaintenance(t *testing.T) {
 				CreateResourceRequest{CheckGroupUID: group.UID})
 			r.NoError(err)
 
-			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 			r.NoError(err)
 
 			info := view.Sections[0].Resources[0].Check
@@ -540,7 +540,7 @@ func TestViewStatusPage_DeletedGroupMatchesDeletedCheck(t *testing.T) {
 	r.NoError(svc.db.DeleteCheck(ctx, lone.UID))
 	r.NoError(svc.db.DeleteCheckGroup(ctx, group.UID))
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 	r.Len(view.Sections[0].Resources, 2, "both resources survive their target's soft delete")
 

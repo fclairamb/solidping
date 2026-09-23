@@ -2443,9 +2443,12 @@ func publicAccessError(ctx context.Context, page *models.StatusPage) error {
 	}
 }
 
-// ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
+// ViewStatusPage returns a public view of a status page with sections,
+// resources, and live check status. opts narrows which optional sections
+// (availability, response time) are computed and returned — see
+// ParseViewOptions and ViewOptions.
 func (s *Service) ViewStatusPage(
-	ctx context.Context, orgSlug, slug string,
+	ctx context.Context, orgSlug, slug string, opts ViewOptions,
 ) (StatusPageResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -2493,9 +2496,21 @@ func (s *Service) ViewStatusPage(
 		Unknown:     statusCounts.Unknown,
 	}
 
+	// The `include` query param can only NARROW what the page's own settings
+	// would produce, never widen it — ANDed into a shallow copy of the page
+	// (the same trick summaryAvailability uses with lean.ShowResponseTime),
+	// so enrichWithAvailability and the OverallAvailabilityPct gate below read
+	// the narrowed flags while convertPageToResponse above already read the
+	// ORIGINAL page. That is what keeps showAvailability/showResponseTime in
+	// the response describing the page's settings, not the payload the caller
+	// asked for.
+	lean := *page
+	lean.ShowAvailability = page.ShowAvailability && opts.Availability
+	lean.ShowResponseTime = page.ShowResponseTime && opts.ResponseTime
+
 	// Enrich resources with availability data
-	if page.ShowAvailability || page.ShowResponseTime {
-		s.enrichWithAvailability(ctx, org.UID, page, sections)
+	if lean.ShowAvailability || lean.ShowResponseTime {
+		s.enrichWithAvailability(ctx, org.UID, &lean, sections)
 	}
 
 	// Page-level uptime for the same window (spec 2026-08-29-08). Derived from
@@ -2503,7 +2518,7 @@ func (s *Service) ViewStatusPage(
 	// disagree with the rows it summarizes. Gated on ShowAvailability: a page
 	// whose operator chose not to publish per-resource uptime must not publish
 	// the aggregate either.
-	if page.ShowAvailability {
+	if lean.ShowAvailability {
 		response.OverallAvailabilityPct = meanResourceAvailability(sections)
 	}
 
@@ -2572,8 +2587,9 @@ func (s *Service) loadRecentUpdates(
 }
 
 // ViewDefaultStatusPage returns the default status page for an organization.
+// opts narrows which optional sections are computed — see ViewStatusPage.
 func (s *Service) ViewDefaultStatusPage(
-	ctx context.Context, orgSlug string,
+	ctx context.Context, orgSlug string, opts ViewOptions,
 ) (StatusPageResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -2585,7 +2601,7 @@ func (s *Service) ViewDefaultStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	return s.ViewStatusPage(ctx, orgSlug, page.Slug)
+	return s.ViewStatusPage(ctx, orgSlug, page.Slug, opts)
 }
 
 // ViewStatusPageSummary returns the lightweight page-level rollup for a

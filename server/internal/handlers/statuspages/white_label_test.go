@@ -60,7 +60,7 @@ func TestSelfHostedWithoutTheEntitlementKeepsTheBadge(t *testing.T) {
 	optIn := true
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(public.HideBranding, "self-hosted + opted in must still show the badge")
 	r.Nil(public.WhiteLabelAllowed, "the public payload must never disclose plan state")
@@ -85,7 +85,7 @@ func TestSelfHostedGrantedTheEntitlementDropsTheBadge(t *testing.T) {
 		Source: models.EntitlementSourceAdmin,
 	}, "test", "operator grant"))
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.True(public.HideBranding, "an explicit grant must drop the badge")
 }
@@ -103,7 +103,7 @@ func TestSaaSWithoutTheEntitlementKeepsTheBadge(t *testing.T) {
 	optIn := true
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{HideBranding: &optIn}))
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(public.HideBranding, "opting in must not be enough on a plan without the entitlement")
 
@@ -135,7 +135,7 @@ func TestSaaSGrantedTheEntitlementDropsTheBadge(t *testing.T) {
 		Source: models.EntitlementSourceBilling,
 	}, "test", "upgrade"))
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.True(public.HideBranding)
 }
@@ -158,7 +158,7 @@ func TestEntitledButNotOptedInKeepsTheBadge(t *testing.T) {
 		Source: models.EntitlementSourceAdmin,
 	}, "test", "operator grant"))
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(public.HideBranding, "the entitlement alone must not hide the badge")
 }
@@ -188,7 +188,7 @@ func TestWhiteLabelFailsClosedWithoutAnEntitlementsService(t *testing.T) {
 
 	svc := NewService(dbService, &config.Config{}, nil)
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(public.HideBranding)
 }
