@@ -1,6 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ApiError, NetworkError, apiFetch } from "./client";
-import { withKiosk } from "@/lib/kiosk";
+// Relative, not the "@/" alias: that alias is a Vite resolve.alias
+// (vite.config.ts), which `bun test` never sees — every existing test that
+// reaches this file does so through an `import type` (erased before
+// runtime), so nothing exercised this path until the include-URL unit test
+// (hooks.test.ts) needed a REAL value from this module and hit it.
+import { withKiosk } from "../lib/kiosk";
 
 export interface ResourceCheckInfo {
   name?: string;
@@ -249,6 +254,49 @@ export interface AvailabilityThresholds {
 export interface PublicReadOptions {
   kioskToken?: string;
   refetchInterval?: number;
+  include?: PublicPageInclude[];
+}
+
+/**
+ * The two optional, expensive sections a public page view can be narrowed to
+ * (spec 2026-09-22-07). Mirrors the backend's `include` query tokens
+ * (statuspages.ParseViewOptions) exactly, including the case.
+ */
+export type PublicPageInclude = "availability" | "responseTime";
+
+/**
+ * Sorts and dedupes an `include` list into the canonical form used both for
+ * the URL and for the query key — so `["responseTime", "availability"]` and
+ * `["availability", "responseTime"]` hit the same cache entry, and a
+ * duplicated token doesn't create a distinct one. `undefined` (the caller
+ * didn't ask to narrow anything) stays `undefined`: that's what keeps the
+ * URL untouched, which is the compatibility guarantee.
+ */
+function sortedInclude(
+  include: PublicPageInclude[] | undefined,
+): PublicPageInclude[] | undefined {
+  if (include === undefined) return undefined;
+
+  return Array.from(new Set(include)).sort();
+}
+
+/**
+ * Appends `include=` to a path when the caller asked to narrow the payload.
+ * Absent `include` (undefined) leaves the path byte-for-byte untouched — the
+ * same default-preserves-today's-payload guarantee the backend documents.
+ * An empty array yields `include=` with no value, deliberately requesting
+ * neither optional section.
+ */
+export function withInclude(
+  path: string,
+  include: PublicPageInclude[] | undefined,
+): string {
+  const sorted = sortedInclude(include);
+  if (sorted === undefined) return path;
+
+  const separator = path.includes("?") ? "&" : "?";
+
+  return `${path}${separator}include=${sorted.join(",")}`;
 }
 
 export function usePublicIncidentHistory(
@@ -281,10 +329,22 @@ export function usePublicStatusPage(
   options?: PublicReadOptions,
 ) {
   return useQuery<StatusPage>({
-    queryKey: ["public-status-page", org, slug, options?.kioskToken ?? null],
+    // The sorted/deduped include list is part of the key, not just the URL:
+    // the ordinary page (no include) and TV mode (include: []) must never
+    // share a cache entry for two different payload shapes.
+    queryKey: [
+      "public-status-page",
+      org,
+      slug,
+      options?.kioskToken ?? null,
+      sortedInclude(options?.include) ?? null,
+    ],
     queryFn: () =>
       apiFetch<StatusPage>(
-        withKiosk(`/api/v1/status-pages/${org}/${slug}`, options?.kioskToken),
+        withKiosk(
+          withInclude(`/api/v1/status-pages/${org}/${slug}`, options?.include),
+          options?.kioskToken,
+        ),
       ),
     // Refresh every 30 seconds by default; TV mode tightens this during an
     // incident.
@@ -407,10 +467,14 @@ export function useDefaultStatusPage(org: string, options?: PublicReadOptions) {
       org,
       "__default__",
       options?.kioskToken ?? null,
+      sortedInclude(options?.include) ?? null,
     ],
     queryFn: () =>
       apiFetch<StatusPage>(
-        withKiosk(`/api/v1/status-pages/${org}`, options?.kioskToken),
+        withKiosk(
+          withInclude(`/api/v1/status-pages/${org}`, options?.include),
+          options?.kioskToken,
+        ),
       ),
     refetchInterval: options?.refetchInterval ?? 30_000,
     enabled: !!org,
