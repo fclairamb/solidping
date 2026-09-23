@@ -6,12 +6,12 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/IBM/sarama"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkkafka/config"
 )
 
 // tunnelProxyDialer adapts a checkerdef.ContextDialer to the context-less
@@ -36,31 +36,11 @@ func (c *KafkaChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeKafka
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *KafkaChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &KafkaConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" && len(cfg.Brokers) > 0 {
-		spec.Name = cfg.Brokers[0]
-	}
-
-	if spec.Slug == "" && len(cfg.Brokers) > 0 {
-		host := cfg.Brokers[0]
-		if idx := strings.Index(host, ":"); idx > 0 {
-			host = host[:idx]
-		}
-
-		spec.Slug = "kafka-" + strings.ReplaceAll(host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the Kafka cluster health check and returns the result.

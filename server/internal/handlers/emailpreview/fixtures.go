@@ -36,7 +36,10 @@ const (
 	keyWide         = "Wide"
 	colorReportGood = "#15803d"
 	keyHasData      = "HasData"
-	keyAvailability = "AvailabilityPct"
+	// fixtureResolvedAt is the one resolution timestamp every resolved-incident
+	// fixture shows, so the previews of the resolved templates line up.
+	fixtureResolvedAt = "2026-07-05 10:15:00 UTC"
+	keyAvailability   = "AvailabilityPct"
 )
 
 // fixtureBuilders maps a shipped template name to the function that returns
@@ -55,6 +58,8 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"incident-resolved.html":           resolvedIncidentFixture,
 	"incident-burn-created.html":       burnIncidentFixture,
 	"incident-burn-resolved.html":      resolvedBurnIncidentFixture,
+	"incident-degraded-created.html":   degradedIncidentFixture,
+	"incident-degraded-resolved.html":  resolvedDegradedIncidentFixture,
 	"escalation.html":                  escalationFixture,
 	"test-email.html":                  testEmailFixture,
 	"paging-nudge.html":                pagingNudgeFixture,
@@ -148,12 +153,39 @@ func burnIncidentFixture() map[string]any {
 	return fixture
 }
 
+// degradedIncidentFixture is the degraded-detection notice (spec 2026-09-22-03),
+// carrying the motivating episode's own numbers: 7 failures in 60 probes,
+// 93.8% availability, and a target that is up at this very moment.
+func degradedIncidentFixture() map[string]any {
+	fixture := incidentFixture()
+	fixture["DegradedReason"] = "7 failures in the last 60 probes (93.8%)"
+	fixture["DegradedStatus"] = "Currently up."
+	fixture["DegradedWindow"] = "14:35 – 15:28 UTC"
+	fixture["DegradedWindowURL"] = "https://solidping.example/d/orgs/acme/checks/acme-api" +
+		"?graphFrom=1790778900000&graphTo=1790782080000"
+	fixture["DegradedFailureLine"] = "7 failures in the last 60 probes (93.8%) (rule: 5 of 60 probes)"
+	fixture["DegradedSlowLine"] = "3 of the last 6 probes were slower than 1000ms (rule: 3 of 6 probes over 1000ms)"
+
+	return fixture
+}
+
+// resolvedDegradedIncidentFixture is the cleared half: the pattern stopped, so
+// there is nothing left to acknowledge.
+func resolvedDegradedIncidentFixture() map[string]any {
+	fixture := degradedIncidentFixture()
+	fixture["AckURL"] = ""
+	fixture["ResolvedAt"] = fixtureResolvedAt
+	fixture["Duration"] = "53m"
+
+	return fixture
+}
+
 // resolvedBurnIncidentFixture is the cleared-alert half: no ack (there is
 // nothing left to acknowledge) and a rate back under the threshold.
 func resolvedBurnIncidentFixture() map[string]any {
 	fixture := burnIncidentFixture()
 	fixture["AckURL"] = ""
-	fixture["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fixture["ResolvedAt"] = fixtureResolvedAt
 	fixture["Duration"] = "15m"
 	fixture["BurnRate"] = "1.2x"
 
@@ -166,7 +198,7 @@ func resolvedBurnIncidentFixture() map[string]any {
 func resolvedIncidentFixture() map[string]any {
 	fx := incidentFixture()
 	fx["AckURL"] = ""
-	fx["ResolvedAt"] = "2026-07-05 10:15:00 UTC"
+	fx["ResolvedAt"] = fixtureResolvedAt
 	fx["Duration"] = "15m"
 
 	return fx

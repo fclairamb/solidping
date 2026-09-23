@@ -1,0 +1,238 @@
+// Package config holds the sftp check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checksftp package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
+package config
+
+import (
+	"crypto/x509"
+	"encoding/pem"
+	"strings"
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+)
+
+const (
+	// DefaultPort is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultPort = 22
+	// DefaultTimeout is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultTimeout = 10 * time.Second
+	maxTimeout     = 30 * time.Second
+	// MicrosecondsPerMs is a default or bound this config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	MicrosecondsPerMs = 1000.0
+
+	// fingerprintPrefix is the prefix checkssh.Fingerprint emits; the SFTP pin
+	// reuses that exact format rather than inventing a second one.
+	fingerprintPrefix = "SHA256:"
+)
+
+// SFTPConfig holds the configuration for SFTP checks.
+type SFTPConfig struct {
+	Host       string        `json:"host"`
+	Port       int           `json:"port,omitempty"`
+	Timeout    time.Duration `json:"timeout,omitempty"`
+	Username   string        `json:"username"`
+	Password   string        `json:"password,omitempty"`
+	PrivateKey string        `json:"private_key,omitempty"` //nolint:tagliatelle // API uses snake_case
+	Path       string        `json:"path,omitempty"`
+	// HostKeyFingerprint optionally pins the server's host key, in the
+	// `SHA256:<base64>` form checkssh.Fingerprint produces. When empty the
+	// check still reports the observed fingerprint in its output, so an
+	// operator can copy it in here; when set, a mismatch is a failed check.
+	HostKeyFingerprint string `json:"host_key_fingerprint,omitempty"` //nolint:tagliatelle // API uses snake_case
+}
+
+// FromMap populates the configuration from a map.
+//
+//nolint:cyclop // Configuration parsing requires checking multiple field types
+func (c *SFTPConfig) FromMap(configMap map[string]any) error {
+	if host, ok := configMap["host"].(string); ok {
+		c.Host = host
+	} else if configMap["host"] != nil {
+		return checkerdef.NewConfigError("host", "must be a string")
+	}
+
+	if port, ok := configMap["port"].(int); ok {
+		c.Port = port
+	} else if portFloat, ok := configMap["port"].(float64); ok {
+		c.Port = int(portFloat)
+	} else if configMap["port"] != nil {
+		return checkerdef.NewConfigError("port", "must be a number")
+	}
+
+	if timeout, ok := configMap["timeout"].(string); ok {
+		duration, err := time.ParseDuration(timeout)
+		if err != nil {
+			return checkerdef.NewConfigError("timeout", "must be a valid duration string")
+		}
+
+		c.Timeout = duration
+	} else if configMap["timeout"] != nil {
+		return checkerdef.NewConfigError("timeout", "must be a string")
+	}
+
+	if username, ok := configMap["username"].(string); ok {
+		c.Username = username
+	} else if configMap["username"] != nil {
+		return checkerdef.NewConfigError("username", "must be a string")
+	}
+
+	if password, ok := configMap["password"].(string); ok {
+		c.Password = password
+	} else if configMap["password"] != nil {
+		return checkerdef.NewConfigError("password", "must be a string")
+	}
+
+	if privateKey, ok := configMap["private_key"].(string); ok {
+		c.PrivateKey = privateKey
+	} else if configMap["private_key"] != nil {
+		return checkerdef.NewConfigError("private_key", "must be a string")
+	}
+
+	if path, ok := configMap["path"].(string); ok {
+		c.Path = path
+	} else if configMap["path"] != nil {
+		return checkerdef.NewConfigError("path", "must be a string")
+	}
+
+	if fingerprint, ok := configMap["host_key_fingerprint"].(string); ok {
+		c.HostKeyFingerprint = fingerprint
+	} else if configMap["host_key_fingerprint"] != nil {
+		return checkerdef.NewConfigError("host_key_fingerprint", "must be a string")
+	}
+
+	return nil
+}
+
+// GetConfig returns the configuration as a map.
+func (c *SFTPConfig) GetConfig() map[string]any {
+	cfg := map[string]any{
+		"host":     c.Host,
+		"username": c.Username,
+	}
+
+	if c.Port != 0 {
+		cfg["port"] = c.Port
+	}
+
+	if c.Timeout != 0 {
+		cfg["timeout"] = c.Timeout.String()
+	}
+
+	if c.Password != "" {
+		cfg["password"] = c.Password
+	}
+
+	if c.PrivateKey != "" {
+		cfg["private_key"] = c.PrivateKey
+	}
+
+	if c.Path != "" {
+		cfg["path"] = c.Path
+	}
+
+	if c.HostKeyFingerprint != "" {
+		cfg["host_key_fingerprint"] = c.HostKeyFingerprint
+	}
+
+	return cfg
+}
+
+// Validate checks if the configuration is valid.
+func (c *SFTPConfig) Validate() error {
+	if c.Host == "" {
+		return checkerdef.NewConfigError("host", "is required")
+	}
+
+	if c.Port != 0 && (c.Port < 1 || c.Port > 65535) {
+		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", c.Port)
+	}
+
+	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
+		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", c.Timeout.String())
+	}
+
+	if c.Username == "" {
+		return checkerdef.NewConfigError("username", "is required")
+	}
+
+	if err := c.validateCredentials(); err != nil {
+		return err
+	}
+
+	if c.HostKeyFingerprint != "" && !strings.HasPrefix(c.HostKeyFingerprint, fingerprintPrefix) {
+		return checkerdef.NewConfigErrorf("host_key_fingerprint",
+			"must be a %s… fingerprint, as reported in the check output", fingerprintPrefix)
+	}
+
+	return nil
+}
+
+// validateCredentials enforces the "exactly one of password / private_key"
+// rule, and that a supplied key parses.
+func (c *SFTPConfig) validateCredentials() error {
+	if c.Password == "" && c.PrivateKey == "" {
+		return checkerdef.NewConfigError("password", "password or private_key is required")
+	}
+
+	if c.Password != "" && c.PrivateKey != "" {
+		return checkerdef.NewConfigError("password", "cannot use both password and private_key")
+	}
+
+	if c.PrivateKey != "" {
+		return validatePrivateKey(c.PrivateKey)
+	}
+
+	return nil
+}
+
+func validatePrivateKey(key string) error {
+	block, _ := pem.Decode([]byte(key))
+	if block == nil {
+		return checkerdef.NewConfigError("private_key", "invalid PEM format")
+	}
+
+	// Try parsing as various key types - accept if any succeeds
+	if _, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		return nil
+	}
+
+	if _, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return nil
+	}
+
+	if _, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+		return nil
+	}
+
+	// Accept anyway - golang.org/x/crypto/ssh can parse OpenSSH format keys
+	return nil
+}
+
+// SchemaNotes implements checkerdef.SchemaNoter: the rules Validate() enforces
+// that a schema reflected from this struct cannot state.
+func (c *SFTPConfig) SchemaNotes() []string {
+	return []string{
+		"Exactly one of `password` or `private_key` must be set. Both are `omitempty` in Go, so " +
+			"neither appears in `required`; the `oneOf` below encodes the rule, and `Validate()` " +
+			"enforces it.",
+		"`private_key` must be a PEM-encoded private key (PKCS#8, PKCS#1, EC or OpenSSH). The " +
+			"schema only says it is a string.",
+		"`host_key_fingerprint`, when set, must be the `SHA256:<base64>` form the check reports " +
+			"in its output.",
+	}
+}
+
+// SchemaExclusiveGroups implements checkerdef.SchemaExclusiveGrouper: exactly one
+// of password / private_key.
+func (c *SFTPConfig) SchemaExclusiveGroups() [][]string {
+	return [][]string{{"password", "private_key"}}
+}

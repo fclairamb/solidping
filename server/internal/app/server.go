@@ -2,6 +2,7 @@
 package app
 
 import (
+	"compress/gzip"
 	"context"
 	"embed"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
@@ -61,6 +63,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
+	"github.com/fclairamb/solidping/server/internal/handlers/degradedeval"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
@@ -185,10 +188,15 @@ var docsFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService                db.Service
-	jobSvc                   jobsvc.Service
-	services                 *services.Registry
-	router                   *httpx.Router
+	dbService db.Service
+	jobSvc    jobsvc.Service
+	services  *services.Registry
+	router    *httpx.Router
+	// handler is s.router, optionally wrapped by compressionWrapper (see
+	// SetupRoutes). It is the outermost handler: Server.Handler() and
+	// handlerWithDocsHost's fallthrough both serve this, never s.router
+	// directly, so every caller gets compression on the same terms.
+	handler                  http.Handler
 	config                   *config.Config
 	authService              *auth.Service
 	mcpHandler               *mcp.Handler
@@ -1047,6 +1055,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
 	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
 	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
+	// Generated JSON Schemas for each check type's `config` object — public and
+	// auth-free like /check-types, because they describe this build rather than
+	// any organization's data. Read-only, and DESCRIPTIVE ONLY: validation stays
+	// with the Go Validate() reached through /checks/validate (spec 2026-09-22-02).
+	api.GET("/checks/schema", checkTypesHandler.ListConfigSchemas)
+	api.GET("/checks/schema/:type", checkTypesHandler.GetConfigSchema)
 	orgCheckTypes := orgGroup("/orgs/:org/check-types")
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
@@ -1764,6 +1778,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService, s.config, s.services.Entitlements)
 	statusPagesService.SetPublicIncidentProvider(publicIncidentAdapter{svc: incidentPublicationsService})
+	// The other side of the same seam (spec 2026-09-22-09): the public page read
+	// memoizes its computed body for statuspagecache.PageMemoTTL, so every write
+	// path in another package that changes that body has to be able to evict it.
+	// Injected exactly like the provider above, and for the same reason — the
+	// dependency only ever points one way at compile time.
+	//
+	// A service that is NOT wired here simply never evicts, which is a stale
+	// status page rather than a crash. The invalidation table
+	// (statuspages.PageMemoWritePaths) is the list these three lines have to
+	// keep up with.
+	incidentPublicationsService.SetPageMemoInvalidator(statusPagesService)
+	statusUpdatesService.SetPageMemoInvalidator(statusPagesService)
 	// A hard demotion reached through the synchronous Verify button alerts the
 	// org exactly like one the periodic sweep reaches (spec 2026-08-23-03, R4).
 	statusPagesService.SetJobsService(s.services.Jobs)
@@ -1773,6 +1799,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// page-view backstop as the safety net.
 	checksService.SetStatusPageReconciler(statusPagesService)
 	checkGroupsService.SetStatusPageReconciler(statusPagesService)
+	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
+	// far earlier in this function), and every NewService starts with its own
+	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map
+	// nobody reads and the public page serves the pre-edit body for up to
+	// statuspagecache.PageMemoTTL (spec 2026-09-22-09).
+	if s.mcpHandler != nil {
+		s.mcpHandler.ShareStatusPageMemo(statusPagesService)
+	}
+
 	// Retained on the server so serveStatus0Static can resolve pages for
 	// per-page Open Graph / Twitter Card metadata injection.
 	s.statusPagesService = statusPagesService
@@ -1791,6 +1826,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// public-asset route registered further up, authorized by the file's topic
 	// (spec 2026-08-22-03).
 	statusPageAssetsService := statuspageassets.NewService(s.dbService, filesService)
+	statusPageAssetsService.SetPageMemoInvalidator(statusPagesService)
 	statusPageAssetsHandler := statuspageassets.NewHandler(statusPageAssetsService, s.config)
 	orgStatusPages.POST("/:statusPageUid/logo", statusPageAssetsHandler.UploadLogo)
 	orgStatusPages.DELETE("/:statusPageUid/logo", statusPageAssetsHandler.DeleteLogo)
@@ -1883,6 +1919,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService, sloService, incidentsService, s.services.Clock, slog.Default(),
 	)
 	s.services.SLOBurn = sloAlertsService
+
+	// Degraded detection (spec 2026-09-22-03). Registered through the
+	// DegradedEvaluator interface for the same import-cycle reason as the burn
+	// evaluator above. There is no HTTP surface of its own: the configuration
+	// lives on the check, and the incidents it opens are ordinary incidents.
+	s.services.Degraded = degradedeval.NewService(
+		s.dbService, incidentsService, s.services.Clock, slog.Default(),
+	)
 	sloAlertsHandler := sloalerts.NewHandler(sloAlertsService, s.config)
 	orgSLOs.GET("/:uid/alert-policies", sloAlertsHandler.List)
 	orgSLOs.GET("/:uid/alert-policies/:policyUid", sloAlertsHandler.Get)
@@ -2318,6 +2362,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mainGroup.GET("/*path", s.serveAppRoot)
 
 	s.router = router
+	s.handler = compressionWrapper(s.config.Server.Compression)(router)
 }
 
 // initSentry initializes the Sentry SDK for error tracking.
@@ -2627,7 +2672,7 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 func (s *Server) handlerWithDocsHost() http.Handler {
 	docsHost := strings.ToLower(strings.TrimSpace(s.config.Server.DocsHost))
 	if docsHost == "" {
-		return s.router
+		return s.handler
 	}
 
 	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
@@ -2641,7 +2686,7 @@ func (s *Server) handlerWithDocsHost() http.Handler {
 			return
 		}
 
-		s.router.ServeHTTP(writer, req)
+		s.handler.ServeHTTP(writer, req)
 	})
 }
 
@@ -3217,12 +3262,21 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	if !embeddedFileExists(fsys, filePath) {
 		// Not a file (missing, or a directory such as the bare "/s/"):
 		// the SPA shell handles it.
-		maxAgeSeconds = 60
 		servingIndexFallback = true
 		filePath = path.Join("status0res", "index.html")
 	}
 
-	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	// The shell's directive comes from statuspagecache, not a literal: it is a
+	// public status-page surface and has to carry the same freshness contract as
+	// its custom-domain twin, stale-while-revalidate included (spec
+	// 2026-09-22-09). A pinning test asserts the two shells agree, and a literal
+	// here is how they stopped agreeing.
+	if servingIndexFallback {
+		writer.Header().Set("Cache-Control",
+			statuspagecache.Control(models.StatusPageVisibilityPublic, statuspagecache.PageMaxAge))
+	} else {
+		writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	}
 
 	if !servingIndexFallback {
 		// Hashed assets are streamed rather than copied onto the heap: the
@@ -3267,7 +3321,10 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
 	// shell varies on it exactly like the custom-domain one. Hashed assets do
 	// not, so they keep their unqualified year-long entry.
-	writer.Header().Set("Vary", statuspagecache.VaryPublic)
+	// Add, not Set: the process-wide compression wrapper (server.compression)
+	// runs outside this handler and already added its own
+	// "Vary: Accept-Encoding" — Set would silently discard it.
+	writer.Header().Add("Vary", statuspagecache.VaryPublic)
 	writer.Header().Set("Content-Type", contentTypeHTML)
 
 	if _, err := writer.Write(data); err != nil {
@@ -3778,9 +3835,63 @@ func (s *Server) Close(ctx context.Context) error {
 	return closeErr
 }
 
-// Handler returns the HTTP handler for the server.
+// Handler returns the HTTP handler for the server, wrapped with response
+// compression (server.compression, default true) when enabled.
 func (s *Server) Handler() http.Handler {
-	return s.router
+	return s.handler
+}
+
+// compressibleContentTypes is the allowlist gzhttp encodes. Everything else
+// (images, fonts, event streams, WebSocket upgrades, and anything not in this
+// list) passes through the wrapper untouched. Kept as a package-level slice so
+// tests can assert against it directly. Deliberately excludes
+// text/event-stream (the MCP endpoint's stream, see mcp/handler.go, would
+// break if buffered) and every binary type.
+//
+//nolint:gochecknoglobals // Effectively a constant table; Go has no const slices.
+var compressibleContentTypes = []string{
+	"application/json", "application/problem+json", "application/manifest+json",
+	"text/html", "text/css", "text/plain", "text/markdown", "text/csv",
+	"text/javascript", "application/javascript",
+	"image/svg+xml",
+	"application/xml", "text/xml", "application/atom+xml", "application/rss+xml",
+	"application/yaml", "application/x-yaml",
+}
+
+// compressionMinSize is the minimum response body size gzhttp will encode.
+// Bodies below this pass through unmodified — the gzip framing overhead isn't
+// worth it on small responses (e.g. /api/mgmt/health).
+const compressionMinSize = 1024
+
+// compressionWrapper returns a function that wraps a handler with gzip
+// response compression (github.com/klauspost/compress/gzhttp) when enabled is
+// true, or returns the handler unchanged when it is false — the
+// server.compression / SP_SERVER_COMPRESSION kill switch.
+//
+// It must wrap the OUTERMOST handler (see SetupRoutes and Handler()), outside
+// the httpx router and its middleware chain, so the logging and metrics
+// middlewares keep observing the uncompressed body size. Level is BestSpeed:
+// on a multi-megabyte JSON body it lands within a few percent of level 6's
+// ratio at a fraction of the CPU.
+func compressionWrapper(enabled bool) func(http.Handler) http.Handler {
+	if !enabled {
+		return func(h http.Handler) http.Handler { return h }
+	}
+
+	wrapper, err := gzhttp.NewWrapper(
+		gzhttp.MinSize(compressionMinSize),
+		gzhttp.CompressionLevel(gzip.BestSpeed),
+		gzhttp.ContentTypes(compressibleContentTypes),
+	)
+	if err != nil {
+		// Only returned for invalid static options above; a startup-time bug,
+		// never an operator-facing failure mode.
+		panic(fmt.Sprintf("compressionWrapper: invalid gzhttp options: %v", err))
+	}
+
+	return func(h http.Handler) http.Handler {
+		return wrapper(h)
+	}
 }
 
 // Initialize initializes the database (runs migrations).

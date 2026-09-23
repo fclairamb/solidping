@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkgrpc/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -27,31 +28,11 @@ func (c *GRPCChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeGRPC
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *GRPCChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &GRPCConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		name := cfg.resolveTarget()
-		if cfg.ServiceName != "" {
-			name += "/" + cfg.ServiceName
-		}
-
-		spec.Name = name
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "grpc-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // execContext bundles the per-execution state every phase helper needs, so the
@@ -83,7 +64,7 @@ func (c *GRPCChecker) Execute(
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, cfg.resolveTimeout())
+	ctx, cancel := context.WithTimeout(ctx, cfg.ResolveTimeout())
 	defer cancel()
 
 	// The `dns` resolver gRPC uses by default would resolve the name BEFORE
@@ -93,7 +74,7 @@ func (c *GRPCChecker) Execute(
 	// what lets the checker time and classify resolution itself. It is also
 	// what the tunneled path has always needed (resolution belongs on the far
 	// side of the bastion), so both paths now share one target form.
-	target := "passthrough:///" + cfg.resolveTarget()
+	target := "passthrough:///" + cfg.ResolveTarget()
 
 	tunnelDialer := checkerdef.TunnelDialerFrom(ctx)
 
@@ -104,7 +85,7 @@ func (c *GRPCChecker) Execute(
 		metrics: map[string]any{},
 		output: map[string]any{
 			"host": cfg.Host,
-			"port": cfg.resolvePort(),
+			"port": cfg.ResolvePort(),
 			"tls":  cfg.TLS,
 		},
 		tunneled: tunnelDialer != nil,
@@ -238,7 +219,7 @@ func attachNetworkFailure(
 
 	address, _ := splitDialedAddress(exec.timer.dialedAddress())
 	result.SetNetworkFailure(checkerdef.NewNetworkFailure(
-		class, exec.cfg.Host, address, exec.cfg.resolvePort(),
+		class, exec.cfg.Host, address, exec.cfg.ResolvePort(),
 	))
 }
 
@@ -317,6 +298,12 @@ func (c *GRPCChecker) checkHealth(
 // Deprecated behavior, kept decoding-compatible for checks created before the
 // serving status made it redundant: it is not exposed by the dashboard and not
 // documented as a supported option.
+//
+// The deprecation only became visible to staticcheck when the config moved to
+// its own package; the fields are still decoded and still honored, so this is
+// the one place allowed to read them.
+//
+//nolint:staticcheck // SA1019: reading the deprecated fields is this function's job
 func keywordFailure(exec *execContext, servingStatus string) *checkerdef.Result {
 	if exec.cfg.Keyword == "" {
 		return nil

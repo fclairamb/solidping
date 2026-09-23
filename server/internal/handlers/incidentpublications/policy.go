@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -107,17 +108,8 @@ func (s *Service) eligiblePages(ctx context.Context, incident *models.Incident) 
 			continue
 		}
 
-		// Resource override wins; nil means inherit the page.
-		if target.ResourceAutoPublish != nil && !*target.ResourceAutoPublish {
-			continue
-		}
-
-		page, pageErr := s.db.GetStatusPage(ctx, incident.OrganizationUID, target.PageUID)
-		if pageErr != nil || page == nil || !page.Enabled {
-			continue
-		}
-
-		if target.ResourceAutoPublish == nil && !page.AutoPublish {
+		page := s.pageForTarget(ctx, incident, target)
+		if page == nil {
 			continue
 		}
 
@@ -132,6 +124,39 @@ func (s *Service) eligiblePages(ctx context.Context, incident *models.Incident) 
 	}
 
 	return out
+}
+
+// pageForTarget resolves the status page one target publishes to, or nil when
+// policy says this incident must not reach it. Split out of eligiblePages purely
+// to keep the two concerns apart: the loop dedups targets, this decides.
+func (s *Service) pageForTarget(
+	ctx context.Context, incident *models.Incident, target *db.StatusPageTarget,
+) *models.StatusPage {
+	// Resource override wins; nil means inherit the page.
+	if target.ResourceAutoPublish != nil && !*target.ResourceAutoPublish {
+		return nil
+	}
+
+	page, pageErr := s.db.GetStatusPage(ctx, incident.OrganizationUID, target.PageUID)
+	if pageErr != nil || page == nil || !page.Enabled {
+		return nil
+	}
+
+	if target.ResourceAutoPublish == nil && !page.AutoPublish {
+		return nil
+	}
+
+	// A degraded incident (spec 2026-09-22-03) needs its own opt-in, which is
+	// false on every page including new ones. "7 of the last 60 probes failed,
+	// currently up" is an internal operations signal; a page that agreed to
+	// announce outages has not agreed to announce intermittence. Checked AFTER
+	// the auto-publish gate above, so turning auto-publish off still silences
+	// everything.
+	if incident.Kind == models.IncidentKindDegraded && !page.PublishDegraded {
+		return nil
+	}
+
+	return page
 }
 
 // checkInMaintenance reports whether the check is inside an active maintenance
@@ -236,7 +261,7 @@ func (s *Service) AutoPublish(ctx context.Context, orgUID, incidentUID, statusPa
 	pub.IncidentUID = &incident.UID
 	pub.AutoCreated = true
 
-	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
+	if err := s.createPublicationRow(ctx, pub); err != nil {
 		if isUniqueViolation(err) {
 			// Lost the race to a concurrent fire or a manual publish. The other
 			// writer's row is the publication; ours never existed.
@@ -382,7 +407,7 @@ func (s *Service) applyResolvePolicy(
 	}
 
 	resolved := models.PublicationStateResolved
-	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+	if err := s.updatePublicationRow(ctx, pub, &models.IncidentPublicationUpdate{
 		PublicState: &resolved,
 		ResolvedAt:  &now,
 	}); err != nil {
@@ -454,7 +479,7 @@ func (s *Service) OnIncidentReopened(ctx context.Context, incident *models.Incid
 		}
 
 		investigating := models.PublicationStateInvestigating
-		if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+		if err := s.updatePublicationRow(ctx, pub, &models.IncidentPublicationUpdate{
 			PublicState:     &investigating,
 			ClearResolvedAt: true,
 		}); err != nil {

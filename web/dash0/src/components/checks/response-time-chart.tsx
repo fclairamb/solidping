@@ -78,6 +78,18 @@ interface ResponseTimeChartProps {
   // a shared link reproduces the selection. Controlled — no local fallback.
   selectedUid?: string;
   onSelectChange?: (uid?: string) => void;
+  /**
+   * Degraded episodes to shade, as epoch-ms spans (spec 2026-09-22-03).
+   *
+   * A band, not dots: seven isolated red dots spread over an hour do not read
+   * as an event, which is exactly why the motivating episode went unnoticed.
+   *
+   * An open episode passes an undefined `to` and is drawn to the chart's own
+   * right edge. The caller deliberately does NOT substitute `Date.now()`: that
+   * would be a clock read during render, and the domain edge is the honest
+   * answer anyway — the band means "still happening as far as this chart sees".
+   */
+  degradedSpans?: Array<{ from: number; to?: number; label?: string }>;
 }
 
 export interface ChartPoint {
@@ -391,6 +403,7 @@ export function ResponseTimeChart({
   onZoomChange,
   selectedUid,
   onSelectChange,
+  degradedSpans,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
@@ -1258,6 +1271,31 @@ export function ResponseTimeChart({
                       }
                     />
                   ))}
+                {/* Degraded episodes (spec 2026-09-22-03). Amber and drawn
+                  under the line: the check was UP for most of these minutes, so
+                  the band says "this stretch was unreliable", not "this stretch
+                  was an outage". Rendered in every series mode — the episode is
+                  per check, exactly as the incident state machine is. */}
+                {(degradedSpans ?? []).map((span) => (
+                  <ReferenceArea
+                    key={`degraded-${span.from}-${span.to ?? "open"}`}
+                    x1={span.from}
+                    x2={span.to ?? domainMax}
+                    fill="var(--chart-degraded, #d97706)"
+                    fillOpacity={0.14}
+                    stroke="var(--chart-degraded, #d97706)"
+                    strokeOpacity={0.35}
+                    // recharts defaults a ReferenceArea to ifOverflow="discard",
+                    // which DROPS the element entirely as soon as one edge falls
+                    // outside the domain. An episode that began before the
+                    // visible window — the common case for an hour-long degraded
+                    // span on a 24 h view — would vanish rather than shade its
+                    // overlapping part. "hidden" draws it clipped to the plot
+                    // area instead, which is what a band is for.
+                    ifOverflow="hidden"
+                    data-testid="chart-degraded-span"
+                  />
+                ))}
                 {/* In-progress drag-to-zoom selection band. */}
                 {refAreaLeft != null && refAreaRight != null && (
                   <ReferenceArea

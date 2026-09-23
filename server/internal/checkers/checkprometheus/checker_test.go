@@ -16,6 +16,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkprometheus"
 )
 
+// f64 is the local pointer helper for the optional float fields.
+func f64(v float64) *float64 { return &v }
+
 // sampleExposition is a small but representative /metrics body: a gauge with
 // several label sets, a counter, an untyped metric, a histogram and a summary.
 const sampleExposition = `# HELP process_open_fds Number of open file descriptors.

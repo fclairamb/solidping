@@ -563,7 +563,7 @@ func TestSelector_PublicPayloadHidesSelector(t *testing.T) {
 	page, _ := seedSelectorPage(ctx, t, svc, org,
 		models.SectionSelector{Labels: map[string]string{"env": "prod"}})
 
-	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Len(public.Sections, 1)
 	r.Nil(public.Sections[0].Selector)
@@ -600,7 +600,7 @@ func TestSelector_PublicViewIsABackstop(t *testing.T) {
 
 	// The backstop marker was invalidated by CreateSection's own reconcile, so
 	// this view is due.
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Len(view.Sections, 1)
 
@@ -648,7 +648,7 @@ func TestSelector_MatchTotalIsAdminOnly(t *testing.T) {
 	r.Equal(3, sections[0].SelectorMatchTotal)
 	r.False(sections[0].SelectorTruncated, "three checks are well under the cap")
 
-	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Zero(public.Sections[0].SelectorMatchTotal)
 	r.Zero(public.Sections[0].SelectorClaimedElsewhere)
@@ -710,7 +710,7 @@ func TestSelector_ClaimedElsewhere_FullyClaimed(t *testing.T) {
 	r.Empty(sections[0].SelectorClaimedSectionName)
 
 	// Admin-only: the public payload never carries the hint.
-	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Len(public.Sections, 2)
 	r.Zero(public.Sections[1].SelectorClaimedElsewhere)
@@ -829,7 +829,7 @@ func TestSelector_ManagedRowsRenderLikeManualOnes(t *testing.T) {
 
 	svc.ReconcileOrgSelectors(ctx, org.UID)
 
-	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Len(view.Sections, 1)
 	r.Len(view.Sections[0].Resources, 1)
@@ -1436,7 +1436,7 @@ func TestSectionSelector_DeletedGroupEmptiesAndReports(t *testing.T) {
 	r.True(sections[0].SelectorGroupMissing)
 
 	// Admin-only: the public payload never carries the hint.
-	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(public.Sections[0].SelectorGroupMissing)
 	r.NotContains(mustMarshalJSON(t, public), "selectorGroupMissing")
@@ -1558,7 +1558,7 @@ func TestSectionSelector_PublicPayloadHidesGroupSelector(t *testing.T) {
 
 	r.NoError(svc.ReconcilePage(ctx, org.UID, page.UID))
 
-	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, org.Slug, testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Len(public.Sections, 1)
 	r.Nil(public.Sections[0].Selector)

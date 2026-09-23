@@ -23,6 +23,12 @@ const (
 	ResolutionTypeAuto    = "auto"
 	ResolutionTypeManual  = "manual"
 	ResolutionTypeExpired = "expired"
+	// ResolutionTypeEscalated closes a degraded incident because a REAL outage
+	// opened on the same check (spec 2026-09-22-03). There is deliberately no
+	// in-place promotion: the degraded row resolves with this type and the
+	// outage's caused_by_incident_uid points back at it, so nothing keyed on
+	// `kind` ever has to cope with a kind changing mid-life.
+	ResolutionTypeEscalated = "escalated"
 )
 
 // Incident kinds. `kind` discriminates what an incident row is ABOUT. It is a
@@ -39,6 +45,17 @@ const (
 	// representative check in CheckUID purely so channel resolution and
 	// escalation-policy resolution have an anchor to work from.
 	IncidentKindSLOBurn = "slo_burn"
+	// IncidentKindDegraded is a statistically degraded check (spec
+	// 2026-09-22-03): M of the last N countable probes failed, or M of the last
+	// N successful ones were slower than the check's threshold. The check may
+	// well be UP right now — that is the point. It inherits history, timeline,
+	// notifications, ack/snooze and MCP for free, with three deliberate
+	// differences from a check outage: it never participates in
+	// dependency-cascade suppression (a degraded ancestor must not suppress a
+	// descendant's real outage), it schedules no escalation policy (notify-only,
+	// or the distinct wording would be undone by paging on-call anyway), and it
+	// does not auto-publish to a status page unless that page opted in.
+	IncidentKindDegraded = "degraded"
 )
 
 // Incident represents a period when a check was down.

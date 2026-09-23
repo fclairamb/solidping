@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksftp/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
@@ -35,31 +35,11 @@ func (c *SFTPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSFTP
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SFTPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SFTPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		port := cfg.Port
-		if port == 0 {
-			port = defaultPort
-		}
-
-		spec.Name = fmt.Sprintf("SFTP: %s:%d", cfg.Host, port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "sftp-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the SFTP check.

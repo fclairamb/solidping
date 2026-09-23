@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
@@ -416,8 +416,7 @@ func (s *Service) ValidateCheck(
 ) (ValidateCheckResponse, error) {
 	findings := &validateFindings{}
 
-	checker, ok := registry.GetChecker(checkerdef.CheckType(req.Type))
-	if !ok {
+	if !configregistry.IsKnownType(checkerdef.CheckType(req.Type)) {
 		findings.addError(fieldType, CodeUnsupportedType, "unsupported check type")
 
 		return findings.response(), nil
@@ -428,7 +427,7 @@ func (s *Service) ValidateCheck(
 		orgUID = org.UID
 	}
 
-	effective := s.validateConfigFindings(ctx, orgUID, req, checker, findings)
+	effective := s.validateConfigFindings(ctx, orgUID, req, findings)
 	period := s.validatePeriodFindings(req, effective, findings)
 	s.validateSlugFindings(ctx, orgUID, req, findings)
 	validateRequestFieldFindings(req, period, findings)
@@ -461,12 +460,12 @@ func (s *Service) ValidateCheck(
 // when normalization succeeded, the raw request config otherwise, so one bad
 // rule never costs the caller every other finding.
 func (s *Service) validateConfigFindings(
-	ctx context.Context, orgUID string, req *ValidateCheckRequest,
-	checker checkerdef.Checker, findings *validateFindings,
+	ctx context.Context, orgUID string, req *ValidateCheckRequest, findings *validateFindings,
 ) map[string]any {
 	effective := req.Config
 
-	if cfgErr := checker.Validate(&checkerdef.CheckSpec{Config: req.Config}); cfgErr != nil {
+	cfgErr := configregistry.ValidateSpec(checkerdef.CheckType(req.Type), &checkerdef.CheckSpec{Config: req.Config})
+	if cfgErr != nil {
 		findings.addErrorFrom(cfgErr, configFieldName, CodeInvalidConfig)
 	}
 

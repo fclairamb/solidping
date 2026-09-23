@@ -3,36 +3,44 @@ package uptimebar
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
-	"sort"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
-// fakeLister returns a fixed result set, capturing EVERY filter it was called
-// with (the availability engine issues one query per tier — see
-// BucketAvailability). It mimics the real DB's "ORDER BY period_start DESC" +
-// "LIMIT" behavior (see postgres.ListResults / sqlite.ListResults) so tests can
-// catch a regression where a row-count Limit gets reintroduced, and honors the
-// filter's PeriodTypes and time bounds so a fixture row the query doesn't ask
-// for is NOT returned. Without that fidelity a test seeding month rows would
-// pass even if the query dropped the month tier, and the raw clamp (which is
-// what keeps the tiers disjoint) would be untestable.
-type fakeLister struct {
+// fakeAggregator stands in for db.Service's AggregateResultBuckets, capturing
+// EVERY filter it was called with (the availability engine issues one aggregate
+// per tier side — see BucketAvailability).
+//
+// It STORES ROWS and folds them with the REAL Go accumulators
+// (accumulateRaw/accumulateAgg), then packs the result into the wire shape. That
+// is deliberate and it is the only honest way to fake this: a fake that
+// hand-built the expected BucketStats would be a second implementation agreeing
+// with the code by construction, and the package's scenario tests — warning
+// counts as up, abandoned is excluded, maintenance is a subset, extrema fold
+// one-sidedly — would stop exercising the counting rules they exist for. The
+// real SQL's agreement with these same accumulators is pinned separately, per
+// dialect, by the parity tests in internal/db/postgres and internal/db/sqlite.
+//
+// It honors the filter's tier list, region filter, time bounds and bucket width
+// so a fixture row the query does not ask for is NOT returned — without that the
+// raw clamp (which is what keeps the tiers disjoint) would be untestable. It also
+// drops raw rows excluded from availability BEFORE grouping, exactly as the SQL's
+// WHERE does, so a bucket whose only rows are lifecycle markers produces no group
+// at all rather than an empty one.
+type fakeAggregator struct {
 	results    []*models.Result
-	gotFilters []*models.ListResultsFilter
+	gotFilters []*models.ResultBucketFilter
 }
 
 // gotFilter returns the last captured filter, or nil when no query was issued.
-func (f *fakeLister) gotFilter() *models.ListResultsFilter {
+func (f *fakeAggregator) gotFilter() *models.ResultBucketFilter {
 	if len(f.gotFilters) == 0 {
 		return nil
 	}
@@ -42,7 +50,7 @@ func (f *fakeLister) gotFilter() *models.ListResultsFilter {
 
 // filterFor returns the captured filter whose PeriodTypes are exactly the given
 // tiers, or nil when no such query was issued.
-func (f *fakeLister) filterFor(periodTypes ...string) *models.ListResultsFilter {
+func (f *fakeAggregator) filterFor(periodTypes ...string) *models.ResultBucketFilter {
 	for _, filter := range f.gotFilters {
 		if len(filter.PeriodTypes) != len(periodTypes) {
 			continue
@@ -66,47 +74,130 @@ func (f *fakeLister) filterFor(periodTypes ...string) *models.ListResultsFilter 
 	return nil
 }
 
-func (f *fakeLister) ListResults(
-	_ context.Context, filter *models.ListResultsFilter,
-) (*models.ListResultsResponse, error) {
+// fakeBucketKey is the aggregate's GROUP BY key.
+type fakeBucketKey struct {
+	checkUID    string
+	bucketStart time.Time
+}
+
+// fakeBucketGroup is one group under construction: the folded stats plus the two
+// things the aggregate reports about the source rows themselves.
+type fakeBucketGroup struct {
+	stats  BucketStats
+	rows   int
+	oldest time.Time
+}
+
+func (f *fakeAggregator) AggregateResultBuckets(
+	_ context.Context, filter *models.ResultBucketFilter,
+) ([]models.ResultBucket, error) {
 	f.gotFilters = append(f.gotFilters, filter)
 
-	matching := make([]*models.Result, 0, len(f.results))
+	// The real implementations validate before executing; a fake that didn't
+	// would let a mixed-tier or zero-width filter pass unnoticed in tests.
+	if err := filter.Validate(); err != nil {
+		return nil, err
+	}
+
+	groups := make(map[fakeBucketKey]*fakeBucketGroup, len(f.results))
+	order := make([]fakeBucketKey, 0, len(f.results))
 
 	for _, row := range f.results {
-		if len(filter.PeriodTypes) > 0 && !slices.Contains(filter.PeriodTypes, row.PeriodType) {
+		if !f.rowMatches(filter, row) {
 			continue
 		}
 
-		// Region fidelity matters for the same reason tier fidelity does: without
-		// it a region-filtered read would return every region's rows and the
-		// filter would be untestable (see TestBucketAvailabilityInRegions).
-		if len(filter.Regions) > 0 {
-			if row.Region == nil || !slices.Contains(filter.Regions, *row.Region) {
-				continue
-			}
+		key := fakeBucketKey{
+			checkUID:    row.CheckUID,
+			bucketStart: row.PeriodStart.UTC().Truncate(filter.BucketDuration),
 		}
 
-		if filter.PeriodStartAfter != nil && row.PeriodStart.Before(*filter.PeriodStartAfter) {
-			continue
+		group := groups[key]
+		if group == nil {
+			group = &fakeBucketGroup{oldest: row.PeriodStart.UTC()}
+			groups[key] = group
+			order = append(order, key)
 		}
 
-		if filter.PeriodEndBefore != nil && !row.PeriodStart.Before(*filter.PeriodEndBefore) {
-			continue
+		if row.PeriodType == models.PeriodTypeRaw {
+			group.stats.accumulateRaw(row)
+		} else {
+			group.stats.accumulateAgg(row)
 		}
 
-		matching = append(matching, row)
+		group.rows++
+
+		if row.PeriodStart.UTC().Before(group.oldest) {
+			group.oldest = row.PeriodStart.UTC()
+		}
 	}
 
-	sort.SliceStable(matching, func(i, j int) bool {
-		return matching[i].PeriodStart.After(matching[j].PeriodStart)
-	})
+	buckets := make([]models.ResultBucket, 0, len(order))
 
-	if filter.Limit > 0 && filter.Limit < len(matching) {
-		matching = matching[:filter.Limit]
+	for _, key := range order {
+		buckets = append(buckets, fakeBucket(key, groups[key]))
 	}
 
-	return &models.ListResultsResponse{Results: matching}, nil
+	return buckets, nil
+}
+
+// rowMatches is the aggregate's WHERE clause.
+func (f *fakeAggregator) rowMatches(filter *models.ResultBucketFilter, row *models.Result) bool {
+	if !slices.Contains(filter.PeriodTypes, row.PeriodType) {
+		return false
+	}
+
+	// Region fidelity matters for the same reason tier fidelity does: without
+	// it a region-filtered read would fold every region's rows and the filter
+	// would be untestable (see TestBucketAvailabilityInRegions).
+	if len(filter.Regions) > 0 {
+		if row.Region == nil || !slices.Contains(filter.Regions, *row.Region) {
+			return false
+		}
+	}
+
+	if row.PeriodStart.Before(filter.PeriodStartAfter) {
+		return false
+	}
+
+	if filter.PeriodStartBefore != nil && !row.PeriodStart.Before(*filter.PeriodStartBefore) {
+		return false
+	}
+
+	// `status NOT IN (created, running, abandoned)` on the raw tier: the SQL
+	// drops these before grouping, so they cannot conjure an empty bucket.
+	if row.PeriodType == models.PeriodTypeRaw && (row.Status == nil || row.ExcludedFromAvailability()) {
+		return false
+	}
+
+	return true
+}
+
+// fakeBucket packs a folded group into the wire shape, carrying the extrema pair
+// only when the group measured something.
+func fakeBucket(key fakeBucketKey, group *fakeBucketGroup) models.ResultBucket {
+	bucket := models.ResultBucket{
+		CheckUID:          key.checkUID,
+		BucketStart:       key.bucketStart,
+		Total:             group.stats.Total,
+		Up:                group.stats.Up,
+		MaintTotal:        group.stats.MaintTotal,
+		MaintUp:           group.stats.MaintUp,
+		DurCnt:            group.stats.DurCnt,
+		DurSum:            group.stats.DurSum,
+		DurExtremaCnt:     group.stats.DurExtremaCnt,
+		SlowSamples:       group.stats.SlowSamples,
+		SlowPeaks:         group.stats.SlowPeaks,
+		Rows:              group.rows,
+		OldestPeriodStart: group.oldest,
+	}
+
+	if group.stats.DurExtremaCnt > 0 {
+		durMin, durMax := group.stats.DurMin, group.stats.DurMax
+		bucket.DurMin, bucket.DurMax = &durMin, &durMax
+	}
+
+	return bucket
 }
 
 func rawRow(checkUID string, status models.ResultStatus, start time.Time, dur float32) *models.Result {
@@ -178,7 +269,7 @@ func TestBucketAvailability_RawSpansCurrentAndPreviousHour(t *testing.T) {
 	prevHour := currentHour.Add(-time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, prevHour.Add(5*time.Minute), 40),
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(5*time.Minute), 50),
 	}}
@@ -213,7 +304,7 @@ func TestBucketAvailability_RawAndRollupNoDoubleCount(t *testing.T) {
 	olderHour := currentHour.Add(-5 * time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		// Recent bucket: raw only (2 up, 1 down → 2/3).
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(time.Minute), 40),
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(2*time.Minute), 40),
@@ -254,7 +345,7 @@ func TestBucketAvailability_WarningCountsAsUpLifecycleExcluded(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(1*time.Minute), 40),
 		rawRow("c1", models.ResultStatusWarning, currentHour.Add(2*time.Minute), 70),
 		rawRow("c1", models.ResultStatusDown, currentHour.Add(3*time.Minute), 0),
@@ -292,7 +383,7 @@ func TestBucketAvailability_AbandonedExcludedGenuineErrorCounts(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(1*time.Minute), 40),
 		rawRowAbandoned("c1", currentHour.Add(2*time.Minute)),
 	}}
@@ -339,7 +430,7 @@ func TestBucketAvailability_EmptyBucketAbsent(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(time.Minute), 40),
 	}}
 
@@ -355,7 +446,7 @@ func TestBucketAvailability_EmptyBucketAbsent(t *testing.T) {
 }
 
 // TestBucketAvailability_MultiCheckSingleQuery confirms several checks are
-// bucketed independently from one batched query with a bounded limit.
+// bucketed independently from one batched aggregate per tier side.
 func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	t.Parallel()
 
@@ -365,7 +456,7 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(time.Minute), 40),
 		rawRow("c2", models.ResultStatusDown, currentHour.Add(time.Minute), 0),
 	}}
@@ -393,23 +484,15 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	raw := lister.filterFor(models.PeriodTypeRaw)
 	r.NotNil(raw, "a raw-only query must be issued")
 
-	// Not a row-count limit sized off "n buckets" or len(checkUIDs) (that
-	// truncates dense windows — see TestBucketAvailability_DenseRowsFillAllBuckets)
-	// but a per-tier retention-derived safety cap: it must exceed this tiny
-	// query's actual row count by a wide margin.
-	r.Equal(rollupRowCap(noHints(), 2, 24*time.Hour, false), rollup.Limit,
-		"the rollup query is bounded by the rollup-tier safety cap")
-	r.Equal(rawRowCap(noHints(), 2, 24*time.Hour), raw.Limit,
-		"the raw query is bounded by the raw-tier safety cap")
-	r.Greater(rollup.Limit, len(lister.results),
-		"the cap must be generous enough not to truncate this small query")
-
 	for _, filter := range lister.gotFilters {
-		r.True(filter.SkipBlobs,
-			"buckets are built from status/counts, so the metrics/output blobs must be "+
-				"projected away on EVERY tier query (spec 2026-07-24-02)")
 		r.Equal("org", filter.OrganizationUID)
 		r.Equal([]string{"c1", "c2"}, filter.CheckUIDs)
+		r.Equal(time.Hour, filter.BucketDuration,
+			"the bucket width must be pushed into the query — that is what moves the fold "+
+				"into the database")
+		r.NoError(filter.Validate(),
+			"every issued filter must be one the dialects will accept (single-sided tier, "+
+				"positive width, bounded below)")
 	}
 }
 
@@ -429,7 +512,7 @@ func TestBucketAvailability_RawTierIsClampedToRetention(t *testing.T) {
 	todayStart := now.Truncate(24 * time.Hour)
 	bucketStart := todayStart.Add(-time.Duration(n-1) * 24 * time.Hour)
 
-	lister := &fakeLister{}
+	lister := &fakeAggregator{}
 
 	_, err := BucketAvailability(
 		context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, hints(),
@@ -438,18 +521,16 @@ func TestBucketAvailability_RawTierIsClampedToRetention(t *testing.T) {
 
 	rollup := lister.filterFor(models.PeriodTypeHour, models.PeriodTypeDay)
 	r.NotNil(rollup)
-	r.NotNil(rollup.PeriodStartAfter)
 	r.True(rollup.PeriodStartAfter.Equal(bucketStart),
 		"the rollup tiers cover the caller's full window")
 
 	raw := lister.filterFor(models.PeriodTypeRaw)
 	r.NotNil(raw)
-	r.NotNil(raw.PeriodStartAfter)
 	r.True(raw.PeriodStartAfter.After(bucketStart),
 		"the raw tier must be clamped well inside a 30-day window")
 
 	// 24h retention + the 2h margin, measured from now.
-	r.WithinDuration(now.Add(-26*time.Hour), *raw.PeriodStartAfter, time.Minute)
+	r.WithinDuration(now.Add(-26*time.Hour), raw.PeriodStartAfter, time.Minute)
 }
 
 // TestBucketAvailability_ClampKeepsTiersDisjoint is the double-counting
@@ -471,7 +552,7 @@ func TestBucketAvailability_ClampKeepsTiersDisjoint(t *testing.T) {
 	bucketStart := todayStart.Add(-time.Duration(n-1) * 24 * time.Hour)
 	oldDay := todayStart.Add(-10 * 24 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		dayRow("c1", 100, 100, oldDay),
 		// A raw row 10 days old: rolled up and deleted in production, so it must
 		// never reach the accumulator alongside the rollup that already counts it.
@@ -515,7 +596,7 @@ func TestBucketAvailability_WarnsWhenAggregationLags(t *testing.T) {
 	// 25h old: past the 24h retention, inside the 2h margin.
 	stale := now.Add(-25 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, stale, 40),
 	}}
 
@@ -551,7 +632,7 @@ func TestBucketAvailability_NoWarningWhenAggregationHealthy(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-47 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, now.Add(-time.Hour), 40),
 	}}
 
@@ -569,7 +650,7 @@ func TestBucketAvailability_NoChecks(t *testing.T) {
 
 	r := require.New(t)
 
-	lister := &fakeLister{}
+	lister := &fakeAggregator{}
 	out, err := BucketAvailability(context.Background(), lister, "org", nil, time.Hour, time.Now(), 24, noHints())
 	r.NoError(err)
 	r.Empty(out)
@@ -615,7 +696,7 @@ func TestBucketAvailability_DenseRowsFillAllBuckets(t *testing.T) {
 				)
 			}
 
-			lister := &fakeLister{results: results}
+			lister := &fakeAggregator{results: results}
 
 			out, err := BucketAvailability(
 				context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n, noHints(),
@@ -669,7 +750,7 @@ func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
 		results = append(results, dayRow("c2", 100, 100, day))
 	}
 
-	lister := &fakeLister{results: results}
+	lister := &fakeAggregator{results: results}
 
 	out, err := BucketAvailability(
 		context.Background(), lister, "org", []string{"c1", "c2"}, 24*time.Hour, bucketStart, n, noHints(),
@@ -680,25 +761,24 @@ func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
 	r.NotEmpty(out["c1"], "c1 itself must still be present")
 }
 
-// TestBucketAvailability_SafetyCapEngagesAndWarns is the pathological-scenario
-// regression for the raw tier's safety cap (see rawRowCap): a lister returning far
-// more rows than ANY reasonable retention configuration would ever produce for
-// the requested window — simulating an aggregation job stalled/crashed
-// indefinitely, so raw rows pile up without bound — must not be fetched
-// unbounded. The query is capped, a warning is logged with org/check context,
-// and the (partial) result is still returned rather than erroring — the same
-// "generous cap + log + return partial" shape as the Slack client's
-// pagination cap (see internal/integrations/slack/client.go's paginate and
-// TestListChannelsStopsAtPageCap in client_test.go).
+// TestBucketAvailability_DenseRawIsNeverTruncated replaces the old
+// TestBucketAvailability_SafetyCapEngagesAndWarns, and inverts its claim.
 //
-// TestBucketAvailability_WarnsWhenAggregationLags.
+// The row path carried two per-tier safety row caps because the Go fold had to
+// hold every matching row. When one engaged it logged "hit its safety row cap;
+// returning partial data" and returned a WRONG availability percentage —
+// silently, to a public status page. Aggregating in the database removes the
+// reason for the cap: the statement returns one row per (check, bucket), so a
+// pathological pile-up of raw (an aggregation job stalled for days) costs the
+// database more work but can never truncate the answer.
 //
-//nolint:paralleltest // swaps the process-wide slog default; see
-func TestBucketAvailability_SafetyCapEngagesAndWarns(t *testing.T) {
+// So: 20 000 raw rows in ONE bucket must all be counted, and nothing must warn
+// about partial data.
+//
+//nolint:paralleltest // swaps the process-wide slog default (global state)
+func TestBucketAvailability_DenseRawIsNeverTruncated(t *testing.T) {
 	r := require.New(t)
 
-	// Capture slog output for the duration of this test so the warning can be
-	// asserted on, restoring the previous default logger afterwards.
 	var logBuf bytes.Buffer
 
 	prevLogger := slog.Default()
@@ -708,11 +788,6 @@ func TestBucketAvailability_SafetyCapEngagesAndWarns(t *testing.T) {
 	now := time.Now().UTC()
 	currentHour := now.Truncate(time.Hour)
 
-	// A single-bucket (n=1, 1h) window with default retention hints (0, 0 →
-	// the documented 24h/30d fallback) yields a small cap. Feed it FAR more
-	// raw rows than even a full RetentionRaw window at the platform's fastest
-	// allowed period could produce — the pathological "aggregation job never
-	// ran" case, not a realistic one.
 	const pathologicalRowCount = 20_000
 
 	results := make([]*models.Result, 0, pathologicalRowCount)
@@ -723,122 +798,69 @@ func TestBucketAvailability_SafetyCapEngagesAndWarns(t *testing.T) {
 		)
 	}
 
-	lister := &fakeLister{results: results}
+	lister := &fakeAggregator{results: results}
 
 	out, err := BucketAvailability(
 		context.Background(), lister, "org", []string{"c1"}, time.Hour, currentHour, 1, noHints(),
 	)
-	r.NoError(err, "a capped, partial fetch must not error")
+	r.NoError(err)
+
+	stats := out["c1"][currentHour]
+	r.Equal(pathologicalRowCount, stats.Total,
+		"every probe must reach the bucket — a truncated answer used to be possible and was silent")
+	r.Equal(pathologicalRowCount, stats.Up)
 
 	raw := lister.filterFor(models.PeriodTypeRaw)
 	r.NotNil(raw)
 
-	wantLimit := rawRowCap(noHints(), 1, time.Hour)
-	r.Less(wantLimit, pathologicalRowCount,
-		"the cap must be smaller than the pathological row count for this test to be meaningful")
-	r.Equal(wantLimit, raw.Limit, "the raw query is bounded by the raw-tier safety cap")
-
-	r.NotEmpty(out["c1"], "a bucket with partial data is still returned, not an error and not empty")
-
-	logged := logBuf.String()
-	r.Contains(logged, "hit its safety row cap", "a warning must be logged when the cap engages")
-	r.Contains(logged, "organization_uid=org", "the warning must include org context")
-	r.Contains(logged, "check_uids=", "the warning must include check context")
+	r.NotContains(logBuf.String(), "safety row cap",
+		"there is no row cap to hit any more, so nothing may claim partial data")
 }
 
-// TestRawRowsPerHour pins the probe-rate measurement the raw cap is sized from:
-// (1 hour / period) rows per region, summed over the checks, with a
-// no-region check still counting once and a zero period ignored.
-func TestRawRowsPerHour(t *testing.T) {
+// TestStatsForBucket_CarriesEveryCounter pins the ONE translation between the
+// database's per-bucket shape and BucketStats. A counter added to BucketStats
+// and forgotten here would read as zero on every surface in the product, with
+// nothing failing to compile.
+func TestStatsForBucket_CarriesEveryCounter(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
-	rate := func(period time.Duration, regions ...string) models.CheckRate {
-		return models.CheckRate{Enabled: true, Period: timeutils.Duration(period), Regions: regions}
-	}
+	durMin, durMax := float32(20), float32(6000)
+	stats := StatsForBucket(&models.ResultBucket{
+		CheckUID:      "c1",
+		Total:         100,
+		Up:            95,
+		MaintTotal:    10,
+		MaintUp:       8,
+		DurCnt:        90,
+		DurSum:        27_000,
+		DurMin:        &durMin,
+		DurMax:        &durMax,
+		DurExtremaCnt: 90,
+		SlowSamples:   4,
+		SlowPeaks:     2,
+	})
 
-	r.Equal(0, RawRowsPerHour(nil))
-	r.Equal(60, RawRowsPerHour([]models.CheckRate{rate(time.Minute)}),
-		"a 60s single-region check writes 60 rows an hour")
-	r.Equal(180, RawRowsPerHour([]models.CheckRate{rate(time.Minute, "eu", "us", "ap")}),
-		"a multi-region check runs once per region per period")
-	r.Equal(360, RawRowsPerHour([]models.CheckRate{rate(10 * time.Second)}),
-		"the platform's fastest allowed period")
-	r.Equal(60, RawRowsPerHour([]models.CheckRate{rate(time.Minute), rate(0, "eu")}),
-		"a zero period cannot be divided by and is skipped")
+	r.Equal(BucketStats{
+		Up: 95, Total: 100,
+		DurCnt: 90, DurSum: 27_000,
+		MaintUp: 8, MaintTotal: 10,
+		DurMin: 20, DurMax: 6000, DurExtremaCnt: 90,
+		SlowSamples: 4, SlowPeaks: 2,
+	}, stats)
 
-	// A disabled check still counts: it stopped writing, but the rows it already
-	// wrote stay queryable until retention expires them.
-	disabled := rate(time.Minute)
-	disabled.Enabled = false
-	r.Equal(60, RawRowsPerHour([]models.CheckRate{disabled}))
+	// A bucket that measured no duration must keep DurationRange()'s ok=false
+	// rather than report a confident "0 ms to 0 ms".
+	countsOnly := StatsForBucket(&models.ResultBucket{Total: 60, Up: 60})
+	_, _, ok := countsOnly.DurationRange()
+	r.False(ok)
+	r.Zero(countsOnly.DurExtremaCnt)
+
+	// And a bucket whose extrema count is positive but whose pair is missing
+	// (nothing writes that, but a NULL from a hand-repaired row could) is
+	// treated as unmeasured too, never as a zero minimum.
+	orphanCount := StatsForBucket(&models.ResultBucket{Total: 60, Up: 60, DurExtremaCnt: 3})
+	_, _, ok = orphanCount.DurationRange()
+	r.False(ok)
 }
-
-// TestRawRowCap_IsARealGuard is the spec §4 regression. The old combined cap
-// produced LIMIT 884300 on the measured request — "large enough to be
-// functionally unbounded, so it never protected anything". Both tiers must now
-// land in a range that is genuinely bounded for a realistic deployment while
-// still leaving generous headroom over the rows such a deployment actually has.
-func TestRawRowCap_IsARealGuard(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-
-	// The configuration the spec measured: 5 checks, 30-day window, default 24h
-	// raw retention — but with the org's REAL probe rate (a 60s period from two
-	// regions), which is what the production call path now supplies.
-	const (
-		checks         = 5
-		rowsPerHour    = checks * 60 * 2 // 60s period × 2 regions
-		observedOldCap = 884_300
-	)
-
-	window := 30 * 24 * time.Hour
-	hints := Hints{RetentionRawHours: 24, RetentionHourDays: 7, RawRowsPerHour: rowsPerHour}
-
-	rawCap := rawRowCap(hints, checks, window)
-
-	// Rows this deployment can actually have in the clamped 26h window.
-	actual := 26 * rowsPerHour
-
-	r.Greater(rawCap, actual*2, "the cap must keep generous headroom over the real row count")
-	r.Less(rawCap, 100_000, "the cap must be a real bound, not a formality")
-	r.Less(rawCap, observedOldCap/8,
-		"the cap must be materially tighter than the LIMIT %d the spec measured", observedOldCap)
-
-	// The rollup tier is bounded by buckets, not by probe rate.
-	r.Less(rollupRowCap(hints, checks, window, false), 100_000)
-
-	// A measured rate can only ever TIGHTEN the cap: it is capped by the
-	// unmeasured worst case, so a bogus rate cannot loosen the query past what
-	// the platform can physically produce.
-	absurd := Hints{RetentionRawHours: 24, RawRowsPerHour: 1_000_000_000}
-	r.Equal(rawRowCap(Hints{RetentionRawHours: 24}, checks, window),
-		rawRowCap(absurd, checks, window),
-		"an implausible rate falls back to the worst-case bound, never above it")
-
-	// And with no measurement at all the conservative worst case still applies.
-	r.Greater(rawRowCap(Hints{RetentionRawHours: 24}, checks, window), rawCap)
-}
-
-// TestMeasureRawRowsPerHour_ReadFailureFallsBack asserts the cap degrades to the
-// conservative bound (not to "no bound") when the probe rate can't be read: a
-// failed hint must never fail or unbound a render.
-func TestMeasureRawRowsPerHour_ReadFailureFallsBack(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-
-	r.Equal(0, MeasureRawRowsPerHour(context.Background(), failingRateLister{}, "org"))
-}
-
-type failingRateLister struct{}
-
-func (failingRateLister) ListOrgCheckRates(
-	_ context.Context, _ string,
-) ([]models.CheckRate, error) {
-	return nil, errRateListerBoom
-}
-
-var errRateListerBoom = errors.New("boom")

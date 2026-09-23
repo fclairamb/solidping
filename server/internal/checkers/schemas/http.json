@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/http.json",
+  "$defs": {
+    "AssertionNode": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "ignoreCase": {
+          "type": "boolean"
+        },
+        "children": {
+          "items": {
+            "$ref": "#/$defs/AssertionNode"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object",
+      "required": [
+        "type"
+      ]
+    }
+  },
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "expected_status": {
+      "type": "integer"
+    },
+    "expected_status_codes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "headers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "body": {
+      "type": "string"
+    },
+    "body_expect": {
+      "type": "string"
+    },
+    "body_reject": {
+      "type": "string"
+    },
+    "body_pattern": {
+      "type": "string"
+    },
+    "body_pattern_reject": {
+      "type": "string"
+    },
+    "headers_pattern": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "basicAuth": {
+      "type": "string",
+      "format": "solidping-secret-ref",
+      "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
+    },
+    "username": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string",
+      "format": "solidping-secret-ref",
+      "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
+    },
+    "secretHeaders": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object",
+      "format": "solidping-secret-ref",
+      "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
+    },
+    "json_path_assertions": {
+      "$ref": "#/$defs/AssertionNode"
+    },
+    "bodyAssertions": {
+      "$ref": "#/$defs/AssertionNode"
+    },
+    "verifySsl": {
+      "type": "boolean"
+    },
+    "followRedirects": {
+      "type": "boolean"
+    },
+    "capture_failure_response": {
+      "type": "boolean"
+    }
+  },
+  "type": "object",
+  "required": [
+    "url"
+  ],
+  "title": "http check config",
+  "description": "Monitor HTTP/HTTPS endpoints.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.",
+  "x-solidping-check-type": "http",
+  "x-solidping-notes": [],
+  "x-solidping-secret-fields": [
+    "basicAuth",
+    "password",
+    "secretHeaders"
+  ],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

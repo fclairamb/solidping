@@ -155,6 +155,47 @@ func burnTemplateForEvent(incident *models.Incident, eventType string) (string, 
 	}
 }
 
+// degradedTemplateForEvent picks the degraded templates for a degraded incident,
+// for the same reason burnTemplateForEvent exists: a degraded incident rides the
+// SAME incident.created / incident.resolved events a check outage does, and
+// "[DOWN] acme.com is down" would be an outright lie about a check that is up
+// right now — and, worse, a message an operator learns to mute alongside the real
+// outages.
+func degradedTemplateForEvent(incident *models.Incident, eventType string) (string, bool) {
+	if incident == nil || incident.Kind != models.IncidentKindDegraded {
+		return "", false
+	}
+
+	switch eventType {
+	case eventTypeIncidentCreated, eventTypeIncidentReopened:
+		return "incident-degraded-created.html", true
+	case eventTypeIncidentResolved:
+		return "incident-degraded-resolved.html", true
+	default:
+		return "", false
+	}
+}
+
+// applyDegradedViewModel adds the degraded-specific keys those templates render.
+func applyDegradedViewModel(viewModel map[string]any, payload *Payload, info *DegradedInfo) {
+	viewModel["DegradedReason"] = info.Reason()
+	viewModel["DegradedStatus"] = info.StatusText()
+	viewModel["DegradedWindow"] = info.WindowText()
+	viewModel["DegradedWindowURL"] = DegradedCheckWindowURL(
+		payload.AppBaseURL, payload.OrgSlug, payload.Check, info,
+	)
+
+	if info.FailuresFired {
+		viewModel["DegradedFailureLine"] = fmt.Sprintf("%s (rule: %d of %d probes)",
+			info.failureReason(), info.FailureThreshold, info.FailureWindow)
+	}
+
+	if info.SlowFired {
+		viewModel["DegradedSlowLine"] = fmt.Sprintf("%s (rule: %d of %d probes over %dms)",
+			info.slowReason(), info.SlowThreshold, info.SlowWindow, info.SlowMs)
+	}
+}
+
 // applyBurnViewModel adds the burn-specific keys the burn templates render.
 // The three that matter — rate, budget remaining, projected exhaustion — are
 // the ones that let a reader decide without opening the dashboard.
@@ -509,6 +550,10 @@ func (s *EmailSender) buildEmailContent(
 		templateName, ok = burnName, true
 	}
 
+	if degradedName, degradedOK := degradedTemplateForEvent(payload.Incident, payload.EventType); degradedOK {
+		templateName, ok = degradedName, true
+	}
+
 	if !ok {
 		// Unrecognized event type: no dedicated template exists. Keep a
 		// minimal ad-hoc body rather than failing the whole notification —
@@ -619,6 +664,10 @@ func (s *EmailSender) buildIncidentViewModel(
 
 	if burn := BurnInfoFor(payload.Incident); burn != nil {
 		applyBurnViewModel(viewModel, burn)
+	}
+
+	if info := DegradedInfoFor(payload.Incident); info != nil {
+		applyDegradedViewModel(viewModel, payload, info)
 	}
 
 	if payload.Comment != nil {

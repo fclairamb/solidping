@@ -1155,6 +1155,27 @@ func (e IncidentAttachmentTrigger) Valid() bool {
 	}
 }
 
+// Defines values for IncidentDetailKind.
+const (
+	IncidentDetailKindCheck    IncidentDetailKind = "check"
+	IncidentDetailKindDegraded IncidentDetailKind = "degraded"
+	IncidentDetailKindSloBurn  IncidentDetailKind = "slo_burn"
+)
+
+// Valid indicates whether the value is a known member of the IncidentDetailKind enum.
+func (e IncidentDetailKind) Valid() bool {
+	switch e {
+	case IncidentDetailKindCheck:
+		return true
+	case IncidentDetailKindDegraded:
+		return true
+	case IncidentDetailKindSloBurn:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IncidentDetailState.
 const (
 	IncidentDetailStateActive   IncidentDetailState = "active"
@@ -2541,6 +2562,21 @@ func (e ListChecksParamsInternal) Valid() bool {
 	}
 }
 
+// Defines values for ListChecksParamsWouldHaveFired.
+const (
+	ListChecksParamsWouldHaveFiredTrue ListChecksParamsWouldHaveFired = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListChecksParamsWouldHaveFired enum.
+func (e ListChecksParamsWouldHaveFired) Valid() bool {
+	switch e {
+	case ListChecksParamsWouldHaveFiredTrue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListChecksParamsSort.
 const (
 	ListChecksParamsSortGroup      ListChecksParamsSort = "group"
@@ -2643,6 +2679,42 @@ func (e ListStatusPageIncidentsParamsState) Valid() bool {
 	case ListStatusPageIncidentsParamsStateMonitoring:
 		return true
 	case ListStatusPageIncidentsParamsStateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ViewDefaultStatusPageParamsInclude.
+const (
+	ViewDefaultStatusPageParamsIncludeAvailability ViewDefaultStatusPageParamsInclude = "availability"
+	ViewDefaultStatusPageParamsIncludeResponseTime ViewDefaultStatusPageParamsInclude = "responseTime"
+)
+
+// Valid indicates whether the value is a known member of the ViewDefaultStatusPageParamsInclude enum.
+func (e ViewDefaultStatusPageParamsInclude) Valid() bool {
+	switch e {
+	case ViewDefaultStatusPageParamsIncludeAvailability:
+		return true
+	case ViewDefaultStatusPageParamsIncludeResponseTime:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ViewStatusPageParamsInclude.
+const (
+	ViewStatusPageParamsIncludeAvailability ViewStatusPageParamsInclude = "availability"
+	ViewStatusPageParamsIncludeResponseTime ViewStatusPageParamsInclude = "responseTime"
+)
+
+// Valid indicates whether the value is a known member of the ViewStatusPageParamsInclude enum.
+func (e ViewStatusPageParamsInclude) Valid() bool {
+	switch e {
+	case ViewStatusPageParamsIncludeAvailability:
+		return true
+	case ViewStatusPageParamsIncludeResponseTime:
 		return true
 	default:
 		return false
@@ -3168,6 +3240,24 @@ type Check struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Always the RESOLVED value and never null: a check that never configured degraded detection stores no value, and this reports the default the check is actually running under.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Always the resolved value, never null.
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Always the resolved value, never null.
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Always the resolved value, never null.
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
+	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
+	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
+
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -3227,7 +3317,10 @@ type Check struct {
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
-	Slug       *string          `json:"slug,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
+	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3291,6 +3384,25 @@ type CheckChannel struct {
 // CheckChannelListResponse defines model for CheckChannelListResponse.
 type CheckChannelListResponse struct {
 	Data *[]CheckChannel `json:"data,omitempty"`
+}
+
+// CheckConfigSchemaListResponse defines model for CheckConfigSchemaListResponse.
+type CheckConfigSchemaListResponse struct {
+	Data []CheckConfigSchemaRef `json:"data"`
+
+	// Note Reminder that these schemas describe a config for editors and tooling and are not the validator.
+	Note string `json:"note"`
+}
+
+// CheckConfigSchemaRef defines model for CheckConfigSchemaRef.
+type CheckConfigSchemaRef struct {
+	// CheckType Example: kubernetes
+	CheckType string `json:"checkType"`
+
+	// Ref Path of the schema document
+	//
+	// Example: /api/v1/checks/schema/kubernetes
+	Ref string `json:"ref"`
 }
 
 // CheckFieldChange One field an update would change, rendered as strings (JSON for anything structured). Secret-bearing values and any value containing a ${env:}/${param:} reference are masked as "***" — a plan is printed in CI logs and pasted into tickets.
@@ -3374,6 +3486,24 @@ type CheckListItem struct {
 	Config    *map[string]interface{} `json:"config,omitempty"`
 	CreatedAt *time.Time              `json:"createdAt,omitempty"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Always the RESOLVED value and never null: a check that never configured degraded detection stores no value, and this reports the default the check is actually running under.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Always the resolved value, never null.
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Always the resolved value, never null.
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Always the resolved value, never null.
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
+	// DegradedWouldFireAt When the dry run first saw a degraded condition on a check that has `degradedEnabled` false. Absent when the rules never fired. Cleared when degraded detection is enabled.
+	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
+
 	// Description Optional documentation describing what this check monitors
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -3433,7 +3563,10 @@ type CheckListItem struct {
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
-	Slug       *string          `json:"slug,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
+	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3652,6 +3785,21 @@ type CreateCheckRequest struct {
 	// Config Check-specific configuration (e.g., url, port, timeout). HTTP checks additionally accept `verifySsl` and `followRedirects` (both booleans, default true) and `capture_failure_response` (boolean, default false) — see the Check schema above for details.
 	Config map[string]interface{} `json:"config"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to store no value at all, which means "use the default" and keeps the check tracking that default if it ever changes. Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — the window in this same request if you sent one, the default of 60 otherwise — because "70 of 60" can never fire.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Omit to store no value at all, which means "use the default". Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedFailures` (this request's value if sent, the default of 5 otherwise); send both together to move the pair.
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Omit to store no value at all, which means "use the default". Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE `degradedSlowWindow` (this request's value if sent, the default of 6 otherwise).
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Omit to store no value at all, which means "use the default". Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedSlow` (this request's value if sent, the default of 3 otherwise).
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -3679,6 +3827,9 @@ type CreateCheckRequest struct {
 
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or omitted) uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
+	SlowThresholdMs *int `json:"slowThresholdMs,omitempty"`
 
 	// Slug URL-friendly identifier (auto-generated from URL if not provided)
 	Slug *string `json:"slug,omitempty"`
@@ -3912,6 +4063,9 @@ type CreateStatusPageRequest struct {
 
 	// Password WRITE-ONLY. Required when visibility is "password". Minimum 6 characters. Never returned — reads expose hasPassword instead.
 	Password *string `json:"password,omitempty"`
+
+	// PublishDegraded Whether DEGRADED incidents auto-publish to this page. False everywhere by default: a page that announces outages has not thereby agreed to announce "7 of the last 60 probes failed, currently up".
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings `json:"settings,omitempty"`
@@ -4693,6 +4847,9 @@ type IncidentDetail struct {
 	// FlapLevel The check's flap count at the moment this incident opened or last reopened — a snapshot, not a live value. 0 (omitted) means it opened at the base level, not escalated by the adaptive-recovery flapping layer.
 	FlapLevel *int `json:"flapLevel,omitempty"`
 
+	// Kind What the incident is ABOUT: `check` (an outage), `slo_burn` (an error-budget burn-rate alert) or `degraded` (a check that fails intermittently or answers far slower than usual — the target may well be up right now).
+	Kind *IncidentDetailKind `json:"kind,omitempty"`
+
 	// Number Short per-organization incident reference, rendered as `#42` in the dashboard, Slack and Telegram. Assigned at creation, never reused.
 	Number     *int64               `json:"number,omitempty"`
 	ResolvedAt *time.Time           `json:"resolvedAt,omitempty"`
@@ -4701,6 +4858,9 @@ type IncidentDetail struct {
 	Title      *string              `json:"title,omitempty"`
 	Uid        *openapi_types.UUID  `json:"uid,omitempty"`
 }
+
+// IncidentDetailKind What the incident is ABOUT: `check` (an outage), `slo_burn` (an error-budget burn-rate alert) or `degraded` (a check that fails intermittently or answers far slower than usual — the target may well be up right now).
+type IncidentDetailKind string
 
 // IncidentDetailState defines model for IncidentDetail.State.
 type IncidentDetailState string
@@ -6401,8 +6561,11 @@ type StatusPage struct {
 
 	// OverallStatus Page-level rollup computed server-side from the live status of every resource on the page, so the public views, the summary endpoint, and the SVG badge always agree. Only populated on the live public view paths (GET /api/v1/status-pages/{org} and GET /api/v1/status-pages/{org}/{slug}) — omitted on the authenticated admin listing, which doesn't load live resource data.
 	OverallStatus *StatusPageOverallStatus `json:"overallStatus,omitempty"`
-	RecentUpdates *[]StatusUpdatePublic    `json:"recentUpdates,omitempty"`
-	Sections      *[]StatusPageSection     `json:"sections,omitempty"`
+
+	// PublishDegraded Whether DEGRADED incidents auto-publish to this page. False everywhere by default: a page that announces outages has not thereby agreed to announce "7 of the last 60 probes failed, currently up".
+	PublishDegraded *bool                 `json:"publishDegraded,omitempty"`
+	RecentUpdates   *[]StatusUpdatePublic `json:"recentUpdates,omitempty"`
+	Sections        *[]StatusPageSection  `json:"sections,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings `json:"settings,omitempty"`
@@ -6847,6 +7010,21 @@ type UpdateCheckRequest struct {
 	CheckGroupUid *string                 `json:"checkGroupUid,omitempty"`
 	Config        *map[string]interface{} `json:"config,omitempty"`
 
+	// DegradedEnabled Whether degraded detection may OPEN incidents on this check. New checks are on; every check that predates the feature is off, and runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
+	DegradedEnabled *bool `json:"degradedEnabled,omitempty"`
+
+	// DegradedFailures Degraded detection, failure rule: fires when this many of the last `degradedFailuresWindow` countable probes failed. 0 = off. Omit to leave unchanged; there is no spelling that resets it to "unset". Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — this request's `degradedFailuresWindow` if you sent one, otherwise the check's stored window, or the default of 60 when the check has never configured one. So raising this alone can fail even though the request looks self-consistent: "70 of 60" can never fire.
+	DegradedFailures *int `json:"degradedFailures,omitempty"`
+
+	// DegradedFailuresWindow Window of the failure rule, counted in countable probes (not seconds). Omit to leave unchanged. Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedFailures` (this request's value if sent, otherwise the check's stored value, or the default of 5) — shrinking the window alone would strand the M above it. Send both together to move the pair.
+	DegradedFailuresWindow *int `json:"degradedFailuresWindow,omitempty"`
+
+	// DegradedSlow Degraded detection, slow rule: fires when this many of the last `degradedSlowWindow` successful probes took longer than `slowThresholdMs`. 0 = off. Omit to leave unchanged. Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE `degradedSlowWindow` (this request's value if sent, otherwise the check's stored value, or the default of 6).
+	DegradedSlow *int `json:"degradedSlow,omitempty"`
+
+	// DegradedSlowWindow Window of the slow rule, counted in countable probes. Omit to leave unchanged. Rejected with `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedSlow` (this request's value if sent, otherwise the check's stored value, or the default of 3).
+	DegradedSlowWindow *int `json:"degradedSlowWindow,omitempty"`
+
 	// Description Optional documentation about the check
 	Description *string `json:"description,omitempty"`
 	Enabled     *bool   `json:"enabled,omitempty"`
@@ -6870,7 +7048,10 @@ type UpdateCheckRequest struct {
 
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
-	Slug         *string `json:"slug,omitempty"`
+
+	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
+	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
+	Slug            *string `json:"slug,omitempty"`
 
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 	TracerouteOnFailure *UpdateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
@@ -7035,6 +7216,9 @@ type UpdateStatusPageRequest struct {
 
 	// Password WRITE-ONLY. A non-empty value sets/replaces the unlock password (invalidating every outstanding unlock cookie); "" clears it (refused while visibility is still "password"); omitting it leaves the stored one untouched.
 	Password *string `json:"password,omitempty"`
+
+	// PublishDegraded Whether DEGRADED incidents auto-publish to this page. False everywhere by default: a page that announces outages has not thereby agreed to announce "7 of the last 60 probes failed, currently up".
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 
 	// Settings Per-page display customization. Typed rather than a free-form map; unknown keys are rejected on write (VALIDATION_ERROR).
 	Settings         *StatusPageSettings                `json:"settings,omitempty"`
@@ -7311,6 +7495,9 @@ type IncidentUidNamedPath = openapi_types.UUID
 // IncidentUidPath defines model for IncidentUidPath.
 type IncidentUidPath = openapi_types.UUID
 
+// IncludeQuery defines model for IncludeQuery.
+type IncludeQuery = []string
+
 // InvitationUidPath defines model for InvitationUidPath.
 type InvitationUidPath = openapi_types.UUID
 
@@ -7508,12 +7695,18 @@ type ListChecksParams struct {
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
 
+	// WouldHaveFired When "true", returns only the checks the degraded dry run has flagged (`degradedWouldFireAt` is set) — what enabling degraded detection would have caught. Any other value applies no filter.
+	WouldHaveFired *ListChecksParamsWouldHaveFired `form:"wouldHaveFired,omitempty" json:"wouldHaveFired,omitempty"`
+
 	// Sort Opt-in ordering. "group" orders by group sortOrder ascending with ungrouped checks last, then created_at descending within a bucket — matching the dashboard's display order. "targetHost" orders by the derived targetHost ascending (case-sensitive, byte/codepoint order — e.g. "Zebra.example.com" sorts before "api.example.com"), checks with no targetHost last, then name ascending as a tiebreaker — lets a by-host view paginate consistently server-side. Omitted keeps the default created_at descending ordering. Any other value is a validation error.
 	Sort *ListChecksParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 }
 
 // ListChecksParamsInternal defines parameters for ListChecks.
 type ListChecksParamsInternal string
+
+// ListChecksParamsWouldHaveFired defines parameters for ListChecks.
+type ListChecksParamsWouldHaveFired string
 
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
@@ -7963,13 +8156,25 @@ type CustomDomainAllowedParams struct {
 type ViewDefaultStatusPageParams struct {
 	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
 	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+
+	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means both `availability` and `responseTime` — today's payload, byte-for-byte. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
+	Include *IncludeQuery `form:"include,omitempty" json:"include,omitempty"`
 }
+
+// ViewDefaultStatusPageParamsInclude defines parameters for ViewDefaultStatusPage.
+type ViewDefaultStatusPageParamsInclude string
 
 // ViewStatusPageParams defines parameters for ViewStatusPage.
 type ViewStatusPageParams struct {
 	// Kiosk A page's kiosk (TV mode) token. A valid one grants read-only view of this one page: it bypasses the `password` unlock and makes a `private` page viewable, and the response is served `private, no-store` like an unlocked one. An invalid, revoked or absent token behaves IDENTICALLY — 401 STATUS_PAGE_LOCKED or 404 as the page's visibility dictates — so the parameter is never an oracle for whether a page or a token exists. A disabled page stays 404 regardless.
 	Kiosk *KioskTokenQuery `form:"kiosk,omitempty" json:"kiosk,omitempty"`
+
+	// Include Narrows which optional, expensive sections the response carries. Comma-separated, unordered, duplicates ignored. Absent means both `availability` and `responseTime` — today's payload, byte-for-byte. `include=` (present, empty) means neither: no resource carries an `availability` key at all, and the page has no `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON field names. An unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The parameter can only NARROW what the page's own `showAvailability` / `showResponseTime` settings would already produce, never widen it — those two fields keep describing the page's settings regardless of what was requested.
+	Include *IncludeQuery `form:"include,omitempty" json:"include,omitempty"`
 }
+
+// ViewStatusPageParamsInclude defines parameters for ViewStatusPage.
+type ViewStatusPageParamsInclude string
 
 // GetStatusPageBadgeParams defines parameters for GetStatusPageBadge.
 type GetStatusPageBadgeParams struct {
@@ -8846,6 +9051,37 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 	ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCheckConfigSchemas List the published config JSON Schemas
+	//
+	// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+	// check type's `config` object, with the URL of each one.
+	//
+	// **These schemas are a description, not a validator.** They exist so an
+	// editor can complete a config-as-code manifest and third-party tooling can
+	// generate or lint one. SolidPing validates a config with the Go
+	// `Validate()` of its checker, which enforces formats, bounds and
+	// cross-field rules that reflection over a struct cannot express — a config
+	// that satisfies the schema may still be rejected. Use
+	// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+	// find out whether a config is accepted; never wire a CI gate onto the JSON
+	// instead.
+	//
+	// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+	ListCheckConfigSchemas(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetCheckConfigSchema Get a check type's config JSON Schema
+	//
+	// The generated JSON Schema (draft 2020-12) of one check type's `config`
+	// object, served as `application/schema+json`.
+	//
+	// **Descriptive only** — see the catalog endpoint above. Each document
+	// repeats it in its own `description` and `x-solidping-validation`, and
+	// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+	// keys carry `"format": "solidping-secret-ref"`.
+	//
+	// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+	GetCheckConfigSchema(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetPublicConfig Public browser-safe configuration
 	//
@@ -11964,6 +12200,57 @@ func (c *Client) ListCheckTypes(ctx context.Context, reqEditors ...RequestEditor
 // Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 func (c *Client) ListCheckTypeSamples(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListCheckTypeSamplesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCheckConfigSchemas List the published config JSON Schemas
+//
+// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+// check type's `config` object, with the URL of each one.
+//
+// **These schemas are a description, not a validator.** They exist so an
+// editor can complete a config-as-code manifest and third-party tooling can
+// generate or lint one. SolidPing validates a config with the Go
+// `Validate()` of its checker, which enforces formats, bounds and
+// cross-field rules that reflection over a struct cannot express — a config
+// that satisfies the schema may still be rejected. Use
+// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+// find out whether a config is accepted; never wire a CI gate onto the JSON
+// instead.
+//
+// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+func (c *Client) ListCheckConfigSchemas(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCheckConfigSchemasRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetCheckConfigSchema Get a check type's config JSON Schema
+//
+// The generated JSON Schema (draft 2020-12) of one check type's `config`
+// object, served as `application/schema+json`.
+//
+// **Descriptive only** — see the catalog endpoint above. Each document
+// repeats it in its own `description` and `x-solidping-validation`, and
+// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+// keys carry `"format": "solidping-secret-ref"`.
+//
+// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+func (c *Client) GetCheckConfigSchema(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetCheckConfigSchemaRequest(c.Server, pType)
 	if err != nil {
 		return nil, err
 	}
@@ -18742,6 +19029,67 @@ func NewListCheckTypeSamplesRequest(server string, params *ListCheckTypeSamplesP
 	return req, nil
 }
 
+// NewListCheckConfigSchemasRequest constructs an http.Request for the ListCheckConfigSchemas method
+func NewListCheckConfigSchemasRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/checks/schema")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetCheckConfigSchemaRequest constructs an http.Request for the GetCheckConfigSchema method
+func NewGetCheckConfigSchemaRequest(server string, pType string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "type", pType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/checks/schema/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetPublicConfigRequest constructs an http.Request for the GetPublicConfig method
 func NewGetPublicConfigRequest(server string) (*http.Request, error) {
 	var err error
@@ -19801,6 +20149,18 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 		if params.Internal != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "internal", *params.Internal, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.WouldHaveFired != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "wouldHaveFired", *params.WouldHaveFired, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -29743,6 +30103,18 @@ func NewViewDefaultStatusPageRequest(server string, org OrgPath, params *ViewDef
 
 		}
 
+		if params.Include != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "include", *params.Include, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -29849,6 +30221,18 @@ func NewViewStatusPageRequest(server string, org OrgPath, slug string, params *V
 		if params.Kiosk != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kiosk", *params.Kiosk, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Include != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "include", *params.Include, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -31928,6 +32312,41 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/check-types/samples (the `ListCheckTypeSamples` operationId).
 	ListCheckTypeSamplesWithResponse(ctx context.Context, params *ListCheckTypeSamplesParams, reqEditors ...RequestEditorFn) (*ListCheckTypeSamplesResult, error)
+
+	// ListCheckConfigSchemasWithResponse List the published config JSON Schemas
+	//
+	// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+	// check type's `config` object, with the URL of each one.
+	//
+	// **These schemas are a description, not a validator.** They exist so an
+	// editor can complete a config-as-code manifest and third-party tooling can
+	// generate or lint one. SolidPing validates a config with the Go
+	// `Validate()` of its checker, which enforces formats, bounds and
+	// cross-field rules that reflection over a struct cannot express — a config
+	// that satisfies the schema may still be rejected. Use
+	// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+	// find out whether a config is accepted; never wire a CI gate onto the JSON
+	// instead.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+	ListCheckConfigSchemasWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCheckConfigSchemasResult, error)
+
+	// GetCheckConfigSchemaWithResponse Get a check type's config JSON Schema
+	//
+	// The generated JSON Schema (draft 2020-12) of one check type's `config`
+	// object, served as `application/schema+json`.
+	//
+	// **Descriptive only** — see the catalog endpoint above. Each document
+	// repeats it in its own `description` and `x-solidping-validation`, and
+	// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+	// keys carry `"format": "solidping-secret-ref"`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+	GetCheckConfigSchemaWithResponse(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*GetCheckConfigSchemaResult, error)
 
 	// GetPublicConfigWithResponse Public browser-safe configuration
 	//
@@ -36102,6 +36521,95 @@ func (r ListCheckTypeSamplesResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListCheckTypeSamplesResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCheckConfigSchemasResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CheckConfigSchemaListResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCheckConfigSchemasResult) GetJSON200() *CheckConfigSchemaListResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCheckConfigSchemasResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCheckConfigSchemasResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCheckConfigSchemasResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCheckConfigSchemasResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetCheckConfigSchemaResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationschemaJSON200 the response for an HTTP 200 `application/schema+json` response
+	ApplicationschemaJSON200 *map[string]interface{}
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetApplicationschemaJSON200 returns the response for an HTTP 200 `application/schema+json` response
+func (r GetCheckConfigSchemaResult) GetApplicationschemaJSON200() *map[string]interface{} {
+	return r.ApplicationschemaJSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetCheckConfigSchemaResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetCheckConfigSchemaResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetCheckConfigSchemaResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetCheckConfigSchemaResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetCheckConfigSchemaResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -47884,6 +48392,8 @@ type ViewDefaultStatusPageResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -47893,6 +48403,11 @@ type ViewDefaultStatusPageResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewDefaultStatusPageResult) GetJSON200() *StatusPage {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ViewDefaultStatusPageResult) GetJSON400() *ValidationError {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -48008,6 +48523,8 @@ type ViewStatusPageResult struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *StatusPage
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *ValidationError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *StatusPageLocked
 	// JSON404 the response for an HTTP 404 `application/json` response
@@ -48017,6 +48534,11 @@ type ViewStatusPageResult struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ViewStatusPageResult) GetJSON200() *StatusPage {
 	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ViewStatusPageResult) GetJSON400() *ValidationError {
+	return r.JSON400
 }
 
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
@@ -50722,6 +51244,53 @@ func (c *ClientWithResponses) ListCheckTypeSamplesWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseListCheckTypeSamplesResult(rsp)
+}
+
+// ListCheckConfigSchemasWithResponse List the published config JSON Schemas
+//
+// Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+// check type's `config` object, with the URL of each one.
+//
+// **These schemas are a description, not a validator.** They exist so an
+// editor can complete a config-as-code manifest and third-party tooling can
+// generate or lint one. SolidPing validates a config with the Go
+// `Validate()` of its checker, which enforces formats, bounds and
+// cross-field rules that reflection over a struct cannot express — a config
+// that satisfies the schema may still be rejected. Use
+// `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+// find out whether a config is accepted; never wire a CI gate onto the JSON
+// instead.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/checks/schema (the `ListCheckConfigSchemas` operationId).
+func (c *ClientWithResponses) ListCheckConfigSchemasWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCheckConfigSchemasResult, error) {
+	rsp, err := c.ListCheckConfigSchemas(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCheckConfigSchemasResult(rsp)
+}
+
+// GetCheckConfigSchemaWithResponse Get a check type's config JSON Schema
+//
+// The generated JSON Schema (draft 2020-12) of one check type's `config`
+// object, served as `application/schema+json`.
+//
+// **Descriptive only** — see the catalog endpoint above. Each document
+// repeats it in its own `description` and `x-solidping-validation`, and
+// lists what it knowingly does not encode in `x-solidping-notes`. Secret
+// keys carry `"format": "solidping-secret-ref"`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/checks/schema/{type} (the `GetCheckConfigSchema` operationId).
+func (c *ClientWithResponses) GetCheckConfigSchemaWithResponse(ctx context.Context, pType string, reqEditors ...RequestEditorFn) (*GetCheckConfigSchemaResult, error) {
+	rsp, err := c.GetCheckConfigSchema(ctx, pType, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetCheckConfigSchemaResult(rsp)
 }
 
 // GetPublicConfigWithResponse Public browser-safe configuration
@@ -56393,6 +56962,65 @@ func ParseListCheckTypeSamplesResult(rsp *http.Response) (*ListCheckTypeSamplesR
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCheckConfigSchemasResult parses an HTTP response from a ListCheckConfigSchemasWithResponse call
+func ParseListCheckConfigSchemasResult(rsp *http.Response) (*ListCheckConfigSchemasResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCheckConfigSchemasResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CheckConfigSchemaListResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetCheckConfigSchemaResult parses an HTTP response from a GetCheckConfigSchemaWithResponse call
+func ParseGetCheckConfigSchemaResult(rsp *http.Response) (*GetCheckConfigSchemaResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetCheckConfigSchemaResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationschemaJSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
@@ -65207,6 +65835,13 @@ func ParseViewDefaultStatusPageResult(rsp *http.Response) (*ViewDefaultStatusPag
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest StatusPageLocked
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -65309,6 +65944,13 @@ func ParseViewStatusPageResult(rsp *http.Response) (*ViewStatusPageResult, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest StatusPageLocked

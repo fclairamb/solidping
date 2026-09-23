@@ -1,3 +1,5 @@
+// Package checksip provides SIP server reachability (OPTIONS) and
+// registration (REGISTER) monitoring checks.
 package checksip
 
 import (
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksip/config"
 )
 
 const (
@@ -40,22 +43,11 @@ func (c *SIPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSIP
 }
 
-// Validate checks if the configuration is valid. It performs no network operations.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SIPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SIPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "sip-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // applyDefaults fills in transport/port/timeout/mode/domain defaults on a copy
@@ -93,7 +85,7 @@ func (c *SIPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return nil, err
 	}
 
-	// Work on a copy so defaults don't mutate the caller's config.
+	// Work on a copy so defaults don't mutate the caller's checkconfig.
 	local := *cfg
 	applyDefaults(&local)
 

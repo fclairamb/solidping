@@ -220,9 +220,12 @@ func newCustomHostTestServer(t *testing.T) *Server {
 	router := httpx.New()
 	main := router.NewGroup("")
 	api := main.NewGroup("/api/v1")
-	api.GET("/status-pages/:org/:slug", func(w http.ResponseWriter, _ *http.Request) error {
+	api.GET("/status-pages/:org/:slug", func(w http.ResponseWriter, req *http.Request) error {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("api-view"))
+		// The query string is echoed back so a test can assert it reached the
+		// handler intact (spec 2026-09-22-07: custom-domain passthrough of
+		// `include`).
+		_, _ = w.Write([]byte("api-view?" + req.URL.RawQuery))
 
 		return nil
 	})
@@ -313,6 +316,15 @@ func TestHandlerWithCustomDomains(t *testing.T) {
 			name: "custom host allowlisted API passes to router",
 			host: "status.acme.com", path: "/api/v1/status-pages/acme/main",
 			wantStatus: http.StatusOK, wantBody: "api-view",
+		},
+		{
+			// The `include` query param (spec 2026-09-22-07) must reach the
+			// handler unchanged on a custom domain, the same as any other host —
+			// the allowlist matches on path only, and the query string travels
+			// with the request object untouched.
+			name: "custom host allowlisted API passes the include query through",
+			host: "status.acme.com", path: "/api/v1/status-pages/acme/main?include=",
+			wantStatus: http.StatusOK, wantBody: "api-view?include=",
 		},
 		{
 			// Spec 2026-08-23-03: a domain that IS ours but is not currently
@@ -462,7 +474,7 @@ func TestCustomHostShellCacheControl(t *testing.T) {
 	handler.ServeHTTP(openRec, openReq)
 
 	r.Equal(http.StatusOK, openRec.Code)
-	r.Equal("public, max-age=60", openRec.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", openRec.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", openRec.Header().Get("Vary"))
 
 	lockedRec := httptest.NewRecorder()
@@ -557,7 +569,7 @@ func TestPathBasedShellVaryMatchesCustomHost(t *testing.T) {
 	}
 
 	shell := serve("/s/acme/main")
-	r.Equal("public, max-age=60", shell.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", shell.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", shell.Header().Get("Vary"))
 
 	// The same value the custom-domain shell sends for a public page.

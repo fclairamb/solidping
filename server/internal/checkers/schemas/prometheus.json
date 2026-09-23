@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/prometheus.json",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "metric": {
+      "type": "string"
+    },
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "query": {
+      "type": "string"
+    },
+    "operator": {
+      "type": "string"
+    },
+    "warningValue": {
+      "type": "number"
+    },
+    "criticalValue": {
+      "type": "number"
+    },
+    "match": {
+      "type": "string"
+    },
+    "onMissing": {
+      "type": "string"
+    },
+    "headers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "timeout": {
+      "type": "string",
+      "x-solidping-go-type": "time.Duration"
+    }
+  },
+  "type": "object",
+  "required": [
+    "url"
+  ],
+  "title": "prometheus check config",
+  "description": "Alert on Prometheus metric thresholds.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.\n\n`metric` is required only in some configurations — `Validate()` decides from other keys — so it is not in `required`. The Go validator is authoritative.\n\n`mode` is required only in some configurations — `Validate()` decides from other keys — so it is not in `required`. The Go validator is authoritative.\n\n`query` is required only in some configurations — `Validate()` decides from other keys — so it is not in `required`. The Go validator is authoritative.",
+  "x-solidping-check-type": "prometheus",
+  "x-solidping-notes": [
+    "`metric` is required only in some configurations — `Validate()` decides from other keys — so it is not in `required`. The Go validator is authoritative.",
+    "`mode` is required only in some configurations — `Validate()` decides from other keys — so it is not in `required`. The Go validator is authoritative.",
+    "`query` is required only in some configurations — `Validate()` decides from other keys — so it is not in `required`. The Go validator is authoritative."
+  ],
+  "x-solidping-secret-fields": [],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

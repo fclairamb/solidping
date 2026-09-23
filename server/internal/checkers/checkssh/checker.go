@@ -17,13 +17,13 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssh/config"
 	"github.com/fclairamb/solidping/server/internal/sshauth"
 )
 
 var errFingerprintMismatch = errors.New("fingerprint mismatch")
 
 const (
-	defaultPort    = 22
 	defaultTimeout = 10 * time.Second
 	maxOutputSize  = 4 * 1024
 	msPerMicro     = 1000.0
@@ -49,31 +49,11 @@ func (c *SSHChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSSH
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SSHChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SSHConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		port := cfg.Port
-		if port == 0 {
-			port = defaultPort
-		}
-
-		spec.Name = fmt.Sprintf("%s:%d", cfg.Host, port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "ssh-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the SSH check.
@@ -420,7 +400,7 @@ func (c *SSHChecker) executeWithAuth(
 
 	// Check expected output pattern
 	if cfg.ExpectedOutputPattern != "" {
-		outputRegex := cfg.outputPatternRegex
+		outputRegex := cfg.OutputPatternRegex
 		if outputRegex == nil {
 			var compileErr error
 			outputRegex, compileErr = regexp.Compile(cfg.ExpectedOutputPattern)

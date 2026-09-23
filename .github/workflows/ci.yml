@@ -117,6 +117,16 @@ jobs:
           # TestServeEmbedWidgetV1 404s (spec 2026-08-08-08).
           mkdir -p internal/app/status0res/embed/v1
           echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          # TestCompressionEncodesEmbeddedStatus0JS walks status0res for a real
+          # bundle .js file and needs one whose GZIPPED size clears net/http's
+          # ~2 KiB before-chunking buffer, or the whole response still fits in
+          # one write and Go re-derives a Content-Length the test asserts is
+          # gone. A real Vite bundle clears that easily; repeated text here
+          # would compress to nothing and pass for the wrong reason, so this
+          # is 16 KiB of random (near-incompressible) bytes under assets/,
+          # matching the real build's layout (spec 2026-09-22-04).
+          mkdir -p internal/app/status0res/assets
+          head -c 16384 /dev/urandom | base64 > internal/app/status0res/assets/placeholder.js
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
           # Docusaurus emits 404.html into the real docs build; serveDocsFile
           # falls back to it for an unknown path and only degrades to a plain
@@ -150,6 +160,22 @@ jobs:
 
       - name: Verify the freshly generated client still builds
         run: go build ./...
+
+      # internal/checkers/schemas/*.json is generated from the checker config
+      # structs and COMMITTED, so unlike the OpenAPI client above it may never
+      # lag: the files are served by the API and attached to releases, and a stale
+      # one tells an editor about a config field that no longer exists. A byte
+      # diff is therefore the right check here — change a config struct, run
+      # `go generate ./internal/checkers/schemas/...`, commit the result
+      # (spec 2026-09-22-02).
+      - name: Verify the committed checker schemas are current
+        run: |
+          set -euo pipefail
+          go generate ./internal/checkers/schemas/...
+          if ! git diff --exit-code -- internal/checkers/schemas; then
+            echo "::error::internal/checkers/schemas is stale — run \`go generate ./internal/checkers/schemas/...\` in server/ and commit the result"
+            exit 1
+          fi
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
@@ -219,6 +245,8 @@ jobs:
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
           mkdir -p internal/app/status0res/embed/v1
           echo "(()=>{})();" > internal/app/status0res/embed/v1/widget.js
+          mkdir -p internal/app/status0res/assets
+          head -c 16384 /dev/urandom | base64 > internal/app/status0res/assets/placeholder.js
           mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
           echo "placeholder" > internal/app/docsres/404.html
           echo "placeholder" > internal/app/docsres/llms.txt
@@ -431,6 +459,15 @@ jobs:
           name: docs-dist
           path: web/docs/build
           retention-days: 1
+
+      # deploy/coolify/solidping.yaml is embedded verbatim in
+      # installation/coolify.md, so a malformed file must fail CI here rather
+      # than ship broken to users doing a "Docker Compose Empty" import.
+      # `config` also validates Coolify's bare-name magic variables
+      # (SERVICE_URL_SOLIDPING_4000) fine — they're just env names to it.
+      - name: Validate Coolify compose template
+        working-directory: ${{ github.workspace }}
+        run: docker compose -f deploy/coolify/solidping.yaml config
 
   build:
     name: Build Binary
@@ -923,13 +960,13 @@ jobs:
             echo "::endgroup::"
           done
 
-          # Gzip twins alongside the bare binaries. sp links the server's whole
-          # checker registry (k8s, oracle, goja, grpc, ... — the config-only
-          # decoupling that would cut the binary itself is a separate batch),
-          # so the bare files are ~99 MB and a metered or slow connection pays
-          # for every byte. gzip brings the download to ~31 MB while the bare
-          # names stay the canonical, unpinned contract (the .gz twins mirror
-          # them 1:1, so both are version-free).
+          # Gzip twins alongside the bare binaries. sp reaches check configs
+          # through internal/checkers/configregistry, the config-only registry,
+          # so it links no checker implementation (no client-go, go-ora, grpc,
+          # chromedp, ...) and the bare files are ~32 MB rather than the ~99 MB
+          # they were before that split. gzip still halves the download again
+          # (~12 MB), and the bare names stay the canonical, unpinned contract
+          # (the .gz twins mirror them 1:1, so both are version-free).
           echo "::group::gzip the sp binaries"
           for file in ../dist/sp-*; do
             case "$file" in
@@ -942,6 +979,23 @@ jobs:
           cd ../dist
           sha256sum sp-* > sp-checksums.txt
           ls -l
+
+      # The generated JSON Schemas of every check type's `config`, as a release
+      # asset next to `sp` itself. The API serves them one at a time
+      # (GET /api/v1/checks/schema/<type>), but a CI linter or an editor plugin
+      # wants the whole set from a stable URL without reaching a SolidPing
+      # instance first — releases/latest/download/check-config-schemas.tar.gz is
+      # that URL. They are a DESCRIPTION, not a validator: the validator is
+      # `sp checks validate`, shipped right beside them (spec 2026-09-22-02).
+      - name: Bundle the check config schemas
+        working-directory: server
+        run: |
+          set -euo pipefail
+          tar -czf ../dist/check-config-schemas.tar.gz \
+            -C internal/checkers/schemas $(cd internal/checkers/schemas && ls *.json | sort)
+          cd ../dist
+          sha256sum check-config-schemas.tar.gz > check-config-schemas-checksums.txt
+          ls -l check-config-schemas*
 
       # release-please creates the GitHub release from the same tag push that
       # triggered this run, so the release may not exist yet. Wait for it rather
@@ -969,7 +1023,8 @@ jobs:
               --title "$TAG_NAME" --notes "Automated release." --target "${GITHUB_SHA}"
           fi
 
-          gh release upload "$TAG_NAME" dist/sp-* \
+          gh release upload "$TAG_NAME" dist/sp-* dist/check-config-schemas.tar.gz \
+            dist/check-config-schemas-checksums.txt \
             --repo "${{ github.repository }}" --clobber
 
       - name: Log in to the Container registry

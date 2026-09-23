@@ -1392,6 +1392,15 @@ paths:
             type: string
             enum: ["true", "false", "all"]
             default: "false"
+        - name: wouldHaveFired
+          in: query
+          description: >-
+            When "true", returns only the checks the degraded dry run has
+            flagged (`degradedWouldFireAt` is set) — what enabling degraded
+            detection would have caught. Any other value applies no filter.
+          schema:
+            type: string
+            enum: ["true"]
         - name: sort
           in: query
           description: >-
@@ -1995,6 +2004,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgPath"
         - $ref: "#/components/parameters/KioskTokenQuery"
+        - $ref: "#/components/parameters/IncludeQuery"
       responses:
         "200":
           description: The default status page
@@ -2002,6 +2012,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/StatusPageLocked"
         "404":
@@ -2017,7 +2029,9 @@ paths:
         disabled or non-public page returns 404, identical to a page that
         doesn't exist. No authentication required. Caching follows the page's
         visibility: a `public` page carries Cache-Control: public, max-age=60,
-        while a `password` or `private` page — and every 401/404 answer —
+        stale-while-revalidate=30 — a cache may serve an expired copy for up to
+        30 s while it refreshes in the background — while a `password` or
+        `private` page, and every 401/404 answer,
         carries Cache-Control: private, no-store, so a shared cache can never
         retain a gated page's body. Holding a valid unlock cookie does not
         change that: it authorizes the visitor, not the CDN in front of them.
@@ -2034,6 +2048,7 @@ paths:
           schema:
             type: string
         - $ref: "#/components/parameters/KioskTokenQuery"
+        - $ref: "#/components/parameters/IncludeQuery"
       responses:
         "200":
           description: The status page
@@ -2041,6 +2056,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StatusPage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/StatusPageLocked"
         "404":
@@ -2055,7 +2072,8 @@ paths:
         per-category counts, page identity, and the canonical public URL —
         no sections, no per-resource history. Same visibility gate AND the
         same caching rule as the full page view: Cache-Control: public,
-        max-age=60 for a `public` page, private, no-store for a `password` or
+        max-age=60, stale-while-revalidate=30 for a `public` page, private,
+        no-store (no grace window) for a `password` or
         `private` one (unlocked or not) and for every 401/404 answer. A
         disabled or non-public page returns 404, identical to a page that
         doesn't exist. No authentication required.
@@ -2091,8 +2109,9 @@ paths:
         contexts like GitHub READMEs where scripts can't run. Same visibility
         gate as the full view and the summary endpoint: a disabled or
         non-public page returns 404, identical to a page that doesn't exist.
-        Same caching rule too: Cache-Control: public, max-age=60 for a
-        `public` page, private, no-store for a `password` or `private` one —
+        Same caching rule too: Cache-Control: public, max-age=60,
+        stale-while-revalidate=30 for a `public` page, private, no-store for a
+        `password` or `private` one —
         the badge renders the rollup status of a page the requester may not be
         entitled to see. No authentication required.
       operationId: getStatusPageBadge
@@ -2180,8 +2199,9 @@ paths:
 
         Same visibility gate as the full page view: a disabled or non-public
         page returns 404, identical to a page that doesn't exist. Same caching
-        rule too — Cache-Control: public, max-age=60 for a `public` page,
-        private, no-store for a `password` or `private` one (unlocked or not),
+        rule too — Cache-Control: public, max-age=60,
+        stale-while-revalidate=30 for a `public` page, private, no-store for a
+        `password` or `private` one (unlocked or not),
         since this payload quotes incident titles and update bodies verbatim.
         No authentication required.
 
@@ -2223,8 +2243,9 @@ paths:
         Public Atom/RSS feed of the page's recent status updates (incident
         posts and manual updates). Same visibility gate as the full page
         view, and the same visibility-driven caching: Cache-Control: public,
-        max-age=300 for a `public` page, private, no-store for a `password` or
-        `private` one — the feed quotes update titles and bodies verbatim. No
+        max-age=300, stale-while-revalidate=30 for a `public` page, private,
+        no-store for a `password` or `private` one — the feed quotes update
+        titles and bodies verbatim. No
         authentication required.
       operationId: statusPageFeed
       parameters:
@@ -6737,6 +6758,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/CheckTypeSamplesListResponse"
 
+  /api/v1/checks/schema:
+    get:
+      tags: [Check Types]
+      summary: List the published config JSON Schemas
+      description: |
+        Catalog of the generated JSON Schemas (draft 2020-12) that describe each
+        check type's `config` object, with the URL of each one.
+
+        **These schemas are a description, not a validator.** They exist so an
+        editor can complete a config-as-code manifest and third-party tooling can
+        generate or lint one. SolidPing validates a config with the Go
+        `Validate()` of its checker, which enforces formats, bounds and
+        cross-field rules that reflection over a struct cannot express — a config
+        that satisfies the schema may still be rejected. Use
+        `POST /api/v1/orgs/{org}/checks/validate` (or `sp checks validate`) to
+        find out whether a config is accepted; never wire a CI gate onto the JSON
+        instead.
+      operationId: listCheckConfigSchemas
+      responses:
+        "200":
+          description: The published config schemas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckConfigSchemaListResponse"
+
+  /api/v1/checks/schema/{type}:
+    get:
+      tags: [Check Types]
+      summary: Get a check type's config JSON Schema
+      description: |
+        The generated JSON Schema (draft 2020-12) of one check type's `config`
+        object, served as `application/schema+json`.
+
+        **Descriptive only** — see the catalog endpoint above. Each document
+        repeats it in its own `description` and `x-solidping-validation`, and
+        lists what it knowingly does not encode in `x-solidping-notes`. Secret
+        keys carry `"format": "solidping-secret-ref"`.
+      operationId: getCheckConfigSchema
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: Check type, as returned by `GET /api/v1/check-types`
+          schema:
+            type: string
+          example: kubernetes
+      responses:
+        "200":
+          description: The check type's config schema
+          content:
+            application/schema+json:
+              schema:
+                type: object
+                description: A JSON Schema document (draft 2020-12)
+                additionalProperties: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/on-call-schedules:
     get:
       tags: [On-Call Schedules]
@@ -8402,6 +8482,30 @@ components:
         the parameter is never an oracle for whether a page or a token exists.
         A disabled page stays 404 regardless.
 
+    IncludeQuery:
+      name: include
+      in: query
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [availability, responseTime]
+      description: >-
+        Narrows which optional, expensive sections the response carries.
+        Comma-separated, unordered, duplicates ignored. Absent means both
+        `availability` and `responseTime` — today's payload, byte-for-byte.
+        `include=` (present, empty) means neither: no resource carries an
+        `availability` key at all, and the page has no
+        `overallAvailabilityPct`. Case-sensitive — the tokens mirror the JSON
+        field names. An unrecognized token is `400 VALIDATION_ERROR` naming
+        it and the valid set. The parameter can only NARROW what the page's
+        own `showAvailability` / `showResponseTime` settings would already
+        produce, never widen it — those two fields keep describing the
+        page's settings regardless of what was requested.
+
     StatusPageUidPath:
       name: statusPageUid
       in: path
@@ -9922,6 +10026,60 @@ components:
             before each auto-resolve. 0 = adaptive recovery off (constant
             recovery period).
           default: 21600
+        degradedFailures:
+          type: integer
+          minimum: 0
+          default: 5
+          description: >-
+            Degraded detection, failure rule: fires when this many of the last
+            `degradedFailuresWindow` countable probes failed. 0 = off. Always
+            the RESOLVED value and never null: a check that never configured
+            degraded detection stores no value, and this reports the default the
+            check is actually running under.
+        degradedFailuresWindow:
+          type: integer
+          minimum: 0
+          default: 60
+          description: >-
+            Window of the failure rule, counted in countable probes (not
+            seconds). Always the resolved value, never null.
+        degradedSlow:
+          type: integer
+          minimum: 0
+          default: 3
+          description: >-
+            Degraded detection, slow rule: fires when this many of the last
+            `degradedSlowWindow` successful probes took longer than
+            `slowThresholdMs`. 0 = off. Always the resolved value, never null.
+        degradedSlowWindow:
+          type: integer
+          minimum: 0
+          default: 6
+          description: >-
+            Window of the slow rule, counted in countable probes. Always the
+            resolved value, never null.
+        slowThresholdMs:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >-
+            Response time above which a successful probe counts as slow, in
+            milliseconds. 0 = the slow rule is off. There is no auto-baselining;
+            around 2x the observed p95 is the usual starting point.
+        degradedEnabled:
+          type: boolean
+          description: >-
+            Whether degraded detection may OPEN incidents on this check. New
+            checks are on; every check that predates the feature is off, and
+            runs as a dry run that only stamps `degradedWouldFireAt`.
+        degradedWouldFireAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the dry run first saw a degraded condition on a check that has
+            `degradedEnabled` false. Absent when the rules never fired. Cleared
+            when degraded detection is enabled.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10223,6 +10381,63 @@ components:
           description: >-
             Flapping (adaptive recovery) window in seconds. Outages within this
             rolling window accumulate the recovery backoff. 0 = off.
+        degradedFailures:
+          type: integer
+          minimum: 0
+          default: 5
+          description: >-
+            Degraded detection, failure rule: fires when this many of the last
+            `degradedFailuresWindow` countable probes failed. 0 = off. Omit to
+            store no value at all, which means "use the default" and keeps the
+            check tracking that default if it ever changes. Rejected with
+            `VALIDATION_ERROR` when it exceeds the EFFECTIVE window — the window
+            in this same request if you sent one, the default of 60 otherwise —
+            because "70 of 60" can never fire.
+        degradedFailuresWindow:
+          type: integer
+          minimum: 0
+          default: 60
+          description: >-
+            Window of the failure rule, counted in countable probes (not
+            seconds). Omit to store no value at all, which means "use the
+            default". Rejected with `VALIDATION_ERROR` when it falls below the
+            EFFECTIVE `degradedFailures` (this request's value if sent, the
+            default of 5 otherwise); send both together to move the pair.
+        degradedSlow:
+          type: integer
+          minimum: 0
+          default: 3
+          description: >-
+            Degraded detection, slow rule: fires when this many of the last
+            `degradedSlowWindow` successful probes took longer than
+            `slowThresholdMs`. 0 = off. Omit to store no value at all, which
+            means "use the default". Rejected with `VALIDATION_ERROR` when it
+            exceeds the EFFECTIVE `degradedSlowWindow` (this request's value if
+            sent, the default of 6 otherwise).
+        degradedSlowWindow:
+          type: integer
+          minimum: 0
+          default: 6
+          description: >-
+            Window of the slow rule, counted in countable probes. Omit to store
+            no value at all, which means "use the default". Rejected with
+            `VALIDATION_ERROR` when it falls below the EFFECTIVE `degradedSlow`
+            (this request's value if sent, the default of 3 otherwise).
+        slowThresholdMs:
+          type: integer
+          minimum: 0
+          default: 0
+          description: >-
+            Response time above which a successful probe counts as slow, in
+            milliseconds. 0 = the slow rule is off. There is no auto-baselining;
+            around 2x the observed p95 is the usual starting point.
+        degradedEnabled:
+          type: boolean
+          default: true
+          description: >-
+            Whether degraded detection may OPEN incidents on this check. New
+            checks are on; every check that predates the feature is off, and
+            runs as a dry run that only stamps `degradedWouldFireAt`.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10290,6 +10505,59 @@ components:
           description: >-
             Flapping (adaptive recovery) window in seconds. 0 = off. Omit to
             leave unchanged.
+        degradedFailures:
+          type: integer
+          minimum: 0
+          description: >-
+            Degraded detection, failure rule: fires when this many of the last
+            `degradedFailuresWindow` countable probes failed. 0 = off. Omit to
+            leave unchanged; there is no spelling that resets it to "unset".
+            Rejected with `VALIDATION_ERROR` when it exceeds the EFFECTIVE
+            window — this request's `degradedFailuresWindow` if you sent one,
+            otherwise the check's stored window, or the default of 60 when the
+            check has never configured one. So raising this alone can fail even
+            though the request looks self-consistent: "70 of 60" can never fire.
+        degradedFailuresWindow:
+          type: integer
+          minimum: 0
+          description: >-
+            Window of the failure rule, counted in countable probes (not
+            seconds). Omit to leave unchanged. Rejected with `VALIDATION_ERROR`
+            when it falls below the EFFECTIVE `degradedFailures` (this request's
+            value if sent, otherwise the check's stored value, or the default of
+            5) — shrinking the window alone would strand the M above it. Send
+            both together to move the pair.
+        degradedSlow:
+          type: integer
+          minimum: 0
+          description: >-
+            Degraded detection, slow rule: fires when this many of the last
+            `degradedSlowWindow` successful probes took longer than
+            `slowThresholdMs`. 0 = off. Omit to leave unchanged. Rejected with
+            `VALIDATION_ERROR` when it exceeds the EFFECTIVE
+            `degradedSlowWindow` (this request's value if sent, otherwise the
+            check's stored value, or the default of 6).
+        degradedSlowWindow:
+          type: integer
+          minimum: 0
+          description: >-
+            Window of the slow rule, counted in countable probes. Omit to leave
+            unchanged. Rejected with `VALIDATION_ERROR` when it falls below the
+            EFFECTIVE `degradedSlow` (this request's value if sent, otherwise
+            the check's stored value, or the default of 3).
+        slowThresholdMs:
+          type: integer
+          minimum: 0
+          description: >-
+            Response time above which a successful probe counts as slow, in
+            milliseconds. 0 = the slow rule is off. There is no auto-baselining;
+            around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
+        degradedEnabled:
+          type: boolean
+          description: >-
+            Whether degraded detection may OPEN incidents on this check. New
+            checks are on; every check that predates the feature is off, and
+            runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -11131,6 +11399,14 @@ components:
           type: string
         checkName:
           type: string
+        kind:
+          type: string
+          enum: [check, slo_burn, degraded]
+          description: >-
+            What the incident is ABOUT: `check` (an outage), `slo_burn` (an
+            error-budget burn-rate alert) or `degraded` (a check that fails
+            intermittently or answers far slower than usual — the target may well
+            be up right now).
         state:
           type: string
           enum: [active, resolved]
@@ -12067,6 +12343,13 @@ components:
             Debounce before an incident becomes public. 0 publishes
             immediately; an incident that resolves inside this window is never
             published at all.
+        publishDegraded:
+          type: boolean
+          default: false
+          description: >-
+            Whether DEGRADED incidents auto-publish to this page. False
+            everywhere by default: a page that announces outages has not thereby
+            agreed to announce "7 of the last 60 probes failed, currently up".
         autoResolve:
           type: string
           enum: [always, if_untouched, never]
@@ -12629,6 +12912,13 @@ components:
             Debounce before an incident becomes public. 0 is legal and
             publishes immediately; an incident that resolves inside this window
             is never published at all. Outside 0–86400 is a VALIDATION_ERROR.
+        publishDegraded:
+          type: boolean
+          default: false
+          description: >-
+            Whether DEGRADED incidents auto-publish to this page. False
+            everywhere by default: a page that announces outages has not thereby
+            agreed to announce "7 of the last 60 probes failed, currently up".
         autoResolve:
           type: string
           enum: [always, if_untouched, never]
@@ -12720,6 +13010,13 @@ components:
             Debounce before an incident becomes public. 0 is legal and
             publishes immediately. Omit the field to leave it unchanged;
             outside 0–86400 is a VALIDATION_ERROR.
+        publishDegraded:
+          type: boolean
+          default: false
+          description: >-
+            Whether DEGRADED incidents auto-publish to this page. False
+            everywhere by default: a page that announces outages has not thereby
+            agreed to announce "7 of the last 60 probes failed, currently up".
         autoResolve:
           type: string
           enum: [always, if_untouched, never]
@@ -14958,6 +15255,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CheckTypeSamples"
+
+    CheckConfigSchemaRef:
+      type: object
+      required: [checkType, ref]
+      properties:
+        checkType:
+          type: string
+          example: kubernetes
+        ref:
+          type: string
+          description: Path of the schema document
+          example: /api/v1/checks/schema/kubernetes
+
+    CheckConfigSchemaListResponse:
+      type: object
+      required: [data, note]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckConfigSchemaRef"
+        note:
+          type: string
+          description: >-
+            Reminder that these schemas describe a config for editors and tooling
+            and are not the validator.
 
     # On-call schedule schemas
     OncallUserRef:

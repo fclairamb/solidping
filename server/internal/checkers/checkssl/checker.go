@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkssl/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -26,26 +27,11 @@ func (c *SSLChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeSSL
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *SSLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &SSLConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return checkerdef.NewConfigError("host", err.Error())
-	}
-
-	if spec.Name == "" {
-		spec.Name = "SSL: " + cfg.Host
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "ssl-" + cfg.Host
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // resolveHost resolves the hostname and picks the address to dial. The pick
@@ -186,7 +172,7 @@ type execParams struct {
 }
 
 func newExecParams(cfg *SSLConfig) execParams {
-	warning, critical := cfg.effectiveThresholds()
+	warning, critical := cfg.EffectiveThresholds()
 
 	params := execParams{
 		port:         cfg.Port,

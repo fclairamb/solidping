@@ -11,6 +11,7 @@ import (
 	"github.com/likexian/whois"
 	whoisparser "github.com/likexian/whois-parser"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdomain/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
@@ -42,27 +43,11 @@ func (c *DomainChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeDomain
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *DomainChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &DomainConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return checkerdef.NewConfigError(checkerdef.OutputKeyDomain, err.Error())
-	}
-
-	// Auto-generate name and slug from domain if not provided
-	if spec.Name == "" {
-		spec.Name = "Domain: " + cfg.Domain
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "domain-" + cfg.Domain
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 func errorResult(domain string, duration time.Duration, errMsg string) *checkerdef.Result {
@@ -123,7 +108,7 @@ func (c *DomainChecker) Execute(ctx context.Context, config checkerdef.Config) (
 
 	daysRemaining := int(time.Until(expiryDate).Hours() / hoursPerDay)
 
-	warningDays, criticalDays := cfg.effectiveThresholds()
+	warningDays, criticalDays := cfg.EffectiveThresholds()
 	status, severity := checkerdef.GradedExpiryStatus(daysRemaining, warningDays, criticalDays)
 
 	output := map[string]any{
@@ -147,14 +132,14 @@ func (c *DomainChecker) Execute(ctx context.Context, config checkerdef.Config) (
 }
 
 // lookupExpiration resolves the expiration date and registrar for cfg.Domain
-// according to cfg.effectiveMethod():
+// according to cfg.EffectiveMethod():
 //   - "rdap": RDAP only, no fallback.
 //   - "whois": WHOIS only (legacy path), RDAP never invoked.
 //   - "auto" (default): RDAP first, WHOIS fallback on ANY RDAP failure.
 func (c *DomainChecker) lookupExpiration(
 	ctx context.Context, cfg *DomainConfig,
 ) (time.Time, string, string, error) {
-	switch cfg.effectiveMethod() {
+	switch cfg.EffectiveMethod() {
 	case MethodRDAP:
 		res, rdapErr := c.lookupRDAP(ctx, cfg.Domain)
 		if rdapErr != nil {

@@ -25,7 +25,7 @@ func TestDomainConfig_LegacyAlias(t *testing.T) {
 	// Legacy threshold maps onto the critical tier.
 	r.Equal(14, cfg.CriticalDays)
 
-	warning, critical := cfg.effectiveThresholds()
+	warning, critical := cfg.EffectiveThresholds()
 	r.Equal(14, critical)
 	r.Equal(30, warning) // default warning, clamped up to >= critical
 }
@@ -46,7 +46,7 @@ func TestDomainConfig_LegacySnakeCaseThreshold(t *testing.T) {
 
 	r.Equal(20, cfg.CriticalDays)
 
-	warning, critical := cfg.effectiveThresholds()
+	warning, critical := cfg.EffectiveThresholds()
 	r.Equal(20, critical)
 	r.Equal(30, warning)
 }

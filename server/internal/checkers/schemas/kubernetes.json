@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://solidping.io/schemas/checks/kubernetes.json",
+  "properties": {
+    "clusterUid": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "Deployment",
+        "ReplicaSet"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "timeout": {
+      "type": "string",
+      "x-solidping-go-type": "time.Duration"
+    }
+  },
+  "type": "object",
+  "required": [
+    "clusterUid",
+    "kind",
+    "name",
+    "namespace"
+  ],
+  "title": "kubernetes check config",
+  "description": "Monitor Kubernetes workload replica health.\n\nDESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected.",
+  "x-solidping-check-type": "kubernetes",
+  "x-solidping-notes": [],
+  "x-solidping-secret-fields": [],
+  "x-solidping-validation": {
+    "authority": "go",
+    "command": "sp checks validate <manifest>",
+    "note": "DESCRIPTIVE ONLY. This schema exists for editor completion and third-party tooling; it is NOT the validator. SolidPing validates a check config with the Go `Validate()` of its checker (run it yourself with `sp checks validate`), which enforces rules this schema does not and cannot express. A config that satisfies this schema may still be rejected."
+  }
+}

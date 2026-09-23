@@ -136,7 +136,7 @@ func TestGetBadge_CacheControl(t *testing.T) {
 
 	req, rec := newBadgeRequest(org.Slug, page.Slug, "")
 	r.NoError(h.GetBadge(rec, req))
-	r.Equal("public, max-age=60", rec.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", rec.Header().Get("Cache-Control"))
 }
 
 // TestGetBadge_NotFound pins that a private page and a disabled page both

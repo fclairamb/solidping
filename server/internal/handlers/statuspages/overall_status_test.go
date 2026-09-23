@@ -161,7 +161,7 @@ func TestViewStatusPage_OverallStatus(t *testing.T) {
 				seedResourceWithStatus(ctx, t, svc, org.UID, org.Slug, page, section, spec)
 			}
 
-			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+			view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 			r.NoError(err)
 			r.Equal(tc.want, view.OverallStatus)
 			r.NotNil(view.StatusCounts)
@@ -183,7 +183,7 @@ func TestViewDefaultStatusPage_OverallStatus(t *testing.T) {
 	seedResourceWithStatus(ctx, t, svc, org.UID, org.Slug, page, section,
 		resourceSpec{slug: "res-a", status: models.CheckStatusDown})
 
-	view, err := svc.ViewDefaultStatusPage(ctx, org.Slug)
+	view, err := svc.ViewDefaultStatusPage(ctx, org.Slug, AllViewOptions())
 	r.NoError(err)
 	r.Equal("down", view.OverallStatus)
 	r.NotNil(view.StatusCounts)

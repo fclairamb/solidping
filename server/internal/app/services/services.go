@@ -31,6 +31,17 @@ type SLOBurnEvaluator interface {
 	EvaluateBurnRates(ctx context.Context, now time.Time) (int, error)
 }
 
+// DegradedEvaluator runs one sweep of the degraded-detection rules and returns
+// how many checks were evaluated.
+//
+// An interface here for exactly the reason SLOBurnEvaluator is one: the periodic
+// job lives in jobs/jobtypes, jobtypes -> jobdef -> app/services, and the
+// evaluator -> handlers/incidents -> jobtypes. A concrete field would close that
+// loop into an import cycle.
+type DegradedEvaluator interface {
+	EvaluateDegraded(ctx context.Context, now time.Time) (int, error)
+}
+
 // Registry holds all application services for dependency injection.
 type Registry struct {
 	Jobs           jobsvc.Service
@@ -60,6 +71,10 @@ type Registry struct {
 	// tests and in processes that run no job worker — the job checks before
 	// calling.
 	SLOBurn SLOBurnEvaluator
+	// Degraded evaluates the per-check degraded-detection rules once a minute
+	// (spec 2026-09-22-03). Nil in tests and in processes that run no job
+	// worker — the job checks before calling.
+	Degraded DegradedEvaluator
 	// SMS resolves, per org and per capability, whether a phone send goes
 	// through the org's own Twilio integration (bring-your-own) or the
 	// instance-level provider (server-provided, the default). Nil only in

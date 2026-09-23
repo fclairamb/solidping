@@ -258,6 +258,23 @@ history. Also carries `overallStatus` and `statusCounts` — the page-level
 rollup computed server-side (see below). Sets `Cache-Control` per the shared
 visibility rule described in **Caching on the public surface** below.
 
+Both this route and the default-page route above accept `?include=` (spec
+2026-09-22-07) to leave out one or both of the expensive optional sections —
+on a 200-resource page the full payload runs ~3.2 MB uncompressed, almost all
+of it `availability`/`responseTime` history a caller like the TV wallboard
+never renders. Comma-separated, unordered, duplicates ignored; tokens
+`availability` and `responseTime` (case-sensitive — they mirror the JSON field
+names). Absent means both, byte-for-byte identical to a request with no
+`include` at all — every pre-existing consumer's payload is unaffected.
+`include=` (present, empty) means neither: a resource then carries no
+`availability` key at all, and the page has no `overallAvailabilityPct`. An
+unrecognized token is `400 VALIDATION_ERROR` naming it and the valid set. The
+parameter can only **narrow** what the page's own `showAvailability` /
+`showResponseTime` settings would already produce — those two response fields
+keep describing the page's settings, not what was requested, so
+`include=availability` on a page with `showAvailability=false` still omits
+availability. Composes with `?kiosk=` in either order.
+
 Each `responseTimeSeries[].points[]` entry carries, alongside `time`,
 `durationP95` and the probe's own `status`, the **availability** of the slice
 it covers (spec 2026-08-26-10): `availabilityPct` (null when the row has no
@@ -291,6 +308,22 @@ or the SVG badge. Sets `Cache-Control` per the shared visibility rule
 active, otherwise the absolute `/s/{org}/{slug}` URL derived from the
 request host.
 
+`overallAvailabilityPct` is also present — omitted above because it is omitted
+whenever the page hides availability or nothing has reported. It is the same
+page-level mean the full view carries, computed by `summaryAvailability` from
+the same enrichment with response time forced off, so the two surfaces cannot
+disagree about it. It is **not** free: it costs the same per-bucket
+availability query the full page view pays, which is why the SVG badge (the
+hottest caller of this method, and one with nowhere to put a percentage) asks
+for the summary without it.
+
+This is the endpoint the TV wallboard reads the number from (spec
+2026-09-22-08). The board narrows its page read to `include=` and polls this
+one every 5 minutes instead, because the number is a 7- or 90-day mean that
+cannot move between two 30-second polls. That makes the wallboard three public
+reads on one visibility gate: this one, the page view, and the public incident
+history — the last of which is what the board now paints from first.
+
 ### Caching on the public surface
 
 Every public read of a status page — the page view, the summary, the SVG
@@ -300,7 +333,7 @@ badge, the public incident history, the Atom feed and both status0 SPA shells
 
 | page visibility | `Cache-Control` |
 |---|---|
-| `public` | `public, max-age=60` (`max-age=300` on the feed) |
+| `public` | `public, max-age=60, stale-while-revalidate=30` (`max-age=300` on the feed) |
 | `password` | `private, no-store` |
 | `private` | `private, no-store` |
 | 401 / 404 answers | `private, no-store` |
@@ -331,15 +364,141 @@ replies into a map of which pages exist.
 the page row, not the one the browser asks for.
 
 The path-based shell (`/s/...`) is the one surface that stays
-unconditionally `public, max-age=60`, and it is safe: `status0MetaForPath`
+unconditionally public, and it is safe: `status0MetaForPath`
 resolves the page **without** installing the request's unlock grant, so
 `statuspagelock.Allows` denies by default and a gated page's name or
 description is never injected into it. Its custom-domain twin injects
 unconditionally — there the host *is* the page — so that one follows visibility.
 
+`stale-while-revalidate=30` (spec 2026-09-22-09) lets a browser or CDN answer
+an EXPIRED entry immediately and refresh it in the background. It is on the
+public branch only: a grace window for serving a stored body is meaningless next
+to `no-store`, and a mixed message is something a proxy resolves in its own
+favour. Worst case for a reader polling every 30 s, the page they look at is
+about 90 s old instead of 60 s in the unlucky alignment — inside what the
+wallboard's own stale indicator tolerates, and what it buys is that the reader
+whose copy expired one second before the incident spike does not block on a cold
+origin render.
+
 Deliberately out of scope: `ETag`/conditional requests (revalidation would
-still have to compute the body to hash it), server-side response caching and
-`stale-while-revalidate`.
+still have to compute the body to hash it).
+
+### The server-side view memo
+
+The HTTP directives above bound how stale a READER's copy may be. They say
+nothing about how often the server recomputes, and before spec 2026-09-22-09 the
+answer was "every request": two wallboards, a README badge and a customer
+refreshing were four independent recomputations of one answer, queueing on the
+same connection pool.
+
+`statuspages.Service` now memoizes the computed view in process
+(`internal/handlers/statuspages/memo.go`):
+
+| product | key | shared by |
+|---|---|---|
+| `StatusPageResponse` | page UID + the `include` set (`ViewOptions`) | the slug route and the default-page route |
+| `StatusPageSummary` | page UID + `withAvailability` | the summary endpoint (`true`) and the SVG badge (`false`) |
+
+- **TTL: 15 seconds**, `statuspagecache.PageMemoTTL`, declared next to
+  `PageMaxAge` so the two freshness numbers cannot drift apart. A quarter of the
+  60 s the directive already promises, so the memo adds no staleness a reader
+  could notice.
+- **The value is the computed struct**, not encoded bytes: building the answer is
+  the expensive part, encoding it is milliseconds, and the struct is what lets
+  four entry points share one computation. It is handed to every caller inside
+  the window, so a caller must treat it as read-only.
+- **Concurrent misses collapse** through `singleflight`, keyed identically. Fifty
+  readers arriving on a cold page cost one computation — which is the load shape
+  of an incident. An erroring computation is not stored and does not poison the
+  key.
+- **Bounds**: lazy expiry on read plus a sweep (oldest first) on insert above 256
+  entries. No configuration knob: how stale a status page may be is a product
+  decision.
+- **Check status flips are NOT invalidation events.** There are thousands a
+  minute on a large installation, and the reader is already inside the 60 s
+  contract.
+
+#### Gate first, always
+
+The access gate — `GetOrganizationBySlug`, `GetStatusPageBySlug`,
+`publicAccessError` (visibility, unlock cookie, kiosk token) and the selector
+backstop `maybeReconcileOnView` — runs on **every** request, **before** the memo
+is consulted. `Service.resolveAndGate` exists to make that order impossible to
+skip, and nothing that can deny a request may live inside a memoized closure.
+
+A `password` page's body is the same for everybody who typed the password, so
+sharing it in process is safe. What must never happen is answering somebody who
+did not, and the ordering is the only thing that prevents it — so
+`TestPageMemo_GateRunsBeforeTheMemo` warms the memo through an unlocked request
+and then requires the un-cookied one to 401 with zero queries past the page
+lookup. Consulting the memo before the gate makes that test fail.
+
+Anything request-derived stays out: `publicPageURL` (scheme and host) is
+assembled in the handler.
+
+#### Invalidation
+
+Every write that changes a page's public body evicts that page's entries — both
+products, every key variant. It is enforced structurally rather than remembered:
+
+- **Inside `statuspages`**, no code may call `s.db.{Create,Update,Delete,Reorder}StatusPage…`
+  directly. Every such write goes through a choke-point wrapper in
+  `memo_writes.go` that performs the write and then evicts the page it was told
+  it changed, and `TestPageMemoWrites_NoDirectStatusPageWrites` parses the
+  package and fails, naming the function, if one reaches past them. A write path
+  therefore cannot exist without naming the page whose body it changed.
+  A body-neutral write opts out loudly, with `WritePathNoPublicChange` — today
+  only kiosk-token mint and revoke, whose `HasKioskToken` never reaches a public
+  payload.
+- **`incidentpublications`** does the same thing for its own row writes
+  (`createPublicationRow` / `updatePublicationRow` / `softDeletePublicationRow` /
+  `createPageStatusUpdate`), with the notify-budget counter deliberately writing
+  through `s.db`: nothing public renders it.
+- **The other packages** (`statuspageassets`, `statusupdates`) reach the memo
+  through a `PageMemoInvalidator` interface injected in `server.go` next to
+  `SetPublicIncidentProvider`, so the compile-time dependency still points one
+  way.
+
+`statuspages.PageMemoWritePaths` remains the declared list of write paths, now
+covering the page/section/component CRUD, the four selector-materialization
+writes, the three custom-domain writes, `clearDefaultStatusPage`, the asset
+upload/clear, the publication paths (manual, auto-publish, auto-resolve, reopen)
+and the status-update writes. Two tests guard it: an end-to-end one that warms,
+writes and asserts the next read recomputed, and one that parses each row's named
+function and fails when the eviction is gone — which is what catches a refactor in
+another package.
+
+The choke points exist because the table alone was not enough.
+`clearDefaultStatusPage` — which demotes the page that WAS the default when
+another is promoted, changing a second page's public `isDefault` that the caller
+never named — was missed by the table and shipped a bug: a reader of the demoted
+page kept being told it was the default for up to the TTL. That write path could
+not exist today.
+
+Not covered, knowingly, all three bounded by the 15 s TTL rather than being
+leaks:
+
+1. A **direct database edit**, which no eviction could have known about.
+2. The **custom-domain verification sweep**
+   (`jobs/jobtypes/job_custom_domain_verify.go`), which writes through
+   `DBService` and holds no handle on the status-pages service.
+3. A **second process** — the memo is per process, so several API replicas each
+   warm and evict independently. Within one process there is exactly one memo:
+   the MCP surface builds its own `statuspages.Service`, and `server.go` points it
+   at the HTTP server's memo (`SharePageMemo`), so an MCP write tool evicts the
+   map the public page actually reads.
+
+Kiosk-token rotation, unlock-cookie changes and organisation renames change no
+body and evict nothing — the key is the page UID, not the slug.
+
+Metrics: `solidping_statuspage_memo_hits_total`,
+`_misses_total` and `_singleflight_shared_total`, labelled by product. Misses are
+counted per caller, so a collapsed herd reads as many misses and one
+computation.
+
+The memo is **per process** — one per process, shared by the HTTP and MCP
+services. Several API replicas each warm independently, which is fine at 15 s;
+there is no cross-replica cache and nothing authenticated is memoized.
 
 ### GET /api/v1/status-pages/:org/:slug/badge
 SVG badge (shields.io style) for the page's overall status — the static,

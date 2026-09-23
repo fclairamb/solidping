@@ -332,7 +332,30 @@
     "summarySoftDeps_one": "{{count}} weich",
     "summarySoftDeps_other": "{{count}} weich",
     "regionsIpv6Hint": "Diese Prüfung ist auf IPv6 festgelegt. Regionen, deren aktive Worker IPv6-Egress melden, werden zuerst aufgeführt — die anderen bleiben auswählbar, und eine mit „IPv6 unbekannt“ markierte Region hat einfach noch nicht gemeldet.",
-    "groupEmptyHint": "Sie haben noch keine Gruppen. Eine Gruppe ist ein exklusiver Behälter für zusammengehörige Checks — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine an, um zu beginnen."
+    "groupEmptyHint": "Sie haben noch keine Gruppen. Eine Gruppe ist ein exklusiver Behälter für zusammengehörige Checks — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine an, um zu beginnen.",
+    "degraded": {
+      "title": "Beeinträchtigungserkennung",
+      "help": "Ein zweiter Detektor neben der Bestätigungsperiode: er meldet einen Check, der sporadisch fehlschlägt oder viel langsamer antwortet als gewöhnlich, auch wenn kein einzelner Fehler lange genug dauert, um einen Ausfall zu bestätigen. Beide Regeln zählen PROBES, keine Sekunden.",
+      "enabled": "Beeinträchtigungs-Incidents öffnen",
+      "enabledHelp": "Aus bedeutet Probelauf: die Regeln werden weiter ausgewertet und die Check-Seite zeigt, wann sie ausgelöst hätten, aber es wird nichts geöffnet und niemand benachrichtigt.",
+      "failures": "Fehlgeschlagene Probes (M)",
+      "failuresHelp": "Löst aus, wenn so viele der letzten N Probes fehlgeschlagen sind. 0 schaltet die Fehlerregel aus.",
+      "failuresWindow": "Fehlerfenster (N Probes)",
+      "failuresWindowHelp": "Wie viele der letzten Probes die Fehlerregel betrachtet. Bei einer Minute Periode sind 60 Probes etwa eine Stunde.",
+      "slow": "Langsame Probes (M)",
+      "slowHelp": "Löst aus, wenn so viele der letzten N erfolgreichen Probes über dem Schwellwert lagen. 0 schaltet die Langsam-Regel aus.",
+      "slowWindow": "Langsam-Fenster (N Probes)",
+      "slowWindowHelp": "Wie viele der letzten Probes die Langsam-Regel betrachtet. Drei langsame Probes in einer Stunde sind nichts; drei in Folge sind der Anfang eines Problems.",
+      "slowThreshold": "Langsam-Schwellwert (ms)",
+      "slowThresholdHelp": "Eine erfolgreiche Probe, die langsamer ist, zählt als langsam. 0 lässt die Langsam-Regel aus.",
+      "slowThresholdOff": "Die Langsam-Regel bleibt aus, solange kein Schwellwert gesetzt ist — Latenz wird nirgends sonst gemeldet.",
+      "slowThresholdSuggestion": "Vorschlag: {{value}} ms, etwa das Doppelte des beobachteten p95 dieses Checks.",
+      "slowThresholdSuggestionApply": "Vorschlag übernehmen",
+      "summaryOff": "Probelauf — es wird nichts geöffnet",
+      "summaryOn": "{{failures}} von {{failuresWindow}} fehlgeschlagenen Probes, {{slow}}",
+      "summarySlowArmed": "{{slow}} von {{slowWindow}} Probes über {{threshold}} ms",
+      "summarySlowOff": "Langsam-Regel aus"
+    }
   },
   "types": {
     "http": "HTTP",
@@ -655,6 +678,14 @@
         "down": "Ausfall",
         "noData": "Keine Daten"
       }
+    },
+    "degraded": {
+      "bannerTitle": "Dieser Check wäre als beeinträchtigt markiert worden",
+      "bannerDescription": "Die Beeinträchtigungserkennung ist für diesen Check deaktiviert, daher wurde nichts gemeldet — die Regeln hätten aber am {{when}} ausgelöst.",
+      "bannerWindowLink": "Zeitraum ansehen",
+      "enableAction": "Beeinträchtigungserkennung aktivieren",
+      "enabled": "Beeinträchtigungserkennung für diesen Check aktiviert",
+      "enableFailed": "Beeinträchtigungserkennung konnte nicht aktiviert werden"
     }
   },
   "endpoints": {
@@ -1127,5 +1158,6 @@
   "noGroupsYet": {
     "title": "Noch keine Check-Gruppen",
     "description": "Eine Gruppe fasst zusammengehörige Checks in einem exklusiven Behälter zusammen — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine über die Schaltfläche Neue Gruppe oben an."
-  }
+  },
+  "wouldHaveFiredFilter": "Hätte ausgelöst"
 }

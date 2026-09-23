@@ -15,7 +15,10 @@ import {
   useCheckDependencies,
   useDependencyGraph,
   useCloneCheck,
+  useResults,
 } from "@/api/hooks";
+import { suggestSlowThresholdMs } from "@/lib/slow-threshold-suggestion";
+import { toUpdateCheckRequest } from "@/lib/check-request";
 import { diffDependencies } from "@/lib/dependency-diff";
 import { mapDependencySaveError } from "@/lib/dependency-save-error";
 import { connectionBindingsChanged } from "@/lib/connection-bindings";
@@ -45,6 +48,18 @@ function CheckEditPage() {
   const { user: authUser } = useAuth();
   const isDemoSession = useIsDemoSession();
   const cloneCheck = useCloneCheck(org);
+  // The slow rule needs a threshold and there is deliberately no auto-baselining
+  // (spec 2026-09-22-03), so the form suggests ~2x the check's observed p95 and
+  // the operator commits to it. Read from the HOUR rollups, which is where
+  // `DurationP95` lives; a check with too little history simply gets no
+  // suggestion rather than a number invented from three probes.
+  const { data: recentRollups } = useResults(org, {
+    checkUid,
+    periodType: "hour",
+    with: "durationP95Ms",
+    size: 48,
+  });
+  const slowThresholdSuggestionMs = suggestSlowThresholdMs(recentRollups?.data);
   // refetchOnMount "always": the form below seeds its field state ONCE from
   // initialData, so it must never seed from a stale cache entry (e.g.
   // re-opening the editor right after a save, when react-query returns the
@@ -156,6 +171,7 @@ function CheckEditPage() {
       mode="edit"
       initialData={check}
       initialSection={section}
+      slowThresholdSuggestionMs={slowThresholdSuggestionMs ?? undefined}
       checkGroups={checkGroups}
       availableRegions={regionsData?.regions}
       defaultRegions={regionsData?.defaultRegions}
@@ -172,34 +188,15 @@ function CheckEditPage() {
         })
       }
       onSubmit={async (data) => {
-        // NOTE: this list must stay in sync with the fields CheckForm's
-        // onSubmit builder puts in `data` (check-form.tsx) that also belong
-        // in UpdateCheckRequest (hooks.ts) — a field added to the form but
-        // missed here is silently dropped before the request is ever sent.
-        // `connectionUids`/`dependsOn`/`initialDependsOn` are intentionally
-        // excluded: they're not part of UpdateCheckRequest and are applied
-        // separately below via setConnections and the dependency mutations.
-        await updateCheck.mutateAsync({
-          enabled: data.enabled,
-          name: data.name,
-          slug: data.slug,
-          checkGroupUid: data.checkGroupUid,
-          escalationPolicyUid: data.escalationPolicyUid,
-          period: data.period,
-          config: data.config,
-          regions: data.regions,
-          ...(data.regionSpread !== undefined
-            ? { regionSpread: data.regionSpread }
-            : {}),
-          tracerouteOnFailure: data.tracerouteOnFailure,
-          reopenCooldownMultiplier: data.reopenCooldownMultiplier,
-          flappingWindowSeconds: data.flappingWindowSeconds,
-          flapBackoffFactor: data.flapBackoffFactor,
-          maxRecoveryMultiplier: data.maxRecoveryMultiplier,
-          confirmationPeriodSeconds: data.confirmationPeriodSeconds,
-          recoveryPeriodSeconds: data.recoveryPeriodSeconds,
-          ...(data.labels !== undefined ? { labels: data.labels } : {}),
-        });
+        // toUpdateCheckRequest forwards EVERY field the form collected, minus
+        // the three that travel through their own endpoints. This used to be a
+        // hand-picked list with a comment warning that a field added to the form
+        // but missed here is silently dropped — and it was dropped, twice: once
+        // for confirmationPeriodSeconds (spec 2026-07-15-04) and once for the
+        // six degraded-detection fields (spec 2026-09-22-03), which rendered,
+        // saved without error, and never reached the database. The deny-list
+        // lives in lib/check-request.ts so there is no list to keep in sync.
+        await updateCheck.mutateAsync(toUpdateCheckRequest(data));
         // Only PUT the channel bindings when they actually changed.
         //
         // `connectionUids` is ALWAYS defined in edit mode — the form seeds it

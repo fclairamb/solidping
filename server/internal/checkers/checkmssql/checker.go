@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	mssql "github.com/microsoft/go-mssqldb" // MSSQL driver registration + connector API
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkmssql/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -58,36 +58,11 @@ func (c *MSSQLChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeMSSQL
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *MSSQLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &MSSQLConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		port = defaultPort
-	}
-
-	if spec.Name == "" {
-		database := cfg.Database
-		if database == "" {
-			database = defaultDatabase
-		}
-
-		spec.Name = fmt.Sprintf("%s:%d/%s", cfg.Host, port, database)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "mssql-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 type execParams struct {
@@ -102,7 +77,7 @@ func newExecParams(cfg *MSSQLConfig) execParams {
 		timeout: cfg.Timeout,
 		query:   cfg.Query,
 		port:    cfg.Port,
-		connURL: cfg.buildConnURL(),
+		connURL: cfg.BuildConnURL(),
 	}
 
 	if params.timeout == 0 {

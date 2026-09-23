@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 const (
 	defaultTimeout = 10 * time.Second
-	maxTimeout     = 30 * time.Second
 )
 
 var (
@@ -50,30 +50,11 @@ func (c *DNSBLChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeDNSBL
 }
 
-// Validate checks if the configuration is valid. It performs no network operations.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &DNSBLConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if cfg.Target == "" {
-		return checkerdef.NewConfigError(keyTarget, "is required")
-	}
-
-	if cfg.Nameserver != "" && !strings.Contains(cfg.Nameserver, ":") {
-		return checkerdef.NewConfigErrorf("nameserver", "must be in format host:port, got %s", cfg.Nameserver)
-	}
-
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "dnsbl-" + strings.ReplaceAll(cfg.Target, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the DNSBL check and returns the result.
@@ -95,7 +76,7 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		lookuper = createResolver(cfg.Nameserver, timeout)
 	}
 
-	zones := cfg.resolveBlocklists()
+	zones := cfg.ResolveBlocklists()
 	start := time.Now()
 
 	// 1. Resolve the target to one or more IPv4 addresses.

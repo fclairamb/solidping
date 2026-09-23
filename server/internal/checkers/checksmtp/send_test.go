@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checksmtp/config"
 )
 
 // sendModeRecording captures what a fake SMTP server actually received during
@@ -379,7 +380,7 @@ func TestValidateMailFrom_RejectsInjection(t *testing.T) {
 	r := require.New(t)
 
 	for _, mailFrom := range smtpInjectionAddresses() {
-		err := ValidateMailFrom(mailFrom)
+		err := checkconfig.ValidateMailFrom(mailFrom)
 		r.Error(err, "must reject mail_from %q", mailFrom)
 	}
 }
@@ -394,7 +395,7 @@ func TestValidateDeliveryTo_RejectsInjection(t *testing.T) {
 	r := require.New(t)
 
 	for _, deliveryTo := range smtpInjectionAddresses() {
-		err := ValidateDeliveryTo(deliveryTo)
+		err := checkconfig.ValidateDeliveryTo(deliveryTo)
 		r.Error(err, "must reject delivery_to %q", deliveryTo)
 	}
 }

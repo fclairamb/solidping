@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkudp/config"
 )
 
 const (
@@ -25,45 +25,11 @@ func (c *UDPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeUDP
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &UDPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if cfg.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
-	}
-
-	if cfg.Port == 0 {
-		return checkerdef.NewConfigError("port", "is required")
-	}
-
-	if cfg.Port < 1 || cfg.Port > 65535 {
-		return checkerdef.NewConfigErrorf("port", "must be between 1 and 65535, got %d", cfg.Port)
-	}
-
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
-	}
-
-	// A bad encoding or an uncompilable `expect_pattern` is a VALIDATION_ERROR
-	// on save, never a check that errors forever at runtime.
-	if err := cfg.exchangeFields().Validate(); err != nil {
-		return err
-	}
-
-	// Auto-generate name and slug from host if not provided
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "udp-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the UDP check and returns the result.

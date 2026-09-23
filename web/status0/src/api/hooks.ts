@@ -1,6 +1,11 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { ApiError, NetworkError, apiFetch } from "./client";
-import { withKiosk } from "@/lib/kiosk";
+// Relative, not the "@/" alias: that alias is a Vite resolve.alias
+// (vite.config.ts), which `bun test` never sees — every existing test that
+// reaches this file does so through an `import type` (erased before
+// runtime), so nothing exercised this path until the include-URL unit test
+// (hooks.test.ts) needed a REAL value from this module and hit it.
+import { withKiosk } from "../lib/kiosk";
 
 export interface ResourceCheckInfo {
   name?: string;
@@ -204,8 +209,13 @@ export interface StatusPage {
    * PAGE-level uptime over `historyPeriod` (spec 2026-08-29-08): the mean of
    * the per-resource `availability.overallAvailabilityPct` values, resources
    * with no data excluded. Absent when the page hides availability or nothing
-   * has reported — in which case the TV board shows no number at all rather
-   * than a plausible-looking zero.
+   * has reported.
+   *
+   * Gated behind the `availability` include section (spec 2026-09-22-07), so a
+   * narrowed payload never carries it. Nothing in status0 reads it any more:
+   * the TV board, its only consumer, now takes the same mean off the summary
+   * endpoint instead (`StatusPageSummary.overallAvailabilityPct`, spec
+   * 2026-09-22-08). Declared because the endpoint still returns it.
    */
   overallAvailabilityPct?: number;
   /**
@@ -249,6 +259,58 @@ export interface AvailabilityThresholds {
 export interface PublicReadOptions {
   kioskToken?: string;
   refetchInterval?: number;
+  include?: PublicPageInclude[];
+  /**
+   * Holds the query back until the caller has whatever it needs to justify the
+   * request. ANDed with the hook's own org/slug guard rather than replacing it,
+   * so passing `true` can never fire a request at an empty slug.
+   *
+   * Absent means enabled — every caller that predates this option keeps
+   * behaving exactly as before.
+   */
+  enabled?: boolean;
+}
+
+/**
+ * The two optional, expensive sections a public page view can be narrowed to
+ * (spec 2026-09-22-07). Mirrors the backend's `include` query tokens
+ * (statuspages.ParseViewOptions) exactly, including the case.
+ */
+export type PublicPageInclude = "availability" | "responseTime";
+
+/**
+ * Sorts and dedupes an `include` list into the canonical form used both for
+ * the URL and for the query key — so `["responseTime", "availability"]` and
+ * `["availability", "responseTime"]` hit the same cache entry, and a
+ * duplicated token doesn't create a distinct one. `undefined` (the caller
+ * didn't ask to narrow anything) stays `undefined`: that's what keeps the
+ * URL untouched, which is the compatibility guarantee.
+ */
+function sortedInclude(
+  include: PublicPageInclude[] | undefined,
+): PublicPageInclude[] | undefined {
+  if (include === undefined) return undefined;
+
+  return Array.from(new Set(include)).sort();
+}
+
+/**
+ * Appends `include=` to a path when the caller asked to narrow the payload.
+ * Absent `include` (undefined) leaves the path byte-for-byte untouched — the
+ * same default-preserves-today's-payload guarantee the backend documents.
+ * An empty array yields `include=` with no value, deliberately requesting
+ * neither optional section.
+ */
+export function withInclude(
+  path: string,
+  include: PublicPageInclude[] | undefined,
+): string {
+  const sorted = sortedInclude(include);
+  if (sorted === undefined) return path;
+
+  const separator = path.includes("?") ? "&" : "?";
+
+  return `${path}${separator}include=${sorted.join(",")}`;
 }
 
 export function usePublicIncidentHistory(
@@ -271,7 +333,7 @@ export function usePublicIncidentHistory(
         ),
       ),
     refetchInterval: options?.refetchInterval,
-    enabled: !!org && !!slug,
+    enabled: !!org && !!slug && (options?.enabled ?? true),
   });
 }
 
@@ -281,15 +343,95 @@ export function usePublicStatusPage(
   options?: PublicReadOptions,
 ) {
   return useQuery<StatusPage>({
-    queryKey: ["public-status-page", org, slug, options?.kioskToken ?? null],
+    // The sorted/deduped include list is part of the key, not just the URL:
+    // the ordinary page (no include) and TV mode (include: []) must never
+    // share a cache entry for two different payload shapes.
+    queryKey: [
+      "public-status-page",
+      org,
+      slug,
+      options?.kioskToken ?? null,
+      sortedInclude(options?.include) ?? null,
+    ],
     queryFn: () =>
       apiFetch<StatusPage>(
-        withKiosk(`/api/v1/status-pages/${org}/${slug}`, options?.kioskToken),
+        withKiosk(
+          withInclude(`/api/v1/status-pages/${org}/${slug}`, options?.include),
+          options?.kioskToken,
+        ),
       ),
     // Refresh every 30 seconds by default; TV mode tightens this during an
     // incident.
     refetchInterval: options?.refetchInterval ?? 30_000,
-    enabled: !!org && !!slug,
+    enabled: !!org && !!slug && (options?.enabled ?? true),
+  });
+}
+
+/**
+ * The cheap page-level rollup — `GET …/status-pages/{org}/{slug}/summary`
+ * (spec 2026-08-08-06). Mirrors the backend's `StatusPageSummaryResponse`.
+ *
+ * TV mode reads exactly one field off it, `overallAvailabilityPct` (spec
+ * 2026-09-22-08): the same mean the full page view computes, from the same
+ * enrichment with response time forced off. The rest of the shape is declared
+ * because it IS what the endpoint returns, not because the board uses it — a
+ * partial interface over a JSON body is how the next reader ends up re-fetching
+ * something that was already on the wire.
+ */
+export interface StatusPageSummary {
+  status: string;
+  counts?: StatusCounts;
+  /**
+   * PAGE-level uptime over the page's history period. Absent when the page
+   * hides availability or nothing has reported — the TV board then renders no
+   * tile at all rather than a plausible-looking zero.
+   */
+  overallAvailabilityPct?: number;
+  page?: {
+    name: string;
+    slug: string;
+    url: string;
+  };
+  generatedAt?: string;
+}
+
+/**
+ * The page-level uptime number, on its own query and its own cadence
+ * (spec 2026-09-22-08).
+ *
+ * Separate from the page read for one reason: the number is a 7- or 90-day
+ * mean, it cannot move between two polls, and on the full page view it costs
+ * the entire availability enrichment. TV mode therefore narrows the page to
+ * `include=` and asks for the mean here instead, five minutes apart, only once
+ * the board is already on screen.
+ *
+ * `placeholderData: keepPreviousData` keeps the tile on screen across a key
+ * change (the default-page route learns its slug one render after mount) rather
+ * than blanking the number and re-showing it a second later. A plain refetch of
+ * an unchanged key never blanks `data` in the first place.
+ */
+export function usePublicStatusPageSummary(
+  org: string,
+  slug: string,
+  options?: PublicReadOptions,
+) {
+  return useQuery<StatusPageSummary>({
+    queryKey: [
+      "public-status-page-summary",
+      org,
+      slug,
+      options?.kioskToken ?? null,
+    ],
+    queryFn: () =>
+      apiFetch<StatusPageSummary>(
+        withKiosk(
+          `/api/v1/status-pages/${org}/${slug}/summary`,
+          options?.kioskToken,
+        ),
+      ),
+    refetchInterval: options?.refetchInterval,
+    placeholderData: keepPreviousData,
+    enabled: !!org && !!slug && (options?.enabled ?? true),
   });
 }
 
@@ -359,6 +501,20 @@ export function isLockedError(error: unknown): boolean {
 }
 
 /**
+ * True when an error is the API saying the thing is not there.
+ *
+ * Deliberately narrower than "the request failed": on the public surface a 404
+ * is a STATEMENT — this page does not exist, or is disabled, or is private —
+ * whereas a 500 or a dropped connection says nothing about the page at all.
+ * TV mode needs the distinction because the two deserve opposite treatments: a
+ * 404 replaces the whole screen, a 5xx leaves the board up and lets the
+ * staleness guard grey it (spec 2026-09-22-08).
+ */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
+/**
  * Submits the unlock password. On success the server sets a host-only,
  * HTTP-only cookie — nothing is returned to store, and nothing about the
  * password stays in JS memory beyond the form's own state.
@@ -407,12 +563,16 @@ export function useDefaultStatusPage(org: string, options?: PublicReadOptions) {
       org,
       "__default__",
       options?.kioskToken ?? null,
+      sortedInclude(options?.include) ?? null,
     ],
     queryFn: () =>
       apiFetch<StatusPage>(
-        withKiosk(`/api/v1/status-pages/${org}`, options?.kioskToken),
+        withKiosk(
+          withInclude(`/api/v1/status-pages/${org}`, options?.include),
+          options?.kioskToken,
+        ),
       ),
     refetchInterval: options?.refetchInterval ?? 30_000,
-    enabled: !!org,
+    enabled: !!org && (options?.enabled ?? true),
   });
 }

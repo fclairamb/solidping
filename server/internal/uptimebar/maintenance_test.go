@@ -53,7 +53,7 @@ func TestBucketAvailability_MaintenanceDoesNotMoveRawAvailability(t *testing.T) 
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
 	// Four probes; the two failures happen to fall inside a maintenance window.
-	tagged := &fakeLister{results: []*models.Result{
+	tagged := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(1*time.Minute), 40),
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(2*time.Minute), 40),
 		rawRowMaintenance("c1", models.ResultStatusDown, currentHour.Add(3*time.Minute), 0),
@@ -61,7 +61,7 @@ func TestBucketAvailability_MaintenanceDoesNotMoveRawAvailability(t *testing.T) 
 	}}
 
 	// The identical window with nothing tagged.
-	untagged := &fakeLister{results: []*models.Result{
+	untagged := &fakeAggregator{results: []*models.Result{
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(1*time.Minute), 40),
 		rawRow("c1", models.ResultStatusUp, currentHour.Add(2*time.Minute), 40),
 		rawRow("c1", models.ResultStatusDown, currentHour.Add(3*time.Minute), 0),
@@ -117,7 +117,7 @@ func TestBucketAvailability_MaintenanceSubsetIsNotDoubleCountedFromRollups(t *te
 	bucketStart := currentHour.Add(-23 * time.Hour)
 	oldHour := currentHour.Add(-5 * time.Hour)
 
-	lister := &fakeLister{results: []*models.Result{
+	lister := &fakeAggregator{results: []*models.Result{
 		hourRowMaintenance("c1", 100, 90, 20, 15, oldHour),
 	}}
 

@@ -198,3 +198,22 @@ func IncCheckRunnerAbandonedActive() {
 func DecCheckRunnerAbandonedActive() {
 	CheckRunnerAbandonedActive.Dec()
 }
+
+// RecordStatusPageMemoHit records a public status-page read answered from the
+// in-process view memo. product is "page" or "summary".
+func RecordStatusPageMemoHit(product string) {
+	StatusPageMemoHits.WithLabelValues(product).Inc()
+}
+
+// RecordStatusPageMemoMiss records a public status-page read that had to
+// compute its view. Counted per caller, so a collapsed herd shows up as many
+// misses and one computation — see RecordStatusPageMemoShared.
+func RecordStatusPageMemoMiss(product string) {
+	StatusPageMemoMisses.WithLabelValues(product).Inc()
+}
+
+// RecordStatusPageMemoShared records a read whose view computation was
+// collapsed with at least one concurrent read of the same view.
+func RecordStatusPageMemoShared(product string) {
+	StatusPageMemoSingleflightShared.WithLabelValues(product).Inc()
+}

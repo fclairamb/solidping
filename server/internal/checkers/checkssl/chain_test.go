@@ -142,7 +142,7 @@ func TestBuildResult_ChainExpiryTiers(t *testing.T) {
 		},
 		{
 			// Legacy thresholdDays only (30), resolved to critical=warning=30
-			// via effectiveThresholds → behaves exactly as today: Down at 30.
+			// via EffectiveThresholds → behaves exactly as today: Down at 30.
 			name: "legacy threshold behaves as today (down at 30)",
 			chain: []*x509.Certificate{
 				makeCert(t, "leaf.example.com", 20),
@@ -217,7 +217,7 @@ func TestSSLConfig_LegacyAlias(t *testing.T) {
 	// Legacy threshold maps onto the critical tier.
 	r.Equal(14, cfg.CriticalDays)
 
-	warning, critical := cfg.effectiveThresholds()
+	warning, critical := cfg.EffectiveThresholds()
 	r.Equal(14, critical)
 	r.Equal(30, warning) // default warning, clamped up to >= critical
 }

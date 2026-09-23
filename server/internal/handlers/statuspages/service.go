@@ -417,6 +417,11 @@ type Service struct {
 	// sections (spec 2026-08-29-11). Process-local: it only throttles an
 	// idempotent operation, so replicas converge on the same rows regardless.
 	reconcileMarks selectorReconcileMarks
+	// memo holds the computed public views for statuspagecache.PageMemoTTL
+	// (spec 2026-09-22-09). Per process, never consulted before the access gate
+	// has passed — see memo.go. nil is valid and computes through, which is what
+	// a Service built as a struct literal gets.
+	memo *pageMemo
 }
 
 // SetJobsService wires the job queue used to deliver the custom-domain
@@ -490,12 +495,12 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 		verifier:      domainverify.New(),
 		verifyLimiter: newVerifyRateLimiter(customDomainVerifyPerMinute, time.Minute),
 		unlockLimiter: newUnlockRateLimiter(),
+		memo:          newPageMemo(),
 	}
 }
 
 // uptimebarHints resolves everything uptimebar needs to bound its queries, ONCE
-// per request: the live raw/hour aggregation retention and the org's measured
-// probe rate.
+// per request: the live raw/hour aggregation retention.
 //
 // Retention is resolved with the same precedence as the aggregation job itself —
 // env > performance.* global parameter > legacy koanf field > documented default
@@ -504,13 +509,12 @@ func NewService(dbService db.Service, cfg *config.Config, ent *entitlements.Serv
 // parameters, which never reach the koanf struct, so a stale hint would make
 // uptimebar clamp its raw-tier query shorter than the window the job actually
 // keeps raw for — silently dropping raw rows no rollup covers yet.
-func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+func (s *Service) uptimebarHints(ctx context.Context) uptimebar.Hints {
 	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 
 	return uptimebar.Hints{
 		RetentionRawHours: rawHours,
 		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
 	}
 }
 
@@ -584,6 +588,10 @@ type StatusPageResponse struct {
 	AutoPublish             bool   `json:"autoPublish"`
 	AutoPublishDelaySeconds int    `json:"autoPublishDelaySeconds"`
 	AutoResolve             string `json:"autoResolve"`
+	// PublishDegraded is the degraded-incident opt-in (spec 2026-09-22-03).
+	// Always emitted: false is the meaningful default and the form has to be
+	// able to tell it from "not sent".
+	PublishDegraded bool `json:"publishDegraded"`
 	// HideBranding means different things on the two payload families, and
 	// that is deliberate.
 	//
@@ -935,6 +943,9 @@ type CreateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// PublishDegraded opts this page in to publishing degraded incidents
+	// (spec 2026-09-22-03). nil leaves it untouched; it defaults to false.
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 	// HideBranding opts the new page out of the "powered by SolidPing" footer.
 	// It only takes effect while the org holds the `whiteLabel` entitlement —
 	// the flag is stored either way, so an upgrade does not need the operator
@@ -982,6 +993,9 @@ type UpdateStatusPageRequest struct {
 	AutoPublish             *bool   `json:"autoPublish,omitempty"`
 	AutoPublishDelaySeconds *int    `json:"autoPublishDelaySeconds,omitempty"`
 	AutoResolve             *string `json:"autoResolve,omitempty"`
+	// PublishDegraded opts this page in to publishing degraded incidents
+	// (spec 2026-09-22-03). nil leaves it untouched; it defaults to false.
+	PublishDegraded *bool `json:"publishDegraded,omitempty"`
 	// HideBranding flips the page's white-label opt-in. nil leaves it.
 	HideBranding *bool `json:"hideBranding,omitempty"`
 	// Password sets, replaces or clears the unlock password: a non-empty
@@ -1105,6 +1119,28 @@ func (s *Service) ListStatusPages(ctx context.Context, orgSlug string) ([]Status
 }
 
 // applyCreateFields sets optional fields from the create request onto the page model.
+// applyCreatePublicationFields copies the incident-publication settings — the
+// auto-publish trio (spec 2026-08-19-08) plus the degraded opt-in (spec
+// 2026-09-22-03) — off a create request. Split from applyCreateFields so neither
+// grows past the complexity cap as the publication policy gains flags.
+func applyCreatePublicationFields(page *models.StatusPage, req *CreateStatusPageRequest) {
+	if req.AutoPublish != nil {
+		page.AutoPublish = *req.AutoPublish
+	}
+
+	if req.AutoPublishDelaySeconds != nil {
+		page.AutoPublishDelaySeconds = *req.AutoPublishDelaySeconds
+	}
+
+	if req.AutoResolve != nil {
+		page.AutoResolve = *req.AutoResolve
+	}
+
+	if req.PublishDegraded != nil {
+		page.PublishDegraded = *req.PublishDegraded
+	}
+}
+
 func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 	if req.Description != nil {
 		page.Description = req.Description
@@ -1144,17 +1180,7 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 		page.Settings.Branding = &models.BrandingSettings{HideBranding: *req.HideBranding}
 	}
 
-	if req.AutoPublish != nil {
-		page.AutoPublish = *req.AutoPublish
-	}
-
-	if req.AutoPublishDelaySeconds != nil {
-		page.AutoPublishDelaySeconds = *req.AutoPublishDelaySeconds
-	}
-
-	if req.AutoResolve != nil {
-		page.AutoResolve = *req.AutoResolve
-	}
+	applyCreatePublicationFields(page, req)
 
 	// An empty stylesheet is "no stylesheet": leave the column NULL rather than
 	// storing '', matching the update path's clear semantics.
@@ -1320,7 +1346,7 @@ func (s *Service) CreateStatusPage(
 		resources[i] = models.NewStatusPageResource(section.UID, checkUID, i)
 	}
 
-	if errCreate := s.db.CreateStatusPageWithDefaultSection(ctx, page, section, resources); errCreate != nil {
+	if errCreate := s.createStatusPageRow(ctx, WritePathCreateStatusPage, page, section, resources); errCreate != nil {
 		return StatusPageResponse{}, errCreate
 	}
 
@@ -1499,6 +1525,7 @@ func (s *Service) UpdateStatusPage(
 		AutoPublish:             req.AutoPublish,
 		AutoPublishDelaySeconds: req.AutoPublishDelaySeconds,
 		AutoResolve:             req.AutoResolve,
+		PublishDegraded:         req.PublishDegraded,
 	}
 
 	// The period enum is the source of truth; keep history_days in sync for
@@ -1512,7 +1539,7 @@ func (s *Service) UpdateStatusPage(
 		update.HistoryPeriod = &derived
 	}
 
-	if errUpdate := s.db.UpdateStatusPage(ctx, page.UID, &update); errUpdate != nil {
+	if errUpdate := s.writeStatusPageRow(ctx, WritePathUpdateStatusPage, page.UID, &update); errUpdate != nil {
 		return StatusPageResponse{}, errUpdate
 	}
 
@@ -1619,7 +1646,7 @@ func (s *Service) DeleteStatusPage(ctx context.Context, orgSlug, identifier stri
 		return ErrStatusPageNotFound
 	}
 
-	if delErr := s.db.DeleteStatusPage(ctx, page.UID); delErr != nil {
+	if delErr := s.deleteStatusPageRow(ctx, WritePathDeleteStatusPage, page.UID); delErr != nil {
 		return delErr
 	}
 
@@ -1803,7 +1830,9 @@ func (s *Service) CreateSection(
 	section := models.NewStatusPageSection(page.UID, req.Name, slug, position)
 	section.Selector = selector
 
-	if errCreate := s.db.CreateStatusPageSection(ctx, section); errCreate != nil {
+	if errCreate := s.createStatusPageSectionRow(
+		ctx, WritePathCreateSection, page.UID, section,
+	); errCreate != nil {
 		return StatusPageSectionResponse{}, errCreate
 	}
 
@@ -1901,7 +1930,9 @@ func (s *Service) UpdateSection(
 		update.Selector = selector
 	}
 
-	if errUpdate := s.db.UpdateStatusPageSection(ctx, section.UID, &update); errUpdate != nil {
+	if errUpdate := s.writeStatusPageSectionRow(
+		ctx, WritePathUpdateSection, page.UID, section.UID, &update,
+	); errUpdate != nil {
 		return StatusPageSectionResponse{}, errUpdate
 	}
 
@@ -1984,7 +2015,13 @@ func (s *Service) DeleteSection(
 		return err
 	}
 
-	return s.db.DeleteStatusPageSection(ctx, section.UID)
+	if errDelete := s.deleteStatusPageSectionRow(
+		ctx, WritePathDeleteSection, page.UID, section.UID,
+	); errDelete != nil {
+		return errDelete
+	}
+
+	return nil
 }
 
 // --- Resource CRUD ---
@@ -2096,12 +2133,14 @@ func (s *Service) CreateResource(
 	// a constraint failure. Dropping the managed row hands ownership over —
 	// the reconciler then skips the check, because it is manual now.
 	if checkUID != nil {
-		if errDrop := s.dropManagedRowForCheck(ctx, section.UID, *checkUID); errDrop != nil {
+		if errDrop := s.dropManagedRowForCheck(ctx, page.UID, section.UID, *checkUID); errDrop != nil {
 			return StatusPageResourceResponse{}, errDrop
 		}
 	}
 
-	if err := s.db.CreateStatusPageResource(ctx, resource); err != nil {
+	if err := s.createStatusPageResourceRow(
+		ctx, WritePathCreateResource, page.UID, resource,
+	); err != nil {
 		return StatusPageResourceResponse{}, fmt.Errorf("failed to create resource: %w", err)
 	}
 
@@ -2187,7 +2226,9 @@ func (s *Service) UpdateResource(
 		update.CheckGroupUID = groupUID
 	}
 
-	if errUpdate := s.db.UpdateStatusPageResource(ctx, resourceUID, &update); errUpdate != nil {
+	if errUpdate := s.writeStatusPageResourceRow(
+		ctx, WritePathUpdateResource, page.UID, resourceUID, &update,
+	); errUpdate != nil {
 		return StatusPageResourceResponse{}, errUpdate
 	}
 
@@ -2242,7 +2283,13 @@ func (s *Service) ReorderResources(
 		return errManaged
 	}
 
-	return s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs)
+	if errReorder := s.reorderStatusPageResourceRows(
+		ctx, WritePathReorderResources, page.UID, section.UID, orderedUIDs,
+	); errReorder != nil {
+		return errReorder
+	}
+
+	return nil
 }
 
 // assertManagedOrderPreserved refuses a reorder that would move a
@@ -2332,7 +2379,13 @@ func (s *Service) ReorderSections(
 		seen[uid] = struct{}{}
 	}
 
-	return s.db.ReorderStatusPageSections(ctx, page.UID, orderedUIDs)
+	if errReorder := s.reorderStatusPageSectionRows(
+		ctx, WritePathReorderSections, page.UID, orderedUIDs,
+	); errReorder != nil {
+		return errReorder
+	}
+
+	return nil
 }
 
 // DeleteResource removes a check from a section (hard delete).
@@ -2354,7 +2407,9 @@ func (s *Service) DeleteResource(
 		return ErrResourceManagedBySelector
 	}
 
-	if err := s.db.DeleteStatusPageResource(ctx, resourceUID); err != nil {
+	if err := s.deleteStatusPageResourceRow(
+		ctx, WritePathDeleteResource, page.UID, resourceUID,
+	); err != nil {
 		return err
 	}
 
@@ -2422,18 +2477,41 @@ func publicAccessError(ctx context.Context, page *models.StatusPage) error {
 	}
 }
 
-// ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
-func (s *Service) ViewStatusPage(
+// ViewStatusPage returns a public view of a status page with sections,
+// resources, and live check status. opts narrows which optional sections
+// (availability, response time) are computed and returned — see
+// ParseViewOptions and ViewOptions.
+// The gate, the memo, and the order between them (spec 2026-09-22-09)
+//
+// ViewStatusPage, ViewDefaultStatusPage, ViewStatusPageSummary and
+// GenerateBadge all follow the same three steps, in this order and no other:
+//
+//  1. RESOLVE — org slug and page slug to rows. Never memoized: it is two
+//     indexed lookups, and it is what the gate reads.
+//  2. GATE — publicAccessError, on EVERY request. Never memoized, never
+//     skipped, never reordered behind anything.
+//  3. COMPUTE — the expensive body, memoized for statuspagecache.PageMemoTTL.
+//
+// Step 3 producing a shared answer is safe precisely because step 2 already
+// ran for this caller: the memo holds a body, not a permission. Moving the memo
+// above step 2 would turn a page somebody has to type a password for into a
+// page anybody can read for fifteen seconds, which is why resolveAndGate below
+// is a separate function whose only job is to be impossible to skip.
+
+// resolveAndGate resolves the org and page for a public read and applies the
+// access gate, plus the selector backstop. Every public surface starts here and
+// nothing it does is memoized.
+func (s *Service) resolveAndGate(
 	ctx context.Context, orgSlug, slug string,
-) (StatusPageResponse, error) {
+) (*models.Organization, *models.StatusPage, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
-		return StatusPageResponse{}, ErrOrganizationNotFound
+		return nil, nil, ErrOrganizationNotFound
 	}
 
 	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
 	if err != nil || page == nil {
-		return StatusPageResponse{}, ErrStatusPageNotFound
+		return nil, nil, ErrStatusPageNotFound
 	}
 
 	// One gate for every public surface (statuspagekiosk.Decide): disabled or
@@ -2441,19 +2519,57 @@ func (s *Service) ViewStatusPage(
 	// KNOWN to exist and answers 401, and a valid kiosk token overrides both
 	// for the one screen holding it. An invalid token is byte-identical to no
 	// token.
+	//
+	// This runs before the memo is consulted, on every request. A warm memo
+	// changes nothing here — a caller without the unlock cookie gets the 401
+	// whether or not somebody else's request already computed the body.
 	if accessErr := publicAccessError(ctx, page); accessErr != nil {
-		return StatusPageResponse{}, accessErr
+		return nil, nil, accessErr
 	}
-
-	response := convertPageToResponse(page)
-	s.resolvePublicBranding(ctx, org.UID, &response)
 
 	// Backstop (spec 2026-08-29-11): even if every write-path trigger were
 	// missed — a direct database edit, a crashed process, a replica that was
 	// down — a selector section cannot stay stale for longer than
 	// selectorBackstopInterval. Rate-limited, so a hot page pays this at most
 	// once a minute, and best-effort, so it can never take the page down.
+	//
+	// It sits here, ahead of the memo, so a reconcile that DID change rows has
+	// already evicted the stale view by the time this very request looks the
+	// page up.
 	s.maybeReconcileOnView(ctx, org.UID, page.UID)
+
+	return org, page, nil
+}
+
+// ViewStatusPage returns a public view of a status page with sections,
+// resources, and live check status. opts narrows which optional sections
+// (availability, response time) are computed and returned — see
+// ParseViewOptions and ViewOptions.
+//
+// Gate first, then memo: see the block comment above resolveAndGate.
+func (s *Service) ViewStatusPage(
+	ctx context.Context, orgSlug, slug string, opts ViewOptions,
+) (StatusPageResponse, error) {
+	org, page, err := s.resolveAndGate(ctx, orgSlug, slug)
+	if err != nil {
+		return StatusPageResponse{}, err
+	}
+
+	return memoDo(s.memo, pageViewKey(org.UID, page.UID, opts),
+		func() (StatusPageResponse, error) {
+			return s.computeStatusPageView(ctx, org, page, opts)
+		})
+}
+
+// computeStatusPageView builds the public payload for an ALREADY-RESOLVED,
+// ALREADY-GATED page. It is the memoized half of ViewStatusPage and must stay
+// free of any lookup that could deny the request: everything it touches is
+// derived from the page row it was handed.
+func (s *Service) computeStatusPageView(
+	ctx context.Context, org *models.Organization, page *models.StatusPage, opts ViewOptions,
+) (StatusPageResponse, error) {
+	response := convertPageToResponse(page)
+	s.resolvePublicBranding(ctx, org.UID, &response)
 
 	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
@@ -2472,9 +2588,21 @@ func (s *Service) ViewStatusPage(
 		Unknown:     statusCounts.Unknown,
 	}
 
+	// The `include` query param can only NARROW what the page's own settings
+	// would produce, never widen it — ANDed into a shallow copy of the page
+	// (the same trick summaryAvailability uses with lean.ShowResponseTime),
+	// so enrichWithAvailability and the OverallAvailabilityPct gate below read
+	// the narrowed flags while convertPageToResponse above already read the
+	// ORIGINAL page. That is what keeps showAvailability/showResponseTime in
+	// the response describing the page's settings, not the payload the caller
+	// asked for.
+	lean := *page
+	lean.ShowAvailability = page.ShowAvailability && opts.Availability
+	lean.ShowResponseTime = page.ShowResponseTime && opts.ResponseTime
+
 	// Enrich resources with availability data
-	if page.ShowAvailability || page.ShowResponseTime {
-		s.enrichWithAvailability(ctx, org.UID, page, sections)
+	if lean.ShowAvailability || lean.ShowResponseTime {
+		s.enrichWithAvailability(ctx, org.UID, &lean, sections)
 	}
 
 	// Page-level uptime for the same window (spec 2026-08-29-08). Derived from
@@ -2482,7 +2610,7 @@ func (s *Service) ViewStatusPage(
 	// disagree with the rows it summarizes. Gated on ShowAvailability: a page
 	// whose operator chose not to publish per-resource uptime must not publish
 	// the aggregate either.
-	if page.ShowAvailability {
+	if lean.ShowAvailability {
 		response.OverallAvailabilityPct = meanResourceAvailability(sections)
 	}
 
@@ -2551,8 +2679,9 @@ func (s *Service) loadRecentUpdates(
 }
 
 // ViewDefaultStatusPage returns the default status page for an organization.
+// opts narrows which optional sections are computed — see ViewStatusPage.
 func (s *Service) ViewDefaultStatusPage(
-	ctx context.Context, orgSlug string,
+	ctx context.Context, orgSlug string, opts ViewOptions,
 ) (StatusPageResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -2564,7 +2693,7 @@ func (s *Service) ViewDefaultStatusPage(
 		return StatusPageResponse{}, ErrStatusPageNotFound
 	}
 
-	return s.ViewStatusPage(ctx, orgSlug, page.Slug)
+	return s.ViewStatusPage(ctx, orgSlug, page.Slug, opts)
 }
 
 // ViewStatusPageSummary returns the lightweight page-level rollup for a
@@ -2590,28 +2719,31 @@ func (s *Service) ViewStatusPageSummary(
 // badge (GenerateBadge), which is embedded in READMEs and is the hottest
 // caller of this method. So the JSON summary endpoint asks for it and the
 // badge does not.
+// The same gate-then-memo order as ViewStatusPage, for the same reason: the
+// summary and the badge answer for gated pages too, and resolveAndGate — which
+// also carries the selector backstop the summary and badge need, since for many
+// pages they are the ONLY surface anybody looks at — runs before the memo on
+// every request.
 func (s *Service) viewStatusPageSummary(
 	ctx context.Context, orgSlug, slug string, withAvailability bool,
 ) (StatusPageSummary, error) {
-	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	org, page, err := s.resolveAndGate(ctx, orgSlug, slug)
 	if err != nil {
-		return StatusPageSummary{}, ErrOrganizationNotFound
+		return StatusPageSummary{}, err
 	}
 
-	page, err := s.db.GetStatusPageBySlug(ctx, org.UID, slug)
-	if err != nil || page == nil {
-		return StatusPageSummary{}, ErrStatusPageNotFound
-	}
+	return memoDo(s.memo, summaryKey(org.UID, page.UID, withAvailability),
+		func() (StatusPageSummary, error) {
+			return s.computeStatusPageSummary(ctx, org, page, withAvailability)
+		})
+}
 
-	if accessErr := publicAccessError(ctx, page); accessErr != nil {
-		return StatusPageSummary{}, accessErr
-	}
-
-	// Same backstop as the full view — the summary and the badge are often the
-	// ONLY thing anyone looks at (a README badge, a wallboard tile), so a page
-	// nobody opens in full must still self-heal.
-	s.maybeReconcileOnView(ctx, org.UID, page.UID)
-
+// computeStatusPageSummary builds the rollup for an ALREADY-RESOLVED,
+// ALREADY-GATED page. Memoized half of viewStatusPageSummary; shared by the
+// summary endpoint and the SVG badge.
+func (s *Service) computeStatusPageSummary(
+	ctx context.Context, org *models.Organization, page *models.StatusPage, withAvailability bool,
+) (StatusPageSummary, error) {
 	sections, _, err := s.loadSectionsWithResources(ctx, page.UID, false)
 	if err != nil {
 		return StatusPageSummary{}, err
@@ -2896,7 +3028,7 @@ func (s *Service) enrichWithAvailability(
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	historyStart := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
 
-	hints := s.uptimebarHints(ctx, orgUID)
+	hints := s.uptimebarHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, 24*time.Hour, historyStart, page.HistoryDays,
@@ -2999,8 +3131,9 @@ func resourceRecentResults(
 // regionFanoutCap generously bounds the number of distinct regions
 // fetchRecentResults assumes for a check whose own region set it cannot see.
 // Real deployments run a handful of regions (2-5 is typical for a multi-region
-// check); this mirrors uptimebar.capMaxRegionsPerCheck's "generous, never bites
-// under realistic topology" reasoning for the same class of problem.
+// check); it is generous enough never to bite under a realistic topology, the
+// same reasoning uptimebar's row caps used before spec 2026-09-22-05 removed
+// them by folding buckets in the database instead.
 //
 // It used to multiply a GLOBAL row limit (responseTimeLimit x regionFanoutCap x
 // len(checkUIDs) = 40 000 rows for a 20-check page, ~85 % of them discarded).
@@ -3050,12 +3183,25 @@ func responseTimeRollupTiers() []string {
 // and the trim keeps the newest responseTimeLimit rows per region, exactly as
 // before the window existed (the parity tests drive that path).
 //
-// It issues ONE query, with a per-check row budget and one tier-aligned,
-// time-bounded branch per side of the raw/rollup index split (spec
-// 2026-08-22-05). What it replaced had neither a period-type filter nor a time
-// bound, so no index on `results` was eligible and every public page view cost
-// a sequential scan of the largest table in the system plus an external merge
-// sort to disk.
+// A WINDOWED fetch issues TWO reads, one per tier, and they are deliberately
+// different shapes (spec 2026-09-22-06):
+//
+//   - the ROLLUP tier is a row fetch (RecentResultsPerCheck), because a rollup row
+//     already IS one chart point — one bucket per tier per region;
+//   - the SEAM (raw) tier is an AGGREGATE (AggregateResponseTimeBins): one row per
+//     (check, region, bin), with a p95 over the bin. Fetched as rows it was ~1 337
+//     probes per check — 292 843 on a 200-check, 7-day page — of which the trim
+//     kept roughly one in ninety and plotted them as individual probes.
+//
+// An UNBOUNDED fetch (zero windowStart) keeps the single row query with both
+// tiers: with no window there is no span to size a bin from, and that path's
+// contract is about rows.
+//
+// Both reads are tier-aligned and time-bounded, on the same side-of-the-split
+// reasoning (spec 2026-08-22-05). What all of this replaced had neither a
+// period-type filter nor a time bound, so no index on `results` was eligible and
+// every public page view cost a sequential scan of the largest table in the
+// system plus an external merge sort to disk.
 //
 // hints carries the org's LIVE raw retention, resolved once per request through
 // systemconfig by the caller's uptimebarHints. It must not be re-derived from
@@ -3089,20 +3235,32 @@ func (s *Service) fetchRecentResults(
 		rollupSince = windowStart
 	}
 
+	// The raw clamp, from the same resolved retention every other raw-tier
+	// reader uses: raw older than this has been rolled up and deleted, so a
+	// wider bound only widens the index descent — and a NARROWER one would open
+	// a gap between the newest hour rollup and the seam.
+	rawSince := uptimebar.RawTierStart(rollupSince, now, hints.RetentionRawHours)
+
+	tiers := []models.RecentResultsTier{
+		{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
+	}
+
+	// The UNBOUNDED path (zero windowStart — the legacy behavior the parity
+	// tests drive) keeps fetching raw ROWS: with no window there is no span to
+	// size a seam bin from, and that path's contract is "the newest
+	// responseTimeLimit rows per region", which is a statement about rows.
+	if windowStart.IsZero() {
+		tiers = append(tiers, models.RecentResultsTier{
+			PeriodTypes: []string{models.PeriodTypeRaw},
+			Since:       rawSince,
+		})
+	}
+
 	filter := &models.RecentResultsPerCheckFilter{
-		OrganizationUID: orgUID,
-		CheckUIDs:       checkUIDs,
-		Tiers: []models.RecentResultsTier{
-			{
-				PeriodTypes: []string{models.PeriodTypeRaw},
-				// Exactly uptimebar's raw clamp, from the same resolved
-				// retention: raw older than this has been rolled up and
-				// deleted, so a wider bound only widens the index descent.
-				Since: uptimebar.RawTierStart(rollupSince, now, hints.RetentionRawHours),
-			},
-			{PeriodTypes: responseTimeRollupTiers(), Since: rollupSince},
-		},
-		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs, windowStart, now, hints),
+		OrganizationUID:      orgUID,
+		CheckUIDs:            checkUIDs,
+		Tiers:                tiers,
+		PerCheckLimits:       s.responseTimeBudgets(ctx, orgUID, checkUIDs, windowStart, now),
 		DefaultPerCheckLimit: responseTimeLimit * regionFanoutCap,
 	}
 
@@ -3112,6 +3270,10 @@ func (s *Service) fetchRecentResults(
 			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
 
 		return recentByCheck
+	}
+
+	if !windowStart.IsZero() {
+		rows = append(rows, s.fetchResponseTimeSeam(ctx, orgUID, checkUIDs, rawSince, now.Sub(windowStart))...)
 	}
 
 	for _, result := range rows {
@@ -3132,6 +3294,136 @@ func (s *Service) fetchRecentResults(
 	trimResponseTimeSeries(recentByCheck, windowStart, now, hints.RetentionRawHours)
 
 	return recentByCheck
+}
+
+// seamBinWidth picks the raw seam's bin width so the seam alone never exceeds
+// the point budget, never goes below the probe period floor, and never gets
+// coarser than the hour tier it sits next to.
+//
+// The ideal is windowSpan / responseTimeLimit — one bin per point the chart can
+// hold — rounded UP to the next step of a fixed ladder, so the width is always a
+// round, human-readable interval a tooltip can name. Then clamped to
+// [1 min, 1 h]:
+//
+//   - 1 minute is the floor because it is the finest check period the product
+//     schedules; a narrower bin would hold one probe and buy nothing over the
+//     row fetch this replaces;
+//   - 1 hour is the ceiling because the seam sits immediately next to the HOUR
+//     rollups on the same chart. A coarser seam would make the recent end of the
+//     series less detailed than its middle, which reads as the chart degrading
+//     as data gets fresher.
+//
+// 24 h page → 15 min (~96 seam points, and the raw retention default is 24 h so
+// the seam is the whole window). 7, 30 and 90 day pages → 1 h, where the seam is
+// the newest ~26 h and the hour rollups continue at the same resolution.
+func seamBinWidth(windowSpan time.Duration) time.Duration {
+	steps := []time.Duration{
+		time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute,
+		15 * time.Minute, 30 * time.Minute, time.Hour,
+	}
+
+	ideal := windowSpan / responseTimeLimit
+
+	for _, step := range steps {
+		if step >= ideal {
+			return step
+		}
+	}
+
+	return time.Hour
+}
+
+// fetchResponseTimeSeam loads the seam half of the response-time series: the raw
+// probes newer than the rollups, pre-folded by the database into one point per
+// (check, region, bin), and materialized as in-memory models.PeriodTypeSeam rows
+// so the trim and the point builder downstream keep working on one []*Result.
+//
+// This is the spec's whole point. The seam used to be fetched as ROWS — ~1 337
+// raw probes per check on a 7-day page, 292 843 for a 200-check one — of which
+// subsampleRows kept about one in ninety and plotted them as if they were
+// representative. A probe picked every ninety minutes is not a response-time
+// series. Each bin is now a p95 over every probe in it, which is the same kind of
+// number the hour rollup beside it carries and the same kind of number the hour
+// rollup that eventually REPLACES it will carry.
+//
+// A failed fetch degrades to "no seam" rather than to no chart: the rollup tier
+// has already been read and still renders the older part of the window.
+func (s *Service) fetchResponseTimeSeam(
+	ctx context.Context, orgUID string, checkUIDs []string, since time.Time, windowSpan time.Duration,
+) []*models.Result {
+	bins, err := s.db.AggregateResponseTimeBins(
+		sloghook.WithCallsite(ctx, "statuspages.response_time_seam"),
+		&models.ResponseTimeBinFilter{
+			OrganizationUID: orgUID,
+			CheckUIDs:       checkUIDs,
+			Since:           since,
+			BinDuration:     seamBinWidth(windowSpan),
+		})
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load status page response-time seam bins",
+			"error", err, "orgUID", orgUID, "checks", len(checkUIDs))
+
+		return nil
+	}
+
+	rows := make([]*models.Result, 0, len(bins))
+
+	for i := range bins {
+		rows = append(rows, seamResult(&bins[i]))
+	}
+
+	return rows
+}
+
+// seamResult lifts one database-computed bin into the in-memory Result the rest
+// of the response-time path speaks. It is the seam's counterpart to
+// uptimebar.StatsForBucket, and the ONLY translation between the two shapes.
+//
+// The row is shaped like a ROLLUP, not like a probe, and that is deliberate:
+// TotalChecks/SuccessfulChecks carry the bin's counts so
+// uptimebar.StatsForResult's accumulateAgg folds it exactly as it folds an hour
+// row, and DurationP95 is what buildResponseTimeData already prefers over
+// Duration. `Duration` stays nil — a bin has no single response time, and filling
+// it with the average would hand a fallback to any reader that checked Duration
+// first.
+//
+// PeriodStart is the bin start, like a rollup's period_start, so the point's x
+// position is the bin and not the last probe in it. PeriodEnd stays nil: this row
+// is never persisted (see models.PeriodTypeSeam) and nothing on the read path
+// reads it.
+func seamResult(bin *models.ResponseTimeBin) *models.Result {
+	status := uptimebar.DominantStatus(bin.StatusCounts)
+	totalChecks, successfulChecks := bin.Total, bin.Up
+
+	row := &models.Result{
+		PeriodType:       models.PeriodTypeSeam,
+		CheckUID:         bin.CheckUID,
+		Region:           bin.Region,
+		PeriodStart:      bin.BinStart,
+		TotalChecks:      &totalChecks,
+		SuccessfulChecks: &successfulChecks,
+		DurationP95:      bin.DurationP95,
+		DurationAvg:      bin.DurationAvg,
+		DurationMin:      bin.DurationMin,
+		DurationMax:      bin.DurationMax,
+	}
+
+	// A bin with no countable probe at all has no status to report; leaving it
+	// nil is what makes buildResponseTimeData render the point as "no data"
+	// rather than inventing one.
+	if status != 0 {
+		row.Status = &status
+	}
+
+	return row
+}
+
+// isFineResponseTimeTier reports whether a row belongs to the FINE end of the
+// response-time series: a raw probe or a seam bin. Both sort ahead of a rollup on
+// a period_start tie and both draw from the same tier budget, because the seam IS
+// the raw tier — the same probes, folded in the database instead of in Go.
+func isFineResponseTimeTier(periodType string) bool {
+	return periodType == models.PeriodTypeRaw || periodType == models.PeriodTypeSeam
 }
 
 // sortResponseTimeRows is the total order shared by every trim path: newest
@@ -3157,11 +3449,11 @@ func sortResponseTimeRows(rows []*models.Result) {
 			return rows[i].PeriodStart.After(rows[j].PeriodStart)
 		}
 
-		iRaw := rows[i].PeriodType == models.PeriodTypeRaw
-		jRaw := rows[j].PeriodType == models.PeriodTypeRaw
+		iFine := isFineResponseTimeTier(rows[i].PeriodType)
+		jFine := isFineResponseTimeTier(rows[j].PeriodType)
 
-		if iRaw != jRaw {
-			return iRaw
+		if iFine != jFine {
+			return iFine
 		}
 
 		return rows[i].UID > rows[j].UID // uid DESC — matches the pre-2026-08-22-05 query
@@ -3248,58 +3540,36 @@ func responseTimeRowsHaveSignal(rows []*models.Result) bool {
 // cluster at one edge (a region that came back an hour ago) still shows.
 const tierBudgetFloor = 8
 
-// responseTimeRawFetchCap bounds how many raw rows the windowed fetch reads
-// per region. Covering the whole raw seam (RetentionRaw + the aggregation-lag
-// margin) needs one row per probe — 1 440 for a 1-minute check, 8 640 for a
-// 10-second one — and sub-minute cadences make the honest number unbounded, so
-// the seam is capped and a faster check than the cap allows simply shows a
-// shorter seam (it kept that limitation before the window too, at 100 rows).
-const responseTimeRawFetchCap = 2000
-
-// responseTimePerRegionBudget sizes the per-REGION row budget each tier branch
-// of the WINDOWED fetch may return. Both branches share one LIMIT, so it has
-// to cover the larger of the two appetites:
+// responseTimePerRegionBudget sizes the per-REGION row budget the WINDOWED
+// fetch's ROLLUP branch may return. It must cover every bucket inside the window
+// (one row per bucket per tier: ~25 rows per day — 24 hours + 1 day), or the day
+// rollups that anchor the window's old end are truncated away at the database and
+// the budget split in trimWindowedResponseTimeRows never sees them.
 //
-//   - the ROLLUP branch must return every bucket inside the window (one row per
-//     bucket per tier: ~25 rows per day — 24 hours + 1 day), or the day rollups
-//     that anchor the window's old end are truncated away at the DB and the
-//     budget split in trimWindowedResponseTimeRows never sees them;
-//   - the RAW branch must return the whole raw seam so it can be evenly
-//     sub-sampled to its (much smaller) chart budget — taking only the newest
-//     N raw rows would leave the older part of the seam unfetched and open a
-//     white gap between the newest hour rollup and the kept raw points.
+// It used to have to cover a second, much larger appetite: the RAW branch needed
+// one row per probe across the whole seam — 1 440 rows for a 1-minute check,
+// 8 640 for a 10-second one — because the seam was fetched as rows and had to
+// arrive whole before Go could sub-sample it evenly. That is gone (spec
+// 2026-09-22-06): the seam is now folded per bin in the database, so it is not
+// subject to this budget at all, and neither the check's period nor the raw
+// retention is an input here any more. The row cap that bounded the raw appetite
+// went with it — the rollup appetite is inherently bounded by
+// responseTimeRollupSpan and describes rows that really exist, rather than a
+// cadence that could be arbitrarily fast.
 //
-// The result is capped at responseTimeRawFetchCap so a sub-minute check cannot
-// unbound the fetch. A zero windowStart keeps the legacy budget: the unbounded
-// path trims to the newest responseTimeLimit rows anyway, so reading more than
-// the legacy budget would only cost I/O.
-func responseTimePerRegionBudget(windowSpan, checkPeriod time.Duration, retentionRawHours int) int {
+// A zero windowSpan keeps the legacy budget: the unbounded path trims to the
+// newest responseTimeLimit rows anyway, so reading more would only cost I/O.
+func responseTimePerRegionBudget(windowSpan time.Duration) int {
 	if windowSpan <= 0 {
 		return responseTimeLimit
 	}
 
-	// Rollup appetite: ~25 buckets per day, rounded up, plus slack for the
-	// month tier and the window's partial first day.
+	// ~25 buckets per day, rounded up, plus slack for the month tier and the
+	// window's partial first day.
 	rollupAppetite := int(math.Ceil(windowSpan.Hours()/24))*25 + 2
 
-	// Raw appetite: one row per probe across the seam, at the check's own
-	// period, floored at a 1-minute period so sub-minute cadences scale with
-	// the cap rather than the seam.
-	seam := time.Duration(retentionRawHours)*time.Hour + rawSeamMargin
-	if seam > windowSpan {
-		seam = windowSpan
-	}
-
-	period := max(checkPeriod, time.Minute)
-	rawAppetite := int(math.Ceil(seam.Hours() * float64(time.Hour) / float64(period)))
-
-	return min(max(rollupAppetite, rawAppetite, responseTimeLimit), responseTimeRawFetchCap)
+	return max(rollupAppetite, responseTimeLimit)
 }
-
-// rawSeamMargin mirrors uptimebar's aggregation-lag padding for the raw tier's
-// lower bound — the same 2 h the uptimebar clamp uses — so the raw appetite
-// covers exactly the span the raw branch can return rows from.
-const rawSeamMargin = 2 * time.Hour
 
 // trimWindowedResponseTimeRows spreads one region's in-window rows across the
 // window within responseTimeLimit points. rows arrive newest-first.
@@ -3337,7 +3607,13 @@ func trimWindowedResponseTimeRows(
 
 	for _, row := range rows {
 		switch row.PeriodType {
-		case models.PeriodTypeRaw:
+		// The seam is budgeted as the raw tier, because it IS the raw tier: the
+		// same probes over the same span, folded per bin in the database instead
+		// of streamed into Go. That keeps responseTimeTierBudgets' meaning
+		// intact — its raw share is the share of the window the raw clamp covers
+		// — and it is why the seam's own budget is now a formality: the
+		// aggregate already returns at most one bin per point.
+		case models.PeriodTypeRaw, models.PeriodTypeSeam:
 			rawRows = append(rawRows, row)
 		case models.PeriodTypeHour:
 			hourRows = append(hourRows, row)
@@ -3480,12 +3756,19 @@ func subsampleRows(rows []*models.Result, keep int) []*models.Result {
 // (every check then uses the default).
 //
 // The per-region budget itself is window-aware (spec 2026-09-21-03): a windowed
-// fetch must be able to pull every rollup bucket in the window and the whole
-// raw seam (responseTimePerRegionBudget), while a zero windowStart keeps the
-// legacy responseTimeLimit-per-region sizing the unbounded trim expects.
+// fetch must be able to pull every rollup bucket in the window
+// (responseTimePerRegionBudget), while a zero windowStart keeps the legacy
+// responseTimeLimit-per-region sizing the unbounded trim expects. It no longer
+// has to cover the raw seam as well — the seam is fetched as bins, outside this
+// budget (spec 2026-09-22-06) — which is also why the check's own period is no
+// longer an input.
+//
+// GetChecksByUIDs is still the one query this costs: the budget is per region
+// and the multiplier is the check's OWN region fan-out, which only the check row
+// carries.
 func (s *Service) responseTimeBudgets(
 	ctx context.Context, orgUID string, checkUIDs []string,
-	windowStart, now time.Time, hints uptimebar.Hints,
+	windowStart, now time.Time,
 ) map[string]int {
 	checks, err := s.db.GetChecksByUIDs(ctx, orgUID, checkUIDs)
 	if err != nil {
@@ -3519,12 +3802,8 @@ func (s *Service) responseTimeBudgets(
 		}
 
 		perRegion := responseTimeLimit
-
-		// The windowed budget is period-aware: the raw seam's appetite scales
-		// with the check's own period, the rollup appetite does not.
 		if windowed {
-			perRegion = responseTimePerRegionBudget(
-				windowSpan, time.Duration(check.Period), hints.RetentionRawHours)
+			perRegion = responseTimePerRegionBudget(windowSpan)
 		}
 
 		budgets[checkUID] = perRegion * min(len(check.Regions)+1, regionFanoutCap)
@@ -3549,7 +3828,7 @@ func (s *Service) enrichHourly(
 	// 23 hours earlier. -(n-1) keeps the current hour inside the window.
 	bucketStart := now.Truncate(time.Hour).Add(-time.Duration(hourlyBucketCount-1) * time.Hour)
 
-	hints := s.uptimebarHints(ctx, orgUID)
+	hints := s.uptimebarHints(ctx)
 
 	bucketsByCheck, err := uptimebar.BucketAvailability(
 		ctx, s.db, orgUID, checkUIDs, time.Hour, bucketStart, hourlyBucketCount,
@@ -3917,18 +4196,30 @@ func (s *Service) validatePageSlugChange(
 	return nil
 }
 
+// clearDefaultStatusPage demotes whatever page is currently the org's default,
+// so the one being promoted can take the flag.
+//
+// The demoted page is a SECOND page this write changes, and its public body
+// carries `isDefault` — so it has to be evicted too, not just the page the
+// caller is promoting. It wasn't, until the write choke points made "write
+// without naming the page you changed" impossible: the demotion is the write
+// path nobody thought to list, and a reader of the old default page kept being
+// told it was the default for up to the TTL (spec 2026-09-22-09).
 func (s *Service) clearDefaultStatusPage(ctx context.Context, orgUID string) error {
 	pages, err := s.db.ListStatusPages(ctx, orgUID)
 	if err != nil {
 		return err
 	}
 
-	for _, p := range pages {
-		if p.IsDefault {
-			falseVal := false
-			if err := s.db.UpdateStatusPage(ctx, p.UID, &models.StatusPageUpdate{IsDefault: &falseVal}); err != nil {
-				return err
-			}
+	for _, page := range pages {
+		if !page.IsDefault {
+			continue
+		}
+
+		falseVal := false
+		if err := s.writeStatusPageRow(ctx, WritePathClearDefaultStatusPage, page.UID,
+			&models.StatusPageUpdate{IsDefault: &falseVal}); err != nil {
+			return err
 		}
 	}
 
@@ -4187,6 +4478,7 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		AutoPublish:             page.AutoPublish,
 		AutoPublishDelaySeconds: page.AutoPublishDelaySeconds,
 		AutoResolve:             page.AutoResolve,
+		PublishDegraded:         page.PublishDegraded,
 		CustomCSS:               page.CustomCSS,
 		HideBranding:            page.Settings.HideBranding(),
 		HasPassword:             page.PasswordHash != nil && *page.PasswordHash != "",

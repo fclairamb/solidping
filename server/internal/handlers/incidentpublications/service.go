@@ -84,6 +84,9 @@ type Service struct {
 	// which is what unit tests and a zero delay both want.
 	scheduler PublishScheduler
 	logger    *slog.Logger
+	// pageMemo evicts the status page's memoized public view after a
+	// publication write (spec 2026-09-22-09). Optional; nil means no memo.
+	pageMemo PageMemoInvalidator
 }
 
 // PublishScheduler enqueues the debounced auto-publish job. It is an interface
@@ -116,6 +119,94 @@ func (s *Service) SetSubscriberNotifier(n statusupdates.SubscriberNotifier) {
 // production (it defeats the debounce) and is why server.go always wires one.
 func (s *Service) SetScheduler(sched PublishScheduler) {
 	s.scheduler = sched
+}
+
+// PageMemoInvalidator evicts a status page's memoized public view
+// (spec 2026-09-22-09).
+//
+// A publication IS the part of a status page a reader came for during an
+// incident, so this is the eviction that matters most: a banner that takes
+// fifteen seconds to appear is fifteen seconds of a page claiming everything is
+// fine. Injected rather than imported — the statuspages package reads
+// publications through PublicIncidentProvider, so importing it back would be a
+// cycle. Optional; nil disables eviction.
+type PageMemoInvalidator interface {
+	// Invalidate drops every memoized view of one page.
+	Invalidate(pageUID string)
+	// InvalidateOrg drops every memoized view in an organization, for a write
+	// path that cannot name the page it changed.
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
+}
+
+// invalidatePageMemo evicts one page, if a memo is wired.
+func (s *Service) invalidatePageMemo(pageUID string) {
+	if s.pageMemo == nil || pageUID == "" {
+		return
+	}
+
+	s.pageMemo.Invalidate(pageUID)
+}
+
+// The publication row writes, each paired with the eviction it owes.
+//
+// Paired in ONE call rather than left as two statements at every call site: a
+// publication write that forgets to evict leaves the page's banner fifteen
+// seconds behind the truth, and "remember the second line" is not a property
+// eleven call sites keep. Reaching s.db directly for these writes is the mistake
+// these helpers exist to make impossible.
+
+// createPublicationRow inserts a publication and evicts the page.
+func (s *Service) createPublicationRow(ctx context.Context, pub *models.IncidentPublication) error {
+	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
+		return err
+	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
+
+	return nil
+}
+
+// updatePublicationRow patches a publication and evicts the page.
+func (s *Service) updatePublicationRow(
+	ctx context.Context, pub *models.IncidentPublication, update *models.IncidentPublicationUpdate,
+) error {
+	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, update); err != nil {
+		return err
+	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
+
+	return nil
+}
+
+// softDeletePublicationRow withdraws a publication and evicts the page.
+func (s *Service) softDeletePublicationRow(ctx context.Context, pub *models.IncidentPublication) error {
+	if err := s.db.SoftDeleteIncidentPublication(ctx, pub.UID); err != nil {
+		return err
+	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
+
+	return nil
+}
+
+// createPageStatusUpdate posts a status update onto the page's timeline and
+// evicts the page.
+func (s *Service) createPageStatusUpdate(
+	ctx context.Context, pub *models.IncidentPublication, update *models.StatusUpdate,
+) error {
+	if err := s.db.CreateStatusUpdate(ctx, update); err != nil {
+		return err
+	}
+
+	s.invalidatePageMemo(pub.StatusPageUID)
+
+	return nil
 }
 
 // SetLogger overrides the default logger.
@@ -558,7 +649,7 @@ func (s *Service) CreatePublication(
 		pub.ResolvedAt = incidentResolvedAt(linked, now)
 	}
 
-	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
+	if err := s.createPublicationRow(ctx, pub); err != nil {
 		return PublicationResponse{}, err
 	}
 
@@ -687,7 +778,7 @@ func (s *Service) UpdatePublication(
 		}
 	}
 
-	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, update); err != nil {
+	if err := s.updatePublicationRow(ctx, pub, update); err != nil {
 		return PublicationResponse{}, err
 	}
 
@@ -758,7 +849,7 @@ func (s *Service) AppendUpdate(
 		}
 	}
 
-	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, stateUpdate); err != nil {
+	if err := s.updatePublicationRow(ctx, pub, stateUpdate); err != nil {
 		return PublicationUpdateResponse{}, err
 	}
 
@@ -871,7 +962,7 @@ func (s *Service) PublishIncident(
 	// behave exactly like `never` for every hand-published entry
 	// (spec 2026-09-02-05).
 
-	if err := s.db.CreateIncidentPublication(ctx, pub); err != nil {
+	if err := s.createPublicationRow(ctx, pub); err != nil {
 		if isUniqueViolation(err) {
 			return PublicationResponse{}, ErrAlreadyPublished
 		}
@@ -911,7 +1002,7 @@ func (s *Service) resolveRetroactively(
 	resolvedAt := *incidentResolvedAt(incident, s.clock.Now())
 
 	resolved := models.PublicationStateResolved
-	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
+	if err := s.updatePublicationRow(ctx, pub, &models.IncidentPublicationUpdate{
 		PublicState: &resolved,
 		ResolvedAt:  &resolvedAt,
 	}); err != nil {
@@ -987,7 +1078,7 @@ func (s *Service) UnpublishIncident(
 		return ErrPublicationNotFound
 	}
 
-	if err := s.db.SoftDeleteIncidentPublication(ctx, pub.UID); err != nil {
+	if err := s.softDeletePublicationRow(ctx, pub); err != nil {
 		return err
 	}
 
@@ -1056,7 +1147,9 @@ func (s *Service) postUpdate(
 	update.CreatedAt = update.PublishedAt
 	update.UpdatedAt = update.PublishedAt
 
-	if err := s.db.CreateStatusUpdate(ctx, update); err != nil {
+	// createPageStatusUpdate, not s.db: the update it writes is what the page's
+	// recentUpdates timeline renders, so the write carries the eviction.
+	if err := s.createPageStatusUpdate(ctx, pub, update); err != nil {
 		s.logger.ErrorContext(ctx, "failed to write publication update",
 			"publicationUid", pub.UID, "error", err)
 
@@ -1140,6 +1233,10 @@ func (s *Service) consumeNotifyBudget(ctx context.Context, pub *models.IncidentP
 
 	count++
 
+	// s.db directly, NOT updatePublicationRow: the notify-budget counter is
+	// bookkeeping about mail we sent, and nothing on the public page renders it.
+	// Evicting the page's memoized view here would clear the memo on every
+	// notification of a flapping incident, for no reader-visible gain.
 	if err := s.db.UpdateIncidentPublication(ctx, pub.UID, &models.IncidentPublicationUpdate{
 		NotifyWindowStart: windowStart,
 		NotifyWindowCount: &count,

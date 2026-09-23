@@ -132,11 +132,49 @@ func allowedType(kind Kind, mimeType string) bool {
 type Service struct {
 	db    db.Service
 	files *files.Service
+	// pageMemo evicts the status page's memoized public view after a write
+	// (spec 2026-09-22-09). Optional; nil means no memo to evict.
+	pageMemo PageMemoInvalidator
 }
 
 // NewService constructs the status-page asset service.
 func NewService(dbService db.Service, filesService *files.Service) *Service {
 	return &Service{db: dbService, files: filesService}
+}
+
+// PageMemoInvalidator evicts a status page's memoized public view
+// (spec 2026-09-22-09).
+//
+// The public status-page read memoizes its computed body for a few seconds. A
+// write here changes that body, so it has to evict — otherwise an operator's
+// edit appears to have done nothing for up to the TTL, which reads as a bug in
+// the editor rather than as a cache.
+//
+// A small interface, and injected rather than imported, for the same reason
+// the files dependency is passed in: the status-pages
+// package is the one that owns the memo, and depending on it from here would be
+// a cycle. Optional — nil simply means nothing is memoized (most tests, the MCP
+// wiring).
+type PageMemoInvalidator interface {
+	// Invalidate drops every memoized view of one page.
+	Invalidate(pageUID string)
+	// InvalidateOrg drops every memoized view in an organization, for a write
+	// path that cannot name the page it changed.
+	InvalidateOrg(orgUID string)
+}
+
+// SetPageMemoInvalidator wires the status-page view memo. Optional.
+func (s *Service) SetPageMemoInvalidator(inv PageMemoInvalidator) {
+	s.pageMemo = inv
+}
+
+// invalidatePageMemo evicts one page, if a memo is wired.
+func (s *Service) invalidatePageMemo(pageUID string) {
+	if s.pageMemo == nil || pageUID == "" {
+		return
+	}
+
+	s.pageMemo.Invalidate(pageUID)
 }
 
 // Upload carries a multipart asset part into the service.
@@ -196,6 +234,10 @@ func (s *Service) Upload(
 		return nil, fmt.Errorf("update status page branding: %w", updErr)
 	}
 
+	// The public body carries the logo/favicon URLs (resolvePublicBranding), so
+	// a memoized view is now wrong about the page's branding.
+	s.invalidatePageMemo(page.UID)
+
 	s.retireFile(ctx, org.UID, previous, file.UID)
 
 	return s.db.GetStatusPage(ctx, org.UID, page.UID)
@@ -220,6 +262,8 @@ func (s *Service) Clear(
 	if updErr := s.db.UpdateStatusPageBranding(ctx, page.UID, update); updErr != nil {
 		return nil, fmt.Errorf("clear status page branding: %w", updErr)
 	}
+
+	s.invalidatePageMemo(page.UID)
 
 	s.retireFile(ctx, org.UID, previous, "")
 

@@ -38,7 +38,8 @@ A single non-scrolling viewport, top to bottom:
   and the state written out in words — roughly one man in twelve cannot
   separate this green from this red, so colour is never the only signal.
 - **The uptime number**, big, over the page's own history window ("30-day
-  uptime"). Shown only when the page publishes availability at all.
+  uptime"). Shown only when the page publishes availability at all, loaded
+  after the rest of the board, and refreshed every five minutes.
 - **Days since the last incident**, from the page's public incident history.
   Hidden while an incident is open, because "42 days since the last incident"
   next to a live outage is a contradiction on a wall.
@@ -52,6 +53,15 @@ A single non-scrolling viewport, top to bottom:
 
 Nothing on the board is interactive, and the mouse cursor hides itself after a
 few seconds of stillness.
+
+### Incidents appear before the rest of the page
+
+The board does not wait for the whole page to load. The incident history is the
+fastest of its reads and the one the room actually needs, so it paints first:
+the state, the open incidents, the resolved strip and "days since" are on screen
+while the page itself — its name, its status counts, the named failing checks —
+is still arriving. On a large page that is the difference between a wall that
+shows an outage in under a second and one that shows "Loading" for seven.
 
 ### A maintenance window is blue, never red
 
@@ -69,9 +79,21 @@ be worse than no board.
 
 ## When the data stops arriving
 
-The board refreshes every 30 seconds, and every 15 seconds while anything is
-wrong. After 90 seconds without a successful refresh — three missed polls —
-the **entire board turns grey** and says "no update received since HH:MM".
+The board makes three reads, on two cadences:
+
+| Read | What it carries | Refreshed |
+|---|---|---|
+| Incident history | The open incidents, the resolved strip, "days since" | Every 30 s, every 15 s while anything is wrong |
+| The page | Its name, the rollup, the status counts, the per-check statuses | Every 30 s, every 15 s while anything is wrong |
+| The page summary | The uptime number, and nothing else | Every 5 minutes |
+
+The uptime number is on its own slow cadence because it cannot move enough in
+five minutes for anyone in the room to notice: it is a mean over 7 or 90 days.
+A slow or failing summary never affects the rest of the board — it only means
+no number is shown.
+
+After 90 seconds without a successful page refresh — three missed polls — the
+**entire board turns grey** and says "no update received since HH:MM".
 
 This matters more than it looks. A frozen green screen during an outage is
 worse than a dark one: the room reads it as reassurance. The board recovers on

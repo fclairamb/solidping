@@ -767,7 +767,7 @@ func (s *Service) evaluate(
 
 	if len(scoped.checkUIDs) > 0 {
 		byCheck, err := uptimebar.WindowAvailability(
-			ctx, s.db, orgUID, scoped.checkUIDs, window.Start, window.End, s.uptimebarHints(ctx, orgUID),
+			ctx, s.db, orgUID, scoped.checkUIDs, window.Start, window.End, s.uptimebarHints(ctx),
 		)
 		if err != nil {
 			return StatusRow{}, fmt.Errorf("window availability: %w", err)
@@ -995,7 +995,7 @@ func (s *Service) burndownPoints(
 	steps := burndownStepCount(window.Start, elapsedEnd)
 
 	byCheck, err := uptimebar.BucketAvailability(
-		ctx, s.db, orgUID, scoped.checkUIDs, burndownStep, window.Start, steps, s.uptimebarHints(ctx, orgUID),
+		ctx, s.db, orgUID, scoped.checkUIDs, burndownStep, window.Start, steps, s.uptimebarHints(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("bucket availability: %w", err)
@@ -1108,13 +1108,12 @@ func burndownStepCount(start, elapsedEnd time.Time) int {
 // needs. Mirrors availability.Service.uptimebarHints: it must read the
 // performance.* parameters, not the koanf struct alone, or the raw tier gets
 // clamped shorter than the job actually keeps raw for.
-func (s *Service) uptimebarHints(ctx context.Context, orgUID string) uptimebar.Hints {
+func (s *Service) uptimebarHints(ctx context.Context) uptimebar.Hints {
 	rawHours, hourDays := systemconfig.ResolveReadSideRetention(ctx, s.db, s.cfg)
 
 	return uptimebar.Hints{
 		RetentionRawHours: rawHours,
 		RetentionHourDays: hourDays,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s.db, orgUID),
 	}
 }
 

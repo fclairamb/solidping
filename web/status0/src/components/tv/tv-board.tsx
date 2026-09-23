@@ -12,6 +12,7 @@ import {
 import type { PublicIncident, StatusPage } from "@/api/hooks";
 import { severityStyle, statusStyle } from "@/lib/status-style";
 import {
+  activeIncidents,
   cycleWindow,
   daysSince,
   durationParts,
@@ -297,18 +298,26 @@ function FailingResourceRow({
 /**
  * The board.
  *
- * `page` may be undefined while a poll is in flight and the board is already
- * stale — that combination is exactly the outage case, and the board must keep
- * rendering (in grey) rather than unmount into a spinner.
+ * `page` may be undefined for two reasons, and both must keep rendering rather
+ * than unmounting into a spinner: a poll is in flight while the board is
+ * already stale (exactly the outage case), or the page payload simply has not
+ * landed yet and the incident history has (spec 2026-09-22-08 — the room gets
+ * the incidents about seven seconds before the rest).
+ *
+ * `availabilityPct` arrives later still, on its own five-minute query. Absent
+ * means no tile, which is also what a page that hides availability produces —
+ * the board has exactly one rule for a number it does not have.
  */
 export function TvBoard({
   page,
   incidents,
+  availabilityPct,
   stale,
   lastUpdatedAt,
 }: {
   page: StatusPage | undefined;
   incidents: PublicIncident[] | undefined;
+  availabilityPct?: number;
   stale: boolean;
   lastUpdatedAt: number | undefined;
 }) {
@@ -317,7 +326,10 @@ export function TvBoard({
   const cursorIdle = useIdleCursor();
   const formatDuration = useDurationText();
 
-  const active = page?.activeIncidents ?? [];
+  // Both the severity floor and the panel read the SAME list, off the SAME
+  // response — see activeIncidents(). `page.activeIncidents` is deliberately
+  // not consulted, even once the page has landed.
+  const active = useMemo(() => activeIncidents(incidents), [incidents]);
   const liveState = resolveTvState(page?.overallStatus, active);
   // Staleness OVERRIDES everything, including a green rollup: the last thing a
   // wallboard should do is keep insisting the world is fine with data it can
@@ -329,9 +341,15 @@ export function TvBoard({
   // Why the board is not green, when the checks alone would not explain it.
   // Not shown while stale: the headline then means "we have lost contact", and
   // attributing that to an incident would be a second, contradictory claim.
-  const incidentDriven = stale
-    ? 0
-    : incidentDrivenCount(page?.overallStatus, active);
+  //
+  // Nor before the page has landed. The sentence is an attribution — "the
+  // rollup is green, this amber is an open publication" — and with no rollup in
+  // hand there is nothing to attribute against; claiming it anyway would put a
+  // comparison on the wall that the board has not actually made.
+  const incidentDriven =
+    stale || page === undefined
+      ? 0
+      : incidentDrivenCount(page.overallStatus, active);
 
   // Only ever computed for a board that is NOT green. A healthy page keeps
   // its "days since last incident" panel untouched — this is a fallback for an
@@ -363,7 +381,11 @@ export function TvBoard({
     // across a board that has been up for weeks.
   }, [history, now]);
 
-  const availability = page?.overallAvailabilityPct;
+  // The tile is the last thing to appear and the first thing to go. It is
+  // hidden while stale for the same reason every other confident number is: a
+  // 99.98% the board can no longer refresh is a claim about the present that it
+  // has no right to make.
+  const availability = stale ? undefined : availabilityPct;
 
   return (
     <div

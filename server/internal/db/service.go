@@ -470,6 +470,64 @@ type Service interface {
 	RecentResultsPerCheck(
 		ctx context.Context, filter *models.RecentResultsPerCheckFilter,
 	) ([]*models.Result, error)
+	// AggregateResultBuckets folds result rows into per-(check, bucket)
+	// counters SERVER-SIDE: one row per (check_uid, bucket_start), carrying the
+	// eleven numbers uptimebar.BucketStats holds. ONE tier side per call (raw
+	// XOR rollup), exactly like ListResults' index split — Validate rejects a
+	// straddling filter, for the same reason RecentResultsPerCheck does.
+	//
+	// It exists because the availability engine — behind the status page's bars,
+	// the badges, the SLO read path, the availability API and the uptime report
+	// — asked ListResults for every matching ROW and folded them in Go. Under
+	// the default 24 h raw retention the newest day of every check is always
+	// raw, so a 200-check public page shipped 267 449 rows, sorted to disk, to
+	// produce 400 buckets: ~3.2 s inside the request, of which ~2.2 s was
+	// transfer and bun scan (spec 2026-09-22-05).
+	//
+	// Rows are binned against the SAME origin Go's time.Truncate uses
+	// (0001-01-01, see models.ProlepticEpochOffsetSeconds), not the Unix epoch,
+	// so the grid is byte-identical to the Go fold for every bucket width —
+	// including widths that do not divide 24 h, which the availability API
+	// accepts. uptimebar's accumulateRaw / accumulateAgg remain the reference
+	// semantics; a per-dialect parity test folds the same fixture both ways.
+	//
+	// The returned buckets are NOT ordered: the callers accumulate into a map.
+	AggregateResultBuckets(
+		ctx context.Context, filter *models.ResultBucketFilter,
+	) ([]models.ResultBucket, error)
+	// AggregateResponseTimeBins bins RAW probes per (check, region, bin) for the
+	// status page's response-time SEAM: one row carrying a probe count, an up
+	// count, a nearest-rank p95 / avg / min / max duration and the per-status mix,
+	// computed over every probe in the bin.
+	//
+	// It is the response-time twin of AggregateResultBuckets, and the differences
+	// are the reason it is a separate method rather than a flag on that one:
+	// region is a GROUP BY key here (each region is its own series on that chart,
+	// where the availability bar sums across them), it computes a percentile, and
+	// it reads the raw tier only — the chart's rollup half stays a row fetch,
+	// because a rollup row already IS one point.
+	//
+	// Statuses excluded from availability (created/running/abandoned) are dropped
+	// BEFORE binning, so Total is the availability denominator. A bin whose probes
+	// all lack a duration still comes back, with counts and NULL durations: the
+	// point's availability coloring must stay honest even when there is no
+	// response time to plot.
+	//
+	// The p95 is NEAREST-RANK, at exactly the index the aggregation job's
+	// duration_p95 uses (models.ResponseTimeBinP95Index) — not an interpolating
+	// percentile_cont. A seam point sits on the chart immediately next to the hour
+	// rollups that will replace it as raw is compacted away; if the two disagreed,
+	// every aggregation run would visibly step the chart.
+	//
+	// Probes are binned against the SAME origin Go's time.Truncate uses
+	// (models.ProlepticEpochOffsetSeconds), reusing the availability aggregate's
+	// bin expression, so all three grids coincide.
+	//
+	// The returned bins are NOT ordered: the caller maps them per (check, region)
+	// and sorts the merged series itself. Spec 2026-09-22-06.
+	AggregateResponseTimeBins(
+		ctx context.Context, filter *models.ResponseTimeBinFilter,
+	) ([]models.ResponseTimeBin, error)
 	// CountResultsByPeriodType returns the total row count in `results` grouped
 	// by period_type, across every organization. Table-wide and uncached —
 	// only the aggregation-job-cadence gauge sampler may call this, never a
@@ -1151,6 +1209,16 @@ type Service interface {
 	// oldest-evaluated first so a large install still makes progress under a
 	// bounded per-sweep limit.
 	ListEnabledSLOAlertPolicies(ctx context.Context, limit int) ([]*models.SLOAlertPolicy, error)
+	// ListChecksForDegradedEval is the degraded evaluator's work queue (spec
+	// 2026-09-22-03): every enabled, non-internal, live check, oldest-evaluated
+	// first so a bounded per-sweep limit still gives every check a turn.
+	// `degraded_enabled` is deliberately NOT a filter — it gates opening an
+	// incident, not evaluating, and the dry run has to sweep disabled checks in
+	// order to stamp them.
+	ListChecksForDegradedEval(ctx context.Context, limit int) ([]*models.Check, error)
+	// FindActiveDegradedIncident returns the open degraded incident for a check,
+	// if any. sql.ErrNoRows when there is none.
+	FindActiveDegradedIncident(ctx context.Context, checkUID string) (*models.Incident, error)
 	// FindActiveBurnIncident returns the open burn incident for one
 	// (SLO, policy) pair, if any. sql.ErrNoRows when there is none.
 	FindActiveBurnIncident(ctx context.Context, sloUID, policyUID string) (*models.Incident, error)

@@ -574,3 +574,18 @@ func getStringMapArg(args map[string]any, key string) map[string]string {
 	}
 	return result
 }
+
+// ShareStatusPageMemo points the MCP surface's status-pages service at the HTTP
+// server's view memo (spec 2026-09-22-09).
+//
+// This handler builds its own statuspages.Service — different config, different
+// entitlements — and every statuspages.NewService starts with its own memo. Left
+// alone, an MCP `update_status_page` would evict the MCP service's memo and the
+// public page would keep serving the pre-edit body for up to the TTL, which from
+// the outside looks exactly like the write not having landed.
+//
+// Called from app.Server route setup once the HTTP service exists; skipping it
+// costs correctness, not safety, so a nil argument is simply ignored.
+func (h *Handler) ShareStatusPageMemo(primary *statuspages.Service) {
+	h.statusPagesSvc.SharePageMemo(primary)
+}

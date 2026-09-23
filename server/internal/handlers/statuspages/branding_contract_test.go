@@ -55,7 +55,7 @@ func TestBrandingPayloadIsByteIdenticalAfterTheStorageMove(t *testing.T) {
 	r.Equal("/pub/status-page-assets/"+faviconUID, adminJSON["faviconUrl"])
 	r.Equal(true, adminJSON["hideBranding"])
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 
 	publicJSON := marshalMap(t, public)
@@ -93,7 +93,7 @@ func TestClearedBrandingIsOmittedNotEmpty(t *testing.T) {
 	r.NotContains(adminJSON, "faviconUrl")
 	r.Equal(false, adminJSON["hideBranding"])
 
-	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 
 	publicJSON := marshalMap(t, public)

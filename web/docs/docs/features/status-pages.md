@@ -293,6 +293,26 @@ Status pages are managed per organization from the dashboard (**Settings → Sta
 | Publication delay | Debounce before an incident goes public (default 60 s) |
 | When the incident resolves | `always` / `if_untouched` / `never` |
 
+### What a response-time point is
+
+Every point on a component's response-time chart is a **p95 over a period**, not
+a single probe, and the period depends on how old the point is:
+
+| Where on the chart | One point covers | Computed from |
+|---|---|---|
+| The recent end (the last ~26 h) | 15 minutes on a 24 h page, 1 hour on any longer one | every probe in that bin |
+| The middle | 1 hour | the hourly rollup |
+| The old end | 1 day | the daily rollup |
+
+So the whole chart is the same kind of number end to end, and the tooltip's probe
+count ("58/60") tells you how many probes the point was computed from. The newest
+point is the bin that is still open, and it moves as probes land.
+
+Before SolidPing 0.30 the recent end worked differently: it plotted individual
+probes, thinned out to fit the chart, so a point could be one arbitrary probe
+standing in for ninety minutes of monitoring. Those charts were noisier, and
+their spikes were not necessarily representative of anything.
+
 ## Branding
 
 A status page can wear your brand rather than ours.
@@ -799,6 +819,10 @@ For integrators who just want "is this service up right now?" without the full p
 ```
 
 It's public (no authentication), caches like the page it summarizes (see [Caching](#caching)), and computes `status`/`counts` from the exact same server-side rollup as the full page view — so the two can never disagree.
+
+### Fetch less
+
+The two public page views (`GET /api/v1/status-pages/{org}/{slug}` and the default-page equivalent) accept `?include=availability,responseTime` to leave out one or both of the optional, expensive sections. A caller that renders neither the availability bar nor the response-time chart can ask for `?include=` and skip both the payload and the server-side query that builds it. The [TV wallboard](#tv-mode) does exactly this: it polls every 15-30s and never draws either chart, so it always requests `?include=` — the cost of that is the page-level uptime number going along with it (it lives inside the `availability` section too), which the board currently just omits, the same way it already does for a page with availability turned off. The parameter is omit-only: leaving it out returns exactly what every existing integration already gets, and it can never turn on a section the page's own settings have hidden.
 
 ## Badge
 

@@ -166,6 +166,66 @@ type Check struct {
 	FlapBackoffFactor     int `bun:"flap_backoff_factor,notnull"`
 	MaxRecoveryMultiplier int `bun:"max_recovery_multiplier,notnull"`
 
+	// Degraded detection — spec 2026-09-22-03. One rule primitive, "M of the
+	// last N countable probes match", applied to two populations on this check:
+	// failures (status not in up/warning) and slow successes (up/warning with
+	// duration above SlowThresholdMs). Evaluated by a periodic sweep, never by
+	// the worker; the result status is not touched.
+	//
+	// M = 0 disables a rule. SlowThresholdMs = 0 disables the slow rule
+	// outright (there is no threshold a duration could exceed).
+	//
+	// ALL FIVE ARE POINTERS, AND nil IS THE INTERESTING ONE: nil means "not
+	// configured", the column is NULL, and the code default
+	// (DefaultDegradedFailures & co) applies — read through the
+	// EffectiveDegraded* accessors below, never off the raw field.
+	//
+	// The three-way distinction is what the whole shape exists for:
+	//
+	//	nil   not configured -> the documented default (5 / 60, 3 / 6, 0)
+	//	&0    explicitly OFF (the documented way to disable a rule)
+	//	&7    explicitly 7
+	//
+	// A plain int could not tell "unset" from "off", which is why the columns
+	// used to be `not null default 5` while the struct carried no `default:`
+	// bun tag (with `default:5` on the tag, `degraded_failures: 0` never
+	// reaches the database and the rule cannot be turned off at creation time
+	// — spec 2026-08-30-04, and before it StatusPage.AutoPublishDelaySeconds).
+	// That combination worked but pushed the defaulting into Go at WRITE time:
+	// NewCheck hardcoded 5/60/3/6/0 and any other insert path silently wrote 0
+	// for all five, i.e. five rules quietly off. Resolving at READ time instead
+	// means a caller that does not mention these fields gets the defaults for
+	// free. Do not reintroduce a `default:` tag or a SQL default clause.
+	DegradedFailures       *int `bun:"degraded_failures"`
+	DegradedFailuresWindow *int `bun:"degraded_failures_window"`
+	DegradedSlow           *int `bun:"degraded_slow"`
+	DegradedSlowWindow     *int `bun:"degraded_slow_window"`
+	SlowThresholdMs        *int `bun:"slow_threshold_ms"`
+	// DegradedEnabled gates OPENING incidents, not evaluating. FALSE on every
+	// pre-existing row (the migration's column default) and TRUE on every check
+	// created from now on (NewCheck): upgrading must never start paging on its
+	// own, per the rule already written at SLOAlertPolicy's rollout.
+	//
+	// It is deliberately NOT a pointer, unlike the five above: NULL cannot
+	// carry that rollout rule. nil-means-true would start paging on upgrade,
+	// nil-means-false would silently disable checks created by a path that does
+	// not set the flag. A plain bool defaulting to false makes every such path
+	// fail SAFE — into the dry run, which stamps DegradedWouldFireAt and pages
+	// nobody.
+	DegradedEnabled bool `bun:"degraded_enabled,notnull"`
+	// DegradedWouldFireAt is the dry run's output: when the evaluator last saw
+	// a degraded condition on a check that has DegradedEnabled false. It is
+	// what the check page's "this check would have been flagged degraded at
+	// 14:37 — enable?" banner and the checks list's `wouldHaveFired` filter
+	// read. Cleared once the check is enabled, so the two states can never both
+	// look true.
+	DegradedWouldFireAt *time.Time `bun:"degraded_would_fire_at"`
+	// DegradedEvaluatedAt is evaluator rotation STATE, not configuration: the
+	// sweep reads checks oldest-evaluated first so a bounded per-sweep batch
+	// still gives every check a turn on a large install, exactly as
+	// slo_alert_policies.last_evaluated_at does for burn rates.
+	DegradedEvaluatedAt *time.Time `bun:"degraded_evaluated_at"`
+
 	// Flap state, updated only on the rare incident-open/reopen (never per
 	// result). FlapCount is the number of outages accumulated inside the
 	// rolling flapping window; LastOutageAt is the wall-clock of the most
@@ -369,6 +429,65 @@ func (c *Check) EffectiveRecoveryPeriodAt(now time.Time) time.Duration {
 	return c.effectiveRecoveryPeriodForFlapCount(c.EffectiveFlapCount(now))
 }
 
+// The fleet-calibrated degraded-detection defaults (spec 2026-09-22-03), which
+// a NULL column resolves to at read time.
+//
+// 5-of-60 is the only failure rule that catches the motivating episode. The
+// slow rule ships INERT — DefaultSlowThresholdMs is 0, so no duration can
+// exceed it — because there is no honest fleet-wide value for "too slow" and
+// auto-baselining one is an explicit non-goal. 3-of-6 is therefore the shape
+// the rule takes once an operator commits to a threshold, not a rule that runs
+// on its own.
+const (
+	DefaultDegradedFailures       = 5
+	DefaultDegradedFailuresWindow = 60
+	DefaultDegradedSlow           = 3
+	DefaultDegradedSlowWindow     = 6
+	DefaultSlowThresholdMs        = 0
+)
+
+// EffectiveDegradedFailures resolves M for the failure rule: the stored value
+// when the operator configured one (including an explicit 0, which turns the
+// rule off), the code default when the column is NULL.
+//
+// Every reader of the degraded configuration goes through these five accessors.
+// Dereferencing the raw pointer would panic on an unconfigured check, and
+// treating nil as 0 would silently disable the rules — the precise failure this
+// feature exists to eliminate.
+func (c *Check) EffectiveDegradedFailures() int {
+	return intOrDefault(c.DegradedFailures, DefaultDegradedFailures)
+}
+
+// EffectiveDegradedFailuresWindow resolves N for the failure rule.
+func (c *Check) EffectiveDegradedFailuresWindow() int {
+	return intOrDefault(c.DegradedFailuresWindow, DefaultDegradedFailuresWindow)
+}
+
+// EffectiveDegradedSlow resolves M for the slow rule.
+func (c *Check) EffectiveDegradedSlow() int {
+	return intOrDefault(c.DegradedSlow, DefaultDegradedSlow)
+}
+
+// EffectiveDegradedSlowWindow resolves N for the slow rule.
+func (c *Check) EffectiveDegradedSlowWindow() int {
+	return intOrDefault(c.DegradedSlowWindow, DefaultDegradedSlowWindow)
+}
+
+// EffectiveSlowThresholdMs resolves the duration above which a successful probe
+// counts as slow. 0 (stored or defaulted) means the slow rule is off.
+func (c *Check) EffectiveSlowThresholdMs() int {
+	return intOrDefault(c.SlowThresholdMs, DefaultSlowThresholdMs)
+}
+
+// intOrDefault returns *value when value is set, fallback otherwise.
+func intOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+
+	return *value
+}
+
 // NewCheck creates a new check with generated UID.
 //
 // Period is deliberately a FLAT one-minute constant here, not a type-aware
@@ -406,10 +525,22 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		FlappingWindowSeconds:     21600, // 6h
 		FlapBackoffFactor:         2,
 		MaxRecoveryMultiplier:     8,
-		Status:                    CheckStatusCreated,
-		StatusStreak:              0,
-		CreatedAt:                 now,
-		UpdatedAt:                 now,
+		// Degraded detection: the five numeric fields are deliberately left nil
+		// — NULL in the database, resolved to DefaultDegradedFailures & co by
+		// the EffectiveDegraded* accessors at read time. Assigning 5/60/3/6/0
+		// here would be the bug this shape replaced: it puts the defaults in
+		// ONE constructor, so every other insert path has to remember to repeat
+		// them or silently store five disabled rules. The assignments are
+		// absent on purpose — do not "fix" it by adding them back.
+		//
+		// degraded_enabled is the exception and must be written: ON for a new
+		// check, OFF for every pre-existing row (the migration's column
+		// default). See the DegradedEnabled field comment.
+		DegradedEnabled: true,
+		Status:          CheckStatusCreated,
+		StatusStreak:    0,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 }
 
@@ -476,6 +607,19 @@ type CheckUpdate struct {
 	FlappingWindowSeconds *int
 	FlapBackoffFactor     *int
 	MaxRecoveryMultiplier *int
+
+	// Degraded detection config — spec 2026-09-22-03.
+	DegradedFailures       *int
+	DegradedFailuresWindow *int
+	DegradedSlow           *int
+	DegradedSlowWindow     *int
+	SlowThresholdMs        *int
+	DegradedEnabled        *bool
+	// DegradedWouldFireAt / DegradedEvaluatedAt are written by the evaluator
+	// sweep, never by an API caller. Clear* sets the column to NULL.
+	DegradedWouldFireAt      *time.Time
+	ClearDegradedWouldFireAt bool
+	DegradedEvaluatedAt      *time.Time
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string
@@ -545,15 +689,20 @@ func NewCheckLabel(checkUID, labelUID string) *CheckLabel {
 
 // ListChecksFilter provides filtering options for listing checks.
 type ListChecksFilter struct {
-	Labels          map[string]string // key:value pairs for AND filtering
-	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
-	Query           string            // search term for name/slug (case-insensitive substring)
-	Types           []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
-	Internal        *string           // "true", "false", or "all" — filter by internal status
-	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
-	Limit           int               // max results to return (0 = no limit)
-	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
-	CursorUID       *string           // cursor: uid of last item from previous page
+	Labels        map[string]string // key:value pairs for AND filtering
+	CheckGroupUID *string           // filter by check group UID; "none" = ungrouped checks only
+	Query         string            // search term for name/slug (case-insensitive substring)
+	Types         []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
+	Internal      *string           // "true", "false", or "all" — filter by internal status
+	Statuses      []CheckStatus     // optional filter by current status (up/down/etc.)
+	// WouldHaveFired restricts to checks the degraded dry run has flagged:
+	// `degraded_would_fire_at IS NOT NULL` (spec 2026-09-22-03). It is how an
+	// operator finds what enabling degraded detection would have caught, and it
+	// is the whole adoption path for a feature that ships off.
+	WouldHaveFired  bool
+	Limit           int        // max results to return (0 = no limit)
+	CursorCreatedAt *time.Time // cursor: created_at of last item from previous page
+	CursorUID       *string    // cursor: uid of last item from previous page
 
 	// SortByGroup opts into display-order pagination (sort=group): group
 	// sort_order asc, ungrouped last, then created_at DESC / uid DESC within a

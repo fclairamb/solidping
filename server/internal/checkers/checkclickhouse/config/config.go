@@ -1,0 +1,175 @@
+// Package config holds the clickhouse check's configuration: the struct, its
+// map parsing and serialization, its key constants and the whole offline rule
+// set (ValidateSpec).
+//
+// It is deliberately free of the execution client the parent checkclickhouse package
+// links, so `sp checks validate` can run the server's own validators against a
+// config-as-code manifest without carrying a protocol driver. The parent keeps a
+// type alias, so every existing call site is unaffected.
+package config
+
+import (
+	"strings"
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+)
+
+const (
+	// DefaultPort is ClickHouse's native-protocol port; TLS moves it to defaultSecurePort.
+	DefaultPort       = 9000
+	defaultSecurePort = 9440
+	defaultTimeout    = 10 * time.Second
+	maxTimeout        = 30 * time.Second
+	// DefaultQuery is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultQuery = "SELECT 1"
+	// DefaultUser and DefaultDatabase are ClickHouse's own out-of-the-box
+	// defaults, so neither field is required in the check config.
+	DefaultUser = "default"
+	// DefaultDatabase is a default or bound the config's rules are expressed in; it is
+	// exported so the parent checker package can alias it.
+	DefaultDatabase = "default"
+	maxPort         = 65535
+)
+
+// Config keys shared across the field tables, GetConfig and SecretFields.
+const (
+	fieldPassword = "password"
+	FieldDatabase = "database"
+)
+
+// ClickHouseConfig holds the configuration for ClickHouse database checks over
+// the native protocol.
+type ClickHouseConfig struct {
+	Host      string        `json:"host"`
+	Port      int           `json:"port,omitempty"`
+	Username  string        `json:"username,omitempty"`
+	Password  string        `json:"password,omitempty"`
+	Database  string        `json:"database,omitempty"`
+	Secure    bool          `json:"secure,omitempty"`
+	TLSVerify bool          `json:"tls_verify,omitempty"` //nolint:tagliatelle // API uses snake_case
+	Timeout   time.Duration `json:"timeout,omitempty"`
+	Query     string        `json:"query,omitempty"`
+}
+
+// GetConfig returns the configuration as a map, omitting anything left at its
+// default so stored configs stay minimal.
+func (c *ClickHouseConfig) GetConfig() map[string]any {
+	cfg := map[string]any{"host": c.Host}
+
+	if c.Port != 0 && c.Port != c.DefaultPort() {
+		cfg["port"] = c.Port
+	}
+
+	optionalStrings := map[string]string{
+		"username":    c.Username,
+		fieldPassword: c.Password,
+		FieldDatabase: c.Database,
+	}
+	for key, value := range optionalStrings {
+		if value != "" {
+			cfg[key] = value
+		}
+	}
+
+	if c.Secure {
+		cfg["secure"] = true
+	}
+
+	if c.TLSVerify {
+		cfg["tls_verify"] = true
+	}
+
+	if c.Timeout != 0 {
+		cfg["timeout"] = c.Timeout.String()
+	}
+
+	if c.Query != "" && c.Query != DefaultQuery {
+		cfg["query"] = c.Query
+	}
+
+	return cfg
+}
+
+// Validate checks if the configuration is valid.
+func (c *ClickHouseConfig) Validate() error {
+	if c.Host == "" {
+		return checkerdef.NewConfigError("host", "is required")
+	}
+
+	if c.Port < 0 || c.Port > maxPort {
+		return checkerdef.NewConfigErrorf("port", "must be between 1 and %d, got %d", maxPort, c.Port)
+	}
+
+	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
+		return checkerdef.NewConfigErrorf(
+			"timeout", "must be > 0 and <= %s, got %s", maxTimeout, c.Timeout.String(),
+		)
+	}
+
+	if c.TLSVerify && !c.Secure {
+		return checkerdef.NewConfigError("tls_verify", "requires secure to be enabled")
+	}
+
+	if c.Query != "" && !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(c.Query)), "SELECT") {
+		return checkerdef.NewConfigError("query", "must start with SELECT")
+	}
+
+	return nil
+}
+
+// DefaultPort returns the port implied by the transport: ClickHouse listens for
+// plain native traffic on 9000 and for native-over-TLS on 9440.
+func (c *ClickHouseConfig) DefaultPort() int {
+	if c.Secure {
+		return defaultSecurePort
+	}
+
+	return DefaultPort
+}
+
+// ResolvedPort returns the effective port, applying the transport default.
+func (c *ClickHouseConfig) ResolvedPort() int {
+	if c.Port != 0 {
+		return c.Port
+	}
+
+	return c.DefaultPort()
+}
+
+// ResolvedDatabase returns the effective database name.
+func (c *ClickHouseConfig) ResolvedDatabase() string {
+	if c.Database != "" {
+		return c.Database
+	}
+
+	return DefaultDatabase
+}
+
+// ResolvedUsername returns the effective username.
+func (c *ClickHouseConfig) ResolvedUsername() string {
+	if c.Username != "" {
+		return c.Username
+	}
+
+	return DefaultUser
+}
+
+// ResolvedTimeout returns the effective timeout.
+func (c *ClickHouseConfig) ResolvedTimeout() time.Duration {
+	if c.Timeout != 0 {
+		return c.Timeout
+	}
+
+	return defaultTimeout
+}
+
+// ResolvedQuery returns the effective health-check query.
+func (c *ClickHouseConfig) ResolvedQuery() string {
+	if c.Query != "" {
+		return c.Query
+	}
+
+	return DefaultQuery
+}

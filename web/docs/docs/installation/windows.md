@@ -213,6 +213,11 @@ If you're using IIS, you can configure it as a reverse proxy:
 </configuration>
 ```
 
+SolidPing gzip-compresses its own responses (`SP_SERVER_COMPRESSION`, default
+`true`), so IIS needs no compression module of its own for this — and turning
+one on anyway is harmless, since a response that already carries
+`Content-Encoding` passes through untouched.
+
 ## Logs
 
 View logs:

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDegradedPayload,
+  degradedFieldsCustomized,
   buildIntervalOptions,
   canonicalPeriodHMS,
   formatPeriod,
@@ -150,5 +152,115 @@ describe("canonicalPeriodHMS", () => {
     expect(withCustomIntervalOption(buildIntervalOptions(0, 0), "1m30s", () => "x")).toEqual(
       buildIntervalOptions(0, 0),
     );
+  });
+});
+// --- Degraded detection (spec 2026-09-22-03) --------------------------------
+//
+// The contract under test is the one that made the backend refuse a `default:`
+// bun tag on every one of these columns: a typed 0 turns a rule OFF and must
+// reach the server, while a blank field must be omitted so the server's own
+// default stands. A form that collapsed the two would make the slow rule
+// unturnable-off from the UI, which is the same class of bug twice over
+// (StatusPage.AutoPublishDelaySeconds, flappingWindowSeconds: 0).
+
+const blankDegraded = {
+  degradedFailures: "",
+  degradedFailuresWindow: "",
+  degradedSlow: "",
+  degradedSlowWindow: "",
+  slowThresholdMs: "",
+  degradedEnabled: true,
+};
+
+describe("buildDegradedPayload", () => {
+  it("omits every blank field and still sends the enabled flag", () => {
+    expect(buildDegradedPayload(blankDegraded)).toEqual({
+      degradedEnabled: true,
+    });
+  });
+
+  it("sends a typed 0 — the documented way to turn a rule off", () => {
+    const payload = buildDegradedPayload({
+      ...blankDegraded,
+      degradedFailures: "0",
+      degradedSlow: "0",
+      slowThresholdMs: "0",
+    });
+
+    expect(payload.degradedFailures).toBe(0);
+    expect(payload.degradedSlow).toBe(0);
+    expect(payload.slowThresholdMs).toBe(0);
+    // Still omitted, because they were still blank.
+    expect(payload).not.toHaveProperty("degradedFailuresWindow");
+    expect(payload).not.toHaveProperty("degradedSlowWindow");
+  });
+
+  it("carries the whole rule set when the operator fills it in", () => {
+    expect(
+      buildDegradedPayload({
+        degradedFailures: "5",
+        degradedFailuresWindow: "60",
+        degradedSlow: "3",
+        degradedSlowWindow: "6",
+        slowThresholdMs: "900",
+        degradedEnabled: true,
+      }),
+    ).toEqual({
+      degradedFailures: 5,
+      degradedFailuresWindow: 60,
+      degradedSlow: 3,
+      degradedSlowWindow: 6,
+      slowThresholdMs: 900,
+      degradedEnabled: true,
+    });
+  });
+
+  it("sends degradedEnabled false rather than omitting it", () => {
+    // Omitting it would make "turn this check's degraded detection off" an
+    // unexpressible edit, and leaving it on is the wrong default to fall back to.
+    expect(
+      buildDegradedPayload({ ...blankDegraded, degradedEnabled: false }),
+    ).toEqual({
+      degradedEnabled: false,
+    });
+  });
+
+  it("ignores an unparseable value instead of sending NaN", () => {
+    const payload = buildDegradedPayload({
+      ...blankDegraded,
+      slowThresholdMs: "abc",
+    });
+    expect(payload).toEqual({ degradedEnabled: true });
+  });
+});
+
+describe("degradedFieldsCustomized", () => {
+  it("is false for an untouched section", () => {
+    expect(degradedFieldsCustomized(blankDegraded, true)).toBe(false);
+  });
+
+  it("is true when any numeric override is set", () => {
+    expect(
+      degradedFieldsCustomized(
+        { ...blankDegraded, slowThresholdMs: "900" },
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("is true when the enabled flag differs from what the check stores", () => {
+    // The dry-run check: stored off, the operator has just switched it on.
+    expect(
+      degradedFieldsCustomized(
+        { ...blankDegraded, degradedEnabled: true },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      degradedFieldsCustomized(
+        { ...blankDegraded, degradedEnabled: false },
+        false,
+      ),
+    ).toBe(false);
   });
 });

@@ -66,9 +66,12 @@ test.describe("Incidents", () => {
       // Verify we're on the incident detail page
       expect(page.url()).toMatch(/\/incidents\/[0-9a-f-]+$/);
 
-      // Verify incident detail elements are visible (CardTitle is a div, not heading)
+      // Verify incident detail elements are visible. "Timeline" must match
+      // exactly: a plain getByText substring-matches the "Escalation timeline"
+      // card too, which only renders for incidents that escalated, so the
+      // locator went ambiguous depending on which incident sorted first.
       await expect(page.getByText("Incident Details")).toBeVisible();
-      await expect(page.getByText("Timeline")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
 
       // Take screenshot of incident detail
       await page.screenshot({

@@ -75,12 +75,12 @@ func TestKioskTokenOpensAPasswordPage(t *testing.T) {
 	createProtectedPage(ctx, t, svc)
 
 	// Negative control first: without a token, locked.
-	_, err := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, statuspagelock.ErrLocked)
 
 	token := mintKioskToken(ctx, t, svc)
 
-	view, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	view, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Equal(testPublicSlug, view.Slug)
 }
@@ -95,12 +95,12 @@ func TestKioskTokenOpensAPrivatePage(t *testing.T) {
 	ctx, dbService, svc, org := passwordSetup(t)
 	seedPageAtPublicSlug(ctx, t, dbService, svc, org.UID, models.StatusPageVisibilityPrivate)
 
-	_, err := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, ErrStatusPageNotFound, "negative control: private 404s without a token")
 
 	token := mintKioskToken(ctx, t, svc)
 
-	view, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	view, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.Equal(testPublicSlug, view.Slug)
 
@@ -110,7 +110,7 @@ func TestKioskTokenOpensAPrivatePage(t *testing.T) {
 	_, err = svc.ViewStatusPageSummary(kioskCtx(ctx, token), "acme", testPublicSlug)
 	r.NoError(err, "summary")
 
-	_, err = svc.ViewDefaultStatusPage(kioskCtx(ctx, token), "acme")
+	_, err = svc.ViewDefaultStatusPage(kioskCtx(ctx, token), "acme", AllViewOptions())
 	r.NoError(err, "default page view")
 }
 
@@ -144,7 +144,7 @@ func TestBadKioskTokenIsIndistinguishableFromNone(t *testing.T) {
 			// compared against a live secret, not against an empty column.
 			good := mintKioskToken(ctx, t, svc)
 
-			_, baseline := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug)
+			_, baseline := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug, AllViewOptions())
 			r.ErrorIs(baseline, visibility.wantErr, "baseline: no token at all")
 
 			bad := []struct {
@@ -159,7 +159,7 @@ func TestBadKioskTokenIsIndistinguishableFromNone(t *testing.T) {
 			}
 
 			for _, attempt := range bad {
-				_, err := svc.ViewStatusPage(kioskCtx(ctx, attempt.token), "acme", testPublicSlug)
+				_, err := svc.ViewStatusPage(kioskCtx(ctx, attempt.token), "acme", testPublicSlug, AllViewOptions())
 				r.ErrorIs(err, visibility.wantErr, attempt.name)
 
 				_, summaryErr := svc.ViewStatusPageSummary(kioskCtx(ctx, attempt.token), "acme", testPublicSlug)
@@ -168,7 +168,7 @@ func TestBadKioskTokenIsIndistinguishableFromNone(t *testing.T) {
 
 			// Positive control: the real token still works, so the loop above
 			// was rejecting tokens rather than a broken page.
-			_, err := svc.ViewStatusPage(kioskCtx(ctx, good), "acme", testPublicSlug)
+			_, err := svc.ViewStatusPage(kioskCtx(ctx, good), "acme", testPublicSlug, AllViewOptions())
 			r.NoError(err)
 		})
 	}
@@ -185,16 +185,16 @@ func TestRegeneratingInvalidatesTheOldToken(t *testing.T) {
 
 	first := mintKioskToken(ctx, t, svc)
 
-	_, err := svc.ViewStatusPage(kioskCtx(ctx, first), "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(kioskCtx(ctx, first), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err, "positive control before the rotation")
 
 	second := mintKioskToken(ctx, t, svc)
 	r.NotEqual(first, second, "each mint must produce fresh entropy")
 
-	_, err = svc.ViewStatusPage(kioskCtx(ctx, first), "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(kioskCtx(ctx, first), "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, ErrStatusPageNotFound, "the old token must stop working, with no distinct answer")
 
-	_, err = svc.ViewStatusPage(kioskCtx(ctx, second), "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(kioskCtx(ctx, second), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err, "the new token works")
 }
 
@@ -210,12 +210,12 @@ func TestRevokeClearsTheToken(t *testing.T) {
 
 	token := mintKioskToken(ctx, t, svc)
 
-	_, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err, "positive control before the revoke")
 
 	r.NoError(svc.RevokeKioskToken(ctx, "acme", testPublicSlug))
 
-	_, err = svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, statuspagelock.ErrLocked, "revoked reads exactly like no token")
 
 	r.NoError(svc.RevokeKioskToken(ctx, "acme", testPublicSlug), "revoke is idempotent")
@@ -240,7 +240,7 @@ func TestDisabledPageStaysHiddenFromKiosk(t *testing.T) {
 
 	token := mintKioskToken(ctx, t, svc)
 
-	_, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err, "positive control while enabled")
 
 	page, err := dbService.GetStatusPageBySlug(ctx, org.UID, testPublicSlug)
@@ -249,7 +249,7 @@ func TestDisabledPageStaysHiddenFromKiosk(t *testing.T) {
 	disabled := false
 	r.NoError(dbService.UpdateStatusPage(ctx, page.UID, &models.StatusPageUpdate{Enabled: &disabled}))
 
-	_, err = svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, ErrStatusPageNotFound)
 }
 
@@ -274,10 +274,10 @@ func TestKioskTokenIsScopedToOnePage(t *testing.T) {
 		ctx, http.MethodGet, "/api/v1/status-pages/acme/other-page?kiosk="+token, nil)
 	otherCtx := statuspagekiosk.WithGrant(ctx, statuspagekiosk.FromRequest(req))
 
-	_, err = svc.ViewStatusPage(otherCtx, "acme", "other-page")
+	_, err = svc.ViewStatusPage(otherCtx, "acme", "other-page", AllViewOptions())
 	r.ErrorIs(err, ErrStatusPageNotFound, "one page's token must not open another")
 
-	_, err = svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug)
+	_, err = svc.ViewStatusPage(kioskCtx(ctx, token), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err, "positive control: it does open its own page")
 
 	_ = dbService
@@ -299,7 +299,7 @@ func TestKioskTokenIsNeverSerializedPublicly(t *testing.T) {
 	r.NoError(err)
 	r.True(admin.HasKioskToken, "the operator console needs to know a token exists")
 
-	public, err := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug)
+	public, err := svc.ViewStatusPage(noKioskCtx(ctx), "acme", testPublicSlug, AllViewOptions())
 	r.NoError(err)
 	r.False(public.HasKioskToken, "the public payload must not advertise it")
 
@@ -377,6 +377,6 @@ func TestNoGrantMeansNoAccess(t *testing.T) {
 	mintKioskToken(ctx, t, svc)
 
 	// Bare context: no kiosk grant installed at all.
-	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug)
+	_, err := svc.ViewStatusPage(ctx, "acme", testPublicSlug, AllViewOptions())
 	r.ErrorIs(err, ErrStatusPageNotFound)
 }

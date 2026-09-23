@@ -17,6 +17,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -29,31 +30,11 @@ func (c *RabbitMQChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeRabbitMQ
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *RabbitMQChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &RabbitMQConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		port = defaultPort
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("RabbitMQ: %s:%d", cfg.Host, port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "rabbitmq-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the RabbitMQ check and returns the result.
@@ -116,7 +97,7 @@ func (c *RabbitMQChecker) dialAndCheck(
 	metrics map[string]any,
 	output map[string]any,
 ) *checkerdef.Result {
-	uri := cfg.buildAMQPURI()
+	uri := cfg.BuildAMQPURI()
 
 	amqpConfig := amqp.Config{}
 	if cfg.TLS {
@@ -255,7 +236,7 @@ func (c *RabbitMQChecker) applyNodeThresholds(
 	start time.Time,
 	alarms *checkerdef.Result,
 ) *checkerdef.Result {
-	memWarn, memCrit, diskWarn, diskCrit := cfg.resolveThresholds()
+	memWarn, memCrit, diskWarn, diskCrit := cfg.ResolveThresholds()
 	thresholdsConfigured := memWarn != nil || memCrit != nil || diskWarn != nil || diskCrit != nil
 
 	nodes, err := fetchNodes(ctx, cfg, mgmtPort)
@@ -344,33 +325,6 @@ func gradeNodes(
 	metrics["nodes_total"] = float64(len(nodes))
 
 	return worst.status, strings.Join(worst.reasons, "; ")
-}
-
-// resolveThresholds parses the four threshold keys, ignoring parse errors:
-// Validate() is responsible for rejecting a bad value before a config is ever
-// persisted, so a parse failure here would mean the config was never
-// validated — treat the threshold as unset rather than panicking or failing
-// the check for a config problem this code path cannot report cleanly.
-func (c *RabbitMQConfig) resolveThresholds() (*threshold, *threshold, *threshold, *threshold) {
-	var memWarn, memCrit, diskWarn, diskCrit *threshold
-
-	if c.MemoryUsedWarning != "" {
-		memWarn, _ = parseThreshold(keyMemoryUsedWarning, c.MemoryUsedWarning, true)
-	}
-
-	if c.MemoryUsedCritical != "" {
-		memCrit, _ = parseThreshold(keyMemoryUsedCritical, c.MemoryUsedCritical, true)
-	}
-
-	if c.DiskFreeWarning != "" {
-		diskWarn, _ = parseThreshold(keyDiskFreeWarning, c.DiskFreeWarning, false)
-	}
-
-	if c.DiskFreeCritical != "" {
-		diskCrit, _ = parseThreshold(keyDiskFreeCritical, c.DiskFreeCritical, false)
-	}
-
-	return memWarn, memCrit, diskWarn, diskCrit
 }
 
 // nodeInfo is the subset of RabbitMQ's `GET /api/nodes` response this check
@@ -583,7 +537,7 @@ func worseStatus(a, b checkerdef.Status) checkerdef.Status {
 }
 
 func isPercentThreshold(t *threshold) bool {
-	return t != nil && t.isPercent
+	return t != nil && t.IsPercent
 }
 
 // nonNegative clamps a management-API counter to a safe uint64: RabbitMQ
@@ -607,17 +561,17 @@ func ceilingBreach(used uint64, limit int64, thr *threshold) (bool, bool) {
 		return false, true
 	}
 
-	if thr.isPercent {
+	if thr.IsPercent {
 		if limit <= 0 {
 			return false, false
 		}
 
 		pct := float64(used) / float64(limit) * percentScale
 
-		return pct >= float64(thr.percent), true
+		return pct >= float64(thr.Percent), true
 	}
 
-	return used >= thr.bytes, true
+	return used >= thr.Bytes, true
 }
 
 // floorBreach reports whether `free` breaches a floor threshold (bytes
@@ -627,7 +581,7 @@ func floorBreach(free uint64, thr *threshold) bool {
 		return false
 	}
 
-	return free <= thr.bytes
+	return free <= thr.Bytes
 }
 
 func memMessage(
@@ -635,19 +589,19 @@ func memMessage(
 ) string {
 	usedStr := humanize.IBytes(used)
 
-	if thr.isPercent && percentOK {
+	if thr.IsPercent && percentOK {
 		return fmt.Sprintf(
 			"memory used %s is %.0f%% of the %s high watermark on %s (%s threshold %s)",
-			usedStr, percent, humanize.IBytes(nonNegative(limit)), nodeName, tier, thr.raw,
+			usedStr, percent, humanize.IBytes(nonNegative(limit)), nodeName, tier, thr.Raw,
 		)
 	}
 
-	return fmt.Sprintf("memory used %s on %s breaches the %s threshold %s", usedStr, nodeName, tier, thr.raw)
+	return fmt.Sprintf("memory used %s on %s breaches the %s threshold %s", usedStr, nodeName, tier, thr.Raw)
 }
 
 func diskMessage(nodeName string, free uint64, tier string, thr *threshold) string {
 	return fmt.Sprintf(
-		"disk free %s on %s is below the %s threshold %s", humanize.IBytes(free), nodeName, tier, thr.raw,
+		"disk free %s on %s is below the %s threshold %s", humanize.IBytes(free), nodeName, tier, thr.Raw,
 	)
 }
 

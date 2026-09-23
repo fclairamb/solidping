@@ -67,7 +67,7 @@ func TestViewStatusPageSummary_ResponseShapeAndCounts(t *testing.T) {
 	r.False(resp.GeneratedAt.IsZero())
 
 	// Same rollup the full page view returns, from the exact same live data.
-	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug, AllViewOptions())
 	r.NoError(err)
 	r.Equal(view.OverallStatus, resp.Status)
 	r.Equal(*view.StatusCounts, resp.Counts)
@@ -87,7 +87,7 @@ func TestViewStatusPageSummary_CacheControl(t *testing.T) {
 
 	req, rec := newSummaryRequest(org.Slug, page.Slug)
 	r.NoError(h.ViewStatusPageSummary(rec, req))
-	r.Equal("public, max-age=60", rec.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", rec.Header().Get("Cache-Control"))
 }
 
 // TestViewStatusPageSummary_NotFound pins that a private page and a disabled
@@ -173,6 +173,14 @@ func TestViewStatusPageSummary_PageURL(t *testing.T) {
 	r.NoError(svc.db.UpdateStatusPageCustomDomain(ctx, page.UID, &models.StatusPageCustomDomainUpdate{
 		Domain: &customDomain, Token: &token, VerifiedAt: &now, CheckedAt: &now,
 	}))
+
+	// This test writes the domain straight to the database, so it also has to
+	// do by hand what setCustomDomain / VerifiedCustomDomain do for real: evict
+	// the page's memoized summary (spec 2026-09-22-09). A direct database edit
+	// is outside the invalidation contract by design — the backstop for one is
+	// statuspagecache.PageMemoTTL, not an eviction nobody could have known to
+	// make.
+	svc.Invalidate(page.UID)
 
 	req, rec = newSummaryRequest(org.Slug, page.Slug)
 	req.Host = "app.example.com"

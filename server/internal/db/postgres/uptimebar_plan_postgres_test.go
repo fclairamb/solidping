@@ -18,27 +18,42 @@ import (
 // postgres_headroom_postgres_test.go).
 const portUptimebarPlan = 15473
 
-// planFilterRecorder is a uptimebar.ResultsLister that runs no query and only
-// records the filters the availability engine builds. Capturing the filters from
-// the REAL call path (rather than hand-writing them here) is what makes this test
-// a regression guard: if a future edit puts 'raw' back into the rollup query's
-// PeriodTypes, or drops the raw clamp, the captured filter changes and the plan
-// assertions below fail.
+// planFilterRecorder is a uptimebar.ResultBucketAggregator that runs no query and
+// only records the filters the availability engine builds. Capturing the filters
+// from the REAL call path (rather than hand-writing them here) is what makes this
+// test a regression guard: if a future edit puts 'raw' back into the rollup
+// query's PeriodTypes, or drops the raw clamp, the captured filter changes and the
+// plan assertions below fail.
 type planFilterRecorder struct {
-	filters []*models.ListResultsFilter
+	filters []*models.ResultBucketFilter
 }
 
-func (p *planFilterRecorder) ListResults(
-	_ context.Context, filter *models.ListResultsFilter,
-) (*models.ListResultsResponse, error) {
+func (p *planFilterRecorder) AggregateResultBuckets(
+	_ context.Context, filter *models.ResultBucketFilter,
+) ([]models.ResultBucket, error) {
 	p.filters = append(p.filters, filter)
 
-	return &models.ListResultsResponse{}, nil
+	return nil, nil
+}
+
+// explainAggregateResultBuckets returns the Postgres plan for the statement
+// AggregateResultBuckets would run for this filter, built by the PRODUCTION
+// builder with the production arguments, so the plan cannot drift from
+// production by transcription.
+func explainAggregateResultBuckets(
+	ctx context.Context, t *testing.T, s *Service, filter *models.ResultBucketFilter,
+) string {
+	t.Helper()
+
+	require.NoError(t, filter.Validate())
+
+	return explainSQL(ctx, t, s, aggregateResultBucketsQuery(s.db, filter).String())
 }
 
 // explainListResults returns the Postgres plan for the query ListResults would
 // run for this filter, built through the very same helpers (ExcludeColumn +
-// applyResultsFilter) so the plan describes the real production statement.
+// applyResultsFilter) so the plan describes the real production statement. It
+// serves the positive controls below: the row-shaped reads this spec replaced.
 func explainListResults(
 	ctx context.Context, t *testing.T, s *Service, filter *models.ListResultsFilter,
 ) string {
@@ -53,24 +68,7 @@ func explainListResults(
 
 	query = applyResultsFilter(query, filter)
 
-	rows, err := s.db.QueryContext(ctx, "EXPLAIN (ANALYZE, BUFFERS) "+query.String())
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var plan strings.Builder
-
-	for rows.Next() {
-		var line string
-
-		require.NoError(t, rows.Scan(&line))
-		plan.WriteString(line)
-		plan.WriteString("\n")
-	}
-
-	require.NoError(t, rows.Err())
-
-	return plan.String()
+	return explainSQL(ctx, t, s, query.String())
 }
 
 // seedPlanResults bulk-inserts raw rows for a check with a single INSERT …
@@ -122,9 +120,18 @@ func seedPlanRollups(ctx context.Context, t *testing.T, s *Service, orgUID, chec
 //
 // The fix is the tier split in uptimebar. This test pins it at the level that
 // actually matters — the query PLAN — because a timing assertion would be flaky.
-// The final subtest is the positive control: it runs the OLD combined predicate
-// against the SAME dataset and requires that it DOES seq-scan, proving the
-// fixture is dense enough for the "no Seq Scan" assertions to have teeth.
+//
+// Spec 2026-09-22-05 extended it: the tier split fixed WHICH rows are read, and
+// the split queries still shipped every one of them into Go to be folded there
+// (267 449 rows on a 200-check page, with a 12.8 MB external merge sort on the
+// way, to produce 400 buckets). The engine now issues GROUP BY aggregates, so
+// this asserts three things per statement: the right partial index, no sort to
+// disk, and — the headline — that the statement returns one row per
+// (check, bucket) rather than one per source row.
+//
+// The last two subtests are the positive controls: they run the row-shaped reads
+// against the SAME dataset and require that they DO seq-scan and DO sort, proving
+// the fixture is dense enough for the assertions above to have teeth.
 //
 //nolint:paralleltest // embedded-postgres tests run sequentially in this package
 func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
@@ -159,14 +166,9 @@ func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
 	r.NoError(err)
 
 	// Capture the filters the real engine builds for both call sites, with the
-	// hints the production path resolves (live retention + the org's measured
-	// probe rate, which is what sizes the raw tier's row cap).
-	planHints := uptimebar.Hints{
-		RetentionRawHours: 24,
-		RetentionHourDays: 7,
-		RawRowsPerHour:    uptimebar.MeasureRawRowsPerHour(ctx, s, org.UID),
-	}
-	r.Positive(planHints.RawRowsPerHour, "the seeded checks must produce a measurable probe rate")
+	// hints the production path resolves (the live read-side retention, which is
+	// what bounds the raw tier's clamp).
+	planHints := uptimebar.Hints{RetentionRawHours: 24, RetentionHourDays: 7}
 
 	rec := &planFilterRecorder{}
 	now := time.Now().UTC()
@@ -177,30 +179,70 @@ func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
 	r.NoError(err)
 
 	bucketFilters := len(rec.filters)
-	r.Equal(2, bucketFilters, "BucketAvailability must issue exactly one query per tier group")
+	r.Equal(2, bucketFilters, "BucketAvailability must issue exactly one aggregate per tier group")
 
 	_, err = uptimebar.WindowAvailability(
 		ctx, rec, org.UID, []string{target.UID}, now.AddDate(0, 0, -30), now, planHints)
 	r.NoError(err)
 
-	r.Len(rec.filters, 4, "WindowAvailability must issue exactly one query per tier group")
+	r.Len(rec.filters, 4, "WindowAvailability must issue exactly one aggregate per tier group")
 
 	for i, filter := range rec.filters {
-		name := fmt.Sprintf("query %d (%s)", i, strings.Join(filter.PeriodTypes, "+"))
+		name := fmt.Sprintf("aggregate %d (%s)", i, strings.Join(filter.PeriodTypes, "+"))
 
-		plan := explainListResults(ctx, t, s, filter)
+		plan := explainAggregateResultBuckets(ctx, t, s, filter)
 
 		r.NotContains(plan, "Seq Scan on results",
 			"%s must not sequentially scan results — that is the whole defect (plan:\n%s)", name, plan)
+		r.NotContains(plan, "Parallel Seq Scan on results",
+			"%s must not parallel-seq-scan results either (plan:\n%s)", name, plan)
 		r.True(
 			strings.Contains(plan, "Index Scan") || strings.Contains(plan, "Bitmap Index Scan"),
 			"%s must be answered from an index (plan:\n%s)", name, plan)
-		r.True(
-			strings.Contains(plan, "results_raw_idx") || strings.Contains(plan, "results_aggregated_idx"),
-			"%s must use one of the two partial indexes on results (plan:\n%s)", name, plan)
+
+		// Each tier side must ride ITS OWN partial index, not merely "an index":
+		// that is what the restated period_type predicate buys.
+		wantIndex := "results_aggregated_idx"
+		if models.PeriodTypesTierSide(filter.PeriodTypes) == models.PeriodTierRaw {
+			wantIndex = "results_raw_idx"
+		}
+
+		r.Contains(plan, wantIndex,
+			"%s must ride %s (plan:\n%s)", name, wantIndex, plan)
+
+		// No Sort node. The row path inherited applyResultsFilter's
+		// `ORDER BY period_start DESC, uid DESC`, which this fold never needed
+		// and which the planner answered with an external merge sort to disk
+		// (12.8 MB measured on the 200-check page). A GROUP BY that the planner
+		// chooses to answer by sorting would give that cost straight back.
+		// Never a sort to DISK. That is the measured defect: the row path's
+		// inherited `ORDER BY period_start DESC, uid DESC` made the planner
+		// spill an external merge of 12.8 MB on the 200-check page.
+		r.NotContains(plan, "Sort Method: external",
+			"%s must never sort to disk (plan:\n%s)", name, plan)
+
+		// The RAW tier — the hot one, 267 449 rows on the measured page — must
+		// hash-aggregate straight off the bitmap scan, with no Sort node at all.
+		// The rollup tier is allowed one: it is ~750 rows here and the planner
+		// picks GroupAggregate over an in-memory quicksort of them, which is a
+		// cost decision about a bounded set, not the unbounded spill above.
+		if models.PeriodTypesTierSide(filter.PeriodTypes) == models.PeriodTierRaw {
+			r.Contains(plan, "HashAggregate",
+				"%s must hash-aggregate (plan:\n%s)", name, plan)
+			r.NotContains(plan, "->  Sort",
+				"%s must contain no Sort node — nothing about a bucket fold needs order "+
+					"(plan:\n%s)", name, plan)
+		}
+
+		// And the headline: what reaches Go is bounded by checks x buckets, not
+		// by how many rows the window holds. One check, at most 31 buckets.
+		r.LessOrEqual(planActualRows(plan), 31,
+			"%s must return one row per (check, bucket), not one per source row "+
+				"(plan:\n%s)", name, plan)
 	}
 
-	// Positive control: the pre-fix predicate on the very same data.
+	// Positive control 1: the row-shaped read this spec replaced, on the very
+	// same data — the straddling-tier predicate that can only seq-scan.
 	windowStart := todayStart.AddDate(0, 0, -29)
 	combined := &models.ListResultsFilter{
 		OrganizationUID:  org.UID,
@@ -215,4 +257,23 @@ func TestUptimebarQueriesUseIndexes_Postgres(t *testing.T) {
 	r.Contains(controlPlan, "Seq Scan on results",
 		"the straddling predicate MUST still seq-scan — otherwise this fixture proves nothing "+
 			"about the split queries above (plan:\n%s)", controlPlan)
+
+	// Positive control 2: the tier-SPLIT row read — what shipped before this
+	// spec. It rides the right index, so the split was never the remaining
+	// problem; what it also does is ORDER BY period_start DESC, uid DESC and
+	// ship every matching row. This control is what proves the "no Sort"
+	// assertions above are about the aggregate and not about the fixture.
+	rawStart := uptimebar.RawTierStart(windowStart, time.Now().UTC(), 24)
+	rowPath := &models.ListResultsFilter{
+		OrganizationUID:  org.UID,
+		CheckUIDs:        []string{target.UID},
+		PeriodTypes:      []string{models.PeriodTypeRaw},
+		PeriodStartAfter: &rawStart,
+		SkipBlobs:        true,
+	}
+
+	rowPathPlan := explainListResults(ctx, t, s, rowPath)
+	r.Contains(rowPathPlan, "Sort",
+		"the row path MUST sort (it inherits applyResultsFilter's ORDER BY) — otherwise the "+
+			"no-Sort assertions above prove nothing (plan:\n%s)", rowPathPlan)
 }

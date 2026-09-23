@@ -48,13 +48,18 @@ function resourceWithSeries(responseTimeSeries: unknown[]) {
   };
 }
 
-async function mockStatusPage(page: Page, responseTimeSeries: unknown[]) {
+async function mockStatusPage(
+  page: Page,
+  responseTimeSeries: unknown[],
+  pageOverrides: Record<string, unknown> = {},
+) {
   await page.route(`**/api/v1/status-pages/${ORG}/${SLUG}`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ...basePayload(),
+        ...pageOverrides,
         sections: [
           {
             uid: "55555555-5555-5555-5555-555555555555",
@@ -385,5 +390,74 @@ test.describe("Public status page — response-time chart", () => {
     const first = parsed[0];
     const ageDays = (Date.now() - first) / (24 * 60 * 60_000);
     expect(ageDays).toBeGreaterThan(30);
+  });
+
+  test("a 24h page's seam renders one point per 15-minute bin, evenly spaced", async ({
+    page,
+  }) => {
+    // Spec 2026-09-22-06: the seam half of this chart is no longer individual raw
+    // probes sub-sampled at up to one in ninety. The server bins the raw seam in
+    // SQL and sends one p95 point per bin — 15-minute bins on a 24 h page,
+    // seamBinWidth(24h) — each carrying the bin's probe counts, exactly like a
+    // rollup point.
+    //
+    // What this asserts is the CLIENT's half of that contract: 96 such points
+    // render as 96 slots on a real numeric time axis, evenly spaced. The
+    // availability strip is the measurable surface — each cell's flex weight is
+    // its slot's DURATION (spec 2026-09-21-03 B.4) — so a uniform 15-minute grid
+    // must produce cells of equal width. A point that drifted off the grid, or a
+    // series that went back to plotting arbitrary probes, shows up here as
+    // unequal cells.
+    const BIN_MS = 15 * 60_000;
+    const BINS = 96;
+    const newest = Math.floor(Date.now() / BIN_MS) * BIN_MS;
+
+    const points = Array.from({ length: BINS }, (_, i) => ({
+      time: new Date(newest - (BINS - 1 - i) * BIN_MS).toISOString(),
+      durationP95: 80 + (i % 7) * 5,
+      status: "up",
+      totalChecks: 15,
+      successfulChecks: 15,
+      availabilityPct: 100,
+      availabilityStatus: "up",
+    }));
+
+    await mockStatusPage(page, [{ region: "eu2", points }], {
+      historyDays: 1,
+      historyPeriod: "24h",
+    });
+
+    await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
+    await page.waitForLoadState("networkidle");
+
+    const strip = page.getByTestId("response-time-chart-availability-strip");
+    await expect(strip.first()).toBeVisible({ timeout: 10000 });
+
+    const cells = strip.first().locator("[data-status]");
+    await expect(cells).toHaveCount(BINS);
+
+    // Equal widths: every 15-minute bin occupies the same slice of the axis.
+    // Compared with a 1px tolerance, which is subpixel layout rounding and not
+    // a grid that slipped (a 30-minute gap would be twice as wide).
+    const widths = await cells.evaluateAll((nodes) =>
+      nodes.map((n) => n.getBoundingClientRect().width),
+    );
+    const first = widths[0];
+    expect(first).toBeGreaterThan(0);
+    for (const width of widths) {
+      expect(Math.abs(width - first)).toBeLessThanOrEqual(1);
+    }
+
+    // And the tooltip of each cell names its bin's probe count, which is what a
+    // seam point now carries and a single sub-sampled probe never could.
+    const title = await cells.first().getAttribute("title");
+    expect(title).toContain("(15/15)");
+
+    // The curve really spans the whole day rather than the last ~100 minutes of
+    // raw the old sub-sampled seam ended up showing.
+    const labels = await page
+      .locator(".recharts-cartesian-axis-tick-value")
+      .allInnerTexts();
+    expect(labels.length).toBeGreaterThan(0);
   });
 });

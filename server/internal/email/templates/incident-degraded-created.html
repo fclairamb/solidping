@@ -1,0 +1,50 @@
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[DEGRADED] {{.CheckName}}: {{.DegradedReason}}{{if gt .IncidentNumber 0}} (#{{.IncidentNumber}}){{end}}{{end}}
+{{define "preheader"}}{{.DegradedReason}} — {{.DegradedStatus}}{{end}}
+{{template "base.html" .}}
+{{/* Deliberately the WARN banner, not "down": the target is usually up at this
+     very moment, and a degraded notice that wears the outage colours is one an
+     operator learns to mute — along with the real outages. */}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Degraded"}}{{end}}
+{{define "content"}}
+    <h1>{{.CheckName}} is degraded</h1>
+    <p>{{.DegradedReason}}. <strong>{{.DegradedStatus}}</strong></p>
+    <p class="meta">This is not an outage. Each failure was followed by a success before the confirmation period elapsed, so no outage was ever confirmed — which is exactly why it went unreported until now.</p>
+
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        {{if .DegradedFailureLine}}<tr><td class="label">Failures</td><td class="value">{{.DegradedFailureLine}}</td></tr>{{end}}
+        {{if .DegradedSlowLine}}<tr><td class="label">Slow probes</td><td class="value">{{.DegradedSlowLine}}</td></tr>{{end}}
+        <tr><td class="label">Window</td><td class="value">{{.DegradedWindow}}</td></tr>
+        <tr><td class="label">Current status</td><td class="value">{{.DegradedStatus}}</td></tr>
+        <tr><td class="label">Monitor</td><td class="value">{{if .DegradedWindowURL}}<a href="{{.DegradedWindowURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</td></tr>
+        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
+        {{if gt .IncidentNumber 0}}<tr><td class="label">Incident</td><td class="value">{{if .IncidentURL}}<a href="{{.IncidentURL}}">#{{.IncidentNumber}}</a>{{else}}#{{.IncidentNumber}}{{end}}</td></tr>{{end}}
+    </table>
+
+    {{if .DegradedWindowURL}}
+    <div class="cta-wrap">{{template "button" dict "URL" .DegradedWindowURL "Label" "Open the chart on this window" "Variant" "primary"}}</div>
+    {{end}}
+    <p class="footnote">Incident reference <span class="mono">{{.IncidentUID}}</span> — quote it if you contact support.</p>
+{{end}}
+{{define "text"}}{{.CheckName}} is degraded
+
+{{.DegradedReason}}. {{.DegradedStatus}}
+
+This is not an outage: each failure was followed by a success before the confirmation period elapsed.
+
+{{if .DegradedFailureLine}}Failures: {{.DegradedFailureLine}}
+{{end}}{{if .DegradedSlowLine}}Slow probes: {{.DegradedSlowLine}}
+{{end}}Window: {{.DegradedWindow}}
+Current status: {{.DegradedStatus}}
+Monitor: {{.CheckName}}
+{{if .DegradedWindowURL}}Chart on this window: {{.DegradedWindowURL}}
+{{end}}Started at: {{.StartedAt}}
+{{if gt .IncidentNumber 0}}Incident: #{{.IncidentNumber}}
+{{end}}Incident ID: {{.IncidentUID}}
+{{if .IncidentURL}}
+View incident: {{.IncidentURL}}
+{{end}}
+This is an automated notification from SolidPing.
+{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
+Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
+Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
+{{end}}

@@ -7,18 +7,17 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/coder/websocket"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkwebsocket/config"
 )
 
 const (
 	microsecondsPerMilli = 1000.0
-	maxReadAttempts      = 8     // cap reads so a chatty server can't consume the full timeout
-	configKeyURL         = "url" // shared with config.go to avoid goconst
+	maxReadAttempts      = 8 // cap reads so a chatty server can't consume the full timeout
 )
 
 // WebSocketChecker implements the Checker interface for WebSocket checks.
@@ -29,44 +28,11 @@ func (c *WebSocketChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeWebSocket
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *WebSocketChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &WebSocketConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if cfg.URL == "" {
-		return checkerdef.NewConfigError(configKeyURL, "URL is required")
-	}
-
-	if !strings.HasPrefix(cfg.URL, "ws://") && !strings.HasPrefix(cfg.URL, "wss://") {
-		return checkerdef.NewConfigError(configKeyURL, "must start with ws:// or wss://")
-	}
-
-	if cfg.Expect != "" {
-		if _, err := regexp.Compile(cfg.Expect); err != nil {
-			return checkerdef.NewConfigErrorf("expect", "invalid regex pattern: %s", err.Error())
-		}
-	}
-
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > maxTimeout) {
-		return checkerdef.NewConfigErrorf(
-			"timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String(),
-		)
-	}
-
-	if spec.Name == "" {
-		host := hostFromURL(cfg.URL)
-		spec.Name = "WebSocket: " + host
-	}
-
-	if spec.Slug == "" {
-		host := hostFromURL(cfg.URL)
-		spec.Slug = "ws-" + strings.ReplaceAll(host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the WebSocket check and returns the result.

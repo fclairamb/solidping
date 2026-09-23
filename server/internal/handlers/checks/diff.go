@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/secretref"
@@ -340,7 +340,7 @@ func joinSortedRegions(regions []string) string {
 // (UpsertCheck forwards `&req.Labels`), so a key present on only one side is a
 // change in either direction.
 func diffLabels(current, desired map[string]string, opts diffOptions) []CheckFieldChange {
-	keys := make(map[string]struct{}, len(current)+len(desired))
+	keys := make(map[string]struct{}, max(len(current), len(desired)))
 	for key := range current {
 		keys[key] = struct{}{}
 	}
@@ -419,7 +419,7 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 		desiredPublic[key] = value
 	}
 
-	keys := make(map[string]struct{}, len(current.Config)+len(desiredPublic))
+	keys := make(map[string]struct{}, max(len(current.Config), len(desiredPublic)))
 	for key := range current.Config {
 		keys[key] = struct{}{}
 	}
@@ -459,7 +459,7 @@ func diffCheckConfig(existing *models.Check, current, desired *ExportCheck) []Ch
 func hiddenExportConfigKeys(checkType string, configPrivateKeys *string) map[string]struct{} {
 	hidden := map[string]struct{}{}
 
-	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(checkType)); ok {
+	if cfg, ok := configregistry.ParseConfig(checkerdef.CheckType(checkType)); ok {
 		for _, key := range credentials.SecretFieldsFor(cfg) {
 			hidden[key] = struct{}{}
 		}

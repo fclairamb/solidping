@@ -9,36 +9,16 @@ import (
 	"strings"
 	"time"
 
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkdns/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 const (
-	// Default values from spec.
-	defaultTimeout    = 5 * time.Second
-	defaultRecordType = recordTypeA
-
-	recordTypeA     = "A"
-	recordTypeAAAA  = "AAAA"
-	recordTypeCNAME = "CNAME"
-	recordTypeMX    = "MX"
-	recordTypeNS    = "NS"
-	recordTypeTXT   = "TXT"
-	recordTypeSOA   = "SOA"
+	// defaultTimeout is the per-query timeout when the config sets none.
+	defaultTimeout = 5 * time.Second
 )
 
-var (
-	//nolint:gochecknoglobals // validRecordTypes is a constant lookup map
-	validRecordTypes = map[string]bool{
-		recordTypeA:     true,
-		recordTypeAAAA:  true,
-		recordTypeCNAME: true,
-		recordTypeMX:    true,
-		recordTypeNS:    true,
-		recordTypeTXT:   true,
-		recordTypeSOA:   true,
-	}
-	errSOANotSupported = errors.New("SOA record type not yet supported")
-)
+var errSOANotSupported = errors.New("SOA record type not yet supported")
 
 // DNSChecker implements the Checker interface for DNS checks.
 type DNSChecker struct{}
@@ -48,53 +28,11 @@ func (c *DNSChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeDNS
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *DNSChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &DNSConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	// Validate Host (domain to query)
-	if cfg.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
-	}
-
-	// Validate Timeout if set
-	if cfg.Timeout != 0 && (cfg.Timeout <= 0 || cfg.Timeout > 30*time.Second) {
-		return checkerdef.NewConfigErrorf("timeout", "must be > 0 and <= 30s, got %s", cfg.Timeout.String())
-	}
-
-	// Validate RecordType if set
-	recordType := cfg.RecordType
-	if recordType == "" {
-		recordType = defaultRecordType
-	}
-
-	recordType = strings.ToUpper(recordType)
-	if !validRecordTypes[recordType] {
-		return checkerdef.NewConfigErrorf(
-			"record_type", "must be one of A, AAAA, CNAME, MX, NS, TXT, SOA, got %s", cfg.RecordType,
-		)
-	}
-
-	// Validate Nameserver format if set
-	if cfg.Nameserver != "" {
-		if !strings.Contains(cfg.Nameserver, ":") {
-			return checkerdef.NewConfigErrorf("nameserver", "must be in format host:port, got %s", cfg.Nameserver)
-		}
-	}
-
-	// Cannot specify both expected_ips and expected_values
-	if len(cfg.ExpectedIPs) > 0 && len(cfg.ExpectedValues) > 0 {
-		return checkerdef.NewConfigError("expected_values", "cannot specify both expected_ips and expected_values")
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "dns-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the DNS check and returns the result.

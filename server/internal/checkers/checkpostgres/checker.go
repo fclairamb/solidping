@@ -6,12 +6,12 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/lib/pq" // PostgreSQL driver registration + connector API
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkpostgres/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -66,36 +66,11 @@ func (c *PostgreSQLChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypePostgreSQL
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *PostgreSQLChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &PostgreSQLConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		port = defaultPort
-	}
-
-	database := cfg.Database
-	if database == "" {
-		database = defaultDatabase
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d/%s", cfg.Host, port, database)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "postgresql-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // execParams holds resolved execution parameters with defaults applied.
@@ -111,7 +86,7 @@ func newExecParams(cfg *PostgreSQLConfig) execParams {
 		timeout: cfg.Timeout,
 		query:   cfg.Query,
 		port:    cfg.Port,
-		connStr: cfg.buildConnStr(),
+		connStr: cfg.BuildConnStr(),
 	}
 
 	if params.timeout == 0 {

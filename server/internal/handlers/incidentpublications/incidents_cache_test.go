@@ -80,7 +80,7 @@ func TestPublicIncidentsCacheControlFollowsVisibility(t *testing.T) {
 	open := get(s.page.Slug, nil)
 	r.Equal(http.StatusOK, open.Code)
 	r.Positive(incidentCount(open), "there must be something worth protecting")
-	r.Equal("public, max-age=60", open.Header().Get("Cache-Control"))
+	r.Equal("public, max-age=60, stale-while-revalidate=30", open.Header().Get("Cache-Control"))
 	r.Equal("X-Forwarded-Proto", open.Header().Get("Vary"))
 
 	// Same page, now behind a password.

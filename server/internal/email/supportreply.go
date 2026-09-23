@@ -33,6 +33,8 @@ const (
 	TemplateEscalation              = "escalation.html"
 	TemplateIncidentBurnCreated     = "incident-burn-created.html"
 	TemplateIncidentBurnResolved    = "incident-burn-resolved.html"
+	TemplateIncidentDegradedCreated = "incident-degraded-created.html"
+	TemplateIncidentDegradedResolv  = "incident-degraded-resolved.html"
 	TemplateIncidentAcknowledged    = "incident-acknowledged.html"
 	TemplateIncidentUnacknowledged  = "incident-unacknowledged.html"
 	TemplateIncidentComment         = "incident-comment.html"
@@ -83,7 +85,12 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateEscalation:           true,
 	TemplateIncidentBurnCreated:  true,
 	TemplateIncidentBurnResolved: true,
-	TemplateIncidentAcknowledged: true,
+	// A degraded notice is the most answerable alert of all: it says "this has
+	// been flaky for forty minutes and is up right now", which is a conversation,
+	// not a page (spec 2026-09-22-03).
+	TemplateIncidentDegradedCreated: true,
+	TemplateIncidentDegradedResolv:  true,
+	TemplateIncidentAcknowledged:    true,
 	// The retraction is the most answerable alert there is: it says an open
 	// incident is unowned again and asks someone to take it.
 	TemplateIncidentUnacknowledged: true,

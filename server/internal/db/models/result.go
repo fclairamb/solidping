@@ -1,9 +1,13 @@
 package models
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -51,7 +55,31 @@ const (
 	PeriodTypeHour  = "hour"
 	PeriodTypeDay   = "day"
 	PeriodTypeMonth = "month"
+	// PeriodTypeSeam is an IN-MEMORY-ONLY tier and is NEVER PERSISTED: no
+	// migration knows the value, no writer accepts it (BeforeAppendModel below
+	// refuses it outright), and nothing reads it back out of `results`.
+	//
+	// It labels a Result the status page's response-time fetch MATERIALIZES from
+	// a database-side aggregate over raw probes — one row per
+	// (check, region, bin), carrying the same p95/avg/min/max/count shape a
+	// rollup row carries (spec 2026-09-22-06). The reason it is a distinct value
+	// rather than reusing `hour` or `raw`: it must fold like a ROLLUP (its
+	// counters are already summed, so accumulateAgg, not accumulateRaw) while
+	// being BUDGETED like the raw seam it replaces, and the downstream trim keys
+	// on period_type for both decisions. Reusing `raw` would fold it as a single
+	// probe and throw its counts away; reusing `hour` would put it in the wrong
+	// budget bucket and let it be mistaken for a persisted rollup.
+	PeriodTypeSeam = "seam"
 )
+
+// ErrPeriodTypeNotPersistable is returned by BeforeAppendModel when a write
+// carries a period_type that exists only in memory (today: PeriodTypeSeam).
+var ErrPeriodTypeNotPersistable = errors.New("result: this period type is in-memory only and cannot be persisted")
+
+// PersistablePeriodType reports whether a period_type may reach the database.
+func PersistablePeriodType(periodType string) bool {
+	return periodType != PeriodTypeSeam
+}
 
 // PeriodTierSide describes which side of the raw/rollup split a requested set of
 // period types sits on. It exists because BOTH useful indexes on `results` are
@@ -264,6 +292,29 @@ type Result struct {
 	// than dropping the row from the page.
 	CheckSlug *string `bun:"check_slug,scanonly"`
 	CheckName *string `bun:"check_name,scanonly"`
+}
+
+// BeforeAppendModel is the guard that makes PeriodTypeSeam's "never persisted"
+// contract structural instead of a comment. bun calls it for every INSERT and
+// UPDATE that carries a *Result (per element for a slice model), so ONE
+// implementation here covers CreateResult, CreateResults,
+// SaveResultWithStatusTracking, UpsertAggregatedResult, CompactResults and any
+// writer added later, in both dialects. A per-method check would have to be
+// repeated ten times and would be silently incomplete the first time someone
+// adds an eleventh.
+//
+// It refuses rather than sanitizing: a seam row reaching a writer means a
+// caller confused an in-memory chart point for a stored result, and quietly
+// rewriting its period_type would persist a row no reader expects.
+func (r *Result) BeforeAppendModel(_ context.Context, query bun.Query) error {
+	switch query.(type) {
+	case *bun.InsertQuery, *bun.UpdateQuery:
+		if !PersistablePeriodType(r.PeriodType) {
+			return fmt.Errorf("%w: %q", ErrPeriodTypeNotPersistable, r.PeriodType)
+		}
+	}
+
+	return nil
 }
 
 // ExcludedFromAvailability reports whether a raw result must be dropped from

@@ -251,7 +251,12 @@ func (s *Service) setCustomDomain(
 		State: models.CustomDomainStatePending,
 	}
 
-	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
+	// The page's public URL lives in the summary payload (page.url), so a
+	// domain change evicts — otherwise the summary keeps advertising the old
+	// hostname, or the path-based URL the page has just stopped using.
+	if writeErr := s.writeStatusPageCustomDomainRow(
+		ctx, WritePathSetCustomDomain, page.UID, update,
+	); writeErr != nil {
 		if isUniqueViolation(writeErr) {
 			return ErrCustomDomainTaken
 		}
@@ -273,7 +278,9 @@ func (s *Service) clearCustomDomain(ctx context.Context, page *models.StatusPage
 		return nil
 	}
 
-	if err := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, &models.StatusPageCustomDomainUpdate{}); err != nil {
+	if err := s.writeStatusPageCustomDomainRow(
+		ctx, WritePathClearCustomDomain, page.UID, &models.StatusPageCustomDomainUpdate{},
+	); err != nil {
 		return err
 	}
 
@@ -320,7 +327,11 @@ func (s *Service) VerifyCustomDomain(
 	now := time.Now()
 	update, hardDemoted := customDomainVerifyUpdate(page, &diag, now)
 
-	if writeErr := s.db.UpdateStatusPageCustomDomain(ctx, page.UID, update); writeErr != nil {
+	// Verification is what promotes the custom domain into the summary's
+	// page.url — and a demotion is what takes it back out.
+	if writeErr := s.writeStatusPageCustomDomainRow(
+		ctx, WritePathVerifyCustomDomain, page.UID, update,
+	); writeErr != nil {
 		return StatusPageResponse{}, writeErr
 	}
 

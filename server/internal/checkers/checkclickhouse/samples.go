@@ -15,7 +15,7 @@ func (c *ClickHouseChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []
 			Period: 5 * time.Minute,
 			Config: (&ClickHouseConfig{
 				Host:     "localhost",
-				Port:     defaultPort,
+				Port:     DefaultPort,
 				Username: defaultUser,
 				Database: defaultDatabase,
 				Query:    defaultQuery,

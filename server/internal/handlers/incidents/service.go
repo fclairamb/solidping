@@ -112,6 +112,12 @@ const (
 	keyParentIncidentUID          = "parent_incident_uid"
 	keyParentCheckUID             = "parent_check_uid"
 	keyRollupDepth                = "rollup_depth"
+	// keyResolutionType names HOW an incident closed (auto | manual | expired |
+	// escalated) in the resolved event's payload. A shared constant because
+	// three separate resolve paths write it — the check state machine, the burn
+	// evaluator and the degraded evaluator — and a typo in one of them would
+	// silently drop the field from that path's notifications only.
+	keyResolutionType = "resolution_type"
 )
 
 // AttachmentStore is the attachment side of the incident lifecycle (spec
@@ -1145,6 +1151,11 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	// normal ordering (spec 2026-08-24-15), so re-evaluate them now.
 	s.rollUpExistingChildren(ctx, check, incident, incident.StartedAt)
 
+	// A real outage supersedes any open degraded incident on the same check: the
+	// degraded one resolves as `escalated` and this incident carries the
+	// provenance pointer (spec 2026-09-22-03). No kind mutation, no promotion.
+	s.resolveDegradedForOutage(ctx, incident)
+
 	s.publishOpened(ctx, incident)
 
 	return nil
@@ -1374,6 +1385,10 @@ func (s *Service) reopenIncident(
 	// which still holds the ORIGINAL onset — is the correlation anchor.
 	s.rollUpExistingChildren(ctx, check, incident, result.PeriodStart)
 
+	// A relapse is a real outage onset too, so it supersedes any degraded
+	// incident that opened while this one was resolved.
+	s.resolveDegradedForOutage(ctx, incident)
+
 	s.publishReopened(ctx, incident)
 
 	return nil
@@ -1466,6 +1481,16 @@ func (s *Service) queueLifecycleNotifications(
 			return nil
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
+
+		// A degraded incident notifies but never PAGES (spec 2026-09-22-03,
+		// resolved open question 2). Its wording is required to read differently
+		// from an outage — "people mute both" otherwise — and routing it through
+		// the check's escalation policy, which may wake on-call, would undo that
+		// on the only surface where it matters. Channel fan-out above already
+		// ran, so this is notify-only, not silent.
+		if incident.Kind == models.IncidentKindDegraded {
+			return nil
+		}
 
 		// Escalation policy fan-out: only on initial open. Resolved /
 		// reopened don't start a new paging cycle (resolved is final;
@@ -1771,10 +1796,16 @@ type IncidentResponse struct {
 	UID string `json:"uid"`
 	// Number is the short per-org reference rendered as `#42`. Every human-facing
 	// surface (dashboard, Slack, Telegram) addresses the incident by this.
-	Number         int64      `json:"number"`
-	CheckUID       string     `json:"checkUid"`
-	CheckSlug      *string    `json:"checkSlug,omitempty"`
-	CheckName      *string    `json:"checkName,omitempty"`
+	Number    int64   `json:"number"`
+	CheckUID  string  `json:"checkUid"`
+	CheckSlug *string `json:"checkSlug,omitempty"`
+	CheckName *string `json:"checkName,omitempty"`
+	// Kind discriminates what the incident is ABOUT: `check` (an outage),
+	// `slo_burn` (an error-budget burn alert) or `degraded` (intermittence or
+	// latency, spec 2026-09-22-03). Always emitted — the dashboard cannot render
+	// an amber band for a degraded episode, or keep it out of an outage count,
+	// without being told which it is looking at.
+	Kind           string     `json:"kind"`
 	State          string     `json:"state"`
 	StartedAt      time.Time  `json:"startedAt"`
 	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
@@ -1869,6 +1900,7 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		UID:                 inc.UID,
 		Number:              inc.Number,
 		CheckUID:            inc.CheckUID,
+		Kind:                inc.Kind,
 		State:               stateToString(inc.State),
 		StartedAt:           inc.StartedAt,
 		ResolvedAt:          inc.ResolvedAt,
@@ -3435,7 +3467,7 @@ func (s *Service) resolveIncidentByOrgUID(
 	payload := models.JSONMap{
 		payloadKeyVia:     req.Via,
 		"note":            req.Note,
-		"resolution_type": resolutionType,
+		keyResolutionType: resolutionType,
 		keyCheckUID:       incident.CheckUID,
 	}
 	// Best-effort: the check may have been deleted since the incident opened;

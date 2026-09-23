@@ -3,8 +3,6 @@ package checkmongodb
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -12,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkmongodb/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -24,31 +23,11 @@ func (c *MongoDBChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeMongoDB
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *MongoDBChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &MongoDBConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	port := cfg.Port
-	if port == 0 {
-		port = defaultPort
-	}
-
-	if spec.Name == "" {
-		spec.Name = fmt.Sprintf("%s:%d", cfg.Host, port)
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "mongodb-" + strings.ReplaceAll(cfg.Host, ".", "-")
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the MongoDB ping check and returns the result.
@@ -72,7 +51,7 @@ func (c *MongoDBChecker) Execute(
 	start := time.Now()
 
 	clientOpts := options.Client().
-		ApplyURI(cfg.buildURI()).
+		ApplyURI(cfg.BuildURI()).
 		SetConnectTimeout(timeout).
 		SetTimeout(timeout)
 

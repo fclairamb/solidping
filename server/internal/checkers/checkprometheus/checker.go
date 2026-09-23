@@ -1,3 +1,13 @@
+// Package checkprometheus provides a check that reads one numeric value out of
+// a Prometheus metrics endpoint (or a Prometheus server, via PromQL) and grades
+// it against warning/critical thresholds.
+//
+// It is the first check type that inspects a *value* rather than a service:
+// every other type answers "is it up?", while this one answers "is the number
+// the target reports still acceptable?" — a queue depth, a free-disk gauge, an
+// error counter. The graded outcome uses the shared two-tier model:
+// critical breached → StatusDown (pages), warning breached → StatusWarning
+// (amber, counts as up, no incident), otherwise StatusUp.
 package checkprometheus
 
 import (
@@ -7,14 +17,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkprometheus/config"
 	"github.com/fclairamb/solidping/server/internal/version"
 )
 
@@ -53,46 +62,11 @@ func (c *PrometheusChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypePrometheus
 }
 
-// Validate checks the configuration and fills in a default name/slug.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *PrometheusChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &PrometheusConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	subject := cfg.Metric
-	if cfg.EffectiveMode() == ModePromQL {
-		subject = cfg.Query
-	}
-
-	if spec.Name == "" {
-		spec.Name = "Prometheus: " + subject
-	}
-
-	// A default slug is part of "done" for a check type — leaving it empty
-	// regresses the checkdnsbl/checksip fix.
-	if spec.Slug == "" {
-		spec.Slug = defaultSlug(cfg.URL)
-	}
-
-	return nil
-}
-
-// defaultSlug derives `prometheus-<host>` from the target URL, falling back to
-// a bare `prometheus` when the host cannot be read.
-func defaultSlug(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Hostname() == "" {
-		return "prometheus"
-	}
-
-	host := strings.NewReplacer(".", "-", ":", "-").Replace(parsed.Hostname())
-
-	return "prometheus-" + host
+	return checkconfig.ValidateSpec(spec)
 }
 
 // Execute performs the check and grades the resolved value.

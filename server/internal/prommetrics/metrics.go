@@ -28,6 +28,7 @@ const (
 	labelContactType  = "contact_type"
 	labelDetector     = "detector"
 	labelSeverity     = "severity"
+	labelProduct      = "product"
 )
 
 // Lane label values for CheckLaneClaims (spec 2026-07-01-03).
@@ -630,6 +631,44 @@ var (
 		[]string{"transport", "outcome"},
 	)
 
+	// StatusPageMemoHits counts public status-page reads answered from the
+	// in-process memo (spec 2026-09-22-09), by product ("page", "summary").
+	//
+	// The hit/miss pair is the only way to tell a memo that is absorbing an
+	// incident spike from one that is being invalidated out of existence by a
+	// write loop, and those two look identical in a latency graph.
+	StatusPageMemoHits = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_statuspage_memo_hits_total",
+			Help: "Public status-page reads served from the in-process view memo, by product",
+		},
+		[]string{labelProduct},
+	)
+
+	// StatusPageMemoMisses counts public status-page reads that had to compute
+	// their view. Counted per CALLER, not per computation: fifty concurrent
+	// readers of a cold page are fifty misses and (see
+	// StatusPageMemoSingleflightShared) one computation.
+	StatusPageMemoMisses = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_statuspage_memo_misses_total",
+			Help: "Public status-page reads that had to compute the view, by product",
+		},
+		[]string{labelProduct},
+	)
+
+	// StatusPageMemoSingleflightShared counts reads whose computation was
+	// collapsed with at least one other in-flight read of the same view. This is
+	// the metric that shows the thundering-herd protection working: it rises
+	// precisely when everybody opens the status page at once.
+	StatusPageMemoSingleflightShared = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_statuspage_memo_singleflight_shared_total",
+			Help: "Public status-page reads whose view computation was shared with a concurrent read, by product",
+		},
+		[]string{labelProduct},
+	)
+
 	// HeartbeatPushConnections counts TCP connections accepted by the embedded
 	// heartbeat listener, and those refused because the connection cap was
 	// already reached ("refused").
@@ -664,6 +703,7 @@ var (
 		CheckRunnerAbandoned, CheckRunnerAbandonedActive,
 		TLSEdgeConnections,
 		HeartbeatPushBeats, HeartbeatPushConnections,
+		StatusPageMemoHits, StatusPageMemoMisses, StatusPageMemoSingleflightShared,
 	}
 )
 

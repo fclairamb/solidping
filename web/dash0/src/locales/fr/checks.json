@@ -332,7 +332,30 @@
     "summarySoftDeps_one": "{{count}} faible",
     "summarySoftDeps_other": "{{count}} faibles",
     "regionsIpv6Hint": "Ce contrôle est fixé à IPv6. Les régions dont les workers actifs signalent une sortie IPv6 sont listées en premier — les autres restent sélectionnables, et une région marquée « IPv6 inconnu » n'a simplement pas encore fait de rapport.",
-    "groupEmptyHint": "Vous n'avez pas encore de groupe. Un groupe est un ensemble exclusif de checks liés : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un pour commencer."
+    "groupEmptyHint": "Vous n'avez pas encore de groupe. Un groupe est un ensemble exclusif de checks liés : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un pour commencer.",
+    "degraded": {
+      "title": "Détection de dégradation",
+      "help": "Un second détecteur à côté de la période de confirmation : il signale un check qui échoue par intermittence, ou qui répond beaucoup plus lentement que d'habitude, même quand aucun échec ne dure assez longtemps pour confirmer une panne. Les deux règles comptent des SONDES, pas des secondes.",
+      "enabled": "Ouvrir des incidents de dégradation",
+      "enabledHelp": "Désactivé = simulation : les règles sont quand même évaluées et la page du check indique quand elles se seraient déclenchées, mais rien n'est ouvert et personne n'est notifié.",
+      "failures": "Sondes en échec (M)",
+      "failuresHelp": "Se déclenche quand ce nombre des N dernières sondes a échoué. 0 désactive la règle d'échec.",
+      "failuresWindow": "Fenêtre d'échec (N sondes)",
+      "failuresWindowHelp": "Combien de sondes récentes la règle d'échec examine. À une période d'une minute, 60 sondes font environ une heure.",
+      "slow": "Sondes lentes (M)",
+      "slowHelp": "Se déclenche quand ce nombre des N dernières sondes réussies a dépassé le seuil. 0 désactive la règle de lenteur.",
+      "slowWindow": "Fenêtre de lenteur (N sondes)",
+      "slowWindowHelp": "Combien de sondes récentes la règle de lenteur examine. Trois sondes lentes en une heure, ce n'est rien ; trois de suite, c'est le début d'un problème.",
+      "slowThreshold": "Seuil de lenteur (ms)",
+      "slowThresholdHelp": "Une sonde réussie plus lente que cela compte comme lente. 0 laisse la règle de lenteur désactivée.",
+      "slowThresholdOff": "La règle de lenteur reste désactivée tant qu'aucun seuil n'est défini — la latence n'est signalée nulle part ailleurs.",
+      "slowThresholdSuggestion": "Suggestion : {{value}} ms, environ deux fois le p95 observé de ce check.",
+      "slowThresholdSuggestionApply": "Utiliser la suggestion",
+      "summaryOff": "Simulation — rien n'est ouvert",
+      "summaryOn": "{{failures}} sondes en échec sur {{failuresWindow}}, {{slow}}",
+      "summarySlowArmed": "{{slow}} sondes sur {{slowWindow}} au-delà de {{threshold}} ms",
+      "summarySlowOff": "règle de lenteur désactivée"
+    }
   },
   "types": {
     "http": "HTTP",
@@ -699,6 +722,14 @@
         "down": "Hors service",
         "noData": "Aucune donnée"
       }
+    },
+    "degraded": {
+      "bannerTitle": "Ce check aurait été signalé comme dégradé",
+      "bannerDescription": "La détection de dégradation est désactivée pour ce check, donc rien n'a été signalé — mais les règles se seraient déclenchées le {{when}}.",
+      "bannerWindowLink": "Voir la période",
+      "enableAction": "Activer la détection de dégradation",
+      "enabled": "Détection de dégradation activée pour ce check",
+      "enableFailed": "Impossible d'activer la détection de dégradation"
     }
   },
   "endpoints": {
@@ -1127,5 +1158,6 @@
   "noGroupsYet": {
     "title": "Aucun groupe de checks",
     "description": "Un groupe rassemble des checks liés dans un ensemble exclusif : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un avec le bouton Nouveau groupe ci-dessus."
-  }
+  },
+  "wouldHaveFiredFilter": "Aurait été signalé"
 }

@@ -215,9 +215,14 @@ func (s *Server) status0MetaForPath(req *http.Request, reqPath string) (ogMetada
 func (s *Server) lookupPublicStatusPage(
 	req *http.Request, org, slug string,
 ) (statuspages.StatusPageResponse, error) {
+	// The OG-meta shell only reads the page's Name/Description — narrow the
+	// view to neither optional section, which also skips the expensive
+	// availability/response-time enrichment for a render that never uses it.
+	noExtras := statuspages.ViewOptions{}
+
 	if slug == "" {
-		return s.statusPagesService.ViewDefaultStatusPage(req.Context(), org)
+		return s.statusPagesService.ViewDefaultStatusPage(req.Context(), org, noExtras)
 	}
 
-	return s.statusPagesService.ViewStatusPage(req.Context(), org, slug)
+	return s.statusPagesService.ViewStatusPage(req.Context(), org, slug, noExtras)
 }

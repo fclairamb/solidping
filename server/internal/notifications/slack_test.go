@@ -389,6 +389,18 @@ func (m *mockDBService) RecentResultsPerCheck(
 	panic("not implemented")
 }
 
+func (m *mockDBService) AggregateResultBuckets(
+	_ context.Context, _ *models.ResultBucketFilter,
+) ([]models.ResultBucket, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) AggregateResponseTimeBins(
+	_ context.Context, _ *models.ResponseTimeBinFilter,
+) ([]models.ResponseTimeBin, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CountResultsByPeriodType(_ context.Context) (map[string]int64, error) {
 	panic("not implemented")
 }
@@ -1486,6 +1498,18 @@ func (m *mockDBService) ListEnabledSLOAlertPolicies(
 
 func (m *mockDBService) FindActiveBurnIncident(
 	_ context.Context, _, _ string,
+) (*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListChecksForDegradedEval(
+	_ context.Context, _ int,
+) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindActiveDegradedIncident(
+	_ context.Context, _ string,
 ) (*models.Incident, error) {
 	panic("not implemented")
 }

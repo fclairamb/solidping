@@ -1929,6 +1929,14 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
+		// Apply the degraded dry-run filter (spec 2026-09-22-03): the checks the
+		// evaluator would have flagged. Applied to BOTH queries, or the
+		// pagination total would disagree with the rows.
+		if filter.WouldHaveFired {
+			query = query.Where("degraded_would_fire_at IS NOT NULL")
+			countQuery = countQuery.Where("degraded_would_fire_at IS NOT NULL")
+		}
+
 		// Apply cursor (keyset) — composite for sort=group, two-part otherwise.
 		query = applyChecksCursor(query, filter)
 
@@ -2069,9 +2077,47 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 		query = query.Set("escalation_policy_uid = ?", *update.EscalationPolicyUID)
 	}
 
+	query = applyDegradedFieldsSQLite(query, update)
+
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// applyDegradedFieldsSQLite is the SQLite twin of applyDegradedFieldsPg — the
+// degraded-detection configuration plus the two evaluator-owned state columns
+// (spec 2026-09-22-03), each pointer-gated so a PATCH only writes what it names.
+func applyDegradedFieldsSQLite(query *bun.UpdateQuery, update *models.CheckUpdate) *bun.UpdateQuery {
+	if update.DegradedFailures != nil {
+		query = query.Set("degraded_failures = ?", *update.DegradedFailures)
+	}
+	if update.DegradedFailuresWindow != nil {
+		query = query.Set("degraded_failures_window = ?", *update.DegradedFailuresWindow)
+	}
+	if update.DegradedSlow != nil {
+		query = query.Set("degraded_slow = ?", *update.DegradedSlow)
+	}
+	if update.DegradedSlowWindow != nil {
+		query = query.Set("degraded_slow_window = ?", *update.DegradedSlowWindow)
+	}
+	if update.SlowThresholdMs != nil {
+		query = query.Set("slow_threshold_ms = ?", *update.SlowThresholdMs)
+	}
+	if update.DegradedEnabled != nil {
+		query = query.Set("degraded_enabled = ?", *update.DegradedEnabled)
+	}
+
+	if update.ClearDegradedWouldFireAt {
+		query = query.Set("degraded_would_fire_at = NULL")
+	} else if update.DegradedWouldFireAt != nil {
+		query = query.Set("degraded_would_fire_at = ?", *update.DegradedWouldFireAt)
+	}
+
+	if update.DegradedEvaluatedAt != nil {
+		query = query.Set("degraded_evaluated_at = ?", *update.DegradedEvaluatedAt)
+	}
+
+	return query
 }
 
 func (s *Service) DeleteCheck(ctx context.Context, uid string) error {
@@ -5103,6 +5149,31 @@ func (s *Service) ListStatusPages(ctx context.Context, orgUID string) ([]*models
 // 2026-08-21-07) to an UpdateStatusPage query. Split out of UpdateStatusPage
 // purely to keep that already-long one-branch-per-column function under the
 // statement budget.
+// applyStatusPagePublicationColumns sets the incident-publication settings: the
+// auto-publish trio (spec 2026-08-19-08) and the degraded-incident opt-in (spec
+// 2026-09-22-03). Split out of UpdateStatusPage to keep it under the funlen cap.
+func applyStatusPagePublicationColumnsSQLite(
+	query *bun.UpdateQuery, update *models.StatusPageUpdate,
+) *bun.UpdateQuery {
+	if update.AutoPublish != nil {
+		query = query.Set("auto_publish = ?", *update.AutoPublish)
+	}
+
+	if update.AutoPublishDelaySeconds != nil {
+		query = query.Set("auto_publish_delay_seconds = ?", *update.AutoPublishDelaySeconds)
+	}
+
+	if update.AutoResolve != nil {
+		query = query.Set("auto_resolve = ?", *update.AutoResolve)
+	}
+
+	if update.PublishDegraded != nil {
+		query = query.Set("publish_degraded = ?", *update.PublishDegraded)
+	}
+
+	return query
+}
+
 func applyStatusPageAccessColumns(
 	query *bun.UpdateQuery, update *models.StatusPageUpdate,
 ) *bun.UpdateQuery {
@@ -5141,9 +5212,9 @@ func applyStatusPageKioskColumn(
 	return query.Set("kiosk_token_hash = ?", *update.KioskTokenHash)
 }
 
-// UpdateStatusPage updates a status page by UID.
-//
-//nolint:cyclop // one branch per optional column; splitting it would only hide the shape.
+// UpdateStatusPage updates a status page by UID. The optional-column branches
+// that used to make this exceed the complexity cap now live in the
+// applyStatusPage*Columns helpers below.
 func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *models.StatusPageUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.StatusPage)(nil)).
@@ -5195,17 +5266,7 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("language = ?", *update.Language)
 	}
 
-	if update.AutoPublish != nil {
-		query = query.Set("auto_publish = ?", *update.AutoPublish)
-	}
-
-	if update.AutoPublishDelaySeconds != nil {
-		query = query.Set("auto_publish_delay_seconds = ?", *update.AutoPublishDelaySeconds)
-	}
-
-	if update.AutoResolve != nil {
-		query = query.Set("auto_resolve = ?", *update.AutoResolve)
-	}
+	query = applyStatusPagePublicationColumnsSQLite(query, update)
 
 	query = applyStatusPageAccessColumns(query, update)
 

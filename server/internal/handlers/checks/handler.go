@@ -12,7 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -341,6 +341,12 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req *http.Request) erro
 		opts.Internal = &internalParam
 	}
 
+	// Parse the degraded dry-run filter (spec 2026-09-22-03): the checks the
+	// evaluator WOULD have flagged. Only "true" turns it on — an absent or
+	// anything-else value means "no filter", so a typo never silently hides
+	// every check the way a strict boolean parse returning false would.
+	opts.WouldHaveFired = query.Get("wouldHaveFired") == "true"
+
 	// Parse status filter (comma-separated: up,down,created,validating,degraded,warning)
 	if statusParam := query.Get("status"); statusParam != "" {
 		statuses, err := parseStatusFilter(statusParam)
@@ -392,7 +398,7 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req *http.Request) err
 
 	// Infer type from URL if not specified
 	if createReq.Type == "" {
-		inferredType := registry.InferCheckTypeFromConfig(createReq.Config)
+		inferredType := configregistry.InferCheckTypeFromConfig(createReq.Config)
 		if inferredType == "" {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 				{Name: fieldType, Message: "Type is required when url is not provided or has unrecognized scheme"},
@@ -554,7 +560,7 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req *http.Request) err
 
 	// Infer type from URL if not specified
 	if upsertReq.Type == "" {
-		inferredType := registry.InferCheckTypeFromConfig(upsertReq.Config)
+		inferredType := configregistry.InferCheckTypeFromConfig(upsertReq.Config)
 		if inferredType == "" {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
 				{Name: fieldType, Message: "Type is required when url is not provided or has unrecognized scheme"},

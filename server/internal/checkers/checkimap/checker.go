@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkimap/config"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -32,26 +33,11 @@ func (c *IMAPChecker) Type() checkerdef.CheckType {
 	return checkerdef.CheckTypeIMAP
 }
 
-// Validate checks if the configuration is valid.
+// Validate checks if the configuration is valid. Every rule lives in the light
+// `config` sub-package so an offline validator (`sp checks validate`) can run it
+// without linking this checker's execution client.
 func (c *IMAPChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &IMAPConfig{}
-	if err := cfg.FromMap(spec.Config); err != nil {
-		return err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-
-	if spec.Name == "" {
-		spec.Name = "IMAP: " + cfg.Host
-	}
-
-	if spec.Slug == "" {
-		spec.Slug = "imap-" + cfg.Host
-	}
-
-	return nil
+	return checkconfig.ValidateSpec(spec)
 }
 
 // execParams holds resolved execution parameters with defaults applied.

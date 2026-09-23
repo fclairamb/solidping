@@ -1,0 +1,25 @@
+# documentation: https://solidping.io/docs/installation/coolify
+# slogan: Uptime monitoring, alerting and status pages, self-hosted in one container.
+# category: monitoring
+# tags: monitoring,uptime,status-page,alerting,ssl,cron
+# logo: svgs/solidping.svg
+# port: 4000
+
+services:
+  solidping:
+    image: ghcr.io/fclairamb/solidping:0.31
+    environment:
+      - SERVICE_URL_SOLIDPING_4000
+    volumes:
+      - solidping-data:/data
+    # ICMP checks need a raw socket; drop this block if you never use ping checks.
+    cap_add:
+      - NET_RAW
+    healthcheck:
+      test: ["CMD", "/app/solidping", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  solidping-data:

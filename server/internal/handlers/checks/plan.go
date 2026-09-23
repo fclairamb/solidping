@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
-	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -77,8 +77,7 @@ func (c *caveatSet) list() []DryRunCaveat {
 // of it, which is what keeps "what the dry run checks" and "what the write
 // path checks" the same set by construction rather than by discipline.
 type createPlan struct {
-	checker checkerdef.Checker
-	spec    *checkerdef.CheckSpec
+	spec *checkerdef.CheckSpec
 	// period is the RAW period: zero when the request proposes none. Several
 	// gates (the demo floor, the SMTP send interval) treat zero as "not
 	// proposed" and skip, so substituting the default here would silently
@@ -132,8 +131,7 @@ func (s *Service) planCreateCheck(
 		return nil, labelErr
 	}
 
-	checker, ok := registry.GetChecker(checkerdef.CheckType(req.Type))
-	if !ok {
+	if !configregistry.IsKnownType(checkerdef.CheckType(req.Type)) {
 		return nil, ErrInvalidCheckType
 	}
 
@@ -227,7 +225,7 @@ func (s *Service) planCreateCheck(
 		Config: withInjectedConfig(req.Config, derivedConfig),
 	}
 
-	if validateErr := checker.Validate(spec); validateErr != nil {
+	if validateErr := configregistry.ValidateSpec(checkerdef.CheckType(req.Type), spec); validateErr != nil {
 		return nil, validateErr
 	}
 
@@ -267,7 +265,6 @@ func (s *Service) planCreateCheck(
 	}
 
 	return &createPlan{
-		checker:          checker,
 		spec:             spec,
 		period:           period,
 		regions:          resolvedRegions,
@@ -458,7 +455,7 @@ func (s *Service) planUpdateConfig(
 	// On a COPY: `normalized` can be the caller's own map when the type needs
 	// no normalization, and a planner must not write into the document it is
 	// checking.
-	planned := make(map[string]any, len(normalized)+1)
+	planned := make(map[string]any, len(normalized))
 	for key, value := range normalized {
 		planned[key] = value
 	}
