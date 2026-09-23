@@ -178,6 +178,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
 import {
@@ -1258,12 +1259,14 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
     {
       name: "primary",
       varName: "--primary",
-      description: "Action color (buttons, links, focus rings)",
+      description:
+        "Electric blue, the product color: links, the active tab, focus rings, chart-1, and the flat fill under every gradient. Dark mode uses a LIGHT blue (≈8:1 as text on the page); a solid bg-primary fill there keeps dark --primary-foreground text.",
     },
     {
       name: "brand",
       varName: "--brand",
-      description: "Logo/marketing chrome — never an interactive affordance",
+      description:
+        "Crimson, the logo only (and brand chrome) — never an interactive affordance. The one warm accent in a blue UI.",
     },
     {
       name: "brand-muted",
@@ -1329,28 +1332,71 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
     },
   ];
 
-const CHART_TOKENS = [
-  "--chart-1",
-  "--chart-2",
-  "--chart-3",
-  "--chart-4",
-  "--chart-5",
+const CHART_TOKENS: { name: string; varName: string; description?: string }[] =
+  [
+    { name: "chart-1", varName: "--chart-1", description: "= --primary" },
+    { name: "chart-2", varName: "--chart-2" },
+    { name: "chart-3", varName: "--chart-3" },
+    { name: "chart-4", varName: "--chart-4" },
+    { name: "chart-5", varName: "--chart-5", description: "Indigo-violet" },
+    {
+      name: "chart-degraded",
+      varName: "--chart-degraded",
+      description: "Degraded spans on the response-time chart (= --status-warning)",
+    },
+  ];
+
+// The electric-identity gradients (spec 2026-09-24-01). Same values in both
+// themes; each has a bg-*-gradient utility in index.css.
+const GRADIENT_TOKENS: {
+  name: string;
+  varName: string;
+  utility: string;
+  description: string;
+}[] = [
+  {
+    name: "primary-gradient",
+    varName: "--primary-gradient",
+    utility: "bg-primary-gradient",
+    description:
+      "Cyan → blue → indigo, dark enough for white text (≥ 4.4:1 at every stop). Everything that carries a LABEL on a gradient: default Button, default Badge.",
+  },
+  {
+    name: "accent-gradient",
+    varName: "--accent-gradient",
+    utility: "bg-accent-gradient",
+    description:
+      "Brighter, DECORATIVE only (white on its cyan start is ≈2.5:1). Switch / checkbox / progress / stepper “on” states, the page-header icon tile. No text on it.",
+  },
+  {
+    name: "hero-gradient",
+    varName: "--hero-gradient",
+    utility: "bg-hero-gradient",
+    description: "The one hero KPI tile per page. Deepest end stop.",
+  },
 ];
 
 function Swatch({
   varName,
   label,
   description,
+  image = false,
 }: {
   varName: string;
   label: string;
   description?: string;
+  /** Paint the token as background-IMAGE (gradients) instead of a color. */
+  image?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-md border bg-card p-3">
       <div
         className="h-10 w-10 shrink-0 rounded-md border"
-        style={{ backgroundColor: `var(${varName})` }}
+        style={
+          image
+            ? { backgroundImage: `var(${varName})` }
+            : { backgroundColor: `var(${varName})` }
+        }
       />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-tight">{label}</p>
@@ -1384,6 +1430,172 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { Button } from "@/components/ui/button";`}
+        />
+
+        <h3 className="text-sm font-medium" id="gradients">
+          Gradients
+        </h3>
+        <div
+          className="space-y-2 text-sm text-muted-foreground"
+          data-testid="gradient-rules"
+        >
+          <p>
+            Gradients are rationed. <strong>Allowed:</strong> primary actions
+            (the default Button and the default Badge), the “on” state of a
+            switch, checkbox, progress bar and stepper, the page-header icon
+            tile, one hero tile per page, and the faint glow at the top of the
+            page. <strong>Not allowed:</strong> cards, tables, forms, popovers,
+            dialogs, segmented controls and tabs (their selected pill stays{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-card</code>
+            ). One gradient per group: next to the primary action, everything
+            else is outline, ghost or destructive.
+          </p>
+          <p>
+            Text only sits on{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --primary-gradient
+            </code>{" "}
+            (or the hero gradient).{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --accent-gradient
+            </code>{" "}
+            is brighter and carries no label. The gradients are identical in
+            light and dark; only the page glow gets stronger in dark. Toggle
+            the theme to check both.
+          </p>
+          <p>
+            <strong>Gotcha:</strong>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              bg-transparent
+            </code>{" "}
+            and{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted</code>{" "}
+            only set background-color, so an element carrying a gradient
+            utility keeps the gradient unless the override also sets{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-none</code>
+            .{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">cn()</code>{" "}
+            drops the gradient for you when the flat color comes later in the
+            class list; a raw class string does not.
+          </p>
+          <p>
+            <strong>Focus:</strong> every Button draws a 2px{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">--ring</code>{" "}
+            ring, offset 2px from its edge (
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              ring-offset-2 ring-offset-background
+            </code>
+            ). The page-colored gap is what keeps the ring visible on the
+            gradient. Text fields show{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              border-ring
+            </code>{" "}
+            plus a 3px ring of --ring at 25%. Tab through the row below.
+          </p>
+        </div>
+        <ExampleRow
+          preview={
+            <div
+              className="flex flex-wrap gap-2"
+              data-testid="gradient-button-group"
+            >
+              <Button>
+                <Plus />
+                Create check
+              </Button>
+              <Button variant="outline">Cancel</Button>
+              <Button variant="ghost">Details</Button>
+              <Button variant="destructive">
+                <Trash2 />
+                Remove
+              </Button>
+            </div>
+          }
+          importLine={`// Default Button = the gradient. Keep ONE per group: the primary action.\n<div className="flex gap-2">\n  <Button><Plus />Create check</Button>\n  <Button variant="outline">Cancel</Button>\n  <Button variant="ghost">Details</Button>\n  <Button variant="destructive"><Trash2 />Remove</Button>\n</div>\n\n// GOTCHA: bg-transparent / bg-muted / bg-destructive only set\n// background-COLOR, so a gradient utility stays painted on top. Add bg-none:\n<div className="bg-accent-gradient bg-none bg-destructive" />\n// cn() does it for you when the flat bg-<color> comes LATER in the list\n// (lib/utils.ts), e.g. <Button className="bg-destructive"> is really red.\n\n// Focus ring on every Button (the gap keeps it visible on the gradient):\n//   focus-visible:ring-2 ring-ring ring-offset-2 ring-offset-background\n// Text fields (Input, Textarea, Select trigger):\n//   focus-visible:border-ring ring-[3px] ring-ring/25`}
+        />
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex h-9 items-center rounded-lg bg-primary bg-primary-gradient px-3 text-sm font-medium text-gradient-foreground">
+                bg-primary-gradient
+              </span>
+              <span
+                role="img"
+                aria-label="bg-accent-gradient"
+                title="bg-accent-gradient (decorative, no text)"
+                className="inline-block h-9 w-24 rounded-lg bg-primary bg-accent-gradient"
+              />
+              <span className="inline-flex h-9 items-center rounded-lg bg-primary bg-hero-gradient px-3 text-sm font-medium text-gradient-foreground">
+                bg-hero-gradient
+              </span>
+              <span
+                className="inline-flex h-9 items-center rounded-lg bg-accent-gradient bg-none bg-muted px-3 text-sm"
+                data-testid="gradient-bg-none-example"
+              >
+                bg-none bg-muted: flat
+              </span>
+            </div>
+          }
+          importLine={`// The three utilities (index.css) set background-IMAGE only: keep a flat\n// bg-primary underneath so the element still reads blue without the image.\n<span className="bg-primary bg-primary-gradient text-gradient-foreground" /> {/* labels */}\n<span className="bg-primary bg-accent-gradient" /> {/* decorative, no text */}\n<div className="bg-primary bg-hero-gradient text-gradient-foreground" /> {/* hero KPI tile */}\n\n// The bg-none escape hatch: flat muted, gradient gone.\n<span className="bg-accent-gradient bg-none bg-muted" />`}
+        />
+
+        <h3 className="text-sm font-medium">“On” states (accent gradient)</h3>
+        <p className="text-sm text-muted-foreground">
+          A checked switch, a checked checkbox, the progress fill and the
+          stepper’s done dots and connectors paint{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-accent-gradient
+          </code>{" "}
+          over bg-primary. The only thing on it is a white check glyph. A full
+          Progress with destructiveWhenFull (the default) is still red: it
+          renders{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-none bg-destructive
+          </code>
+          .
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-4" data-testid="gradient-on-states">
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch defaultChecked />
+                  On
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch />
+                  Off
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox defaultChecked />
+                  Checked
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox />
+                  Unchecked
+                </label>
+              </div>
+              <div className="space-y-2">
+                <Progress
+                  value={60}
+                  max={100}
+                  aria-label="Progress at 60%"
+                  data-testid="progress-partial"
+                />
+                <Progress
+                  value={100}
+                  max={100}
+                  aria-label="Progress full (destructive)"
+                  data-testid="progress-full-destructive"
+                />
+              </div>
+              <Stepper
+                steps={[{ label: "Pick" }, { label: "Mint" }, { label: "Run" }]}
+                current={3}
+              />
+            </div>
+          }
+          importLine={`import { Switch } from "@/components/ui/switch";\nimport { Checkbox } from "@/components/ui/checkbox";\nimport { Progress } from "@/components/ui/progress";\nimport { Stepper } from "@/components/ui/stepper";\n\n<Switch checked={on} onCheckedChange={setOn} />\n<Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} />\n<Progress value={used} max={quota} /> {/* red once used >= quota */}\n<Progress value={done} max={total} destructiveWhenFull={false} />\n<Stepper steps={steps} current={step} />`}
         />
 
         <h3 className="text-sm font-medium">Button sizes</h3>
@@ -4299,6 +4511,12 @@ function BrandSection() {
       title="Brand"
       description="The SolidPing mark, plus the brand-color tokens reserved for chrome (logo tile, header strips, marketing accents). Brand color is never used as an interactive affordance in the operator UI — the rule that keeps brand-pink from competing with destructive / status-error reds."
     >
+      <p className="text-sm" data-testid="brand-color-rule">
+        <strong>Blue is the product color; crimson is the logo only.</strong>{" "}
+        Every action, link, focus ring and “on” state is electric blue
+        (--primary and the gradients), and the logo stays crimson because it is
+        the single warm accent in an otherwise blue UI.
+      </p>
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Logo sizes</h3>
         <div className="flex flex-wrap items-end gap-6">
@@ -5068,7 +5286,7 @@ function ElevationSection() {
     <Section
       id="elevation"
       title="Elevation, aurora & glass"
-      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant (shadow-primary under a 1px inset top highlight, inset-shadow-highlight, on the primary gradient) and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">
@@ -5083,9 +5301,12 @@ function ElevationSection() {
               <div className="rounded-lg bg-primary px-4 py-3 text-sm text-primary-foreground shadow-primary">
                 shadow-primary
               </div>
+              <div className="rounded-lg bg-primary bg-primary-gradient px-4 py-3 text-sm text-gradient-foreground inset-shadow-highlight shadow-primary">
+                inset-shadow-highlight + shadow-primary
+              </div>
             </>
           }
-          importLine={`// Defined in index.css @theme.\n<div className="shadow-card" />      {/* cards, KPI tiles, list surfaces — ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}\n\n// --shadow-primary / --shadow-destructive use color-mix against their own\n// token, so they follow the theme. --shadow-card is a fixed slate rgba: it\n// reads correctly on light surfaces and stays deliberately near-invisible in\n// dark mode, where the card's own border does the separating instead.`}
+          importLine={`// Defined in index.css @theme.\n<div className="shadow-card" />      {/* cards, KPI tiles, list surfaces — ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<div className="inset-shadow-highlight shadow-primary" /> {/* + the 1px lit top edge the gradient button carries */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}\n\n// --shadow-primary / --shadow-destructive use color-mix against their own\n// token, so they follow the theme. --shadow-card is a fixed slate rgba: it\n// reads correctly on light surfaces and stays deliberately near-invisible in\n// dark mode, where the card's own border does the separating instead.`}
         />
       </div>
 
@@ -5565,10 +5786,55 @@ function ColorTokensSection() {
       </div>
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Chart palette</h3>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {CHART_TOKENS.map((v, i) => (
-            <Swatch key={v} varName={v} label={`chart-${i + 1}`} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {CHART_TOKENS.map((t) => (
+            <Swatch
+              key={t.varName}
+              varName={t.varName}
+              label={t.name}
+              description={t.description}
+            />
           ))}
+        </div>
+      </div>
+      <div className="space-y-2" data-testid="gradient-tokens">
+        <h3 className="text-sm font-medium">Gradients (identical in both themes)</h3>
+        <p className="text-sm text-muted-foreground">
+          Background-IMAGE tokens, applied with their utility — never an inline{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-[image:var(--…)]
+          </code>
+          . Where they may and may not go is under Buttons &amp; badges →
+          Gradients.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {GRADIENT_TOKENS.map((t) => (
+            <Swatch
+              key={t.varName}
+              varName={t.varName}
+              label={`${t.name} · ${t.utility}`}
+              description={t.description}
+              image
+            />
+          ))}
+          <Swatch
+            varName="--gradient-foreground"
+            label="gradient-foreground · text-gradient-foreground"
+            description="Text and icons on any gradient. Pure white in both themes."
+          />
+        </div>
+        <div className="space-y-1">
+          <div
+            className="h-28 w-full rounded-md border bg-background"
+            style={{ backgroundImage: "var(--page-glow)" }}
+            data-testid="page-glow-swatch"
+          />
+          <p className="text-sm font-medium leading-tight">page-glow</p>
+          <p className="font-mono text-xs text-muted-foreground">--page-glow</p>
+          <p className="text-xs text-muted-foreground">
+            The faint cyan/indigo glow for the top of the page. Two radial
+            gradients; stronger in dark mode (alpha 0.2 / 0.15 vs 0.13 / 0.09).
+          </p>
         </div>
       </div>
     </Section>
