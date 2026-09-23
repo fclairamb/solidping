@@ -6,6 +6,7 @@
 
 ## Architecture & Design
 
+- [design/2026-09-24-identity-directions.html](design/2026-09-24-identity-directions.html) — Interactive mock of the four visual directions weighed on 2026-09-24 (Crimson, Sunset, Ink and crimson, Electric blue). Electric blue was chosen, so open it with `?dir=electric`. It is the visual target of the specs `2026-09-24-01..06` (dash0, auth, status0, emails, docs).
 - [architecture.md](architecture.md) — System architecture: handler-service pattern, multi-tenancy, distributed checks, data model, scalability
 - [api-specification/README.md](api-specification/README.md) — REST API index: conventions, auth legend, and a table of contents for every domain page
   - [api-specification/management.md](api-specification/management.md) — Health, version, limits, memory, bug report, feature flags, scheduling cost, email preview
