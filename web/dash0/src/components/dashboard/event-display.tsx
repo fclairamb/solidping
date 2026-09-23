@@ -10,7 +10,8 @@ const TONE_DESTRUCTIVE = "border-destructive/20 bg-destructive/10 text-destructi
 const TONE_EMERALD =
   "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
 const TONE_AMBER = "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400";
-const TONE_BLUE = "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400";
+// Configuration / informational events: the product blue (--primary).
+const TONE_PRIMARY = "border-primary/20 bg-primary/10 text-primary";
 const TONE_VIOLET = "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-400";
 const TONE_SLATE = "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-400";
 
@@ -39,7 +40,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "incident.acknowledged": { emoji: "✅", tone: TONE_AMBER },
   "incident.unacknowledged": { emoji: "↩️", tone: TONE_AMBER },
   "incident.snoozed": { emoji: "💤", tone: TONE_SLATE },
-  "incident.comment": { emoji: "💬", tone: TONE_BLUE },
+  "incident.comment": { emoji: "💬", tone: TONE_PRIMARY },
   // Status-page publication lifecycle (spec 2026-08-19-08). These are
   // CUSTOMER-VISIBLE facts and are deliberately distinct from the internal
   // incident.* pair above: an operational incident opening and a public
@@ -49,7 +50,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // correctly at a glance; the tones follow the same severity language as the
   // internal events (opened = destructive, edited = blue, closed = emerald).
   "statuspage.incident.published": { emoji: "📣", tone: TONE_DESTRUCTIVE },
-  "statuspage.incident.updated": { emoji: "📝", tone: TONE_BLUE },
+  "statuspage.incident.updated": { emoji: "📝", tone: TONE_PRIMARY },
   "statuspage.incident.resolved": { emoji: "📗", tone: TONE_EMERALD },
   // A webhook/Slack subscription that tripped the delivery circuit breaker
   // (spec 2026-08-21-07). Destructive rather than amber on purpose: the only
@@ -80,7 +81,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "auth.login_succeeded": { emoji: "🔓", tone: TONE_EMERALD },
   "auth.login_failed": { emoji: "⛔", tone: TONE_DESTRUCTIVE },
   "auth.logout": { emoji: "🚪", tone: TONE_SLATE },
-  "auth.token_created": { emoji: "🔑", tone: TONE_BLUE },
+  "auth.token_created": { emoji: "🔑", tone: TONE_PRIMARY },
   "auth.token_revoked": { emoji: "🔒", tone: TONE_AMBER },
   // A credential presented by a party it was not issued to (spec
   // 2026-08-21-09). Destructive, not amber: this is not routine credential
@@ -162,7 +163,7 @@ export function getEventIcon(eventType?: string) {
   }
 
   if (eventType.startsWith("check.")) {
-    return <Cpu className="h-4 w-4 text-blue-400" />;
+    return <Cpu className="h-4 w-4 text-primary" />;
   }
   if (eventType === "incident.resolved") {
     return <Calendar className="h-4 w-4 text-green-500" />;
@@ -177,7 +178,7 @@ export function getEventIcon(eventType?: string) {
     return <Users className="h-4 w-4 text-violet-500" />;
   }
   if (isConfigEvent(eventType)) {
-    return <Settings className="h-4 w-4 text-blue-400" />;
+    return <Settings className="h-4 w-4 text-primary" />;
   }
   return <Calendar className="h-4 w-4" />;
 }
@@ -214,7 +215,7 @@ export function getEventTone(eventType?: string): string {
     return TONE_AMBER;
   }
   if (eventType.startsWith("check.") || eventType.startsWith("status_update.")) {
-    return TONE_BLUE;
+    return TONE_PRIMARY;
   }
   if (eventType.startsWith("org.activation.")) {
     return TONE_VIOLET;
@@ -226,7 +227,7 @@ export function getEventTone(eventType?: string): string {
     return TONE_VIOLET;
   }
   if (isConfigEvent(eventType)) {
-    return TONE_BLUE;
+    return TONE_PRIMARY;
   }
   return "";
 }

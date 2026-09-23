@@ -83,6 +83,10 @@ export interface CheckTypeIdentity {
 // PROTOCOL_BADGE_TONES) and must not change — they're in users' muscle
 // memory. The rest extend the same shape to a new hue per family; none of
 // them collide with the status colors (green=ok / red=down stay reserved).
+//
+// The blue, indigo and sky tones are CATEGORY colors, not the product blue:
+// they deliberately stay raw Tailwind hues and do not follow --primary
+// (electric identity, spec 2026-09-24-01 §4).
 const TONE_BLUE = "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/25"; // shipped: http/https
 const TONE_CYAN = "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/25"; // shipped: tcp
 const TONE_AMBER = "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/25"; // shipped: dns

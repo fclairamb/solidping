@@ -51,6 +51,10 @@ export const Route = createFileRoute("/orgs/$org/on-call/$uid/")({
   component: OnCallDetailPage,
 });
 
+// Categorical, per-participant palette for the calendar strip — kept as raw
+// Tailwind hues on purpose (spec 2026-09-24-01 §4). These are identities, not
+// the product blue, and the strip renders text-white on them: --primary would
+// not work here, because in dark mode it is a LIGHT blue white text can't sit on.
 const COLOR_PALETTE = [
   "bg-blue-500",
   "bg-emerald-500",

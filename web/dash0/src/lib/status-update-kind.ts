@@ -5,8 +5,9 @@ const TONE_AMBER =
   "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400";
 const TONE_ORANGE =
   "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:text-orange-400";
-const TONE_BLUE =
-  "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400";
+// "monitoring" is the informational kind, so it takes the product blue
+// (--primary) rather than a hand-picked Tailwind blue.
+const TONE_PRIMARY = "border-primary/20 bg-primary/10 text-primary";
 const TONE_EMERALD =
   "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
 const TONE_VIOLET =
@@ -28,7 +29,7 @@ export type StatusUpdateKind = (typeof STATUS_UPDATE_KINDS)[number];
 const KIND_TONES: Record<string, string> = {
   investigating: TONE_AMBER,
   identified: TONE_ORANGE,
-  monitoring: TONE_BLUE,
+  monitoring: TONE_PRIMARY,
   resolved: TONE_EMERALD,
   maintenance: TONE_VIOLET,
   info: TONE_SLATE,

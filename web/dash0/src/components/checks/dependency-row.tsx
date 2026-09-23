@@ -147,7 +147,7 @@ export function DependencyKindBadge({ kind }: { kind: DependencyKind }) {
         "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
         kind === "hard"
           ? "bg-red-500/10 text-red-600 dark:text-red-400"
-          : "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+          : "bg-primary/10 text-primary",
       )}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />

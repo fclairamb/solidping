@@ -169,7 +169,7 @@ function VisibilityDot({
           aria-label={label}
           className={cn(
             "inline-block h-2 w-2 rounded-full shrink-0",
-            isPublic ? "bg-blue-500" : "bg-amber-500",
+            isPublic ? "bg-primary" : "bg-amber-500",
           )}
         />
       </TooltipTrigger>

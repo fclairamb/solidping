@@ -171,10 +171,10 @@ export function EmptyStateOnboarding({ org }: EmptyStateOnboardingProps) {
   }
 
   return (
-    <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30">
+    <Card className="border-2 border-primary/30 bg-primary/5">
       <CardContent className="pt-6 pb-8 flex flex-col items-center text-center gap-6">
-        <div className="rounded-full bg-blue-100 dark:bg-blue-900 p-4">
-          <Plus className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+        <div className="rounded-full bg-primary/10 p-4">
+          <Plus className="h-8 w-8 text-primary" />
         </div>
         <div>
           <h2 className="text-2xl font-bold">{t("welcome.title")}</h2>
