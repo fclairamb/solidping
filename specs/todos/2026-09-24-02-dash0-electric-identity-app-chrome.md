@@ -240,3 +240,72 @@ needs a series the endpoint does not return), and hero tiles on other pages.
   - `dark-mode.spec.ts`
 - Screenshots of the dashboard, checks list and integration detail in both
   themes, plus the dashboard at 375px, in the PR.
+
+## Implementation Plan
+
+1. **Sidebar tokens** (`web/dash0/src/index.css`): move every `--sidebar-*`
+   out of the generic `.dark` block. Light values stay in `:root`; the deeper
+   dark-mode values go in a new `:root.dark` block (the `<html>` element only),
+   so the `dark` class on the sidebar element never re-applies them. Add
+   `--sidebar-gradient`, `--sidebar-muted-foreground`, `--sidebar-active`, the
+   `--color-sidebar-muted-foreground` mapping and `@utility bg-sidebar-gradient`
+   / `bg-sidebar-active`. `--sidebar-primary-foreground` (not in the table,
+   unused) becomes the navy so it stays readable on the cyan marker. Teach
+   `cn()` the two new gradient utilities. Unit test: parse the blocks, check
+   the table values, that `.dark` declares no `--sidebar-*`, and the text
+   contrasts on the navy.
+2. **Sidebar primitive** (`ui/sidebar.tsx`): `dark` class on the desktop
+   `data-slot="sidebar"` root, the mobile `SheetContent` and the
+   `collapsible="none"` root; surfaces `bg-sidebar bg-sidebar-gradient`;
+   right edge `border-sidebar-border` (mobile sheet too); active item =
+   `--sidebar-active` image + accent foreground + `font-semibold` + a 3px
+   `--sidebar-primary` `::before` bar flush with the sidebar edge (rounded on
+   the inside corners), hover stays the flat 5% wash; group labels use
+   `text-sidebar-muted-foreground`; `outline` variant uses `var(--sidebar-*)`
+   without `hsl()`. Rail geometry untouched.
+3. **AppSidebar content**: org name and user subtitle on
+   `text-sidebar-muted-foreground`, avatar fallback on a 10% white chip
+   (the dark `--muted` is ~1:1 on the navy) with a `data-testid`,
+   `LiveStatusDot` idle state on `bg-muted-foreground` (visible on the page
+   and on the navy). Theme toggle keeps reading `html`. Count pills skipped
+   (optional).
+4. **Page header**: `tone?: "brand" | "neutral"` (default brand):
+   brand = `bg-primary bg-accent-gradient text-gradient-foreground
+   rounded-lg shadow-tile` (new `--shadow-tile` theme shadow), neutral =
+   today's `bg-muted text-foreground`; `h1` = `text-2xl font-bold
+   tracking-[-0.025em]`. Integration detail uses `tone="neutral"`. Update
+   `incident-notifications.spec.ts:107` to `font-bold`.
+5. **Page glow** (`routes/orgs/$org.tsx`): an `aria-hidden`,
+   `pointer-events-none`, `print:hidden` absolute layer painted with
+   `--page-glow`, 260px tall at the top of `SidebarInset`; header and content
+   become `relative` so they paint over it (no new stacking context against
+   the fixed sidebar). Top bar gets `bg-background/60 backdrop-blur`.
+6. **KpiTile** → `components/shared/kpi-tile.tsx` with
+   `variant?: "default" | "hero"`; hover lift built in behind
+   `motion-safe:`. Hero = `bg-hero-gradient` (token untouched), no border,
+   white value, `shadow-hero` (new theme shadow) at rest and on hover,
+   `bg-white/15` icon chip. **Hero text rule resolution**: the tile crops the
+   gradient (`bg-size-[180%_180%] bg-bottom-right`) so it only shows the
+   darker 56% of `--hero-gradient` (t ≥ 0.444); the small label and sub are
+   white at 90% (not 80%): composited over the lightest visible color that is
+   ≥ 4.69:1. 80% would need t ≥ 0.56 everywhere, i.e. the light cyan could
+   never be under any small text, which the tile's layout cannot guarantee at
+   172px wide. Unit test computes the rendered contrast from the real classes
+   and the parsed token. Dashboard: availability tile = hero, its tier badge
+   a solid `bg-white` chip with emerald-700 / amber-700 / red-700 (the light
+   `--destructive` is 4.41:1 on white, under 4.5 for 11px) / slate-600 text,
+   same in both themes. `kpi-tile-*` test ids stay on the wrappers.
+7. **Design reference**: new "App chrome" section (static, `inert` sidebar
+   replica with real primitives, group label, active item, footer row; the
+   page header in both tones; the page glow), "Page header" copy for the
+   gradient tile + `tone`, "KPI tiles" renders the real `KpiTile` default +
+   hero with the one-hero-per-page rule and the crop rule; the gradient text
+   rule mentions the hero tile's crop.
+8. **Tests**: unit (tokens, sidebar classes, PageHeader tones, KpiTile
+   classes + rendered hero contrast, tier chips); e2e
+   `electric-identity-app-chrome.spec.ts` (sidebar navy in light mode incl.
+   computed `--sidebar` on the element, active marker + wash, collapsed rail
+   marker, mobile sheet dark at 375px, header tile gradient/neutral + bold h1,
+   glow not clickable / not printed / no layout shift, hero tile + white
+   badge, 375px stacking); update `sidebar.spec.ts` (avatar fallback test id)
+   and `incident-notifications.spec.ts`.
