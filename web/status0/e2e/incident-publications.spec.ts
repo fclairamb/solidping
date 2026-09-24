@@ -332,12 +332,20 @@ test.describe("Incident publications on the public status page", () => {
       { checkUid: siblingCheck.uid, publicName: unpublishedName },
     );
 
-    // A heartbeat check that has never been pinged is already overdue, so an
-    // incident opens for BOTH of them within milliseconds of creation. That is
-    // useful here: it means the negative below cannot pass just because the
-    // sibling is healthy. Both components are down; only one is PUBLISHED, and
-    // only that one may wear the badge.
+    // Put BOTH checks down with an explicit `status=down` beat. A heartbeat
+    // that has never been pinged no longer goes down on its own: since spec
+    // 2026-09-25-04 it stays `created` for its first two periods (the
+    // first-signal grace), so waiting on "never pinged = overdue" would take
+    // minutes. A down beat opens the incident synchronously in the ingest.
+    //
+    // Both being down is the point: it means the negative below cannot pass
+    // just because the sibling is healthy. Both components are down; only one
+    // is PUBLISHED, and only that one may wear the badge.
+    await reportDown(affectedCheck);
+    await reportDown(siblingCheck);
+
     const affectedIncident = await pollForIncident(token, affectedCheck.uid);
+    await pollForIncident(token, siblingCheck.uid);
 
     const publication = await api<{ uid: string }>(
       token,
@@ -400,6 +408,18 @@ interface HeartbeatCheck {
 interface PublicIncident {
   uid: string;
   affectedResources?: string[];
+}
+
+/** Sends a `status=down` beat, which fails the heartbeat check immediately. */
+async function reportDown(check: HeartbeatCheck): Promise<void> {
+  const res = await fetch(
+    `${BASE}/api/v1/heartbeat/test/${check.uid}?token=${check.config.token}&status=down`,
+  );
+  if (!res.ok) {
+    throw new Error(
+      `down beat for ${check.slug} failed: ${res.status} ${await res.text()}`,
+    );
+  }
 }
 
 /** Polls until an active incident exists for the given check. */
