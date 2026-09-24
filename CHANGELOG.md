@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.1](https://github.com/fclairamb/solidping/compare/v0.32.0...v0.32.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **docker:** copy the vendored grdp module before go mod download ([#437](https://github.com/fclairamb/solidping/issues/437)) ([90f32ac](https://github.com/fclairamb/solidping/commit/90f32ace923e657f962093ba8e52c079b832a6d9))
+
 ## [0.32.0](https://github.com/fclairamb/solidping/compare/v0.31.1...v0.32.0) (2026-09-24)
 
 
