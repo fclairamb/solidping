@@ -261,3 +261,107 @@ Follow the design reference for every UI change.
   whole region is dark. This spec makes the state visible whatever the cause.
 - `2026-09-25-04` moves passive evaluation to the jobs node.
 - `2026-09-25-06` adds per-region state and failover.
+
+## Implementation Plan
+
+### Two semantic points that must not be inverted
+
+1. **Entering stale bypasses `ProcessCheckResult`.** The sweeper writes one
+   guarded, compare-and-set `UPDATE checks SET status=stale, status_changed_at=now,
+   first_failure_at=NULL, first_success_since_failure_at=NULL WHERE uid=? AND
+   status=?old AND coalesce(last_result_at, created_at) < ?cutoff`. No events,
+   no notifications, `status_streak` untouched, no incident resolve/open. The
+   only side effects are a coalesced `checks` realtime hint and (when an
+   incident is open) one `incident.monitoring_interrupted` timeline event.
+2. **Leaving stale goes THROUGH `ProcessCheckResult`**, and writes even inside a
+   maintenance window. The first thing `ProcessCheckResult` does for a real
+   result is `TouchCheckLastResult` — an `UPDATE … RETURNING` that bumps
+   `last_result_at` and returns the CURRENT status/streak/clocks. The
+   in-memory check (possibly a claim-time snapshot, `backend/direct.go:303-315`)
+   is refreshed from that row, so "changed" and the (cleared) clocks are
+   decided against the live row. In maintenance a stale check gets its status
+   written (success→up, warning→warning, failure→down if an incident is open,
+   else validating), no clocks, no incident routing, and a `checks` hint.
+
+### §1 New status
+- `models/check.go`: `CheckStatusStale = 10` (1,3,4,5,7,8 taken; 2, 6 and 9
+  are free on `checks.status` but 1-9 are all live *result* statuses — 9 is
+  `ResultStatusAbandoned` — and the two share an integer space by convention,
+  so 10 keeps a stale check from ever reading as a result code), `String()`;
+  `status_wire.go`: `WireStatusStale`.
+- `models.StaleThreshold(period) = max(3×period, 5 min)` and
+  `models.StaleCutoff`, one definition used by sweeper, badge, UI API.
+- Fix `check.go:21-25` validating comment (it gates confirmation since
+  `rollup.go:439`).
+- Migration `024_v0_33_0` (postgres + sqlite): `checks.last_result_at`,
+  backfilled from the newest real raw result (status 3,4,5,6,8), partial
+  expression index on `coalesce(last_result_at, created_at)` for enabled,
+  non-internal, non-deleted checks; fix the `checks.status` column comment (PG).
+
+### §2 Sweeper
+- `jobdef.JobTypeCheckFreshnessSweep = "check_freshness_sweep"` (not publicly
+  creatable), factory in `jobtypes/registry.go`, `job_check_freshness_sweep.go`
+  using `periodicSweep`, seeded from `ensureGlobalSweeps` in `job_startup.go`.
+- `services.FreshnessSweeper` interface in `app/services/services.go`, wired in
+  `app/server.go` next to `Degraded`.
+- New package `internal/handlers/freshness`: `SweepStale(ctx, now)` — one
+  indexed candidate query (`db.ListStaleCandidates`), Go-side exact threshold
+  per check, maintenance exclusion via the shared resolver, then
+  `db.MarkCheckStale` (guarded update) per check; coalesced `checks` hint;
+  timeline event on open incidents; publishes `solidping_checks_stale`.
+- db: `TouchCheckLastResult`, `ListStaleCandidates`, `MarkCheckStale`,
+  `CountStaleChecksByRegion`, `ListLastRealResultPerRegion` (both dialects +
+  slack_test mock).
+- `incidents/service.go`: touch + refresh, maintenance-leave-stale path,
+  "monitoring resumed" timeline event when leaving stale with an open incident.
+
+### §3 Incidents
+- `rollup.go` `reEvaluateChild`: a stale child is treated like `down` (stays
+  attached, un-suppressed and paged), never detached. `ancestorHoldRemaining`
+  unchanged (stale parent does not hold) — comment made deliberate.
+- New event types `incident.monitoring_interrupted` /
+  `incident.monitoring_resumed` (event.go, dispatch switch = never pages,
+  system/service.go switch, dash0 events.json ×4, event-display test).
+
+### §4 Surfaces
+- Server: `?status=stale` (checks/handler.go), `byStatus` keys (stats.go),
+  `lastStatusChange` text "no data" in CLI (`pkg/cli/checks*.go`) and
+  Slack/Teams/Discord commands, group rollup rank down>validating>warning>stale>up
+  (`check_group_status.go` + dash0 copy), page rollup (stale → Unknown),
+  `publicCheckStatus` stale → `"noData"`-style `stale` with `lastResultAt`,
+  badges gray "no data", MCP `diagnose_check` `regionFreshness`, check response
+  `lastResultAt` + `regionFreshness` (with=region_freshness), OpenAPI enums +
+  `Check.status` + `listChecks ?status=`, regenerate `pkg/client`.
+- dash0: `lib/status-style.ts` (gray + Clock icon), `status-badge.tsx` via label
+  map, `api/hooks.ts` status type (+`warning`,`stale`), `checks.index.tsx`
+  filter/summary order/host-section rollup, check detail header "No data since"
+  + per-region freshness, `check-summary-cards.tsx` (abandoned ignored,
+  per-region ages, `status_changed_at` timer), check-groups invalidated by
+  `checks` hints, design-reference entry, locales ×4 (`status.stale`,
+  `groupSummary.stale`, freshness strings).
+- status0: `lib/status-style.ts`, `lib/tv-board.ts`, component "No data, last
+  checked HH:MM", page "Status unknown", locales ×4, `tv-locales.test.ts`
+  extended to status keys.
+
+### §5 Coverage
+- `internal/coverage` helper: `ExpectedProbes(window, period, regions)`.
+- availability: `coverage`, `unmeasuredSeconds`, downtime over measured time,
+  fixed comment. SLO: `Input.ExpectedProbes`, `dataCoverage`, consumption over
+  measured time; dash0 SLO view shows low coverage. Uptime bar tooltips compute
+  "measured N%" from probes vs expected client-side; status0 day bars get a
+  server-computed `coveragePct` on `AvailabilityPoint`.
+
+### §6 Operator signal
+- `prommetrics.ChecksStale` gauge `solidping_checks_stale{region}` (placement
+  region from `check_jobs`, private slugs folded into `private`).
+- watchdog `DetectorStaleChecks = "stale-checks"`: stale checks with at least one
+  placement region that is NOT dark per the same RegionHealth report.
+
+### Tests
+Backend unit/integration (SQLite, `make test`): sweep enters stale after
+threshold with no events/notifications and one hint; CAS race; leave stale;
+fresh confirmation/recovery after gap; maintenance both ways; multi-region
+silent region not stale + freshness; rollup child/parent; group/page/public/
+badge rendering; availability 8h gap → ~67% coverage, 0 downtime. Frontend:
+locale parity (dash0 generic test already covers every key; status0 test
+extended). E2E: `e2e/checks-stale.spec.ts` via test-mode API.
