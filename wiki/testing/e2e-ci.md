@@ -2,65 +2,79 @@
 
 ## Overview
 
-End-to-end tests run in CI as a dedicated GitHub Actions job (`e2e-tests`) using Playwright against the built solidping binary.
+End-to-end tests run in CI as the `e2e-tests` GitHub Actions job, using Playwright
+against the built solidping binary. The dash0 suite is split into **2 shards** that
+run in parallel, each on its own runner with its own Postgres and server.
 
 ## Architecture
 
 ```
 build job (produces solidping binary)
-    └── e2e-tests job
+    └── e2e-tests (matrix: shard 1, shard 2), each:
             1. Download binary artifact
-            2. Start solidping server (test mode, sqlite-memory)
-            3. Run Playwright tests (chromium)
-            4. Upload test artifacts
+            2. Start Postgres + solidping server (test mode, fresh DB)
+            3. playwright test --shard=N/2 (chromium, 1 worker)
+            4. shard 1 only: status0 suite
+               shard 2 only: session-continuity against a short-expiry side-car
+            5. Upload blob report + failure artifacts
+    └── e2e-report
+            merge-reports → HTML report + results.json, slowest files in the step summary
 ```
 
-The `e2e-tests` job depends on the `build` job and gates the `ci` aggregation check, blocking PR merges if e2e tests fail.
+The `ci` gate depends on `e2e-tests` (both shards). `e2e-report` is reporting only.
+
+## Why 2 shards, 1 worker each
+
+- **Shards share nothing**: each has its own database, so tests in one shard cannot
+  see state written by the other.
+- **Inside a shard, 1 worker**: every spec shares the seeded `test` org, and several
+  mutate it (integrations, system parameters, status-page domains). Running two
+  workers against one server is not safe until tests are isolated per worker.
+- **2 is a cap on parallel runners**, chosen on purpose. Raising it is a one-line
+  matrix change, plus re-balancing (below).
+
+### Balancing
+
+Playwright splits by test **count** into contiguous halves (alphabetical file order),
+not by duration. As of 2026-09-24 the first half was ~1.5 min heavier, so the two
+extra suites are placed to even it out: status0 (~1.5 min) on shard 1, the
+session-continuity side-car (~3 min) on shard 2. Re-check the split in the
+`E2E Report` step summary when a shard starts finishing much later than the other.
 
 ## CI Environment
 
-- **Runner**: ubuntu-24.04
-- **Browser**: Chromium only (via Playwright)
-- **Database**: SQLite in-memory (default when `SP_RUNMODE=test` and no `SP_DB_TYPE` is set)
-- **Server mode**: `SP_RUNMODE=test` with `SP_DB_RESET=true` for deterministic test data
+- **Runner**: ubuntu-26.04
+- **Browser**: Chromium only
+- **Database**: Postgres from `docker-compose.yml` (`SP_DB_TYPE=postgres`), reset at start
+- **Server env**: `SP_RUNMODE=test`, rate limiting off, `SP_AUTH_REGISTRATION_EMAIL_PATTERN=.*`
+  (a local side-car must match these, see the `/implement-todos` side-car recipe)
 - **Test credentials**: `test@test.com` / `test` / org `test`
 
-## Test Infrastructure
-
-### Playwright Configuration (`web/dash0/playwright.config.ts`)
+## Playwright Configuration (`web/dash0/playwright.config.ts`)
 
 CI-specific behavior:
-- `forbidOnly: true` — fails if `test.only` is left in code
-- `retries: 2` — retries flaky tests up to 2 times
-- `workers: 1` — serial execution to avoid resource conflicts
-- Screenshots and video captured on failure
-- Traces captured on first retry
-
-### Global Setup (`web/dash0/e2e/global-setup.ts`)
-
-Detects `CI=true` and skips build/startup (already handled by the workflow). Only waits for the server health endpoint (`/api/mgmt/health`) to respond.
-
-### Global Teardown (`web/dash0/e2e/global-teardown.ts`)
-
-Skips cleanup in CI — the workflow handles stopping services.
-
-## Test Files
-
-| File | What it tests |
-|------|---------------|
-| `e2e/login.spec.ts` | Authentication flow, error handling, logout |
-| `e2e/dashboard.spec.ts` | Dashboard display, sidebar, layout |
-| `e2e/checks.spec.ts` | Check management |
-| `e2e/incidents.spec.ts` | Incident viewing |
-| `e2e/fixtures.ts` | Shared `authenticatedPage` fixture (auto-login) |
+- `forbidOnly: true`
+- `retries: 2`
+- `workers: 1`
+- Trace and video on the first retry only; screenshot on failure
+- On GitHub Actions (`GITHUB_ACTIONS`), reporters are `blob` + `list`. A local
+  `CI=true` run keeps the HTML/JSON reporters.
 
 ## Artifacts
 
-On every run (pass or fail), the workflow uploads:
-- `web/dash0/playwright-report/` — HTML report
-- `web/dash0/test-results/` — JSON results, screenshots, videos, traces
+- `playwright-report`: the merged HTML report, with `results.json` (every test's
+  duration) inside. 7 days.
+- `e2e-artifacts-1`, `e2e-artifacts-2`: failure screenshots, traces, videos, the
+  status0 report and the server logs of each shard. 7 days.
+- `blob-report-1`, `blob-report-2`: raw shard reports, input of the merge. 1 day.
 
-Retained for 7 days.
+To open a merged report locally: download `playwright-report`, then
+`bunx playwright show-report <dir>`.
+
+## Concurrency
+
+A new push to a pull request cancels that PR's in-flight CI run. Pushes to `main`
+and tag builds are never cancelled.
 
 ## Running Locally
 
@@ -68,9 +82,9 @@ Retained for 7 days.
 # Against production build (builds everything, starts services)
 cd web/dash0 && bun run test:e2e
 
+# One shard, the way CI runs it
+cd web/dash0 && CI=true E2E_BASE_URL=http://localhost:4300/d/ bunx playwright test --shard=1/2
+
 # Against running dev server (no build, no service management)
 cd web/dash0 && bun run test:e2e:dev
-
-# With UI
-cd web/dash0 && bun run test:e2e:ui
 ```
