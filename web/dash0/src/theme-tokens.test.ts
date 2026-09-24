@@ -68,6 +68,56 @@ function contrast(a: Oklch, b: Oklch): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+type Rgb255 = [number, number, number];
+
+// Same oklch -> linear -> clipped sRGB pipeline as luminance(), but stopped
+// at the encoded (gamma) 0-255 byte instead of decoding back to linear —
+// this is the actual painted pixel, which is what alpha-blending composites.
+function toSrgb255([L, C, H]: Oklch): Rgb255 {
+  const h = (H * Math.PI) / 180;
+  const a = C * Math.cos(h);
+  const b = C * Math.sin(h);
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+  return linear.map((v) => {
+    const c = Math.min(1, Math.max(0, v));
+    const encoded = c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+    return Math.round(Math.min(1, Math.max(0, encoded)) * 255);
+  }) as Rgb255;
+}
+
+// The browser composites a translucent fill (e.g. bg-destructive/80) over
+// whatever sits behind it by alpha-blending the ENCODED sRGB bytes (no
+// linear-light round-trip), so this blends in the same space.
+function blendOverSrgb(fg: Oklch, alpha: number, bg: Oklch): Rgb255 {
+  const [fr, fgc, fb] = toSrgb255(fg);
+  const [br, bgc, bb] = toSrgb255(bg);
+  return [
+    Math.round(fr * alpha + br * (1 - alpha)),
+    Math.round(fgc * alpha + bgc * (1 - alpha)),
+    Math.round(fb * alpha + bb * (1 - alpha)),
+  ];
+}
+
+function srgbLuminance([r, g, b]: Rgb255): number {
+  const decode = (byte: number) => {
+    const c = byte / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * decode(r) + 0.7152 * decode(g) + 0.0722 * decode(b);
+}
+
+function contrastRgb(a: Oklch, b: Rgb255): number {
+  const [hi, lo] = [luminance(a), srgbLuminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 const SPEC_LIGHT: Record<string, string> = {
   background: "oklch(0.98 0.006 250)",
   foreground: "oklch(0.18 0.03 258)",
@@ -158,7 +208,7 @@ describe("electric identity tokens", () => {
       [light, "brand", "oklch(0.58 0.22 5)"],
       [light, "brand-foreground", "oklch(0.98 0.01 5)"],
       [light, "brand-muted", "oklch(0.92 0.05 5)"],
-      [light, "destructive", "oklch(0.6 0.22 25)"],
+      [light, "destructive", "oklch(0.57 0.22 25)"],
       [light, "status-ok", "oklch(0.65 0.2 145)"],
       [light, "status-warning", "oklch(0.75 0.18 85)"],
       [light, "status-error", "oklch(0.6 0.22 25)"],
@@ -253,6 +303,46 @@ describe("electric identity contrast (acceptance criteria)", () => {
     expect(
       contrast(parseOklch(tokens["primary-foreground"]), parseOklch(tokens.primary)),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+// Spec 2026-09-24-07: text-destructive-foreground was used 19 times with no
+// matching token, so Tailwind generated no CSS for it (worse than nothing —
+// tailwind-merge dropped the working class it replaced). The label is white
+// in both themes; dark mode keeps --destructive (it is also ~197 text-
+// destructive usages on dark surfaces) and instead darkens the button FILL
+// (dark:bg-destructive/80, dark:hover:bg-destructive/70 in button.tsx).
+describe("destructive-foreground token", () => {
+  it("is defined in both :root and .dark, and mapped in @theme inline", () => {
+    expect(light["destructive-foreground"]).toBe("oklch(1 0 0)");
+    expect(dark["destructive-foreground"]).toBe("oklch(1 0 0)");
+    expect(css).toContain(
+      "--color-destructive-foreground: var(--destructive-foreground);",
+    );
+  });
+
+  it("stays >= 4.5:1 on every fill it can sit on, at rest and on hover, in both themes", () => {
+    const white = parseOklch(light["destructive-foreground"]);
+
+    // Light: the label sits directly on the (now-darkened) --destructive
+    // fill; on hover the fill goes to destructive/90.
+    expect(contrast(white, parseOklch(light.destructive))).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRgb(white, blendOverSrgb(parseOklch(light.destructive), 0.9, parseOklch(light.card))),
+    ).toBeGreaterThanOrEqual(4.5);
+
+    // Dark: --destructive itself stays at 0.65 (unchanged), so the label
+    // reads the darker dark:bg-destructive/80 fill at rest and /70 on hover.
+    expect(
+      contrastRgb(white, blendOverSrgb(parseOklch(dark.destructive), 0.8, parseOklch(dark.card))),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRgb(white, blendOverSrgb(parseOklch(dark.destructive), 0.7, parseOklch(dark.card))),
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("leaves dark --destructive unmodified, so text-destructive on the dark page is unchanged", () => {
+    expect(dark.destructive).toBe("oklch(0.65 0.2 25)");
   });
 });
 

@@ -49,7 +49,11 @@ describe("Button, default variant", () => {
     expect(classesOf(html)).toEqual(expect.arrayContaining(["bg-primary", "bg-primary-gradient"]));
   });
 
-  it("drops the gradient when a caller recolors it (AlertDialogAction's delete confirms)", () => {
+  it("drops the gradient when a caller recolors it via className", () => {
+    // Spec 2026-09-24-07: AlertDialogAction's delete confirms no longer
+    // hand-roll this — they pass variant="destructive" instead (see
+    // AlertDialog, hero tier badge). This still pins the underlying cn()
+    // merge behavior any other caller-recolored Button relies on.
     const html = renderToStaticMarkup(
       <Button className="bg-destructive text-white hover:bg-destructive/90">Delete</Button>,
     );
@@ -65,6 +69,14 @@ describe("Button, default variant", () => {
     }
     expect(buttonVariants({ variant: "destructive" })).toContain("bg-destructive");
     expect(buttonVariants({ variant: "link" })).toContain("text-primary");
+  });
+
+  it("destructive: white label via the token, darker fill in dark mode (spec 2026-09-24-07)", () => {
+    const cls = buttonVariants({ variant: "destructive" }).split(/\s+/);
+    expect(cls).toContain("text-destructive-foreground");
+    expect(cls).not.toContain("text-white");
+    expect(cls).toContain("dark:bg-destructive/80");
+    expect(cls).toContain("dark:hover:bg-destructive/70");
   });
 });
 
