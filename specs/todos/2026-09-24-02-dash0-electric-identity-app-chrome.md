@@ -309,3 +309,28 @@ needs a series the endpoint does not return), and hero tiles on other pages.
    glow not clickable / not printed / no layout shift, hero tile + white
    badge, 375px stacking); update `sidebar.spec.ts` (avatar fallback test id)
    and `incident-notifications.spec.ts`.
+
+### Follow-up for the PR description (out of scope here)
+
+Route files that render their own `<h1>` instead of `PageHeader` (29, under
+`web/dash0/src/routes/`), to convert in a later spec: `__root.tsx`,
+`no-org.tsx`, `orgs/$org.tsx`, `account.mcp.tsx`, `account.tsx`,
+`check-groups.$uid.edit.tsx`, `checks.$checkUid.index.tsx`,
+`checks.$checkUid.results.$resultUid.tsx`, `escalation-policies.$uid.tsx`,
+`escalation-policies.new.tsx`, `incidents.$incidentUid.tsx`,
+`integrations.new.tsx`, `jobs.$jobUid.tsx`, `jobs.check.$checkJobUid.tsx`,
+`maintenance-windows.$maintenanceWindowUid.index.tsx`,
+`notifications.$notificationUid.tsx`, `on-call.$uid.edit.tsx`,
+`on-call.$uid.index.tsx`, `on-call.new.tsx`,
+`organization.discovery.$jobUid.index.tsx`,
+`organization.private-locations.register.tsx`, `organization.tsx`,
+`server.tsx`, `status-pages.$statusPageUid.appearance.tsx`,
+`status-pages.$statusPageUid.incidents.$uid.tsx`,
+`status-pages.$statusPageUid.index.tsx`, `status-updates.$updateUid.edit.tsx`,
+`status-updates.new.tsx`, `test.tsx` (all but the first three under
+`orgs/$org/`).
+
+Deviations from the spec text, both forced by contrast and documented on the
+design reference: the hero's small text is 90% white, not 80% (see step 6),
+and the "down" tier chip uses red-700 rather than the light `--destructive`
+(4.41:1 on white, under 4.5:1 for the 11px badge).
