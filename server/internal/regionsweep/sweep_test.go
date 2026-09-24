@@ -9,6 +9,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/regionoutage"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/regionsweep"
 )
 
@@ -178,6 +179,82 @@ func TestFlapResetsTheRecoveryStreak(t *testing.T) {
 	r.Empty(env.sweep(t).Transitions, "still the same outage")
 	r.Equal(0, env.marker(t, darkRegion).HealthyStreak)
 	r.Len(env.emails(t, "alice@acme.com", email.TemplateRegionOffline), 1)
+}
+
+// TestCheckBecomesBlindMidOutageNotifiesOncePerRegion: a check spans two
+// regions. Region 1 goes dark first — the check is still reduced (region 2
+// lives), so the org is not told yet. When region 2 also goes dark, the check
+// is blind for the first time. apply.go's stayUnhealthy re-classifies region
+// 1's ongoing outage on every dark sweep and finds the org newly eligible
+// (spec's "an org not yet in the marker"), while region 2's own goDark
+// transition independently reaches the same conclusion. Each region's marker
+// tracks its own notified-orgs list, so this is one notice per region's
+// outage, not a single merged one — documented here as intended behavior
+// (the same mechanism a check whose two regions go dark in the very same
+// sweep would hit).
+func TestCheckBecomesBlindMidOutageNotifiesOncePerRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	env := newTestEnv(t)
+
+	const secondRegion = "berlin"
+
+	r.NoError(env.db.SetSystemParameter(t.Context(), regions.ParamRegions, []regions.RegionDefinition{
+		{Slug: healthyRegion, Name: "Paris"},
+		{Slug: darkRegion, Name: "Lauterbourg"},
+		{Slug: secondRegion, Name: "Berlin"},
+	}, false))
+
+	env.strand(t)
+	worker2 := env.worker(t, "w-"+secondRegion, secondRegion)
+	env.check(t, env.acme, "Two Region", darkRegion, secondRegion)
+	env.admin(t, env.acme, "alice@acme.com")
+
+	// Region 1 alone goes dark: the check still runs from region 2, so it is
+	// reduced and the org hears nothing.
+	first := transition(env.sweep(t), darkRegion)
+	r.NotNil(first)
+	r.Empty(first.OrgsNotified, "reduced, not blind: no notice yet")
+	r.Empty(env.emails(t, "alice@acme.com", email.TemplateRegionOffline))
+
+	// Region 2 also goes dark: the check is blind for the first time.
+	env.lastBeat(t, worker2, 10*time.Minute)
+
+	second := transition(env.sweep(t), secondRegion)
+	r.NotNil(second)
+	r.Equal(regionsweep.TransitionDark, second.Kind)
+	r.Equal([]string{env.acme.UID}, second.OrgsNotified,
+		"region 2's own transition finds the now-blind check")
+
+	// The org gets one notice per region's outage: region 1's ongoing outage
+	// (caught by stayUnhealthy re-classifying) and region 2's own transition.
+	offlineMails := env.emails(t, "alice@acme.com", email.TemplateRegionOffline)
+	r.Len(offlineMails, 2, "one notice per region, not a single merged notice")
+
+	events := env.events(t, env.acme, models.EventTypeRegionOffline)
+	r.Len(events, 2)
+
+	regionsNotified := make([]string, 0, len(events))
+	for _, ev := range events {
+		regionsNotified = append(regionsNotified, ev.Payload["region"].(string)) //nolint:forcetypeassert // test
+	}
+
+	r.ElementsMatch([]string{darkRegion, secondRegion}, regionsNotified)
+
+	marker1 := env.marker(t, darkRegion)
+	r.Equal([]string{env.acme.UID}, marker1.NotifiedOrgs)
+	r.WithinDuration(time.Now().Add(-10*time.Minute), marker1.Since, 5*time.Second,
+		"region 1's notice is dated to when region 1 itself went dark")
+
+	marker2 := env.marker(t, secondRegion)
+	r.Equal([]string{env.acme.UID}, marker2.NotifiedOrgs)
+	r.WithinDuration(time.Now().Add(-10*time.Minute), marker2.Since, 5*time.Second,
+		"region 2's notice is dated to its own last worker beat too")
+
+	// A further sweep with nothing changed sends nothing more.
+	r.Empty(env.sweep(t).Transitions)
+	r.Len(env.emails(t, "alice@acme.com", email.TemplateRegionOffline), 2, "no repeat notice")
 }
 
 // TestTwoOrgsOneRegion: each org gets its own notice, listing only its own
