@@ -4,8 +4,8 @@
   "description": "Public status page for SolidPing",
   "start_url": "/status0/",
   "display": "standalone",
-  "background_color": "#f8f9fb",
-  "theme_color": "#e91e63",
+  "background_color": "#f5f9fc",
+  "theme_color": "#f5f9fc",
   "icons": [
     {
       "src": "assets/favicon.svg",

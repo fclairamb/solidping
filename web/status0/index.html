@@ -15,9 +15,13 @@
          chrome (address bar / task switcher) should match whichever palette
          actually painted, and that is decided before first paint by the
          inline script below — a single static theme-color would flash the
-         light tint on a dark first paint. -->
-    <meta name="theme-color" content="#e91e63" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0e0a0e" media="(prefers-color-scheme: dark)" />
+         light tint on a dark first paint.
+         The colors are the page --background of each theme (spec
+         2026-09-24-04), not the brand or dash0's navy: a status page belongs
+         to the customer, so the browser bar blends into their page instead of
+         carrying SolidPing's chrome. Keep them in sync with src/index.css. -->
+    <meta name="theme-color" content="#f5f9fc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#060a13" media="(prefers-color-scheme: dark)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SolidPing - Status Page</title>
     <meta name="google" content="notranslate" />
