@@ -525,26 +525,26 @@ func subCheckFloorRefusal(cfg checkerdef.Config) string {
 		"which cannot be enforced on a sub-check", hinter.MinPeriodHint())
 }
 
+// jsCheckError builds the {status, output.error} shape every early return
+// from check() below uses, so the function's body is refusals plus one line
+// each rather than a repeated map literal.
+func jsCheckError(msg string) map[string]any {
+	return map[string]any{
+		jsKeyStatus: logLevelError,
+		jsKeyOutput: map[string]any{checkerdef.OutputKeyError: msg},
+	}
+}
+
 // check executes a sub-checker via the resolver.
 func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]any {
 	// Block recursive JS and heartbeat checks
 	if typeStr == "js" || typeStr == "heartbeat" {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{
-				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is not allowed in JS scripts",
-			},
-		}
+		return jsCheckError("check type \"" + typeStr + "\" is not allowed in JS scripts")
 	}
 
 	// Enforce sub-check limit
 	if r.subCheckCount.Add(1) > int32(maxSubChecks) {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{
-				checkerdef.OutputKeyError: fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks),
-			},
-		}
+		return jsCheckError(fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks))
 	}
 
 	checkType := checkerdef.CheckType(typeStr)
@@ -569,12 +569,7 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// deliberate — the existing guard ordering is left untouched and a script
 	// cannot spin the refusal path for free.
 	if TypeEnabled != nil && !TypeEnabled(checkType) {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{
-				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is disabled on this server",
-			},
-		}
+		return jsCheckError("check type \"" + typeStr + "\" is disabled on this server")
 	}
 
 	// A tunneled script cannot let a sub-check of a type that itself lacks
@@ -587,50 +582,30 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// appears.
 	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
 		if meta := checkerdef.GetCheckTypeMeta(checkType); meta == nil || !meta.SupportsTunnel {
-			return map[string]any{
-				jsKeyStatus: logLevelError,
-				jsKeyOutput: map[string]any{
-					checkerdef.OutputKeyError: fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr),
-				},
-			}
+			return jsCheckError(fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr))
 		}
 	}
 
 	if ResolveChecker == nil {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "checker resolver not initialized"},
-		}
+		return jsCheckError("checker resolver not initialized")
 	}
 
 	checker, cfg, ok := ResolveChecker(checkType)
 	if !ok {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "unknown check type: " + typeStr},
-		}
+		return jsCheckError("unknown check type: " + typeStr)
 	}
 
 	if err := cfg.FromMap(configMap); err != nil {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "invalid config: " + err.Error()},
-		}
+		return jsCheckError("invalid config: " + err.Error())
 	}
 
 	if refusal := subCheckFloorRefusal(cfg); refusal != "" {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: refusal},
-		}
+		return jsCheckError(refusal)
 	}
 
 	result, err := checker.Execute(r.execCtx, cfg)
 	if err != nil {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "execution error: " + err.Error()},
-		}
+		return jsCheckError("execution error: " + err.Error())
 	}
 
 	return map[string]any{

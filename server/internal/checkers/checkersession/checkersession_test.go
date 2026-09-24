@@ -13,15 +13,16 @@ import (
 )
 
 var (
-	errTestSlotTimeout = NewSlotTimeoutError("timed out waiting for a free test slot")
-	errTestInfra       = errors.New("the session is gone")
-	errTestTarget      = errors.New("the change never came")
+	errTestSlotTimeout  = NewSlotTimeoutError("timed out waiting for a free test slot")
+	errTestInfra        = errors.New("the session is gone")
+	errTestTarget       = errors.New("the change never came")
+	errTestUnknownShape = errors.New("unknown shape")
 )
 
-type declaredInfra struct{ infra bool }
+type declaredInfraError struct{ infra bool }
 
-func (d *declaredInfra) Error() string { return "declared" }
-func (d *declaredInfra) Infra() bool   { return d.infra }
+func (d *declaredInfraError) Error() string { return "declared" }
+func (d *declaredInfraError) Infra() bool   { return d.infra }
 
 func TestSlotsCapAndRelease(t *testing.T) {
 	t.Parallel()
@@ -91,13 +92,13 @@ func TestClassifierOrder(t *testing.T) {
 	r.False(classifier.Infra(errTestSlotTimeout), "a full worker is not a broken one")
 	r.False(classifier.Infra(context.DeadlineExceeded), "the check's own timeout is not infra")
 	r.False(classifier.Infra(context.Canceled))
-	r.True(classifier.Infra(&declaredInfra{infra: true}))
-	r.False(classifier.Infra(fmt.Errorf("wrapped: %w", &declaredInfra{infra: false})),
+	r.True(classifier.Infra(&declaredInfraError{infra: true}))
+	r.False(classifier.Infra(fmt.Errorf("wrapped: %w", &declaredInfraError{infra: false})),
 		"a type that declares itself target-side wins over the fallback")
 	r.Zero(fallbackCalls, "every error above was decided before the fallback")
 
-	r.True(classifier.Infra(errors.New("unknown shape")))
+	r.True(classifier.Infra(errTestUnknownShape))
 	r.Equal(1, fallbackCalls)
 
-	r.False(Classifier{}.Infra(errors.New("unknown shape")), "no fallback means target-side")
+	r.False(Classifier{}.Infra(errTestUnknownShape), "no fallback means target-side")
 }

@@ -332,6 +332,19 @@ const browserFloorReason = "scripts that open a browser have the browser check's
 // must say so rather than read as a bug.
 const rdpFloorReason = "authenticated RDP runs are real interactive logons; the floor keeps the interval long"
 
+// validateConfigOnlyPatchFloor re-checks the config-derived period floor on a
+// config-only PATCH (req.Period unset): see the call site in Update for why —
+// a config-only PATCH must not be a way around the floor either.
+func validateConfigOnlyPatchFloor(check *models.Check, reqPeriod *string) error {
+	if reqPeriod != nil || check.Internal {
+		return nil
+	}
+
+	return validateConfigDerivedFloor(
+		check.Type, time.Duration(check.Period), parsedConfigForType(check.Type, check.Config),
+	)
+}
+
 // validateConfigDerivedFloor holds an unchanged period to the floor a NEW
 // config raises (see configPeriodHint), and to nothing else.
 func validateConfigDerivedFloor(checkType string, period time.Duration, config checkerdef.Config) error {
@@ -1875,17 +1888,8 @@ func (s *Service) UpdateCheck(
 			return CheckResponse{}, cfgErr
 		}
 
-		// A config-only PATCH must not be a way around a config-derived
-		// floor either: adding credentials to an rdp check (or rdp.connect to
-		// a script) that already runs faster than the floor is refused. Only
-		// the config-derived floor is re-checked here — the type's own bound
-		// stays grandfathered until the period itself is written.
-		if req.Period == nil && !check.Internal {
-			if floorErr := validateConfigDerivedFloor(
-				check.Type, time.Duration(check.Period), parsedConfigForType(check.Type, check.Config),
-			); floorErr != nil {
-				return CheckResponse{}, floorErr
-			}
+		if floorErr := validateConfigOnlyPatchFloor(check, req.Period); floorErr != nil {
+			return CheckResponse{}, floorErr
 		}
 	} else if req.Regions != nil {
 		// A regions-only PATCH still has to re-validate a tunnel reference: the
