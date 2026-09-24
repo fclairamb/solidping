@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"context"
+	"strings"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 )
 
@@ -78,4 +80,24 @@ func (h *Handler) toolValidateCheck(ctx context.Context, orgSlug string, args ma
 		return errorResult(err.Error())
 	}
 	return marshalResult(result)
+}
+
+// allowedCheckTypes is the "Allowed:" list the create_check and list_results
+// tool descriptions quote. Derived from the check-type registry — the same
+// table list_check_types serves — so it can never go stale again: it used to
+// be a hand-written list of seven types (spec 2026-09-25-05). The synthetic
+// `sleep` type is not a customer check type and is left out.
+func allowedCheckTypes() string {
+	types := checkerdef.ListCheckTypes(nil)
+	names := make([]string, 0, len(types))
+
+	for _, checkType := range types {
+		if checkType == checkerdef.CheckTypeSleep {
+			continue
+		}
+
+		names = append(names, string(checkType))
+	}
+
+	return strings.Join(names, ", ")
 }

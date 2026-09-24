@@ -45,7 +45,7 @@ func listResultsDef() ToolDefinition {
 				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
 			),
 			"checkType": stringProp(
-				"Comma-separated check types. Allowed: http, tcp, icmp, dns, ssl, heartbeat, domain. " +
+				"Comma-separated check types. Allowed: " + allowedCheckTypes() + ". " +
 					"Example: \"http,dns\".",
 			),
 			"status": stringProp(

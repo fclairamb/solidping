@@ -161,7 +161,7 @@ func createCheckDef() ToolDefinition {
 					"Auto-generated if omitted.",
 			),
 			schemaKeyType: stringProp(
-				"Check type. Allowed: http, tcp, icmp, dns, ssl, heartbeat, domain. " +
+				"Check type. Allowed: " + allowedCheckTypes() + ". " +
 					"Inferred from config if omitted.",
 			),
 			schemaKeyConfig: objectProp(

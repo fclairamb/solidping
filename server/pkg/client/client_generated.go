@@ -338,28 +338,136 @@ func (e CheckTracerouteOnFailure) Valid() bool {
 
 // Defines values for CheckType.
 const (
-	CheckTypeDns    CheckType = "dns"
-	CheckTypeDomain CheckType = "domain"
-	CheckTypeHttp   CheckType = "http"
-	CheckTypeIcmp   CheckType = "icmp"
-	CheckTypeSsl    CheckType = "ssl"
-	CheckTypeTcp    CheckType = "tcp"
+	CheckTypeA2s             CheckType = "a2s"
+	CheckTypeBrowser         CheckType = "browser"
+	CheckTypeClickhouse      CheckType = "clickhouse"
+	CheckTypeDns             CheckType = "dns"
+	CheckTypeDnsbl           CheckType = "dnsbl"
+	CheckTypeDocker          CheckType = "docker"
+	CheckTypeDomain          CheckType = "domain"
+	CheckTypeEmail           CheckType = "email"
+	CheckTypeFreeboxLine     CheckType = "freebox_line"
+	CheckTypeFtp             CheckType = "ftp"
+	CheckTypeGrpc            CheckType = "grpc"
+	CheckTypeHeartbeat       CheckType = "heartbeat"
+	CheckTypeHttp            CheckType = "http"
+	CheckTypeIcmp            CheckType = "icmp"
+	CheckTypeImap            CheckType = "imap"
+	CheckTypeJs              CheckType = "js"
+	CheckTypeKafka           CheckType = "kafka"
+	CheckTypeKubernetes      CheckType = "kubernetes"
+	CheckTypeMinecraft       CheckType = "minecraft"
+	CheckTypeMongodb         CheckType = "mongodb"
+	CheckTypeMqtt            CheckType = "mqtt"
+	CheckTypeMssql           CheckType = "mssql"
+	CheckTypeMysql           CheckType = "mysql"
+	CheckTypeNtp             CheckType = "ntp"
+	CheckTypeOracle          CheckType = "oracle"
+	CheckTypePop3            CheckType = "pop3"
+	CheckTypePostgresql      CheckType = "postgresql"
+	CheckTypePrivateLocation CheckType = "private-location"
+	CheckTypePrometheus      CheckType = "prometheus"
+	CheckTypeRabbitmq        CheckType = "rabbitmq"
+	CheckTypeRdp             CheckType = "rdp"
+	CheckTypeRedis           CheckType = "redis"
+	CheckTypeSftp            CheckType = "sftp"
+	CheckTypeSip             CheckType = "sip"
+	CheckTypeSleep           CheckType = "sleep"
+	CheckTypeSmtp            CheckType = "smtp"
+	CheckTypeSnmp            CheckType = "snmp"
+	CheckTypeSsh             CheckType = "ssh"
+	CheckTypeSsl             CheckType = "ssl"
+	CheckTypeTcp             CheckType = "tcp"
+	CheckTypeUdp             CheckType = "udp"
+	CheckTypeWebsocket       CheckType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the CheckType enum.
 func (e CheckType) Valid() bool {
 	switch e {
+	case CheckTypeA2s:
+		return true
+	case CheckTypeBrowser:
+		return true
+	case CheckTypeClickhouse:
+		return true
 	case CheckTypeDns:
 		return true
+	case CheckTypeDnsbl:
+		return true
+	case CheckTypeDocker:
+		return true
 	case CheckTypeDomain:
+		return true
+	case CheckTypeEmail:
+		return true
+	case CheckTypeFreeboxLine:
+		return true
+	case CheckTypeFtp:
+		return true
+	case CheckTypeGrpc:
+		return true
+	case CheckTypeHeartbeat:
 		return true
 	case CheckTypeHttp:
 		return true
 	case CheckTypeIcmp:
 		return true
+	case CheckTypeImap:
+		return true
+	case CheckTypeJs:
+		return true
+	case CheckTypeKafka:
+		return true
+	case CheckTypeKubernetes:
+		return true
+	case CheckTypeMinecraft:
+		return true
+	case CheckTypeMongodb:
+		return true
+	case CheckTypeMqtt:
+		return true
+	case CheckTypeMssql:
+		return true
+	case CheckTypeMysql:
+		return true
+	case CheckTypeNtp:
+		return true
+	case CheckTypeOracle:
+		return true
+	case CheckTypePop3:
+		return true
+	case CheckTypePostgresql:
+		return true
+	case CheckTypePrivateLocation:
+		return true
+	case CheckTypePrometheus:
+		return true
+	case CheckTypeRabbitmq:
+		return true
+	case CheckTypeRdp:
+		return true
+	case CheckTypeRedis:
+		return true
+	case CheckTypeSftp:
+		return true
+	case CheckTypeSip:
+		return true
+	case CheckTypeSleep:
+		return true
+	case CheckTypeSmtp:
+		return true
+	case CheckTypeSnmp:
+		return true
+	case CheckTypeSsh:
+		return true
 	case CheckTypeSsl:
 		return true
 	case CheckTypeTcp:
+		return true
+	case CheckTypeUdp:
+		return true
+	case CheckTypeWebsocket:
 		return true
 	default:
 		return false
@@ -518,28 +626,136 @@ func (e CheckListItemTracerouteOnFailure) Valid() bool {
 
 // Defines values for CheckListItemType.
 const (
-	CheckListItemTypeDns    CheckListItemType = "dns"
-	CheckListItemTypeDomain CheckListItemType = "domain"
-	CheckListItemTypeHttp   CheckListItemType = "http"
-	CheckListItemTypeIcmp   CheckListItemType = "icmp"
-	CheckListItemTypeSsl    CheckListItemType = "ssl"
-	CheckListItemTypeTcp    CheckListItemType = "tcp"
+	CheckListItemTypeA2s             CheckListItemType = "a2s"
+	CheckListItemTypeBrowser         CheckListItemType = "browser"
+	CheckListItemTypeClickhouse      CheckListItemType = "clickhouse"
+	CheckListItemTypeDns             CheckListItemType = "dns"
+	CheckListItemTypeDnsbl           CheckListItemType = "dnsbl"
+	CheckListItemTypeDocker          CheckListItemType = "docker"
+	CheckListItemTypeDomain          CheckListItemType = "domain"
+	CheckListItemTypeEmail           CheckListItemType = "email"
+	CheckListItemTypeFreeboxLine     CheckListItemType = "freebox_line"
+	CheckListItemTypeFtp             CheckListItemType = "ftp"
+	CheckListItemTypeGrpc            CheckListItemType = "grpc"
+	CheckListItemTypeHeartbeat       CheckListItemType = "heartbeat"
+	CheckListItemTypeHttp            CheckListItemType = "http"
+	CheckListItemTypeIcmp            CheckListItemType = "icmp"
+	CheckListItemTypeImap            CheckListItemType = "imap"
+	CheckListItemTypeJs              CheckListItemType = "js"
+	CheckListItemTypeKafka           CheckListItemType = "kafka"
+	CheckListItemTypeKubernetes      CheckListItemType = "kubernetes"
+	CheckListItemTypeMinecraft       CheckListItemType = "minecraft"
+	CheckListItemTypeMongodb         CheckListItemType = "mongodb"
+	CheckListItemTypeMqtt            CheckListItemType = "mqtt"
+	CheckListItemTypeMssql           CheckListItemType = "mssql"
+	CheckListItemTypeMysql           CheckListItemType = "mysql"
+	CheckListItemTypeNtp             CheckListItemType = "ntp"
+	CheckListItemTypeOracle          CheckListItemType = "oracle"
+	CheckListItemTypePop3            CheckListItemType = "pop3"
+	CheckListItemTypePostgresql      CheckListItemType = "postgresql"
+	CheckListItemTypePrivateLocation CheckListItemType = "private-location"
+	CheckListItemTypePrometheus      CheckListItemType = "prometheus"
+	CheckListItemTypeRabbitmq        CheckListItemType = "rabbitmq"
+	CheckListItemTypeRdp             CheckListItemType = "rdp"
+	CheckListItemTypeRedis           CheckListItemType = "redis"
+	CheckListItemTypeSftp            CheckListItemType = "sftp"
+	CheckListItemTypeSip             CheckListItemType = "sip"
+	CheckListItemTypeSleep           CheckListItemType = "sleep"
+	CheckListItemTypeSmtp            CheckListItemType = "smtp"
+	CheckListItemTypeSnmp            CheckListItemType = "snmp"
+	CheckListItemTypeSsh             CheckListItemType = "ssh"
+	CheckListItemTypeSsl             CheckListItemType = "ssl"
+	CheckListItemTypeTcp             CheckListItemType = "tcp"
+	CheckListItemTypeUdp             CheckListItemType = "udp"
+	CheckListItemTypeWebsocket       CheckListItemType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the CheckListItemType enum.
 func (e CheckListItemType) Valid() bool {
 	switch e {
+	case CheckListItemTypeA2s:
+		return true
+	case CheckListItemTypeBrowser:
+		return true
+	case CheckListItemTypeClickhouse:
+		return true
 	case CheckListItemTypeDns:
 		return true
+	case CheckListItemTypeDnsbl:
+		return true
+	case CheckListItemTypeDocker:
+		return true
 	case CheckListItemTypeDomain:
+		return true
+	case CheckListItemTypeEmail:
+		return true
+	case CheckListItemTypeFreeboxLine:
+		return true
+	case CheckListItemTypeFtp:
+		return true
+	case CheckListItemTypeGrpc:
+		return true
+	case CheckListItemTypeHeartbeat:
 		return true
 	case CheckListItemTypeHttp:
 		return true
 	case CheckListItemTypeIcmp:
 		return true
+	case CheckListItemTypeImap:
+		return true
+	case CheckListItemTypeJs:
+		return true
+	case CheckListItemTypeKafka:
+		return true
+	case CheckListItemTypeKubernetes:
+		return true
+	case CheckListItemTypeMinecraft:
+		return true
+	case CheckListItemTypeMongodb:
+		return true
+	case CheckListItemTypeMqtt:
+		return true
+	case CheckListItemTypeMssql:
+		return true
+	case CheckListItemTypeMysql:
+		return true
+	case CheckListItemTypeNtp:
+		return true
+	case CheckListItemTypeOracle:
+		return true
+	case CheckListItemTypePop3:
+		return true
+	case CheckListItemTypePostgresql:
+		return true
+	case CheckListItemTypePrivateLocation:
+		return true
+	case CheckListItemTypePrometheus:
+		return true
+	case CheckListItemTypeRabbitmq:
+		return true
+	case CheckListItemTypeRdp:
+		return true
+	case CheckListItemTypeRedis:
+		return true
+	case CheckListItemTypeSftp:
+		return true
+	case CheckListItemTypeSip:
+		return true
+	case CheckListItemTypeSleep:
+		return true
+	case CheckListItemTypeSmtp:
+		return true
+	case CheckListItemTypeSnmp:
+		return true
+	case CheckListItemTypeSsh:
+		return true
 	case CheckListItemTypeSsl:
 		return true
 	case CheckListItemTypeTcp:
+		return true
+	case CheckListItemTypeUdp:
+		return true
+	case CheckListItemTypeWebsocket:
 		return true
 	default:
 		return false
@@ -569,28 +785,136 @@ func (e CreateCheckRequestTracerouteOnFailure) Valid() bool {
 
 // Defines values for CreateCheckRequestType.
 const (
-	CreateCheckRequestTypeDns    CreateCheckRequestType = "dns"
-	CreateCheckRequestTypeDomain CreateCheckRequestType = "domain"
-	CreateCheckRequestTypeHttp   CreateCheckRequestType = "http"
-	CreateCheckRequestTypeIcmp   CreateCheckRequestType = "icmp"
-	CreateCheckRequestTypeSsl    CreateCheckRequestType = "ssl"
-	CreateCheckRequestTypeTcp    CreateCheckRequestType = "tcp"
+	CreateCheckRequestTypeA2s             CreateCheckRequestType = "a2s"
+	CreateCheckRequestTypeBrowser         CreateCheckRequestType = "browser"
+	CreateCheckRequestTypeClickhouse      CreateCheckRequestType = "clickhouse"
+	CreateCheckRequestTypeDns             CreateCheckRequestType = "dns"
+	CreateCheckRequestTypeDnsbl           CreateCheckRequestType = "dnsbl"
+	CreateCheckRequestTypeDocker          CreateCheckRequestType = "docker"
+	CreateCheckRequestTypeDomain          CreateCheckRequestType = "domain"
+	CreateCheckRequestTypeEmail           CreateCheckRequestType = "email"
+	CreateCheckRequestTypeFreeboxLine     CreateCheckRequestType = "freebox_line"
+	CreateCheckRequestTypeFtp             CreateCheckRequestType = "ftp"
+	CreateCheckRequestTypeGrpc            CreateCheckRequestType = "grpc"
+	CreateCheckRequestTypeHeartbeat       CreateCheckRequestType = "heartbeat"
+	CreateCheckRequestTypeHttp            CreateCheckRequestType = "http"
+	CreateCheckRequestTypeIcmp            CreateCheckRequestType = "icmp"
+	CreateCheckRequestTypeImap            CreateCheckRequestType = "imap"
+	CreateCheckRequestTypeJs              CreateCheckRequestType = "js"
+	CreateCheckRequestTypeKafka           CreateCheckRequestType = "kafka"
+	CreateCheckRequestTypeKubernetes      CreateCheckRequestType = "kubernetes"
+	CreateCheckRequestTypeMinecraft       CreateCheckRequestType = "minecraft"
+	CreateCheckRequestTypeMongodb         CreateCheckRequestType = "mongodb"
+	CreateCheckRequestTypeMqtt            CreateCheckRequestType = "mqtt"
+	CreateCheckRequestTypeMssql           CreateCheckRequestType = "mssql"
+	CreateCheckRequestTypeMysql           CreateCheckRequestType = "mysql"
+	CreateCheckRequestTypeNtp             CreateCheckRequestType = "ntp"
+	CreateCheckRequestTypeOracle          CreateCheckRequestType = "oracle"
+	CreateCheckRequestTypePop3            CreateCheckRequestType = "pop3"
+	CreateCheckRequestTypePostgresql      CreateCheckRequestType = "postgresql"
+	CreateCheckRequestTypePrivateLocation CreateCheckRequestType = "private-location"
+	CreateCheckRequestTypePrometheus      CreateCheckRequestType = "prometheus"
+	CreateCheckRequestTypeRabbitmq        CreateCheckRequestType = "rabbitmq"
+	CreateCheckRequestTypeRdp             CreateCheckRequestType = "rdp"
+	CreateCheckRequestTypeRedis           CreateCheckRequestType = "redis"
+	CreateCheckRequestTypeSftp            CreateCheckRequestType = "sftp"
+	CreateCheckRequestTypeSip             CreateCheckRequestType = "sip"
+	CreateCheckRequestTypeSleep           CreateCheckRequestType = "sleep"
+	CreateCheckRequestTypeSmtp            CreateCheckRequestType = "smtp"
+	CreateCheckRequestTypeSnmp            CreateCheckRequestType = "snmp"
+	CreateCheckRequestTypeSsh             CreateCheckRequestType = "ssh"
+	CreateCheckRequestTypeSsl             CreateCheckRequestType = "ssl"
+	CreateCheckRequestTypeTcp             CreateCheckRequestType = "tcp"
+	CreateCheckRequestTypeUdp             CreateCheckRequestType = "udp"
+	CreateCheckRequestTypeWebsocket       CreateCheckRequestType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the CreateCheckRequestType enum.
 func (e CreateCheckRequestType) Valid() bool {
 	switch e {
+	case CreateCheckRequestTypeA2s:
+		return true
+	case CreateCheckRequestTypeBrowser:
+		return true
+	case CreateCheckRequestTypeClickhouse:
+		return true
 	case CreateCheckRequestTypeDns:
 		return true
+	case CreateCheckRequestTypeDnsbl:
+		return true
+	case CreateCheckRequestTypeDocker:
+		return true
 	case CreateCheckRequestTypeDomain:
+		return true
+	case CreateCheckRequestTypeEmail:
+		return true
+	case CreateCheckRequestTypeFreeboxLine:
+		return true
+	case CreateCheckRequestTypeFtp:
+		return true
+	case CreateCheckRequestTypeGrpc:
+		return true
+	case CreateCheckRequestTypeHeartbeat:
 		return true
 	case CreateCheckRequestTypeHttp:
 		return true
 	case CreateCheckRequestTypeIcmp:
 		return true
+	case CreateCheckRequestTypeImap:
+		return true
+	case CreateCheckRequestTypeJs:
+		return true
+	case CreateCheckRequestTypeKafka:
+		return true
+	case CreateCheckRequestTypeKubernetes:
+		return true
+	case CreateCheckRequestTypeMinecraft:
+		return true
+	case CreateCheckRequestTypeMongodb:
+		return true
+	case CreateCheckRequestTypeMqtt:
+		return true
+	case CreateCheckRequestTypeMssql:
+		return true
+	case CreateCheckRequestTypeMysql:
+		return true
+	case CreateCheckRequestTypeNtp:
+		return true
+	case CreateCheckRequestTypeOracle:
+		return true
+	case CreateCheckRequestTypePop3:
+		return true
+	case CreateCheckRequestTypePostgresql:
+		return true
+	case CreateCheckRequestTypePrivateLocation:
+		return true
+	case CreateCheckRequestTypePrometheus:
+		return true
+	case CreateCheckRequestTypeRabbitmq:
+		return true
+	case CreateCheckRequestTypeRdp:
+		return true
+	case CreateCheckRequestTypeRedis:
+		return true
+	case CreateCheckRequestTypeSftp:
+		return true
+	case CreateCheckRequestTypeSip:
+		return true
+	case CreateCheckRequestTypeSleep:
+		return true
+	case CreateCheckRequestTypeSmtp:
+		return true
+	case CreateCheckRequestTypeSnmp:
+		return true
+	case CreateCheckRequestTypeSsh:
+		return true
 	case CreateCheckRequestTypeSsl:
 		return true
 	case CreateCheckRequestTypeTcp:
+		return true
+	case CreateCheckRequestTypeUdp:
+		return true
+	case CreateCheckRequestTypeWebsocket:
 		return true
 	default:
 		return false
@@ -1785,6 +2109,24 @@ func (e PublishIncidentRequestSeverity) Valid() bool {
 	}
 }
 
+// Defines values for RegionStatus.
+const (
+	RegionStatusOffline RegionStatus = "offline"
+	RegionStatusOnline  RegionStatus = "online"
+)
+
+// Valid indicates whether the value is a known member of the RegionStatus enum.
+func (e RegionStatus) Valid() bool {
+	switch e {
+	case RegionStatusOffline:
+		return true
+	case RegionStatusOnline:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegionCapabilitiesBrowser.
 const (
 	RegionCapabilitiesBrowserNo      RegionCapabilitiesBrowser = "no"
@@ -2480,28 +2822,136 @@ func (e UpsertCheckRequestTracerouteOnFailure) Valid() bool {
 
 // Defines values for UpsertCheckRequestType.
 const (
-	UpsertCheckRequestTypeDns    UpsertCheckRequestType = "dns"
-	UpsertCheckRequestTypeDomain UpsertCheckRequestType = "domain"
-	UpsertCheckRequestTypeHttp   UpsertCheckRequestType = "http"
-	UpsertCheckRequestTypeIcmp   UpsertCheckRequestType = "icmp"
-	UpsertCheckRequestTypeSsl    UpsertCheckRequestType = "ssl"
-	UpsertCheckRequestTypeTcp    UpsertCheckRequestType = "tcp"
+	UpsertCheckRequestTypeA2s             UpsertCheckRequestType = "a2s"
+	UpsertCheckRequestTypeBrowser         UpsertCheckRequestType = "browser"
+	UpsertCheckRequestTypeClickhouse      UpsertCheckRequestType = "clickhouse"
+	UpsertCheckRequestTypeDns             UpsertCheckRequestType = "dns"
+	UpsertCheckRequestTypeDnsbl           UpsertCheckRequestType = "dnsbl"
+	UpsertCheckRequestTypeDocker          UpsertCheckRequestType = "docker"
+	UpsertCheckRequestTypeDomain          UpsertCheckRequestType = "domain"
+	UpsertCheckRequestTypeEmail           UpsertCheckRequestType = "email"
+	UpsertCheckRequestTypeFreeboxLine     UpsertCheckRequestType = "freebox_line"
+	UpsertCheckRequestTypeFtp             UpsertCheckRequestType = "ftp"
+	UpsertCheckRequestTypeGrpc            UpsertCheckRequestType = "grpc"
+	UpsertCheckRequestTypeHeartbeat       UpsertCheckRequestType = "heartbeat"
+	UpsertCheckRequestTypeHttp            UpsertCheckRequestType = "http"
+	UpsertCheckRequestTypeIcmp            UpsertCheckRequestType = "icmp"
+	UpsertCheckRequestTypeImap            UpsertCheckRequestType = "imap"
+	UpsertCheckRequestTypeJs              UpsertCheckRequestType = "js"
+	UpsertCheckRequestTypeKafka           UpsertCheckRequestType = "kafka"
+	UpsertCheckRequestTypeKubernetes      UpsertCheckRequestType = "kubernetes"
+	UpsertCheckRequestTypeMinecraft       UpsertCheckRequestType = "minecraft"
+	UpsertCheckRequestTypeMongodb         UpsertCheckRequestType = "mongodb"
+	UpsertCheckRequestTypeMqtt            UpsertCheckRequestType = "mqtt"
+	UpsertCheckRequestTypeMssql           UpsertCheckRequestType = "mssql"
+	UpsertCheckRequestTypeMysql           UpsertCheckRequestType = "mysql"
+	UpsertCheckRequestTypeNtp             UpsertCheckRequestType = "ntp"
+	UpsertCheckRequestTypeOracle          UpsertCheckRequestType = "oracle"
+	UpsertCheckRequestTypePop3            UpsertCheckRequestType = "pop3"
+	UpsertCheckRequestTypePostgresql      UpsertCheckRequestType = "postgresql"
+	UpsertCheckRequestTypePrivateLocation UpsertCheckRequestType = "private-location"
+	UpsertCheckRequestTypePrometheus      UpsertCheckRequestType = "prometheus"
+	UpsertCheckRequestTypeRabbitmq        UpsertCheckRequestType = "rabbitmq"
+	UpsertCheckRequestTypeRdp             UpsertCheckRequestType = "rdp"
+	UpsertCheckRequestTypeRedis           UpsertCheckRequestType = "redis"
+	UpsertCheckRequestTypeSftp            UpsertCheckRequestType = "sftp"
+	UpsertCheckRequestTypeSip             UpsertCheckRequestType = "sip"
+	UpsertCheckRequestTypeSleep           UpsertCheckRequestType = "sleep"
+	UpsertCheckRequestTypeSmtp            UpsertCheckRequestType = "smtp"
+	UpsertCheckRequestTypeSnmp            UpsertCheckRequestType = "snmp"
+	UpsertCheckRequestTypeSsh             UpsertCheckRequestType = "ssh"
+	UpsertCheckRequestTypeSsl             UpsertCheckRequestType = "ssl"
+	UpsertCheckRequestTypeTcp             UpsertCheckRequestType = "tcp"
+	UpsertCheckRequestTypeUdp             UpsertCheckRequestType = "udp"
+	UpsertCheckRequestTypeWebsocket       UpsertCheckRequestType = "websocket"
 )
 
 // Valid indicates whether the value is a known member of the UpsertCheckRequestType enum.
 func (e UpsertCheckRequestType) Valid() bool {
 	switch e {
+	case UpsertCheckRequestTypeA2s:
+		return true
+	case UpsertCheckRequestTypeBrowser:
+		return true
+	case UpsertCheckRequestTypeClickhouse:
+		return true
 	case UpsertCheckRequestTypeDns:
 		return true
+	case UpsertCheckRequestTypeDnsbl:
+		return true
+	case UpsertCheckRequestTypeDocker:
+		return true
 	case UpsertCheckRequestTypeDomain:
+		return true
+	case UpsertCheckRequestTypeEmail:
+		return true
+	case UpsertCheckRequestTypeFreeboxLine:
+		return true
+	case UpsertCheckRequestTypeFtp:
+		return true
+	case UpsertCheckRequestTypeGrpc:
+		return true
+	case UpsertCheckRequestTypeHeartbeat:
 		return true
 	case UpsertCheckRequestTypeHttp:
 		return true
 	case UpsertCheckRequestTypeIcmp:
 		return true
+	case UpsertCheckRequestTypeImap:
+		return true
+	case UpsertCheckRequestTypeJs:
+		return true
+	case UpsertCheckRequestTypeKafka:
+		return true
+	case UpsertCheckRequestTypeKubernetes:
+		return true
+	case UpsertCheckRequestTypeMinecraft:
+		return true
+	case UpsertCheckRequestTypeMongodb:
+		return true
+	case UpsertCheckRequestTypeMqtt:
+		return true
+	case UpsertCheckRequestTypeMssql:
+		return true
+	case UpsertCheckRequestTypeMysql:
+		return true
+	case UpsertCheckRequestTypeNtp:
+		return true
+	case UpsertCheckRequestTypeOracle:
+		return true
+	case UpsertCheckRequestTypePop3:
+		return true
+	case UpsertCheckRequestTypePostgresql:
+		return true
+	case UpsertCheckRequestTypePrivateLocation:
+		return true
+	case UpsertCheckRequestTypePrometheus:
+		return true
+	case UpsertCheckRequestTypeRabbitmq:
+		return true
+	case UpsertCheckRequestTypeRdp:
+		return true
+	case UpsertCheckRequestTypeRedis:
+		return true
+	case UpsertCheckRequestTypeSftp:
+		return true
+	case UpsertCheckRequestTypeSip:
+		return true
+	case UpsertCheckRequestTypeSleep:
+		return true
+	case UpsertCheckRequestTypeSmtp:
+		return true
+	case UpsertCheckRequestTypeSnmp:
+		return true
+	case UpsertCheckRequestTypeSsh:
+		return true
 	case UpsertCheckRequestTypeSsl:
 		return true
 	case UpsertCheckRequestTypeTcp:
+		return true
+	case UpsertCheckRequestTypeUdp:
+		return true
+	case UpsertCheckRequestTypeWebsocket:
 		return true
 	default:
 		return false
@@ -6163,10 +6613,19 @@ type Region struct {
 	Emoji        string              `json:"emoji"`
 	Name         string              `json:"name"`
 
+	// OfflineSince Present when `status` is `offline`: the last time a worker of the region was seen, which is when it actually stopped.
+	OfflineSince *time.Time `json:"offlineSince,omitempty"`
+
 	// Private True for an org-private location served by deported agents.
 	Private *bool  `json:"private,omitempty"`
 	Slug    string `json:"slug"`
+
+	// Status Cloud regions on `GET /api/v1/orgs/{org}/regions` only. `offline` while the per-minute region sweep holds the region dark: checks are assigned to it and no worker is live, so a check pinned only there is not running. Absent on private regions (the org's own agent reports on those) and on the public `GET /api/v1/regions`.
+	Status *RegionStatus `json:"status,omitempty"`
 }
+
+// RegionStatus Cloud regions on `GET /api/v1/orgs/{org}/regions` only. `offline` while the per-minute region sweep holds the region dark: checks are assigned to it and no worker is live, so a check pinned only there is not running. Absent on private regions (the org's own agent reports on those) and on the public `GET /api/v1/regions`.
+type RegionStatus string
 
 // RegionCapabilities What a region's LIVE workers report they can do. Derived from worker heartbeats at read time, never configured. Additive: a client that ignores this object behaves exactly as before it existed.
 type RegionCapabilities struct {

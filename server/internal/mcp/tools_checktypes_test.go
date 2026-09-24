@@ -82,3 +82,28 @@ func TestCheckTypeRequiredArgs(t *testing.T) {
 		})
 	}
 }
+
+// TestAllowedCheckTypesFollowTheRegistry: the create_check / list_results
+// "Allowed:" lists come from the registry, so a new type (private-location,
+// spec 2026-09-25-05) is listed without anyone editing a string.
+func TestAllowedCheckTypesFollowTheRegistry(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	allowed := allowedCheckTypes()
+
+	for _, name := range []string{"http", "heartbeat", "email", "prometheus", "private-location"} {
+		r.Contains(allowed, name)
+	}
+
+	r.NotContains(allowed, "sleep")
+	schema, ok := createCheckDef().InputSchema.(map[string]any)
+	r.True(ok)
+
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+
+	typeProp, ok := props[schemaKeyType].(map[string]any)
+	r.True(ok)
+	r.Contains(typeProp[schemaKeyDescription], "private-location")
+}
