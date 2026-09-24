@@ -843,17 +843,19 @@ export function CheckForm({
 
   // The config-derived period floor is LIVE: filling in rdp credentials turns
   // the check into an authenticated logon mid-form, so the selection must rise
-  // to the legal floor before submit. Only ever raises — a longer period the
-  // operator already picked is left alone, and an edit whose stored period is
-  // already legal is untouched.
-  useEffect(() => {
-    const { minSec } = getPeriodConstraints(type, configState);
-    const currentSec = hmsToSeconds(period);
-    if (currentSec > 0 && currentSec < minSec) {
-      setPeriod(secondsToHMS(minSec));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, configState]);
+  // to the legal floor as soon as the config changes. Only ever raises — a
+  // longer period the operator already picked is left alone, and an edit whose
+  // stored period is already legal is untouched. This runs inside the config
+  // module's onChange (an event handler), not a passive effect, so it can't
+  // trigger the cascading-render pattern effects are meant to avoid.
+  function handleConfigChange(next: unknown) {
+    setConfigState(next);
+    const { minSec } = getPeriodConstraints(type, next);
+    setPeriod((prev) => {
+      const currentSec = hmsToSeconds(prev);
+      return currentSec > 0 && currentSec < minSec ? secondsToHMS(minSec) : prev;
+    });
+  }
 
   // Live polling interval (seconds) used by the Confirmation / Recovery estimate
   // lines. Active checks have a real cadence (the selected HMS interval); passive
@@ -1502,7 +1504,7 @@ export function CheckForm({
               {/* Protocol-specific config (URL/host/port/…) */}
               <ActiveFields
                 state={configState}
-                onChange={setConfigState}
+                onChange={handleConfigChange}
                 errors={fieldErrors}
               />
 
@@ -1812,7 +1814,7 @@ export function CheckForm({
             >
               <AuthFields
                 state={configState}
-                onChange={setConfigState}
+                onChange={handleConfigChange}
                 errors={fieldErrors}
               />
             </CollapsibleSection>
@@ -2296,7 +2298,7 @@ export function CheckForm({
                 <div className="mt-4">
                   <AdvancedTypeFields
                     state={configState}
-                    onChange={setConfigState}
+                    onChange={handleConfigChange}
                     errors={fieldErrors}
                   />
                 </div>
