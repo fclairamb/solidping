@@ -1395,7 +1395,7 @@ function CheckDetailPage() {
                 <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  variant="destructive"
                 >
                   {deleteCheck.isPending ? (
                     <>

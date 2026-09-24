@@ -225,7 +225,7 @@ export function StatusPageTvCard({
             <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
             <AlertDialogAction
               data-testid="tv-mode-revoke-confirm"
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => void handleRevoke()}
             >
               {t("statusPages:tvMode.revoke")}

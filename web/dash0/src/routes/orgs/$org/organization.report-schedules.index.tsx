@@ -262,7 +262,7 @@ function ReportSchedulesIndexPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("reports.delete.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               data-testid="report-delete-confirm"
               onClick={async () => {
                 if (!pendingDelete) return;

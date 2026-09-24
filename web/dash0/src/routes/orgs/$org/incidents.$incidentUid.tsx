@@ -597,7 +597,7 @@ function StatusUpdatesPanel({
             <AlertDialogCancel>{t("statusUpdatesCard.dialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("statusUpdatesCard.dialog.deleteConfirmAction")}
             </AlertDialogAction>

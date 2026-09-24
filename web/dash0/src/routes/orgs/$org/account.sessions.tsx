@@ -226,7 +226,7 @@ function SessionsPage() {
             <AlertDialogAction
               data-testid="session-revoke-confirm"
               onClick={handleRevoke}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("sessions.revoke")}
             </AlertDialogAction>
@@ -247,7 +247,7 @@ function SessionsPage() {
             <AlertDialogAction
               data-testid="sign-out-others-confirm"
               onClick={handleSignOutOthers}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("sessions.signOutOthersConfirm")}
             </AlertDialogAction>

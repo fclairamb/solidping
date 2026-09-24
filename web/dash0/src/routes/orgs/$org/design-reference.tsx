@@ -1544,6 +1544,11 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
       description: "Delete / irreversible action confirms",
     },
     {
+      name: "destructive-foreground",
+      varName: "--destructive-foreground",
+      description: "Label on a destructive fill",
+    },
+    {
       name: "accent",
       varName: "--accent",
       description: "Hover/highlight surface",
@@ -4787,7 +4792,9 @@ function FeedbackSection() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction>Delete</AlertDialogAction>
+                  <AlertDialogAction variant="destructive">
+                    Delete
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
