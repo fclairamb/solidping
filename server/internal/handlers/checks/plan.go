@@ -113,7 +113,9 @@ func (s *Service) planCreateCheck(
 	// path can be internal (rejected above), so the quota always applies —
 	// server-created internal checks are written through db.CreateCheck and
 	// never pass here.
-	if s.entitlements != nil {
+	// A private location's liveness monitor does not count toward MaxChecks
+	// (spec 2026-09-25-05), so it is not gated by it either.
+	if s.entitlements != nil && !checkerdef.CheckType(req.Type).IsQuotaExempt() {
 		// pendingCreates is non-zero only for a dry run, which has decided on
 		// creations it has not written: without it a 100-check document would
 		// dry-run clean against a cap of 1 and then fail on item 2 for real.

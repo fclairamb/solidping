@@ -434,8 +434,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// SetupRoutes because a worker-only process runs the job scheduler and
 	// never builds a router — the demo cleanup sweep must work there too
 	// (spec 2026-09-06-02).
-	svcList.Checks = checks.NewService(
+	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
+	svcList.Checks = checksSvc
+	svcList.PrivateLocationMonitors = checksSvc
 
 	// Instance-level SMS/voice providers, built ONCE here and shared by every
 	// org that has not brought its own account. A misconfiguration (unknown
@@ -1238,6 +1240,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// checks inside the customer's network, and revoking an agent is
 	// security-relevant.
 	agentsAdminSvc := agentsadmin.NewService(s.dbService, s.services.Credentials, s.services.Entitlements)
+	// Each private location owns a liveness monitor (spec 2026-09-25-05).
+	agentsAdminSvc.SetLivenessMonitors(checksService)
 	agentsAdminHandler := agentsadmin.NewHandler(agentsAdminSvc, s.config)
 	orgAgentsAdmin := api.NewGroup("/orgs/:org").
 		Use(orgSlugRedirect.Middleware,
@@ -1245,6 +1249,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgAgentsAdmin.GET("/private-regions", agentsAdminHandler.ListPrivateRegions)
 	orgAgentsAdmin.POST("/private-regions", agentsAdminHandler.CreatePrivateRegion)
 	orgAgentsAdmin.DELETE("/private-regions/:slug", agentsAdminHandler.DeletePrivateRegion)
+	orgAgentsAdmin.POST("/private-regions/:slug/liveness-monitor", agentsAdminHandler.EnableLivenessMonitor)
 	orgAgentsAdmin.GET("/agent-enrollment-tokens", agentsAdminHandler.ListEnrollmentTokens)
 	orgAgentsAdmin.POST("/agent-enrollment-tokens", agentsAdminHandler.MintEnrollmentToken)
 	orgAgentsAdmin.DELETE("/agent-enrollment-tokens/:uid", agentsAdminHandler.DeleteEnrollmentToken)
@@ -1287,6 +1292,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.services.Credentials,
 		agentsAdminSvc.ResealRegion,
 	)
+	agentWSHandler.SetLivenessMonitors(checksService)
 	api.GET("/agent/ws", agentWSHandler.Serve)
 
 	// Agent attachment upload (spec 2026-08-21-01) — the WS route's sibling,

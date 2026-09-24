@@ -119,7 +119,31 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 		return err
 	}
 
+	// Every private location owns a liveness monitor (spec 2026-09-25-05).
+	// Best effort: a failure here must not stop the node from starting.
+	r.backfillPrivateLocationMonitors(ctx, jctx)
+
 	return r.ensureGlobalSweeps(ctx, jctx)
+}
+
+// backfillPrivateLocationMonitors creates the liveness monitor of every
+// existing private location that has none (and whose org did not opt out),
+// and removes a monitor whose location is gone. Idempotent.
+func (r *StartupJobRun) backfillPrivateLocationMonitors(ctx context.Context, jctx *jobdef.JobContext) {
+	if jctx.Services == nil || jctx.Services.PrivateLocationMonitors == nil {
+		return
+	}
+
+	created, err := jctx.Services.PrivateLocationMonitors.BackfillPrivateLocationMonitors(ctx)
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Private-location monitor backfill failed", "error", err)
+
+		return
+	}
+
+	if created > 0 {
+		jctx.Logger.InfoContext(ctx, "Created private-location liveness monitors", "count", created)
+	}
 }
 
 // ensurePlatformWatchdogJob provisions the global platform watchdog. The job

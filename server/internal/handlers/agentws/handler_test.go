@@ -37,10 +37,11 @@ import (
 // env is the in-process WS test environment: a real sqlite DB, the real
 // claim/submit services, and the agentws handler served over httptest.
 type env struct {
-	t      *testing.T
-	dbSvc  *sqlite.Service
-	server *httptest.Server
-	org    *models.Organization
+	t       *testing.T
+	dbSvc   *sqlite.Service
+	server  *httptest.Server
+	org     *models.Organization
+	handler *agentws.Handler
 }
 
 const testRegion = "@dc1"
@@ -96,7 +97,7 @@ func newEnvWith(t *testing.T, provision entitlementsProvisioner) *env {
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	return &env{t: t, dbSvc: dbSvc, server: server, org: org}
+	return &env{t: t, dbSvc: dbSvc, server: server, org: org, handler: handler}
 }
 
 // newEnvWithAgentCap is newEnv but wires a real entitlements.Service

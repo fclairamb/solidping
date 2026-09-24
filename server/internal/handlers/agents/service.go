@@ -52,6 +52,27 @@ type Service struct {
 	// disables the guard) so tests that don't care about entitlements can
 	// omit it, mirroring the optionality of agentws.Handler.entitlements.
 	ent *entitlements.Service
+	// monitors creates and removes each private location's liveness monitor
+	// (spec 2026-09-25-05). Optional: nil (tests that do not care) skips it.
+	monitors LivenessMonitors
+	// now is the clock the per-agent online flag is computed against.
+	now func() time.Time
+}
+
+// LivenessMonitors is the slice of the checks service this package drives: a
+// private location's liveness monitor is created with it, removed with it and
+// shown on its page (spec 2026-09-25-05). An interface so this package keeps
+// no dependency on the checks handler package.
+type LivenessMonitors interface {
+	EnsurePrivateLocationMonitor(ctx context.Context, orgUID, slug string) (*models.Check, error)
+	RemovePrivateLocationMonitor(ctx context.Context, orgUID, slug string) error
+	EnablePrivateLocationMonitor(ctx context.Context, orgUID, slug string) (*models.Check, error)
+	PrivateLocationMonitors(ctx context.Context, orgUID string) (map[string]*models.Check, error)
+}
+
+// SetLivenessMonitors installs the liveness-monitor lifecycle.
+func (s *Service) SetLivenessMonitors(monitors LivenessMonitors) {
+	s.monitors = monitors
 }
 
 // NewService creates a new agents admin service.
@@ -61,6 +82,7 @@ func NewService(dbService db.Service, creds credentials.Service, entSvc *entitle
 		regions: regions.NewService(dbService),
 		creds:   creds,
 		ent:     entSvc,
+		now:     time.Now,
 	}
 }
 
@@ -77,12 +99,66 @@ type PrivateRegionResponse struct {
 	Region string `json:"region"`
 	// AgentCount is how many active agents currently serve this region.
 	AgentCount int `json:"agentCount"`
+	// OnlineAgentCount is how many of them are online: seen within the
+	// liveness window (regions.IsAgentLive, spec 2026-09-25-05).
+	OnlineAgentCount int `json:"onlineAgentCount"`
+	// State is the location's overall state: `online` (every active agent
+	// online), `degraded` (some), `offline` (none) or `empty` (no active
+	// agent enrolled).
+	State string `json:"state"`
+	// LivenessMonitor is the check watching this location, when it has one.
+	LivenessMonitor *LivenessMonitorResponse `json:"livenessMonitor,omitempty"`
+	// LivenessMonitorOff reports that the org turned the monitor off: deleted
+	// it (the opt-out is remembered) or disabled it.
+	LivenessMonitorOff bool `json:"livenessMonitorOff"`
 	// Capabilities reports what this location's LIVE agents say they can do —
 	// today `ipv6`, three-state ("yes" / "no" / "unknown"). This page is where
 	// it matters most: a private location is the one case where the user can
 	// actually FIX a missing family, by enabling IPv6 on the host they own
 	// (spec 2026-08-15-11).
 	Capabilities map[string]string `json:"capabilities,omitempty"`
+}
+
+// LivenessMonitorResponse is the part of a location's liveness monitor the
+// Private Locations page shows and links to.
+type LivenessMonitorResponse struct {
+	UID     string `json:"uid"`
+	Slug    string `json:"slug"`
+	Enabled bool   `json:"enabled"`
+	Status  string `json:"status"`
+}
+
+// livenessMonitorResponse projects a monitor check onto the page's shape.
+func livenessMonitorResponse(check *models.Check) *LivenessMonitorResponse {
+	resp := &LivenessMonitorResponse{UID: check.UID, Enabled: check.Enabled, Status: check.Status.String()}
+	if check.Slug != nil {
+		resp.Slug = *check.Slug
+	}
+
+	return resp
+}
+
+// Private location states (PrivateRegionResponse.State).
+const (
+	LocationStateOnline   = "online"
+	LocationStateDegraded = "degraded"
+	LocationStateOffline  = "offline"
+	LocationStateEmpty    = "empty"
+)
+
+// locationState folds a location's active and online agent counts into its
+// overall state — the same three-way split the liveness monitor reports.
+func locationState(active, online int) string {
+	switch {
+	case active == 0:
+		return LocationStateEmpty
+	case online == active:
+		return LocationStateOnline
+	case online > 0:
+		return LocationStateDegraded
+	default:
+		return LocationStateOffline
+	}
 }
 
 // ListPrivateRegionsResponse wraps the private-region list.
@@ -123,6 +199,18 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 		return nil, capErr
 	}
 
+	monitors := map[string]*models.Check{}
+
+	if s.monitors != nil {
+		found, monErr := s.monitors.PrivateLocationMonitors(ctx, org.UID)
+		if monErr != nil {
+			return nil, monErr
+		}
+
+		monitors = found
+	}
+
+	cutoff := regions.LivenessCutoff(s.now())
 	data := make([]PrivateRegionResponse, 0, len(defs))
 
 	for i := range defs {
@@ -133,14 +221,32 @@ func (s *Service) ListPrivateRegions(ctx context.Context, orgSlug string) (*List
 			return nil, listErr
 		}
 
-		data = append(data, PrivateRegionResponse{
-			Slug:         defs[i].Slug,
-			Name:         defs[i].Name,
-			Emoji:        defs[i].Emoji,
-			Region:       full,
-			AgentCount:   len(active),
-			Capabilities: defs[i].Capabilities,
-		})
+		online := 0
+
+		for _, agent := range active {
+			if regions.IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
+				online++
+			}
+		}
+
+		row := PrivateRegionResponse{
+			Slug:               defs[i].Slug,
+			Name:               defs[i].Name,
+			Emoji:              defs[i].Emoji,
+			Region:             full,
+			AgentCount:         len(active),
+			OnlineAgentCount:   online,
+			State:              locationState(len(active), online),
+			Capabilities:       defs[i].Capabilities,
+			LivenessMonitorOff: defs[i].LivenessMonitorOff,
+		}
+
+		if monitor := monitors[defs[i].Slug]; monitor != nil {
+			row.LivenessMonitor = livenessMonitorResponse(monitor)
+			row.LivenessMonitorOff = row.LivenessMonitorOff || !monitor.Enabled
+		}
+
+		data = append(data, row)
 	}
 
 	return &ListPrivateRegionsResponse{Data: data}, nil
@@ -186,12 +292,70 @@ func (s *Service) CreatePrivateRegion(
 		return nil, err
 	}
 
-	return &PrivateRegionResponse{
+	resp := &PrivateRegionResponse{
 		Slug:   req.Slug,
 		Name:   name,
 		Emoji:  emoji,
 		Region: regions.PrivateRegionSlug(req.Slug),
-	}, nil
+		State:  LocationStateEmpty,
+	}
+
+	// The location's liveness monitor is created with it (spec 2026-09-25-05).
+	// Best effort: the location exists either way, and the startup backfill
+	// and the next enrollment both re-ensure the monitor.
+	if s.monitors != nil {
+		monitor, monErr := s.monitors.EnsurePrivateLocationMonitor(ctx, org.UID, req.Slug)
+		if monErr != nil {
+			slog.WarnContext(ctx, "failed to create the private location's liveness monitor",
+				"region", req.Slug, "error", monErr)
+		} else if monitor != nil {
+			resp.LivenessMonitor = livenessMonitorResponse(monitor)
+		}
+	}
+
+	return resp, nil
+}
+
+// EnableLivenessMonitor turns a private location's liveness monitor back on:
+// clears the opt-out and re-enables or recreates the monitor (spec
+// 2026-09-25-05, the page's one-click re-enable).
+func (s *Service) EnableLivenessMonitor(
+	ctx context.Context, orgSlug, slug string,
+) (*LivenessMonitorResponse, error) {
+	org, err := s.resolveOrg(ctx, orgSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	defs, err := s.regions.GetOrgCustomRegions(ctx, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	found := false
+
+	for i := range defs {
+		if defs[i].Slug == slug {
+			found = true
+
+			break
+		}
+	}
+
+	if !found || s.monitors == nil {
+		return nil, fmt.Errorf("%w: %s", ErrRegionNotFound, slug)
+	}
+
+	monitor, err := s.monitors.EnablePrivateLocationMonitor(ctx, org.UID, slug)
+	if err != nil {
+		return nil, err
+	}
+
+	if monitor == nil {
+		return nil, fmt.Errorf("%w: %s", ErrRegionNotFound, slug)
+	}
+
+	return livenessMonitorResponse(monitor), nil
 }
 
 // DeletePrivateRegion removes a private region. Refuses while agents are still
@@ -236,7 +400,21 @@ func (s *Service) DeletePrivateRegion(ctx context.Context, orgSlug, slug string)
 		return fmt.Errorf("%w: %d active", ErrRegionHasAgents, len(active))
 	}
 
-	return s.regions.SetOrgCustomRegions(ctx, org.UID, kept)
+	if err := s.regions.SetOrgCustomRegions(ctx, org.UID, kept); err != nil {
+		return err
+	}
+
+	// The location's liveness monitor goes with it (spec 2026-09-25-05). After
+	// the definition is gone, so deleting the monitor records no opt-out.
+	// Best effort: the startup backfill removes a monitor left behind.
+	if s.monitors != nil {
+		if monErr := s.monitors.RemovePrivateLocationMonitor(ctx, org.UID, slug); monErr != nil {
+			slog.WarnContext(ctx, "failed to delete the private location's liveness monitor",
+				"region", slug, "error", monErr)
+		}
+	}
+
+	return nil
 }
 
 // MintEnrollmentTokenRequest is the body for minting an enrollment token.
@@ -459,6 +637,11 @@ type AgentResponse struct {
 	// reported", not an absent key that could be confused with "loading".
 	// nil must always render as unknown, never as drifted.
 	Version *string `json:"version"`
+	// Online reports whether the agent is connected: active and seen within
+	// the liveness window — regions.IsAgentLive, the rule the location's
+	// liveness monitor uses (spec 2026-09-25-05). Computed server-side so the
+	// page and the monitor can never disagree.
+	Online bool `json:"online"`
 }
 
 // ListAgentsResponse wraps the agent list.
@@ -483,7 +666,9 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 		return nil, err
 	}
 
+	cutoff := regions.LivenessCutoff(s.now())
 	data := make([]AgentResponse, 0, len(rows))
+
 	for _, row := range rows {
 		data = append(data, AgentResponse{
 			UID:         row.UID,
@@ -495,6 +680,7 @@ func (s *Service) ListAgents(ctx context.Context, orgSlug string) (*ListAgentsRe
 			EnrolledAt:  row.EnrolledAt,
 			RevokedAt:   row.RevokedAt,
 			Version:     versions[row.UID],
+			Online:      regions.IsAgentLive(row.Status, row.LastSeenAt, cutoff),
 		})
 	}
 

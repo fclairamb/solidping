@@ -1649,9 +1649,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 
 	// Activation funnel: idempotent — only fires for the org's first check.
-	activation.Emit(ctx, s.db, org.UID,
-		models.EventTypeOrgActivationFirstCheckCreated,
-		activation.SourceAPI, "")
+	// A check the server created on its own (a private location's liveness
+	// monitor) is not the org activating anything.
+	if !isSystemCreate(ctx) {
+		activation.Emit(ctx, s.db, org.UID,
+			models.EventTypeOrgActivationFirstCheckCreated,
+			activation.SourceAPI, "")
+	}
 
 	// Fetch the check with labels for response
 	response := s.convertCheckToResponse(check)
@@ -2604,6 +2608,10 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
 	}
+
+	// Deleting a private location's liveness monitor is an opt-out the
+	// backfill must respect (spec 2026-09-25-05).
+	s.recordPrivateLocationOptOut(ctx, check)
 
 	// A deleted check's managed row must disappear from every dynamic section.
 	s.reconcileStatusPageSelectors(ctx, org.UID)
@@ -4983,6 +4991,10 @@ func (s *Service) applyConfigUpdate(
 	}
 
 	preserveAbsentRedactedFields(check, merged)
+
+	if immutableErr := assertPrivateLocationRegionUnchanged(check, merged); immutableErr != nil {
+		return immutableErr
+	}
 
 	// An export-redacted field the document omitted and that preservation
 	// could not supply (a check that never had one, e.g. an SMTP send-mode

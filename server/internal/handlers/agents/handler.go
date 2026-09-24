@@ -68,6 +68,18 @@ func (h *Handler) DeletePrivateRegion(writer http.ResponseWriter, req *http.Requ
 	return h.WriteJSON(writer, http.StatusOK, statusBody("deleted"))
 }
 
+// EnableLivenessMonitor handles POST
+// /api/v1/orgs/:org/private-regions/:slug/liveness-monitor: the one-click
+// re-enable of a location's liveness monitor (spec 2026-09-25-05).
+func (h *Handler) EnableLivenessMonitor(writer http.ResponseWriter, req *http.Request) error {
+	resp, err := h.svc.EnableLivenessMonitor(req.Context(), httpx.Param(req, "org"), httpx.Param(req, "slug"))
+	if err != nil {
+		return h.writeServiceError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // MintEnrollmentToken handles POST /api/v1/orgs/:org/agent-enrollment-tokens.
 // The response is the only time the token secret is readable.
 func (h *Handler) MintEnrollmentToken(writer http.ResponseWriter, req *http.Request) error {

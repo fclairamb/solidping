@@ -384,6 +384,12 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
+	// A private-location monitor may only watch one of the org's own private
+	// locations (spec 2026-09-25-05).
+	if err := s.validatePrivateLocationConfig(ctx, orgUID, checkType, effective); err != nil {
+		errs = append(errs, err)
+	}
+
 	return errs
 }
 

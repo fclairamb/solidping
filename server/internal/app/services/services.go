@@ -106,6 +106,18 @@ type Registry struct {
 	// dependency on the handler layer. Nil in processes that build no check
 	// service; every consumer nil-guards.
 	Checks CheckDeleter
+
+	// PrivateLocationMonitors backfills the liveness monitor of every private
+	// location at startup (spec 2026-09-25-05). Same *checks.Service as Checks,
+	// behind its own narrow interface. Nil-guarded by the startup job.
+	PrivateLocationMonitors PrivateLocationMonitorBackfiller
+}
+
+// PrivateLocationMonitorBackfiller is the startup half of the private-location
+// liveness monitor lifecycle: every private location gets exactly one monitor
+// unless its org opted out.
+type PrivateLocationMonitorBackfiller interface {
+	BackfillPrivateLocationMonitors(ctx context.Context) (int, error)
 }
 
 // CheckDeleter is the narrow slice of the checks service a background sweep
