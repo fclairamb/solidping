@@ -1397,6 +1397,17 @@ paths:
             have never transitioned).
           schema:
             type: string
+        - name: status
+          in: query
+          description: >-
+            Filter by derived check status. Comma-separated tokens from
+            created, up, down, validating, degraded, warning and stale
+            (e.g. "down,stale"). `stale` ("No data") is a check whose newest
+            real result is older than max(3 × period, 5 min). An unknown token
+            is a 400 validation error.
+          schema:
+            type: string
+          example: "down,stale"
         - name: internal
           in: query
           description: Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
@@ -1557,10 +1568,12 @@ paths:
           in: query
           description: >-
             Comma-separated list of additional data to include: "last_result"
-            (the check's newest raw result) and "last_status_change" (when the
+            (the check's newest raw result), "last_status_change" (when the
             derived check status last changed — served from the check row
             itself, so it costs no extra query and is omitted for checks that
-            have never transitioned).
+            have never transitioned) and "region_freshness" (the newest real
+            result per region, so a silent region shows up even while others
+            keep the check fresh).
           schema:
             type: string
       responses:
@@ -9993,6 +10006,46 @@ components:
           example:
             env: prod
             app: api
+        status:
+          type: string
+          readOnly: true
+          enum: [created, up, down, validating, degraded, warning, stale, unknown]
+          description: >-
+            The derived check status, which respects the confirmation and
+            recovery periods: "validating" is a failure seen but not yet
+            confirmed, "warning" is up with something to report, and "stale"
+            ("No data") means the newest real result, across every region, is
+            older than max(3 × period, 5 min) — the check has stopped being
+            measured, whatever the cause. Stale is neither up nor down: it never
+            opens, resolves or notifies an incident.
+        statusChangedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: When the check entered its current status. Omitted until the first transition.
+        lastResultAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: >-
+            Execution time of the newest REAL result (up, down, timeout, error,
+            warning) across every region — never a created, running or
+            abandoned placeholder. Omitted for a check that never produced one.
+        staleThresholdSeconds:
+          type: integer
+          readOnly: true
+          description: >-
+            max(3 × period, 5 min) in seconds: how long the check may go
+            without a real result before it becomes `stale`.
+        regionFreshness:
+          type: array
+          readOnly: true
+          description: >-
+            Newest real result per region (only with with=region_freshness).
+            Lists every region that produced one inside the raw retention plus
+            every configured region that did not.
+          items:
+            $ref: "#/components/schemas/RegionFreshness"
         lastResult:
           $ref: "#/components/schemas/LastResult"
         lastStatusChange:
@@ -10016,8 +10069,10 @@ components:
               description: ISO 8601 timestamp of when the status change occurred
             status:
               type: string
-              enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, UNKNOWN]
-              description: The status that the check transitioned to
+              enum: [UP, DOWN, VALIDATING, WARNING, DEGRADED, CREATED, STALE, UNKNOWN]
+              description: >-
+                The status that the check transitioned to. STALE means "no
+                data": no real result for max(3 × period, 5 min).
         tracerouteOnFailure:
           type: string
           enum: [inherit, "on", "off"]
@@ -10243,6 +10298,24 @@ components:
           type: number
           description: Response time in milliseconds
 
+    RegionFreshness:
+      type: object
+      description: One region's freshness for a check.
+      properties:
+        region:
+          type: string
+          description: Region slug, "" for results that carry no region.
+        lastResultAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Newest real raw result from this region; null for a configured
+            region with none inside the raw retention (about a day).
+        stale:
+          type: boolean
+          description: True when lastResultAt is older than staleThresholdSeconds, or missing.
+
     CheckListItem:
       description: >-
         A check as it appears on the list endpoint (GET /checks) — identical
@@ -10285,7 +10358,7 @@ components:
             type: integer
           description: >-
             Count per check status. Every known status key (created, up, down,
-            validating, degraded, warning, unknown) is always present, with 0
+            validating, degraded, warning, stale, unknown) is always present, with 0
             when empty, so clients can index it without guards. Keys are the
             same tokens the list endpoint's `status` field carries.
           example:
@@ -10295,6 +10368,7 @@ components:
             validating: 0
             degraded: 2
             warning: 0
+            stale: 0
             unknown: 0
         down:
           type: integer
@@ -14975,15 +15049,17 @@ components:
           type: integer
         status:
           type: string
-          enum: [created, up, down, validating, degraded, warning]
+          enum: [created, up, down, validating, degraded, warning, stale]
           description: >-
-            Derived, read-time rollup of the group's enabled member checks:
-            "down" if all considered members are down, "degraded" if some
-            (not all) are down, "warning" if none are down but at least one
-            is warning, "validating" if none are down/warning but at least
-            one is validating, "up" if at least one is up, otherwise
-            "created" (no considered members, or only just-created ones).
-            Never stored — recomputed on every read.
+            Derived, read-time rollup of the group's enabled member checks,
+            worst-of down > validating > warning > stale > up: "down" if all
+            considered members are down, "degraded" if some (not all) are down,
+            "validating" if none are down but at least one is validating,
+            "warning" if none are down/validating but at least one is warning,
+            "stale" if otherwise at least one member has no recent data (an
+            all-stale group reads stale), "up" if at least one is up,
+            otherwise "created" (no considered members, or only just-created
+            ones). Never stored — recomputed on every read.
         memberStatusCounts:
           type: object
           additionalProperties:

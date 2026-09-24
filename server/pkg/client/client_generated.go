@@ -248,6 +248,7 @@ const (
 	CheckLastStatusChangeStatusCREATED    CheckLastStatusChangeStatus = "CREATED"
 	CheckLastStatusChangeStatusDEGRADED   CheckLastStatusChangeStatus = "DEGRADED"
 	CheckLastStatusChangeStatusDOWN       CheckLastStatusChangeStatus = "DOWN"
+	CheckLastStatusChangeStatusSTALE      CheckLastStatusChangeStatus = "STALE"
 	CheckLastStatusChangeStatusUNKNOWN    CheckLastStatusChangeStatus = "UNKNOWN"
 	CheckLastStatusChangeStatusUP         CheckLastStatusChangeStatus = "UP"
 	CheckLastStatusChangeStatusVALIDATING CheckLastStatusChangeStatus = "VALIDATING"
@@ -263,6 +264,8 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 		return true
 	case CheckLastStatusChangeStatusDOWN:
 		return true
+	case CheckLastStatusChangeStatusSTALE:
+		return true
 	case CheckLastStatusChangeStatusUNKNOWN:
 		return true
 	case CheckLastStatusChangeStatusUP:
@@ -270,6 +273,42 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 	case CheckLastStatusChangeStatusVALIDATING:
 		return true
 	case CheckLastStatusChangeStatusWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckStatus.
+const (
+	CheckStatusCreated    CheckStatus = "created"
+	CheckStatusDegraded   CheckStatus = "degraded"
+	CheckStatusDown       CheckStatus = "down"
+	CheckStatusStale      CheckStatus = "stale"
+	CheckStatusUnknown    CheckStatus = "unknown"
+	CheckStatusUp         CheckStatus = "up"
+	CheckStatusValidating CheckStatus = "validating"
+	CheckStatusWarning    CheckStatus = "warning"
+)
+
+// Valid indicates whether the value is a known member of the CheckStatus enum.
+func (e CheckStatus) Valid() bool {
+	switch e {
+	case CheckStatusCreated:
+		return true
+	case CheckStatusDegraded:
+		return true
+	case CheckStatusDown:
+		return true
+	case CheckStatusStale:
+		return true
+	case CheckStatusUnknown:
+		return true
+	case CheckStatusUp:
+		return true
+	case CheckStatusValidating:
+		return true
+	case CheckStatusWarning:
 		return true
 	default:
 		return false
@@ -332,6 +371,7 @@ const (
 	CheckGroupStatusCreated    CheckGroupStatus = "created"
 	CheckGroupStatusDegraded   CheckGroupStatus = "degraded"
 	CheckGroupStatusDown       CheckGroupStatus = "down"
+	CheckGroupStatusStale      CheckGroupStatus = "stale"
 	CheckGroupStatusUp         CheckGroupStatus = "up"
 	CheckGroupStatusValidating CheckGroupStatus = "validating"
 	CheckGroupStatusWarning    CheckGroupStatus = "warning"
@@ -345,6 +385,8 @@ func (e CheckGroupStatus) Valid() bool {
 	case CheckGroupStatusDegraded:
 		return true
 	case CheckGroupStatusDown:
+		return true
+	case CheckGroupStatusStale:
 		return true
 	case CheckGroupStatusUp:
 		return true
@@ -386,6 +428,7 @@ const (
 	CheckListItemLastStatusChangeStatusCREATED    CheckListItemLastStatusChangeStatus = "CREATED"
 	CheckListItemLastStatusChangeStatusDEGRADED   CheckListItemLastStatusChangeStatus = "DEGRADED"
 	CheckListItemLastStatusChangeStatusDOWN       CheckListItemLastStatusChangeStatus = "DOWN"
+	CheckListItemLastStatusChangeStatusSTALE      CheckListItemLastStatusChangeStatus = "STALE"
 	CheckListItemLastStatusChangeStatusUNKNOWN    CheckListItemLastStatusChangeStatus = "UNKNOWN"
 	CheckListItemLastStatusChangeStatusUP         CheckListItemLastStatusChangeStatus = "UP"
 	CheckListItemLastStatusChangeStatusVALIDATING CheckListItemLastStatusChangeStatus = "VALIDATING"
@@ -401,6 +444,8 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 		return true
 	case CheckListItemLastStatusChangeStatusDOWN:
 		return true
+	case CheckListItemLastStatusChangeStatusSTALE:
+		return true
 	case CheckListItemLastStatusChangeStatusUNKNOWN:
 		return true
 	case CheckListItemLastStatusChangeStatusUP:
@@ -408,6 +453,42 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 	case CheckListItemLastStatusChangeStatusVALIDATING:
 		return true
 	case CheckListItemLastStatusChangeStatusWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CheckListItemStatus.
+const (
+	CheckListItemStatusCreated    CheckListItemStatus = "created"
+	CheckListItemStatusDegraded   CheckListItemStatus = "degraded"
+	CheckListItemStatusDown       CheckListItemStatus = "down"
+	CheckListItemStatusStale      CheckListItemStatus = "stale"
+	CheckListItemStatusUnknown    CheckListItemStatus = "unknown"
+	CheckListItemStatusUp         CheckListItemStatus = "up"
+	CheckListItemStatusValidating CheckListItemStatus = "validating"
+	CheckListItemStatusWarning    CheckListItemStatus = "warning"
+)
+
+// Valid indicates whether the value is a known member of the CheckListItemStatus enum.
+func (e CheckListItemStatus) Valid() bool {
+	switch e {
+	case CheckListItemStatusCreated:
+		return true
+	case CheckListItemStatusDegraded:
+		return true
+	case CheckListItemStatusDown:
+		return true
+	case CheckListItemStatusStale:
+		return true
+	case CheckListItemStatusUnknown:
+		return true
+	case CheckListItemStatusUp:
+		return true
+	case CheckListItemStatusValidating:
+		return true
+	case CheckListItemStatusWarning:
 		return true
 	default:
 		return false
@@ -3294,11 +3375,14 @@ type Check struct {
 	// LastResult Full last-execution result. Present only on the check DETAIL response (GET/POST/PUT/PATCH by uid/slug) — the detail page renders output, metrics, and the SSL-chain card from these fields. List responses (GET /checks) use the slimmer LastResultListItem instead, which omits output/metrics: no list consumer (checks table, org dashboard, status dashboard) reads them, and they can be large (SSL cert chains, DNSBL details).
 	LastResult *LastResult `json:"lastResult,omitempty"`
 
+	// LastResultAt Execution time of the newest REAL result (up, down, timeout, error, warning) across every region — never a created, running or abandoned placeholder. Omitted for a check that never produced one.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+
 	// LastStatusChange When the check's status last changed, and what it changed to (only included when with=last_status_change). This is the *derived* check status — the same value as the `status` field, which respects the confirmation and recovery periods and the flapping backoff — so a single unconfirmed failed probe does not reset the timer.
 	//
 	// Absent for checks that have never recorded a status transition: there is no fallback to the creation time and no fallback to the raw probe history.
 	LastStatusChange *struct {
-		// Status The status that the check transitioned to
+		// Status The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 		Status *CheckLastStatusChangeStatus `json:"status,omitempty"`
 
 		// Time ISO 8601 timestamp of when the status change occurred
@@ -3312,6 +3396,9 @@ type Check struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// RegionFreshness Newest real result per region (only with with=region_freshness). Lists every region that produced one inside the raw retention plus every configured region that did not.
+	RegionFreshness *[]RegionFreshness `json:"regionFreshness,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
 
@@ -3321,6 +3408,15 @@ type Check struct {
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
 	Slug            *string `json:"slug,omitempty"`
+
+	// StaleThresholdSeconds max(3 × period, 5 min) in seconds: how long the check may go without a real result before it becomes `stale`.
+	StaleThresholdSeconds *int `json:"staleThresholdSeconds,omitempty"`
+
+	// Status The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+	Status *CheckStatus `json:"status,omitempty"`
+
+	// StatusChangedAt When the check entered its current status. Omitted until the first transition.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3335,8 +3431,11 @@ type Check struct {
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
-// CheckLastStatusChangeStatus The status that the check transitioned to
+// CheckLastStatusChangeStatus The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 type CheckLastStatusChangeStatus string
+
+// CheckStatus The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+type CheckStatus string
 
 // CheckTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 type CheckTracerouteOnFailure string
@@ -3429,13 +3528,13 @@ type CheckGroup struct {
 	Slug               string          `json:"slug"`
 	SortOrder          int             `json:"sortOrder"`
 
-	// Status Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+	// Status Derived, read-time rollup of the group's enabled member checks, worst-of down > validating > warning > stale > up: "down" if all considered members are down, "degraded" if some (not all) are down, "validating" if none are down but at least one is validating, "warning" if none are down/validating but at least one is warning, "stale" if otherwise at least one member has no recent data (an all-stale group reads stale), "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
 	Status    CheckGroupStatus   `json:"status"`
 	Uid       openapi_types.UUID `json:"uid"`
 	UpdatedAt time.Time          `json:"updatedAt"`
 }
 
-// CheckGroupStatus Derived, read-time rollup of the group's enabled member checks: "down" if all considered members are down, "degraded" if some (not all) are down, "warning" if none are down but at least one is warning, "validating" if none are down/warning but at least one is validating, "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
+// CheckGroupStatus Derived, read-time rollup of the group's enabled member checks, worst-of down > validating > warning > stale > up: "down" if all considered members are down, "degraded" if some (not all) are down, "validating" if none are down but at least one is validating, "warning" if none are down/validating but at least one is warning, "stale" if otherwise at least one member has no recent data (an all-stale group reads stale), "up" if at least one is up, otherwise "created" (no considered members, or only just-created ones). Never stored — recomputed on every read.
 type CheckGroupStatus string
 
 // CheckGroupListResponse defines model for CheckGroupListResponse.
@@ -3540,11 +3639,14 @@ type CheckListItem struct {
 	// LastResult Slim last-execution result used on list responses (GET /checks) — {uid, status, timestamp, durationMs} only. See LastResult for the full detail-response shape.
 	LastResult *LastResultListItem `json:"lastResult,omitempty"`
 
+	// LastResultAt Execution time of the newest REAL result (up, down, timeout, error, warning) across every region — never a created, running or abandoned placeholder. Omitted for a check that never produced one.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+
 	// LastStatusChange When the check's status last changed, and what it changed to (only included when with=last_status_change). This is the *derived* check status — the same value as the `status` field, which respects the confirmation and recovery periods and the flapping backoff — so a single unconfirmed failed probe does not reset the timer.
 	//
 	// Absent for checks that have never recorded a status transition: there is no fallback to the creation time and no fallback to the raw probe history.
 	LastStatusChange *struct {
-		// Status The status that the check transitioned to
+		// Status The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 		Status *CheckListItemLastStatusChangeStatus `json:"status,omitempty"`
 
 		// Time ISO 8601 timestamp of when the status change occurred
@@ -3558,6 +3660,9 @@ type CheckListItem struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// RegionFreshness Newest real result per region (only with with=region_freshness). Lists every region that produced one inside the raw retention plus every configured region that did not.
+	RegionFreshness *[]RegionFreshness `json:"regionFreshness,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
 
@@ -3567,6 +3672,15 @@ type CheckListItem struct {
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
 	Slug            *string `json:"slug,omitempty"`
+
+	// StaleThresholdSeconds max(3 × period, 5 min) in seconds: how long the check may go without a real result before it becomes `stale`.
+	StaleThresholdSeconds *int `json:"staleThresholdSeconds,omitempty"`
+
+	// Status The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+	Status *CheckListItemStatus `json:"status,omitempty"`
+
+	// StatusChangedAt When the check entered its current status. Omitted until the first transition.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
 
 	// TargetHost Derived, read-time-only host this check probes: the config's `host` field when present, else the hostname parsed from `url`, else `target`; null when none apply (e.g. heartbeat/email passive checks). Not stored — renaming a host in a check's config moves it to a different value on the next read. Use `?sort=targetHost` on the list endpoint to order checks by it.
 	TargetHost *string `json:"targetHost,omitempty"`
@@ -3581,8 +3695,11 @@ type CheckListItem struct {
 	Warnings *[]ValidationErrorField `json:"warnings,omitempty"`
 }
 
-// CheckListItemLastStatusChangeStatus The status that the check transitioned to
+// CheckListItemLastStatusChangeStatus The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 type CheckListItemLastStatusChangeStatus string
+
+// CheckListItemStatus The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
+type CheckListItemStatus string
 
 // CheckListItemTracerouteOnFailure Per-check path-trace policy. When a network-reachability failure (connect timeout, refusal, ICMP loss, TLS handshake stall) opens or reopens an incident for this check, an MTR-style traceroute is captured and attached. `inherit` defers to the organization default (itself on unless an admin turned it off); `on` and `off` decide for this check. Application-level failures (HTTP 5xx, keyword mismatch, certificate expiry) never trigger a trace, whatever this is set to.
 type CheckListItemTracerouteOnFailure string
@@ -3630,9 +3747,9 @@ type CheckStats struct {
 	// Example: 99.97
 	Availability24h *float32 `json:"availability24h"`
 
-	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
+	// ByStatus Count per check status. Every known status key (created, up, down, validating, degraded, warning, stale, unknown) is always present, with 0 when empty, so clients can index it without guards. Keys are the same tokens the list endpoint's `status` field carries.
 	//
-	// Example: {"created":2,"degraded":2,"down":6,"unknown":0,"up":240,"validating":0,"warning":0}
+	// Example: {"created":2,"degraded":2,"down":6,"stale":0,"unknown":0,"up":240,"validating":0,"warning":0}
 	ByStatus map[string]int `json:"byStatus"`
 
 	// Disabled Checks with enabled = false.
@@ -6066,6 +6183,18 @@ type RegionCapabilitiesIpv4 string
 // RegionCapabilitiesIpv6 Whether checks pinned to `ipVersion: ipv6` can leave this region. `yes` when at least one live worker there reports IPv6 egress (any-not-all: a job runs on one worker). `no` when live workers reported and none has it. `unknown` when nothing live has reported — no live worker, or only workers predating the capability report. `unknown` is a real state and MUST NOT be rendered as `no`. The value is a hint with a heartbeat of lag: it never gates execution, and the run-time egress pre-flight is the authority.
 type RegionCapabilitiesIpv6 string
 
+// RegionFreshness One region's freshness for a check.
+type RegionFreshness struct {
+	// LastResultAt Newest real raw result from this region; null for a configured region with none inside the raw retention (about a day).
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+
+	// Region Region slug, "" for results that carry no region.
+	Region *string `json:"region,omitempty"`
+
+	// Stale True when lastResultAt is older than staleThresholdSeconds, or missing.
+	Stale *bool `json:"stale,omitempty"`
+}
+
 // RegionHealthReport defines model for RegionHealthReport.
 type RegionHealthReport struct {
 	GeneratedAt time.Time `json:"generatedAt"`
@@ -7695,6 +7824,9 @@ type ListChecksParams struct {
 	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result) and "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned).
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 
+	// Status Filter by derived check status. Comma-separated tokens from created, up, down, validating, degraded, warning and stale (e.g. "down,stale"). `stale` ("No data") is a check whose newest real result is older than max(3 × period, 5 min). An unknown token is a 400 validation error.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
 	// Internal Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
 	Internal *ListChecksParamsInternal `form:"internal,omitempty" json:"internal,omitempty"`
 
@@ -7732,7 +7864,7 @@ type ValidateCheck200JSONResponseBody struct {
 
 // GetCheckParams defines parameters for GetCheck.
 type GetCheckParams struct {
-	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result) and "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned).
+	// With Comma-separated list of additional data to include: "last_result" (the check's newest raw result), "last_status_change" (when the derived check status last changed — served from the check row itself, so it costs no extra query and is omitted for checks that have never transitioned) and "region_freshness" (the newest real result per region, so a silent region shows up even while others keep the check fresh).
 	With *string `form:"with,omitempty" json:"with,omitempty"`
 }
 
@@ -20144,6 +20276,18 @@ func NewListChecksRequest(server string, org OrgPath, params *ListChecksParams) 
 		if params.With != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "with", *params.With, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
