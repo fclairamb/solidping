@@ -242,15 +242,7 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 		req.CheckGroupUID = &g
 	}
 
-	if v := getStringArg(args, "placement"); v != "" {
-		req.Placement = &v
-	}
-
-	if _, ok := args["regionCount"]; ok {
-		v := getIntArg(args, "regionCount", 0)
-		req.RegionCount = &v
-	}
-
+	req.Placement, req.RegionCount = placementArgs(args)
 	req.RegionPool = getStringSliceArg(args, "regionPool")
 
 	if _, ok := args["confirmationPeriodSeconds"]; ok {
@@ -348,13 +340,7 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 	if v := getStringSliceArg(args, "regions"); v != nil {
 		req.Regions = &v
 	}
-	if v := getStringArg(args, "placement"); v != "" {
-		req.Placement = &v
-	}
-	if _, ok := args["regionCount"]; ok {
-		v := getIntArg(args, "regionCount", 0)
-		req.RegionCount = &v
-	}
+	req.Placement, req.RegionCount = placementArgs(args)
 	if v := getStringSliceArg(args, "regionPool"); v != nil {
 		req.RegionPool = &v
 	}
@@ -424,4 +410,21 @@ func marshalResult(value any) ToolCallResult {
 		Content:           []ContentBlock{{Type: contentTypeText, Text: string(data)}},
 		StructuredContent: value,
 	}
+}
+
+// placementArgs reads the placement and regionCount arguments of
+// create_check / update_check (spec 2026-09-25-06); nil when absent.
+func placementArgs(args map[string]any) (*string, *int) {
+	var placement *string
+	if v := getStringArg(args, "placement"); v != "" {
+		placement = &v
+	}
+
+	var count *int
+	if _, ok := args["regionCount"]; ok {
+		v := getIntArg(args, "regionCount", 0)
+		count = &v
+	}
+
+	return placement, count
 }

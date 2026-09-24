@@ -106,6 +106,7 @@ func TestPlacementRoundTripsThroughExportV2(t *testing.T) {
 	res, err := w.svc.ApplyChecks(ctx, w.org.Slug, parsed, checks.ApplyOptions{DryRun: true})
 	r.NoError(err)
 	r.Equal(2, res.Unchanged, "%+v", res.Plan)
+	r.Equal(checks.ApplyActionUnchanged, planEntry(t, res, "auto").Action)
 	r.Empty(res.Errors)
 }
 

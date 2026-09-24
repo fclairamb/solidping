@@ -108,7 +108,7 @@ func (s *Service) planCreateCheck(
 	// `internal` is never writable from a request (spec 2026-08-27-01): it is
 	// what exempts a check from the quota below, so accepting it here would
 	// hand every caller a quota bypass.
-	if findings := requestFieldFindings(requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
+	if findings := requestFieldFindings(&requestFieldValues{Internal: req.Internal}); len(findings) > 0 {
 		return nil, findings[0].Err
 	}
 
@@ -273,7 +273,7 @@ func (s *Service) planCreateCheck(
 	// tracerouteOnFailure enum, the flapping knobs' floors and the incident
 	// periods' bound — through the same shared list ValidateCheck uses (spec
 	// 2026-08-28-14), against the EFFECTIVE period.
-	if findings := requestFieldFindings(requestFieldValues{
+	if findings := requestFieldFindings(&requestFieldValues{
 		RegionSpreadPeriod:        effectivePeriod,
 		RegionSpread:              req.RegionSpread,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
@@ -451,7 +451,7 @@ func (s *Service) planUpdateCheck(
 		return cfgErr
 	}
 
-	if findings := requestFieldFindings(requestFieldValues{
+	if findings := requestFieldFindings(&requestFieldValues{
 		RegionSpreadPeriod:        period,
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,

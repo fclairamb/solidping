@@ -2129,10 +2129,6 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("period = ?", *update.Period)
 	}
 
-	if update.Regions != nil {
-		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
-	}
-
 	query = applyPlacementPg(query, update)
 	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
@@ -2148,8 +2144,13 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 	return err
 }
 
-// applyPlacementPg sets the placement-intent columns (spec 2026-09-25-06).
+// applyPlacementPg sets the region list and the placement-intent columns
+// (spec 2026-09-25-06).
 func applyPlacementPg(query *bun.UpdateQuery, update *models.CheckUpdate) *bun.UpdateQuery {
+	if update.Regions != nil {
+		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
+	}
+
 	if update.Placement != nil {
 		query = query.Set("placement = ?", *update.Placement)
 	}

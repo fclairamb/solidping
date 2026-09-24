@@ -194,7 +194,7 @@ type requestFieldFinding struct {
 // enforce. ValidateCheck turns every finding into a blocking field; CreateCheck
 // takes only the first and returns its Err — same error values as before this
 // spec, so the write paths' error shape is unchanged.
-func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
+func requestFieldFindings(values *requestFieldValues) []requestFieldFinding {
 	var findings []requestFieldFinding
 
 	// `internal` is what exempts a check from the MaxChecks quota (spec
@@ -221,7 +221,7 @@ func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
 // appendRegionSpreadFinding checks regionSpread's 0 <= spread < period bound
 // (spec 2026-07-20-05) — split out of requestFieldFindings to keep its
 // cyclomatic complexity down.
-func appendRegionSpreadFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendRegionSpreadFinding(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.RegionSpread == nil || *values.RegionSpread == "" {
 		return findings
 	}
@@ -244,7 +244,7 @@ func appendRegionSpreadFinding(findings []requestFieldFinding, values requestFie
 
 // appendTracerouteFinding checks the tracerouteOnFailure enum (spec
 // 2026-08-21-10).
-func appendTracerouteFinding(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendTracerouteFinding(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.TracerouteOnFailure == nil {
 		return findings
 	}
@@ -261,7 +261,7 @@ func appendTracerouteFinding(findings []requestFieldFinding, values requestField
 
 // appendFlappingFindings checks the three adaptive-recovery knobs' floors
 // (spec 2026-06-30-07).
-func appendFlappingFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendFlappingFindings(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.FlappingWindowSeconds != nil && *values.FlappingWindowSeconds < 0 {
 		findings = append(findings, requestFieldFinding{
 			Name: fieldFlappingWindowSeconds, Code: CodeInvalidFlappingField,
@@ -287,7 +287,7 @@ func appendFlappingFindings(findings []requestFieldFinding, values requestFieldV
 // appendIncidentPeriodFindings checks confirmationPeriodSeconds and
 // recoveryPeriodSeconds against [0, MaxIncidentPeriodSeconds] (spec
 // 2026-05-08-02).
-func appendIncidentPeriodFindings(findings []requestFieldFinding, values requestFieldValues) []requestFieldFinding {
+func appendIncidentPeriodFindings(findings []requestFieldFinding, values *requestFieldValues) []requestFieldFinding {
 	if values.ConfirmationPeriodSeconds != nil {
 		if err := validateIncidentPeriod(*values.ConfirmationPeriodSeconds); err != nil {
 			findings = append(findings, requestFieldFinding{
@@ -585,7 +585,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		regionSpreadPeriod = defaultPeriodForType(req.Type)
 	}
 
-	fieldFindings := requestFieldFindings(requestFieldValues{
+	fieldFindings := requestFieldFindings(&requestFieldValues{
 		Internal:                  req.Internal,
 		RegionSpreadPeriod:        regionSpreadPeriod,
 		RegionSpread:              req.RegionSpread,

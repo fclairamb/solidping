@@ -142,36 +142,55 @@ func (o *placementOutcome) applyToUpdate(update *models.CheckUpdate) {
 // placementRequestFindings is the placement half of requestFieldFindings:
 // every rule decidable from the request alone.
 func placementRequestFindings(req *placementRequest) []requestFieldFinding {
-	var findings []requestFieldFinding
+	errs := append(placementFieldErrors(req), placementContradiction(req)...)
+	findings := make([]requestFieldFinding, 0, len(errs))
 
-	add := func(err error) {
+	for _, err := range errs {
 		findings = append(findings, requestFieldFinding{
 			Name: placementFieldOf(err), Code: CodeInvalidPlacement, Message: err.Error(), Err: err,
 		})
 	}
 
+	return findings
+}
+
+// placementFieldErrors checks each placement field on its own.
+func placementFieldErrors(req *placementRequest) []error {
+	var errs []error
+
 	if req.Placement != nil && *req.Placement != models.PlacementPinned && *req.Placement != models.PlacementAuto {
-		add(errInvalidPlacement)
+		errs = append(errs, errInvalidPlacement)
 	}
 
 	if req.RegionCount != nil && (*req.RegionCount < 1 || *req.RegionCount > regions.MaxAutoRegionCount) {
-		add(errRegionCountOutOfRange)
+		errs = append(errs, errRegionCountOutOfRange)
 	}
 
 	if req.RegionPool != nil && slices.ContainsFunc(*req.RegionPool, regions.IsPrivateRegion) {
-		add(errRegionPoolPrivate)
+		errs = append(errs, errRegionPoolPrivate)
 	}
 
+	return errs
+}
+
+// placementContradiction reports a request whose fields ask for pinned and
+// automatic placement at once.
+func placementContradiction(req *placementRequest) []error {
 	autoFields := req.RegionCount != nil || (req.RegionPool != nil && len(*req.RegionPool) > 0)
+	placement := ""
+
+	if req.Placement != nil {
+		placement = *req.Placement
+	}
 
 	switch {
-	case req.Placement != nil && *req.Placement == models.PlacementPinned && autoFields:
-		add(errAutoFieldsOnPinned)
-	case len(req.Regions) > 0 && (autoFields || (req.Placement != nil && *req.Placement == models.PlacementAuto)):
-		add(errRegionsWithAutoPlacement)
+	case placement == models.PlacementPinned && autoFields:
+		return []error{errAutoFieldsOnPinned}
+	case len(req.Regions) > 0 && (autoFields || placement == models.PlacementAuto):
+		return []error{errRegionsWithAutoPlacement}
+	default:
+		return nil
 	}
-
-	return findings
 }
 
 // firstPlacementError returns the first static placement rejection, nil when
@@ -385,38 +404,13 @@ func (s *Service) resolveUpdatePlacement(
 		return nil, err
 	}
 
-	reset := req.RegionsSet && len(req.Regions) == 0 && req.Placement == nil &&
-		req.RegionCount == nil && req.RegionPool == nil
-
-	var intent string
-
-	switch {
-	case req.Placement != nil || req.RegionsSet || req.RegionCount != nil || req.RegionPool != nil:
-		var err error
-
-		intent, err = s.requestedIntent(ctx, check.OrganizationUID, req)
-		if err != nil {
-			return nil, err
-		}
-	case check.IsAutoPlaced() && reevaluate:
-		intent = models.PlacementAuto
-	default:
-		return nil, nil //nolint:nilnil // nil outcome = no placement change
+	intent, err := s.updateIntent(ctx, check, req, reevaluate)
+	if err != nil || intent == "" {
+		return nil, err
 	}
 
 	if intent == models.PlacementPinned {
-		regionList := check.Regions
-
-		if req.RegionsSet {
-			resolved, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, check.OrganizationUID)
-			if err != nil {
-				return nil, err
-			}
-
-			regionList = resolved
-		}
-
-		return &placementOutcome{placement: models.PlacementPinned, regions: regionList}, nil
+		return s.pinnedUpdateOutcome(ctx, check, req)
 	}
 
 	pool := poolOf(req.RegionPool)
@@ -424,9 +418,45 @@ func (s *Service) resolveUpdatePlacement(
 		pool = check.RegionPool
 	}
 
+	reset := req.RegionsSet && len(req.Regions) == 0 && req.Placement == nil &&
+		req.RegionCount == nil && req.RegionPool == nil
 	count, explicit := s.updateRegionCount(check, subject, req, reset)
 
 	return s.autoPlace(ctx, subject, count, explicit, pool)
+}
+
+// updateIntent is the placement a PATCH leaves the check with; empty means
+// the placement does not change.
+func (s *Service) updateIntent(
+	ctx context.Context, check *models.Check, req *placementRequest, reevaluate bool,
+) (string, error) {
+	switch {
+	case req.Placement != nil || req.RegionsSet || req.RegionCount != nil || req.RegionPool != nil:
+		return s.requestedIntent(ctx, check.OrganizationUID, req)
+	case check.IsAutoPlaced() && reevaluate:
+		return models.PlacementAuto, nil
+	default:
+		return "", nil
+	}
+}
+
+// pinnedUpdateOutcome pins the check: to the requested regions, or to the
+// ones it runs from now when the request names none.
+func (s *Service) pinnedUpdateOutcome(
+	ctx context.Context, check *models.Check, req *placementRequest,
+) (*placementOutcome, error) {
+	regionList := check.Regions
+
+	if req.RegionsSet {
+		resolved, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, check.OrganizationUID)
+		if err != nil {
+			return nil, err
+		}
+
+		regionList = resolved
+	}
+
+	return &placementOutcome{placement: models.PlacementPinned, regions: regionList}, nil
 }
 
 // updateRegionCount is N for a PATCH that leaves the check automatic: the

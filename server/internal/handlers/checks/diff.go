@@ -301,6 +301,23 @@ func (s *Service) diffCheck(
 	// way "enabled" is a few lines up.
 	add(fieldDegradedEnabled, strconv.FormatBool(current.DegradedEnabled), strconv.FormatBool(desired.DegradedEnabled))
 
+	changes = append(changes, s.diffRegions(ctx, org, existing, current, desired)...)
+
+	changes = append(append(changes, s.diffPlacement(ctx, existing, current, desired)...),
+		diffLabels(current.Labels, desired.Labels, opts)...)
+	changes = append(changes, diffCheckConfig(existing, current, desired)...)
+	changes = append(changes, diffDependsOn(current.DependsOn, desired.DependsOn)...)
+
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Field < changes[j].Field })
+
+	return changes
+}
+
+// diffRegions reports the region change an upsert of desired would make — only
+// when the document names regions (the upsert leaves them alone otherwise).
+func (s *Service) diffRegions(
+	ctx context.Context, org *models.Organization, existing *models.Check, current, desired *ExportCheck,
+) []CheckFieldChange {
 	if len(desired.Regions) > 0 {
 		// ResolveRegionsForCheck is what folds the accepted long
 		// "@org/location" spelling down to the stored, canonical "@location" —
@@ -317,18 +334,13 @@ func (s *Service) diffCheck(
 			// existing.Regions, not current.Regions: an automatic check's
 			// projection carries no regions (the document does not own them),
 			// but pinning it to the regions it already runs from moves nothing.
-			add(fieldRegions, joinSortedRegions(existing.Regions), joinSortedRegions(resolved))
+			if from, to := joinSortedRegions(existing.Regions), joinSortedRegions(resolved); from != to {
+				return []CheckFieldChange{{Field: fieldRegions, From: from, To: to}}
+			}
 		}
 	}
 
-	changes = append(changes, s.diffPlacement(ctx, existing, current, desired)...)
-	changes = append(changes, diffLabels(current.Labels, desired.Labels, opts)...)
-	changes = append(changes, diffCheckConfig(existing, current, desired)...)
-	changes = append(changes, diffDependsOn(current.DependsOn, desired.DependsOn)...)
-
-	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Field < changes[j].Field })
-
-	return changes
+	return nil
 }
 
 // traceroutePolicyOrInherit normalizes the absent path-trace policy to the

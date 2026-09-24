@@ -172,8 +172,8 @@ func (s *Service) recordPlacementChanged(ctx context.Context, check *models.Chec
 		models.PlacementEventPayloadTo:     target,
 		models.PlacementEventPayloadReason: reason,
 		eventPayloadCheckUIDKey:            check.UID,
-		"check_slug":                       check.Slug,
-		"check_name":                       check.Name,
+		eventPayloadCheckSlugKey:           check.Slug,
+		eventPayloadCheckNameKey:           check.Name,
 	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {

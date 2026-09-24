@@ -21,7 +21,9 @@ func declared() []regions.RegionDefinition {
 }
 
 func capabilityIndex() map[string]regions.RegionDefinition {
-	yes := map[string]string{regions.CapabilityBrowser: regions.CapabilityYes, regions.CapabilityIPv6: regions.CapabilityYes}
+	yes := map[string]string{
+		regions.CapabilityBrowser: regions.CapabilityYes, regions.CapabilityIPv6: regions.CapabilityYes,
+	}
 
 	return map[string]regions.RegionDefinition{
 		"gravelines":  {Slug: "gravelines", Capabilities: yes},

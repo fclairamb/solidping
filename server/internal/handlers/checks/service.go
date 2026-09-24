@@ -127,6 +127,13 @@ type ValidateCheckResponse struct {
 // express runner) cannot drift out of sync.
 const eventPayloadCheckUIDKey = "check_uid"
 
+// eventPayloadCheckSlugKey / eventPayloadCheckNameKey name the check's slug
+// and name in check.* event payloads.
+const (
+	eventPayloadCheckSlugKey = "check_slug"
+	eventPayloadCheckNameKey = "check_name"
+)
+
 // dependsOnFieldName is the JSON/validation field name for the dependency
 // payload — extracted to a constant because it appears in multiple per-row
 // validation messages.
@@ -2653,8 +2660,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
 		models.JSONMap{
 			eventPayloadCheckUIDKey:  check.UID,
-			"check_slug":             check.Slug,
-			"check_name":             check.Name,
+			eventPayloadCheckSlugKey: check.Slug,
+			eventPayloadCheckNameKey: check.Name,
 			"check_type":             check.Type,
 			"active_incidents_count": activeIncidentCount,
 		})
@@ -3516,10 +3523,10 @@ func (s *Service) emitEvent(
 	event := audit.NewEvent(ctx, orgUID, eventType,
 		audit.Target{Type: "check", UID: check.UID, Name: checkDisplayName(check)},
 		models.JSONMap{
-			eventPayloadCheckUIDKey: check.UID,
-			"check_slug":            check.Slug,
-			"check_name":            check.Name,
-			"check_type":            check.Type,
+			eventPayloadCheckUIDKey:  check.UID,
+			eventPayloadCheckSlugKey: check.Slug,
+			eventPayloadCheckNameKey: check.Name,
+			"check_type":             check.Type,
 		})
 	event.CheckUID = &check.UID
 
