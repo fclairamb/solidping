@@ -3726,7 +3726,7 @@ function TruncatedCellTable() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Check</TableHead>
+            <TableHead className="w-full">Check</TableHead>
             <TableHead className="whitespace-nowrap">State</TableHead>
             <TableHead className="whitespace-nowrap px-2" />
           </TableRow>
@@ -3734,7 +3734,7 @@ function TruncatedCellTable() {
         <TableBody>
           {rows.map((row) => (
             <TableRow key={row.id}>
-              <TableCell className="max-w-0">
+              <TableCell className="w-full max-w-0">
                 <a
                   href="#"
                   title={row.name}
@@ -3856,9 +3856,14 @@ function DataDisplaySection() {
           table wider than its container. Give the <code>TableCell</code> itself{" "}
           <code>max-w-0</code> — not just the text node inside it — so the
           browser's table layout algorithm shrinks that column to its fair share
-          instead of growing to fit the content; other columns that must stay
-          one line (a badge, an icon-link) get <code>whitespace-nowrap</code> so
-          the flexible column absorbs whatever width is left. Pair the truncated
+          instead of growing to fit the content. <code>max-w-0</code> alone is
+          not enough: it leaves the column with zero preferred width, so the
+          table hands all its spare width to the <em>other</em> columns and the
+          name ends up a few characters wide even on a desktop. Add{" "}
+          <code>w-full</code> to that column (head and cell) so it claims the
+          spare width, and give the columns that must stay one line (a badge,
+          an icon-link) <code>whitespace-nowrap</code> so they shrink to their
+          content. Pair the truncated
           element with a <code>title</code> attribute (or Tooltip, above) so the
           full value is still reachable on hover/focus. Two link targets in one
           row (here: the name → detail page, the trailing icon → a related page)
@@ -3868,7 +3873,7 @@ function DataDisplaySection() {
         <TruncatedCellTable />
       </div>
       <CodeSnippet
-        code={`<TableHead>Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
+        code={`<TableHead className="w-full">Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="w-full max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
 
       <div className="space-y-2 pt-2">
