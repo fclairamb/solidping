@@ -241,3 +241,174 @@ Once shipped, the positioning claim becomes true; until then, fix the wiki.
 - `2026-09-25-01`: region health must be correct before it drives placement.
 - `2026-09-25-03`: the per-minute region health sweep triggers re-placement.
 - `2026-09-25-02`: pinned checks in a dark region go stale instead of lying.
+
+## Implementation Plan
+
+### Scope decision (made before coding): Part A in full, Part B deferred
+
+Part A alone touches the schema (both engines), the create/update/upsert/clone
+write paths, a new pure placement algorithm, the per-minute region sweep, the
+config-as-code export/import/diff/apply pipeline, the OpenAPI document and the
+generated client, the MCP tools, and three dash0 surfaces (form, detail, list).
+Part B rewrites the incident state machine (`ProcessCheckResult`), which every
+check on every engine goes through on every result. Landing both in one pass
+would put the riskiest change in the batch behind the largest one, with no
+room to verify either properly.
+
+**Decision: implement A1–A4 completely, verify them, and do not start B.** B is
+left for its own spec (the spec explicitly allows the split). Nothing of B is
+half-implemented. The one B-adjacent deliverable the spec asks for "until then"
+is done here: the wiki's positioning claim of "distributed multi-region
+confirmation" is corrected to say what the product does today.
+
+### Resolved behaviors (from the spec's resolved questions, made concrete)
+
+- `placement` is `pinned` or `auto`. Existing rows default to `pinned`
+  (column default), except the migration case below.
+- Private (`@`) regions are pinned-only: auto never places into one, a pool may
+  not name one, and a check whose regions include one cannot be auto.
+- Passive checks (heartbeat, email, private-location) have no regions: always
+  `pinned`, `regionCount`/`regionPool` null.
+- Default on create when the request names no placement and no regions:
+  `auto`, `regionCount = min(2, eligible)`, except when the org's own
+  `default_regions` names a private region (then the old pinned resolution).
+  A request with an explicit `regions` list and no placement stays `pinned`
+  (backward compatible). `regionCount`/`regionPool` without `placement` imply
+  `auto`.
+- `regionCount` is stored as the effective N: capped by the number of eligible
+  candidates, then by `maxChecksPerMinute` (largest N that fits, floor 1) with
+  an advisory warning `PLACEMENT_REGION_COUNT_REDUCED` in the response.
+- No automatic move back, ever (resolved question 4).
+- No `area` field (resolved question 3): pools are explicit slug lists.
+
+### A1. Record intent + initial placement
+
+- **Migration** (appended as a new `SECTION: auto-region-placement` to the
+  unreleased `024_v0_33_0` on both engines, up + down):
+  `checks.placement text not null default 'pinned'` (CHECK in pinned/auto),
+  `checks.region_count int null`, `checks.region_pool text[]` (Postgres) /
+  JSON text (SQLite).
+- **Model** `server/internal/db/models/check.go`: `Placement`, `RegionCount`,
+  `RegionPool` on `Check` and `CheckUpdate` (+ `ClearRegionCount`,
+  `ClearRegionPool`); constants `PlacementPinned`/`PlacementAuto`;
+  `IsAutoPlaced()`. DB `UpdateCheck` on both engines writes the new columns.
+- **Pure algorithm** `server/internal/regions/placement.go`:
+  - `CandidateOrder(orgDefaults, systemDefaults, all []string) []string` —
+    org defaults, then system defaults, then the rest; de-duplicated, cloud
+    only.
+  - `PlacementInput{Candidates, Pool, Required capabilities, Capabilities
+    index, Healthy set, Current, Count}` and `Place(input) []string`:
+    eligible = candidates ∩ pool, minus any region whose required capability is
+    an explicit "no" ("unknown" stays eligible). Keep current regions that are
+    still eligible and healthy (stability), fill from candidate order with
+    healthy regions first, then (only if still short) unhealthy eligible ones.
+    When no eligible region is healthy (fresh install, tests), health is
+    ignored entirely so the result is the plain candidate order.
+    Deterministic: same inputs, same output (unit-tested).
+  - `Replace(current, candidates, healthy, dark) ([]string, []Swap)` — the A2
+    swap: every dark region of `current` is replaced in place by the first
+    healthy candidate not already used; a dark region with no candidate stays.
+- **Service glue** `server/internal/handlers/checks/placement.go`:
+  `placementContext` loads org/system defaults, the global region list, the
+  capability index, live workers per cloud region and the region-outage
+  markers (`regionoutage.List`); `requiredCapabilities(type, config)` (browser
+  → `browser`, `ipVersion: ipv6|ipv4` → that family); `resolvePlacement` used by
+  create, update, upsert, the import dry run and the diff, so all of them agree.
+  Rate cap through `entitlements.ProjectChecksPerMinute`.
+- **Request validation** (`validate.go`, shared by create/validate/upsert
+  through `requestFieldFindings`): `placement` enum, `regionCount >= 1`,
+  `regionPool` cloud slugs only, `placement: auto` with a non-empty `regions`
+  is a contradiction, `placement: pinned` with `regionCount`/`regionPool` too.
+  Sentinel errors mapped to 400 `VALIDATION_ERROR` in `handler.go`.
+
+### A2. Re-place when a region goes dark
+
+- `checks.Service.ReplaceAutoChecks(ctx, ReplacementRequest{Region,
+  CheckUIDs, Healthy, Reason})` in `placement_replace.go`: for each listed check
+  that is still `auto`, enabled, not deleted and still placed in the region,
+  compute `Replace`, write `checks.regions`, run the existing
+  `reconcileCheckJobs` (same mechanics `MigrateRegion` uses), then set the new
+  region's job `scheduled_at = effective_scheduled_at = now` (due now), and
+  write one `check.placement_changed` event per swap `{from, to, reason}`
+  (system actor, `check_uid` set). In-flight runs of the old job are left alone
+  (their lease release fails harmlessly, results keep their real region).
+- **Hook** `server/internal/regionsweep`: `Deps.Placer` (optional interface,
+  the jobtypes wiring passes the same `*checks.Service`). Called from `goDark`
+  AND from `stayUnhealthy` while the region is observed dark, for the auto
+  checks among the sweep's own `RegionJob` snapshot in that region, before the
+  org notices are computed. Healthy set = cloud regions with live workers and
+  no outage phase after this sweep. Re-placed checks are excluded from the
+  org's blind/reduced counts (they are not blind any more). No second poller.
+- New event type `check.placement_changed` in `models/event.go`, added to the
+  two exhaustive switches (`system/service.go`, `incidents/service.go`), the
+  events catalogue, dash0 `event-display.tsx` + its test, and all 4 locales.
+- No healthy candidate: placement kept, the check goes stale through the
+  existing freshness sweep (verified by a test, not assumed).
+- A recovered region moves nothing (tested).
+
+### A3. Defaults, migration, bulk action
+
+- Create default as described above; the dash0 form stops seeding an explicit
+  region list: "Regions: Automatic (N regions) · Choose regions", sends
+  `placement: auto` (or `pinned` + `regions` after "Choose regions").
+- **Data migration (the 67-checks-on-gravelines case)** in the same SQL
+  section: every non-deleted, non-passive check whose `regions` holds exactly
+  the same set of slugs as the system `default_regions` parameter (compared as
+  sets, order-insensitive, no `@` region) becomes `placement = 'auto'`,
+  `region_count = cardinality(regions)`, `region_pool = NULL` (empty pool).
+  Regions and jobs are untouched, so cost and normal region are identical.
+  Every other check stays `pinned`.
+- **Bulk action** `POST /api/v1/orgs/:org/checks/auto-placement`
+  (`{checkUids?, dryRun?}` → `{data: [...switched], skipped: [...]}`),
+  same conversion as the migration (keep regions, N = len(regions), empty
+  pool); dash0 button on the checks list with a confirmation dialog showing the
+  dry-run count.
+- **Config-as-code** carries the fields (A4).
+- Announcement: `CHANGELOG.md` is generated by release-please from commit
+  messages, so the migration ships in a `feat(checks):` commit whose message is
+  the changelog prose (flagged in the final report).
+
+### A4. Surfaces
+
+- **API** `CheckResponse` + `CreateCheckRequest`/`UpdateCheckRequest`/
+  `UpsertCheckRequest`/`ValidateCheckRequest` gain `placement`,
+  `regionCount`, `regionPool`.
+- **OpenAPI** `openapi.yaml`: the three fields on `Check`,
+  `CreateCheckRequest`, `UpdateCheckRequest`, `UpsertCheckRequest`, plus the
+  missing `regions`; new `check.placement_changed` where event types are
+  listed; the bulk endpoint; regenerate `pkg/client`.
+- **MCP** `tools_checks.go`: `placement`, `regionCount`, `regionPool` on
+  `create_check`/`update_check`; the `regions` descriptions extended (the
+  earlier fix kept).
+- **Config-as-code**: `ExportCheck` + v2 wire (`placement`, `regionCount`,
+  `regionPool`; an auto check exports no `regions` and is left out of the modal
+  regions default, and the v2 resolver does not apply the default regions to an
+  auto entry); `buildImportUpsertRequest`; `diffCheck` compares placement /
+  regionCount / regionPool (and not the scheduler-owned regions of an auto
+  check); `planUpdateCheck`/`PlanUpsert` run the same placement resolution, so
+  the dry run and the real upsert agree. `placement: auto` with empty
+  `regions` is meaningful on update (switches the check).
+- **dash0**: `Check` type fields; form (above); check detail "Placement"
+  card: "Automatic, 2 regions: paris, gravelines" or "Pinned: …", per-region
+  last result (from `regionFreshness`), placement history from
+  `check.placement_changed` events; checks-list bulk action; design reference
+  entry for the new placement summary if it is a new pattern.
+- **status0**: unchanged.
+- **Docs**: `web/docs/docs/features/region-placement.md`.
+
+### Tests (mapping to the spec's list)
+
+1. Auto N=2 pool any → first two healthy eligible in default order; browser
+   skips non-browser: `regions/placement_test.go` + service test.
+2. Region goes dark → re-placed in one sweep, new job due now, one
+   `check.placement_changed`, (results carry the new region — the job row now
+   carries the new region, which is what the worker stamps): `regionsweep`
+   test.
+3. No healthy candidate → placement kept, the freshness sweep marks it stale.
+4. Region recovers → nothing moves.
+5. Pinned checks and `@` regions never moved.
+6. Restart after re-placement → `ReconcileStaleJobSchedules` keeps it.
+7. Migration → only default-equal checks become auto, others pinned with
+   identical jobs (SQLite migration test + Postgres twin).
+8. Rate cap → N reduced with a warning.
+9. Quorum → **deferred with Part B**.
