@@ -678,8 +678,13 @@ are not gated by incident state.
 | Probe rate-limited | `solidping_checks_rate_limited_total{organization}` | `worker.go:511` |
 | Incident created | `solidping_incidents_total{organization,check_type}` (counter) | incident service |
 | Incident open/resolved | `solidping_incidents_active` (gauge ↑↓) | incident service |
-| Check status | `solidping_check_up`, `solidping_check_status_streak` (gauges) | incident service |
-| Worker fleet | `solidping_workers_active`, `solidping_worker_free_runners`, `solidping_worker_jobs_claimed_total` | heartbeat / claim paths |
+| Worker fleet | `solidping_worker_free_runners`, `solidping_worker_jobs_claimed_total` | heartbeat / claim paths |
+| Region liveness | `solidping_workers_active{region}` (gauge, cloud regions only) | platform watchdog region pass, from `RegionHealth`; absent while the watchdog is disabled |
+
+There is no per-check status gauge: `solidping_check_up`,
+`solidping_check_status_streak` and `solidping_checks_configured` were
+registered but never written, and were removed (spec 2026-09-25-01). Check
+state lives in the database and the API.
 
 ## What this page does NOT cover
 

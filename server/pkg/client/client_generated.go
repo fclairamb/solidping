@@ -6077,30 +6077,33 @@ type RegionHealthReport struct {
 
 // RegionHealthRow defines model for RegionHealthRow.
 type RegionHealthRow struct {
-	// ChecksReferencing Distinct, non-deleted checks whose `regions` array names this slug.
+	// ChecksReferencing Distinct, non-deleted checks whose `regions` array names this slug (for a private region, only the owning org's checks).
 	ChecksReferencing int `json:"checksReferencing"`
 
-	// Declared Whether the slug is present in the `regions` system parameter.
+	// Declared Whether the slug is present in the `regions` system parameter (always false for a private region).
 	Declared bool `json:"declared"`
 
-	// Ghost `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work assigned to a slug nothing live can serve.
+	// Ghost `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work assigned to a region nothing live can serve.
 	Ghost bool `json:"ghost"`
 
-	// Jobs check_jobs rows carrying this slug. NULL-region jobs are never counted.
+	// Jobs check_jobs rows carrying this slug (for a private region, only the owning org's jobs). NULL-region jobs are never counted.
 	Jobs int `json:"jobs"`
 
 	// JobsOverdue Subset of `jobs` whose `scheduledAt` has already passed.
 	JobsOverdue int `json:"jobsOverdue"`
 
-	// LastWorkerSeenAt Max `lastActiveAt` across every matching worker, including soft-deleted ones — dates when the region went dark.
+	// LastWorkerSeenAt Cloud region: max `lastActiveAt` across every matching worker, including soft-deleted ones. Private region: max `lastSeenAt` across the org's agents bound to the slug, including revoked ones. Dates when the region went dark.
 	LastWorkerSeenAt *time.Time `json:"lastWorkerSeenAt"`
 
-	// LiveWorkers Non-deleted workers within the liveness window whose announced region has this slug as a prefix.
+	// LiveWorkers Cloud region: non-deleted workers within the liveness window whose announced region has this slug as a prefix. Private region: the org's active agents bound to exactly this slug and seen within the liveness window.
 	LiveWorkers int `json:"liveWorkers"`
 
 	// OldestOverdueAt Earliest `scheduledAt` among the overdue jobs, null when there are none.
 	OldestOverdueAt *time.Time `json:"oldestOverdueAt"`
-	Slug            string     `json:"slug"`
+
+	// Organization Slug of the organization owning a private (`@`) region. Absent for a cloud region. Private slugs are org-relative, so a private row is identified by (organization, slug).
+	Organization *string `json:"organization,omitempty"`
+	Slug         string  `json:"slug"`
 }
 
 // RegionMigrationReport defines model for RegionMigrationReport.
@@ -11069,21 +11072,21 @@ type ClientInterface interface {
 
 	// ViewStatusPage View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 	ViewStatusPage(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetStatusPageBadge SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 	GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StatusPageFeed Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 	StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11091,7 +11094,7 @@ type ClientInterface interface {
 	// ViewPublicStatusPageIncidents Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -11099,7 +11102,7 @@ type ClientInterface interface {
 
 	// ViewStatusPageSummary Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 	ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11382,11 +11385,13 @@ type ClientInterface interface {
 
 	// GetRegionHealth Ghost-region detection report
 	//
-	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 	//
 	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 	//
-	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 	//
 	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 	//
@@ -17037,7 +17042,7 @@ func (c *Client) UnlockDefaultStatusPage(ctx context.Context, org OrgPath, body 
 
 // ViewStatusPage View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug} (the `ViewStatusPage` operationId).
 func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17054,7 +17059,7 @@ func (c *Client) ViewStatusPage(ctx context.Context, org OrgPath, slug string, p
 
 // GetStatusPageBadge SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/badge (the `GetStatusPageBadge` operationId).
 func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug string, params *GetStatusPageBadgeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17071,7 +17076,7 @@ func (c *Client) GetStatusPageBadge(ctx context.Context, org OrgPath, slug strin
 
 // StatusPageFeed Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/feed.xml (the `StatusPageFeed` operationId).
 func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17089,7 +17094,7 @@ func (c *Client) StatusPageFeed(ctx context.Context, org OrgPath, slug string, r
 // ViewPublicStatusPageIncidents Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/incidents (the `ViewPublicStatusPageIncidents` operationId).
@@ -17107,7 +17112,7 @@ func (c *Client) ViewPublicStatusPageIncidents(ctx context.Context, org OrgPath,
 
 // ViewStatusPageSummary Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Corresponds with GET /api/v1/status-pages/{org}/{slug}/summary (the `ViewStatusPageSummary` operationId).
 func (c *Client) ViewStatusPageSummary(ctx context.Context, org OrgPath, slug string, params *ViewStatusPageSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17710,11 +17715,13 @@ func (c *Client) SetSystemParameter(ctx context.Context, key string, body SetSys
 
 // GetRegionHealth Ghost-region detection report
 //
-// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 //
 // A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 //
-// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 //
 // Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 //
@@ -34610,7 +34617,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageWithResponse View a public status page
 	//
-	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+	// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34619,7 +34626,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 	//
-	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+	// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34628,7 +34635,7 @@ type ClientWithResponsesInterface interface {
 
 	// StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 	//
-	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+	// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34638,7 +34645,7 @@ type ClientWithResponsesInterface interface {
 	// ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 	//
 	// The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+	// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 	// Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -34648,7 +34655,7 @@ type ClientWithResponsesInterface interface {
 
 	// ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 	//
-	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+	// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -34975,11 +34982,13 @@ type ClientWithResponsesInterface interface {
 
 	// GetRegionHealthWithResponse Ghost-region detection report
 	//
-	// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+	// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+	//
+	// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 	//
 	// A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 	//
-	// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+	// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 	//
 	// Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 	//
@@ -55229,7 +55238,7 @@ func (c *ClientWithResponses) UnlockDefaultStatusPageWithResponse(ctx context.Co
 
 // ViewStatusPageWithResponse View a public status page
 //
-// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, while a `password` or `private` page — and every 401/404 answer — carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
+// Full public rendering of a status page: sections, per-resource live status, and (when enabled) availability/response-time history. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required. Caching follows the page's visibility: a `public` page carries Cache-Control: public, max-age=60, stale-while-revalidate=30 — a cache may serve an expired copy for up to 30 s while it refreshes in the background — while a `password` or `private` page, and every 401/404 answer, carries Cache-Control: private, no-store, so a shared cache can never retain a gated page's body. Holding a valid unlock cookie does not change that: it authorizes the visitor, not the CDN in front of them. Public responses carry Vary: X-Forwarded-Proto (the header the absolute URLs in these payloads derive their scheme from); gated ones add Cookie.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55244,7 +55253,7 @@ func (c *ClientWithResponses) ViewStatusPageWithResponse(ctx context.Context, or
 
 // GetStatusPageBadgeWithResponse SVG badge for a status page's overall status
 //
-// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
+// Public SVG badge (shields.io style) reflecting the page-level rollup status — the static, script-free sibling of the JS embed widget, for contexts like GitHub READMEs where scripts can't run. Same visibility gate as the full view and the summary endpoint: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the badge renders the rollup status of a page the requester may not be entitled to see. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55259,7 +55268,7 @@ func (c *ClientWithResponses) GetStatusPageBadgeWithResponse(ctx context.Context
 
 // StatusPageFeedWithResponse Atom feed of a status page's status-update timeline
 //
-// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
+// Public Atom/RSS feed of the page's recent status updates (incident posts and manual updates). Same visibility gate as the full page view, and the same visibility-driven caching: Cache-Control: public, max-age=300, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one — the feed quotes update titles and bodies verbatim. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55275,7 +55284,7 @@ func (c *ClientWithResponses) StatusPageFeedWithResponse(ctx context.Context, or
 // ViewPublicStatusPageIncidentsWithResponse Public incident history for a status page
 //
 // The customer-facing incidents published on this page (spec 2026-08-19-08). Without `active`, returns the page's history window; with `active=true`, only the incidents that are still open — the same set the full page view embeds as `activeIncidents[]`.
-// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
+// Same visibility gate as the full page view: a disabled or non-public page returns 404, identical to a page that doesn't exist. Same caching rule too — Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not), since this payload quotes incident titles and update bodies verbatim. No authentication required.
 // Every field is operator-authored or templated from the page's own public resource names. Probe output, error strings and internal hostnames are structurally unable to reach this payload.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -55291,7 +55300,7 @@ func (c *ClientWithResponses) ViewPublicStatusPageIncidentsWithResponse(ctx cont
 
 // ViewStatusPageSummaryWithResponse Lightweight status summary for a status page
 //
-// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60 for a `public` page, private, no-store for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
+// Cheap "is it up?" companion to the full page view: overall status, per-category counts, page identity, and the canonical public URL — no sections, no per-resource history. Same visibility gate AND the same caching rule as the full page view: Cache-Control: public, max-age=60, stale-while-revalidate=30 for a `public` page, private, no-store (no grace window) for a `password` or `private` one (unlocked or not) and for every 401/404 answer. A disabled or non-public page returns 404, identical to a page that doesn't exist. No authentication required.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -55810,11 +55819,13 @@ func (c *ClientWithResponses) SetSystemParameterWithResponse(ctx context.Context
 
 // GetRegionHealthWithResponse Ghost-region detection report
 //
-// One row per region slug seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, or in a live or previously-live worker's announced region — so the caller gets the ghosts and the healthy baseline in one call.
+// One row per region seen anywhere — in the declared `regions` system parameter, in a check's `regions` array, in a `check_jobs.region`, in a live or previously-live worker's announced region, or in an org agent's bound region — so the caller gets the ghosts and the healthy baseline in one call.
+//
+// Cloud regions are global: one row per slug, `organization` absent. Private regions (`@<slug>`) are org-relative, so they get one row per (organization, slug) with `organization` set to the org slug: `@paris` in two orgs is two unrelated rows whose checks, jobs and agents are never summed together.
 //
 // A **ghost** is a slug something depends on (a job or a check reference) that nothing live can serve: `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0`. A declared region with zero live workers and zero references is dark but unused, not a ghost — the alarm condition is work assigned to nobody, not an idle region.
 //
-// `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
+// For a cloud region, `liveWorkers` reuses the exact prefix rule the scheduler claims jobs with (`workerRegion` has the slug as a prefix, so a `us` job is served by a `us-1` worker) and the same liveness window as the region capability report; system agents count here, through their worker row. `lastWorkerSeenAt` spans every matching worker, soft-deleted included, so it dates when the region actually went dark. For a private region, `liveWorkers` counts that org's active agents bound to exactly that slug and seen within the same window (the predicate an agent claims with), and `lastWorkerSeenAt` is their latest `lastSeenAt`, revoked agents included. NULL-region (any-region) jobs never count toward any row — they are claimable by every cloud worker by construction.
 //
 // Read-side companion of `POST /system/regions/migrate`: its output names exactly the `from` slugs a migration should target. Cheap and unpaginated — a handful of bounded scans, not a query per region. Super-admin only.
 //

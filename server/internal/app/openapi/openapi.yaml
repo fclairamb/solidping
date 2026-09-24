@@ -303,11 +303,18 @@ paths:
       tags: [System]
       summary: Ghost-region detection report
       description: >
-        One row per region slug seen anywhere — in the declared `regions`
+        One row per region seen anywhere — in the declared `regions`
         system parameter, in a check's `regions` array, in a
-        `check_jobs.region`, or in a live or previously-live worker's
-        announced region — so the caller gets the ghosts and the healthy
-        baseline in one call.
+        `check_jobs.region`, in a live or previously-live worker's
+        announced region, or in an org agent's bound region — so the caller
+        gets the ghosts and the healthy baseline in one call.
+
+
+        Cloud regions are global: one row per slug, `organization` absent.
+        Private regions (`@<slug>`) are org-relative, so they get one row per
+        (organization, slug) with `organization` set to the org slug:
+        `@paris` in two orgs is two unrelated rows whose checks, jobs and
+        agents are never summed together.
 
 
         A **ghost** is a slug something depends on (a job or a check
@@ -317,13 +324,18 @@ paths:
         condition is work assigned to nobody, not an idle region.
 
 
-        `liveWorkers` reuses the exact prefix rule the scheduler claims jobs
-        with (`workerRegion` has the slug as a prefix, so a `us` job is
-        served by a `us-1` worker) and the same liveness window as the region
-        capability report. `lastWorkerSeenAt` spans every matching worker,
-        soft-deleted included, so it dates when the region actually went
-        dark. NULL-region (any-region) jobs never count toward any row — they
-        are claimable by every cloud worker by construction.
+        For a cloud region, `liveWorkers` reuses the exact prefix rule the
+        scheduler claims jobs with (`workerRegion` has the slug as a prefix,
+        so a `us` job is served by a `us-1` worker) and the same liveness
+        window as the region capability report; system agents count here,
+        through their worker row. `lastWorkerSeenAt` spans every matching
+        worker, soft-deleted included, so it dates when the region actually
+        went dark. For a private region, `liveWorkers` counts that org's
+        active agents bound to exactly that slug and seen within the same
+        window (the predicate an agent claims with), and `lastWorkerSeenAt`
+        is their latest `lastSeenAt`, revoked agents included. NULL-region
+        (any-region) jobs never count toward any row — they are claimable by
+        every cloud worker by construction.
 
 
         Read-side companion of `POST /system/regions/migrate`: its output
@@ -14047,27 +14059,41 @@ components:
       properties:
         slug:
           type: string
+        organization:
+          type: string
+          description: >
+            Slug of the organization owning a private (`@`) region. Absent for
+            a cloud region. Private slugs are org-relative, so a private row
+            is identified by (organization, slug).
         declared:
           type: boolean
-          description: Whether the slug is present in the `regions` system parameter.
+          description: Whether the slug is present in the `regions` system parameter (always false for a private region).
         liveWorkers:
           type: integer
           description: >
-            Non-deleted workers within the liveness window whose announced
-            region has this slug as a prefix.
+            Cloud region: non-deleted workers within the liveness window whose
+            announced region has this slug as a prefix. Private region: the
+            org's active agents bound to exactly this slug and seen within the
+            liveness window.
         lastWorkerSeenAt:
           type: string
           format: date-time
           nullable: true
           description: >
-            Max `lastActiveAt` across every matching worker, including
-            soft-deleted ones — dates when the region went dark.
+            Cloud region: max `lastActiveAt` across every matching worker,
+            including soft-deleted ones. Private region: max `lastSeenAt`
+            across the org's agents bound to the slug, including revoked
+            ones. Dates when the region went dark.
         checksReferencing:
           type: integer
-          description: Distinct, non-deleted checks whose `regions` array names this slug.
+          description: >
+            Distinct, non-deleted checks whose `regions` array names this slug
+            (for a private region, only the owning org's checks).
         jobs:
           type: integer
-          description: check_jobs rows carrying this slug. NULL-region jobs are never counted.
+          description: >
+            check_jobs rows carrying this slug (for a private region, only the
+            owning org's jobs). NULL-region jobs are never counted.
         jobsOverdue:
           type: integer
           description: Subset of `jobs` whose `scheduledAt` has already passed.
@@ -14080,7 +14106,7 @@ components:
           type: boolean
           description: >
             `(jobs > 0 || checksReferencing > 0) && liveWorkers == 0` — work
-            assigned to a slug nothing live can serve.
+            assigned to a region nothing live can serve.
 
     RegionHealthReport:
       type: object

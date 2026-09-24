@@ -63,6 +63,19 @@ its oldest overdue job is at least `darkRegionMinOverdueMinutes` (10) old.
 `critical` at 50 overdue jobs or 30 minutes. Remediation carried in the digest:
 `POST /api/v1/system/regions/migrate` (spec `2026-08-24-08`).
 
+Private regions (`@<slug>`) are org-relative. `RegionHealth` reports one row per
+(organization, slug), served by that org's agents (`agents.last_seen_at`, exact
+region match, revoked agents never live), so a connected private location is
+never dark. The anomaly subject is `<org>/@<slug>` (e.g. `dark-region:acme/@paris`),
+so two orgs' `@paris` never share a fingerprint, and a dark private region's
+remediation points at `GET /api/v1/orgs/<org>/agents` instead of a migration
+(spec `2026-09-25-01`).
+
+The same pass publishes `solidping_workers_active{region}`: `liveWorkers` per
+**cloud** region, straight off the report, after a `Reset()` so a region that
+disappears stops being exported. Private regions are never a label (their slug
+would merge orgs). A failed region pass leaves the gauge untouched.
+
 ### 2. `fleet-collapse`
 
 Results produced in the **last completed hour** vs. the **same hour a day
@@ -169,6 +182,7 @@ Prometheus alert independently:
 | `solidping_watchdog_stale_incidents` | frozen active incidents |
 | `solidping_watchdog_detector_failures_total{detector}` | detector runs that errored |
 | `solidping_watchdog_last_run_timestamp_seconds` | staleness of the watchdog itself |
+| `solidping_workers_active{region}` | live workers per cloud region, from the dark-region pass's `RegionHealth` report (absent while the watchdog is disabled) |
 
 A detector that errored leaves its anomaly gauge at the previous value rather
 than writing a `0`: publishing "healthy" as a fact when the watchdog could not
