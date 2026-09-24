@@ -368,7 +368,7 @@ With **username and password** set, the check goes further: it completes a **rea
 Every authenticated run is a **real interactive Windows logon**:
 
 - it loads a user profile and runs logon scripts / GPOs;
-- it may consume an RDS client access licence;
+- it may consume an RDS client access license;
 - on a single-session server (or with "restrict to one session per user") it can **disconnect a real logged-in user**;
 - it shows up in the Security event log (4624/4634) every run.
 

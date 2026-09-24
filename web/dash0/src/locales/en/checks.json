@@ -1019,7 +1019,7 @@
     "rdpEndSessionLogoff": "Log off (default)",
     "rdpEndSessionDisconnect": "Disconnect (session stays on the server)",
     "rdpEndSessionHelp": "Log off removes the session from the server. Disconnect leaves it running until the server's idle policy ends it, so the next run reattaches to it (faster checks).",
-    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access licence, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest."
+    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest."
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",

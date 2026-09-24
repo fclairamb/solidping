@@ -394,7 +394,7 @@ a sidecar, which SolidPing forbids).
 
 **Every authenticated session is a real interactive Windows logon** — the same
 [operational caveats](./check-types.md#warning-authenticated-runs-are-real-windows-logons)
-as the check apply: profile load, logon scripts/GPOs, an RDS licence, a
+as the check apply: profile load, logon scripts/GPOs, an RDS license, a
 possible kicked user, a Security event-log entry per run. Use a dedicated
 monitoring account. Keep the interval long: **the period floor is 15 minutes**
 for any script that calls `rdp.connect(`, decided when the check is saved —
