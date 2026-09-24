@@ -12,24 +12,29 @@ import (
 )
 
 // detectDarkRegions reports every region whose assigned work is not being
-// executed.
+// executed. It also returns the RegionHealth report it evaluated, so the
+// caller can publish solidping_workers_active from the very same computation.
 //
 // It does NOT re-derive "dark": it calls checks.Service.RegionHealth — the
 // spec-09 ghost detector — and applies a blast-radius bar on top of its rows.
 // One definition of dark, one query set, one place to fix when the scheduler's
 // matching rule changes.
-func (s *Service) detectDarkRegions(ctx context.Context, cfg *Config) ([]Anomaly, error) {
+//
+// Private regions are org-relative (spec 2026-09-25-01): RegionHealth reports
+// one row per (organization, slug), and each becomes its own anomaly with its
+// own org-qualified Subject, so two orgs' `@paris` never share a fingerprint.
+func (s *Service) detectDarkRegions(ctx context.Context, cfg *Config) ([]Anomaly, *checks.RegionHealthReport, error) {
 	if s.regionHealth == nil {
-		return nil, ErrRegionHealthUnavailable
+		return nil, nil, ErrRegionHealthUnavailable
 	}
 
 	report, err := s.regionHealth.RegionHealth(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("region health: %w", err)
+		return nil, nil, fmt.Errorf("region health: %w", err)
 	}
 
 	if report == nil {
-		return nil, ErrRegionHealthUnavailable
+		return nil, nil, ErrRegionHealthUnavailable
 	}
 
 	// The age bar is measured against the REPORT's own instant, not the
@@ -40,17 +45,79 @@ func (s *Service) detectDarkRegions(ctx context.Context, cfg *Config) ([]Anomaly
 	now := report.GeneratedAt
 
 	rows := append([]checks.RegionHealthRow(nil), report.Regions...)
-	sort.Slice(rows, func(i, j int) bool { return rows[i].Slug < rows[j].Slug })
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Slug != rows[j].Slug {
+			return rows[i].Slug < rows[j].Slug
+		}
+
+		return rows[i].Organization < rows[j].Organization
+	})
 
 	anomalies := make([]Anomaly, 0, len(rows))
+	seen := make(map[string]bool, len(rows))
 
 	for i := range rows {
+		// RegionHealth already yields one row per (organization, slug); this
+		// guard only keeps a duplicate row from ever minting two anomalies
+		// under one fingerprint.
+		subject := darkRegionSubject(&rows[i])
+		if seen[subject] {
+			continue
+		}
+
+		seen[subject] = true
+
 		if anomaly, ok := darkRegionAnomaly(&rows[i], cfg, now); ok {
 			anomalies = append(anomalies, anomaly)
 		}
 	}
 
-	return anomalies, nil
+	return anomalies, report, nil
+}
+
+// darkRegionSubject is the anomaly Subject (and so the fingerprint) of one
+// region row: the bare slug for a cloud region, `<org>/@<slug>` for a private
+// one — private slugs are org-relative, so the slug alone would make two orgs'
+// `@paris` share one anomaly and one anti-flood marker.
+func darkRegionSubject(row *checks.RegionHealthRow) string {
+	if row.Organization == "" {
+		return row.Slug
+	}
+
+	return row.Organization + "/" + row.Slug
+}
+
+// darkRegionName is how a region reads in a headline: the quoted slug, plus
+// the owning org for a private region.
+func darkRegionName(row *checks.RegionHealthRow) string {
+	if row.Organization == "" {
+		return strconv.Quote(row.Slug)
+	}
+
+	return fmt.Sprintf("%q of org %q", row.Slug, row.Organization)
+}
+
+// cloudWorkersActive extracts the per-cloud-region live-worker counts off a
+// RegionHealth report — the values solidping_workers_active exports. Private
+// rows are skipped: their slug is org-relative, so a `region="@paris"` label
+// would merge orgs all over again.
+func cloudWorkersActive(report *checks.RegionHealthReport) map[string]int {
+	if report == nil {
+		return nil
+	}
+
+	out := make(map[string]int, len(report.Regions))
+
+	for i := range report.Regions {
+		row := &report.Regions[i]
+		if row.Organization != "" || row.IsPrivate() {
+			continue
+		}
+
+		out[row.Slug] = row.LiveWorkers
+	}
+
+	return out
 }
 
 // darkRegionAnomaly applies the blast-radius bar to one region row.
@@ -82,7 +149,7 @@ func darkRegionAnomaly(row *checks.RegionHealthRow, cfg *Config, now time.Time) 
 
 	return Anomaly{
 		Detector:    DetectorDarkRegion,
-		Subject:     row.Slug,
+		Subject:     darkRegionSubject(row),
 		Severity:    severity,
 		Headline:    darkRegionHeadline(row, dark, age),
 		Detail:      darkRegionDetail(row),
@@ -99,19 +166,25 @@ func darkRegionHeadline(row *checks.RegionHealthRow, dark bool, age time.Duratio
 	}
 
 	return fmt.Sprintf(
-		"region %q is %s: %d job(s) assigned, %d overdue, oldest overdue by %s",
-		row.Slug, state, row.Jobs, row.JobsOverdue, roundDuration(age),
+		"region %s is %s: %d job(s) assigned, %d overdue, oldest overdue by %s",
+		darkRegionName(row), state, row.Jobs, row.JobsOverdue, roundDuration(age),
 	)
 }
 
 // darkRegionDetail dates when the region went dark — the first thing an
 // operator wants during triage — and how many checks are pointed at it.
 func darkRegionDetail(row *checks.RegionHealthRow) string {
-	parts := []string{
+	parts := make([]string, 0, 5)
+
+	if row.Organization != "" {
+		parts = append(parts, "organization="+row.Organization)
+	}
+
+	parts = append(parts,
 		fmt.Sprintf("liveWorkers=%d", row.LiveWorkers),
 		fmt.Sprintf("checksReferencing=%d", row.ChecksReferencing),
-		"declared=" + strconv.FormatBool(row.Declared),
-	}
+		"declared="+strconv.FormatBool(row.Declared),
+	)
 
 	if row.LastWorkerSeenAt != nil {
 		parts = append(parts, "lastWorkerSeenAt="+row.LastWorkerSeenAt.UTC().Format(time.RFC3339))
@@ -123,11 +196,20 @@ func darkRegionDetail(row *checks.RegionHealthRow) string {
 }
 
 // darkRegionRemediation is the ready-to-run fix: the region-migration call
-// from spec 2026-08-24-08 for a genuinely dark region, and the ghost listing
-// from spec 2026-08-24-09 otherwise.
+// from spec 2026-08-24-08 for a genuinely dark cloud region, the org's agent
+// listing for a dark private region (only that org's agent can serve it), and
+// the ghost listing from spec 2026-08-24-09 otherwise.
 func darkRegionRemediation(row *checks.RegionHealthRow, dark bool) string {
 	if !dark {
 		return "GET /api/v1/system/regions/health — inspect why the backlog is not draining"
+	}
+
+	if row.Organization != "" {
+		return fmt.Sprintf(
+			"reconnect or re-enroll the agent serving %s in org %q — "+
+				"GET /api/v1/orgs/%s/agents lists its agents and when each was last seen",
+			row.Slug, row.Organization, row.Organization,
+		)
 	}
 
 	return fmt.Sprintf(
