@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import i18next, { type TFunction } from "i18next";
 
 import {
+  EVENT_TYPE_MARKS,
   EVENT_TYPE_REGISTRY,
   getEventEmoji,
   getEventLabel,
@@ -242,6 +243,15 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     for (const eventType of Object.keys(INTENTIONALLY_UNMAPPED)) {
       expect(EVENT_TYPE_REGISTRY[eventType]).toBeUndefined();
     }
+  });
+
+  // EventTypeLabel reads EVENT_TYPE_MARKS, not the emoji registry. A type
+  // added to one and not the other would get an emoji in the badge but a
+  // generic family icon on the events page.
+  it("EVENT_TYPE_MARKS covers exactly the registry types", () => {
+    expect(Object.keys(EVENT_TYPE_MARKS).sort()).toEqual(
+      Object.keys(EVENT_TYPE_REGISTRY).sort(),
+    );
   });
 });
 

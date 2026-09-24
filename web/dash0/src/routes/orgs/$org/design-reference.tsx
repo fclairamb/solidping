@@ -53,6 +53,7 @@ import { toast } from "sonner";
 
 import {
   EventTypeBadge,
+  EventTypeLabel,
   getEventTone,
 } from "@/components/dashboard/event-display";
 import {
@@ -5033,6 +5034,18 @@ const EVENT_BADGE_SAMPLES: { type: string; label: string }[] = [
   { type: "something.unmapped", label: "Unmapped" },
 ];
 
+// EVENT_LABEL_SAMPLES mixes loud, colored and quiet rows so the catalog shows
+// what EventTypeLabel is for: routine rows recede, incidents stand out.
+const EVENT_LABEL_SAMPLES: { type: string; label: string }[] = [
+  { type: "incident.escalated", label: "Incident Escalated" },
+  { type: "incident.created", label: "Incident Created" },
+  { type: "incident.resolved", label: "Incident Resolved" },
+  { type: "incident.acknowledged", label: "Incident Acknowledged" },
+  { type: "auth.login_succeeded", label: "Sign-in Succeeded" },
+  { type: "auth.token_misuse", label: "Token Misuse" },
+  { type: "check.updated", label: "Check Updated" },
+];
+
 // designReferenceEventT is a stand-in for the real `t` from
 // useTranslation("events") — this page is a static catalog, not localized —
 // resolving `types.<eventType>` from the sample labels above and otherwise
@@ -5120,6 +5133,33 @@ function EventToneSection() {
             </div>
           }
           importLine={`import { EventTypeBadge } from "@/components/dashboard/event-display";\n\n<EventTypeBadge eventType={row.eventType} t={t} />`}
+        />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Event label for dense logs (icon + text, no pill)
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          <code>EventTypeLabel</code> is used on the events page, where a column
+          of pills is too loud. Only incident and security events get a colored
+          icon; routine events (sign-in, config changes) are muted.{" "}
+          The few that need action (escalations, token misuse) get a bold
+          label. In a table, <code>getEventRowStripe</code> adds a stripe on
+          the row's leading edge: red for those, green for recoveries.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-col gap-2">
+              {EVENT_LABEL_SAMPLES.map((sample) => (
+                <EventTypeLabel
+                  key={sample.type}
+                  eventType={sample.type}
+                  t={designReferenceEventT}
+                />
+              ))}
+            </div>
+          }
+          importLine={`import { EventTypeLabel, getEventRowStripe } from "@/components/dashboard/event-display";\n\n<TableCell className={cn(getEventRowStripe(row.eventType))}>…</TableCell>\n<TableCell>\n  <EventTypeLabel eventType={row.eventType} t={t} />\n</TableCell>`}
         />
       </div>
     </Section>

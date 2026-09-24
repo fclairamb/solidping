@@ -3,7 +3,11 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useAuditEvents, useMembers, type Event } from "@/api/hooks";
-import { EventTypeBadge } from "@/components/dashboard/event-display";
+import {
+  EventTypeLabel,
+  getEventRowStripe,
+} from "@/components/dashboard/event-display";
+import { cn } from "@/lib/utils";
 import { DocsLink } from "@/components/shared/docs-link";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { useAuth } from "@/contexts/AuthContext";
@@ -159,6 +163,10 @@ function actorLabel(event: Event, systemLabel: string): string {
   if (event.actorEmail) return event.actorEmail;
   if (event.actorUid) return event.actorUid;
   return systemLabel;
+}
+
+function hasNamedActor(event: Event): boolean {
+  return Boolean(event.actorName || event.actorEmail || event.actorUid);
 }
 
 /** targetLabel pulls the human-readable target out of the redacted payload the
@@ -430,10 +438,14 @@ function AuditPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="whitespace-nowrap">
+                  <TableHead className="w-px whitespace-nowrap">
                     {t("events:audit.columns.time")}
                   </TableHead>
-                  <TableHead className="whitespace-nowrap">
+                  {/* w-px: the event label never wraps, so the column takes
+                      exactly its width and the rest goes to actor/target.
+                      Those truncate, but not below min-w-40: on a phone the
+                      table scrolls sideways rather than showing "ad…". */}
+                  <TableHead className="w-px whitespace-nowrap">
                     {t("events:audit.columns.event")}
                   </TableHead>
                   <TableHead className="whitespace-nowrap">
@@ -463,7 +475,10 @@ function AuditPage() {
                   events.map((event) => (
                     <TableRow key={event.uid} data-testid="audit-row">
                       <TableCell
-                        className="whitespace-nowrap text-sm text-muted-foreground"
+                        className={cn(
+                          "whitespace-nowrap text-sm text-muted-foreground",
+                          getEventRowStripe(event.eventType),
+                        )}
                         title={event.createdAt}
                       >
                         {event.createdAt ? (
@@ -473,24 +488,29 @@ function AuditPage() {
                         )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">
-                        <EventTypeBadge eventType={event.eventType} t={t} />
+                        <EventTypeLabel eventType={event.eventType} t={t} />
                       </TableCell>
-                      <TableCell className="max-w-0">
+                      <TableCell className="min-w-40 max-w-0">
                         <div
                           className="truncate text-sm"
                           title={actorLabel(event, t("events:audit.system"))}
                         >
                           {actorLabel(event, t("events:audit.system"))}
                         </div>
-                        {event.actorType && event.actorType !== "user" && (
-                          <div className="text-xs text-muted-foreground">
-                            {t(`events:actorTypes.${event.actorType}`, {
-                              defaultValue: event.actorType,
-                            })}
-                          </div>
-                        )}
+                        {/* The type says WHAT the named actor is (an API
+                            token, a service). With no name, the line above
+                            already fell back to "System", so skip it. */}
+                        {event.actorType &&
+                          event.actorType !== "user" &&
+                          hasNamedActor(event) && (
+                            <div className="text-xs text-muted-foreground">
+                              {t(`events:actorTypes.${event.actorType}`, {
+                                defaultValue: event.actorType,
+                              })}
+                            </div>
+                          )}
                       </TableCell>
-                      <TableCell className="max-w-0">
+                      <TableCell className="min-w-40 max-w-0">
                         <div
                           className="truncate text-sm"
                           title={targetLabel(event)}

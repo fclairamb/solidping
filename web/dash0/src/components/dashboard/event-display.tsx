@@ -1,5 +1,30 @@
 import type { ReactNode } from "react";
-import { Calendar, Cpu, Rocket, Settings, Users } from "lucide-react";
+import {
+  AlarmClockOff,
+  BellOff,
+  Calendar,
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  Cpu,
+  Globe,
+  KeyRound,
+  LogIn,
+  LogOut,
+  type LucideIcon,
+  Megaphone,
+  MessageSquare,
+  Pencil,
+  Rocket,
+  RotateCcw,
+  Settings,
+  ShieldAlert,
+  ShieldX,
+  TrendingUp,
+  Undo2,
+  UserCheck,
+  Users,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -270,6 +295,121 @@ export function EventTypeBadge({
         ))}
       <span>{getEventLabel(eventType, t)}</span>
     </Badge>
+  );
+}
+
+// Icon colors for EventTypeLabel. Unlike the badge tones above, most events
+// get NO color here: a routine sign-in or config change is muted, so the few
+// rows that are colored (incidents, security failures) stand out in a log.
+const MARK_DANGER = "text-destructive";
+const MARK_SUCCESS = "text-emerald-600 dark:text-emerald-400";
+const MARK_WARNING = "text-amber-600 dark:text-amber-400";
+const MARK_QUIET = "text-muted-foreground";
+
+type EventMark = {
+  icon: LucideIcon;
+  tone: string;
+  // loud events get a bold label and, in log tables, a red row stripe.
+  loud?: boolean;
+};
+
+// EVENT_TYPE_MARKS is the dash0-only icon identity used by EventTypeLabel.
+// It sits beside EVENT_TYPE_REGISTRY rather than replacing its emoji, which
+// stay the binding identity shared with the Slack/Teams/Telegram messages.
+export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
+  "incident.created": { icon: CircleAlert, tone: MARK_DANGER },
+  "incident.reopened": { icon: RotateCcw, tone: MARK_DANGER },
+  "incident.escalated": { icon: TrendingUp, tone: MARK_DANGER, loud: true },
+  "incident.escalation_failed": { icon: CircleX, tone: MARK_DANGER, loud: true },
+  "incident.resolved": { icon: CircleCheck, tone: MARK_SUCCESS },
+  "incident.acknowledged": { icon: UserCheck, tone: MARK_WARNING },
+  "incident.unacknowledged": { icon: Undo2, tone: MARK_WARNING },
+  "incident.snoozed": { icon: AlarmClockOff, tone: MARK_QUIET },
+  "incident.comment": { icon: MessageSquare, tone: MARK_QUIET },
+  "statuspage.incident.published": { icon: Megaphone, tone: MARK_DANGER },
+  "statuspage.incident.updated": { icon: Pencil, tone: MARK_QUIET },
+  "statuspage.incident.resolved": { icon: CircleCheck, tone: MARK_SUCCESS },
+  "statuspage.subscriber.disabled": { icon: BellOff, tone: MARK_DANGER },
+  "statuspage.custom_domain.demoted": { icon: Globe, tone: MARK_DANGER },
+  "auth.login_succeeded": { icon: LogIn, tone: MARK_QUIET },
+  "auth.login_failed": { icon: ShieldX, tone: MARK_DANGER },
+  "auth.logout": { icon: LogOut, tone: MARK_QUIET },
+  "auth.token_created": { icon: KeyRound, tone: MARK_QUIET },
+  "auth.token_revoked": { icon: KeyRound, tone: MARK_QUIET },
+  "auth.token_misuse": { icon: ShieldAlert, tone: MARK_DANGER, loud: true },
+};
+
+export function getEventMark(eventType?: string): EventMark {
+  if (!eventType) return { icon: Calendar, tone: MARK_QUIET };
+
+  const registered = EVENT_TYPE_MARKS[eventType];
+  if (registered) return registered;
+
+  if (eventType.startsWith("incident.")) {
+    return { icon: CircleAlert, tone: MARK_WARNING };
+  }
+  if (eventType.startsWith("check.")) return { icon: Cpu, tone: MARK_QUIET };
+  if (eventType.startsWith("org.activation.")) {
+    return { icon: Rocket, tone: MARK_QUIET };
+  }
+  if (eventType.startsWith("member.")) return { icon: Users, tone: MARK_QUIET };
+  if (isConfigEvent(eventType)) return { icon: Settings, tone: MARK_QUIET };
+  return { icon: Calendar, tone: MARK_QUIET };
+}
+
+export function isLoudEvent(eventType?: string): boolean {
+  return getEventMark(eventType).loud === true;
+}
+
+// getEventRowStripe returns the class for a 3px stripe on the leading edge of
+// a log row, or "" for none. Red for loud events (they need action), green
+// for events whose icon is green (a recovery), so both ends of an incident
+// can be found by scanning the edge of the table. Put it on the row's FIRST
+// cell: an inset shadow on a <tr> is not painted by every browser.
+export function getEventRowStripe(eventType?: string): string {
+  const { tone, loud } = getEventMark(eventType);
+  if (loud) return "shadow-[inset_3px_0_0_var(--color-destructive)]";
+  if (tone === MARK_SUCCESS) {
+    return "shadow-[inset_3px_0_0_var(--color-emerald-500)]";
+  }
+  return "";
+}
+
+// EventTypeLabel is the low-key sibling of EventTypeBadge, for dense logs
+// (the events page): an icon and plain text, no pill. Only incident and
+// security events carry color, so a column of routine rows stays quiet and
+// the rows that matter are the ones that stand out. The label is always
+// rendered, so color is never the only signal.
+export function EventTypeLabel({
+  eventType,
+  t,
+  className,
+}: {
+  eventType?: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  className?: string;
+}) {
+  const { icon: Icon, tone, loud } = getEventMark(eventType);
+  const quiet = tone === MARK_QUIET;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-2 whitespace-nowrap text-sm",
+        className,
+      )}
+      title={eventType}
+    >
+      <Icon className={cn("size-4 shrink-0", tone)} aria-hidden="true" />
+      <span
+        className={cn(
+          quiet ? "text-muted-foreground" : "text-foreground",
+          loud && "font-semibold",
+        )}
+      >
+        {getEventLabel(eventType, t)}
+      </span>
+    </span>
   );
 }
 
