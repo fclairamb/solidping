@@ -142,3 +142,36 @@ func TestCreateCheckDef_RegionsDoesNotClaimAllOrgRegions(t *testing.T) {
 	r.True(ok)
 	r.NotContains(desc, "all org regions")
 }
+
+// TestCheckDefsExposePlacement: create_check and update_check expose the
+// placement fields (spec 2026-09-25-06), and the regions wording explains that
+// an explicit list pins while an omitted one is placed automatically.
+func TestCheckDefsExposePlacement(t *testing.T) {
+	t.Parallel()
+
+	for name, def := range map[string]ToolDefinition{"create": createCheckDef(), "update": updateCheckDef()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			schema, ok := def.InputSchema.(map[string]any)
+			r.True(ok)
+			props, ok := schema["properties"].(map[string]any)
+			r.True(ok)
+
+			for _, key := range []string{"placement", "regionCount", "regionPool"} {
+				prop, found := props[key].(map[string]any)
+				r.Truef(found, "%s exposes %s", name, key)
+				desc, _ := prop[schemaKeyDescription].(string)
+				r.NotEmpty(desc)
+			}
+
+			regionsProp, ok := props["regions"].(map[string]any)
+			r.True(ok)
+			desc, _ := regionsProp[schemaKeyDescription].(string)
+			r.Contains(strings.ToLower(desc), "pinned")
+			r.Contains(strings.ToLower(desc), "automatic")
+			r.Contains(strings.ToLower(desc), "default")
+		})
+	}
+}

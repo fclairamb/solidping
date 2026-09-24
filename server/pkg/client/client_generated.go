@@ -279,6 +279,24 @@ func (e CheckLastStatusChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for CheckPlacement.
+const (
+	CheckPlacementAuto   CheckPlacement = "auto"
+	CheckPlacementPinned CheckPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CheckPlacement enum.
+func (e CheckPlacement) Valid() bool {
+	switch e {
+	case CheckPlacementAuto:
+		return true
+	case CheckPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckStatus.
 const (
 	CheckStatusCreated    CheckStatus = "created"
@@ -567,6 +585,24 @@ func (e CheckListItemLastStatusChangeStatus) Valid() bool {
 	}
 }
 
+// Defines values for CheckListItemPlacement.
+const (
+	CheckListItemPlacementAuto   CheckListItemPlacement = "auto"
+	CheckListItemPlacementPinned CheckListItemPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CheckListItemPlacement enum.
+func (e CheckListItemPlacement) Valid() bool {
+	switch e {
+	case CheckListItemPlacementAuto:
+		return true
+	case CheckListItemPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckListItemStatus.
 const (
 	CheckListItemStatusCreated    CheckListItemStatus = "created"
@@ -756,6 +792,24 @@ func (e CheckListItemType) Valid() bool {
 	case CheckListItemTypeUdp:
 		return true
 	case CheckListItemTypeWebsocket:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateCheckRequestPlacement.
+const (
+	CreateCheckRequestPlacementAuto   CreateCheckRequestPlacement = "auto"
+	CreateCheckRequestPlacementPinned CreateCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the CreateCheckRequestPlacement enum.
+func (e CreateCheckRequestPlacement) Valid() bool {
+	switch e {
+	case CreateCheckRequestPlacementAuto:
+		return true
+	case CreateCheckRequestPlacementPinned:
 		return true
 	default:
 		return false
@@ -2631,6 +2685,24 @@ func (e SupportThreadStatus) Valid() bool {
 	}
 }
 
+// Defines values for UpdateCheckRequestPlacement.
+const (
+	UpdateCheckRequestPlacementAuto   UpdateCheckRequestPlacement = "auto"
+	UpdateCheckRequestPlacementPinned UpdateCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the UpdateCheckRequestPlacement enum.
+func (e UpdateCheckRequestPlacement) Valid() bool {
+	switch e {
+	case UpdateCheckRequestPlacementAuto:
+		return true
+	case UpdateCheckRequestPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UpdateCheckRequestTracerouteOnFailure.
 const (
 	UpdateCheckRequestTracerouteOnFailureInherit UpdateCheckRequestTracerouteOnFailure = "inherit"
@@ -2793,6 +2865,24 @@ func (e UpdateSupportThreadRequestStatus) Valid() bool {
 	case UpdateSupportThreadRequestStatusOpen:
 		return true
 	case UpdateSupportThreadRequestStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpsertCheckRequestPlacement.
+const (
+	UpsertCheckRequestPlacementAuto   UpsertCheckRequestPlacement = "auto"
+	UpsertCheckRequestPlacementPinned UpsertCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the UpsertCheckRequestPlacement enum.
+func (e UpsertCheckRequestPlacement) Valid() bool {
+	switch e {
+	case UpsertCheckRequestPlacementAuto:
+		return true
+	case UpsertCheckRequestPlacementPinned:
 		return true
 	default:
 		return false
@@ -2982,6 +3072,24 @@ func (e UserSummaryRole) Valid() bool {
 	}
 }
 
+// Defines values for ValidateCheckRequestPlacement.
+const (
+	ValidateCheckRequestPlacementAuto   ValidateCheckRequestPlacement = "auto"
+	ValidateCheckRequestPlacementPinned ValidateCheckRequestPlacement = "pinned"
+)
+
+// Valid indicates whether the value is a known member of the ValidateCheckRequestPlacement enum.
+func (e ValidateCheckRequestPlacement) Valid() bool {
+	switch e {
+	case ValidateCheckRequestPlacementAuto:
+		return true
+	case ValidateCheckRequestPlacementPinned:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ValidateDocumentResponsePlanPlanAction.
 const (
 	ValidateDocumentResponsePlanPlanActionCreate    ValidateDocumentResponsePlanPlanAction = "create"
@@ -3120,6 +3228,36 @@ func (e ListChecksParamsSort) Valid() bool {
 	case ListChecksParamsSortGroup:
 		return true
 	case ListChecksParamsSortTargetHost:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason.
+const (
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonAlreadyAuto   SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "already_auto"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNoRegion      SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "no_region"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNotFound      SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "not_found"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPassive       SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "passive"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPrivateRegion SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "private_region"
+	SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonReadOnly      SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason = "read_only"
+)
+
+// Valid indicates whether the value is a known member of the SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason enum.
+func (e SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason) Valid() bool {
+	switch e {
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonAlreadyAuto:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNoRegion:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonNotFound:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPassive:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonPrivateRegion:
+		return true
+	case SwitchChecksToAutoPlacement200JSONResponseBodySkippedReasonReadOnly:
 		return true
 	default:
 		return false
@@ -3852,11 +3990,23 @@ type Check struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// Placement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+	Placement *CheckPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement only — how many regions run the check. Null for a pinned check.
+	RegionCount *int `json:"regionCount,omitempty"`
+
 	// RegionFreshness Newest real result per region (only with with=region_freshness). Lists every region that produced one inside the raw retention plus every configured region that did not.
 	RegionFreshness *[]RegionFreshness `json:"regionFreshness,omitempty"`
 
+	// RegionPool Automatic placement only — the cloud region slugs the scheduler may choose from. Absent or empty: any cloud region.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
@@ -3889,6 +4039,9 @@ type Check struct {
 
 // CheckLastStatusChangeStatus The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 type CheckLastStatusChangeStatus string
+
+// CheckPlacement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+type CheckPlacement string
 
 // CheckStatus The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
 type CheckStatus string
@@ -4116,11 +4269,23 @@ type CheckListItem struct {
 	// Period Interval duration (e.g., "00:01:00" for 1 minute)
 	Period *string `json:"period,omitempty"`
 
+	// Placement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+	Placement *CheckListItemPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement only — how many regions run the check. Null for a pinned check.
+	RegionCount *int `json:"regionCount,omitempty"`
+
 	// RegionFreshness Newest real result per region (only with with=region_freshness). Lists every region that produced one inside the raw retention plus every configured region that did not.
 	RegionFreshness *[]RegionFreshness `json:"regionFreshness,omitempty"`
 
+	// RegionPool Automatic placement only — the cloud region slugs the scheduler may choose from. Absent or empty: any cloud region.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Every selected region runs the check at the full period; this staggers their phases. Null uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions Region slugs the check runs from. For a pinned check, the user's explicit list (never moved). For an automatically placed check, the CURRENT placement, chosen by the scheduler and rewritten when one of its regions goes dark (spec 2026-09-25-06). A private location is `@<slug>`.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// Scheduling Read-only scheduling telemetry, derived from the check's per-region scheduler jobs (max across regions). Present only on the check DETAIL response (GET by uid/slug) — never on list responses — and omitted until the check's first run produces a cost signal.
 	Scheduling *CheckScheduling `json:"scheduling,omitempty"`
@@ -4153,6 +4318,9 @@ type CheckListItem struct {
 
 // CheckListItemLastStatusChangeStatus The status that the check transitioned to. STALE means "no data": no real result for max(3 × period, 5 min).
 type CheckListItemLastStatusChangeStatus string
+
+// CheckListItemPlacement Placement intent. `pinned`: `regions` is an explicit list and never moves — if its region goes dark the check goes `stale`. `auto`: the scheduler places the check on `regionCount` healthy regions (candidates: the org default regions, then the system default regions, then every other declared region, filtered by `regionPool` and the regions' capabilities) and moves it off a region that goes dark. Private locations are pinned-only.
+type CheckListItemPlacement string
 
 // CheckListItemStatus The derived check status, which respects the confirmation and recovery periods: "validating" is a failure seen but not yet confirmed, "warning" is up with something to report, and "stale" ("No data") means the newest real result, across every region, is older than max(3 × period, 5 min) — the check has stopped being measured, whatever the cause. Stale is neither up nor down: it never opens, resolves or notifies an incident.
 type CheckListItemStatus string
@@ -4398,8 +4566,20 @@ type CreateCheckRequest struct {
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
 
+	// Placement `pinned` or `auto`. Omitted: an explicit `regions` list means pinned; otherwise the check is placed automatically (unless the organization's own `default_regions` names a private location, which keeps the pinned default). `auto` with a non-empty `regions` is rejected.
+	Placement *CreateCheckRequestPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement: how many regions run the check. Default 2, capped by the number of eligible regions and by the organization's checks-per-minute limit — the response carries a `PLACEMENT_REGION_COUNT_REDUCED` warning when it was reduced. Implies `auto`.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionPool Automatic placement: restrict the candidates to these cloud region slugs (empty = any). Private (`@`) regions are refused. Implies `auto`.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). Null (or omitted) uses the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions Explicit region slugs. A non-empty list pins the check to exactly these regions (placement `pinned`), as before. Omit to let the check be placed automatically.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point.
 	SlowThresholdMs *int `json:"slowThresholdMs,omitempty"`
@@ -4413,6 +4593,9 @@ type CreateCheckRequest struct {
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *CreateCheckRequestType `json:"type,omitempty"`
 }
+
+// CreateCheckRequestPlacement `pinned` or `auto`. Omitted: an explicit `regions` list means pinned; otherwise the check is placed automatically (unless the organization's own `default_regions` names a private location, which keeps the pinned default). `auto` with a non-empty `regions` is rejected.
+type CreateCheckRequestPlacement string
 
 // CreateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 type CreateCheckRequestTracerouteOnFailure string
@@ -4946,7 +5129,7 @@ type DnsRecord struct {
 //
 // Example: {"code":"REGION_FORMAT","field":"regions","message":"region \"Paris!\" must be a slug or \"@private-location\"","slug":"api"}
 type DocumentIssue struct {
-	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
+	// Code Stable machine code. The closed set is `UNSUPPORTED_VERSION`, `MISSING_ORGANIZATION`, `INVALID_SECRETS_MARKER`, `EMPTY_CHECKS`, `MISSING_FIELD`, `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`, `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`, `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`, `REGION_FORMAT`, `INVALID_PLACEMENT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`, `UNRESOLVED_SECRET_REF`. Everything but the last is decidable offline, which is what `sp checks validate <file>` runs with no token and no network; `UNRESOLVED_SECRET_REF` needs the organization's own parameters and so is reported only here.
 	Code string `json:"code"`
 
 	// Field The offending property, in the document's own spelling — `regions`, `period`, `config.url`, `labels.tier`, `dependsOn`.
@@ -7648,8 +7831,20 @@ type UpdateCheckRequest struct {
 	Name                  *string `json:"name,omitempty"`
 	Period                *string `json:"period,omitempty"`
 
+	// Placement Switch the placement intent. `pinned` without `regions` freezes the current placement; `auto` without `regionCount` keeps the current region count (same cost) and keeps every current region that is still eligible and healthy.
+	Placement *UpdateCheckRequestPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement: how many regions run the check (capped as on create). Implies `auto`.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionPool Automatic placement: candidate cloud region slugs; an empty array means any. Implies `auto`.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
 	// RegionSpread Optional inter-region scheduling offset (e.g., "00:00:20"). An empty string clears it back to the default of period ÷ region count. Must satisfy 0 <= regionSpread < period.
 	RegionSpread *string `json:"regionSpread,omitempty"`
+
+	// Regions A non-empty list pins the check to exactly these regions. An empty list puts the check back on the default placement (automatic, unless the organization's `default_regions` names a private location). Omit to leave the placement alone.
+	Regions *[]string `json:"regions,omitempty"`
 
 	// SlowThresholdMs Response time above which a successful probe counts as slow, in milliseconds. 0 = the slow rule is off. There is no auto-baselining; around 2x the observed p95 is the usual starting point. Omit to leave unchanged.
 	SlowThresholdMs *int    `json:"slowThresholdMs,omitempty"`
@@ -7658,6 +7853,9 @@ type UpdateCheckRequest struct {
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 	TracerouteOnFailure *UpdateCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 }
+
+// UpdateCheckRequestPlacement Switch the placement intent. `pinned` without `regions` freezes the current placement; `auto` without `regionCount` keeps the current region count (same cost) and keeps every current region that is still eligible and healthy.
+type UpdateCheckRequestPlacement string
 
 // UpdateCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). `inherit` puts the check back under the organization default. Omit to leave unchanged.
 type UpdateCheckRequestTracerouteOnFailure string
@@ -7915,12 +8113,27 @@ type UpsertCheckRequest struct {
 	Name   *string `json:"name,omitempty"`
 	Period *string `json:"period,omitempty"`
 
+	// Placement Declarative placement. `auto` with no `regions` switches an existing pinned check to automatic placement (an empty `regions` is meaningful here); `pinned` without `regions` freezes the current placement.
+	Placement *UpsertCheckRequestPlacement `json:"placement,omitempty"`
+
+	// RegionCount Automatic placement: how many regions run the check. Omitted with `placement: auto`: the check's current count.
+	RegionCount *int `json:"regionCount,omitempty"`
+
+	// RegionPool Automatic placement: candidate cloud region slugs. Declarative — omitted with `placement: auto` means any cloud region.
+	RegionPool *[]string `json:"regionPool,omitempty"`
+
+	// Regions A non-empty list pins the check to exactly these regions. Omit (or leave empty) to leave an existing check's placement alone, unless `placement` says otherwise.
+	Regions *[]string `json:"regions,omitempty"`
+
 	// TracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 	TracerouteOnFailure *UpsertCheckRequestTracerouteOnFailure `json:"tracerouteOnFailure,omitempty"`
 
 	// Type Check type (auto-inferred from URL if not provided)
 	Type *UpsertCheckRequestType `json:"type,omitempty"`
 }
+
+// UpsertCheckRequestPlacement Declarative placement. `auto` with no `regions` switches an existing pinned check to automatic placement (an empty `regions` is meaningful here); `pinned` without `regions` freezes the current placement.
+type UpsertCheckRequestPlacement string
 
 // UpsertCheckRequestTracerouteOnFailure Per-check path-trace policy (see the Check schema). Sent explicitly by import/apply so a manifest that says `inherit` moves a check back off an explicit override rather than leaving it.
 type UpsertCheckRequestTracerouteOnFailure string
@@ -7957,6 +8170,11 @@ type ValidateCheckRequest struct {
 	// Period Proposed execution interval (`HH:MM:SS` or a Go duration). Optional; when absent, neither the per-type period bounds nor the checks-per-minute projection are evaluated.
 	Period *string `json:"period,omitempty"`
 
+	// Placement Proposed placement intent, validated by the same rules as create. The response's warnings carry `PLACEMENT_REGION_COUNT_REDUCED` when the automatic placement would run from fewer regions than asked.
+	Placement   *ValidateCheckRequestPlacement `json:"placement,omitempty"`
+	RegionCount *int                           `json:"regionCount,omitempty"`
+	RegionPool  *[]string                      `json:"regionPool,omitempty"`
+
 	// Regions Proposed region set. Needed by the tunnel region rules, the region-capability hints and the checks-per-minute projection — a check executes once per region per period.
 	Regions *[]string `json:"regions,omitempty"`
 
@@ -7966,6 +8184,9 @@ type ValidateCheckRequest struct {
 	// Type Check type (http, tcp, ping, dns, ssl, ...)
 	Type string `json:"type"`
 }
+
+// ValidateCheckRequestPlacement Proposed placement intent, validated by the same rules as create. The response's warnings carry `PLACEMENT_REGION_COUNT_REDUCED` when the automatic placement would run from fewer regions than asked.
+type ValidateCheckRequestPlacement string
 
 // ValidateCheckResponse The result of a dry run. Every finding it can compute is reported, not just the first, and each entry carries a `severity` and a machine `code`. The two arrays are the severity split: `fields` blocks, `warnings` advises.
 type ValidateCheckResponse struct {
@@ -8315,6 +8536,18 @@ type ListChecksParamsWouldHaveFired string
 
 // ListChecksParamsSort defines parameters for ListChecks.
 type ListChecksParamsSort string
+
+// SwitchChecksToAutoPlacementJSONBody defines parameters for SwitchChecksToAutoPlacement.
+type SwitchChecksToAutoPlacementJSONBody struct {
+	// CheckUids Limit the switch to these checks. Omit for every eligible check.
+	CheckUids *[]string `json:"checkUids,omitempty"`
+
+	// DryRun Report what would be switched without writing anything.
+	DryRun *bool `json:"dryRun,omitempty"`
+}
+
+// SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason defines parameters for SwitchChecksToAutoPlacement.
+type SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason string
 
 // ValidateCheckJSONBody defines parameters for ValidateCheck.
 type ValidateCheckJSONBody struct {
@@ -8953,6 +9186,9 @@ type UpdateCheckGroupJSONRequestBody = UpdateCheckGroupRequest
 
 // CreateCheckJSONRequestBody defines body for CreateCheck for application/json ContentType.
 type CreateCheckJSONRequestBody = CreateCheckRequest
+
+// SwitchChecksToAutoPlacementJSONRequestBody defines body for SwitchChecksToAutoPlacement for application/json ContentType.
+type SwitchChecksToAutoPlacementJSONRequestBody SwitchChecksToAutoPlacementJSONBody
 
 // ValidateCheckJSONRequestBody defines body for ValidateCheck for application/json ContentType.
 type ValidateCheckJSONRequestBody ValidateCheckJSONBody
@@ -9924,6 +10160,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 	CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacementWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SwitchChecksToAutoPlacement Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetCheckStats Aggregate check counters for an organization
 	//
@@ -13405,6 +13659,44 @@ func (c *Client) CreateCheckWithBody(ctx context.Context, org OrgPath, contentTy
 // Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 func (c *Client) CreateCheck(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateCheckRequest(c.Server, org, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SwitchChecksToAutoPlacementWithBody Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *Client) SwitchChecksToAutoPlacementWithBody(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSwitchChecksToAutoPlacementRequestWithBody(c.Server, org, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SwitchChecksToAutoPlacement Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *Client) SwitchChecksToAutoPlacement(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSwitchChecksToAutoPlacementRequest(c.Server, org, body)
 	if err != nil {
 		return nil, err
 	}
@@ -20845,6 +21137,53 @@ func NewCreateCheckRequestWithBody(server string, org OrgPath, contentType strin
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSwitchChecksToAutoPlacementRequest calls the generic SwitchChecksToAutoPlacement builder with application/json body
+func NewSwitchChecksToAutoPlacementRequest(server string, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSwitchChecksToAutoPlacementRequestWithBody(server, org, "application/json", bodyReader)
+}
+
+// NewSwitchChecksToAutoPlacementRequestWithBody constructs an http.Request for the SwitchChecksToAutoPlacement method, with any body, and a specified content type
+func NewSwitchChecksToAutoPlacementRequestWithBody(server string, org OrgPath, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "org", org, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/orgs/%s/checks/auto-placement", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -33236,6 +33575,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/orgs/{org}/checks (the `CreateCheck` operationId).
 	CreateCheckWithResponse(ctx context.Context, org OrgPath, body CreateCheckJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCheckResult, error)
 
+	// SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacementWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error)
+
+	// SwitchChecksToAutoPlacementWithResponse Switch pinned checks to automatic placement
+	//
+	// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+	SwitchChecksToAutoPlacementWithResponse(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error)
+
 	// GetCheckStatsWithResponse Aggregate check counters for an organization
 	//
 	// Org-wide check counters computed server-side with a single SQL aggregation, so they are unaffected by the list endpoint's 100-row page clamp. Scope is the same set the list endpoint shows by default: non-deleted, non-internal checks. `total`, `byStatus`, `down` and `hardDown` span enabled and disabled checks alike; `enabled` and `disabled` partition the same set.
@@ -38540,6 +38897,86 @@ func (r CreateCheckResult) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateCheckResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SwitchChecksToAutoPlacementResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Data *[]struct {
+			Name        *string   `json:"name,omitempty"`
+			RegionCount *int      `json:"regionCount,omitempty"`
+			Regions     *[]string `json:"regions,omitempty"`
+			Slug        *string   `json:"slug,omitempty"`
+			Uid         *string   `json:"uid,omitempty"`
+		} `json:"data,omitempty"`
+		DryRun *bool `json:"dryRun,omitempty"`
+
+		// Skipped Named checks left pinned, with the reason.
+		Skipped *[]struct {
+			Reason *SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason `json:"reason,omitempty"`
+			Slug   *string                                                      `json:"slug,omitempty"`
+			Uid    *string                                                      `json:"uid,omitempty"`
+		} `json:"skipped,omitempty"`
+	}
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *NotFound
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SwitchChecksToAutoPlacementResult) GetJSON200() *struct {
+	Data *[]struct {
+		Name        *string   `json:"name,omitempty"`
+		RegionCount *int      `json:"regionCount,omitempty"`
+		Regions     *[]string `json:"regions,omitempty"`
+		Slug        *string   `json:"slug,omitempty"`
+		Uid         *string   `json:"uid,omitempty"`
+	} `json:"data,omitempty"`
+	DryRun *bool `json:"dryRun,omitempty"`
+
+	// Skipped Named checks left pinned, with the reason.
+	Skipped *[]struct {
+		Reason *SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason `json:"reason,omitempty"`
+		Slug   *string                                                      `json:"slug,omitempty"`
+		Uid    *string                                                      `json:"uid,omitempty"`
+	} `json:"skipped,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r SwitchChecksToAutoPlacementResult) GetJSON404() *NotFound {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r SwitchChecksToAutoPlacementResult) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SwitchChecksToAutoPlacementResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SwitchChecksToAutoPlacementResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SwitchChecksToAutoPlacementResult) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -52369,6 +52806,36 @@ func (c *ClientWithResponses) CreateCheckWithResponse(ctx context.Context, org O
 	return ParseCreateCheckResult(rsp)
 }
 
+// SwitchChecksToAutoPlacementWithBodyWithResponse Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithBodyWithResponse(ctx context.Context, org OrgPath, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error) {
+	rsp, err := c.SwitchChecksToAutoPlacementWithBody(ctx, org, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSwitchChecksToAutoPlacementResult(rsp)
+}
+
+// SwitchChecksToAutoPlacementWithResponse Switch pinned checks to automatic placement
+//
+// The checks list's bulk action (spec 2026-09-25-06). Each eligible check becomes `placement: auto` with `regionCount` = its current region count and an empty pool; its regions and jobs are untouched, so neither its cost nor where it runs today changes — it only gains failover when one of its regions goes dark. Passive checks and checks naming a private (`@`) region are skipped. With no `checkUids`, every eligible pinned, non-internal check of the organization is switched.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/orgs/{org}/checks/auto-placement (the `SwitchChecksToAutoPlacement` operationId).
+func (c *ClientWithResponses) SwitchChecksToAutoPlacementWithResponse(ctx context.Context, org OrgPath, body SwitchChecksToAutoPlacementJSONRequestBody, reqEditors ...RequestEditorFn) (*SwitchChecksToAutoPlacementResult, error) {
+	rsp, err := c.SwitchChecksToAutoPlacement(ctx, org, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSwitchChecksToAutoPlacementResult(rsp)
+}
+
 // GetCheckStatsWithResponse Aggregate check counters for an organization
 //
 // Org-wide check counters computed server-side with a single SQL aggregation, so they are unaffected by the list endpoint's 100-row page clamp. Scope is the same set the list endpoint shows by default: non-deleted, non-internal checks. `total`, `byStatus`, `down` and `hardDown` span enabled and disabled checks alike; `enabled` and `disabled` partition the same set.
@@ -58614,6 +59081,55 @@ func ParseCreateCheckResult(rsp *http.Response) (*CreateCheckResult, error) {
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSwitchChecksToAutoPlacementResult parses an HTTP response from a SwitchChecksToAutoPlacementWithResponse call
+func ParseSwitchChecksToAutoPlacementResult(rsp *http.Response) (*SwitchChecksToAutoPlacementResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SwitchChecksToAutoPlacementResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Data *[]struct {
+				Name        *string   `json:"name,omitempty"`
+				RegionCount *int      `json:"regionCount,omitempty"`
+				Regions     *[]string `json:"regions,omitempty"`
+				Slug        *string   `json:"slug,omitempty"`
+				Uid         *string   `json:"uid,omitempty"`
+			} `json:"data,omitempty"`
+			DryRun *bool `json:"dryRun,omitempty"`
+
+			// Skipped Named checks left pinned, with the reason.
+			Skipped *[]struct {
+				Reason *SwitchChecksToAutoPlacement200JSONResponseBodySkippedReason `json:"reason,omitempty"`
+				Slug   *string                                                      `json:"slug,omitempty"`
+				Uid    *string                                                      `json:"uid,omitempty"`
+			} `json:"skipped,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 

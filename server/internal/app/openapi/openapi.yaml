@@ -1714,6 +1714,81 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/auto-placement:
+    post:
+      tags: [Checks]
+      summary: Switch pinned checks to automatic placement
+      description: >-
+        The checks list's bulk action (spec 2026-09-25-06). Each eligible
+        check becomes `placement: auto` with `regionCount` = its current
+        region count and an empty pool; its regions and jobs are untouched, so
+        neither its cost nor where it runs today changes — it only gains
+        failover when one of its regions goes dark. Passive checks and checks
+        naming a private (`@`) region are skipped. With no `checkUids`, every
+        eligible pinned, non-internal check of the organization is switched.
+      operationId: switchChecksToAutoPlacement
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                checkUids:
+                  type: array
+                  description: Limit the switch to these checks. Omit for every eligible check.
+                  items:
+                    type: string
+                dryRun:
+                  type: boolean
+                  description: Report what would be switched without writing anything.
+      responses:
+        "200":
+          description: The checks switched (or that would be, with dryRun)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dryRun:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        uid:
+                          type: string
+                        slug:
+                          type: string
+                        name:
+                          type: string
+                        regions:
+                          type: array
+                          items:
+                            type: string
+                        regionCount:
+                          type: integer
+                  skipped:
+                    type: array
+                    description: Named checks left pinned, with the reason.
+                    items:
+                      type: object
+                      properties:
+                        uid:
+                          type: string
+                        slug:
+                          type: string
+                        reason:
+                          type: string
+                          enum: [not_found, already_auto, passive, no_region, private_region, read_only]
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{checkUid}/clone:
     post:
       tags: [Checks]
@@ -9978,6 +10053,40 @@ components:
         period:
           type: string
           description: Interval duration (e.g., "00:01:00" for 1 minute)
+        regions:
+          type: array
+          description: >-
+            Region slugs the check runs from. For a pinned check, the user's
+            explicit list (never moved). For an automatically placed check, the
+            CURRENT placement, chosen by the scheduler and rewritten when one
+            of its regions goes dark (spec 2026-09-25-06). A private location
+            is `@<slug>`.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Placement intent. `pinned`: `regions` is an explicit list and never
+            moves — if its region goes dark the check goes `stale`. `auto`: the
+            scheduler places the check on `regionCount` healthy regions
+            (candidates: the org default regions, then the system default
+            regions, then every other declared region, filtered by
+            `regionPool` and the regions' capabilities) and moves it off a
+            region that goes dark. Private locations are pinned-only.
+        regionCount:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Automatic placement only — how many regions run the check. Null for a pinned check.
+        regionPool:
+          type: array
+          nullable: true
+          description: >-
+            Automatic placement only — the cloud region slugs the scheduler may
+            choose from. Absent or empty: any cloud region.
+          items:
+            type: string
         regionSpread:
           type: string
           nullable: true
@@ -10438,6 +10547,41 @@ components:
         period:
           type: string
           default: "00:01:00"
+        regions:
+          type: array
+          description: >-
+            Explicit region slugs. A non-empty list pins the check to exactly
+            these regions (placement `pinned`), as before. Omit to let the check
+            be placed automatically.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            `pinned` or `auto`. Omitted: an explicit `regions` list means
+            pinned; otherwise the check is placed automatically (unless the
+            organization's own `default_regions` names a private location, which
+            keeps the pinned default). `auto` with a non-empty `regions` is
+            rejected.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: >-
+            Automatic placement: how many regions run the check. Default 2,
+            capped by the number of eligible regions and by the organization's
+            checks-per-minute limit — the response carries a
+            `PLACEMENT_REGION_COUNT_REDUCED` warning when it was reduced.
+            Implies `auto`.
+        regionPool:
+          type: array
+          description: >-
+            Automatic placement: restrict the candidates to these cloud region
+            slugs (empty = any). Private (`@`) regions are refused. Implies
+            `auto`.
+          items:
+            type: string
         regionSpread:
           type: string
           nullable: true
@@ -10567,6 +10711,37 @@ components:
           type: boolean
         period:
           type: string
+        regions:
+          type: array
+          description: >-
+            A non-empty list pins the check to exactly these regions. An empty
+            list puts the check back on the default placement (automatic, unless
+            the organization's `default_regions` names a private location). Omit
+            to leave the placement alone.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Switch the placement intent. `pinned` without `regions` freezes the
+            current placement; `auto` without `regionCount` keeps the current
+            region count (same cost) and keeps every current region that is
+            still eligible and healthy.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: >-
+            Automatic placement: how many regions run the check (capped as on
+            create). Implies `auto`.
+        regionPool:
+          type: array
+          description: >-
+            Automatic placement: candidate cloud region slugs; an empty array
+            means any. Implies `auto`.
+          items:
+            type: string
         regionSpread:
           type: string
           nullable: true
@@ -10697,6 +10872,36 @@ components:
         period:
           type: string
           default: "00:01:00"
+        regions:
+          type: array
+          description: >-
+            A non-empty list pins the check to exactly these regions. Omit (or
+            leave empty) to leave an existing check's placement alone, unless
+            `placement` says otherwise.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Declarative placement. `auto` with no `regions` switches an existing
+            pinned check to automatic placement (an empty `regions` is
+            meaningful here); `pinned` without `regions` freezes the current
+            placement.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: >-
+            Automatic placement: how many regions run the check. Omitted with
+            `placement: auto`: the check's current count.
+        regionPool:
+          type: array
+          description: >-
+            Automatic placement: candidate cloud region slugs. Declarative —
+            omitted with `placement: auto` means any cloud region.
+          items:
+            type: string
         escalationPolicyUid:
           type: string
           description: >-
@@ -10777,7 +10982,7 @@ components:
             `INVALID_SLUG`, `DUPLICATE_SLUG`, `INTERNAL_NOT_WRITABLE`,
             `UNKNOWN_TYPE`, `INVALID_CONFIG`, `INLINED_CREDENTIAL`,
             `STATUS_FIELD_CONFLICT`, `INVALID_PERIOD`, `INVALID_LABEL`,
-            `REGION_FORMAT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`,
+            `REGION_FORMAT`, `INVALID_PLACEMENT`, `INVALID_DEPENDS_ON`, `DEPENDENCY_CYCLE`,
             `UNRESOLVED_SECRET_REF`. Everything but the last is decidable
             offline, which is what `sp checks validate <file>` runs with no
             token and no network; `UNRESOLVED_SECRET_REF` needs the
@@ -10878,6 +11083,21 @@ components:
             Proposed region set. Needed by the tunnel region rules, the
             region-capability hints and the checks-per-minute projection — a
             check executes once per region per period.
+          items:
+            type: string
+        placement:
+          type: string
+          enum: [pinned, auto]
+          description: >-
+            Proposed placement intent, validated by the same rules as create.
+            The response's warnings carry `PLACEMENT_REGION_COUNT_REDUCED` when
+            the automatic placement would run from fewer regions than asked.
+        regionCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+        regionPool:
+          type: array
           items:
             type: string
         period:

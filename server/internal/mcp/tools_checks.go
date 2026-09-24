@@ -170,9 +170,26 @@ func createCheckDef() ToolDefinition {
 					"Use get_check_type_samples to discover the shape for other types.",
 			),
 			"regions": arrayOfStringsProp(
-				"Region slugs to run the check from, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
-					"Defaults to the org's default regions when omitted (org default_regions " +
-					"parameter, else the system default, else every declared region).",
+				"Region slugs to pin the check to, e.g. [\"eu-west-1\",\"us-east-1\"]. An explicit list " +
+					"means placement \"pinned\": the check runs from exactly these regions and is never " +
+					"moved. When omitted, the check is placed automatically (placement \"auto\"): the " +
+					"scheduler picks regionCount healthy regions from the org's default_regions, then the " +
+					"system default, then every other declared region, and moves the check off a region " +
+					"that goes dark. (An org whose own default_regions names a private location keeps " +
+					"pinned checks on those defaults.)",
+			),
+			"placement": stringProp(
+				"\"pinned\" or \"auto\". Omit to infer it: regions given means pinned, otherwise auto. " +
+					"\"auto\" cannot be combined with regions. Private (@) regions are pinned-only.",
+			),
+			"regionCount": intProp(
+				"Automatic placement only: how many regions run the check (default 2, capped by the " +
+					"eligible regions and the org's checks-per-minute limit; the response carries a " +
+					"PLACEMENT_REGION_COUNT_REDUCED warning when reduced). Implies placement auto.",
+			),
+			"regionPool": arrayOfStringsProp(
+				"Automatic placement only: the cloud region slugs the scheduler may choose from, e.g. " +
+					"[\"paris\",\"gravelines\"]. Omit for any cloud region. Implies placement auto.",
 			),
 			schemaKeyEnabled: boolProp("Whether the check should run. Default true."),
 			"period": stringProp(
@@ -225,6 +242,17 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 		req.CheckGroupUID = &g
 	}
 
+	if v := getStringArg(args, "placement"); v != "" {
+		req.Placement = &v
+	}
+
+	if _, ok := args["regionCount"]; ok {
+		v := getIntArg(args, "regionCount", 0)
+		req.RegionCount = &v
+	}
+
+	req.RegionPool = getStringSliceArg(args, "regionPool")
+
 	if _, ok := args["confirmationPeriodSeconds"]; ok {
 		v := getIntArg(args, "confirmationPeriodSeconds", 0)
 		req.ConfirmationPeriodSeconds = &v
@@ -253,10 +281,23 @@ func updateCheckDef() ToolDefinition {
 			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
 			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
 			"regions": arrayOfStringsProp(
-				"Replace the region list, e.g. [\"eu-west-1\",\"us-east-1\"]. An empty array " +
-					"resets the check to the default regions (org default_regions parameter, else " +
-					"the system default, else every declared region). The check keeps running from " +
-					"those regions; use enabled: false to stop it.",
+				"Pin the check to exactly these regions, e.g. [\"eu-west-1\",\"us-east-1\"] " +
+					"(placement becomes \"pinned\"). An empty array puts the check back on the default " +
+					"placement: automatic across regionCount healthy regions (unless the org's own " +
+					"default_regions names a private location, which pins it to those defaults). The " +
+					"check keeps running either way; use enabled: false to stop it.",
+			),
+			"placement": stringProp(
+				"Switch the placement: \"auto\" lets the scheduler place the check (keeping its current " +
+					"region count and every current region still healthy) and move it off a region that " +
+					"goes dark; \"pinned\" freezes the current regions unless regions is also given.",
+			),
+			"regionCount": intProp(
+				"Automatic placement only: how many regions run the check. Implies placement auto.",
+			),
+			"regionPool": arrayOfStringsProp(
+				"Automatic placement only: candidate cloud region slugs; an empty array means any. " +
+					"Implies placement auto.",
 			),
 			schemaKeyEnabled: boolProp(
 				"Toggle whether the check runs. Set to false to pause the check, true to resume it.",
@@ -306,6 +347,16 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 	}
 	if v := getStringSliceArg(args, "regions"); v != nil {
 		req.Regions = &v
+	}
+	if v := getStringArg(args, "placement"); v != "" {
+		req.Placement = &v
+	}
+	if _, ok := args["regionCount"]; ok {
+		v := getIntArg(args, "regionCount", 0)
+		req.RegionCount = &v
+	}
+	if v := getStringSliceArg(args, "regionPool"); v != nil {
+		req.RegionPool = &v
 	}
 	req.Enabled = getBoolArg(args, "enabled")
 	if v := getStringArg(args, "period"); v != "" {
