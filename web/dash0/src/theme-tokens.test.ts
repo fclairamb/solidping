@@ -12,7 +12,8 @@ import { join } from "node:path";
 const css = readFileSync(join(__dirname, "index.css"), "utf8");
 
 function block(selector: string): Record<string, string> {
-  const start = css.indexOf(`${selector} {`);
+  // Anchored at a line start: ".dark {" is also a substring of ":root.dark {".
+  const start = css.indexOf(`\n${selector} {`);
   if (start < 0) throw new Error(`no ${selector} block in index.css`);
   const end = css.indexOf("\n}", start);
   const body = css.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "");
@@ -25,6 +26,8 @@ function block(selector: string): Record<string, string> {
 
 const light = block(":root");
 const dark = block(".dark");
+// Sidebar-only dark overrides, on <html> alone (spec 2026-09-24-02).
+const rootDark = block(":root.dark");
 
 type Oklch = [number, number, number];
 
@@ -250,5 +253,87 @@ describe("electric identity contrast (acceptance criteria)", () => {
     expect(
       contrast(parseOklch(tokens["primary-foreground"]), parseOklch(tokens.primary)),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+// Spec 2026-09-24-02: the sidebar is always dark navy. Its tokens live on
+// <html> only (:root and :root.dark) because the sidebar element itself
+// carries class="dark": anything declared under the generic .dark block would
+// be re-applied there and pin the sidebar to its dark-mode values in light mode.
+describe("always-dark sidebar tokens", () => {
+  const SIDEBAR_LIGHT: Record<string, string> = {
+    sidebar: "oklch(0.18 0.05 263)",
+    "sidebar-gradient":
+      "linear-gradient(180deg, oklch(0.21 0.055 262), oklch(0.145 0.04 265))",
+    "sidebar-foreground": "oklch(0.92 0.02 255)",
+    "sidebar-muted-foreground": "oklch(0.66 0.04 255)",
+    "sidebar-accent": "oklch(1 0 0 / 0.05)",
+    "sidebar-accent-foreground": "oklch(0.98 0.01 255)",
+    "sidebar-active":
+      "linear-gradient(90deg, oklch(0.62 0.2 245 / 0.38), oklch(0.62 0.2 245 / 0.06))",
+    "sidebar-primary": "oklch(0.75 0.14 220)",
+    "sidebar-border": "oklch(0.27 0.05 262)",
+    "sidebar-ring": "oklch(0.72 0.15 252)",
+  };
+  // Only the three the spec deepens; everything else is shared by inheritance.
+  const SIDEBAR_DARK: Record<string, string> = {
+    sidebar: "oklch(0.125 0.035 263)",
+    "sidebar-gradient":
+      "linear-gradient(180deg, oklch(0.14 0.04 262), oklch(0.11 0.03 265))",
+    "sidebar-border": "oklch(0.22 0.035 262)",
+  };
+
+  it("declares the light values on :root", () => {
+    for (const [name, value] of Object.entries(SIDEBAR_LIGHT)) {
+      expect(light[name], `--${name}`).toBe(value);
+    }
+  });
+
+  it("declares only the deeper dark values on :root.dark", () => {
+    expect(rootDark).toEqual(SIDEBAR_DARK);
+  });
+
+  it("never declares a --sidebar-* token in the generic .dark block", () => {
+    // The whole point: .dark matches the sidebar element in LIGHT mode too.
+    expect(Object.keys(dark).filter((name) => name.startsWith("sidebar"))).toEqual([]);
+  });
+
+  it("keeps the sidebar text readable on every stop of the navy, in both themes", () => {
+    const surfaces = [
+      parseOklch(light.sidebar),
+      ...gradientStops(light["sidebar-gradient"]),
+      parseOklch(rootDark.sidebar),
+      ...gradientStops(rootDark["sidebar-gradient"]),
+    ];
+    expect(surfaces).toHaveLength(6);
+    for (const surface of surfaces) {
+      expect(contrast(parseOklch(light["sidebar-foreground"]), surface)).toBeGreaterThanOrEqual(7);
+      expect(contrast(parseOklch(light["sidebar-accent-foreground"]), surface)).toBeGreaterThanOrEqual(7);
+      // Group labels and the org name are small text: 4.5:1.
+      expect(contrast(parseOklch(light["sidebar-muted-foreground"]), surface)).toBeGreaterThanOrEqual(4.5);
+      // The active marker is a non-text indicator: 3:1.
+      expect(contrast(parseOklch(light["sidebar-primary"]), surface)).toBeGreaterThanOrEqual(3);
+    }
+    // Things inside the dark-scoped sidebar that read the ordinary dark tokens.
+    for (const surface of gradientStops(light["sidebar-gradient"])) {
+      expect(contrast(parseOklch(dark["muted-foreground"]), surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(parseOklch(dark.foreground), surface)).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  it("exposes the sidebar utilities and the muted-foreground color mapping", () => {
+    expect(css).toMatch(/@utility bg-sidebar-gradient \{\s*background-image: var\(--sidebar-gradient\);/);
+    expect(css).toMatch(/@utility bg-sidebar-active \{\s*background-image: var\(--sidebar-active\);/);
+    expect(css).toMatch(/@utility bg-page-glow \{\s*background-image: var\(--page-glow\);/);
+    expect(css).toContain("--color-sidebar-muted-foreground: var(--sidebar-muted-foreground);");
+  });
+
+  it("defines the tinted tile and hero shadows from --primary", () => {
+    expect(css).toContain(
+      "--shadow-tile: 0 8px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent);",
+    );
+    expect(css).toContain(
+      "--shadow-hero: 0 14px 28px -12px color-mix(in oklab, var(--primary) 60%, transparent);",
+    );
   });
 });

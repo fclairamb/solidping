@@ -17,6 +17,7 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
   --color-sidebar: var(--sidebar);
   --color-status-ok: var(--status-ok);
   --color-status-ok-foreground: var(--status-ok-foreground);
@@ -71,6 +72,11 @@
      which composes with shadow-primary (Tailwind keeps them in separate
      box-shadow layers). */
   --inset-shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.22);
+  /* The page-header icon tile (shadow-tile) and the hero KPI tile
+     (shadow-hero): a single soft drop tinted with --primary, tighter than
+     shadow-primary so it reads as the tile's own glow, not elevation. */
+  --shadow-tile: 0 8px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent);
+  --shadow-hero: 0 14px 28px -12px color-mix(in oklab, var(--primary) 60%, transparent);
   --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
   --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 12px 24px -4px rgba(15, 23, 42, 0.08);
 }
@@ -127,15 +133,30 @@
   --input: oklch(0.87 0.015 255);
   --ring: oklch(0.55 0.22 262);
 
-  /* Sidebar: Crisp light background */
-  --sidebar: oklch(0.985 0.004 250);
-  --sidebar-foreground: oklch(0.18 0.02 250);
-  --sidebar-primary: oklch(0.55 0.18 250);
-  --sidebar-primary-foreground: oklch(0.98 0.01 250);
-  --sidebar-accent: oklch(0.93 0.02 250);
-  --sidebar-accent-foreground: oklch(0.15 0.02 250);
-  --sidebar-border: oklch(0.91 0.009 250);
-  --sidebar-ring: oklch(0.55 0.18 250);
+  /* Sidebar: always dark navy, in both themes (spec 2026-09-24-02). The
+     sidebar element carries class="dark" so every non-sidebar token inside
+     it resolves to its dark value. That is why the --sidebar-* tokens live
+     ONLY here and in :root.dark (the <html> element), never in the generic
+     .dark block: declared under .dark they would be re-applied on the
+     sidebar element itself and pin it to the dark-mode values in light
+     mode. Declared on <html>, they simply inherit.
+     --sidebar is the solid fallback under --sidebar-gradient. */
+  --sidebar: oklch(0.18 0.05 263);
+  --sidebar-gradient: linear-gradient(180deg, oklch(0.21 0.055 262), oklch(0.145 0.04 265));
+  --sidebar-foreground: oklch(0.92 0.02 255);
+  --sidebar-muted-foreground: oklch(0.66 0.04 255);
+  /* The active item's left marker (cyan). */
+  --sidebar-primary: oklch(0.75 0.14 220);
+  /* Not in the spec's table and unused today: navy, so anything that ever
+     sits ON the cyan marker color stays readable. */
+  --sidebar-primary-foreground: oklch(0.18 0.05 263);
+  /* Hover: a flat 5% white wash. */
+  --sidebar-accent: oklch(1 0 0 / 0.05);
+  --sidebar-accent-foreground: oklch(0.98 0.01 255);
+  /* Active item: a blue wash fading to the right (background-image). */
+  --sidebar-active: linear-gradient(90deg, oklch(0.62 0.2 245 / 0.38), oklch(0.62 0.2 245 / 0.06));
+  --sidebar-border: oklch(0.27 0.05 262);
+  --sidebar-ring: oklch(0.72 0.15 252);
 
   /* Destructive: Red */
   --destructive: oklch(0.6 0.22 25);
@@ -222,14 +243,7 @@
   --input: oklch(0.33 0.04 262);
   --ring: oklch(0.72 0.15 252);
 
-  --sidebar: oklch(0.16 0.02 250);
-  --sidebar-foreground: oklch(0.95 0.01 250);
-  --sidebar-primary: oklch(0.65 0.16 250);
-  --sidebar-primary-foreground: oklch(0.15 0.02 250);
-  --sidebar-accent: oklch(0.25 0.03 250);
-  --sidebar-accent-foreground: oklch(0.95 0.01 250);
-  --sidebar-border: oklch(0.28 0.03 250);
-  --sidebar-ring: oklch(0.65 0.16 250);
+  /* No --sidebar-* here, on purpose: see :root.dark below. */
 
   --destructive: oklch(0.65 0.2 25);
 
@@ -254,6 +268,16 @@
   --page-glow: radial-gradient(45% 220px at 12% 0, oklch(0.7 0.15 225 / 0.2), transparent 70%),
     radial-gradient(40% 200px at 65% 0, oklch(0.5 0.23 275 / 0.15), transparent 70%);
   --gradient-foreground: oklch(1 0 0);
+}
+
+/* Dark mode, sidebar only. Matches <html class="dark"> and nothing else, so
+   the sidebar element (which carries class="dark" in BOTH themes) inherits
+   these from <html> in dark mode and the :root values in light mode. The same
+   navy, only a little deeper; the tokens not repeated here are shared. */
+:root.dark {
+  --sidebar: oklch(0.125 0.035 263);
+  --sidebar-gradient: linear-gradient(180deg, oklch(0.14 0.04 262), oklch(0.11 0.03 265));
+  --sidebar-border: oklch(0.22 0.035 262);
 }
 
 /* Frosted-glass surface for dark/photographic backdrops (the aurora panel,
@@ -289,6 +313,22 @@
 @utility bg-hero-gradient {
   background-image: var(--hero-gradient);
   background-origin: border-box;
+}
+
+/* The always-dark sidebar surface (paired with bg-sidebar underneath) and
+   its active item's wash (paired with the flat hover wash). Same contract as
+   the gradients above: background-IMAGE only. */
+@utility bg-sidebar-gradient {
+  background-image: var(--sidebar-gradient);
+}
+
+@utility bg-sidebar-active {
+  background-image: var(--sidebar-active);
+}
+
+/* The page glow: one decorative layer at the top of the org content area. */
+@utility bg-page-glow {
+  background-image: var(--page-glow);
 }
 
 @utility radar-ping {

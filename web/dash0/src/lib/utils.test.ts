@@ -68,4 +68,18 @@ describe("cn() and the gradient utilities", () => {
       "inset-shadow-highlight shadow-primary",
     );
   });
+
+  it("treats the chrome's image utilities (sidebar, active item, page glow) the same way", () => {
+    // Spec 2026-09-24-02. Stock twMerge filed bg-sidebar-gradient as a COLOR,
+    // so cn("bg-sidebar bg-sidebar-gradient") returned only the gradient and
+    // the navy fallback fill under it was lost.
+    expect(cn("bg-sidebar bg-sidebar-gradient")).toBe("bg-sidebar bg-sidebar-gradient");
+    expect(cn("bg-card", "bg-sidebar bg-sidebar-gradient")).toBe(
+      "bg-sidebar bg-sidebar-gradient",
+    );
+    expect(
+      cn("hover:bg-sidebar-accent data-[active=true]:bg-sidebar-active"),
+    ).toBe("hover:bg-sidebar-accent data-[active=true]:bg-sidebar-active");
+    expect(cn("bg-page-glow", "bg-none")).toBe("bg-none");
+  });
 });

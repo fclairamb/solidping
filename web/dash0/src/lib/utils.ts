@@ -4,7 +4,8 @@ import { extendTailwindMerge } from "tailwind-merge";
 /**
  * tailwind-merge taught about the electric-identity gradient utilities
  * declared with `@utility` in index.css (bg-primary-gradient,
- * bg-accent-gradient, bg-hero-gradient).
+ * bg-accent-gradient, bg-hero-gradient, and the chrome's bg-sidebar-gradient,
+ * bg-sidebar-active and bg-page-glow).
  *
  * Stock tailwind-merge reads any unknown `bg-<word>` as a background COLOR, so
  * `cn("bg-primary bg-primary-gradient")` would silently drop `bg-primary` —
@@ -23,7 +24,16 @@ const twMerge = extendTailwindMerge<"bg-gradient-token">({
   extend: {
     classGroups: {
       "bg-gradient-token": [
-        { bg: ["primary-gradient", "accent-gradient", "hero-gradient"] },
+        {
+          bg: [
+            "primary-gradient",
+            "accent-gradient",
+            "hero-gradient",
+            "sidebar-gradient",
+            "sidebar-active",
+            "page-glow",
+          ],
+        },
       ],
     },
     conflictingClassGroups: {
