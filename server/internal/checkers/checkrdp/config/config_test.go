@@ -77,8 +77,6 @@ func TestRDPValidateEndSession(t *testing.T) {
 
 	defaulted := &RDPConfig{Host: "rdp.acme.com", Username: "u", Password: "p"}
 	r.NoError(defaulted.Validate())
-	r.Equal(EndSessionLogoff, EndSessionLogoff, "logoff is the documented default")
-
 	for _, mode := range []string{EndSessionLogoff, EndSessionDisconnect} {
 		cfg := &RDPConfig{Host: "rdp.acme.com", Username: "u", Password: "p", EndSession: mode}
 		r.NoError(cfg.Validate(), mode)

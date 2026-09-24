@@ -15,18 +15,16 @@ import (
 // fakeRDPSession records the calls a script made, the way the browser fake
 // does, so every binding test asserts on the SEQUENCE the script drove.
 type fakeRDPSession struct {
-	mu     sync.Mutex
-	calls  []string
-	closed bool
+	mu    sync.Mutex
+	calls []string
 
-	stableErr     error
-	changeErr     error
-	inputErr      error
-	pixel         checkrdp.PixelColor
-	pixelErr      error
-	hash          uint64
-	hashErr       error
-	shot          []byte
+	stableErr error
+	changeErr error
+	inputErr  error
+	pixel     checkrdp.PixelColor
+	pixelErr  error
+	hashErr   error
+
 	screenshotN   int
 	logoffErr     error
 	endCalled     bool

@@ -39,7 +39,7 @@ const (
 
 	// AuthenticatedMinPeriod is the period floor for every authenticated run.
 	// Each one is a real interactive Windows logon: it loads a user profile,
-	// runs logon scripts/GPOs, may consume an RDS client access licence, can
+	// runs logon scripts/GPOs, may consume an RDS client access license, can
 	// disconnect a real logged-in user on a single-session server, and shows
 	// up in the Security event log (4624/4634) every run. Keeping the interval
 	// long is the operator-facing mitigation, and the floor enforces it.
@@ -104,10 +104,12 @@ type RDPConfig struct {
 	// "logoff" (default) logs the session off on the server — nothing left in
 	// `query session`; "disconnect" leaves it running until the server's idle
 	// policy ends it, so the next connect reattaches to it.
-	EndSession string `json:"end_session,omitempty"`
+	EndSession string `json:"end_session,omitempty"` //nolint:tagliatelle // API uses snake_case
 }
 
 // FromMap populates the configuration from a map.
+//
+//nolint:cyclop // Config parsing requires handling many optional fields
 func (c *RDPConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap["host"].(string); ok {
 		c.Host = host
@@ -267,7 +269,7 @@ func (c *RDPConfig) Authenticated() bool {
 // performs an authenticated logon. Implements checkerdef.MinPeriodHint.
 //
 // Every authenticated run is a real interactive Windows logon: it loads a user
-// profile, runs logon scripts/GPOs, may consume an RDS client access licence,
+// profile, runs logon scripts/GPOs, may consume an RDS client access license,
 // can disconnect a real logged-in user on a single-session server, and shows
 // up in the Security event log (4624/4634) every run. Running it every minute
 // is exactly the mistake the caveats warn against, so the floor enforces the
@@ -283,6 +285,8 @@ func (c *RDPConfig) MinPeriodHint() time.Duration {
 
 // Validate performs config-only validation (no network). It also fills in
 // defaults for the optional numeric fields so Execute can rely on them.
+//
+//nolint:cyclop // SSH-style config validation has many interdependent fields
 func (c *RDPConfig) Validate() error {
 	if c.Host == "" {
 		return checkerdef.NewConfigError("host", "is required")

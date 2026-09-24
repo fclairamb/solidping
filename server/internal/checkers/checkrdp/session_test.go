@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	grdp "github.com/fclairamb/solidping/server/third_party/grdp"
 	"github.com/stretchr/testify/require"
+
+	grdp "github.com/fclairamb/solidping/server/third_party/grdp"
 )
 
 // TestParseKeyCombo covers combo parsing: single named keys, modifier
@@ -61,15 +62,6 @@ func TestKeyComboSendsHoldPressReleaseSequence(t *testing.T) {
 	r.Equal("sc(0x1c,press);sc(0x1c,release)",
 		strings.Join(client.calls[len(client.calls)-2:], ";"),
 	)
-}
-
-// TestPixelAndRegionHashBounds pins that out-of-bounds reads are errors, not
-// silent zeros, and that regionHash is stable across repeated calls.
-type fbCase struct {
-	name string
-	x, y int
-	w, h int
-	err  bool
 }
 
 func TestPixelAndRegionHashBounds(t *testing.T) {
@@ -150,16 +142,14 @@ func TestWaitForStableBounded(t *testing.T) {
 	err := s.WaitForStable(ctx, stableQuiet)
 	r.Error(err)
 
-	var authErr *ErrAuthFailure
-	r.True(errors.As(err, &authErr))
+	var authErr *AuthFailureError
+	r.ErrorAs(err, &authErr)
 	r.Equal(AuthTimedOut, authErr.Reason)
 
-	// A settled session returns immediately.
-	s.recordBitmapTime()
-	time.Sleep(50 * time.Millisecond)
+	// A settled session: quiet (2 s) elapses inside a 4 s budget.
 	s.recordBitmapTime()
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel2()
 
 	r.NoError(s.WaitForStable(ctx2, stableQuiet))
@@ -213,8 +203,9 @@ func TestClassifyLoginError(t *testing.T) {
 
 	r := require.New(t)
 
-	var authErr *ErrAuthFailure
+	var authErr *AuthFailureError
 
+	//nolint:err113 // grdp's own error text is the fixture
 	err := classifyLoginError(errors.New("[x224 connect err] CredSSP: logon failure"))
 	r.ErrorAs(err, &authErr)
 	r.Equal(AuthRejected, authErr.Reason)
@@ -223,10 +214,12 @@ func TestClassifyLoginError(t *testing.T) {
 	r.ErrorAs(err, &authErr)
 	r.Equal(AuthTimedOut, authErr.Reason)
 
+	//nolint:err113 // upstream grdp's timeout wording is the fixture
 	err = classifyLoginError(errors.New("[connection timeout]"))
 	r.ErrorAs(err, &authErr)
 	r.Equal(AuthTimedOut, authErr.Reason)
 
+	//nolint:err113 // the transport text is the payload
 	err = classifyLoginError(errors.New("[dial err] connection refused"))
 	r.ErrorAs(err, &authErr)
 	r.Equal(AuthServerDropped, authErr.Reason)
@@ -235,11 +228,26 @@ func TestClassifyLoginError(t *testing.T) {
 // recordingClient records the input sequence s.Key() / s.Type() drive. Only
 // EventReady (always true) and SendScancode matter for the sequence test.
 type recordingClient struct {
-	grdp.RdpClient //nolint:typecheck // shape; every driven method is overridden
-	calls          []string
+	calls []string
 }
 
 func (r *recordingClient) EventReady() bool { return true }
+
+func (r *recordingClient) SendLogoff() {}
+
+func (r *recordingClient) OnBitmap(_ func([]grdp.Bitmap)) *grdp.RdpClient {
+	return &grdp.RdpClient{}
+}
+
+func (r *recordingClient) OnError(_ func(e error)) *grdp.RdpClient {
+	return &grdp.RdpClient{}
+}
+
+func (r *recordingClient) OnClose(_ func()) *grdp.RdpClient {
+	return &grdp.RdpClient{}
+}
+
+func (r *recordingClient) Login(_, _, _ string) error { return nil }
 
 func (r *recordingClient) SendScancode(sc uint16, release bool) {
 	state := "press"

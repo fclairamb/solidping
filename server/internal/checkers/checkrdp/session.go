@@ -13,10 +13,9 @@ import (
 	"sync"
 	"time"
 
-	grdp "github.com/fclairamb/solidping/server/third_party/grdp"
-
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrdp/config"
+	grdp "github.com/fclairamb/solidping/server/third_party/grdp"
 )
 
 // authFailure is the machine-readable failure-code vocabulary for an
@@ -89,11 +88,11 @@ func acquireRDPSlot(ctx context.Context) (func(), bool) {
 // logon has finished and a hung one never reaches.
 const stableQuiet = 2 * time.Second
 
-// ErrAuthFailure is a distinct authenticated-run failure carrying its machine
+// AuthFailureError is a distinct authenticated-run failure carrying its machine
 // code. Classified where it is raised, rendered where the verdict is built.
 // Exported because the JS runtime's rdp.connect inspects the code to hand the
 // script a `failureCode` value.
-type ErrAuthFailure struct {
+type AuthFailureError struct {
 	// Reason is the machine-readable code (auth_rejected, logon_timed_out,
 	// session_disconnected).
 	Reason authFailure
@@ -104,29 +103,29 @@ type ErrAuthFailure struct {
 }
 
 // Code returns the machine-readable failure code.
-func (e *ErrAuthFailure) Code() string { return string(e.Reason) }
+func (e *AuthFailureError) Code() string { return string(e.Reason) }
 
-func (e *ErrAuthFailure) Error() string { return e.Msg }
+func (e *AuthFailureError) Error() string { return e.Msg }
 
-func (e *ErrAuthFailure) Unwrap() error { return e.Cause }
+func (e *AuthFailureError) Unwrap() error { return e.Cause }
 
-// authFailuref builds an ErrAuthFailure with a wrapped cause. Exported for
+// authFailuref builds an AuthFailureError with a wrapped cause. Exported for
 // the JS bindings' tests, which seed failures through the seam.
-func authFailuref(reason authFailure, cause error) *ErrAuthFailure {
+func authFailuref(reason authFailure, cause error) *AuthFailureError {
 	switch reason {
 	case AuthRejected:
-		return &ErrAuthFailure{Reason: reason, Msg: msgAuthRejected, Cause: cause}
+		return &AuthFailureError{Reason: reason, Msg: msgAuthRejected, Cause: cause}
 	case AuthTimedOut:
-		return &ErrAuthFailure{Reason: reason, Msg: msgLogonTimedOut, Cause: cause}
+		return &AuthFailureError{Reason: reason, Msg: msgLogonTimedOut, Cause: cause}
 	case AuthServerDropped:
-		return &ErrAuthFailure{Reason: reason, Msg: msgServerDropped, Cause: cause}
+		return &AuthFailureError{Reason: reason, Msg: msgServerDropped, Cause: cause}
 	default:
-		return &ErrAuthFailure{Reason: reason, Msg: cause.Error(), Cause: cause}
+		return &AuthFailureError{Reason: reason, Msg: cause.Error(), Cause: cause}
 	}
 }
 
 // frameBuffer accumulates bitmap tiles into one desktop image. It is the
-// client-side screen state a screenshot is rendered from — the RDP analogue
+// client-side screen state a screenshot is rendered from — the RDP analog
 // of the browser page for every pixel assertion phase 2 exposes.
 type frameBuffer struct {
 	mu   sync.Mutex
@@ -139,10 +138,18 @@ func newFrameBuffer(w, h int) *frameBuffer {
 	return &frameBuffer{img: image.NewRGBA(image.Rect(0, 0, w, h)), w: w, h: h}
 }
 
-// paint blits one grdp Bitmap tile into the buffer. Tiles arrive in screen
+// paint blits grdp Bitmap tiles into the buffer. Tiles arrive in screen
 // coordinates; out-of-bounds and zero-sized tiles are ignored rather than
 // rejected — a partially-decoded desktop is still worth having.
-func (f *frameBuffer) paint(b grdp.Bitmap) {
+func (f *frameBuffer) paint(tiles []grdp.Bitmap) {
+	for tileIndex := range tiles {
+		f.paintTile(&tiles[tileIndex])
+	}
+}
+
+// paintTile blits ONE tile; split out so the per-tile body stays readable and
+// the 80-byte Bitmap is not copied per loop iteration.
+func (f *frameBuffer) paintTile(bitmapTile *grdp.Bitmap) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -150,23 +157,26 @@ func (f *frameBuffer) paint(b grdp.Bitmap) {
 		return
 	}
 
-	tw, th := b.Width, b.Height
-	if tw <= 0 || th <= 0 {
+	tileWidth, tileHeight := bitmapTile.Width, bitmapTile.Height
+	if tileWidth <= 0 || tileHeight <= 0 {
 		return
 	}
 
-	tile := b.FillRGBA(nil)
+	tile := bitmapTile.FillRGBA(nil)
 	bounds := f.img.Bounds()
-	intersect := image.Rect(b.DestLeft, b.DestTop, b.DestLeft+tw, b.DestTop+th).Intersect(bounds)
+	intersect := image.Rect(
+		bitmapTile.DestLeft, bitmapTile.DestTop,
+		bitmapTile.DestLeft+tileWidth, bitmapTile.DestTop+tileHeight,
+	).Intersect(bounds)
 	if intersect.Empty() {
 		return
 	}
 
 	for y := intersect.Min.Y; y < intersect.Max.Y; y++ {
-		srcY := y - b.DestTop
-		srcX := intersect.Min.X - b.DestLeft
+		srcY := y - bitmapTile.DestTop
+		srcX := intersect.Min.X - bitmapTile.DestLeft
 		dstOff := f.img.PixOffset(intersect.Min.X, y)
-		srcOff := (srcY*tw + srcX) * 4
+		srcOff := (srcY*tileWidth + srcX) * 4
 		copy(f.img.Pix[dstOff:dstOff+(intersect.Dx()*4)], tile.Pix[srcOff:srcOff+(intersect.Dx()*4)])
 	}
 }
@@ -216,16 +226,16 @@ func openRDPSession(
 		return nil, ErrSlotTimeout
 	}
 
-	s, err := openRDPSessionLogged(ctx, cfg, width, height, conn)
+	session, err := openRDPSessionLogged(ctx, cfg, width, height, conn)
 	if err != nil {
 		release()
 
 		return nil, err
 	}
 
-	s.release = release
+	session.release = release
 
-	return s, nil
+	return session, nil
 }
 
 // openRDPSessionLogged is openRDPSession without the slot: connect, logon,
@@ -240,7 +250,7 @@ func openRDPSessionLogged(
 
 	width, height = sessionGeometry(width, height)
 
-	s := &rdpSession{
+	session := &rdpSession{
 		frame: newFrameBuffer(width, height),
 	}
 
@@ -258,7 +268,7 @@ func openRDPSessionLogged(
 		}
 
 		if conn != nil {
-			return nil, errors.New("server redirected the RDP session; reconnecting through a pre-supplied connection is not supported")
+			return nil, errRedirectWithSuppliedConn
 		}
 
 		if tunneled := checkerdef.TunnelDialerFrom(ctx); tunneled != nil {
@@ -270,17 +280,17 @@ func openRDPSessionLogged(
 		return d.DialContext(ctx, "tcp", hostPort)
 	}
 
-	s.client = grdp.NewRdpClient(hostPort, width, height, dialer)
-	s.client.OnBitmap(s.paintBitmaps)
-	s.client.OnError(func(e error) {
-		s.recordBitmapTime() // any server activity counts for stability
+	session.client = grdp.NewRdpClient(hostPort, width, height, dialer)
+	session.client.OnBitmap(session.paintBitmaps)
+	session.client.OnError(func(_ error) {
+		session.recordBitmapTime() // any server activity counts for stability
 	})
-	s.client.OnClose(func() {
-		s.recordBitmapTime()
+	session.client.OnClose(func() {
+		session.recordBitmapTime()
 	})
 
-	if err := s.client.Login(cfg.Domain, cfg.Username, cfg.Password); err != nil {
-		s.close()
+	if err := session.client.Login(cfg.Domain, cfg.Username, cfg.Password); err != nil {
+		session.close()
 
 		return nil, classifyLoginError(err)
 	}
@@ -288,13 +298,13 @@ func openRDPSessionLogged(
 	// "ready" (Login returning) means the connection sequence finished; the
 	// DESKTOP is the thing that has to settle. Bounded by the caller's
 	// context, which carries the check's timeout.
-	if err := s.WaitForStable(ctx, stableQuiet); err != nil {
-		s.close()
+	if err := session.WaitForStable(ctx, stableQuiet); err != nil {
+		session.close()
 
 		return nil, err
 	}
 
-	return s, nil
+	return session, nil
 }
 
 // sessionGeometry resolves the desktop size: the JS caller's values when
@@ -318,10 +328,7 @@ func sessionGeometry(width, height int) (int, int) {
 
 // paintBitmaps blits tiles and marks activity. Runs on grdp's read goroutine.
 func (s *rdpSession) paintBitmaps(bitmaps []grdp.Bitmap) {
-	for _, b := range bitmaps {
-		s.frame.paint(b)
-	}
-
+	s.frame.paint(bitmaps)
 	s.recordBitmapTime()
 }
 
@@ -358,7 +365,7 @@ func (s *rdpSession) WaitForStable(ctx context.Context, quiet time.Duration) err
 func (s *rdpSession) ScreenshotPNG() ([]byte, error) {
 	img := s.frame.snapshot()
 	if img == nil {
-		return nil, errors.New("no desktop frame was received")
+		return nil, ErrNoFrame
 	}
 
 	var buf bytes.Buffer
@@ -379,7 +386,7 @@ func (s *rdpSession) ScreenshotPNG() ([]byte, error) {
 // itself succeeded and the verdict must not turn on this.
 func (s *rdpSession) logoff() error {
 	if s.client == nil {
-		return errors.New("session already closed")
+		return ErrSessionDead
 	}
 
 	s.client.SendLogoff()
@@ -469,7 +476,7 @@ func Infra(err error) bool {
 		return false
 	}
 
-	var authErr *ErrAuthFailure
+	var authErr *AuthFailureError
 	if errors.As(err, &authErr) {
 		return false
 	}
@@ -492,28 +499,28 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
-// containsFold is a small case-insensitive substring check. strings.EqualFold
-// over windows would allocate; ToLower twice is simpler and these strings are
-// short.
+// containsFold is a small case-insensitive substring check over short strings
+// — the error texts it matches are short, so the double ToLower is cheap.
 func containsFold(s, sub string) bool {
-	return len(sub) <= len(s) &&
-		(bytes.Contains([]byte(toLower(s)), []byte(toLower(sub))))
+	return strings.Contains(toLower(s), toLower(sub))
 }
 
-func toLower(s string) string {
-	b := []byte(s)
-	for i := range b {
-		if b[i] >= 'A' && b[i] <= 'Z' {
-			b[i] += 'a' - 'A'
+func toLower(value string) string {
+	lowerBytes := []byte(value)
+	for i := range lowerBytes {
+		if lowerBytes[i] >= 'A' && lowerBytes[i] <= 'Z' {
+			lowerBytes[i] += 'a' - 'A'
 		}
 	}
 
-	return string(b)
+	return string(lowerBytes)
 }
 
 // inputClient is the slice of *grdp.RdpClient the input verbs drive. The
 // real client satisfies it; tests record through a fake — the seam that
 // makes the driver sequence testable without an RDP server.
+//
+//nolint:interfacebloat // one method per documented rdp input verb
 type inputClient interface {
 	EventReady() bool
 	SendScancode(sc uint16, release bool)
@@ -603,6 +610,20 @@ var ErrSessionDead = errors.New("the RDP session is gone (closed or dropped by t
 // screen never changes), not a throw.
 var ErrChangeTimedOut = errors.New("no screen change before the timeout")
 
+// errRedirectWithSuppliedConnection is the redirect-with-pre-dialed-conn
+// case: the connection is consumed, so honoring the redirect is impossible.
+var errRedirectWithSuppliedConn = errors.New(
+	"server redirected the RDP session; reconnecting through a pre-supplied connection is not supported")
+
+// ErrNoFrame is the screenshot/capture path finding an empty framebuffer.
+var ErrNoFrame = errors.New("no desktop frame was received")
+
+// ErrUnknownKey is key() rejecting a name outside the key table.
+var ErrUnknownKey = errors.New("unknown key")
+
+// ErrRegionEmpty is regionHash rejecting a zero-sized rectangle.
+var ErrRegionEmpty = errors.New("region must be at least 1x1")
+
 // ErrNotReady is an input method called before the session accepts events —
 // the connection sequence has not finished, or the server dropped the
 // session. Treated as infrastructure: there is no target verdict to return.
@@ -626,20 +647,20 @@ func (s *rdpSession) dead() bool {
 	return closed
 }
 
-// Click moves the pointer to x,y and presses+releases the LEFT button
+// Click moves the pointer and presses+releases the LEFT button
 // (button index 0 in grdp's mapping: PTRFLAGS_BUTTON1).
-func (s *rdpSession) Click(x, y int) error {
-	return s.click(x, y, 0)
+func (s *rdpSession) Click(clickX, clickY int) error {
+	return s.click(clickX, clickY, 0)
 }
 
 // RightClick presses+releases the RIGHT button (index 2).
-func (s *rdpSession) RightClick(x, y int) error {
-	return s.click(x, y, 2)
+func (s *rdpSession) RightClick(clickX, clickY int) error {
+	return s.click(clickX, clickY, 2)
 }
 
 // DoubleClick presses+releases twice quickly.
-func (s *rdpSession) DoubleClick(x, y int) error {
-	if err := s.click(x, y, 0); err != nil {
+func (s *rdpSession) DoubleClick(clickX, clickY int) error {
+	if err := s.click(clickX, clickY, 0); err != nil {
 		return err
 	}
 
@@ -647,28 +668,28 @@ func (s *rdpSession) DoubleClick(x, y int) error {
 	// every Windows default double-click time (200-500 ms).
 	time.Sleep(100 * time.Millisecond)
 
-	return s.click(x, y, 0)
+	return s.click(clickX, clickY, 0)
 }
 
-func (s *rdpSession) click(x, y, button int) error {
+func (s *rdpSession) click(clickX, clickY, mouseButton int) error {
 	if !s.ready() {
 		return ErrNotReady
 	}
 
-	s.client.MouseMove(x, y)
-	s.client.MouseDown(button, x, y)
-	s.client.MouseUp(button, x, y)
+	s.client.MouseMove(clickX, clickY)
+	s.client.MouseDown(mouseButton, clickX, clickY)
+	s.client.MouseUp(mouseButton, clickX, clickY)
 
 	return nil
 }
 
 // Move repositions the pointer without pressing anything.
-func (s *rdpSession) Move(x, y int) error {
+func (s *rdpSession) Move(moveX, moveY int) error {
 	if !s.ready() {
 		return ErrNotReady
 	}
 
-	s.client.MouseMove(x, y)
+	s.client.MouseMove(moveX, moveY)
 
 	return nil
 }
@@ -690,6 +711,8 @@ func (s *rdpSession) Type(text string) error {
 // keyTable maps the named keys key() accepts onto PS/2 Set 1 make codes.
 // Extended keys carry the 0xE0 prefix; SendScancode strips it into the
 // extended flag.
+//
+//nolint:gochecknoglobals // the keyboard map is a constant vocabulary
 var keyTable = map[string]uint16{
 	"enter": 0x001C, "return": 0x001C, "esc": 0x0001, "escape": 0x0001,
 	"backspace": 0x000E, "tab": 0x000F, "space": 0x0039, "capslock": 0x003A,
@@ -720,7 +743,7 @@ func parseKeyCombo(combo string) ([]uint16, error) {
 	for _, part := range parts {
 		sc, ok := keyTable[part]
 		if !ok {
-			return nil, fmt.Errorf("unknown key %q", part)
+			return nil, fmt.Errorf("%w: %q", ErrUnknownKey, part)
 		}
 
 		scancodes = append(scancodes, sc)
@@ -774,20 +797,22 @@ func (s *rdpSession) Key(key string) error {
 
 // Pixel reads one pixel. Coordinates outside the framebuffer are an error —
 // a script asserting on (10,10) wants a real read, not a silently-zero one.
-func (s *rdpSession) Pixel(x, y int) (PixelColor, error) {
+func (s *rdpSession) Pixel(pixelX, pixelY int) (PixelColor, error) {
 	s.frame.mu.Lock()
 	defer s.frame.mu.Unlock()
 
 	if s.frame.img == nil {
-		return PixelColor{}, errors.New("no desktop frame received yet")
+		return PixelColor{}, ErrNoFrame
 	}
 
 	bounds := s.frame.img.Bounds()
-	if x < bounds.Min.X || x >= bounds.Max.X || y < bounds.Min.Y || y >= bounds.Max.Y {
-		return PixelColor{}, fmt.Errorf("pixel (%d, %d) outside the %dx%d desktop", x, y, bounds.Dx(), bounds.Dy())
+	if pixelX < bounds.Min.X || pixelX >= bounds.Max.X || pixelY < bounds.Min.Y || pixelY >= bounds.Max.Y {
+		//nolint:err113 // the coordinates ARE the message
+		return PixelColor{}, fmt.Errorf(
+			"pixel (%d, %d) outside the %dx%d desktop", pixelX, pixelY, bounds.Dx(), bounds.Dy())
 	}
 
-	off := s.frame.img.PixOffset(x, y)
+	off := s.frame.img.PixOffset(pixelX, pixelY)
 
 	return PixelColor{R: s.frame.img.Pix[off], G: s.frame.img.Pix[off+1], B: s.frame.img.Pix[off+2]}, nil
 }
@@ -797,23 +822,26 @@ func (s *rdpSession) Pixel(x, y int) (PixelColor, error) {
 // across workers, so a script can compare hashes over time and across
 // regions. Invalid rectangles (non-positive size, out of bounds) are errors
 // rather than clamped reads.
-func (s *rdpSession) RegionHash(x, y, w, h int) (uint64, error) {
+func (s *rdpSession) RegionHash(hashX, hashY, hashWidth, hashHeight int) (uint64, error) {
 	s.frame.mu.Lock()
 	defer s.frame.mu.Unlock()
 
 	if s.frame.img == nil {
-		return 0, errors.New("no desktop frame received yet")
+		return 0, ErrNoFrame
 	}
 
-	if w <= 0 || h <= 0 {
-		return 0, fmt.Errorf("region must be at least 1x1, got %dx%d", w, h)
+	if hashWidth <= 0 || hashHeight <= 0 {
+		//nolint:err113 // the size IS the message
+		return 0, fmt.Errorf("region must be at least 1x1, got %dx%d", hashWidth, hashHeight)
 	}
 
 	bounds := s.frame.img.Bounds()
-	if x < bounds.Min.X || y < bounds.Min.Y ||
-		x+w > bounds.Max.X || y+h > bounds.Max.Y {
+	if hashX < bounds.Min.X || hashY < bounds.Min.Y ||
+		hashX+hashWidth > bounds.Max.X || hashY+hashHeight > bounds.Max.Y {
+		//nolint:err113 // the geometry IS the message
 		return 0, fmt.Errorf(
-			"region (%d, %d, %dx%d) outside the %dx%d desktop", x, y, w, h, bounds.Dx(), bounds.Dy())
+			"region (%d, %d, %dx%d) outside the %dx%d desktop",
+			hashX, hashY, hashWidth, hashHeight, bounds.Dx(), bounds.Dy())
 	}
 
 	const (
@@ -822,9 +850,9 @@ func (s *rdpSession) RegionHash(x, y, w, h int) (uint64, error) {
 	)
 
 	hash := fnvOffset
-	for row := y; row < y+h; row++ {
-		off := s.frame.img.PixOffset(x, row)
-		for i := 0; i < w*4; i++ {
+	for row := hashY; row < hashY+hashHeight; row++ {
+		off := s.frame.img.PixOffset(hashX, row)
+		for i := 0; i < hashWidth*4; i++ {
 			hash ^= uint64(s.frame.img.Pix[off+i])
 			hash *= fnvPrime
 		}

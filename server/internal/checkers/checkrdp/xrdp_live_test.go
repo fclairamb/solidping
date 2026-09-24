@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -28,6 +27,8 @@ import (
 
 // Suite inputs, overridable from the environment so the nightly workflow and
 // a manual run against a pinned image both work without code edits.
+//
+//nolint:gochecknoglobals // suite inputs, env-overridable
 var (
 	xrdpImage = envOr("TEST_XRDP_IMAGE", "dclong/xrdp:latest")
 	xrdpUser  = envOr("TEST_XRDP_USER", "ubuntu")
@@ -45,7 +46,7 @@ func envOr(key, fallback string) string {
 // startXRDP starts one xrdp container and returns the mapped host and port.
 // Skips (rather than fails) when Docker is unavailable or the image is not
 // pulled — the nightly workflow pulls it first.
-func startXRDP(t *testing.T) (host string, port int) {
+func startXRDP(t *testing.T) (string, int) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -64,13 +65,13 @@ func startXRDP(t *testing.T) (host string, port int) {
 	}
 	t.Cleanup(func() { _ = ctr.Terminate(context.Background()) })
 
-	host, err = ctr.Host(ctx)
+	host, err := ctr.Host(ctx)
 	require.NoError(t, err)
 
 	mapped, err := ctr.MappedPort(ctx, "3389/tcp")
 	require.NoError(t, err)
 
-	port, err = strconv.Atoi(mapped.Port())
+	port, err := strconv.Atoi(mapped.Port())
 	require.NoError(t, err)
 
 	return host, port
@@ -190,7 +191,7 @@ func TestRDPTunnelDial(t *testing.T) {
 	defer cancel()
 
 	checker := &RDPChecker{
-		preDialedConn: func(ctx context.Context, cfg *checkconfig.RDPConfig) (net.Conn, error) {
+		preDialedConn: func(_ context.Context, _ *checkconfig.RDPConfig) (net.Conn, error) {
 			return conn, nil
 		},
 	}

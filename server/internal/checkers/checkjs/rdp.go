@@ -57,7 +57,8 @@ func (r *jsRuntime) registerRDP() {
 			panic(r.vm.NewGoError(err))
 		}
 
-		if fields != nil && !fields[jsKeyOK].(bool) {
+		okField, okOK := fields[jsKeyOK].(bool)
+		if fields == nil || !okOK || !okField {
 			// A target-side open failure (auth rejected, slot timeout):
 			// returned as a value the script inspects and reports.
 			return r.vm.ToValue(fields)
@@ -85,7 +86,7 @@ func (r *jsRuntime) openRDPSession(opts map[string]any) (*goja.Object, map[strin
 	}
 
 	parsed := parseRDPConnectOptions(opts)
-	if parsedErr := validateRDPConnectOptions(parsed); parsedErr != nil {
+	if parsedErr := validateRDPConnectOptions(&parsed); parsedErr != nil {
 		return nil, nil, parsedErr
 	}
 
@@ -141,14 +142,21 @@ func parseRDPConnectOptions(opts map[string]any) rdpConnectOptions {
 	return parsed
 }
 
+// Static open-time rejections: the message IS the fixed sentence (err113).
+var (
+	errHostRequired        = errors.New("rdp.connect: host is required")
+	errCredentialsRequired = errors.New(
+		"rdp.connect: username and password are required (an RDP session is a real logon)")
+)
+
 // validateRDPConnectOptions enforces what an authenticated logon requires.
-func validateRDPConnectOptions(parsed rdpConnectOptions) error {
+func validateRDPConnectOptions(parsed *rdpConnectOptions) error {
 	if parsed.host == "" {
-		return errors.New("rdp.connect: host is required")
+		return errHostRequired
 	}
 
 	if parsed.username == "" || parsed.password == "" {
-		return errors.New("rdp.connect: username and password are required (an RDP session is a real logon)")
+		return errCredentialsRequired
 	}
 
 	return nil
@@ -173,7 +181,7 @@ func (r *jsRuntime) rdpOpenFailure(err error) map[string]any {
 // rdpFailure renders a target-side open failure as `{ ok: false }` fields,
 // or nil when the failure is NOT a target verdict.
 func rdpFailure(err error) map[string]any {
-	var authErr *checkrdp.ErrAuthFailure
+	var authErr *checkrdp.AuthFailureError
 
 	if errors.As(err, &authErr) {
 		return map[string]any{
@@ -243,17 +251,20 @@ func (r *jsRuntime) newRDPObject(session checkrdp.RDPSession) *goja.Object {
 			timeoutMs = v
 		}
 
-		return r.rdpAction(func(execCtx context.Context) (map[string]any, error) {
+		waitTimeout := time.Duration(timeoutMs) * time.Millisecond
+
+		return r.rdpAction(func(_ context.Context) (map[string]any, error) {
 			// The raw millisecond number goes through callContext like every
 			// other per-call timeout option: a clamp, never a widening.
-			ctx, cancel, err := r.callContext(map[string]any{"timeout": timeoutMs})
+			waitCtx, cancel, err := r.callContext(map[string]any{"timeout": timeoutMs})
 			if err != nil {
 				return nil, err
 			}
 
 			defer cancel()
 
-			if waitErr := session.WaitForChange(ctx, time.Duration(timeoutMs)*time.Millisecond); waitErr != nil {
+			//nolint:contextcheck // the child context IS derived from execCtx
+			if waitErr := session.WaitForChange(waitCtx, waitTimeout); waitErr != nil {
 				return nil, waitErr
 			}
 
@@ -325,13 +336,13 @@ func (r *jsRuntime) newRDPObject(session checkrdp.RDPSession) *goja.Object {
 	})
 
 	_ = obj.Set("regionHash", func(call goja.FunctionCall) goja.Value {
-		x := numericOptionOrZero(call.Argument(0).Export())
-		y := numericOptionOrZero(call.Argument(1).Export())
-		w := numericOptionOrZero(call.Argument(2).Export())
-		h := numericOptionOrZero(call.Argument(3).Export())
+		hashX := numericOptionOrZero(call.Argument(0).Export())
+		hashY := numericOptionOrZero(call.Argument(1).Export())
+		hashWidth := numericOptionOrZero(call.Argument(2).Export())
+		hashHeight := numericOptionOrZero(call.Argument(3).Export())
 
 		return r.rdpAction(func(_ context.Context) (map[string]any, error) {
-			hash, err := session.RegionHash(int(x), int(y), int(w), int(h))
+			hash, err := session.RegionHash(int(hashX), int(hashY), int(hashWidth), int(hashHeight))
 			if err != nil {
 				return nil, err
 			}

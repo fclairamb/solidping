@@ -17,6 +17,8 @@ import (
 // runRDPScript executes a script against a fake RDP session and returns the
 // result. Same style as runBrowserScript: the seams are package-level and the
 // tests that mutate them are not parallel.
+//
+//nolint:unparam // the timeout stays 5s for every driver test
 func runRDPScript(t *testing.T, script string, timeout time.Duration) *checkerdef.Result {
 	t.Helper()
 
@@ -121,7 +123,7 @@ func TestRDPConnectAuthFailureIsAValue(t *testing.T) {
 	checkrdp.OpenRDPSession = func(
 		_ context.Context, _ *checkrdpconfig.RDPConfig, _, _ int, _ net.Conn,
 	) (checkrdp.RDPSession, error) {
-		return nil, &checkrdp.ErrAuthFailure{
+		return nil, &checkrdp.AuthFailureError{
 			Reason: checkrdp.AuthRejected,
 			Msg:    "logon failed: the server rejected the credentials (CredSSP/NLA)",
 		}

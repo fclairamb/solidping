@@ -248,7 +248,7 @@ func authErrorResult(
 		}
 	}
 
-	var authErr *ErrAuthFailure
+	var authErr *AuthFailureError
 
 	var reason authFailure
 	if errors.As(err, &authErr) {

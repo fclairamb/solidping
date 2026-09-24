@@ -203,7 +203,7 @@ func (c *JSConfig) SecretFields() []string {
 //     what the browser floor exists to prevent — on a 4-slot worker one such
 //     check starves every browser check next to it.
 //   - rdp.connect(): every RDP session is a REAL interactive Windows logon —
-//     profile load, logon scripts/GPOs, an RDS licence, a Security event-log
+//     profile load, logon scripts/GPOs, an RDS license, a Security event-log
 //     entry, and a possible kicked user on a single-session server. The 15
 //     minute authenticated floor enforces the "keep the interval long"
 //     mitigation instead of trusting the operator to have read the help text.
