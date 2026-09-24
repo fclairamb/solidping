@@ -13,7 +13,8 @@
           "url": "https://example.org"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Docs keyword check",
@@ -25,7 +26,8 @@
           "url": "https://docs.example.org"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Broken widget",
@@ -36,7 +38,8 @@
           "url": "https://widget.example.org"
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "Core gateway",
@@ -46,7 +49,8 @@
           "host": "198.51.100.10"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "SMTP relay",
@@ -57,7 +61,8 @@
           "port": 25
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Custom app port",
@@ -68,7 +73,8 @@
           "port": 8443
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Nightly backup ping",
@@ -76,7 +82,8 @@
         "type": "heartbeat",
         "config": {},
         "enabled": true,
-        "period": "24h"
+        "period": "24h",
+        "degradedEnabled": false
       },
       {
         "name": "Paused legacy site",
@@ -86,7 +93,8 @@
           "url": "https://legacy.example.org"
         },
         "enabled": false,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Admin portal",
@@ -97,7 +105,8 @@
           "url": "https://admin.example.org"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Legacy digest auth",
@@ -107,7 +116,8 @@
           "url": "https://legacy-auth.example.org"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Monitored with extras",
@@ -117,7 +127,8 @@
           "url": "https://extras.example.org"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       }
     ]
   },

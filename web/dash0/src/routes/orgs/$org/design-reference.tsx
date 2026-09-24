@@ -5,11 +5,13 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  Activity,
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
+  Bell,
   Bot,
   Building,
   Check,
@@ -22,7 +24,9 @@ import {
   Info,
   Building2,
   KeyRound,
+  LayoutDashboard,
   Layers,
+  ListChecks,
   Loader2,
   LogOut,
   Moon,
@@ -39,13 +43,17 @@ import {
   Search,
   Sun,
   Trash2,
+  TrendingUp,
   Upload,
+  User2,
   Wand2,
+  Webhook,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   EventTypeBadge,
+  EventTypeLabel,
   getEventTone,
 } from "@/components/dashboard/event-display";
 import {
@@ -87,6 +95,16 @@ import {
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
+import { KpiTile } from "@/components/shared/kpi-tile";
+import { AVAILABILITY_TIER_HERO_BADGE } from "@/lib/availability-tier";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
@@ -136,7 +154,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
@@ -178,6 +196,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
 import {
@@ -233,6 +252,7 @@ const LAST_SEEN_TOKEN_DEMO_DATE = new Date(
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "conventions", label: "Conventions" },
+  { id: "app-chrome", label: "App chrome" },
   { id: "page-header", label: "Page header" },
   { id: "button-placement", label: "Button placement" },
   { id: "docs-link", label: "Docs link" },
@@ -291,6 +311,7 @@ function DesignReferencePage() {
       <SubNav />
       <OverviewSection />
       <ConventionsSection />
+      <AppChromeSection />
       <PageHeaderSection />
       <ButtonPlacementSection />
       <DocsLinkSection />
@@ -643,9 +664,201 @@ function PageThemeToggle() {
   );
 }
 
+// Spec 2026-09-24-02: the app chrome. A static replica (inert: nothing in it
+// is focusable or clickable) built from the REAL sidebar primitives, so a
+// change to the active item, the group label or the tokens shows up here.
+const CHROME_REPLICA_ITEMS: {
+  group: string;
+  items: { label: string; icon: typeof ListChecks; active?: boolean }[];
+}[] = [
+  {
+    group: "Monitoring",
+    items: [
+      { label: "Dashboard", icon: LayoutDashboard, active: true },
+      { label: "Checks", icon: ListChecks },
+      { label: "Incidents", icon: AlertTriangle },
+    ],
+  },
+  {
+    group: "Alerting",
+    items: [
+      { label: "Integrations", icon: Webhook },
+      { label: "My alerts", icon: Bell },
+    ],
+  },
+];
+
+function SidebarReplica() {
+  return (
+    <div
+      inert
+      data-testid="sidebar-replica"
+      className="dark flex w-64 max-w-full flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar bg-sidebar-gradient text-sidebar-foreground"
+    >
+      <div className="flex items-center gap-2 p-4 pb-2">
+        <Logo size={28} />
+        <div className="flex flex-col gap-0.5 leading-none">
+          <span className="text-sm font-bold tracking-[-0.01em]">SolidPing</span>
+          <span className="text-xs text-sidebar-muted-foreground">Acme production</span>
+        </div>
+      </div>
+      {CHROME_REPLICA_ITEMS.map(({ group, items }) => (
+        <SidebarGroup key={group}>
+          <SidebarGroupLabel>{group}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {items.map(({ label, icon: Icon, active }) => (
+                <SidebarMenuItem key={label}>
+                  <SidebarMenuButton asChild isActive={active}>
+                    <span>
+                      <Icon />
+                      <span>{label}</span>
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+      <div className="mt-2 flex items-center justify-around gap-1 border-t border-sidebar-border px-2 py-2">
+        <span className="text-xl leading-none">{"\u{1F1FA}\u{1F1F8}"}</span>
+        <Moon className="h-4 w-4" />
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+        <span className="text-xs text-muted-foreground">v1.4.0</span>
+      </div>
+      <div className="flex items-center gap-2 px-4 pb-4 pt-1">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-white/10">
+          <User2 className="size-4" />
+        </div>
+        <div className="grid text-sm leading-tight">
+          <span className="font-semibold">alice@acme.com</span>
+          <span className="text-xs text-sidebar-muted-foreground">Administrator</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppChromeSection() {
+  return (
+    <Section
+      id="app-chrome"
+      title="App chrome"
+      description="The frame every org page sits in: an always-dark navy sidebar, the page header's gradient icon tile, and one faint glow at the top of the content. Toggle the theme here: the sidebar stays navy in both, dark mode only deepens it."
+    >
+      <div className="rounded-md border bg-card p-4">
+        <PageThemeToggle />
+      </div>
+
+      <h3 className="text-sm font-medium">Sidebar: always dark navy</h3>
+      <div className="space-y-2 text-sm text-muted-foreground" data-testid="sidebar-rules">
+        <p>
+          The{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Sidebar</code>{" "}
+          primitive puts{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">class=&quot;dark&quot;</code>{" "}
+          on its root (desktop, collapsed icon rail and the mobile sheet alike),
+          so everything inside reads the dark tokens in both themes: a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-muted-foreground</code>{" "}
+          or{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">hover:bg-accent</code>{" "}
+          nested in it just works. Don&apos;t chase light-theme tokens one by
+          one. Menus and tooltips opened from it portal to{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">body</code> and
+          keep the page&apos;s theme: a light menu opening from the navy is
+          expected. The theme toggle reads{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">html.dark</code>,
+          never the sidebar&apos;s class.
+        </p>
+        <p>
+          The{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-*</code>{" "}
+          tokens are declared on{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">:root</code> and{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">:root.dark</code>{" "}
+          only, never in the generic{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">.dark</code>{" "}
+          block: the sidebar element carries that class in light mode too, and
+          would otherwise pin itself to the dark-mode values. Surface:{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-sidebar bg-sidebar-gradient</code>
+          . Active item:{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-active</code>{" "}
+          wash, semibold, and a 3px{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-primary</code>{" "}
+          cyan bar on the sidebar&apos;s edge. Hover is the flat 5% white{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-accent</code>
+          . Group labels and secondary lines use{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-sidebar-muted-foreground</code>
+          . The crimson logo sits straight on the navy, no tile behind it.
+        </p>
+      </div>
+      <ExampleRow
+        preview={<SidebarReplica />}
+        importLine={`import { Sidebar, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";\n\n// The primitives carry the navy, the dark scope and the active marker.\n// Compose them; don't restyle them per page.\n<SidebarMenuButton asChild isActive={location.pathname === itemPath}>\n  <Link to={item.path} params={{ org }}>\n    <item.icon />\n    <span>{title}</span>\n  </Link>\n</SidebarMenuButton>`}
+      />
+
+      <h3 className="text-sm font-medium">Page header tile</h3>
+      <p className="text-sm text-muted-foreground">
+        Brand tone by default, neutral for third-party logos. Full rules in the{" "}
+        <a href="#page-header" className="text-primary hover:underline">
+          Page header
+        </a>{" "}
+        section.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="w-full space-y-4">
+            <PageHeader icon={LayoutDashboard} title="Dashboard" />
+            <PageHeader icon={Webhook} title="Slack" tone="neutral" />
+          </div>
+        }
+        importLine={`<PageHeader icon={LayoutDashboard} title="Dashboard" />\n<PageHeader icon={Webhook} title="Slack" tone="neutral" />`}
+      />
+
+      <h3 className="text-sm font-medium">Page glow</h3>
+      <p className="text-sm text-muted-foreground" data-testid="page-glow-rule">
+        One decorative layer at the top of the org content area, painted with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">--page-glow</code>{" "}
+        (stronger in dark), 260px tall. The org layout owns it — pages never
+        add their own. It is{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">absolute</code>{" "}
+        (no layout shift, no scroll),{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">pointer-events-none</code>{" "}
+        (it never covers a click target),{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">aria-hidden</code>{" "}
+        and{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">print:hidden</code>
+        ; the header and content are{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">relative</code>{" "}
+        so they paint over it. The top bar is{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-background/60 backdrop-blur</code>{" "}
+        so the glow shows through it.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="relative h-40 w-full overflow-hidden rounded-md border bg-background">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[260px] bg-page-glow"
+            />
+            <div className="relative flex h-10 items-center border-b bg-background/60 px-3 text-xs text-muted-foreground backdrop-blur">
+              Acme production › Dashboard
+            </div>
+            <div className="relative p-3 text-sm">Page content paints over the glow.</div>
+          </div>
+        }
+        importLine={`// Already in routes/orgs/$org.tsx — shown for reference, don't repeat it.\n<div\n  aria-hidden="true"\n  className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[260px] bg-page-glow print:hidden"\n/>`}
+      />
+    </Section>
+  );
+}
+
 function PageHeaderSection() {
   const pageHeaderSnippet = `// Canonical page header for every list and section page.
-// Boxed muted icon tile, text-2xl title, optional subtitle, right-aligned actions.
+// Accent-gradient icon tile (tone="brand", the default), a bold text-2xl title,
+// optional subtitle, right-aligned actions. tone="neutral" = the flat muted
+// tile, for a third-party logo that must keep its own colors.
 import { PageHeader } from "@/components/shared/page-header";
 
 <PageHeader
@@ -674,8 +887,18 @@ import { PageHeader } from "@/components/shared/page-header";
       </h3>
       <p className="text-sm text-muted-foreground">
         Pass icon, title, an optional description, and right-aligned actions; it
-        renders a rounded muted icon tile, a text-2xl font-semibold title, the
-        muted subtitle below, and the actions on the right. Discovery, checks,
+        renders a 40px <code className="rounded bg-muted px-1 py-0.5 text-xs">rounded-lg</code>{" "}
+        icon tile painted with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-accent-gradient</code>{" "}
+        (a white{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">--gradient-foreground</code>{" "}
+        icon and a soft{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">shadow-tile</code>{" "}
+        drop tinted with --primary), a{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          text-2xl font-bold tracking-[-0.025em]
+        </code>{" "}
+        title, the muted subtitle below, and the actions on the right. Discovery, checks,
         incidents, status-pages, on-call, integrations, badges, me/notifications
         and the rest all ship it — use it for every new page rather than
         hand-rolling an inline header.
@@ -696,11 +919,47 @@ import { PageHeader } from "@/components/shared/page-header";
         />
       </div>
       <CodeSnippet code={pageHeaderSnippet} />
+      <h3 className="text-sm font-medium" id="page-header-tone">
+        Tile tone: brand (default) or neutral
+      </h3>
+      <p className="text-sm text-muted-foreground" data-testid="page-header-tone-rule">
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">tone=&quot;brand&quot;</code>{" "}
+        is the default and what every product page uses.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">tone=&quot;neutral&quot;</code>{" "}
+        renders the flat{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted</code> tile
+        for a third-party logo that must keep its own colors (the integration
+        detail page shows the provider&apos;s mark on it). Use the prop, not an{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">iconClassName</code>{" "}
+        background: a flat{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-*</code> only
+        clears the gradient when it goes through{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">cn()</code> (see
+        Buttons &amp; badges → Gradients).
+      </p>
+      <ExampleRow
+        preview={
+          <div className="w-full space-y-4" data-testid="page-header-tones">
+            <PageHeader
+              icon={ListChecks}
+              title="Checks"
+              description='tone="brand" (default)'
+            />
+            <PageHeader
+              icon={Webhook}
+              title="Slack"
+              tone="neutral"
+              description='tone="neutral": a provider logo on the flat tile'
+            />
+          </div>
+        }
+        importLine={`import { PageHeader } from "@/components/shared/page-header";\n\n<PageHeader icon={ListChecks} title="Checks" />\n\n// Third-party logo: keep its colors on the flat tile.\n<PageHeader icon={integrationIconComponent(integration.type)} title={integration.name} tone="neutral" />`}
+      />
       <p className="text-sm text-muted-foreground">
         Notes: pass the same per-page Lucide icon you would have rendered inline
         —{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
-        wraps it in the muted tile for you. Put the primary action(s) that used
+        wraps it in the gradient tile for you. Put the primary action(s) that used
         to sit in the header row (e.g.{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>,
         export/import, a refresh button) into the{" "}
@@ -1258,12 +1517,14 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
     {
       name: "primary",
       varName: "--primary",
-      description: "Action color (buttons, links, focus rings)",
+      description:
+        "Electric blue, the product color: links, the active tab, focus rings, chart-1, and the flat fill under every gradient. Dark mode uses a LIGHT blue (≈8:1 as text on the page); a solid bg-primary fill there keeps dark --primary-foreground text.",
     },
     {
       name: "brand",
       varName: "--brand",
-      description: "Logo/marketing chrome — never an interactive affordance",
+      description:
+        "Crimson, the logo only (and brand chrome) — never an interactive affordance. The one warm accent in a blue UI.",
     },
     {
       name: "brand-muted",
@@ -1329,28 +1590,72 @@ const COLOR_TOKENS: { name: string; varName: string; description?: string }[] =
     },
   ];
 
-const CHART_TOKENS = [
-  "--chart-1",
-  "--chart-2",
-  "--chart-3",
-  "--chart-4",
-  "--chart-5",
+const CHART_TOKENS: { name: string; varName: string; description?: string }[] =
+  [
+    { name: "chart-1", varName: "--chart-1", description: "= --primary" },
+    { name: "chart-2", varName: "--chart-2" },
+    { name: "chart-3", varName: "--chart-3" },
+    { name: "chart-4", varName: "--chart-4" },
+    { name: "chart-5", varName: "--chart-5", description: "Indigo-violet" },
+    {
+      name: "chart-degraded",
+      varName: "--chart-degraded",
+      description: "Degraded spans on the response-time chart (= --status-warning)",
+    },
+  ];
+
+// The electric-identity gradients (spec 2026-09-24-01). Same values in both
+// themes; each has a bg-*-gradient utility in index.css.
+const GRADIENT_TOKENS: {
+  name: string;
+  varName: string;
+  utility: string;
+  description: string;
+}[] = [
+  {
+    name: "primary-gradient",
+    varName: "--primary-gradient",
+    utility: "bg-primary-gradient",
+    description:
+      "Cyan → blue → indigo, dark enough for white text (≥ 4.4:1 at every stop). Everything that carries a LABEL on a gradient: default Button, default Badge.",
+  },
+  {
+    name: "accent-gradient",
+    varName: "--accent-gradient",
+    utility: "bg-accent-gradient",
+    description:
+      "Brighter, DECORATIVE only (white on its cyan start is ≈2.5:1). Switch / checkbox / progress / stepper “on” states, the page-header icon tile (a white ICON, no text). No text on it.",
+  },
+  {
+    name: "hero-gradient",
+    varName: "--hero-gradient",
+    utility: "bg-hero-gradient",
+    description:
+      "The one hero KPI tile per page. White is only ≈3.4:1 on its light cyan start: large text (≥ 24px, or ≥ 18.66px bold) may sit anywhere on it, small labels only over its darker half (≥ 5.5:1 from the middle on). KpiTile's hero crops it to that darker end (bg-size-[180%_180%] bg-bottom-right).",
+  },
 ];
 
 function Swatch({
   varName,
   label,
   description,
+  image = false,
 }: {
   varName: string;
   label: string;
   description?: string;
+  /** Paint the token as background-IMAGE (gradients) instead of a color. */
+  image?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-md border bg-card p-3">
       <div
         className="h-10 w-10 shrink-0 rounded-md border"
-        style={{ backgroundColor: `var(${varName})` }}
+        style={
+          image
+            ? { backgroundImage: `var(${varName})` }
+            : { backgroundColor: `var(${varName})` }
+        }
       />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-tight">{label}</p>
@@ -1384,6 +1689,197 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { Button } from "@/components/ui/button";`}
+        />
+        <ExampleRow
+          preview={<Button variant="brand">Sign in</Button>}
+          importLine={`// Auth pages only (login, register…): the crimson of the logo, matching the\n// card's border-t-brand. Everywhere else the primary action is the default variant.\n<Button variant="brand">Sign in</Button>`}
+        />
+
+        <h3 className="text-sm font-medium" id="gradients">
+          Gradients
+        </h3>
+        <div
+          className="space-y-2 text-sm text-muted-foreground"
+          data-testid="gradient-rules"
+        >
+          <p>
+            Gradients are rationed. <strong>Allowed:</strong> primary actions
+            (the default Button and the default Badge), the “on” state of a
+            switch, checkbox, progress bar and stepper, the page-header icon
+            tile, one hero tile per page, and the faint glow at the top of the
+            page. <strong>Not allowed:</strong> cards, tables, forms, popovers,
+            dialogs, segmented controls and tabs (their selected pill stays{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-card</code>
+            ). One gradient per group: next to the primary action, everything
+            else is outline, ghost or destructive.
+          </p>
+          <p data-testid="gradient-text-rule">
+            Small text sits only on{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --primary-gradient
+            </code>{" "}
+            (≥ 4.4:1 white at every stop). On{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --hero-gradient
+            </code>{" "}
+            white is only about 3.4:1 at the light cyan start, so large text
+            (≥ 24px, or ≥ 18.66px bold) may go anywhere on it and small labels
+            only over its darker half (bottom-right, ≥ 5.5:1). The hero KPI
+            tile is the sanctioned variant: it crops the gradient to its darker
+            end so its 90% white small text can sit anywhere (see{" "}
+            <a href="#kpi-tiles" className="text-primary hover:underline">
+              KPI tiles
+            </a>
+            ).{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --accent-gradient
+            </code>{" "}
+            is brighter still and carries no label. The gradients are
+            identical in light and dark; only the page glow gets stronger in
+            dark. Toggle the theme to check both.
+          </p>
+          <p>
+            <strong>Gotcha:</strong>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              bg-transparent
+            </code>{" "}
+            and{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted</code>{" "}
+            only set background-color, so an element carrying a gradient
+            utility keeps the gradient unless the override also sets{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-none</code>
+            .{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">cn()</code>{" "}
+            drops the gradient for you when the flat color comes later in the
+            class list; a raw class string does not.
+          </p>
+          <p>
+            <strong>Focus:</strong> every Button draws a 2px{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">--ring</code>{" "}
+            ring, offset 2px from its edge (
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              ring-offset-2 ring-offset-background
+            </code>
+            ). The page-colored gap is what keeps the ring visible on the
+            gradient. Text fields show{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              border-ring
+            </code>{" "}
+            plus a 3px ring of --ring at 25%. Tab through the row below.
+          </p>
+        </div>
+        <ExampleRow
+          preview={
+            <div
+              className="flex flex-wrap gap-2"
+              data-testid="gradient-button-group"
+            >
+              <Button>
+                <Plus />
+                Create check
+              </Button>
+              <Button variant="outline">Cancel</Button>
+              <Button variant="ghost">Details</Button>
+              <Button variant="destructive">
+                <Trash2 />
+                Remove
+              </Button>
+            </div>
+          }
+          importLine={`// Default Button = the gradient. Keep ONE per group: the primary action.\n<div className="flex gap-2">\n  <Button><Plus />Create check</Button>\n  <Button variant="outline">Cancel</Button>\n  <Button variant="ghost">Details</Button>\n  <Button variant="destructive"><Trash2 />Remove</Button>\n</div>\n\n// GOTCHA: bg-transparent / bg-muted / bg-destructive only set\n// background-COLOR, so a gradient utility stays painted on top. Add bg-none:\n<div className="bg-accent-gradient bg-none bg-destructive" />\n// cn() does it for you when the flat bg-<color> comes LATER in the list\n// (lib/utils.ts), e.g. <Button className="bg-destructive"> is really red.\n\n// Focus ring on every Button (the gap keeps it visible on the gradient):\n//   focus-visible:ring-2 ring-ring ring-offset-2 ring-offset-background\n// Text fields (Input, Textarea, Select trigger):\n//   focus-visible:border-ring ring-[3px] ring-ring/25`}
+        />
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex h-9 items-center rounded-lg bg-primary bg-primary-gradient px-3 text-sm font-medium text-gradient-foreground">
+                bg-primary-gradient
+              </span>
+              <span
+                role="img"
+                aria-label="bg-accent-gradient"
+                title="bg-accent-gradient (decorative, no text)"
+                className="inline-block h-9 w-24 rounded-lg bg-primary bg-accent-gradient"
+              />
+              {/* Large value on the light (top-left) end, small label only on
+                  the dark (bottom-right) half: white on the cyan start stop is
+                  ≈3.4:1, enough for large text only. */}
+              <div
+                className="flex h-24 w-56 flex-col justify-between rounded-lg bg-primary bg-hero-gradient p-3 text-gradient-foreground"
+                data-testid="hero-gradient-example"
+              >
+                <span className="text-2xl font-bold leading-none">99.98%</span>
+                <span className="self-end text-xs font-medium">
+                  bg-hero-gradient
+                </span>
+              </div>
+              <span
+                className="inline-flex h-9 items-center rounded-lg bg-accent-gradient bg-none bg-muted px-3 text-sm"
+                data-testid="gradient-bg-none-example"
+              >
+                bg-none bg-muted: flat
+              </span>
+            </div>
+          }
+          importLine={`// The three utilities (index.css) set background-IMAGE only: keep a flat\n// bg-primary underneath so the element still reads blue without the image.\n<span className="bg-primary bg-primary-gradient text-gradient-foreground" /> {/* labels */}\n<span className="bg-primary bg-accent-gradient" /> {/* decorative, no text */}\n<div className="bg-primary bg-hero-gradient text-gradient-foreground" /> {/* hero KPI tile: large text anywhere, small labels on the dark half only */}\n\n// The bg-none escape hatch: flat muted, gradient gone.\n<span className="bg-accent-gradient bg-none bg-muted" />`}
+        />
+
+        <h3 className="text-sm font-medium">“On” states (accent gradient)</h3>
+        <p className="text-sm text-muted-foreground">
+          A checked switch, a checked checkbox, the progress fill and the
+          stepper’s done dots and connectors paint{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-accent-gradient
+          </code>{" "}
+          over bg-primary. The only thing on it is a white check glyph. A full
+          Progress with destructiveWhenFull (the default) is still red: it
+          renders{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-none bg-destructive
+          </code>
+          .
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-4" data-testid="gradient-on-states">
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch defaultChecked />
+                  On
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Switch />
+                  Off
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox defaultChecked />
+                  Checked
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox />
+                  Unchecked
+                </label>
+              </div>
+              <div className="space-y-2">
+                <Progress
+                  value={60}
+                  max={100}
+                  aria-label="Progress at 60%"
+                  data-testid="progress-partial"
+                />
+                <Progress
+                  value={100}
+                  max={100}
+                  aria-label="Progress full (destructive)"
+                  data-testid="progress-full-destructive"
+                />
+              </div>
+              <Stepper
+                steps={[{ label: "Pick" }, { label: "Mint" }, { label: "Run" }]}
+                current={3}
+              />
+            </div>
+          }
+          importLine={`import { Switch } from "@/components/ui/switch";\nimport { Checkbox } from "@/components/ui/checkbox";\nimport { Progress } from "@/components/ui/progress";\nimport { Stepper } from "@/components/ui/stepper";\n\n<Switch checked={on} onCheckedChange={setOn} />\n<Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} />\n<Progress value={used} max={quota} /> {/* red once used >= quota */}\n<Progress value={done} max={total} destructiveWhenFull={false} />\n<Stepper steps={steps} current={step} />`}
         />
 
         <h3 className="text-sm font-medium">Button sizes</h3>
@@ -4299,6 +4795,12 @@ function BrandSection() {
       title="Brand"
       description="The SolidPing mark, plus the brand-color tokens reserved for chrome (logo tile, header strips, marketing accents). Brand color is never used as an interactive affordance in the operator UI — the rule that keeps brand-pink from competing with destructive / status-error reds."
     >
+      <p className="text-sm" data-testid="brand-color-rule">
+        <strong>Blue is the product color; crimson is the logo only.</strong>{" "}
+        Every action, link, focus ring and “on” state is electric blue
+        (--primary and the gradients), and the logo stays crimson because it is
+        the single warm accent in an otherwise blue UI.
+      </p>
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Logo sizes</h3>
         <div className="flex flex-wrap items-end gap-6">
@@ -4532,6 +5034,18 @@ const EVENT_BADGE_SAMPLES: { type: string; label: string }[] = [
   { type: "something.unmapped", label: "Unmapped" },
 ];
 
+// EVENT_LABEL_SAMPLES mixes loud, colored and quiet rows so the catalog shows
+// what EventTypeLabel is for: routine rows recede, incidents stand out.
+const EVENT_LABEL_SAMPLES: { type: string; label: string }[] = [
+  { type: "incident.escalated", label: "Incident Escalated" },
+  { type: "incident.created", label: "Incident Created" },
+  { type: "incident.resolved", label: "Incident Resolved" },
+  { type: "incident.acknowledged", label: "Incident Acknowledged" },
+  { type: "auth.login_succeeded", label: "Sign-in Succeeded" },
+  { type: "auth.token_misuse", label: "Token Misuse" },
+  { type: "check.updated", label: "Check Updated" },
+];
+
 // designReferenceEventT is a stand-in for the real `t` from
 // useTranslation("events") — this page is a static catalog, not localized —
 // resolving `types.<eventType>` from the sample labels above and otherwise
@@ -4619,6 +5133,33 @@ function EventToneSection() {
             </div>
           }
           importLine={`import { EventTypeBadge } from "@/components/dashboard/event-display";\n\n<EventTypeBadge eventType={row.eventType} t={t} />`}
+        />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Event label for dense logs (icon + text, no pill)
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          <code>EventTypeLabel</code> is used on the events page, where a column
+          of pills is too loud. Only incident and security events get a colored
+          icon; routine events (sign-in, config changes) are muted.{" "}
+          The few that need action (escalations, token misuse) get a bold
+          label. In a table, <code>getEventRowStripe</code> adds a stripe on
+          the row's leading edge: red for those, green for recoveries.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-col gap-2">
+              {EVENT_LABEL_SAMPLES.map((sample) => (
+                <EventTypeLabel
+                  key={sample.type}
+                  eventType={sample.type}
+                  t={designReferenceEventT}
+                />
+              ))}
+            </div>
+          }
+          importLine={`import { EventTypeLabel, getEventRowStripe } from "@/components/dashboard/event-display";\n\n<TableCell className={cn(getEventRowStripe(row.eventType))}>…</TableCell>\n<TableCell>\n  <EventTypeLabel eventType={row.eventType} t={t} />\n</TableCell>`}
         />
       </div>
     </Section>
@@ -5068,7 +5609,7 @@ function ElevationSection() {
     <Section
       id="elevation"
       title="Elevation, aurora & glass"
-      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant (shadow-primary under a 1px inset top highlight, inset-shadow-highlight, on the primary gradient) and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">
@@ -5083,9 +5624,12 @@ function ElevationSection() {
               <div className="rounded-lg bg-primary px-4 py-3 text-sm text-primary-foreground shadow-primary">
                 shadow-primary
               </div>
+              <div className="rounded-lg bg-primary bg-primary-gradient px-4 py-3 text-sm text-gradient-foreground inset-shadow-highlight shadow-primary">
+                inset-shadow-highlight + shadow-primary
+              </div>
             </>
           }
-          importLine={`// Defined in index.css @theme.\n<div className="shadow-card" />      {/* cards, KPI tiles, list surfaces — ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}\n\n// --shadow-primary / --shadow-destructive use color-mix against their own\n// token, so they follow the theme. --shadow-card is a fixed slate rgba: it\n// reads correctly on light surfaces and stays deliberately near-invisible in\n// dark mode, where the card's own border does the separating instead.`}
+          importLine={`// Defined in index.css @theme.\n<div className="shadow-card" />      {/* cards, KPI tiles, list surfaces — ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<div className="inset-shadow-highlight shadow-primary" /> {/* + the 1px lit top edge the gradient button carries */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}\n\n// --shadow-primary / --shadow-destructive use color-mix against their own\n// token, so they follow the theme. --shadow-card is a fixed slate rgba: it\n// reads correctly on light surfaces and stays deliberately near-invisible in\n// dark mode, where the card's own border does the separating instead.`}
         />
       </div>
 
@@ -5267,66 +5811,123 @@ const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …
 function KpiTileSection() {
   const { org } = Route.useParams();
   const snippet = `import { Link } from "@tanstack/react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiTile } from "@/components/shared/kpi-tile";
+import { AVAILABILITY_TIER_HERO_BADGE } from "@/lib/availability-tier";
 
 // Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
-<Link
-  to="/orgs/$org/checks"
-  params={{ org }}
-  className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
->
-  <Card className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
-      <Icon className="h-4 w-4 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      <div className="text-3xl font-bold tracking-tight tabular-nums">42</div>
-      <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
-    </CardContent>
-  </Card>
-</Link>`;
+// Every tile lifts on hover (motion-safe) — no nested interactive elements.
+<Link to="/orgs/$org/checks" params={{ org }} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  <KpiTile
+    label="Monitored"
+    value={42}
+    icon={<ListChecks className="h-4 w-4 text-primary" />}
+    sub="2 disabled"
+  />
+</Link>
+
+// ONE hero per page: the headline number. Its status badge is a SOLID
+// white chip (a pale translucent badge loses its meaning on the gradient).
+<KpiTile
+  variant="hero"
+  label="24h availability"
+  value="99.87%"
+  icon={<TrendingUp className="h-4 w-4" />}
+  badge={
+    <span className={\`text-[11px] font-semibold px-2 py-0.5 rounded-full \${AVAILABILITY_TIER_HERO_BADGE.operational}\`}>
+      Operational
+    </span>
+  }
+  sub="Fleet uptime health"
+/>`;
   return (
     <Section
       id="kpi-tiles"
       title="KPI tiles"
-      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (cursor-pointer, hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) and the wrapping Link carries a focus-visible ring (focus-visible:ring-2 focus-visible:ring-ring) — no nested interactive elements inside."
+      description="Large-number summary cards used on the org dashboard: the shared KpiTile (@/components/shared/kpi-tile), in a default and a hero variant. Link tiles to drill-down list pages; leave purely metric tiles static. Every tile lifts on hover behind motion-safe (motion-safe:hover:-translate-y-0.5); a default tile deepens to shadow-card-hover, the hero keeps its tinted shadow-hero. A wrapping Link carries the focus-visible ring — no nested interactive elements inside."
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-2 text-sm text-muted-foreground" data-testid="kpi-hero-rules">
+        <p>
+          <strong className="text-foreground">One hero tile per page.</strong>{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;hero&quot;</code>{" "}
+          is the page&apos;s headline number (on the dashboard, the 24h
+          availability); every other tile stays default. Two heroes cancel each
+          other out.
+        </p>
+        <p>
+          The hero paints{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-hero-gradient</code>{" "}
+          cropped to its darker end (
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-size-[180%_180%] bg-bottom-right</code>
+          , so only t ≥ 0.44 of the gradient is visible). That is the
+          sanctioned way to put SMALL text on the hero gradient: its label and
+          sub line are white at 90% and wrap anywhere on a narrow tile, and
+          over the cropped gradient they read ≥ 4.69:1 at the lightest point.
+          On the uncropped gradient even pure white fails at the cyan start,
+          and 80% white fails over most of it. The value is large text, the
+          icon chip is{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-white/15</code>
+          , and a status badge on it is a solid{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-white</code>{" "}
+          chip keeping its light-theme text color in both themes (
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">AVAILABILITY_TIER_HERO_BADGE</code>
+          ).
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="kpi-tile-examples">
         <Link
           to="/orgs/$org/checks"
           params={{ org }}
           className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Card className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Monitored
-              </CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold tracking-tight tabular-nums">
-                42
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
-            </CardContent>
-          </Card>
+          <KpiTile
+            label="Monitored"
+            value={42}
+            icon={<ListChecks className="h-4 w-4 text-primary" />}
+            badge={
+              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                40 up
+              </span>
+            }
+            sub="2 disabled"
+          />
         </Link>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Availability (static)
-            </CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold tracking-tight tabular-nums">
-              99.98%
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">24h window</p>
-          </CardContent>
-        </Card>
+        <KpiTile
+          variant="hero"
+          label="24h availability"
+          value="99.87%"
+          icon={<TrendingUp className="h-4 w-4" />}
+          badge={
+            <span
+              className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${AVAILABILITY_TIER_HERO_BADGE.operational}`}
+            >
+              Operational
+            </span>
+          }
+          sub="Fleet uptime health"
+        />
+        <KpiTile
+          label="Active incidents"
+          value={3}
+          icon={<Activity className="h-4 w-4 text-amber-500" />}
+          valueClassName="text-amber-600 dark:text-amber-500"
+          sub="Oldest open 2h ago"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2" data-testid="kpi-hero-badges">
+        {(Object.keys(AVAILABILITY_TIER_HERO_BADGE) as (keyof typeof AVAILABILITY_TIER_HERO_BADGE)[]).map(
+          (tier) => (
+            <span
+              key={tier}
+              className="inline-flex rounded-lg bg-primary bg-hero-gradient bg-size-[180%_180%] bg-bottom-right p-2"
+            >
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${AVAILABILITY_TIER_HERO_BADGE[tier]}`}
+              >
+                {tier}
+              </span>
+            </span>
+          ),
+        )}
       </div>
       <CodeSnippet code={snippet} />
     </Section>
@@ -5565,10 +6166,55 @@ function ColorTokensSection() {
       </div>
       <div className="space-y-2">
         <h3 className="text-sm font-medium">Chart palette</h3>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {CHART_TOKENS.map((v, i) => (
-            <Swatch key={v} varName={v} label={`chart-${i + 1}`} />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {CHART_TOKENS.map((t) => (
+            <Swatch
+              key={t.varName}
+              varName={t.varName}
+              label={t.name}
+              description={t.description}
+            />
           ))}
+        </div>
+      </div>
+      <div className="space-y-2" data-testid="gradient-tokens">
+        <h3 className="text-sm font-medium">Gradients (identical in both themes)</h3>
+        <p className="text-sm text-muted-foreground">
+          Background-IMAGE tokens, applied with their utility — never an inline{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            bg-[image:var(--…)]
+          </code>
+          . Where they may and may not go is under Buttons &amp; badges →
+          Gradients.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {GRADIENT_TOKENS.map((t) => (
+            <Swatch
+              key={t.varName}
+              varName={t.varName}
+              label={`${t.name} · ${t.utility}`}
+              description={t.description}
+              image
+            />
+          ))}
+          <Swatch
+            varName="--gradient-foreground"
+            label="gradient-foreground · text-gradient-foreground"
+            description="Text and icons on any gradient. Pure white in both themes."
+          />
+        </div>
+        <div className="space-y-1">
+          <div
+            className="h-28 w-full rounded-md border bg-background"
+            style={{ backgroundImage: "var(--page-glow)" }}
+            data-testid="page-glow-swatch"
+          />
+          <p className="text-sm font-medium leading-tight">page-glow</p>
+          <p className="font-mono text-xs text-muted-foreground">--page-glow</p>
+          <p className="text-xs text-muted-foreground">
+            The faint cyan/indigo glow for the top of the page. Two radial
+            gradients; stronger in dark mode (alpha 0.2 / 0.15 vs 0.13 / 0.09).
+          </p>
         </div>
       </div>
     </Section>

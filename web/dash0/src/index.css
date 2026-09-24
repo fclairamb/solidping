@@ -17,6 +17,7 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
   --color-sidebar: var(--sidebar);
   --color-status-ok: var(--status-ok);
   --color-status-ok-foreground: var(--status-ok-foreground);
@@ -24,6 +25,7 @@
   --color-status-warning-foreground: var(--status-warning-foreground);
   --color-status-error: var(--status-error);
   --color-status-error-foreground: var(--status-error-foreground);
+  --color-chart-degraded: var(--chart-degraded);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -40,6 +42,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-gradient-foreground: var(--gradient-foreground);
   --color-primary: var(--primary);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
@@ -64,34 +67,46 @@
     0 4px 8px -4px color-mix(in oklab, var(--destructive) 11%, transparent);
   --shadow-destructive-hover: 0 12px 24px -6px color-mix(in oklab, var(--destructive) 22%, transparent),
     0 6px 12px -6px color-mix(in oklab, var(--destructive) 14%, transparent);
+  /* The 1px inner top highlight of the gradient default Button: it reads as
+     a lit top edge on the saturated fill. Consumed as inset-shadow-highlight,
+     which composes with shadow-primary (Tailwind keeps them in separate
+     box-shadow layers). */
+  --inset-shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.22);
+  /* The page-header icon tile (shadow-tile) and the hero KPI tile
+     (shadow-hero): a single soft drop tinted with --primary, tighter than
+     shadow-primary so it reads as the tile's own glow, not elevation. */
+  --shadow-tile: 0 8px 18px -8px color-mix(in oklab, var(--primary) 70%, transparent);
+  --shadow-hero: 0 14px 28px -12px color-mix(in oklab, var(--primary) 60%, transparent);
   --shadow-card: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
   --shadow-card-hover: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 12px 24px -4px rgba(15, 23, 42, 0.08);
 }
 
 :root {
-  /* Primary: Blue for monitoring/status theme */
-  --primary: oklch(0.55 0.18 250);
-  --primary-foreground: oklch(0.98 0.01 250);
+  /* Primary: electric blue. The flat fill underneath every gradient, the
+     link / active-tab text color, the focus ring and chart-1. */
+  --primary: oklch(0.55 0.22 262);
+  --primary-foreground: oklch(0.99 0 0);
 
   /* Brand: crimson/magenta — solidping.io identity. Reserved for chrome
      (logo tile, header strips, marketing accents) — never used as an
      interactive affordance in the operator UI so it doesn't collide
-     with the destructive / status-error palette. */
+     with the destructive / status-error palette. In the electric-blue UI it
+     is the one warm accent: the logo stays crimson, everything else is blue. */
   --brand: oklch(0.58 0.22 5);
   --brand-foreground: oklch(0.98 0.01 5);
   --brand-muted: oklch(0.92 0.05 5);
 
-  /* Accent: Refined subtle blue */
-  --accent: oklch(0.93 0.025 250);
-  --accent-foreground: oklch(0.25 0.08 250);
+  /* Accent: pale electric wash (hover / highlight surface) */
+  --accent: oklch(0.95 0.03 255);
+  --accent-foreground: oklch(0.42 0.18 262);
 
-  /* Background: crisp modern slate-neutral wash */
-  --background: oklch(0.978 0.005 250);
-  --foreground: oklch(0.18 0.02 250);
+  /* Background: blue-tinted near-white page */
+  --background: oklch(0.98 0.006 250);
+  --foreground: oklch(0.18 0.03 258);
 
   /* Card: pure elevated white surface with crisp contrast */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 250);
+  --card-foreground: oklch(0.18 0.03 258);
 
   /* Control: the fill of every interactive form surface (input, textarea,
      select trigger, outline button, and the wrappers that look like them).
@@ -103,30 +118,45 @@
 
   /* Popover: same elevated pure white */
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 250);
+  --popover-foreground: oklch(0.18 0.03 258);
 
   /* Secondary */
-  --secondary: oklch(0.95 0.01 250);
-  --secondary-foreground: oklch(0.25 0.04 250);
+  --secondary: oklch(0.962 0.01 255);
+  --secondary-foreground: oklch(0.26 0.04 258);
 
-  /* Muted: Clean neutral gray */
-  --muted: oklch(0.95 0.01 250);
-  --muted-foreground: oklch(0.48 0.02 250);
+  /* Muted: blue-tinted neutral */
+  --muted: oklch(0.962 0.01 255);
+  --muted-foreground: oklch(0.5 0.03 255);
 
-  /* Border: Clean crisp border */
-  --border: oklch(0.91 0.009 250);
-  --input: oklch(0.91 0.009 250);
-  --ring: oklch(0.55 0.18 250);
+  /* Border: hairline; --input is the (stronger) BORDER of form controls */
+  --border: oklch(0.915 0.012 255);
+  --input: oklch(0.87 0.015 255);
+  --ring: oklch(0.55 0.22 262);
 
-  /* Sidebar: Crisp light background */
-  --sidebar: oklch(0.985 0.004 250);
-  --sidebar-foreground: oklch(0.18 0.02 250);
-  --sidebar-primary: oklch(0.55 0.18 250);
-  --sidebar-primary-foreground: oklch(0.98 0.01 250);
-  --sidebar-accent: oklch(0.93 0.02 250);
-  --sidebar-accent-foreground: oklch(0.15 0.02 250);
-  --sidebar-border: oklch(0.91 0.009 250);
-  --sidebar-ring: oklch(0.55 0.18 250);
+  /* Sidebar: always dark navy, in both themes (spec 2026-09-24-02). The
+     sidebar element carries class="dark" so every non-sidebar token inside
+     it resolves to its dark value. That is why the --sidebar-* tokens live
+     ONLY here and in :root.dark (the <html> element), never in the generic
+     .dark block: declared under .dark they would be re-applied on the
+     sidebar element itself and pin it to the dark-mode values in light
+     mode. Declared on <html>, they simply inherit.
+     --sidebar is the solid fallback under --sidebar-gradient. */
+  --sidebar: oklch(0.18 0.05 263);
+  --sidebar-gradient: linear-gradient(180deg, oklch(0.21 0.055 262), oklch(0.145 0.04 265));
+  --sidebar-foreground: oklch(0.92 0.02 255);
+  --sidebar-muted-foreground: oklch(0.66 0.04 255);
+  /* The active item's left marker (cyan). */
+  --sidebar-primary: oklch(0.75 0.14 220);
+  /* Not in the spec's table and unused today: navy, so anything that ever
+     sits ON the cyan marker color stays readable. */
+  --sidebar-primary-foreground: oklch(0.18 0.05 263);
+  /* Hover: a flat 5% white wash. */
+  --sidebar-accent: oklch(1 0 0 / 0.05);
+  --sidebar-accent-foreground: oklch(0.98 0.01 255);
+  /* Active item: a blue wash fading to the right (background-image). */
+  --sidebar-active: linear-gradient(90deg, oklch(0.62 0.2 245 / 0.38), oklch(0.62 0.2 245 / 0.06));
+  --sidebar-border: oklch(0.27 0.05 262);
+  --sidebar-ring: oklch(0.72 0.15 252);
 
   /* Destructive: Red */
   --destructive: oklch(0.6 0.22 25);
@@ -140,59 +170,80 @@
   --status-error-foreground: oklch(0.48 0.19 25);
 
   /* Chart colors */
-  --chart-1: oklch(0.55 0.18 250);
+  --chart-1: oklch(0.55 0.22 262);
   --chart-2: oklch(0.65 0.2 145);
   --chart-3: oklch(0.75 0.18 85);
   --chart-4: oklch(0.6 0.22 25);
-  --chart-5: oklch(0.6 0.14 280);
+  --chart-5: oklch(0.55 0.2 285);
+  /* Degraded spans on the response-time chart: the status-warning amber. */
+  --chart-degraded: oklch(0.75 0.18 85);
+
+  /* Gradients (electric identity). Rationed: primary actions, the "on" state
+     of a few controls, the page-header icon tile, one hero tile per page and
+     the page glow. Cards, tables, forms, popovers, dialogs and segmented
+     controls stay flat. Identical in both themes.
+     --primary-gradient carries TEXT (default button, default badge): its
+     stops are dark enough for white labels (>= 4.4:1 at every stop).
+     --accent-gradient is brighter and DECORATIVE only (switch, checkbox,
+     progress, stepper, header tile): white text on its cyan start is ~2.5:1,
+     so never put a label on it.
+     --hero-gradient (the hero KPI tile): white is ~3.4:1 on its cyan start,
+     enough for LARGE text only (>= 24px, or >= 18.66px bold); small labels
+     go over its darker half, which is >= 4.5:1 from ~30% of the way on. */
+  --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
+  --accent-gradient: linear-gradient(135deg, oklch(0.7 0.15 225) 0%, oklch(0.57 0.22 258) 50%, oklch(0.5 0.23 275) 100%);
+  --hero-gradient: linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280));
+  --page-glow: radial-gradient(45% 200px at 12% 0, oklch(0.7 0.15 225 / 0.13), transparent 70%),
+    radial-gradient(40% 180px at 65% 0, oklch(0.5 0.23 275 / 0.09), transparent 70%);
+  /* Text and icons on any of the gradients. Pure white rather than 0.99:
+     the primary-gradient start stop clips to #007bce, where 0.99 gives
+     4.31:1 and pure white 4.44:1. */
+  --gradient-foreground: oklch(1 0 0);
 
   --radius: 0.625rem;
 }
 
 /* Dark mode */
 .dark {
-  --primary: oklch(0.65 0.16 250);
-  --primary-foreground: oklch(0.15 0.02 250);
+  /* A LIGHT electric blue: text-primary (links, the active tab, the link
+     button) is far more common than a solid bg-primary fill, and this reads
+     ~8:1 on the dark page. The gradients carry the saturated blue on
+     buttons; a solid bg-primary fill keeps dark text (--primary-foreground). */
+  --primary: oklch(0.72 0.15 252);
+  --primary-foreground: oklch(0.16 0.03 262);
 
   --brand: oklch(0.65 0.2 5);
   --brand-foreground: oklch(0.15 0.02 5);
   --brand-muted: oklch(0.3 0.08 5);
 
-  --accent: oklch(0.3 0.05 250);
-  --accent-foreground: oklch(0.95 0.015 250);
+  --accent: oklch(0.3 0.07 260);
+  --accent-foreground: oklch(0.92 0.05 255);
 
-  --background: oklch(0.14 0.015 250);
-  --foreground: oklch(0.95 0.01 250);
+  --background: oklch(0.145 0.02 262);
+  --foreground: oklch(0.96 0.01 255);
 
-  --card: oklch(0.18 0.02 250);
-  --card-foreground: oklch(0.95 0.01 250);
+  --card: oklch(0.185 0.026 262);
+  --card-foreground: oklch(0.96 0.01 255);
 
-  /* Control: recessed in dark — below --card (0.18), above --background
-     (0.14) — which is the convention for dark UIs and the opposite of what
+  /* Control: recessed in dark — below --card (0.185), above --background
+     (0.145) — which is the convention for dark UIs and the opposite of what
      light mode does. That deliberate divergence is why this is a token. */
-  --control: oklch(0.16 0.018 250);
+  --control: oklch(0.165 0.024 262);
 
-  --popover: oklch(0.18 0.02 250);
-  --popover-foreground: oklch(0.95 0.01 250);
+  --popover: oklch(0.185 0.026 262);
+  --popover-foreground: oklch(0.96 0.01 255);
 
-  --secondary: oklch(0.25 0.03 250);
+  --secondary: oklch(0.225 0.03 262);
   --secondary-foreground: oklch(0.95 0.01 250);
 
-  --muted: oklch(0.22 0.025 250);
-  --muted-foreground: oklch(0.65 0.02 250);
+  --muted: oklch(0.225 0.03 262);
+  --muted-foreground: oklch(0.7 0.03 255);
 
-  --border: oklch(0.28 0.03 250);
-  --input: oklch(0.28 0.03 250);
-  --ring: oklch(0.65 0.16 250);
+  --border: oklch(0.28 0.035 262);
+  --input: oklch(0.33 0.04 262);
+  --ring: oklch(0.72 0.15 252);
 
-  --sidebar: oklch(0.16 0.02 250);
-  --sidebar-foreground: oklch(0.95 0.01 250);
-  --sidebar-primary: oklch(0.65 0.16 250);
-  --sidebar-primary-foreground: oklch(0.15 0.02 250);
-  --sidebar-accent: oklch(0.25 0.03 250);
-  --sidebar-accent-foreground: oklch(0.95 0.01 250);
-  --sidebar-border: oklch(0.28 0.03 250);
-  --sidebar-ring: oklch(0.65 0.16 250);
+  /* No --sidebar-* here, on purpose: see :root.dark below. */
 
   --destructive: oklch(0.65 0.2 25);
 
@@ -203,11 +254,30 @@
   --status-error: oklch(0.65 0.2 25);
   --status-error-foreground: oklch(0.78 0.15 25);
 
-  --chart-1: oklch(0.65 0.16 250);
+  --chart-1: oklch(0.72 0.15 252);
   --chart-2: oklch(0.7 0.18 145);
   --chart-3: oklch(0.8 0.16 85);
   --chart-4: oklch(0.65 0.2 25);
-  --chart-5: oklch(0.65 0.12 280);
+  --chart-5: oklch(0.65 0.17 285);
+  --chart-degraded: oklch(0.8 0.16 85);
+
+  /* Same gradients as light; the page glow is stronger on the dark page. */
+  --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
+  --accent-gradient: linear-gradient(135deg, oklch(0.7 0.15 225) 0%, oklch(0.57 0.22 258) 50%, oklch(0.5 0.23 275) 100%);
+  --hero-gradient: linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280));
+  --page-glow: radial-gradient(45% 220px at 12% 0, oklch(0.7 0.15 225 / 0.2), transparent 70%),
+    radial-gradient(40% 200px at 65% 0, oklch(0.5 0.23 275 / 0.15), transparent 70%);
+  --gradient-foreground: oklch(1 0 0);
+}
+
+/* Dark mode, sidebar only. Matches <html class="dark"> and nothing else, so
+   the sidebar element (which carries class="dark" in BOTH themes) inherits
+   these from <html> in dark mode and the :root values in light mode. The same
+   navy, only a little deeper; the tokens not repeated here are shared. */
+:root.dark {
+  --sidebar: oklch(0.125 0.035 263);
+  --sidebar-gradient: linear-gradient(180deg, oklch(0.14 0.04 262), oklch(0.11 0.03 265));
+  --sidebar-border: oklch(0.22 0.035 262);
 }
 
 /* Frosted-glass surface for dark/photographic backdrops (the aurora panel,
@@ -219,6 +289,46 @@
   border: 1px solid color-mix(in oklab, white 18%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
+}
+
+/* Gradient fills. They set background-IMAGE only: pair them with the flat
+   bg-primary underneath (so the element still reads blue if the gradient
+   fails to paint). Gotcha: bg-transparent / bg-muted / bg-destructive only
+   set background-COLOR, so an element carrying one of these keeps the
+   gradient on top unless the override also sets bg-none. cn() resolves that
+   for you (see extendTailwindMerge in lib/utils.ts); raw class strings don't.
+   background-origin: border-box sizes the image to the border box, so a
+   transparent border (switch, badge, checkbox) shows the gradient's own edge
+   instead of a repeated sliver of its opposite end. */
+@utility bg-primary-gradient {
+  background-image: var(--primary-gradient);
+  background-origin: border-box;
+}
+
+@utility bg-accent-gradient {
+  background-image: var(--accent-gradient);
+  background-origin: border-box;
+}
+
+@utility bg-hero-gradient {
+  background-image: var(--hero-gradient);
+  background-origin: border-box;
+}
+
+/* The always-dark sidebar surface (paired with bg-sidebar underneath) and
+   its active item's wash (paired with the flat hover wash). Same contract as
+   the gradients above: background-IMAGE only. */
+@utility bg-sidebar-gradient {
+  background-image: var(--sidebar-gradient);
+}
+
+@utility bg-sidebar-active {
+  background-image: var(--sidebar-active);
+}
+
+/* The page glow: one decorative layer at the top of the org content area. */
+@utility bg-page-glow {
+  background-image: var(--page-glow);
 }
 
 @utility radar-ping {

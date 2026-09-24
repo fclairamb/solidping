@@ -38,7 +38,8 @@
         },
         "enabled": true,
         "period": "30s",
-        "group": "core"
+        "group": "core",
+        "degradedEnabled": false
       },
       {
         "name": "back-end-ssl",
@@ -51,7 +52,8 @@
         },
         "enabled": true,
         "period": "6h",
-        "group": "core"
+        "group": "core",
+        "degradedEnabled": false
       },
       {
         "name": "marketing site",
@@ -75,7 +77,8 @@
         },
         "enabled": true,
         "period": "1m",
-        "group": "public"
+        "group": "public",
+        "degradedEnabled": false
       },
       {
         "name": "marketing site-domain",
@@ -87,7 +90,8 @@
         },
         "enabled": true,
         "period": "24h",
-        "group": "public"
+        "group": "public",
+        "degradedEnabled": false
       },
       {
         "name": "legacy soap",
@@ -103,7 +107,8 @@
           "url": "https://legacy.example.org/soap"
         },
         "enabled": false,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "database port",
@@ -115,7 +120,8 @@
         },
         "enabled": true,
         "period": "1m",
-        "group": "core"
+        "group": "core",
+        "degradedEnabled": false
       },
       {
         "name": "secure relay",
@@ -127,7 +133,8 @@
           "tls": true
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "gateway ping",
@@ -137,7 +144,8 @@
           "host": "gw.example.org"
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "bastion",
@@ -148,7 +156,8 @@
           "port": 22
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "syslog relay",
@@ -159,7 +168,8 @@
           "port": 514
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "realtime feed",
@@ -169,7 +179,8 @@
           "url": "wss://feed.example.org/socket"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "dns lookup",
@@ -185,7 +196,8 @@
         },
         "enabled": true,
         "period": "5m",
-        "group": "core"
+        "group": "core",
+        "degradedEnabled": false
       }
     ]
   },

@@ -1011,7 +1011,15 @@
     "statusTimeout": "Délai dépassé",
     "statusError": "Erreur",
     "heartbeatHelp": "Aucune configuration supplémentaire nécessaire. Une URL de battement de cœur sera générée après la création.",
-    "emailGeneratedHelp": "Une adresse e-mail sera générée pour ce contrôle. Envoyez n'importe quel e-mail à cette adresse pour signaler une exécution réussie. Utilisez l'adressage plus (token+down@…) ou [DOWN] dans le sujet pour signaler un échec."
+    "emailGeneratedHelp": "Une adresse e-mail sera générée pour ce contrôle. Envoyez n'importe quel e-mail à cette adresse pour signaler une exécution réussie. Utilisez l'adressage plus (token+down@…) ou [DOWN] dans le sujet pour signaler un échec.",
+    "rdpDomainOptional": "Domaine (optionnel)",
+    "rdpLogonHelp": "Renseigner identifiant et mot de passe effectue une VRAIE connexion interactive : le profil est chargé et l'écran stabilisé avant le verdict. Laisser les deux vides conserve la vérification pré-authentification.",
+    "rdpScreenshot": "Capturer le bureau une fois la connexion stabilisée",
+    "rdpEndSession": "Fin de session",
+    "rdpEndSessionLogoff": "Déconnexion (défaut)",
+    "rdpEndSessionDisconnect": "Déconnexion (la session reste sur le serveur)",
+    "rdpEndSessionHelp": "La déconnexion supprime la session du serveur. La déconnexion réseau la laisse tourner jusqu'à ce que la politique d'inactivité du serveur la termine : l'exécution suivante s'y rattache (vérifications plus rapides).",
+    "rdpCaveatsHelp": "Chaque exécution authentifiée est une vraie connexion Windows interactive : chargement d'un profil utilisateur, scripts d'ouverture de session et GPO, consommation possible d'une licence RDS, déconnexion possible d'un utilisateur réel sur un serveur à session unique, et une trace 4624/4634 dans le journal de sécurité à chaque exécution. Utilisez un compte de supervision dédié, jamais le compte d'une personne."
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",

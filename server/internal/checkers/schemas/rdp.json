@@ -20,6 +20,23 @@
     },
     "critical_days": {
       "type": "integer"
+    },
+    "username": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string",
+      "format": "solidping-secret-ref",
+      "description": "Stored encrypted. Prefer a `${env:VAR}` or `${param:key}` reference over an inlined credential in a config-as-code manifest."
+    },
+    "domain": {
+      "type": "string"
+    },
+    "screenshot": {
+      "type": "boolean"
+    },
+    "end_session": {
+      "type": "string"
     }
   },
   "type": "object",
@@ -32,7 +49,9 @@
   "x-solidping-notes": [
     "`host` carries `omitempty` in Go, but `Validate()` rejects a config without it, so it IS listed in `required`. The Go validator is authoritative."
   ],
-  "x-solidping-secret-fields": [],
+  "x-solidping-secret-fields": [
+    "password"
+  ],
   "x-solidping-validation": {
     "authority": "go",
     "command": "sp checks validate <manifest>",

@@ -4,8 +4,8 @@
   "description": "Operator dashboard for SolidPing monitoring",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f8f9fb",
-  "theme_color": "#e91e63",
+  "background_color": "#f5f9fc",
+  "theme_color": "#0a1731",
   "icons": [
     {
       "src": "assets/favicon.svg",

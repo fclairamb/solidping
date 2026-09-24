@@ -1011,7 +1011,15 @@
     "statusTimeout": "Timeout",
     "statusError": "Fehler",
     "heartbeatHelp": "Keine weitere Konfiguration erforderlich. Nach der Erstellung wird eine Heartbeat-URL generiert.",
-    "emailGeneratedHelp": "Für diese Prüfung wird eine E-Mail-Adresse generiert. Senden Sie eine beliebige E-Mail an diese Adresse, um einen erfolgreichen Lauf zu melden. Verwenden Sie Plus-Adressierung (token+down@…) oder [DOWN] im Betreff, um einen Fehler zu melden."
+    "emailGeneratedHelp": "Für diese Prüfung wird eine E-Mail-Adresse generiert. Senden Sie eine beliebige E-Mail an diese Adresse, um einen erfolgreichen Lauf zu melden. Verwenden Sie Plus-Adressierung (token+down@…) oder [DOWN] im Betreff, um einen Fehler zu melden.",
+    "rdpDomainOptional": "Domäne (optional)",
+    "rdpLogonHelp": "Mit Benutzername und Passwort führt die Prüfung eine ECHTE interaktive Anmeldung durch: Profil wird geladen, der Bildschirm stabilisiert sich, erst dann fällt das Urteil. Bleiben beide leer, bleibt es bei der Pre-Auth-Prüfung.",
+    "rdpScreenshot": "Desktop erfassen, sobald sich die Anmeldung stabilisiert",
+    "rdpEndSession": "Sitzungsende",
+    "rdpEndSessionLogoff": "Abmelden (Standard)",
+    "rdpEndSessionDisconnect": "Nur trennen (Sitzung bleibt auf dem Server)",
+    "rdpEndSessionHelp": "Abmelden entfernt die Sitzung vom Server. Trennen lässt sie laufen, bis die Idle-Richtlinie des Servers sie beendet — der nächste Lauf hängt sich wieder an (schnellere Prüfungen).",
+    "rdpCaveatsHelp": "Jede authentifizierte Ausführung ist eine echte interaktive Windows-Anmeldung: Benutzerprofil, Anmeldeskripte und GPOs, möglicher Verbrauch einer RDS-Lizenz, auf Einzelsitzungsservern ein möglicherweise abgemeldeter echter Benutzer, und pro Ausführung ein Eintrag 4624/4634 im Sicherheitsprotokoll. Verwenden Sie ein dediziertes Überwachungskonto, nie das Konto einer Person."
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",

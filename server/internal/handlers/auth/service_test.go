@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -640,6 +641,75 @@ func passwordResetUser(t *testing.T, ctx context.Context, dbSvc db.Service, emai
 	return user
 }
 
+// ssoOnlyUser creates a user with no password hash and one or more linked
+// providers — a real SSO sign-up (spec 2026-09-23-02), as opposed to a user
+// with neither a password nor a provider (no recoverable account at all).
+//
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
+func ssoOnlyUserWithProviders(
+	t *testing.T, ctx context.Context, dbSvc db.Service, email string, providerTypes ...models.ProviderType,
+) *models.User {
+	t.Helper()
+	r := require.New(t)
+
+	user := models.NewUser(email)
+	r.NoError(dbSvc.CreateUser(ctx, user))
+
+	for i, pt := range providerTypes {
+		provider := models.NewUserProvider(user.UID, pt, fmt.Sprintf("%s-id-%d", pt, i))
+		r.NoError(dbSvc.CreateUserProvider(ctx, provider))
+	}
+
+	return user
+}
+
+// setupAuthTestServiceWithJobs is setupAuthTestServiceWithConfig's sibling
+// for tests that need to inspect the enqueued email job itself (template
+// name, template data) rather than just whether RequestPasswordReset
+// succeeded — setupAuthTestServiceWithConfig passes a nil jobsSvc, so
+// enqueueEmail there is always a no-op.
+func setupAuthTestServiceWithJobs(t *testing.T, fullCfg *config.Config) (*Service, db.Service, context.Context) {
+	t.Helper()
+	r := require.New(t)
+
+	ctx := t.Context()
+
+	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbService.Initialize(ctx))
+	t.Cleanup(func() { _ = dbService.Close() })
+
+	jobs := jobsvc.NewService(dbService.DB(), dbService, notifier.NewLocalEventNotifier(), nil)
+
+	svc := NewService(dbService, fullCfg.Auth, fullCfg, jobs, nil)
+
+	return svc, dbService, ctx
+}
+
+// latestEmailJobTemplateData returns the template name and template data of
+// the most recently enqueued email job. Fails the test if there is none.
+//
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
+func latestEmailJobTemplateData(t *testing.T, ctx context.Context, dbSvc db.Service) (string, map[string]any) {
+	t.Helper()
+	r := require.New(t)
+
+	jobs, err := dbSvc.ListJobs(ctx, nil, 0)
+	r.NoError(err)
+	r.NotEmpty(jobs, "expected at least one enqueued job")
+
+	job := jobs[0]
+	r.Equal(string(jobdef.JobTypeEmail), job.Type)
+
+	template, ok := job.Config["template"].(string)
+	r.True(ok, "template must decode as a string, got %T", job.Config["template"])
+
+	templateData, ok := job.Config["templateData"].(map[string]any)
+	r.True(ok, "templateData must decode as a map, got %T", job.Config["templateData"])
+
+	return template, templateData
+}
+
 //nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
 func extractResetTokenFromState(t *testing.T, ctx context.Context, dbSvc db.Service) string {
 	t.Helper()
@@ -698,22 +768,274 @@ func TestRequestPasswordReset(t *testing.T) {
 		r.NotEmpty(userUID)
 	})
 
-	t.Run("OAuth-only user produces no entry and no email", func(t *testing.T) {
+	// Negative control (spec 2026-09-23-02): a user with neither a password
+	// hash NOR any linked provider isn't a recoverable account at all — no
+	// account to point them to — so this must still produce nothing. Paired
+	// with "SSO-only user ..." below, which DOES store/send for the same
+	// nil-password shape plus a linked provider, so the suite proves the
+	// distinction is the provider link, not just "nothing crashes".
+	t.Run("user with no password and no provider produces no entry and no email", func(t *testing.T) {
 		t.Parallel()
 		r := require.New(t)
 
 		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
-		// Create a user without a password hash.
-		user := models.NewUser("oauth@example.com")
+		// Create a user without a password hash and without any linked provider.
+		user := models.NewUser("noaccount@example.com")
 		r.NoError(dbSvc.CreateUser(ctx, user))
 
-		resp, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "oauth@example.com"}, "127.0.0.1")
+		resp, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "noaccount@example.com"}, "127.0.0.1")
 		r.NoError(err)
 		r.NotEmpty(resp.Message)
 
 		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
 		r.NoError(err)
-		r.Empty(entries, "no entry should exist for OAuth-only user")
+		r.Empty(entries, "no entry should exist for a user with no password and no provider")
+	})
+
+	t.Run("SSO-only user stores an entry and enqueues the SSO email with the provider label", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		fullCfg := &config.Config{
+			Server: config.ServerConfig{BaseURL: "https://example.com"},
+			Auth: config.AuthConfig{
+				JWTSecret:          "test-jwt-secret",
+				AccessTokenExpiry:  time.Hour,
+				RefreshTokenExpiry: 7 * 24 * time.Hour,
+			},
+		}
+		svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+		ssoOnlyUserWithProviders(t, ctx, dbSvc, "sso-only@example.com", models.ProviderTypeGoogle)
+
+		resp, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "sso-only@example.com"}, "127.0.0.1")
+		r.NoError(err)
+		r.NotEmpty(resp.Message)
+
+		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		var resetEntries []*models.StateEntry
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+				resetEntries = append(resetEntries, e)
+			}
+		}
+		r.Len(resetEntries, 1, "SSO-only user must still get a reset token stored")
+
+		template, templateData := latestEmailJobTemplateData(t, ctx, dbSvc)
+		r.Equal("password-reset-sso.html", template)
+		r.Equal("Google", templateData["Providers"])
+		r.NotEmpty(templateData["ResetURL"])
+	})
+
+	t.Run("SSO-only user with two providers lists both labels joined with or", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		fullCfg := &config.Config{
+			Server: config.ServerConfig{BaseURL: "https://example.com"},
+			Auth: config.AuthConfig{
+				JWTSecret:          "test-jwt-secret",
+				AccessTokenExpiry:  time.Hour,
+				RefreshTokenExpiry: 7 * 24 * time.Hour,
+			},
+		}
+		svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+		ssoOnlyUserWithProviders(t, ctx, dbSvc, "sso-two@example.com", models.ProviderTypeGoogle, models.ProviderTypeGitHub)
+
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "sso-two@example.com"}, "127.0.0.1")
+		r.NoError(err)
+
+		template, templateData := latestEmailJobTemplateData(t, ctx, dbSvc)
+		r.Equal("password-reset-sso.html", template)
+		r.Equal("GitHub or Google", templateData["Providers"])
+	})
+
+	t.Run("SAML/OIDC use their configured display name, falling back to SSO when blank", func(t *testing.T) {
+		t.Parallel()
+
+		cases := []struct {
+			name          string
+			providerType  models.ProviderType
+			samlName      string
+			oidcName      string
+			wantProviders string
+		}{
+			{"SAML with display name", models.ProviderTypeSAML, "Acme Identity", "", "Acme Identity"},
+			{"SAML with blank display name falls back to SSO", models.ProviderTypeSAML, "", "", "SSO"},
+			{"OIDC with display name", models.ProviderTypeOIDC, "", "Acme Okta", "Acme Okta"},
+			{"OIDC with blank display name falls back to SSO", models.ProviderTypeOIDC, "", "", "SSO"},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				r := require.New(t)
+
+				fullCfg := &config.Config{
+					Server: config.ServerConfig{BaseURL: "https://example.com"},
+					Auth: config.AuthConfig{
+						JWTSecret:          "test-jwt-secret",
+						AccessTokenExpiry:  time.Hour,
+						RefreshTokenExpiry: 7 * 24 * time.Hour,
+					},
+					SAML: config.SAMLConfig{DisplayName: tc.samlName},
+					OIDC: config.OIDCOAuthConfig{DisplayName: tc.oidcName},
+				}
+				svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+				email := "sso-idp-" + string(tc.providerType) + "-" +
+					strings.ToLower(strings.ReplaceAll(tc.name, " ", "-")) + "@example.com"
+				ssoOnlyUserWithProviders(t, ctx, dbSvc, email, tc.providerType)
+
+				_, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: email}, "127.0.0.1")
+				r.NoError(err)
+
+				_, templateData := latestEmailJobTemplateData(t, ctx, dbSvc)
+				r.Equal(tc.wantProviders, templateData["Providers"])
+			})
+		}
+	})
+
+	t.Run("password user email is unchanged: same template, no Providers field", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		fullCfg := &config.Config{
+			Server: config.ServerConfig{BaseURL: "https://example.com"},
+			Auth: config.AuthConfig{
+				JWTSecret:          "test-jwt-secret",
+				AccessTokenExpiry:  time.Hour,
+				RefreshTokenExpiry: 7 * 24 * time.Hour,
+			},
+		}
+		svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+		passwordResetUser(t, ctx, dbSvc, "plain-reset@example.com")
+
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "plain-reset@example.com"}, "127.0.0.1")
+		r.NoError(err)
+
+		template, templateData := latestEmailJobTemplateData(t, ctx, dbSvc)
+		r.Equal("password-reset.html", template, "a password user's email template must not change")
+		_, hasProviders := templateData["Providers"]
+		r.False(hasProviders, "a password user's email must carry no Providers field")
+		r.NotEmpty(templateData["ResetURL"])
+	})
+
+	// A dual password+SSO user is treated exactly like a password user
+	// (spec 2026-09-23-02 §3): same template, no provider block, even though
+	// they also have a linked provider.
+	t.Run("dual password+SSO user gets the plain password email, not the SSO one", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		fullCfg := &config.Config{
+			Server: config.ServerConfig{BaseURL: "https://example.com"},
+			Auth: config.AuthConfig{
+				JWTSecret:          "test-jwt-secret",
+				AccessTokenExpiry:  time.Hour,
+				RefreshTokenExpiry: 7 * 24 * time.Hour,
+			},
+		}
+		svc, dbSvc, ctx := setupAuthTestServiceWithJobs(t, fullCfg)
+		user := passwordResetUser(t, ctx, dbSvc, "dual@example.com")
+		r.NoError(dbSvc.CreateUserProvider(ctx, models.NewUserProvider(user.UID, models.ProviderTypeGoogle, "dual-id")))
+
+		_, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "dual@example.com"}, "127.0.0.1")
+		r.NoError(err)
+
+		template, templateData := latestEmailJobTemplateData(t, ctx, dbSvc)
+		r.Equal("password-reset.html", template)
+		_, hasProviders := templateData["Providers"]
+		r.False(hasProviders)
+	})
+
+	// Per-user and per-IP rate limits must apply identically to SSO-only
+	// users — they go through the exact same bumpResetUserCounter /
+	// bumpResetIPCounter calls as a password user.
+	t.Run("SSO-only user is subject to the per-user cap", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		ssoOnlyUserWithProviders(t, ctx, dbSvc, "sso-cap@example.com", models.ProviderTypeGitHub)
+
+		for i := 0; i < passwordResetMaxPerUser; i++ {
+			ip := fmt.Sprintf("192.0.2.%d", 100+i)
+			_, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "sso-cap@example.com"}, ip)
+			r.NoError(err)
+		}
+
+		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		var resetEntries []*models.StateEntry
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+				resetEntries = append(resetEntries, e)
+			}
+		}
+		r.Len(resetEntries, passwordResetMaxPerUser)
+
+		// One more, past the cap, from yet another IP: silently dropped.
+		_, err = svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "sso-cap@example.com"}, "192.0.2.199")
+		r.NoError(err)
+
+		entries, err = dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		var afterReset []*models.StateEntry
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+				afterReset = append(afterReset, e)
+			}
+		}
+		r.Len(afterReset, passwordResetMaxPerUser, "no new entry beyond the cap for an SSO-only user")
+	})
+
+	t.Run("SSO-only user is subject to the per-IP rate limit", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		ssoOnlyUserWithProviders(t, ctx, dbSvc, "sso-iprl@example.com", models.ProviderTypeGitHub)
+
+		for i := 0; i < passwordResetMaxPerIP; i++ {
+			_, err := svc.RequestPasswordReset(ctx,
+				RequestPasswordResetRequest{Email: "sso-iprl@example.com"}, "203.0.113.55")
+			r.NoError(err)
+		}
+
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "sso-iprl@example.com"}, "203.0.113.55")
+		r.ErrorIs(err, ErrRateLimited)
+	})
+
+	// Anti-enumeration: the response body must be byte-identical whether the
+	// email is unknown, belongs to a password user, or belongs to an
+	// SSO-only user — the API must never leak account existence or auth
+	// method through the response shape.
+	t.Run("response body is byte-identical across unknown, password and SSO-only emails", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		passwordResetUser(t, ctx, dbSvc, "identical-pw@example.com")
+		ssoOnlyUserWithProviders(t, ctx, dbSvc, "identical-sso@example.com", models.ProviderTypeGoogle)
+
+		unknownResp, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "identical-ghost@example.com"}, "198.51.100.1")
+		r.NoError(err)
+
+		pwResp, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "identical-pw@example.com"}, "198.51.100.2")
+		r.NoError(err)
+
+		ssoResp, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "identical-sso@example.com"}, "198.51.100.3")
+		r.NoError(err)
+
+		r.Equal(unknownResp.Message, pwResp.Message)
+		r.Equal(unknownResp.Message, ssoResp.Message)
 	})
 
 	t.Run("unknown email returns success but creates nothing", func(t *testing.T) {
@@ -865,6 +1187,54 @@ func TestResetPassword(t *testing.T) {
 		pats, err := dbSvc.ListUserTokensByType(ctx, user.UID, models.TokenTypePAT)
 		r.NoError(err)
 		r.Len(pats, 1)
+	})
+
+	// End-to-end SSO-only flow (spec 2026-09-23-02): RequestPasswordReset
+	// stores a token for an SSO-only user, ResetPassword with that token
+	// writes a password hash, the user can then log in with email +
+	// password, and — the "not broken by setting a password" guarantee —
+	// their linked provider row survives untouched, so SSO login still
+	// works too.
+	t.Run("SSO-only user: reset sets a password, login works, SSO link survives", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		user := ssoOnlyUserWithProviders(t, ctx, dbSvc, "sso-e2e@example.com", models.ProviderTypeGoogle)
+
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "sso-e2e@example.com"}, "127.0.0.1")
+		r.NoError(err)
+		token := extractResetTokenFromState(t, ctx, dbSvc)
+		r.NotEmpty(token, "SSO-only user must get a reset token stored")
+
+		// Same known-token substitution as the happy-path test above: we
+		// can't recover the plaintext token RequestPasswordReset minted, so
+		// exercise ResetPassword against a token we control.
+		knownToken := "test-known-token-sso"
+		stateValue := &models.JSONMap{"userUid": user.UID}
+		ttl := passwordResetTTL
+		r.NoError(dbSvc.SetStateEntry(ctx, nil,
+			passwordResetKeyPrefix+hashResetToken(knownToken), stateValue, &ttl))
+
+		resp, err := svc.ResetPassword(ctx, ResetPasswordRequest{
+			Token:    knownToken,
+			Password: "newpassword123",
+		})
+		r.NoError(err)
+		r.NotEmpty(resp.Message)
+
+		// The user can now log in with email + password.
+		loginResp, err := svc.Login(ctx, "", "sso-e2e@example.com", "newpassword123", Context{})
+		r.NoError(err)
+		r.NotNil(loginResp)
+
+		// SSO login still works: ResetPassword only touches the password
+		// hash, so the linked provider row is untouched.
+		providers, err := dbSvc.ListUserProvidersByUser(ctx, user.UID)
+		r.NoError(err)
+		r.Len(providers, 1)
+		r.Equal(models.ProviderTypeGoogle, providers[0].ProviderType)
 	})
 
 	t.Run("malformed or unknown token returns ErrPasswordResetExpired", func(t *testing.T) {

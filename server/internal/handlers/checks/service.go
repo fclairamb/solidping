@@ -326,6 +326,68 @@ func parsedConfigForType(checkType string, configMap map[string]any) checkerdef.
 // documented floor is 30s and the error would otherwise read as a bug.
 const browserFloorReason = "scripts that open a browser have the browser check's 1m floor"
 
+// rdpFloorReason is the same idea for an authenticated RDP run (a `js` script
+// calling rdp.connect, or an rdp check with credentials): the floor exists
+// because every such run is a real interactive Windows logon, and the message
+// must say so rather than read as a bug.
+const rdpFloorReason = "authenticated RDP runs are real interactive logons; the floor keeps the interval long"
+
+// validateConfigOnlyPatchFloor re-checks the config-derived period floor on a
+// config-only PATCH (req.Period unset): see the call site in Update for why —
+// a config-only PATCH must not be a way around the floor either.
+func validateConfigOnlyPatchFloor(check *models.Check, reqPeriod *string) error {
+	if reqPeriod != nil || check.Internal {
+		return nil
+	}
+
+	return validateConfigDerivedFloor(
+		check.Type, time.Duration(check.Period), parsedConfigForType(check.Type, check.Config),
+	)
+}
+
+// validateConfigDerivedFloor holds an unchanged period to the floor a NEW
+// config raises (see configPeriodHint), and to nothing else.
+func validateConfigDerivedFloor(checkType string, period time.Duration, config checkerdef.Config) error {
+	if period == 0 || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
+		return nil
+	}
+
+	if hint, reason := configPeriodHint(config); hint > 0 && period < hint {
+		return &periodBoundError{CheckType: checkType, Bound: hint, Reason: reason}
+	}
+
+	return nil
+}
+
+// configPeriodHint is the config-derived floor and the sentence explaining it:
+// the reason follows the heuristic that actually produced the hint (a `js`
+// script calling rdp.connect gets the RDP reason, not the browser one).
+func configPeriodHint(config checkerdef.Config) (time.Duration, string) {
+	hinter, ok := config.(checkerdef.MinPeriodHint)
+	if !ok || config == nil {
+		return 0, ""
+	}
+
+	hint := hinter.MinPeriodHint()
+	if hint == 0 {
+		return 0, ""
+	}
+
+	source := ""
+	if sourcer, hasSource := config.(checkerdef.MinPeriodHintSource); hasSource {
+		source = sourcer.MinPeriodHintSource()
+	}
+
+	switch source {
+	case checkerdef.MinPeriodSourceRDP:
+		return hint, rdpFloorReason
+	case checkerdef.MinPeriodSourceBrowser:
+		return hint, browserFloorReason
+	default:
+		return hint, ""
+	}
+}
+
 // formatPeriodBound renders a period bound compactly, the way users write
 // periods: whole hours as "6h", whole minutes at or above ten minutes as
 // "15m", and everything else in seconds ("60s", "30s", "10s") so the common
@@ -376,11 +438,8 @@ func validatePeriodForType(
 	// max(type floor, config-derived floor).
 	var reason string
 
-	if hinter, ok := config.(checkerdef.MinPeriodHint); ok && config != nil {
-		if hint := hinter.MinPeriodHint(); hint > minPeriod {
-			minPeriod = hint
-			reason = browserFloorReason
-		}
+	if hint, hintReason := configPeriodHint(config); hint > minPeriod {
+		minPeriod, reason = hint, hintReason
 	}
 
 	if period < minPeriod {
@@ -1720,6 +1779,17 @@ type UpsertCheckRequest struct {
 	FlapBackoffFactor        *int `json:"flapBackoffFactor,omitempty"`
 	MaxRecoveryMultiplier    *int `json:"maxRecoveryMultiplier,omitempty"`
 
+	// Degraded detection (spec 2026-09-22-03): M of the last N countable
+	// probes. nil leaves the value untouched (create -> code default; update
+	// -> unchanged); an explicit 0 for an M (or for slowThresholdMs) turns
+	// that rule off.
+	DegradedFailures       *int  `json:"degradedFailures,omitempty"`
+	DegradedFailuresWindow *int  `json:"degradedFailuresWindow,omitempty"`
+	DegradedSlow           *int  `json:"degradedSlow,omitempty"`
+	DegradedSlowWindow     *int  `json:"degradedSlowWindow,omitempty"`
+	SlowThresholdMs        *int  `json:"slowThresholdMs,omitempty"`
+	DegradedEnabled        *bool `json:"degradedEnabled,omitempty"`
+
 	DependsOn *[]ExportedDependency `json:"dependsOn,omitempty"`
 }
 
@@ -1816,6 +1886,10 @@ func (s *Service) UpdateCheck(
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
 			return CheckResponse{}, cfgErr
+		}
+
+		if floorErr := validateConfigOnlyPatchFloor(check, req.Period); floorErr != nil {
+			return CheckResponse{}, floorErr
 		}
 	} else if req.Regions != nil {
 		// A regions-only PATCH still has to re-validate a tunnel reference: the
@@ -2098,6 +2172,12 @@ func (s *Service) UpsertCheck(
 			FlappingWindowSeconds:     req.FlappingWindowSeconds,
 			FlapBackoffFactor:         req.FlapBackoffFactor,
 			MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+			DegradedFailures:          req.DegradedFailures,
+			DegradedFailuresWindow:    req.DegradedFailuresWindow,
+			DegradedSlow:              req.DegradedSlow,
+			DegradedSlowWindow:        req.DegradedSlowWindow,
+			SlowThresholdMs:           req.SlowThresholdMs,
+			DegradedEnabled:           req.DegradedEnabled,
 		}
 		if len(req.Regions) > 0 {
 			updateReq.Regions = &req.Regions
@@ -3348,12 +3428,35 @@ type ExportCheck struct {
 	// dropped it would resolve back to the org default — which is ON. An
 	// explicit opt-out quietly becoming an opt-in on restore, with no diff to
 	// notice, is the worst direction this field could fail in.
-	TracerouteOnFailure      string               `json:"tracerouteOnFailure,omitempty"`
-	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindowSeconds    *int                 `json:"flappingWindowSeconds,omitempty"`
-	FlapBackoffFactor        *int                 `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier    *int                 `json:"maxRecoveryMultiplier,omitempty"`
-	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
+	TracerouteOnFailure      string `json:"tracerouteOnFailure,omitempty"`
+	ReopenCooldownMultiplier *int   `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindowSeconds    *int   `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int   `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int   `json:"maxRecoveryMultiplier,omitempty"`
+	// Degraded detection (spec 2026-09-22-03): the raw per-check columns, NOT
+	// the resolved Effective*() values.
+	//
+	// IT MUST TRAVEL, for the same reason as TracerouteOnFailure above but in
+	// the mirror direction: an unconfigured check (nil) has to round-trip as
+	// unconfigured, not freeze today's code default into the document — a
+	// later retune of models.Default* would otherwise pin every previously-
+	// unconfigured check to a stale value, and every diff/plan would report a
+	// spurious change the moment the default changes. An operator's explicit
+	// 0 (a rule turned off) must equally survive as an explicit 0, not
+	// collapse into "unset".
+	//
+	// DegradedEnabled is deliberately a plain, always-present bool rather than
+	// a pointer, mirroring Enabled above: it is NOT nullable on the model
+	// (check.go), and false is itself a meaningful, common state (every
+	// pre-existing check, and any new check the operator has not yet opted
+	// into paging for) rather than an absence to omit.
+	DegradedFailures       *int                 `json:"degradedFailures,omitempty"`
+	DegradedFailuresWindow *int                 `json:"degradedFailuresWindow,omitempty"`
+	DegradedSlow           *int                 `json:"degradedSlow,omitempty"`
+	DegradedSlowWindow     *int                 `json:"degradedSlowWindow,omitempty"`
+	SlowThresholdMs        *int                 `json:"slowThresholdMs,omitempty"`
+	DegradedEnabled        bool                 `json:"degradedEnabled"`
+	DependsOn              []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // ExportedDependency mirrors an edge in slug-keyed form. Slug-keyed because
@@ -3593,6 +3696,14 @@ func projectChecksToExport(
 			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
 			FlapBackoffFactor:         intPtr(check.FlapBackoffFactor),
 			MaxRecoveryMultiplier:     intPtr(check.MaxRecoveryMultiplier),
+			// Raw pointer copies, not check.Effective*() — see the field
+			// comment on ExportCheck for why the distinction is load-bearing.
+			DegradedFailures:       check.DegradedFailures,
+			DegradedFailuresWindow: check.DegradedFailuresWindow,
+			DegradedSlow:           check.DegradedSlow,
+			DegradedSlowWindow:     check.DegradedSlowWindow,
+			SlowThresholdMs:        check.SlowThresholdMs,
+			DegradedEnabled:        check.DegradedEnabled,
 		}
 
 		if check.Name != nil {
@@ -4318,6 +4429,15 @@ func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string)
 		FlappingWindowSeconds:     exportedCheck.FlappingWindowSeconds,
 		FlapBackoffFactor:         exportedCheck.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     exportedCheck.MaxRecoveryMultiplier,
+		DegradedFailures:          exportedCheck.DegradedFailures,
+		DegradedFailuresWindow:    exportedCheck.DegradedFailuresWindow,
+		DegradedSlow:              exportedCheck.DegradedSlow,
+		DegradedSlowWindow:        exportedCheck.DegradedSlowWindow,
+		SlowThresholdMs:           exportedCheck.SlowThresholdMs,
+		// DegradedEnabled is a plain bool on the document (never absent),
+		// unlike the five numerics above — always forwarded explicitly, the
+		// same way Enabled is a few lines up.
+		DegradedEnabled: &exportedCheck.DegradedEnabled,
 	}
 	if exportedCheck.Period != "" {
 		upsertReq.Period = &exportedCheck.Period

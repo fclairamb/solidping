@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
+	checkrdp "github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
 )
 
 // JS result map keys.
@@ -121,6 +122,12 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// early, threw, or was interrupted. Nothing else releases the browser slot
 	// (spec 2026-09-12-06 §3).
 	defer runtime.closeBrowser()
+
+	// Same rule for the RDP session: a script that returns early, throws or
+	// is interrupted never leaks an authenticated logon or its slot — and a
+	// script that ended without calling logoff() gets one, the check's
+	// default end-session mode.
+	defer runtime.closeRDP()
 
 	// Same rule for every socket the script opened: a script that returns
 	// early, throws or is interrupted never leaks a TCP/UDP/WebSocket
@@ -240,6 +247,16 @@ type jsRuntime struct {
 	screenshot   checkbrowser.Capture
 	screenshotAt time.Time
 
+	// rdp is the RDP session this execution opened, nil until rdp.connect().
+	// rdpOpened stays true after a close, which is what enforces the
+	// one-session-per-execution rule against a script that closes and
+	// re-connects.
+	rdp       checkrdp.RDPSession
+	rdpOpened bool
+	// rdpActions is the session-action budget, counted SEPARATELY from
+	// subCheckCount — see maxRDPActions.
+	rdpActions atomic.Int32
+
 	// sockets holds one disposer per connection the script opened through the
 	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
 	// closeSockets() over it, so nothing leaks whatever the script did.
@@ -309,6 +326,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerHTTP()
 	r.registerBase64()
 	r.registerBrowser()
+	r.registerRDP()
 	r.registerTCP()
 	r.registerUDP()
 	r.registerWebSocket()
@@ -459,7 +477,7 @@ func (r *jsRuntime) registerSolidping() {
 	checkerTypes := []string{
 		"http", "tcp", "dns", "ssl", "icmp", "smtp", "udp", "ssh",
 		"pop3", "imap", "websocket", "postgresql", "ftp", "sftp", "domain",
-		"browser",
+		"browser", "rdp",
 	}
 
 	for _, typeName := range checkerTypes {
@@ -477,26 +495,56 @@ func (r *jsRuntime) registerSolidping() {
 	_ = r.vm.Set("solidping", solidping)
 }
 
+// errSubCheckRDPLogon is the refusal an authenticated rdp sub-check gets.
+const errSubCheckRDPLogon = "an authenticated RDP logon cannot run as a sub-check: its 15-minute " +
+	"minimum period is enforced on the script's own check, which cannot see inside " +
+	"sub-check arguments. Use rdp.connect(), which carries that floor"
+
+// subCheckFloorRefusal refuses a sub-check whose CONFIG raises its own period
+// floor (checkerdef.MinPeriodHint) — today, an rdp check with credentials.
+//
+// The floor is enforced at validation time on the outer `js` check, by a
+// heuristic over its script text (rdp.connect). A sub-check's config is only
+// built at run time, from arguments the validator never sees, so running it
+// would let solidping.rdp({username, password}) — or solidping.check("rdp",
+// …) — perform a real Windows logon at the js check's 30 s period. Refusing
+// it at run time is the only way the floor holds whatever the call looks like.
+// A pre-auth rdp sub-check (no credentials) has no hint and still runs.
+func subCheckFloorRefusal(cfg checkerdef.Config) string {
+	hinter, ok := cfg.(checkerdef.MinPeriodHint)
+	if !ok || hinter.MinPeriodHint() == 0 {
+		return ""
+	}
+
+	if sourcer, hasSource := cfg.(checkerdef.MinPeriodHintSource); hasSource &&
+		sourcer.MinPeriodHintSource() == checkerdef.MinPeriodSourceRDP {
+		return errSubCheckRDPLogon
+	}
+
+	return fmt.Sprintf("this sub-check's config requires a minimum period of %s, "+
+		"which cannot be enforced on a sub-check", hinter.MinPeriodHint())
+}
+
+// jsCheckError builds the {status, output.error} shape every early return
+// from check() below uses, so the function's body is refusals plus one line
+// each rather than a repeated map literal.
+func jsCheckError(msg string) map[string]any {
+	return map[string]any{
+		jsKeyStatus: logLevelError,
+		jsKeyOutput: map[string]any{checkerdef.OutputKeyError: msg},
+	}
+}
+
 // check executes a sub-checker via the resolver.
 func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]any {
 	// Block recursive JS and heartbeat checks
 	if typeStr == "js" || typeStr == "heartbeat" {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{
-				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is not allowed in JS scripts",
-			},
-		}
+		return jsCheckError("check type \"" + typeStr + "\" is not allowed in JS scripts")
 	}
 
 	// Enforce sub-check limit
 	if r.subCheckCount.Add(1) > int32(maxSubChecks) {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{
-				checkerdef.OutputKeyError: fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks),
-			},
-		}
+		return jsCheckError(fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks))
 	}
 
 	checkType := checkerdef.CheckType(typeStr)
@@ -521,12 +569,7 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// deliberate — the existing guard ordering is left untouched and a script
 	// cannot spin the refusal path for free.
 	if TypeEnabled != nil && !TypeEnabled(checkType) {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{
-				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is disabled on this server",
-			},
-		}
+		return jsCheckError("check type \"" + typeStr + "\" is disabled on this server")
 	}
 
 	// A tunneled script cannot let a sub-check of a type that itself lacks
@@ -539,43 +582,30 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// appears.
 	if checkerdef.TunnelDialerFrom(r.execCtx) != nil {
 		if meta := checkerdef.GetCheckTypeMeta(checkType); meta == nil || !meta.SupportsTunnel {
-			return map[string]any{
-				jsKeyStatus: logLevelError,
-				jsKeyOutput: map[string]any{
-					checkerdef.OutputKeyError: fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr),
-				},
-			}
+			return jsCheckError(fmt.Sprintf("check type %q cannot run through an SSH tunnel", typeStr))
 		}
 	}
 
 	if ResolveChecker == nil {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "checker resolver not initialized"},
-		}
+		return jsCheckError("checker resolver not initialized")
 	}
 
 	checker, cfg, ok := ResolveChecker(checkType)
 	if !ok {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "unknown check type: " + typeStr},
-		}
+		return jsCheckError("unknown check type: " + typeStr)
 	}
 
 	if err := cfg.FromMap(configMap); err != nil {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "invalid config: " + err.Error()},
-		}
+		return jsCheckError("invalid config: " + err.Error())
+	}
+
+	if refusal := subCheckFloorRefusal(cfg); refusal != "" {
+		return jsCheckError(refusal)
 	}
 
 	result, err := checker.Execute(r.execCtx, cfg)
 	if err != nil {
-		return map[string]any{
-			jsKeyStatus: logLevelError,
-			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "execution error: " + err.Error()},
-		}
+		return jsCheckError("execution error: " + err.Error())
 	}
 
 	return map[string]any{

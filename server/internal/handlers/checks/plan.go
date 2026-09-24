@@ -305,6 +305,16 @@ func planPeriod(checkType string, raw *string, configMap map[string]any) (time.D
 // the same bounds the write path enforces.
 func plannedUpdatePeriod(existing *models.Check, req *UpsertCheckRequest) (time.Duration, error) {
 	if req.Period == nil || *req.Period == "" {
+		// A config-only update is still held to the floor the NEW config
+		// raises — the same rule UpdateCheck enforces.
+		if req.Config != nil && !existing.Internal {
+			if floorErr := validateConfigDerivedFloor(
+				existing.Type, time.Duration(existing.Period), parsedConfigForType(existing.Type, req.Config),
+			); floorErr != nil {
+				return 0, floorErr
+			}
+		}
+
 		return time.Duration(existing.Period), nil
 	}
 
@@ -552,5 +562,11 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		DegradedFailures:          req.DegradedFailures,
+		DegradedFailuresWindow:    req.DegradedFailuresWindow,
+		DegradedSlow:              req.DegradedSlow,
+		DegradedSlowWindow:        req.DegradedSlowWindow,
+		SlowThresholdMs:           req.SlowThresholdMs,
+		DegradedEnabled:           req.DegradedEnabled,
 	}
 }

@@ -32,8 +32,8 @@ import {
   type OrgResult,
 } from "@/api/hooks";
 import {
+  AVAILABILITY_TIER_HERO_BADGE,
   availabilityTier,
-  type AvailabilityTier,
 } from "@/lib/availability-tier";
 import {
   groupHeaderCounts,
@@ -70,6 +70,7 @@ import {
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 
@@ -226,33 +227,6 @@ function groupResultsByCheck(
   return out;
 }
 
-// Tailwind classes per tier, matching the emerald/amber/destructive/muted
-// conventions the other KPI tiles on this page already use. The tier logic
-// itself (thresholds, availabilityTier) lives in lib/availability-tier.ts —
-// a pure, directly unit-testable module, and split out so this file's export
-// surface stays component-only (react-refresh/only-export-components).
-const AVAILABILITY_TIER_CLASSES: Record<
-  AvailabilityTier,
-  { badge: string; icon: string }
-> = {
-  noData: {
-    badge: "text-muted-foreground bg-muted",
-    icon: "text-muted-foreground",
-  },
-  operational: {
-    badge: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
-    icon: "text-emerald-500",
-  },
-  degraded: {
-    badge: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
-    icon: "text-amber-500",
-  },
-  down: {
-    badge: "text-destructive bg-destructive/10",
-    icon: "text-destructive",
-  },
-};
-
 export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t } = useTranslation("dashboard");
   const { t: tNav } = useTranslation("nav");
@@ -355,8 +329,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   // Server-computed (spec 2026-08-26-09) — see CheckStats.availability24h.
   const availabilityPct = stats.availability24h;
   const availabilityTierValue = availabilityTier(availabilityPct);
-  const availabilityTierClasses =
-    AVAILABILITY_TIER_CLASSES[availabilityTierValue];
 
   const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
   const uptimeByCheck = useMemo(
@@ -465,25 +437,27 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
                     : t("kpi.totalEndpoints", { count: totalChecksCount })
                 }
-                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
+            {/* The page's ONE hero tile (spec 2026-09-24-02): the 24h
+                availability is the headline number. */}
             <div className="block" data-testid="kpi-tile-availability">
               <KpiTile
+                variant="hero"
                 label={t("kpi.availability")}
                 value={
                   availabilityPct === null
                     ? "—"
                     : `${availabilityPct.toFixed(2)}%`
                 }
-                icon={
-                  <TrendingUp
-                    className={`h-4 w-4 ${availabilityTierClasses.icon}`}
-                  />
-                }
+                // White on the hero's icon chip: the tier color moved to the
+                // solid white badge, where it stays readable.
+                icon={<TrendingUp className="h-4 w-4" />}
                 badge={
                   <span
-                    className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${availabilityTierClasses.badge}`}
+                    data-testid="kpi-availability-badge"
+                    data-tier={availabilityTierValue}
+                    className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${AVAILABILITY_TIER_HERO_BADGE[availabilityTierValue]}`}
                   >
                     {t(`kpi.availabilityBadge.${availabilityTierValue}`)}
                   </span>
@@ -493,7 +467,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                     ? t("kpi.availabilityNoDataSub")
                     : t("kpi.availabilitySub")
                 }
-                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </div>
             <Link
@@ -524,7 +497,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
                 valueClassName={downCount > 0 ? "text-destructive" : undefined}
                 sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
-                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
             <Link
@@ -565,7 +537,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 sub={
                   incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined
                 }
-                className="transition hover:-translate-y-0.5 hover:shadow-card-hover"
               />
             </Link>
           </div>
@@ -787,52 +758,6 @@ function OverallStatusBanner({
   );
 }
 
-interface KpiTileProps {
-  label: string;
-  value: number | string;
-  icon: React.ReactNode;
-  sub?: string;
-  badge?: React.ReactNode;
-  valueClassName?: string;
-  className?: string;
-}
-
-function KpiTile({
-  label,
-  value,
-  icon,
-  sub,
-  badge,
-  valueClassName,
-  className,
-}: KpiTileProps) {
-  return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          {label}
-        </CardTitle>
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
-          {icon}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <div
-            className={`text-2xl sm:text-3xl font-bold tracking-tight tabular-nums ${valueClassName || "text-foreground"}`}
-          >
-            {value}
-          </div>
-          {badge}
-        </div>
-        {sub ? (
-          <p className="text-xs text-muted-foreground mt-1">{sub}</p>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
 interface SectionErrorProps {
   onRetry: () => void;
 }
@@ -978,7 +903,7 @@ function ChecksGlanceList({
                             latencyMs < 50
                               ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20"
                               : latencyMs < 250
-                                ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20"
+                                ? "bg-primary/10 text-primary border border-primary/20"
                                 : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
                           }`}
                         >

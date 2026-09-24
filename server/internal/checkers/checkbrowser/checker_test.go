@@ -179,7 +179,7 @@ func TestConcurrencyCapIsFour(t *testing.T) {
 	r.Equal(MaxConcurrentBrowsers, int(peak.Load()),
 		"the cap must not be lower than four either — twelve runners should reach it")
 	r.Zero(inFlight.Load())
-	r.Empty(browserSlots, "every slot must be released")
+	r.Zero(browserSlots.InUse(), "every slot must be released")
 }
 
 // TestExecutionWaitsForASlotInsideItsTimeout: an execution that cannot get a

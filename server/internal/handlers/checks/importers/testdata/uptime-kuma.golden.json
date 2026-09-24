@@ -23,7 +23,8 @@
         "enabled": true,
         "period": "1m",
         "group": "Production",
-        "confirmationPeriodSeconds": 60
+        "confirmationPeriodSeconds": 60,
+        "degradedEnabled": false
       },
       {
         "name": "Docs keyword",
@@ -40,7 +41,8 @@
         "enabled": true,
         "period": "2m",
         "group": "Production",
-        "confirmationPeriodSeconds": 86400
+        "confirmationPeriodSeconds": 86400,
+        "degradedEnabled": false
       },
       {
         "name": "API json query",
@@ -57,7 +59,8 @@
         },
         "enabled": true,
         "period": "1m",
-        "confirmationPeriodSeconds": 20
+        "confirmationPeriodSeconds": 20,
+        "degradedEnabled": false
       },
       {
         "name": "SMTP port",
@@ -68,7 +71,8 @@
           "port": 587
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Gateway",
@@ -78,7 +82,8 @@
           "host": "gw.example.org"
         },
         "enabled": false,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "DNS record",
@@ -90,7 +95,8 @@
           "record_type": "A"
         },
         "enabled": true,
-        "period": "10m"
+        "period": "10m",
+        "degradedEnabled": false
       },
       {
         "name": "Nginx container",
@@ -100,7 +106,8 @@
           "containerName": "nginx"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Nightly backup",
@@ -108,7 +115,8 @@
         "type": "heartbeat",
         "config": {},
         "enabled": true,
-        "period": "24h"
+        "period": "24h",
+        "degradedEnabled": false
       },
       {
         "name": "Grpc service",
@@ -122,7 +130,8 @@
           "tls": true
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Broker",
@@ -135,7 +144,8 @@
           "username": "probe"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Primary postgres",
@@ -149,7 +159,8 @@
           "username": "monitor"
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "Reporting mysql",
@@ -162,7 +173,8 @@
           "username": "reader"
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "Session redis",
@@ -174,7 +186,8 @@
           "port": 6379
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Billing mssql",
@@ -188,7 +201,8 @@
           "username": "probe"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Events mongo",
@@ -201,7 +215,8 @@
           "username": "probe"
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "Game server",
@@ -212,7 +227,8 @@
           "port": 27015
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Checkout flow",
@@ -222,7 +238,8 @@
           "url": "https://shop.example.org/checkout"
         },
         "enabled": true,
-        "period": "10m"
+        "period": "10m",
+        "degradedEnabled": false
       },
       {
         "name": "Authenticated API",
@@ -233,7 +250,8 @@
           "verifySsl": false
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       }
     ]
   },

@@ -6,7 +6,7 @@ export type StatTileTone = "default" | "info" | "warning" | "destructive" | "suc
 
 const toneClass: Record<StatTileTone, string> = {
   default: "text-foreground",
-  info: "text-blue-600 dark:text-blue-400",
+  info: "text-primary",
   warning: "text-yellow-600 dark:text-yellow-400",
   destructive: "text-destructive",
   success: "text-green-600 dark:text-green-400",

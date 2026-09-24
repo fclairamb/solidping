@@ -19,6 +19,9 @@ export interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
  * Progress is a lightweight, dependency-free progress bar. The fill width is
  * clamped to [0, 100]% so an over-quota value (value > max) caps at full and
  * flips to the destructive color instead of overflowing the track.
+ *
+ * `indicatorClassName` recolors the fill through cn(), which drops the
+ * gradient for a flat bg-<color> override (see lib/utils.ts).
  */
 function Progress({
   value,
@@ -47,7 +50,12 @@ function Progress({
       <div
         className={cn(
           "h-full rounded-full transition-all",
-          destructiveWhenFull && isFull ? "bg-destructive" : "bg-primary",
+          // The fill is the decorative --accent-gradient over bg-primary. A
+          // full destructive bar must be RED: bg-none removes the gradient,
+          // which bg-destructive alone (a background-COLOR) would not.
+          destructiveWhenFull && isFull
+            ? "bg-none bg-destructive"
+            : "bg-primary bg-accent-gradient",
           indicatorClassName,
         )}
         style={{ width: `${pct}%` }}

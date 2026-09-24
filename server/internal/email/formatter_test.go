@@ -592,6 +592,7 @@ func TestFormatter_AllShippedTemplatesRenderCleanly(t *testing.T) {
 		{"incident-reopened.html", incidentData},
 		{"registration.html", map[string]any{"ConfirmURL": "https://x.test/c"}},
 		{"password-reset.html", map[string]any{"ResetURL": "https://x.test/r"}},
+		{"password-reset-sso.html", map[string]any{"ResetURL": "https://x.test/r", "Providers": "Google or GitHub"}},
 		{"invitation.html", map[string]any{
 			"OrgName": "Acme", "Role": "admin", "InviterName": "Alice", "InviteURL": "https://x.test/i",
 			"ExpiresIn": "24 hours",

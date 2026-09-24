@@ -382,7 +382,7 @@ function EmailInboxPage() {
               </span>
             )}
             {status?.connected && status.mode && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-700 dark:text-blue-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-primary">
                 {status.mode === "push"
                   ? t("server:emailInbox.status.modePush")
                   : t("server:emailInbox.status.modePoll")}

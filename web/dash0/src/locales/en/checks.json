@@ -1011,7 +1011,15 @@
     "statusTimeout": "Timeout",
     "statusError": "Error",
     "heartbeatHelp": "No additional configuration needed. A heartbeat URL will be generated after creation.",
-    "emailGeneratedHelp": "An email address will be generated for this check. Send any email to that address to report a successful run. Use plus-addressing (token+down@…) or [DOWN] in the subject to report failure."
+    "emailGeneratedHelp": "An email address will be generated for this check. Send any email to that address to report a successful run. Use plus-addressing (token+down@…) or [DOWN] in the subject to report failure.",
+    "rdpDomainOptional": "Domain (optional)",
+    "rdpLogonHelp": "Setting username and password performs a REAL interactive logon: the desktop is loaded and settled before the check returns. Leave both empty to keep the pre-auth handshake.",
+    "rdpScreenshot": "Capture a screenshot once the logon settles",
+    "rdpEndSession": "Ending the session",
+    "rdpEndSessionLogoff": "Log off (default)",
+    "rdpEndSessionDisconnect": "Disconnect (session stays on the server)",
+    "rdpEndSessionHelp": "Log off removes the session from the server. Disconnect leaves it running until the server's idle policy ends it, so the next run reattaches to it (faster checks).",
+    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest."
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",

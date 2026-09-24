@@ -28,6 +28,20 @@ var (
 	errDegradedNExceededByM = errors.New("is below the effective M")
 )
 
+// Field names for the degraded-detection knobs (spec 2026-09-22-03), mirroring
+// the JSON tags shared by CreateCheckRequest, UpdateCheckRequest,
+// UpsertCheckRequest and ExportCheck. Shared with diff.go's field-change
+// reporting so the two never drift apart, and so the string is not repeated
+// past goconst's threshold.
+const (
+	fieldDegradedFailures       = "degradedFailures"
+	fieldDegradedFailuresWindow = "degradedFailuresWindow"
+	fieldDegradedSlow           = "degradedSlow"
+	fieldDegradedSlowWindow     = "degradedSlowWindow"
+	fieldSlowThresholdMs        = "slowThresholdMs"
+	fieldDegradedEnabled        = "degradedEnabled"
+)
+
 // degradedRuleHint spells out the invariant both refusals violate, appended to
 // each so the message stands on its own in an API error body.
 const degradedRuleHint = "M of N requires M <= N, or set M to 0 to turn the rule off"
@@ -151,11 +165,11 @@ func validateDegradedFields(values degradedValues, effective degradedEffective) 
 		name  string
 		value *int
 	}{
-		{"degradedFailures", values.Failures},
-		{"degradedFailuresWindow", values.FailuresWindow},
-		{"degradedSlow", values.Slow},
-		{"degradedSlowWindow", values.SlowWindow},
-		{"slowThresholdMs", values.SlowThresholdMs},
+		{fieldDegradedFailures, values.Failures},
+		{fieldDegradedFailuresWindow, values.FailuresWindow},
+		{fieldDegradedSlow, values.Slow},
+		{fieldDegradedSlowWindow, values.SlowWindow},
+		{fieldSlowThresholdMs, values.SlowThresholdMs},
 	}
 
 	for _, field := range fields {
@@ -168,8 +182,8 @@ func validateDegradedFields(values degradedValues, effective degradedEffective) 
 		name  string
 		value *int
 	}{
-		{"degradedFailuresWindow", values.FailuresWindow},
-		{"degradedSlowWindow", values.SlowWindow},
+		{fieldDegradedFailuresWindow, values.FailuresWindow},
+		{fieldDegradedSlowWindow, values.SlowWindow},
 	} {
 		if field.value != nil && *field.value > maxDegradedWindow {
 			return fmt.Errorf("%s: %w", field.name, errDegradedWindowTooLarge)
@@ -177,14 +191,14 @@ func validateDegradedFields(values degradedValues, effective degradedEffective) 
 	}
 
 	if err := validateDegradedRule(
-		"degradedFailures", "degradedFailuresWindow",
+		fieldDegradedFailures, fieldDegradedFailuresWindow,
 		values.Failures, values.FailuresWindow, effective.Failures, effective.FailuresWindow,
 	); err != nil {
 		return err
 	}
 
 	return validateDegradedRule(
-		"degradedSlow", "degradedSlowWindow",
+		fieldDegradedSlow, fieldDegradedSlowWindow,
 		values.Slow, values.SlowWindow, effective.Slow, effective.SlowWindow,
 	)
 }

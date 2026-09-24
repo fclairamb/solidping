@@ -96,7 +96,7 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Req
 		h.cfg.OIDC.ClientID != "" && h.cfg.OIDC.ClientSecret != "" {
 		name := h.cfg.OIDC.DisplayName
 		if name == "" {
-			name = "SSO"
+			name = ssoFallbackLabel
 		}
 
 		providers = append(providers, ProviderInfo{
@@ -115,7 +115,7 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ *http.Req
 	if h.cfg.SAML.Enabled && (h.cfg.SAML.IDPMetadataURL != "" || h.cfg.SAML.IDPMetadataXML != "") {
 		name := h.cfg.SAML.DisplayName
 		if name == "" {
-			name = "SSO"
+			name = ssoFallbackLabel
 		}
 
 		providers = append(providers, ProviderInfo{

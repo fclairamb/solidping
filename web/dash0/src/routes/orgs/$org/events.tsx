@@ -3,13 +3,15 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import {
-  EventTypeBadge,
+  EventTypeLabel,
   getEventActorName,
   getEventCheckName,
+  getEventRowStripe,
 } from "@/components/dashboard/event-display";
 import { DurationAgo } from "@/components/shared/relative-time";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -145,7 +147,10 @@ function EventsPage() {
             <Table>
               <TableHeader className="bg-muted/30">
                 <TableRow>
-                  <TableHead className="w-[140px]">{t("table.time")}</TableHead>
+                  {/* w-px shrinks the column to its content ("2h ago"). */}
+                  <TableHead className="w-px whitespace-nowrap">
+                    {t("table.time")}
+                  </TableHead>
                   <TableHead className="w-[220px]">{t("table.event")}</TableHead>
                   <TableHead className="w-[120px]">{t("table.actor")}</TableHead>
                   <TableHead>{t("table.related")}</TableHead>
@@ -157,7 +162,12 @@ function EventsPage() {
                     key={event.uid}
                     className="transition-colors hover:bg-muted/40"
                   >
-                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                    <TableCell
+                      className={cn(
+                        "whitespace-nowrap text-xs tabular-nums text-muted-foreground",
+                        getEventRowStripe(event.eventType),
+                      )}
+                    >
                       {event.createdAt ? (
                         // Relative reads faster when scanning a log; the exact
                         // timestamp stays one hover away.
@@ -169,7 +179,7 @@ function EventsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <EventTypeBadge eventType={event.eventType} t={t} />
+                      <EventTypeLabel eventType={event.eventType} t={t} />
                     </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -178,14 +188,17 @@ function EventsPage() {
                         ) : (
                           <Cpu className="h-3 w-3 shrink-0 text-muted-foreground/70" />
                         )}
-                        <span className="capitalize">
-                          {/* The NAME when the event carries one — including a
-                              Slack/Discord/phone acker, who has no users row
-                              and would otherwise show as the bare word
-                              "user". Falls back to the localized actor type. */}
-                          {getEventActorName(event) ??
-                            t(`actorTypes.${event.actorType || "system"}`)}
-                        </span>
+                        {/* The NAME when the event carries one — including a
+                            Slack/Discord/phone acker, who has no users row
+                            and would otherwise show as the bare word "user".
+                            Falls back to the localized actor type, which is
+                            the only thing capitalized: capitalizing a name
+                            or an email mangles it. */}
+                        {getEventActorName(event) ?? (
+                          <span className="capitalize">
+                            {t(`actorTypes.${event.actorType || "system"}`)}
+                          </span>
+                        )}
                       </span>
                     </TableCell>
                     <TableCell>

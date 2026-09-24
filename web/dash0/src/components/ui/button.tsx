@@ -4,13 +4,29 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+// Focus ring (every variant): a 2px --ring ring pushed 2px OUT from the edge
+// by a --background-colored offset. The gap is what keeps the ring visible on
+// the gradient default button, whose own blue would swallow a ring drawn flush
+// against it. Same recipe as the Switch.
+//
+// Default variant (electric identity, spec 2026-09-24-01): bg-primary stays
+// as the background-color underneath bg-primary-gradient, so the button still
+// reads blue if the gradient ever fails to paint. Labels sit only on
+// --primary-gradient (>= 4.4:1 white at every stop), never on the brighter
+// --accent-gradient. The hover lift is behind motion-safe:.
+//
+// Brand variant: the solid crimson of the logo, for the primary action of the
+// auth pages (login, register…), whose card already carries the crimson top
+// border. Anywhere else, the primary action stays on the default variant.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-primary hover:bg-primary/90 hover:shadow-primary-hover",
+          "bg-primary bg-primary-gradient text-gradient-foreground inset-shadow-highlight shadow-primary hover:brightness-105 hover:shadow-primary-hover motion-safe:hover:-translate-y-px",
+        brand:
+          "bg-brand text-brand-foreground inset-shadow-highlight shadow-sm hover:bg-brand/90 motion-safe:hover:-translate-y-px",
         destructive:
           "bg-destructive text-white shadow-destructive hover:bg-destructive/90 hover:shadow-destructive-hover",
         outline:

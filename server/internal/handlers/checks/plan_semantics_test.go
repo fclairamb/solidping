@@ -43,7 +43,12 @@ func TestEntryNamingAUidIsCountedAsTheUpdateItIs(t *testing.T) {
 
 	byUID := importOne(rig.org.Slug, checks.ExportCheck{
 		Name: "Live", Slug: stored.UID, Type: "http", Enabled: true,
-		Config: map[string]any{"url": "https://acme.com/live"},
+		// The "live" check above was created through CreateCheck, which
+		// defaults DegradedEnabled to true for a brand new check — this must
+		// match, or the diff sees a real change and the "unchanged" assertion
+		// below no longer holds.
+		DegradedEnabled: true,
+		Config:          map[string]any{"url": "https://acme.com/live"},
 	})
 
 	dry, err := rig.svc.ImportChecks(t.Context(), rig.org.Slug, byUID, true)

@@ -67,6 +67,7 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"status-subscriber-update.html":    statusSubscriberUpdateFixture,
 	"registration.html":                registrationFixture,
 	"password-reset.html":              passwordResetFixture,
+	"password-reset-sso.html":          passwordResetSSOFixture,
 	"invitation.html":                  invitationFixture,
 	"welcome.html":                     welcomeFixture,
 	"password-changed.html":            passwordChangedFixture,
@@ -278,6 +279,16 @@ func registrationFixture() map[string]any {
 func passwordResetFixture() map[string]any {
 	return map[string]any{
 		"ResetURL": fixtureDashboardURL + "/reset-password?token=preview-token",
+	}
+}
+
+// passwordResetSSOFixture previews the reset email sent to a user with no
+// password who signed up through SSO (spec 2026-09-23-02). Two providers on
+// purpose, so the preview also shows the "or"-joined label list.
+func passwordResetSSOFixture() map[string]any {
+	return map[string]any{
+		"ResetURL":  fixtureDashboardURL + "/reset-password?token=preview-token",
+		"Providers": "GitHub or Google",
 	}
 }
 

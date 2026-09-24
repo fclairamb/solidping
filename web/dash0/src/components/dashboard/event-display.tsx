@@ -1,5 +1,30 @@
 import type { ReactNode } from "react";
-import { Calendar, Cpu, Rocket, Settings, Users } from "lucide-react";
+import {
+  AlarmClockOff,
+  BellOff,
+  Calendar,
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  Cpu,
+  Globe,
+  KeyRound,
+  LogIn,
+  LogOut,
+  type LucideIcon,
+  Megaphone,
+  MessageSquare,
+  Pencil,
+  Rocket,
+  RotateCcw,
+  Settings,
+  ShieldAlert,
+  ShieldX,
+  TrendingUp,
+  Undo2,
+  UserCheck,
+  Users,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -10,7 +35,8 @@ const TONE_DESTRUCTIVE = "border-destructive/20 bg-destructive/10 text-destructi
 const TONE_EMERALD =
   "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
 const TONE_AMBER = "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400";
-const TONE_BLUE = "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-400";
+// Configuration / informational events: the product blue (--primary).
+const TONE_PRIMARY = "border-primary/20 bg-primary/10 text-primary";
 const TONE_VIOLET = "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-400";
 const TONE_SLATE = "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-400";
 
@@ -39,7 +65,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "incident.acknowledged": { emoji: "✅", tone: TONE_AMBER },
   "incident.unacknowledged": { emoji: "↩️", tone: TONE_AMBER },
   "incident.snoozed": { emoji: "💤", tone: TONE_SLATE },
-  "incident.comment": { emoji: "💬", tone: TONE_BLUE },
+  "incident.comment": { emoji: "💬", tone: TONE_PRIMARY },
   // Status-page publication lifecycle (spec 2026-08-19-08). These are
   // CUSTOMER-VISIBLE facts and are deliberately distinct from the internal
   // incident.* pair above: an operational incident opening and a public
@@ -49,7 +75,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // correctly at a glance; the tones follow the same severity language as the
   // internal events (opened = destructive, edited = blue, closed = emerald).
   "statuspage.incident.published": { emoji: "📣", tone: TONE_DESTRUCTIVE },
-  "statuspage.incident.updated": { emoji: "📝", tone: TONE_BLUE },
+  "statuspage.incident.updated": { emoji: "📝", tone: TONE_PRIMARY },
   "statuspage.incident.resolved": { emoji: "📗", tone: TONE_EMERALD },
   // A webhook/Slack subscription that tripped the delivery circuit breaker
   // (spec 2026-08-21-07). Destructive rather than amber on purpose: the only
@@ -80,7 +106,7 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   "auth.login_succeeded": { emoji: "🔓", tone: TONE_EMERALD },
   "auth.login_failed": { emoji: "⛔", tone: TONE_DESTRUCTIVE },
   "auth.logout": { emoji: "🚪", tone: TONE_SLATE },
-  "auth.token_created": { emoji: "🔑", tone: TONE_BLUE },
+  "auth.token_created": { emoji: "🔑", tone: TONE_PRIMARY },
   "auth.token_revoked": { emoji: "🔒", tone: TONE_AMBER },
   // A credential presented by a party it was not issued to (spec
   // 2026-08-21-09). Destructive, not amber: this is not routine credential
@@ -162,7 +188,7 @@ export function getEventIcon(eventType?: string) {
   }
 
   if (eventType.startsWith("check.")) {
-    return <Cpu className="h-4 w-4 text-blue-400" />;
+    return <Cpu className="h-4 w-4 text-primary" />;
   }
   if (eventType === "incident.resolved") {
     return <Calendar className="h-4 w-4 text-green-500" />;
@@ -177,7 +203,7 @@ export function getEventIcon(eventType?: string) {
     return <Users className="h-4 w-4 text-violet-500" />;
   }
   if (isConfigEvent(eventType)) {
-    return <Settings className="h-4 w-4 text-blue-400" />;
+    return <Settings className="h-4 w-4 text-primary" />;
   }
   return <Calendar className="h-4 w-4" />;
 }
@@ -214,7 +240,7 @@ export function getEventTone(eventType?: string): string {
     return TONE_AMBER;
   }
   if (eventType.startsWith("check.") || eventType.startsWith("status_update.")) {
-    return TONE_BLUE;
+    return TONE_PRIMARY;
   }
   if (eventType.startsWith("org.activation.")) {
     return TONE_VIOLET;
@@ -226,7 +252,7 @@ export function getEventTone(eventType?: string): string {
     return TONE_VIOLET;
   }
   if (isConfigEvent(eventType)) {
-    return TONE_BLUE;
+    return TONE_PRIMARY;
   }
   return "";
 }
@@ -269,6 +295,121 @@ export function EventTypeBadge({
         ))}
       <span>{getEventLabel(eventType, t)}</span>
     </Badge>
+  );
+}
+
+// Icon colors for EventTypeLabel. Unlike the badge tones above, most events
+// get NO color here: a routine sign-in or config change is muted, so the few
+// rows that are colored (incidents, security failures) stand out in a log.
+const MARK_DANGER = "text-destructive";
+const MARK_SUCCESS = "text-emerald-600 dark:text-emerald-400";
+const MARK_WARNING = "text-amber-600 dark:text-amber-400";
+const MARK_QUIET = "text-muted-foreground";
+
+type EventMark = {
+  icon: LucideIcon;
+  tone: string;
+  // loud events get a bold label and, in log tables, a red row stripe.
+  loud?: boolean;
+};
+
+// EVENT_TYPE_MARKS is the dash0-only icon identity used by EventTypeLabel.
+// It sits beside EVENT_TYPE_REGISTRY rather than replacing its emoji, which
+// stay the binding identity shared with the Slack/Teams/Telegram messages.
+export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
+  "incident.created": { icon: CircleAlert, tone: MARK_DANGER },
+  "incident.reopened": { icon: RotateCcw, tone: MARK_DANGER },
+  "incident.escalated": { icon: TrendingUp, tone: MARK_DANGER, loud: true },
+  "incident.escalation_failed": { icon: CircleX, tone: MARK_DANGER, loud: true },
+  "incident.resolved": { icon: CircleCheck, tone: MARK_SUCCESS },
+  "incident.acknowledged": { icon: UserCheck, tone: MARK_WARNING },
+  "incident.unacknowledged": { icon: Undo2, tone: MARK_WARNING },
+  "incident.snoozed": { icon: AlarmClockOff, tone: MARK_QUIET },
+  "incident.comment": { icon: MessageSquare, tone: MARK_QUIET },
+  "statuspage.incident.published": { icon: Megaphone, tone: MARK_DANGER },
+  "statuspage.incident.updated": { icon: Pencil, tone: MARK_QUIET },
+  "statuspage.incident.resolved": { icon: CircleCheck, tone: MARK_SUCCESS },
+  "statuspage.subscriber.disabled": { icon: BellOff, tone: MARK_DANGER },
+  "statuspage.custom_domain.demoted": { icon: Globe, tone: MARK_DANGER },
+  "auth.login_succeeded": { icon: LogIn, tone: MARK_QUIET },
+  "auth.login_failed": { icon: ShieldX, tone: MARK_DANGER },
+  "auth.logout": { icon: LogOut, tone: MARK_QUIET },
+  "auth.token_created": { icon: KeyRound, tone: MARK_QUIET },
+  "auth.token_revoked": { icon: KeyRound, tone: MARK_QUIET },
+  "auth.token_misuse": { icon: ShieldAlert, tone: MARK_DANGER, loud: true },
+};
+
+export function getEventMark(eventType?: string): EventMark {
+  if (!eventType) return { icon: Calendar, tone: MARK_QUIET };
+
+  const registered = EVENT_TYPE_MARKS[eventType];
+  if (registered) return registered;
+
+  if (eventType.startsWith("incident.")) {
+    return { icon: CircleAlert, tone: MARK_WARNING };
+  }
+  if (eventType.startsWith("check.")) return { icon: Cpu, tone: MARK_QUIET };
+  if (eventType.startsWith("org.activation.")) {
+    return { icon: Rocket, tone: MARK_QUIET };
+  }
+  if (eventType.startsWith("member.")) return { icon: Users, tone: MARK_QUIET };
+  if (isConfigEvent(eventType)) return { icon: Settings, tone: MARK_QUIET };
+  return { icon: Calendar, tone: MARK_QUIET };
+}
+
+export function isLoudEvent(eventType?: string): boolean {
+  return getEventMark(eventType).loud === true;
+}
+
+// getEventRowStripe returns the class for a 3px stripe on the leading edge of
+// a log row, or "" for none. Red for loud events (they need action), green
+// for events whose icon is green (a recovery), so both ends of an incident
+// can be found by scanning the edge of the table. Put it on the row's FIRST
+// cell: an inset shadow on a <tr> is not painted by every browser.
+export function getEventRowStripe(eventType?: string): string {
+  const { tone, loud } = getEventMark(eventType);
+  if (loud) return "shadow-[inset_3px_0_0_var(--color-destructive)]";
+  if (tone === MARK_SUCCESS) {
+    return "shadow-[inset_3px_0_0_var(--color-emerald-500)]";
+  }
+  return "";
+}
+
+// EventTypeLabel is the low-key sibling of EventTypeBadge, for dense logs
+// (the events page): an icon and plain text, no pill. Only incident and
+// security events carry color, so a column of routine rows stays quiet and
+// the rows that matter are the ones that stand out. The label is always
+// rendered, so color is never the only signal.
+export function EventTypeLabel({
+  eventType,
+  t,
+  className,
+}: {
+  eventType?: string;
+  t: (key: string, options?: Record<string, unknown>) => string;
+  className?: string;
+}) {
+  const { icon: Icon, tone, loud } = getEventMark(eventType);
+  const quiet = tone === MARK_QUIET;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-2 whitespace-nowrap text-sm",
+        className,
+      )}
+      title={eventType}
+    >
+      <Icon className={cn("size-4 shrink-0", tone)} aria-hidden="true" />
+      <span
+        className={cn(
+          quiet ? "text-muted-foreground" : "text-foreground",
+          loud && "font-semibold",
+        )}
+      >
+        {getEventLabel(eventType, t)}
+      </span>
+    </span>
   );
 }
 

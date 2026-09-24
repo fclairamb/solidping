@@ -209,9 +209,11 @@ export function AppSidebar() {
                     <Logo size={32} />
                   )}
                 </div>
+                {/* The crimson mark sits straight on the navy (spec
+                    2026-09-24-02): no white tile behind it. */}
                 <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="font-semibold">SolidPing</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-bold tracking-[-0.01em]">SolidPing</span>
+                  <span className="text-xs text-sidebar-muted-foreground">
                     {currentOrgName || org}
                   </span>
                 </div>
@@ -310,7 +312,12 @@ export function AppSidebar() {
                       className="size-8 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-muted">
+                    // A 10% white chip, not bg-muted: inside the always-dark
+                    // sidebar --muted resolves to its dark value, ~1:1 on the navy.
+                    <div
+                      className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white/10"
+                      data-testid="user-avatar-fallback"
+                    >
                       <User2 className="size-4" />
                     </div>
                   )}
@@ -318,7 +325,7 @@ export function AppSidebar() {
                     <span className="truncate font-semibold">
                       {user?.name || user?.email || t("user")}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate text-xs text-sidebar-muted-foreground">
                       {user?.name ? user.email : (user?.isAdmin ? t("administrator") : t("user"))}
                     </span>
                   </div>

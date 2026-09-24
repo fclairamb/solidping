@@ -8,8 +8,10 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
+        // Gradient, like the default Button: white text on --primary-gradient
+        // (the text-safe one). Status variants below stay flat soft tints.
         default:
-          "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80",
+          "border-transparent bg-primary bg-primary-gradient text-gradient-foreground shadow hover:brightness-105",
         secondary:
           "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive:

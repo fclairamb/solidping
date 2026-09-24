@@ -17,15 +17,30 @@ const MaxPayloadBytes = 1024 * 1024
 // MinPeriodHint is the optional interface a Config implements when the
 // CONTENT of the config raises the check type's own minimum period.
 //
-// The one implementer today is JSConfig: a script that opens a browser costs
-// what a browser check costs, so it inherits the browser type's floor even
-// though it is scheduled as a `js` check. Returning 0 means "no opinion", and
-// a config that does not implement this interface is treated the same way.
+// Two implementers: JSConfig (a script that opens a browser inherits the
+// browser type's floor; one that calls rdp.connect inherits the authenticated
+// RDP floor) and RDPConfig (credentials turn the check into a real Windows
+// logon). Returning 0 means "no opinion", and a config that does not
+// implement this interface is treated the same way.
 //
 // It is consulted at VALIDATION time, which is the only place that sees both
 // the proposed period and the config; Execute never sees a period at all.
 type MinPeriodHint interface {
 	MinPeriodHint() time.Duration
+}
+
+// Sources a MinPeriodHint can name, so the refusal message explains the floor
+// that actually applied (a script can hit the browser floor, the RDP floor,
+// or both — the higher wins).
+const (
+	MinPeriodSourceBrowser = "browser"
+	MinPeriodSourceRDP     = "rdp"
+)
+
+// MinPeriodHintSource is the optional companion of MinPeriodHint: which of the
+// MinPeriodSource* reasons produced the returned hint. Empty when the hint is 0.
+type MinPeriodHintSource interface {
+	MinPeriodHintSource() string
 }
 
 // Status represents the outcome of a check execution.
@@ -377,7 +392,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeSIP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check SIP server reachability and registration"},
 	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
 	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
-	{Type: CheckTypeRDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor RDP (Remote Desktop) servers"},
+	{Type: CheckTypeRDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor RDP (Remote Desktop) servers", SupportsTunnel: true},
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }

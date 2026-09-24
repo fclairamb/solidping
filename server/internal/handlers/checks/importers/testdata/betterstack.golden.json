@@ -20,7 +20,8 @@
           "url": "https://example.org/health"
         },
         "enabled": true,
-        "period": "3m"
+        "period": "3m",
+        "degradedEnabled": false
       },
       {
         "name": "API expected codes",
@@ -39,7 +40,8 @@
           "verifySsl": false
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Shop keyword",
@@ -50,7 +52,8 @@
           "url": "https://shop.example.org"
         },
         "enabled": false,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "No maintenance banner",
@@ -61,7 +64,8 @@
           "url": "https://status.example.org"
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Gateway ping",
@@ -71,7 +75,8 @@
           "host": "gw.example.org"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Postgres port",
@@ -83,7 +88,8 @@
           "timeout": "10s"
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "Syslog udp",
@@ -94,7 +100,8 @@
           "port": 514
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "Mail relay",
@@ -105,7 +112,8 @@
           "port": 587
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Mailbox pop",
@@ -116,7 +124,8 @@
           "port": 995
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Mailbox imap",
@@ -127,7 +136,8 @@
           "port": 993
         },
         "enabled": true,
-        "period": "5m"
+        "period": "5m",
+        "degradedEnabled": false
       },
       {
         "name": "Apex dns",
@@ -137,7 +147,8 @@
           "host": "example.org"
         },
         "enabled": true,
-        "period": "10m"
+        "period": "10m",
+        "degradedEnabled": false
       },
       {
         "name": "IPv6 only tcp",
@@ -149,7 +160,8 @@
           "port": 443
         },
         "enabled": true,
-        "period": "2m"
+        "period": "2m",
+        "degradedEnabled": false
       },
       {
         "name": "IPv4 pinned ping",
@@ -160,7 +172,8 @@
           "ipVersion": "ipv4"
         },
         "enabled": true,
-        "period": "1m"
+        "period": "1m",
+        "degradedEnabled": false
       },
       {
         "name": "Dns pinned v6",
@@ -170,7 +183,8 @@
           "host": "ns.example.org"
         },
         "enabled": true,
-        "period": "10m"
+        "period": "10m",
+        "degradedEnabled": false
       },
       {
         "name": "Nightly backup",
@@ -179,7 +193,8 @@
         "config": {},
         "enabled": true,
         "period": "24h",
-        "confirmationPeriodSeconds": 3600
+        "confirmationPeriodSeconds": 3600,
+        "degradedEnabled": false
       },
       {
         "name": "Hourly sync",
@@ -187,7 +202,8 @@
         "type": "heartbeat",
         "config": {},
         "enabled": false,
-        "period": "1h"
+        "period": "1h",
+        "degradedEnabled": false
       },
       {
         "name": "Weekly report",
@@ -196,7 +212,8 @@
         "config": {},
         "enabled": true,
         "period": "168h",
-        "confirmationPeriodSeconds": 86400
+        "confirmationPeriodSeconds": 86400,
+        "degradedEnabled": false
       }
     ]
   },

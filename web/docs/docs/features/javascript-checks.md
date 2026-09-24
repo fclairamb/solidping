@@ -362,6 +362,49 @@ check's **1m** minimum period instead of the `js` type's 30s, decided when the
 check is saved. A headless run costs seconds and holds one of four slots;
 without the floor one such check would starve every browser check beside it.
 
+### `rdp` {#rdp-object}
+
+`rdp.connect(options)` gives a script a **real interactive Windows desktop** to
+drive — the same logon path the [RDP check type](./check-types.md#rdp-remote-desktop)
+uses, through its own concurrency cap (`rdp.connect` is **always** an
+authenticated logon; there is no pre-auth variant of the object). It is what
+lets a script log in to a Windows desktop, wait for it to settle, click and
+type, and assert on what a user would actually see.
+
+Assertions v1 are **pixels only**: `pixel`, `regionHash`, `waitForStable`,
+`waitForChange`. Template matching and OCR are out of scope (they need cgo or
+a sidecar, which SolidPing forbids).
+
+| Call | Returns | Notes |
+|---|---|---|
+| `rdp.connect({ host, username, password, domain?, width?, height? })` | `session` | Connects, runs CredSSP/NLA, finishes the connection sequence. Auth failures and slot timeouts **return** `{ ok: false, failureCode?, timedOut? }`; script bugs and infrastructure **throw**. `width`/`height` default to 1280x800. |
+| `session.waitForStable({ quietMs?, timeout? })` | `{ ok, duration, error? }` | Blocks until the screen has had no update for `quietMs` (default 2000), bounded by the timeout. A hung logon times out. |
+| `session.waitForChange(timeoutMs)` | `{ ok, error? }` | Blocks until a new update arrives after stability — how you assert a stuck login screen never repainted. Timeout expiry is `{ ok: false, error }`, a value the script decides on. |
+| `session.click(x, y)` | `{ ok, error? }` | Moves the pointer and presses+releases the **left** button. |
+| `session.rightClick(x, y)` / `session.doubleClick(x, y)` | `{ ok, error? }` | Right button; double-click. |
+| `session.move(x, y)` | `{ ok, error? }` | Repositions the pointer without pressing. |
+| `session.type(text)` | `{ ok, error? }` | Sends text as **Unicode input events** (`TS_UNICODE_KEYBOARD_EVENT`), so the target's keyboard layout does not matter. |
+| `session.key("ctrl+alt+end")` / `"win+r"` / `"enter"` | `{ ok, error? }` | Named keys and combos via **scancodes** — modifiers held, the last key pressed+released, modifiers released in reverse. |
+| `session.pixel(x, y)` | `{ ok, r, g, b, error? }` | One pixel as `{ r, g, b }`. Out-of-bounds coordinates are `{ ok: false, error }`. |
+| `session.regionHash(x, y, w, h)` | `{ ok, hash, error? }` | Stable FNV-1a hash of a rectangle of the framebuffer — same visible pixels give the same hash across runs and workers. |
+| `session.screenshot()` | `{ ok, error? }` | Attaches a PNG capture to the result's diagnostics — the browser rules: last call wins, kept only on `down`/`timeout`. |
+| `session.logoff()` | `{ ok, error? }` | Asks the **server** to end the session (TS_SHUTDOWN_REQUEST). |
+| `session.disconnect()` | `{ ok }` | Drops the transport only — the session survives until the server's idle policy ends it. |
+| `session.close()` | `undefined` | Alias for `logoff()`, for parity with `browser`. |
+
+**Every authenticated session is a real interactive Windows logon** — the same
+[operational caveats](./check-types.md#warning-authenticated-runs-are-real-windows-logons)
+as the check apply: profile load, logon scripts/GPOs, an RDS license, a
+possible kicked user, a Security event-log entry per run. Use a dedicated
+monitoring account. Keep the interval long: **the period floor is 15 minutes**
+for any script that calls `rdp.connect(`, decided when the check is saved —
+stricter than the browser floor, and it wins when a script uses both.
+
+**Ending the session.** `logoff()` and `disconnect()` are both explicit. A
+script that ends without calling either gets a log off — the check's default —
+and the slot is released when the script ends whatever it did, so an early
+`return`, a throw, or an interrupt never leaks a session.
+
 ### `tcp` {#tcp}
 
 `tcp.connect(address, options)` gives a script a **live TCP connection** to
@@ -536,6 +579,8 @@ string.
 | Sub-checks (`http.*` + `solidping.*` + each `connect`/`open` combined) | 20 per execution |
 | Browser pages | 1 per execution |
 | Browser actions (every `page.*` call except `url()`/`close()`) | 100 per execution, counted **separately** from the 20-call budget above |
+| RDP sessions | 1 per execution |
+| RDP actions (every `session.*` call except `logoff()`/`disconnect()`/`close()`) | 100 per execution, counted **separately** from the 20-call budget above |
 | Connections (`tcp` + `udp` + `websocket` combined) | 5 per execution, counted at `connect`/`open` **whether or not earlier ones were closed** |
 | Socket actions (`write`/`read`/`send`/`receive`; `close()` is free) | 200 per execution, counted **separately** from the 20-call budget |
 | Console output | 16 KB |

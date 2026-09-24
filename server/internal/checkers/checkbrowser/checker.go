@@ -12,6 +12,7 @@ import (
 
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkbrowser/config"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkersession"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -75,9 +76,11 @@ const MaxConcurrentBrowsers = 4
 
 // browserSlots is the semaphore behind MaxConcurrentBrowsers. Process-wide,
 // because the resource it protects (the Chrome the whole process shares) is.
+// Its own instance of the shared checkersession.Slots: the RDP checker has a
+// separate one, and the two caps never share capacity.
 //
 //nolint:gochecknoglobals // process-wide concurrency cap, see MaxConcurrentBrowsers
-var browserSlots = make(chan struct{}, MaxConcurrentBrowsers)
+var browserSlots = checkersession.NewSlots(MaxConcurrentBrowsers, ErrSlotTimeout)
 
 // BrowserChecker implements the Checker interface for headless Chrome browser checks.
 type BrowserChecker struct {
@@ -104,12 +107,9 @@ type BrowserChecker struct {
 // the check's context (which already carries the check's timeout) is done.
 // The returned release must be called exactly once.
 func acquireSlot(ctx context.Context) (func(), bool) {
-	select {
-	case browserSlots <- struct{}{}:
-		return func() { <-browserSlots }, true
-	case <-ctx.Done():
-		return nil, false
-	}
+	release, err := browserSlots.Acquire(ctx)
+
+	return release, err == nil
 }
 
 // Type returns the check type identifier.
@@ -231,15 +231,8 @@ func (c *BrowserChecker) runBrowser(
 
 	session, err := openSession(sessionCtx, probeCtx)
 	if err != nil {
-		if errors.Is(err, ErrSlotTimeout) {
-			output["error"] = err.Error()
-
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusTimeout,
-				Duration: time.Since(start),
-				Metrics:  metrics,
-				Output:   output,
-			}
+		if result, isSlotTimeout := checkersession.SlotTimeoutResult(err, start, metrics, output); isSlotTimeout {
+			return result
 		}
 
 		// Everything else Open returns is infrastructure by construction:

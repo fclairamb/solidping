@@ -7,12 +7,15 @@ import { useLiveConnectionStatus, type LiveConnectionStatus } from "@/contexts/L
  * the existing ok/warning/error conventions (bg-green-500/bg-red-500, see
  * lib/status-style.ts) — not --destructive, which is reserved for
  * destructive actions. "connecting" and "disabled" share the same neutral
- * gray: both are "no live updates, and that's not an error". */
+ * gray: both are "no live updates, and that's not an error". The gray is
+ * --muted-foreground, not a fixed bg-gray-300: the dot lives in the
+ * always-dark sidebar (where it resolves to the dark token) and on light
+ * surfaces (the design reference), and a pale fixed gray vanished on the navy. */
 const STATUS_STYLE: Record<LiveConnectionStatus, { color: string; labelKey: string }> = {
   live: { color: "bg-green-500", labelKey: "liveStatus.live" },
   reconnecting: { color: "bg-red-500", labelKey: "liveStatus.reconnecting" },
-  connecting: { color: "bg-gray-300", labelKey: "liveStatus.connecting" },
-  disabled: { color: "bg-gray-300", labelKey: "liveStatus.unavailable" },
+  connecting: { color: "bg-muted-foreground", labelKey: "liveStatus.connecting" },
+  disabled: { color: "bg-muted-foreground", labelKey: "liveStatus.unavailable" },
 };
 
 /**

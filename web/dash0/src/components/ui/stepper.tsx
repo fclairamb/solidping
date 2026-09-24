@@ -18,6 +18,9 @@ export interface StepperProps {
  * number while active, outline while upcoming — joined by a connector line.
  * Wraps via `flex-wrap` on narrow viewports so labels stack under their
  * circle instead of overflowing horizontally.
+ *
+ * Done dots and done connectors carry the decorative --accent-gradient (over
+ * bg-primary); the only thing on it is the white check glyph.
  */
 export function Stepper({ steps, current, className }: StepperProps) {
   return (
@@ -36,7 +39,8 @@ export function Stepper({ steps, current, className }: StepperProps) {
                 aria-hidden
                 className={cn(
                   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-medium",
-                  done && "border-primary bg-primary text-primary-foreground",
+                  done &&
+                    "border-transparent bg-primary bg-accent-gradient text-gradient-foreground",
                   active && "border-primary text-primary",
                   !done && !active && "border-muted-foreground/30 text-muted-foreground",
                 )}
@@ -58,7 +62,7 @@ export function Stepper({ steps, current, className }: StepperProps) {
                 aria-hidden
                 className={cn(
                   "mx-2 hidden h-px flex-1 sm:block",
-                  done ? "bg-primary" : "bg-border",
+                  done ? "bg-primary bg-accent-gradient" : "bg-border",
                 )}
               />
             )}
