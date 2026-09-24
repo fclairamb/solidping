@@ -433,6 +433,11 @@ func (s *Service) hardAncestorGatesConfirmation(
 // confirmation, and how much of its hold cap is left. See
 // hardAncestorGatesConfirmation for the semantics; this is the per-ancestor
 // predicate, split out so the cap formula lives in exactly one place.
+//
+// Only `validating` gates. In particular a STALE ancestor never holds its
+// children (spec 2026-09-25-02 §3, deliberate): suppressing a child's alert
+// because of a parent we cannot see risks a missed page, while releasing it
+// only risks an extra one.
 func (s *Service) ancestorHoldRemaining(
 	ancestor *models.Check, now time.Time,
 ) (time.Duration, bool) {
@@ -473,8 +478,8 @@ func correlationWindow(check *models.Check) time.Duration {
 // walks suppressed children and either:
 //   - the child has recovered → emit a rollup_detached event and clear the
 //     attribution (don't page).
-//   - the child is still down → flip paging_suppressed = false and queue
-//     the notifications now.
+//   - the child is still down — or stale, which is unknown, not recovered —
+//     → flip paging_suppressed = false and queue the notifications now.
 func (s *Service) reEvaluateRollupChildren(
 	ctx context.Context, parent *models.Incident,
 ) error {
@@ -503,7 +508,13 @@ func (s *Service) reEvaluateChild(ctx context.Context, child, parent *models.Inc
 		return fmt.Errorf("get child check: %w", err)
 	}
 
-	if check.Status != models.CheckStatusDown {
+	// Only a check that has actually come back is detached. A stale child —
+	// no result for max(3 × period, 5 min) — has NOT recovered, we simply
+	// cannot see it (spec 2026-09-25-02 §3). Detaching it would un-suppress
+	// it silently and it would never page; treating it like `down` keeps it
+	// attached to its own open incident and pages now, because a missed page
+	// is the worse error.
+	if check.Status != models.CheckStatusDown && check.Status != models.CheckStatusStale {
 		return s.markRollupDetached(ctx, child, parent)
 	}
 

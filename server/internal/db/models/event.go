@@ -46,6 +46,17 @@ const (
 	// Never pages: the child never paged on the way in, so it does not page
 	// on the way out either.
 	EventTypeIncidentRollupDetached EventType = "incident.rollup_detached"
+	// EventTypeIncidentMonitoringInterrupted records, on an OPEN incident's
+	// timeline, that its check stopped producing results and went stale
+	// (spec 2026-09-25-02). The payload carries `since`, the newest real
+	// result before the silence. The incident deliberately stays open — no
+	// data is not a recovery — and this event never pages.
+	EventTypeIncidentMonitoringInterrupted EventType = "incident.monitoring_interrupted"
+	// EventTypeIncidentMonitoringResumed records that results came back for a
+	// stale check with an open incident. Resolution still needs a full, fresh
+	// recovery window: the sweep cleared the recovery clock on the way in.
+	// Never pages.
+	EventTypeIncidentMonitoringResumed EventType = "incident.monitoring_resumed"
 	// EventTypeIncidentAcknowledged indicates an incident was acknowledged.
 	EventTypeIncidentAcknowledged EventType = "incident.acknowledged"
 	// EventTypeIncidentUnacknowledged indicates an acknowledgment was cleared.

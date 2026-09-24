@@ -198,6 +198,7 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed, models.EventTypeIncidentComment,
 		models.EventTypeIncidentRolledUp, models.EventTypeIncidentRollupDetached,
+		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		models.EventTypeStatusPageIncidentPublished,

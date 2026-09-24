@@ -612,6 +612,20 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return nil // Skip results without status
 	}
 
+	resultStatus := models.ResultStatus(*result.Status)
+
+	// Freshness first, for every REAL result and before anything else —
+	// including the maintenance early return below (spec 2026-09-25-02). The
+	// touch advances checks.last_result_at, and the row it reads back replaces
+	// the in-memory status/streak/clocks: `check` may be a claim-time snapshot
+	// (checkworker/backend.DirectBackend.processIncidents), and the freshness
+	// sweep may have moved the row to stale and cleared both clocks since.
+	wasStale := false
+	if resultStatus.IsRealForFreshness() {
+		s.refreshLiveState(ctx, check, result)
+		wasStale = check.Status == models.CheckStatusStale
+	}
+
 	// Skip incident processing if the check is in an active maintenance window
 	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
 	if mwErr != nil {
@@ -620,13 +634,18 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	if inMaintenance {
+		// Leaving stale is the one status write maintenance does not suppress:
+		// otherwise a check that went quiet and came back inside a window
+		// would keep reading "No data" until the window ends.
+		if wasStale {
+			return s.leaveStaleInMaintenance(ctx, check, resultStatus)
+		}
+
 		slog.InfoContext(ctx, "Skipping incident processing: check is in maintenance window",
 			"checkUID", check.UID)
 
 		return nil
 	}
-
-	resultStatus := models.ResultStatus(*result.Status)
 
 	// Determine if this is a success, failure, or warning.
 	isSuccess := resultStatus == models.ResultStatusUp
@@ -684,6 +703,10 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, statusChanged)
 
+	if wasStale {
+		s.recordMonitoringResumed(ctx, check, activeIncident, now)
+	}
+
 	// Update local check object for incident logic
 	check.Status = newStatus
 	check.StatusStreak = newStreak
@@ -699,6 +722,143 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident, holdConfirmation)
+}
+
+// refreshLiveState advances the check's last_result_at to this result and
+// replaces the in-memory status, streak and clocks with the live row's. A
+// failure here is logged and the snapshot is used as before: freshness is
+// important, but never worth dropping a result's incident processing over.
+func (s *Service) refreshLiveState(ctx context.Context, check *models.Check, result *models.Result) {
+	now := s.clock.Now()
+
+	at := result.PeriodStart
+	if at.IsZero() || at.After(now) {
+		at = now
+	}
+
+	state, err := s.db.TouchCheckLastResult(ctx, check.UID, at)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to record the check's last result time",
+			"checkUID", check.UID, "error", err)
+
+		return
+	}
+
+	if check.LastResultAt == nil || check.LastResultAt.Before(at) {
+		check.LastResultAt = &at
+	}
+
+	if state != nil {
+		state.Apply(check)
+	}
+}
+
+// leaveStaleInMaintenance writes a stale check's first real result inside a
+// maintenance window. Maintenance still suppresses everything incident-shaped:
+// no clocks are armed or cleared (the sweep already cleared them), nothing
+// opens or resolves. Only the visible status moves, to what the result says —
+// with a failure reading `down` only behind an already-open incident and
+// `validating` otherwise, so the check never renders down with nothing behind
+// it.
+func (s *Service) leaveStaleInMaintenance(
+	ctx context.Context, check *models.Check, resultStatus models.ResultStatus,
+) error {
+	activeIncident, lookupErr := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return fmt.Errorf("failed to find active incident: %w", lookupErr)
+	}
+
+	var newStatus models.CheckStatus
+
+	switch {
+	case resultStatus == models.ResultStatusUp:
+		newStatus = models.CheckStatusUp
+	case resultStatus == models.ResultStatusWarning:
+		newStatus = models.CheckStatusWarning
+	case activeIncident != nil:
+		newStatus = models.CheckStatusDown
+	default:
+		newStatus = models.CheckStatusValidating
+	}
+
+	now := s.clock.Now()
+
+	if err := s.db.UpdateCheckStatusAndClocks(
+		ctx, check.UID, newStatus, 1, &now, models.IncidentClockUpdate{},
+	); err != nil {
+		return fmt.Errorf("failed to leave stale during maintenance: %w", err)
+	}
+
+	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, true)
+	s.recordMonitoringResumed(ctx, check, activeIncident, now)
+
+	check.Status = newStatus
+	check.StatusStreak = 1
+	check.StatusChangedAt = &now
+
+	return nil
+}
+
+// recordMonitoringResumed puts "data resumed" on an open incident's timeline
+// when a stale check produces its first real result again. The payload's
+// `interruptedSince` is when the check went stale (its status_changed_at,
+// read before this result overwrote it). Best-effort: a missing timeline line
+// must not fail the result.
+func (s *Service) recordMonitoringResumed(
+	ctx context.Context, check *models.Check, incident *models.Incident, now time.Time,
+) {
+	if incident == nil {
+		return
+	}
+
+	payload := models.JSONMap{
+		keyCheckUID:  check.UID,
+		keyCheckSlug: derefSlug(check.Slug),
+		"resumedAt":  now.UTC().Format(time.RFC3339),
+	}
+
+	if check.StatusChangedAt != nil {
+		payload["interruptedSince"] = check.StatusChangedAt.UTC().Format(time.RFC3339)
+	}
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentMonitoringResumed, incident, payload,
+	); err != nil {
+		slog.WarnContext(ctx, "Failed to record monitoring resumed on the incident timeline",
+			"checkUID", check.UID, "incidentUid", incident.UID, "error", err)
+	}
+}
+
+// RecordMonitoringInterrupted puts "monitoring interrupted since <since>" on
+// the timeline of the check's open incident, if it has one. Called by the
+// freshness sweep right after it moved the check to stale; the incident
+// itself is deliberately left open and untouched (spec 2026-09-25-02 §3).
+// Returns whether an event was written.
+func (s *Service) RecordMonitoringInterrupted(
+	ctx context.Context, check *models.Check, since time.Time,
+) (bool, error) {
+	incident, err := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && incident == nil) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("find active incident: %w", err)
+	}
+
+	payload := models.JSONMap{
+		keyCheckUID:  check.UID,
+		keyCheckSlug: derefSlug(check.Slug),
+		"since":      since.UTC().Format(time.RFC3339),
+	}
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentMonitoringInterrupted, incident, payload,
+	); err != nil {
+		return false, fmt.Errorf("emit monitoring interrupted: %w", err)
+	}
+
+	return true, nil
 }
 
 // holdForValidatingAncestor decides whether this failing result must keep the
@@ -1519,6 +1679,10 @@ func (s *Service) queueLifecycleNotifications(
 		// on the way in, so it does not page on the way out. See
 		// markRollupDetached in rollup.go.
 		models.EventTypeIncidentRollupDetached,
+		// Monitoring interrupted / resumed (spec 2026-09-25-02) are timeline
+		// facts about OUR ability to measure, not about the target: stale is
+		// neither down nor up, so it never pages in either direction.
+		models.EventTypeIncidentMonitoringInterrupted, models.EventTypeIncidentMonitoringResumed,
 		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
 		models.EventTypeStatusUpdateDeleted,
 		// Publication lifecycle is the STATUS PAGE's fan-out, not the on-call
