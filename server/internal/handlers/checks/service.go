@@ -592,6 +592,10 @@ type Service struct {
 	// the page-view backstop is the only mechanism — which is exactly the
 	// fallback it exists to be.
 	statusPageReconciler StatusPageReconciler
+	// degradedResolver closes a check's open degraded incident when its
+	// degraded detection is turned off (spec 2026-09-24-08). nil = not wired,
+	// in which case nothing is resolved; see SetDegradedIncidentResolver.
+	degradedResolver DegradedIncidentResolver
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -942,10 +946,6 @@ type CheckResponse struct {
 	DegradedSlowWindow     int  `json:"degradedSlowWindow"`
 	SlowThresholdMs        int  `json:"slowThresholdMs"`
 	DegradedEnabled        bool `json:"degradedEnabled"`
-	// DegradedWouldFireAt is the dry run's stamp: the check page turns it into
-	// the "this check would have been flagged degraded at …; enable?" banner.
-	// Omitted when the rules never fired on this check.
-	DegradedWouldFireAt *time.Time `json:"degradedWouldFireAt,omitempty"`
 
 	// FlapState is the check's LIVE adaptive-recovery state (spec
 	// 2026-08-24-05) — the effective (lazy-reset-aware) counterpart of the
@@ -1100,11 +1100,8 @@ type ListChecksOptions struct {
 	Types    []string
 	Internal *string
 	Statuses []models.CheckStatus
-	// WouldHaveFired restricts to the checks the degraded dry run has flagged
-	// (spec 2026-09-22-03) — `?wouldHaveFired=true`.
-	WouldHaveFired bool
-	Cursor         string
-	Limit          int
+	Cursor   string
+	Limit    int
 	// Sort opts into an alternate ordering. "group" = group sort_order asc,
 	// ungrouped last, then created_at DESC / uid DESC within a bucket.
 	// "targetHost" = targetHost ascending, none-of-host/url/target last, then
@@ -1156,7 +1153,6 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		Types:            opts.Types,
 		Internal:         opts.Internal,
 		Statuses:         opts.Statuses,
-		WouldHaveFired:   opts.WouldHaveFired,
 		Limit:            opts.Limit,
 		SortByGroup:      sortByGroup,
 		SortByTargetHost: sortByTargetHost,
@@ -2180,6 +2176,14 @@ func (s *Service) UpdateCheck(
 		}
 
 		return CheckResponse{}, errUpdate
+	}
+
+	// Turning degraded detection off closes the open degraded incident in the
+	// same request: the evaluator no longer sweeps this check, so nothing else
+	// ever would. Every write path (PATCH, /apply, import, MCP update_check)
+	// lands here.
+	if resolveErr := s.resolveDegradedOnDisable(ctx, check, &update); resolveErr != nil {
+		return CheckResponse{}, resolveErr
 	}
 
 	// Reconcile check jobs if regions, period, spread, enabled, or config
@@ -3381,7 +3385,6 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		DegradedSlowWindow:        check.EffectiveDegradedSlowWindow(),
 		SlowThresholdMs:           check.EffectiveSlowThresholdMs(),
 		DegradedEnabled:           check.DegradedEnabled,
-		DegradedWouldFireAt:       check.DegradedWouldFireAt,
 	}
 }
 
@@ -4848,8 +4851,7 @@ func (s *Service) cloneBuildCheck(
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
 	// Degraded detection is configuration, so a clone inherits it — including
-	// degraded_enabled. The dry-run stamp deliberately does NOT travel: it is an
-	// observation about the source check's own probe history.
+	// degraded_enabled.
 	//
 	// The five numerics copy the RAW pointers, not the resolved values: a source
 	// that never configured them must clone to an unconfigured check too, or the

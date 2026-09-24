@@ -1,6 +1,7 @@
 package checks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -107,10 +108,6 @@ type degradedValues struct {
 // values the check will actually run under: a PATCH that raises M alone must be
 // compared to the N already on the check (or the default N when that column is
 // NULL), not waved through because the request happens not to mention N.
-//
-// Turning the feature ON also retires the dry-run stamp, so the check page's
-// "would have fired — enable?" banner cannot keep asking for something the
-// operator has just done.
 func applyDegradedUpdate(
 	update *models.CheckUpdate, req *UpdateCheckRequest, check *models.Check,
 ) error {
@@ -136,8 +133,43 @@ func applyDegradedUpdate(
 	update.SlowThresholdMs = req.SlowThresholdMs
 	update.DegradedEnabled = req.DegradedEnabled
 
-	if req.DegradedEnabled != nil && *req.DegradedEnabled {
-		update.ClearDegradedWouldFireAt = true
+	return nil
+}
+
+// DegradedIncidentResolver closes the open degraded incident of a check whose
+// degraded detection was just turned off (spec 2026-09-24-08). It is an
+// interface because the implementation lives in handlers/incidents, which this
+// package cannot import (incidents → jobs/jobtypes → checks).
+type DegradedIncidentResolver interface {
+	ResolveDegradedOnDisable(ctx context.Context, checkUID string) error
+}
+
+// SetDegradedIncidentResolver wires the resolver. Every service that serves a
+// check write path (the HTTP routes, MCP) must set it: without it, turning
+// degraded detection off leaves an open degraded incident that the evaluator,
+// which only sweeps enabled checks, will never close.
+func (s *Service) SetDegradedIncidentResolver(resolver DegradedIncidentResolver) {
+	s.degradedResolver = resolver
+}
+
+// resolveDegradedOnDisable is the one shared hook every write path goes
+// through (UpdateCheck, which UpsertCheck, /apply, import and MCP all
+// delegate to).
+//
+// It fires on any write that explicitly sets degradedEnabled to false, not
+// only on a true → false transition: a request that turned the flag off but
+// failed to close the incident would otherwise leave it open forever, since a
+// retry would no longer see a transition. With nothing open it is one indexed
+// lookup.
+func (s *Service) resolveDegradedOnDisable(
+	ctx context.Context, check *models.Check, update *models.CheckUpdate,
+) error {
+	if s.degradedResolver == nil || update.DegradedEnabled == nil || *update.DegradedEnabled {
+		return nil
+	}
+
+	if err := s.degradedResolver.ResolveDegradedOnDisable(ctx, check.UID); err != nil {
+		return fmt.Errorf("resolve open degraded incident: %w", err)
 	}
 
 	return nil

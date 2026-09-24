@@ -1938,14 +1938,6 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
-		// Apply the degraded dry-run filter (spec 2026-09-22-03): the checks the
-		// evaluator would have flagged. Applied to BOTH queries, or the
-		// pagination total would disagree with the rows.
-		if filter.WouldHaveFired {
-			query = query.Where("degraded_would_fire_at IS NOT NULL")
-			countQuery = countQuery.Where("degraded_would_fire_at IS NOT NULL")
-		}
-
 		// Apply cursor (keyset) — composite for sort=group, two-part otherwise.
 		query = applyChecksCursor(query, filter)
 
@@ -2137,12 +2129,6 @@ func applyDegradedFieldsSQLite(query *bun.UpdateQuery, update *models.CheckUpdat
 	}
 	if update.DegradedEnabled != nil {
 		query = query.Set("degraded_enabled = ?", *update.DegradedEnabled)
-	}
-
-	if update.ClearDegradedWouldFireAt {
-		query = query.Set("degraded_would_fire_at = NULL")
-	} else if update.DegradedWouldFireAt != nil {
-		query = query.Set("degraded_would_fire_at = ?", *update.DegradedWouldFireAt)
 	}
 
 	if update.DegradedEvaluatedAt != nil {

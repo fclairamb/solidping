@@ -1415,15 +1415,6 @@ paths:
             type: string
             enum: ["true", "false", "all"]
             default: "false"
-        - name: wouldHaveFired
-          in: query
-          description: >-
-            When "true", returns only the checks the degraded dry run has
-            flagged (`degradedWouldFireAt` is set) — what enabling degraded
-            detection would have caught. Any other value applies no filter.
-          schema:
-            type: string
-            enum: ["true"]
         - name: sort
           in: query
           description: >-
@@ -10247,17 +10238,10 @@ components:
         degradedEnabled:
           type: boolean
           description: >-
-            Whether degraded detection may OPEN incidents on this check. New
-            checks are on; every check that predates the feature is off, and
-            runs as a dry run that only stamps `degradedWouldFireAt`.
-        degradedWouldFireAt:
-          type: string
-          format: date-time
-          nullable: true
-          description: >-
-            When the dry run first saw a degraded condition on a check that has
-            `degradedEnabled` false. Absent when the rules never fired. Cleared
-            when degraded detection is enabled.
+            Whether degraded detection runs on this check. When false,
+            degraded detection is not evaluated for this check. New checks are
+            on; every check that predates the feature is off. Turning it off
+            resolves the check's open degraded incident, if any.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10669,9 +10653,10 @@ components:
           type: boolean
           default: true
           description: >-
-            Whether degraded detection may OPEN incidents on this check. New
-            checks are on; every check that predates the feature is off, and
-            runs as a dry run that only stamps `degradedWouldFireAt`.
+            Whether degraded detection runs on this check. When false,
+            degraded detection is not evaluated for this check. New checks are
+            on; every check that predates the feature is off. Turning it off
+            resolves the check's open degraded incident, if any.
         flapBackoffFactor:
           type: integer
           minimum: 1
@@ -10820,9 +10805,10 @@ components:
         degradedEnabled:
           type: boolean
           description: >-
-            Whether degraded detection may OPEN incidents on this check. New
-            checks are on; every check that predates the feature is off, and
-            runs as a dry run that only stamps `degradedWouldFireAt`. Omit to leave unchanged.
+            Whether degraded detection runs on this check. When false,
+            degraded detection is not evaluated for this check. New checks are
+            on; every check that predates the feature is off. Turning it off
+            resolves the check's open degraded incident, if any. Omit to leave unchanged.
         flapBackoffFactor:
           type: integer
           minimum: 1

@@ -1809,6 +1809,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// page-view backstop as the safety net.
 	checksService.SetStatusPageReconciler(statusPagesService)
 	checkGroupsService.SetStatusPageReconciler(statusPagesService)
+	// Turning a check's degraded detection off closes its open degraded
+	// incident in the same request (spec 2026-09-24-08): the evaluator only
+	// sweeps checks with it on, so nothing else ever would.
+	checksService.SetDegradedIncidentResolver(incidentsService)
 	// The MCP surface builds its OWN statuspages.Service (mcp.NewHandler runs
 	// far earlier in this function), and every NewService starts with its own
 	// view memo. Point it at this one's, or an MCP-driven page edit evicts a map

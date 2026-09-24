@@ -3,6 +3,32 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: drop-degraded-dry-run
+--
+-- The column comes back empty and the sweep index regains its 023 predicate.
+-- ==========================================================================
+
+drop index if exists idx_checks_degraded_eval;
+
+--bun:split
+
+create index if not exists idx_checks_degraded_eval
+  on checks (degraded_evaluated_at)
+  where deleted_at is null and enabled;
+
+--bun:split
+
+alter table checks add column degraded_would_fire_at text;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: degraded-incident-kind
+--
+-- Nothing to undo on SQLite.
+-- ==========================================================================
+
+-- ==========================================================================
 -- SECTION: auto-region-placement
 --
 -- The placement columns go; every check keeps its regions (the placement

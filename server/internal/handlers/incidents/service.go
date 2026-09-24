@@ -113,7 +113,7 @@ const (
 	keyParentCheckUID             = "parent_check_uid"
 	keyRollupDepth                = "rollup_depth"
 	// keyResolutionType names HOW an incident closed (auto | manual | expired |
-	// escalated) in the resolved event's payload. A shared constant because
+	// escalated | disabled) in the resolved event's payload. A shared constant because
 	// three separate resolve paths write it — the check state machine, the burn
 	// evaluator and the degraded evaluator — and a typo in one of them would
 	// silently drop the field from that path's notifications only.

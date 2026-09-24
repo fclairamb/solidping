@@ -363,25 +363,19 @@ type Check struct {
 	DegradedSlow           *int `bun:"degraded_slow"`
 	DegradedSlowWindow     *int `bun:"degraded_slow_window"`
 	SlowThresholdMs        *int `bun:"slow_threshold_ms"`
-	// DegradedEnabled gates OPENING incidents, not evaluating. FALSE on every
-	// pre-existing row (the migration's column default) and TRUE on every check
-	// created from now on (NewCheck): upgrading must never start paging on its
-	// own, per the rule already written at SLOAlertPolicy's rollout.
+	// DegradedEnabled turns degraded detection on for this check. FALSE on
+	// every row that predates the feature (the migration's column default) and
+	// TRUE on every check created from then on (NewCheck): upgrading must never
+	// start paging on its own, per the rule already written at SLOAlertPolicy's
+	// rollout. Enabling it on an existing check is a per-check decision. A
+	// disabled check is not evaluated at all.
 	//
 	// It is deliberately NOT a pointer, unlike the five above: NULL cannot
 	// carry that rollout rule. nil-means-true would start paging on upgrade,
 	// nil-means-false would silently disable checks created by a path that does
 	// not set the flag. A plain bool defaulting to false makes every such path
-	// fail SAFE — into the dry run, which stamps DegradedWouldFireAt and pages
-	// nobody.
+	// fail SAFE: the check is simply not evaluated, and nobody is paged.
 	DegradedEnabled bool `bun:"degraded_enabled,notnull"`
-	// DegradedWouldFireAt is the dry run's output: when the evaluator last saw
-	// a degraded condition on a check that has DegradedEnabled false. It is
-	// what the check page's "this check would have been flagged degraded at
-	// 14:37 — enable?" banner and the checks list's `wouldHaveFired` filter
-	// read. Cleared once the check is enabled, so the two states can never both
-	// look true.
-	DegradedWouldFireAt *time.Time `bun:"degraded_would_fire_at"`
 	// DegradedEvaluatedAt is evaluator rotation STATE, not configuration: the
 	// sweep reads checks oldest-evaluated first so a bounded per-sweep batch
 	// still gives every check a turn on a large install, exactly as
@@ -793,11 +787,9 @@ type CheckUpdate struct {
 	DegradedSlowWindow     *int
 	SlowThresholdMs        *int
 	DegradedEnabled        *bool
-	// DegradedWouldFireAt / DegradedEvaluatedAt are written by the evaluator
-	// sweep, never by an API caller. Clear* sets the column to NULL.
-	DegradedWouldFireAt      *time.Time
-	ClearDegradedWouldFireAt bool
-	DegradedEvaluatedAt      *time.Time
+	// DegradedEvaluatedAt is written by the evaluator sweep, never by an API
+	// caller.
+	DegradedEvaluatedAt *time.Time
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string
@@ -867,20 +859,15 @@ func NewCheckLabel(checkUID, labelUID string) *CheckLabel {
 
 // ListChecksFilter provides filtering options for listing checks.
 type ListChecksFilter struct {
-	Labels        map[string]string // key:value pairs for AND filtering
-	CheckGroupUID *string           // filter by check group UID; "none" = ungrouped checks only
-	Query         string            // search term for name/slug (case-insensitive substring)
-	Types         []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
-	Internal      *string           // "true", "false", or "all" — filter by internal status
-	Statuses      []CheckStatus     // optional filter by current status (up/down/etc.)
-	// WouldHaveFired restricts to checks the degraded dry run has flagged:
-	// `degraded_would_fire_at IS NOT NULL` (spec 2026-09-22-03). It is how an
-	// operator finds what enabling degraded detection would have caught, and it
-	// is the whole adoption path for a feature that ships off.
-	WouldHaveFired  bool
-	Limit           int        // max results to return (0 = no limit)
-	CursorCreatedAt *time.Time // cursor: created_at of last item from previous page
-	CursorUID       *string    // cursor: uid of last item from previous page
+	Labels          map[string]string // key:value pairs for AND filtering
+	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
+	Query           string            // search term for name/slug (case-insensitive substring)
+	Types           []string          // optional filter by check type (e.g. ["ssh"]); empty = every type
+	Internal        *string           // "true", "false", or "all" — filter by internal status
+	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
+	Limit           int               // max results to return (0 = no limit)
+	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
+	CursorUID       *string           // cursor: uid of last item from previous page
 
 	// SortByGroup opts into display-order pagination (sort=group): group
 	// sort_order asc, ungrouped last, then created_at DESC / uid DESC within a

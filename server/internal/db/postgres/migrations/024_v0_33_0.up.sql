@@ -12,6 +12,11 @@
 --                              checks.placement / region_count / region_pool,
 --                              and checks on the system default regions
 --                              switch to automatic placement
+--   SECTION: degraded-incident-kind
+--                              incidents_kind_check accepts 'degraded'
+--   SECTION: drop-degraded-dry-run
+--                              checks.degraded_would_fire_at goes, the degraded
+--                              sweep reads only degraded_enabled checks
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -216,3 +221,79 @@ update checks c
    and (select array_agg(distinct x.slug order by x.slug) from unnest(c.regions) as x(slug))
      = (select array_agg(distinct d.slug order by d.slug)
           from jsonb_array_elements_text(p.value -> 'value') as d(slug));
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: degraded-incident-kind  (spec 2026-09-24-08)
+--
+-- 015_v0_18_0 pinned incidents.kind to ('check', 'slo_burn'), and 023_v0_32_0
+-- added the 'degraded' kind without widening it. On Postgres every degraded
+-- incident insert therefore failed with a check violation (23514): degraded
+-- detection shipped in v0.32 could not open a single incident there. SQLite
+-- never had the constraint. Found while writing the drop-degraded-dry-run
+-- migration test, which needs a degraded row to exist.
+-- ==========================================================================
+
+alter table incidents drop constraint if exists incidents_kind_check;
+
+--bun:split
+
+alter table incidents add constraint incidents_kind_check check (kind in ('check', 'slo_burn', 'degraded'));
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: drop-degraded-dry-run  (spec 2026-09-24-08)
+--
+-- 023_v0_32_0 shipped degraded detection with a dry run: the evaluator swept
+-- every check, and on one with degraded_enabled = false it opened nothing and
+-- stamped degraded_would_fire_at, which fed a banner on the check page and a
+-- "would have fired" filter on the checks list. The dry run is gone. Rollout
+-- is now just the column default: off for every check that predates the
+-- feature, on for new checks, and enabling it on an existing check is a
+-- per-check decision. A disabled check is not evaluated at all.
+--
+-- 023 is released and frozen, so the column is dropped here rather than
+-- withdrawn there.
+-- ==========================================================================
+
+alter table checks drop column if exists degraded_would_fire_at;
+
+--bun:split
+
+comment on column checks.degraded_enabled is
+  'Whether degraded detection runs on this check. FALSE = not evaluated. Off for checks that predate the feature, on for new ones.';
+
+--bun:split
+
+-- The sweep now filters on degraded_enabled, and most pre-existing checks are
+-- off: without the flag in the predicate the oldest-evaluated-first index scan
+-- would wade through every disabled row to fill its batch.
+drop index if exists idx_checks_degraded_eval;
+
+--bun:split
+
+create index if not exists idx_checks_degraded_eval
+  on checks (degraded_evaluated_at)
+  where deleted_at is null and enabled and degraded_enabled;
+
+--bun:split
+
+-- A degraded incident open on a check whose flag is already off (enabled,
+-- then disabled, under v0.32) used to auto-resolve because the old sweep still
+-- read that check. The new sweep never will, so close it now, the same way
+-- turning the flag off does from now on.
+update incidents i
+   set state = 2,
+       resolved_at = now(),
+       resolution_type = 'disabled',
+       updated_at = now()
+ where i.kind = 'degraded'
+   and i.state = 1
+   and i.deleted_at is null
+   and exists (
+     select 1 from checks c
+      where c.uid = i.check_uid
+        and not c.degraded_enabled
+   );

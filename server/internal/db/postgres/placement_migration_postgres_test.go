@@ -31,9 +31,16 @@ func placementMigrationSection(t *testing.T) string {
 	idx := strings.Index(string(content), banner)
 	require.GreaterOrEqual(t, idx, 0, "the section banner must be present")
 
+	// Stop at the next section banner: later sections are appended after this
+	// one and are not part of it.
+	section := string(content)[idx:]
+	if next := strings.Index(section[len(banner):], "\n-- SECTION: "); next >= 0 {
+		section = section[:len(banner)+next]
+	}
+
 	var statements []string
 
-	for _, chunk := range strings.Split(string(content)[idx:], "--bun:split") {
+	for _, chunk := range strings.Split(section, "--bun:split") {
 		var kept []string
 
 		for _, line := range strings.Split(chunk, "\n") {

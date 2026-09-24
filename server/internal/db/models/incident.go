@@ -29,6 +29,10 @@ const (
 	// outage's caused_by_incident_uid points back at it, so nothing keyed on
 	// `kind` ever has to cope with a kind changing mid-life.
 	ResolutionTypeEscalated = "escalated"
+	// ResolutionTypeDisabled closes a degraded incident because degraded
+	// detection was turned off on its check (spec 2026-09-24-08). The check did
+	// not necessarily recover: the evaluator simply stops looking at it.
+	ResolutionTypeDisabled = "disabled"
 )
 
 // Incident kinds. `kind` discriminates what an incident row is ABOUT. It is a

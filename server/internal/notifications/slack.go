@@ -794,6 +794,15 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 		)}
 	}
 
+	if info := DegradedInfoFor(payload.Incident); info != nil && info.TurnedOff {
+		return &slack.MessageResponse{Text: fmt.Sprintf(
+			":white_circle: %s%s: degraded detection was turned off after %s, so the degraded incident was closed. "+
+				"The check did not necessarily recover.",
+			incidentRefLink(payload.Incident, incidentURL),
+			checkNameLink(checkURL, incidentURL, checkName, payload.Incident), duration,
+		)}
+	}
+
 	if info := DegradedInfoFor(payload.Incident); info != nil {
 		return &slack.MessageResponse{Text: fmt.Sprintf(
 			":large_green_circle: %s%s is steady again after %s — the degraded pattern cleared.",

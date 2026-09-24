@@ -13,6 +13,12 @@
 --                              checks.placement / region_count / region_pool,
 --                              and checks on the system default regions
 --                              switch to automatic placement
+--   SECTION: degraded-incident-kind
+--                              Postgres only: incidents_kind_check accepts
+--                              'degraded' (nothing to do here)
+--   SECTION: drop-degraded-dry-run
+--                              checks.degraded_would_fire_at goes, the degraded
+--                              sweep reads only degraded_enabled checks
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -154,4 +160,52 @@ update checks
           select 1 from json_each(checks.regions) r
            where r.value not in (select d.value from json_each(p.value, '$.value') d)
         )
+   );
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: degraded-incident-kind  (spec 2026-09-24-08)
+--
+-- Postgres only: its incidents_kind_check refused 'degraded'. SQLite never had
+-- a constraint on incidents.kind, so there is nothing to do here.
+-- ==========================================================================
+
+-- ==========================================================================
+-- SECTION: drop-degraded-dry-run  (spec 2026-09-24-08)
+--
+-- See the Postgres twin for the rationale: the degraded dry run (the
+-- degraded_would_fire_at stamp, its banner and its list filter) is gone, a
+-- disabled check is not evaluated at all, and 023 is released so the column is
+-- dropped here.
+-- ==========================================================================
+
+alter table checks drop column degraded_would_fire_at;
+
+--bun:split
+
+drop index if exists idx_checks_degraded_eval;
+
+--bun:split
+
+create index if not exists idx_checks_degraded_eval
+  on checks (degraded_evaluated_at)
+  where deleted_at is null and enabled and degraded_enabled;
+
+--bun:split
+
+-- Close a degraded incident left open on a check whose flag is already off:
+-- the new sweep never reads that check again.
+update incidents
+   set state = 2,
+       resolved_at = datetime('now'),
+       resolution_type = 'disabled',
+       updated_at = datetime('now')
+ where kind = 'degraded'
+   and state = 1
+   and deleted_at is null
+   and exists (
+     select 1 from checks c
+      where c.uid = incidents.check_uid
+        and c.degraded_enabled = 0
    );

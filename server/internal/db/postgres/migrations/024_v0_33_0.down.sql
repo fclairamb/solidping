@@ -3,6 +3,47 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: drop-degraded-dry-run
+--
+-- The column comes back empty (the stamps are not recoverable) and the sweep
+-- index regains its 023 predicate. Incidents closed as 'disabled' stay closed.
+-- ==========================================================================
+
+drop index if exists idx_checks_degraded_eval;
+
+--bun:split
+
+create index if not exists idx_checks_degraded_eval
+  on checks (degraded_evaluated_at)
+  where deleted_at is null and enabled;
+
+--bun:split
+
+comment on column checks.degraded_enabled is
+  'Whether degraded detection may OPEN incidents on this check. FALSE = dry run (stamps degraded_would_fire_at only).';
+
+--bun:split
+
+alter table checks add column if not exists degraded_would_fire_at timestamptz;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: degraded-incident-kind
+--
+-- Back to the 015 constraint, NOT VALID so existing degraded rows do not block
+-- the downgrade.
+-- ==========================================================================
+
+alter table incidents drop constraint if exists incidents_kind_check;
+
+--bun:split
+
+alter table incidents add constraint incidents_kind_check check (kind in ('check', 'slo_burn')) not valid;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: auto-region-placement
 --
 -- The placement columns go; every check keeps its regions (the placement

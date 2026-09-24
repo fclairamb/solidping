@@ -99,9 +99,16 @@ func (s *Service) EvaluateCheck(ctx context.Context, check *models.Check, now ti
 	return s.evaluateCheck(ctx, check, now)
 }
 
-// evaluateCheck is the per-check state machine: suppress, evaluate, then either
-// open/update/resolve an incident or stamp the dry run.
+// evaluateCheck is the per-check state machine: suppress, evaluate, then
+// open/update/resolve an incident.
 func (s *Service) evaluateCheck(ctx context.Context, check *models.Check, now time.Time) error {
+	// A check with degraded detection off is not evaluated at all: nothing is
+	// opened and nothing is written on the row. The sweep already skips it
+	// (ListChecksForDegradedEval); this covers a direct EvaluateCheck caller.
+	if !check.DegradedEnabled {
+		return nil
+	}
+
 	params := paramsFor(check)
 
 	// Always stamp the rotation cursor, whatever else happens: a check that is
@@ -109,13 +116,6 @@ func (s *Service) evaluateCheck(ctx context.Context, check *models.Check, now ti
 	// thing the sweep ever looks at.
 	update := models.CheckUpdate{DegradedEvaluatedAt: &now}
 	defer func() { s.applyCheckUpdate(ctx, check, &update) }()
-
-	// Enabling the feature retires the dry-run stamp: "would have fired" and "is
-	// allowed to fire" must never both look true, or the banner keeps asking the
-	// operator to enable something already enabled.
-	if check.DegradedEnabled && check.DegradedWouldFireAt != nil {
-		update.ClearDegradedWouldFireAt = true
-	}
 
 	if !params.FailureRuleActive() && !params.SlowRuleActive() {
 		return nil
@@ -146,18 +146,18 @@ func (s *Service) evaluateCheck(ctx context.Context, check *models.Check, now ti
 		return err
 	}
 
-	return s.applyLifecycle(ctx, check, &outcome, open, now, &update)
+	return s.applyLifecycle(ctx, check, &outcome, open, now)
 }
 
-// applyLifecycle is the fire / update / resolve / dry-run state machine.
+// applyLifecycle is the fire / update / resolve state machine.
 func (s *Service) applyLifecycle(
 	ctx context.Context, check *models.Check, outcome *degraded.Outcome,
-	open *models.Incident, now time.Time, update *models.CheckUpdate,
+	open *models.Incident, now time.Time,
 ) error {
 	snapshot := snapshotFor(check, outcome)
 
 	if outcome.Firing() {
-		return s.applyFiring(ctx, check, outcome, open, now, update, snapshot)
+		return s.applyFiring(ctx, check, outcome, open, now, snapshot)
 	}
 
 	if open == nil {
@@ -173,28 +173,12 @@ func (s *Service) applyLifecycle(
 	return s.incidents.AutoResolveDegradedIncident(ctx, open, now, snapshot)
 }
 
-// applyFiring is the firing half of the state machine: the dry-run stamp, the
-// in-place update of an already-open incident, or a fresh open.
+// applyFiring is the firing half of the state machine: the in-place update of
+// an already-open incident, or a fresh open.
 func (s *Service) applyFiring(
 	ctx context.Context, check *models.Check, outcome *degraded.Outcome,
-	open *models.Incident, now time.Time, update *models.CheckUpdate,
-	snapshot *incidents.DegradedSnapshot,
+	open *models.Incident, now time.Time, snapshot *incidents.DegradedSnapshot,
 ) error {
-	if !check.DegradedEnabled {
-		// The dry run. It opens NOTHING and only records the first moment the
-		// rules would have fired, which is what the check page's banner and the
-		// checks list's `wouldHaveFired` filter read. Earliest-wins: the banner is
-		// past tense ("would have been flagged degraded at 14:37"), so a later
-		// quiet sweep must not erase it.
-		if check.DegradedWouldFireAt == nil {
-			stamp := now
-			update.DegradedWouldFireAt = &stamp
-			update.ClearDegradedWouldFireAt = false
-		}
-
-		return nil
-	}
-
 	if open != nil {
 		return s.incidents.UpdateDegradedIncident(ctx, open, snapshot)
 	}
