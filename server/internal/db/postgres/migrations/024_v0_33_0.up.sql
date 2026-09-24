@@ -8,6 +8,10 @@
 --   SECTION: passive-checks-no-regions
 --                              heartbeat/email checks lose their regions and
 --                              keep one NULL-region job
+--   SECTION: auto-region-placement
+--                              checks.placement / region_count / region_pool,
+--                              and checks on the system default regions
+--                              switch to automatic placement
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -130,3 +134,85 @@ update check_jobs
        updated_at = now()
  where type in ('heartbeat', 'email')
    and region is not null;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: auto-region-placement  (spec 2026-09-25-06)
+--
+-- Regions were resolved once and frozen with no record of intent: every new
+-- check was pinned to the org/system default regions, whether anybody chose
+-- them or not, so one dark region stopped every check "pinned" there. A check
+-- now records its placement intent:
+--
+--   placement     'pinned' (regions is the user's list, never moved) or
+--                 'auto'   (regions is the CURRENT placement, rewritten by
+--                           the region sweep when a placed region goes dark)
+--   region_count  auto only: N, how many regions run the check
+--   region_pool   auto only: candidate cloud slugs, NULL/empty = any
+--
+-- Keeping the auto placement in checks.regions is what keeps the boot repair,
+-- reconcileCheckJobs, the phase computation and the rate accounting unchanged.
+-- ==========================================================================
+
+alter table checks add column if not exists placement text not null default 'pinned';
+
+--bun:split
+
+alter table checks drop constraint if exists checks_placement_valid;
+
+--bun:split
+
+alter table checks add constraint checks_placement_valid check (placement in ('pinned', 'auto'));
+
+--bun:split
+
+alter table checks add column if not exists region_count integer;
+
+--bun:split
+
+alter table checks add column if not exists region_pool text[];
+
+--bun:split
+
+comment on column checks.placement is
+  'Placement intent: pinned (regions is the user''s explicit list, never moved) or auto (regions is the current placement, re-placed by the region sweep when a placed region goes dark). Spec 2026-09-25-06.';
+
+--bun:split
+
+comment on column checks.region_count is
+  'Auto placement only: how many regions run the check. NULL for pinned checks.';
+
+--bun:split
+
+comment on column checks.region_pool is
+  'Auto placement only: candidate cloud region slugs; NULL or empty means any cloud region.';
+
+--bun:split
+
+-- The one migration exception (resolved open question 1): a check whose
+-- regions are exactly the system default_regions, as a set, was almost
+-- certainly never placed by anybody — it is the "67 checks pinned to
+-- gravelines" case. It becomes auto with region_count = its current region
+-- count and an empty pool: same regions, same jobs, same cost, and it gains
+-- failover. Every other check keeps placement = 'pinned' (the column default).
+-- Passive types (checkerdef.PassiveCheckTypes) have no regions and never move;
+-- a check naming a private (`@`) region is pinned-only.
+update checks c
+   set placement = 'auto',
+       region_count = cardinality(c.regions),
+       region_pool = null
+  from parameters p
+ where p.organization_uid is null
+   and p.key = 'default_regions'
+   and p.deleted_at is null
+   and jsonb_typeof(p.value -> 'value') = 'array'
+   and c.deleted_at is null
+   and c.placement = 'pinned'
+   and c.type not in ('heartbeat', 'email', 'private-location')
+   and cardinality(c.regions) > 0
+   and not exists (select 1 from unnest(c.regions) as r(slug) where r.slug like '@%')
+   and cardinality(c.regions) = (select count(distinct x.slug) from unnest(c.regions) as x(slug))
+   and (select array_agg(distinct x.slug order by x.slug) from unnest(c.regions) as x(slug))
+     = (select array_agg(distinct d.slug order by d.slug)
+          from jsonb_array_elements_text(p.value -> 'value') as d(slug));

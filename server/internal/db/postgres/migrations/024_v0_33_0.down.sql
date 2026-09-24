@@ -3,6 +3,29 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: auto-region-placement
+--
+-- The placement columns go; every check keeps its regions (the placement
+-- the scheduler last wrote), which the previous schema reads as pinned.
+-- ==========================================================================
+
+alter table checks drop constraint if exists checks_placement_valid;
+
+--bun:split
+
+alter table checks drop column if exists region_pool;
+
+--bun:split
+
+alter table checks drop column if exists region_count;
+
+--bun:split
+
+alter table checks drop column if exists placement;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: passive-checks-no-regions
 --
 -- Nothing to undo: the up section is a data normalization (passive checks

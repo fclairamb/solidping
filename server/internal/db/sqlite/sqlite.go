@@ -1534,6 +1534,7 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 	// as well as in the checks service so the raw-DB creators (samples, demo,
 	// test API) cannot write one either.
 	check.NormalizePassiveRegions()
+	check.NormalizePlacement()
 
 	// Insert check and create corresponding check_job(s) in a transaction
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -2040,6 +2041,29 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 			return fmt.Errorf("failed to marshal regions: %w", jsonErr)
 		}
 		query = query.Set("regions = ?", string(regionsJSON))
+	}
+
+	if update.Placement != nil {
+		query = query.Set("placement = ?", *update.Placement)
+	}
+
+	switch {
+	case update.ClearRegionCount:
+		query = query.Set("region_count = NULL")
+	case update.RegionCount != nil:
+		query = query.Set("region_count = ?", *update.RegionCount)
+	}
+
+	switch {
+	case update.ClearRegionPool:
+		query = query.Set("region_pool = NULL")
+	case update.RegionPool != nil:
+		poolJSON, jsonErr := json.Marshal(*update.RegionPool)
+		if jsonErr != nil {
+			return fmt.Errorf("failed to marshal region pool: %w", jsonErr)
+		}
+
+		query = query.Set("region_pool = ?", string(poolJSON))
 	}
 
 	switch {

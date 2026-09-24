@@ -1617,6 +1617,7 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 	// as well as in the checks service so the raw-DB creators (samples, demo,
 	// test API) cannot write one either.
 	check.NormalizePassiveRegions()
+	check.NormalizePlacement()
 
 	// Insert check and create corresponding check_job(s) in a transaction
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -2132,6 +2133,7 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
 	}
 
+	query = applyPlacementPg(query, update)
 	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
 	switch {
@@ -2144,6 +2146,29 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// applyPlacementPg sets the placement-intent columns (spec 2026-09-25-06).
+func applyPlacementPg(query *bun.UpdateQuery, update *models.CheckUpdate) *bun.UpdateQuery {
+	if update.Placement != nil {
+		query = query.Set("placement = ?", *update.Placement)
+	}
+
+	switch {
+	case update.ClearRegionCount:
+		query = query.Set("region_count = NULL")
+	case update.RegionCount != nil:
+		query = query.Set("region_count = ?", *update.RegionCount)
+	}
+
+	switch {
+	case update.ClearRegionPool:
+		query = query.Set("region_pool = NULL")
+	case update.RegionPool != nil:
+		query = query.Set("region_pool = ?", pgdialect.Array(*update.RegionPool))
+	}
+
+	return query
 }
 
 // applyAdaptiveAndIncidentTrackingPg sets the adaptive-resolution and

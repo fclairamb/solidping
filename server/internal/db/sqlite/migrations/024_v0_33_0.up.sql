@@ -9,6 +9,10 @@
 --   SECTION: passive-checks-no-regions
 --                              heartbeat/email checks lose their regions and
 --                              keep one NULL-region job
+--   SECTION: auto-region-placement
+--                              checks.placement / region_count / region_pool,
+--                              and checks on the system default regions
+--                              switch to automatic placement
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -99,3 +103,55 @@ update check_jobs
        lease_starts = 0
  where type in ('heartbeat', 'email')
    and region is not null;
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: auto-region-placement  (spec 2026-09-25-06)
+--
+-- See the Postgres twin for the rationale. region_pool is a JSON array in a
+-- text column, like regions.
+-- ==========================================================================
+
+alter table checks add column placement text not null default 'pinned'
+  check (placement in ('pinned', 'auto'));
+
+--bun:split
+
+alter table checks add column region_count integer;
+
+--bun:split
+
+alter table checks add column region_pool text;
+
+--bun:split
+
+-- A check whose regions are exactly the system default_regions (as a set)
+-- becomes auto, region_count = its region count, empty pool. Regions and jobs
+-- are untouched. Everything else stays pinned.
+update checks
+   set placement = 'auto',
+       region_count = json_array_length(regions),
+       region_pool = null
+ where deleted_at is null
+   and placement = 'pinned'
+   and type not in ('heartbeat', 'email', 'private-location')
+   and regions is not null
+   and json_valid(regions)
+   and json_array_length(regions) > 0
+   and not exists (select 1 from json_each(checks.regions) r where r.value like '@%')
+   and (select count(distinct r.value) from json_each(checks.regions) r) = json_array_length(regions)
+   and exists (
+     select 1 from parameters p
+      where p.organization_uid is null
+        and p.key = 'default_regions'
+        and p.deleted_at is null
+        and json_valid(p.value)
+        and json_type(p.value, '$.value') = 'array'
+        and (select count(distinct d.value) from json_each(p.value, '$.value') d)
+          = (select count(distinct r.value) from json_each(checks.regions) r)
+        and not exists (
+          select 1 from json_each(checks.regions) r
+           where r.value not in (select d.value from json_each(p.value, '$.value') d)
+        )
+   );

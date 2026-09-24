@@ -75,6 +75,43 @@ func (c *Check) IsPassive() bool {
 	return checkerdef.CheckType(c.Type).IsPassive()
 }
 
+// Placement intents (spec 2026-09-25-06).
+const (
+	// PlacementPinned: Regions is the user's explicit list. It is never moved;
+	// when its region goes dark the check goes stale and the org is told.
+	PlacementPinned = "pinned"
+	// PlacementAuto: Regions is the current placement, chosen from the
+	// candidate order and re-placed by the region sweep when a placed region
+	// goes dark.
+	PlacementAuto = "auto"
+)
+
+// IsAutoPlaced reports whether the scheduler owns the check's regions.
+func (c *Check) IsAutoPlaced() bool {
+	return c.Placement == PlacementAuto
+}
+
+// EffectivePlacement is the placement intent, reading an unset value (a row
+// built in memory by a path that never set it) as pinned — the column default.
+func (c *Check) EffectivePlacement() string {
+	if c.Placement == PlacementAuto {
+		return PlacementAuto
+	}
+
+	return PlacementPinned
+}
+
+// NormalizePlacement reads an unset placement as pinned (the column default)
+// and drops the auto-only fields from a pinned check, so a stored row can
+// never carry a count or a pool it does not use.
+func (c *Check) NormalizePlacement() {
+	if c.Placement != PlacementAuto {
+		c.Placement = PlacementPinned
+		c.RegionCount = nil
+		c.RegionPool = nil
+	}
+}
+
 // JobRegions is the region set the check's jobs are materialized for. A
 // passive check has none, whatever its row says: it makes no outbound request,
 // so a region adds nothing but a place for its evaluator to die (spec
@@ -91,9 +128,15 @@ func (c *Check) JobRegions() []string {
 // NormalizePassiveRegions empties Regions on a passive check. An explicit list
 // is accepted and dropped rather than rejected, so an existing config-as-code
 // file that names a region on a heartbeat keeps applying (spec 2026-09-25-04).
+//
+// A passive check is also never auto-placed (spec 2026-09-25-06): it has no
+// region to place, so its placement is always pinned with no count or pool.
 func (c *Check) NormalizePassiveRegions() {
 	if c.IsPassive() {
 		c.Regions = []string{}
+		c.Placement = PlacementPinned
+		c.RegionCount = nil
+		c.RegionPool = nil
 	}
 }
 
@@ -194,9 +237,25 @@ type Check struct {
 	// (ConfigPrivate stays NULL — the server cannot decrypt them after write);
 	// a mixed private+cloud check dual-stores (v1 envelope for cloud dispatch +
 	// this sealed blob for agents).
-	ConfigSealed *string            `bun:"config_sealed,type:text,nullzero"`
-	Regions      []string           `bun:"regions,type:text[],array"`
-	Enabled      bool               `bun:"enabled,notnull"`
+	ConfigSealed *string `bun:"config_sealed,type:text,nullzero"`
+	// Regions is where the check runs. For a PINNED check it is the user's
+	// explicit list and is never moved; for an AUTO check it is the CURRENT
+	// placement, written by the scheduler (spec 2026-09-25-06). Keeping the
+	// placement here is what keeps the boot repair, reconcileCheckJobs, the
+	// phase computation and the rate accounting unchanged.
+	Regions []string `bun:"regions,type:text[],array"`
+	// Placement is the placement intent: PlacementPinned or PlacementAuto.
+	// NewCheck sets pinned, and both engines' CreateCheck run
+	// NormalizePlacement, so a path that never heard of it still writes the
+	// column default rather than an empty string the CHECK constraint refuses.
+	Placement string `bun:"placement,notnull"`
+	// RegionCount is N, how many regions an AUTO check runs from. Nil for a
+	// pinned check.
+	RegionCount *int `bun:"region_count"`
+	// RegionPool restricts an AUTO check's candidates to these cloud slugs;
+	// nil or empty means any cloud region. Nil for a pinned check.
+	RegionPool []string           `bun:"region_pool,type:text[],array,nullzero"`
+	Enabled    bool               `bun:"enabled,notnull"`
 	Internal     bool               `bun:"internal,notnull"`
 	Period       timeutils.Duration `bun:"period,notnull"`
 
@@ -647,6 +706,7 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		// check, OFF for every pre-existing row (the migration's column
 		// default). See the DegradedEnabled field comment.
 		DegradedEnabled: true,
+		Placement:       PlacementPinned,
 		Status:          CheckStatusCreated,
 		StatusStreak:    0,
 		CreatedAt:       now,
@@ -689,9 +749,17 @@ type CheckUpdate struct {
 	ConfigSealed       *string
 	ClearConfigSealed  bool
 	Regions            *[]string
-	Enabled            *bool
-	Internal           *bool
-	Period             *timeutils.Duration
+	// Placement / RegionCount / RegionPool write the placement intent (spec
+	// 2026-09-25-06). Clear* sets the column to NULL (a pinned check carries
+	// neither a count nor a pool).
+	Placement        *string
+	RegionCount      *int
+	ClearRegionCount bool
+	RegionPool       *[]string
+	ClearRegionPool  bool
+	Enabled          *bool
+	Internal         *bool
+	Period           *timeutils.Duration
 	// RegionSpread sets the inter-region offset override; ClearRegionSpread
 	// resets it to NULL (revert to the period/region_count default).
 	RegionSpread      *timeutils.Duration
