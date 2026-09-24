@@ -6,7 +6,9 @@ import (
 	"sort"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/regionoutage"
 )
 
 // StateKeyPrefix namespaces the per-anomaly anti-flood markers. They are
@@ -138,6 +140,11 @@ func (s *Service) reconcileResolved(
 ) ([]Transition, error) {
 	out := make([]Transition, 0, len(known))
 
+	sweepOwned, err := s.sweepOwnedFingerprints(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for fingerprint, entry := range known {
 		if current[fingerprint] {
 			continue
@@ -146,6 +153,16 @@ func (s *Service) reconcileResolved(
 		if !report.DetectorSucceeded(detectorOf(fingerprint)) {
 			// Its detector broke this run; we have no evidence the condition
 			// is gone. Leave the marker exactly where it is.
+			continue
+		}
+
+		if sweepOwned[fingerprint] {
+			// The per-minute region sweep still holds this region as dark or
+			// stalled (spec 2026-09-25-03). This detector's bar (5 jobs, 10
+			// minutes) is higher than the sweep's, so "not re-observed here"
+			// is no evidence of recovery: a dark region with one pinned check
+			// never passes it. The sweep owns the lifecycle and announces the
+			// recovery itself.
 			continue
 		}
 
@@ -162,6 +179,89 @@ func (s *Service) reconcileResolved(
 	}
 
 	return out, nil
+}
+
+// sweepOwnedFingerprints is the set of dark-region fingerprints whose region
+// the per-minute region sweep currently holds as unhealthy.
+func (s *Service) sweepOwnedFingerprints(ctx context.Context) (map[string]bool, error) {
+	markers, err := regionoutage.List(ctx, s.db)
+	if err != nil {
+		return nil, fmt.Errorf("list region sweep markers: %w", err)
+	}
+
+	out := make(map[string]bool, len(markers))
+	for region := range markers {
+		out[DarkRegionFingerprint(region)] = true
+	}
+
+	return out, nil
+}
+
+// DarkRegionFingerprint is the anti-flood fingerprint of a CLOUD region's
+// dark-region anomaly — the marker the hourly detector and the per-minute
+// region sweep share, so one outage is announced to the operator once,
+// whichever of the two sees it first (spec 2026-09-25-03).
+func DarkRegionFingerprint(region string) string {
+	return DetectorDarkRegion + ":" + region
+}
+
+// ClaimNotification records, in the shared anti-flood ledger, that a
+// notification for fingerprint is being delivered NOW at severity, and reports
+// whether the caller should deliver it.
+//
+// It is the entry point the per-minute region sweep uses, so its transitions
+// and the hourly digest read the same marker:
+//
+//   - no marker: nobody told the operator yet — write it (exactly the shape
+//     Reconcile writes for a notified anomaly) and deliver;
+//   - a marker already notified at this severity or above: the other side
+//     already told the operator — stay quiet;
+//   - a marker notified at a LOWER severity: an escalation (stalled → dark)
+//     is news, so update the notified severity and deliver.
+//
+// Only call it when there is someone to deliver to: a marker written for a
+// notification that never went out would suppress the real one later.
+func ClaimNotification(
+	ctx context.Context, dbService db.Service, fingerprint string, severity Severity, headline string, now time.Time,
+) (bool, error) {
+	previous, err := dbService.GetStateEntry(ctx, nil, StateKeyPrefix+fingerprint)
+	if err != nil {
+		return false, fmt.Errorf("read watchdog state entry %s: %w", fingerprint, err)
+	}
+
+	if previous != nil && severity <= ParseSeverity(readString(previous, stateFieldNotifiedSevRaw)) {
+		return false, nil
+	}
+
+	firstSeen := readTime(previous, stateFieldFirstSeen, now)
+
+	value := models.JSONMap{
+		stateFieldFirstSeen:      firstSeen.UTC().Format(time.RFC3339Nano),
+		stateFieldLastSeen:       now.UTC().Format(time.RFC3339Nano),
+		stateFieldSeverity:       severity.String(),
+		stateFieldHeadline:       headline,
+		stateFieldLastNotified:   now.UTC().Format(time.RFC3339Nano),
+		stateFieldNotifiedSevRaw: severity.String(),
+	}
+
+	ttl := stateTTL
+	if err := dbService.SetStateEntry(ctx, nil, StateKeyPrefix+fingerprint, &value, &ttl); err != nil {
+		return false, fmt.Errorf("write watchdog state entry %s: %w", fingerprint, err)
+	}
+
+	return true, nil
+}
+
+// ClearNotification removes a fingerprint from the shared ledger and reports
+// whether it was there — i.e. whether the operator was told about the
+// condition and so must now be told it is over.
+func ClearNotification(ctx context.Context, dbService db.Service, fingerprint string) (bool, error) {
+	existed, err := dbService.DeleteStateEntry(ctx, nil, StateKeyPrefix+fingerprint)
+	if err != nil {
+		return false, fmt.Errorf("clear watchdog state entry %s: %w", fingerprint, err)
+	}
+
+	return existed, nil
 }
 
 // detectorOf extracts the detector half of a `<detector>:<subject>`

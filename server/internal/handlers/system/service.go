@@ -206,6 +206,7 @@ func applyActivationEvent(row *ActivationFunnelRow, event *models.Event) {
 		models.EventTypeStatusPageIncidentResolved,
 		models.EventTypeStatusSubscriberDisabled,
 		models.EventTypeStatusPageCustomDomainDemoted,
+		models.EventTypeRegionOffline, models.EventTypeRegionRecovered,
 		models.EventTypeAuthLoginSucceeded, models.EventTypeAuthLoginFailed,
 		models.EventTypeAuthLogout,
 		models.EventTypeAuthTokenCreated, models.EventTypeAuthTokenRevoked,

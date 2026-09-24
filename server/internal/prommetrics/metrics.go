@@ -71,16 +71,31 @@ var (
 
 	// WorkersActive is the live-worker count per CLOUD region, exactly as
 	// checks.Service.RegionHealth computes it (spec 2026-09-25-01). It is
-	// written by the platform watchdog's region pass (Reset, then one series
-	// per cloud region), so it is absent while the watchdog is disabled.
-	// Private (`@`) regions are never exported: their slug is org-relative and
-	// one label would merge every org's region of that name.
+	// written by the per-minute region sweep (spec 2026-09-25-03: Reset, then
+	// one series per cloud region), whatever the watchdog config says. That
+	// sweep is its only writer — spec 03's proposed
+	// `solidping_region_live_workers` would have meant exactly this, so it was
+	// not added as a second name for the same number. Private (`@`) regions
+	// are never exported: their slug is org-relative and one label would
+	// merge every org's region of that name.
 	WorkersActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solidping_workers_active",
 			Help: "Live workers serving each cloud region, as computed by the region health report. " +
-				"Populated by the platform watchdog region pass; absent while the watchdog is disabled. " +
-				"Private regions are never exported.",
+				"Written every minute by the region sweep. Private regions are never exported.",
+		},
+		[]string{labelRegion},
+	)
+
+	// RegionDark is 1 while the region sweep holds a cloud region as dark
+	// (assigned jobs and no live worker), 0 otherwise (spec 2026-09-25-03).
+	// Every cloud region the report knows gets a series, so an alert on
+	// `== 1` always has data to evaluate against.
+	RegionDark = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_region_dark",
+			Help: "1 while the region sweep holds this cloud region as dark (jobs assigned, no live worker), " +
+				"0 otherwise. Private regions are never exported.",
 		},
 		[]string{labelRegion},
 	)
@@ -682,7 +697,7 @@ var (
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
-		WorkersActive, ChecksStale, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
+		WorkersActive, RegionDark, ChecksStale, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
 		HTTPRateLimited,

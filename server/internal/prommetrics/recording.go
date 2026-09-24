@@ -13,9 +13,20 @@ func RecordSchedulingDelay(region string, delaySeconds float64) {
 }
 
 // SetWorkersActive sets the number of live workers serving a cloud region.
-// Only the watchdog region pass calls it, right after WorkersActive.Reset().
+// Only the region sweep calls it, right after WorkersActive.Reset().
 func SetWorkersActive(region string, count float64) {
 	WorkersActive.WithLabelValues(region).Set(count)
+}
+
+// SetRegionDark sets the dark flag (0/1) of one cloud region. Only the region
+// sweep calls it, right after RegionDark.Reset().
+func SetRegionDark(region string, dark bool) {
+	value := 0.0
+	if dark {
+		value = 1
+	}
+
+	RegionDark.WithLabelValues(region).Set(value)
 }
 
 // SetChecksStale sets the stale-check count for one placement region label.

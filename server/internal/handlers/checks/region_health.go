@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // RegionHealthRow is one region's ghost-detection summary (spec 2026-08-24-09)
@@ -104,11 +105,27 @@ type checkRegionsRow struct {
 }
 
 // checkJobRegionRow is the narrow projection RegionHealth scans off
-// `check_jobs` — only the columns the per-region job stats need.
+// `check_jobs` — only the columns the per-region job stats and the region
+// sweep's per-check classification need (spec 2026-09-25-03).
 type checkJobRegionRow struct {
-	OrganizationUID string     `bun:"organization_uid"`
-	Region          *string    `bun:"region"`
-	ScheduledAt     *time.Time `bun:"scheduled_at"`
+	OrganizationUID string             `bun:"organization_uid"`
+	CheckUID        string             `bun:"check_uid"`
+	Region          *string            `bun:"region"`
+	Period          timeutils.Duration `bun:"period"`
+	ScheduledAt     *time.Time         `bun:"scheduled_at"`
+}
+
+// RegionJob is one region-pinned check_job, as the same RegionHealth scan
+// read it. The per-minute region sweep (spec 2026-09-25-03) needs them to
+// tell which checks a dark region blinds and how late each job is against
+// its own period — read in the same pass so the sweep never re-derives the
+// region report from a second, possibly different snapshot.
+type RegionJob struct {
+	OrganizationUID string
+	CheckUID        string
+	Region          string
+	Period          time.Duration
+	ScheduledAt     *time.Time
 }
 
 // orgAgentRow is the narrow projection RegionHealth scans off `agents` — only
@@ -154,38 +171,49 @@ type regionJobStats struct {
 // (the workers.region check constraint forbids the `@` prefix) — see spec
 // 2026-09-25-01.
 func (s *Service) RegionHealth(ctx context.Context) (*RegionHealthReport, error) {
+	report, _, err := s.RegionHealthWithJobs(ctx)
+
+	return report, err
+}
+
+// RegionHealthWithJobs is RegionHealth plus the region-pinned check_jobs the
+// report was aggregated from. Same scans, same instant: the region sweep
+// classifies checks off exactly the rows that decided a region was dark.
+func (s *Service) RegionHealthWithJobs(ctx context.Context) (*RegionHealthReport, []RegionJob, error) {
 	now := s.now()
 
 	declared, err := s.declaredRegionSlugs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	checksReferencing, err := s.regionCheckReferenceCounts(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	jobStats, err := s.regionJobStatsByKey(ctx, now)
+	jobRows, err := s.regionJobRows(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	jobStats := regionJobStatsByKey(jobRows, now)
 
 	workers, err := s.workersForRegionHealth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	agents, err := s.orgAgentsForRegionHealth(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	universe := regionKeyUniverse(declared, checksReferencing, jobStats, workers, agents)
 
 	orgSlugs, err := s.orgSlugsForKeys(ctx, universe)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	liveCutoff := now.Add(-regions.WorkerLivenessWindow)
@@ -233,7 +261,29 @@ func (s *Service) RegionHealth(ctx context.Context) (*RegionHealthReport, error)
 		Regions:     rows,
 		GhostCount:  ghostCount,
 		GeneratedAt: now,
-	}, nil
+	}, regionJobs(jobRows), nil
+}
+
+// regionJobs projects the scanned rows into the exported RegionJob shape.
+func regionJobs(rows []checkJobRegionRow) []RegionJob {
+	out := make([]RegionJob, 0, len(rows))
+
+	for i := range rows {
+		row := &rows[i]
+		if row.Region == nil || *row.Region == "" {
+			continue
+		}
+
+		out = append(out, RegionJob{
+			OrganizationUID: row.OrganizationUID,
+			CheckUID:        row.CheckUID,
+			Region:          *row.Region,
+			Period:          time.Duration(row.Period),
+			ScheduledAt:     row.ScheduledAt,
+		})
+	}
+
+	return out
 }
 
 // orgSlugOrUID names a private row's org by slug. When the owning org row is
@@ -313,21 +363,26 @@ func (s *Service) regionCheckReferenceCounts(ctx context.Context) (map[regionKey
 	return counts, nil
 }
 
-// regionJobStatsByKey scans every check_job carrying a non-NULL region and
-// returns, per region key, the job count, overdue count and oldest overdue
-// scheduledAt. A private slug is aggregated under the job's own org.
-// NULL-region (any-region) jobs are excluded by the query.
-func (s *Service) regionJobStatsByKey(ctx context.Context, now time.Time) (map[regionKey]regionJobStats, error) {
+// regionJobRows scans every check_job carrying a non-NULL region. NULL-region
+// (any-region) jobs are excluded by the query.
+func (s *Service) regionJobRows(ctx context.Context) ([]checkJobRegionRow, error) {
 	var rows []checkJobRegionRow
 
 	if err := s.db.DB().NewSelect().
 		TableExpr("check_jobs").
-		ColumnExpr("organization_uid, region, scheduled_at").
+		ColumnExpr("organization_uid, check_uid, region, period, scheduled_at").
 		Where("region IS NOT NULL").
 		Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("list check job regions: %w", err)
 	}
 
+	return rows, nil
+}
+
+// regionJobStatsByKey returns, per region key, the job count, overdue count
+// and oldest overdue scheduledAt. A private slug is aggregated under the job's
+// own org.
+func regionJobStatsByKey(rows []checkJobRegionRow, now time.Time) map[regionKey]regionJobStats {
 	stats := make(map[regionKey]regionJobStats)
 
 	for i := range rows {
@@ -352,7 +407,7 @@ func (s *Service) regionJobStatsByKey(ctx context.Context, now time.Time) (map[r
 		stats[key] = entry
 	}
 
-	return stats, nil
+	return stats
 }
 
 // orgAgentsForRegionHealth loads every non-deleted ORG agent (any status) with

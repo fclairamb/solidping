@@ -177,6 +177,12 @@ func (r *StartupJobRun) ensureGlobalSweeps(ctx context.Context, jctx *jobdef.Job
 		return err
 	}
 
+	// Region liveness, every minute (spec 2026-09-25-03): a dark region is
+	// reported within minutes, whatever the watchdog config says.
+	if err := r.ensureGlobalSweep(ctx, jctx, jobdef.JobTypeRegionHealthSweep, "region health sweep"); err != nil {
+		return err
+	}
+
 	// The platform watchdog, hourly: an instance that went blind between two
 	// deploys is reported on the first cycle after the restart rather than an
 	// hour later (spec 2026-08-24-10).

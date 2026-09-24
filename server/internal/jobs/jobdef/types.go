@@ -165,6 +165,16 @@ const (
 	// Deliberately absent from publiclyCreatableJobTypes — it rewrites check
 	// status across every organization.
 	JobTypeCheckFreshnessSweep JobType = "check_freshness_sweep"
+	// JobTypeRegionHealthSweep evaluates every cloud region's liveness each
+	// minute (spec 2026-09-25-03): a region that goes dark or stalled, or
+	// recovers, is reported to the platform_watchdog recipients at the
+	// transition, and every org whose checks stopped running anywhere gets
+	// one notice per outage and one per recovery. It also owns the
+	// solidping_workers_active and solidping_region_dark gauges.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it emails the
+	// owners and admins of every organization.
+	JobTypeRegionHealthSweep JobType = "region_health_sweep"
 	// JobTypePlatformWatchdog is the hourly internal watchdog (spec
 	// 2026-08-24-10): it evaluates the platform's own vitals — dark regions
 	// with assigned work, a collapse in fleet execution rate, active incidents

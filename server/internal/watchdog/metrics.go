@@ -61,7 +61,6 @@ func PublishMetrics(report *Report) {
 
 	if report.DetectorSucceeded(DetectorDarkRegion) {
 		prommetrics.WatchdogStrandedJobs.Set(float64(report.StrandedJobs))
-		publishWorkersActive(report.CloudWorkersActive)
 	}
 
 	if report.DetectorSucceeded(DetectorStaleIncidents) {
@@ -73,22 +72,4 @@ func PublishMetrics(report *Report) {
 	}
 
 	prommetrics.WatchdogLastRun.Set(float64(report.GeneratedAt.Unix()))
-}
-
-// publishWorkersActive replaces solidping_workers_active with this run's
-// per-cloud-region live-worker counts. The Reset drops every series first, so
-// a region that vanished from the report stops being exported instead of
-// freezing at its last value. Only called when the dark-region detector
-// succeeded — a failed run knows nothing, and publishing it would read as
-// "0 workers everywhere".
-func publishWorkersActive(counts map[string]int) {
-	if counts == nil {
-		return
-	}
-
-	prommetrics.WorkersActive.Reset()
-
-	for region, count := range counts {
-		prommetrics.SetWorkersActive(region, float64(count))
-	}
 }

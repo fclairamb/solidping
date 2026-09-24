@@ -1717,6 +1717,12 @@ func (s *Service) queueLifecycleNotifications(
 		// hang an incident on — incidents.check_uid is NOT NULL — so routing
 		// it through the on-call fan-out would mean inventing a fake one.
 		models.EventTypeStatusPageCustomDomainDemoted,
+		// A region outage (spec 2026-09-25-03) is the PLATFORM failing to
+		// watch, not a check's target failing. The region sweep emails the
+		// org's owners and admins itself; there is no single anchor check to
+		// hang an incident on, and paging on-call for our outage would teach
+		// them to ignore theirs.
+		models.EventTypeRegionOffline, models.EventTypeRegionRecovered,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

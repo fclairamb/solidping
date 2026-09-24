@@ -104,6 +104,17 @@ const (
 	// operators to ignore the one that matters.
 	EventTypeStatusPageCustomDomainDemoted EventType = "statuspage.custom_domain.demoted"
 
+	// EventTypeRegionOffline tells an organization that a cloud region its
+	// checks depend on went dark (spec 2026-09-25-03): assigned jobs and no
+	// live worker, so the org's checks pinned only there are not running. Its
+	// payload names the region, `since` (the last worker beat) and the org's
+	// blind checks. Written by the per-minute region sweep, once per org per
+	// outage, alongside an email to the org's owners and admins. Never pages.
+	EventTypeRegionOffline EventType = "region.offline"
+	// EventTypeRegionRecovered closes a region.offline: written for exactly
+	// the orgs that received it, once, with the outage duration.
+	EventTypeRegionRecovered EventType = "region.recovered"
+
 	// EventTypeStatusUpdateCreated indicates a status update was created.
 	EventTypeStatusUpdateCreated EventType = "status_update.created"
 	// EventTypeStatusUpdateUpdated indicates a status update was modified.

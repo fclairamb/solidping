@@ -49,6 +49,8 @@ const (
 	TemplatePasswordChanged         = "password-changed.html"
 	TemplatePasswordReset           = "password-reset.html"
 	TemplatePasswordResetSSO        = "password-reset-sso.html"
+	TemplateRegionOffline           = "region-offline.html"
+	TemplateRegionRecovered         = "region-recovered.html"
 	TemplateRegistration            = "registration.html"
 	TemplateStatusSubscriberConfirm = "status-subscriber-confirm.html"
 	TemplateStatusSubscriberUpdate  = "status-subscriber-update.html"
@@ -103,6 +105,11 @@ var supportReplyableTemplates = map[string]bool{
 	TemplateMembershipReqDecision:  true,
 	TemplateMembershipReqNew:       true,
 	TemplatePagingNudge:            true,
+	// A region outage notice (spec 2026-09-25-03) is the platform telling a
+	// customer it could not watch their checks: exactly the mail someone
+	// answers with a question.
+	TemplateRegionOffline:          true,
+	TemplateRegionRecovered:        true,
 	TemplateStatusSubscriberUpdate: true,
 	TemplateTestEmail:              true,
 	TemplateUptimeReport:           true,

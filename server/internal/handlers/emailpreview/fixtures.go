@@ -78,6 +78,8 @@ var fixtureBuilders = map[string]func() map[string]any{
 	"incident-unacknowledged.html":     unacknowledgedIncidentFixture,
 	"incident-comment.html":            commentIncidentFixture,
 	"custom-domain-demoted.html":       customDomainDemotedFixture,
+	"region-offline.html":              regionOfflineFixture,
+	"region-recovered.html":            regionRecoveredFixture,
 }
 
 // FixtureTemplateNames returns, sorted, every template name this package can
@@ -461,5 +463,36 @@ func customDomainDemotedFixture() map[string]any {
 		"Diagnostic":     "CNAME lookup for status.acme.com returned NXDOMAIN",
 		"SettingsURL": fixtureDashboardURL + "/orgs/acme/status-pages/" +
 			"3f1c9a2e-77b1-4f0a-9a1e-6c2f0b8d4e51",
+	}
+}
+
+// regionOfflineFixture covers the org-facing region outage notice
+// (regionsweep, spec 2026-09-25-03). Operator mail: no unsubscribe, no ack.
+func regionOfflineFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:     fixtureOrgName,
+		"RegionName":   "Lauterbourg (lauterbourg)",
+		"Since":        "2026-09-24 13:41 UTC",
+		"BlindCount":   2,
+		"ReducedCount": 3,
+		"MoreCount":    0,
+		"Checks": []map[string]any{
+			{"Name": "API", "URL": fixtureDashboardURL + "/orgs/acme/checks/api"},
+			{"Name": "Website", "URL": fixtureDashboardURL + "/orgs/acme/checks/website"},
+		},
+		"ChecksURL": fixtureDashboardURL + "/orgs/acme/checks",
+	}
+}
+
+// regionRecoveredFixture covers the matching recovery notice.
+func regionRecoveredFixture() map[string]any {
+	return map[string]any{
+		keyOrgName:    fixtureOrgName,
+		"RegionName":  "Lauterbourg (lauterbourg)",
+		"Since":       "2026-09-24 13:41 UTC",
+		"RecoveredAt": "2026-09-24 21:33 UTC",
+		"Duration":    "7h52m",
+		"Moved":       false,
+		"ChecksURL":   fixtureDashboardURL + "/orgs/acme/checks",
 	}
 }

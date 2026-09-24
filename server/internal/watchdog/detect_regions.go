@@ -13,7 +13,11 @@ import (
 
 // detectDarkRegions reports every region whose assigned work is not being
 // executed. It also returns the RegionHealth report it evaluated, so the
-// caller can publish solidping_workers_active from the very same computation.
+// stale-checks detector can tell a check stale in a dark region apart.
+//
+// solidping_workers_active is NOT published from here any more: the
+// per-minute region sweep (spec 2026-09-25-03, internal/regionsweep) owns it,
+// runs whatever the watchdog config says, and is its only writer.
 //
 // It does NOT re-derive "dark": it calls checks.Service.RegionHealth — the
 // spec-09 ghost detector — and applies a blast-radius bar on top of its rows.
@@ -95,29 +99,6 @@ func darkRegionName(row *checks.RegionHealthRow) string {
 	}
 
 	return fmt.Sprintf("%q of org %q", row.Slug, row.Organization)
-}
-
-// cloudWorkersActive extracts the per-cloud-region live-worker counts off a
-// RegionHealth report — the values solidping_workers_active exports. Private
-// rows are skipped: their slug is org-relative, so a `region="@paris"` label
-// would merge orgs all over again.
-func cloudWorkersActive(report *checks.RegionHealthReport) map[string]int {
-	if report == nil {
-		return nil
-	}
-
-	out := make(map[string]int, len(report.Regions))
-
-	for i := range report.Regions {
-		row := &report.Regions[i]
-		if row.Organization != "" || row.IsPrivate() {
-			continue
-		}
-
-		out[row.Slug] = row.LiveWorkers
-	}
-
-	return out
 }
 
 // darkRegionAnomaly applies the blast-radius bar to one region row.
