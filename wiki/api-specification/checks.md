@@ -50,7 +50,7 @@ Aggregate check counters for the org, computed server-side with one SQL
   "disabled": 12,
   "byStatus": {
     "created": 2, "up": 240, "down": 6,
-    "validating": 0, "degraded": 2, "warning": 0, "unknown": 0
+    "validating": 0, "degraded": 2, "warning": 0, "stale": 0, "unknown": 0
   },
   "down": 6,
   "hardDown": 3,
@@ -68,7 +68,7 @@ Semantics:
 - `total`, `byStatus`, `down` and `hardDown` span **enabled and disabled**
   checks alike; `enabled` / `disabled` partition the same set.
 - `byStatus` always carries every known status key (`created`, `up`, `down`,
-  `validating`, `degraded`, `warning`, `unknown`) — zero when empty — so
+  `validating`, `degraded`, `warning`, `stale`, `unknown`) — zero when empty — so
   clients can index it unguarded. Keys are the same tokens the list response's
   `status` field carries.
 - `down` = status in (`down`, `error`, `timeout`); `hardDown` = status in

@@ -77,7 +77,12 @@ The component's status is rolled up from the group's **enabled** member checks:
 | All down | **Down** |
 | Some — but not all — down | **Degraded** |
 | None down, at least one warning | **Warning** |
+| None down or warning, at least one member stopped reporting | **No data** |
 | No members, or none reporting yet | **No data** |
+
+A single check that stopped reporting (no real result for `max(3 × period, 5 min)`)
+reads **No data, last checked 13:41**, never "operational". A page whose components
+all read no data shows **Status unknown**.
 
 A member in the transient "validating" state still reads up publicly, exactly as a standalone check does — the component only turns red once a failure is confirmed. Disabled members are ignored entirely.
 

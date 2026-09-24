@@ -163,6 +163,24 @@ so only a deliberate `/comment` becomes permanent incident-timeline content.
 
 During an active [maintenance window](/features/maintenance-windows), incident processing is suppressed for the affected checks — failures do not create incidents or fire notifications. Use this to silence alerts during planned deployments or upgrades.
 
+## No data (stale checks)
+
+A check whose newest real result, across all its regions, is older than
+`max(3 × period, 5 min)` reads **No data** (status `stale`). It is neither up
+nor down: whatever stopped it — a dark region, a stuck scheduler, a database
+stall — the dashboard, status pages and badges stop claiming it is healthy.
+
+- No data never opens, resolves or notifies an incident.
+- An open incident **stays open**. Its timeline gets "monitoring interrupted"
+  and, when results come back, "monitoring resumed".
+- After a gap, confirmation and recovery restart from fresh evidence: the first
+  failure waits a full confirmation period again, and the first success needs a
+  full recovery period before it resolves anything.
+- A check still reporting from at least one region is still being checked: it
+  keeps its status and the check page lists the silent regions.
+- Disabled checks, internal checks and checks inside an active maintenance
+  window never go stale. A result arriving during a window still clears it.
+
 ## Thresholds
 
 Configure thresholds per check to control when incidents are created:

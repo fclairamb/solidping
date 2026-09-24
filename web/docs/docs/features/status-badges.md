@@ -20,7 +20,7 @@ render as text segments on the first row, always in this order:
 
 | Component | Shows |
 |---|---|
-| `status` | Current up/down status |
+| `status` | Current up/down status, or a gray `no data` when the newest real result is older than `max(3 × period, 5 min)` |
 | `availability` | Uptime percentage over the selected period |
 | `duration` | Time since the last status change |
 | `response-time` | Mean response time over the selected period |
