@@ -123,6 +123,19 @@ its own new fields — a setting nobody can see or set is not shipped:
 - A public "regional issue" surface on status0, unless the surfaces section
   above resolves that it's needed for v1.
 
+## Resolved open questions
+
+- **status0: distinct "regional issue" state, or collapse it?** Keep it collapsed into the
+  existing public states for v1. status0 gets no new state, no new styling and no new locale
+  keys. A check in "regional issue" (warning) shows on the public page exactly as a `warning`
+  check does today. The regional-issue wording lives in dash0 only.
+- **Per-region state after auto re-placement (B1).** Key quorum to the check's **current**
+  region set: when deriving the check status, only per-region rows whose region is in
+  `checks.regions` count. Do not prune on `check.placement_changed`. This is stateless and
+  cannot drift out of sync if an event is missed or reordered. Stored rows for a region the
+  check left may stay in storage; they are simply ignored (a cleanup of old rows is optional
+  and must never be what correctness depends on).
+
 ## Dependencies
 
 - `2026-09-25-06` (now in `specs/done/`): this spec reuses that spec's
