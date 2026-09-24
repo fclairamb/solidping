@@ -1426,6 +1426,41 @@ pushes for a few days would trip the grace window and page someone for
 nothing. Reporting push-triggered CI failures is a different, useful feature,
 but it isn't this one.
 
+### Private Location Liveness {#private-location-liveness}
+
+Watches the agents of one of your [private locations](./private-locations.md).
+SolidPing creates one for every private location, named
+`Private location: <name>` with the slug `private-location-<slug>`. You do not
+create it yourself.
+
+| Situation | Status | Output |
+|---|---|---|
+| every active agent seen in the last 5 minutes | Up | `2 agents connected` |
+| some agents seen, some not | Warning | `1 of 2 agents offline: office-2 last seen 13:41 UTC` |
+| no agent seen in the last 5 minutes | Down | `No agent connected since 13:41 UTC` |
+| no agent enrolled yet | Pending | nothing is written, no incident |
+
+"Seen" is the agent's last contact with SolidPing (connect, the 25 s keepalive,
+a claim or a result). The 5-minute window absorbs reconnect blips. When the
+location's last agent disconnected, the Down result also names why: ping
+timeout, revoked, server shutdown or error.
+
+It is a normal check in every other way: confirmation and recovery periods,
+escalation policy, integrations (the org defaults are attached on creation),
+maintenance windows for planned agent upgrades, status pages, SLOs and history.
+
+- **No regions.** SolidPing evaluates it itself, every period (default 1
+  minute), never inside the location it watches.
+- **Free.** It does not count toward your check quota or your checks-per-minute
+  limit.
+- **Editable:** period, escalation policy, integrations, confirmation and
+  recovery periods. The location it watches cannot be changed, and it can only
+  point at one of your own private locations.
+- **Opting out:** disable it, or delete it. Deleting it is remembered: SolidPing
+  will not recreate it, and the Private Locations page shows "Liveness monitor
+  off" with a button to turn it back on. Deleting the location deletes its
+  monitor.
+
 ### JavaScript {#javascript}
 
 Custom monitoring scripts with arbitrary logic, run against a real sandboxed

@@ -241,6 +241,38 @@ const (
 	// EventTypeOrgSettingsUpdated records an organization-level setting change,
 	// as a list of changed field names plus safe scalar values.
 	EventTypeOrgSettingsUpdated EventType = "org.settings_updated"
+
+	// EventTypeAgentConnected records one of the org's private-location agents
+	// opening its connection (spec 2026-09-25-05). Target is the agent; the
+	// payload carries its `region`.
+	EventTypeAgentConnected EventType = "agent.connected"
+	// EventTypeAgentDisconnected records one of the org's private-location
+	// agents losing its connection, with the `reason` (see
+	// AgentDisconnectReason*) and its `region`. Written best effort when the
+	// socket closes: before it, a disconnect left no trace at all and
+	// last_seen_at simply stopped moving.
+	EventTypeAgentDisconnected EventType = "agent.disconnected"
+)
+
+// Agent connection event payload keys and disconnect reasons (spec
+// 2026-09-25-05).
+const (
+	// AgentEventPayloadRegion is the private region (`@<slug>`) of the agent.
+	AgentEventPayloadRegion = "region"
+	// AgentEventPayloadReason is why the connection closed.
+	AgentEventPayloadReason = "reason"
+
+	// AgentDisconnectReasonPingTimeout: the agent stopped answering keepalive
+	// pings (host down, network cut).
+	AgentDisconnectReasonPingTimeout = "ping_timeout"
+	// AgentDisconnectReasonRevoked: the agent was revoked while connected.
+	AgentDisconnectReasonRevoked = "revoked"
+	// AgentDisconnectReasonServerShutdown: this server stopped; the agent
+	// reconnects to another replica or after the restart.
+	AgentDisconnectReasonServerShutdown = "server_shutdown"
+	// AgentDisconnectReasonError: the socket failed or the agent closed it
+	// (process stopped, protocol error).
+	AgentDisconnectReasonError = "error"
 )
 
 // ActorType represents who triggered an event.

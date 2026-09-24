@@ -229,7 +229,8 @@ func constructBaseline(checkType checkerdef.CheckType, schema *jsonschema.Schema
 
 // candidate returns the nth try for a config key, based on the type the schema
 // declares for it. The string ladder covers the formats the validators ask for
-// (hostname, URL, email, path, absolute name) in decreasing order of likelihood.
+// (hostname, URL, email, path, absolute name, private region) in decreasing order
+// of likelihood.
 func candidate(schema *jsonschema.Schema, key string, attempt int) (any, bool) {
 	prop := property(schema, key)
 	if prop == nil {
@@ -248,7 +249,7 @@ func candidate(schema *jsonschema.Schema, key string, attempt int) (any, bool) {
 
 	switch prop.Type {
 	case "string":
-		ladder = []any{"example.com", "https://example.com", "probe@example.com", "/", "probe"}
+		ladder = []any{"example.com", "https://example.com", "probe@example.com", "/", "probe", "@probe"}
 	case "integer", "number":
 		ladder = []any{float64(1)}
 	case "boolean":

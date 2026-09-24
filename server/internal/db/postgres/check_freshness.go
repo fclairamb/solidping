@@ -9,6 +9,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -68,6 +69,11 @@ func (s *Service) ListStaleCandidates(ctx context.Context, now time.Time, limit 
 		Where("enabled = ?", true).
 		Where("internal = ?", false).
 		Where("status <> ?", models.CheckStatusStale).
+		// A private-location monitor awaiting its first agent writes no result
+		// on purpose (models.Check.AwaitingFirstAgent). Excluded here, not just
+		// skipped by the caller: otherwise every empty location's monitor would
+		// sit at the head of this oldest-first batch forever and starve it.
+		Where("NOT (type = ? AND status = ?)", string(checkerdef.CheckTypePrivateLocation), models.CheckStatusCreated).
 		Where("coalesce(last_result_at, created_at) < ?", floor).
 		Where("coalesce(last_result_at, created_at) < ?::timestamptz - greatest(period * 3, interval '5 minutes')", now).
 		OrderExpr("coalesce(last_result_at, created_at) ASC").

@@ -117,7 +117,22 @@ func (c *Check) FreshnessReference() time.Time {
 // its threshold as of now — the raw freshness fact, independent of whether
 // the sweeper has already written CheckStatusStale.
 func (c *Check) IsDataStale(now time.Time) bool {
+	if c.AwaitingFirstAgent() {
+		return false
+	}
+
 	return now.Sub(c.FreshnessReference()) > c.StaleThreshold()
+}
+
+// AwaitingFirstAgent reports the one state in which a check legitimately
+// produces no result indefinitely: a private-location liveness monitor still
+// `created` because its location has no agent enrolled yet (spec
+// 2026-09-25-05). Its evaluator deliberately writes nothing then (no agent, no
+// incident), so without this exemption the freshness sweep would call the
+// monitor of every empty location stale five minutes after it was created.
+// The ListStaleCandidates queries exclude the same state on both engines.
+func (c *Check) AwaitingFirstAgent() bool {
+	return c.Type == string(checkerdef.CheckTypePrivateLocation) && c.Status == CheckStatusCreated
 }
 
 // String returns the lowercase wire name for a CheckStatus, used by the

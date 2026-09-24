@@ -291,6 +291,18 @@ func TestPassiveCheckTypesMatchesIsPassive(t *testing.T) {
 		r.Truef(checkerdef.CheckType(name).IsPassive(), "%s is listed as passive but IsPassive disagrees", name)
 	}
 
-	r.Len(checkerdef.PassiveCheckTypes(), 2)
+	// Every registered type IsPassive accepts is listed, and nothing more:
+	// heartbeat, email and the private-location monitor (spec 2026-09-25-05).
+	passive := 0
+
+	for _, checkType := range checkerdef.ListCheckTypes(nil) {
+		if checkType.IsPassive() {
+			passive++
+		}
+	}
+
+	r.Len(checkerdef.PassiveCheckTypes(), passive)
+	r.Len(checkerdef.PassiveCheckTypes(), 3)
+	r.True(checkerdef.CheckTypePrivateLocation.IsPassive())
 	r.False(checkerdef.CheckTypeHTTP.IsPassive())
 }

@@ -343,6 +343,55 @@ func (b *DirectBackend) LastSignals(
 	return b.dbService.GetLastSignalForChecks(ctx, orgUID, checkUIDs)
 }
 
+// PrivateLocationAgents implements PrivateLocationReader: the org's agents
+// bound to exactly this private region. Exact equality within the org, the
+// same predicate ClaimJobsForAgent claims with.
+func (b *DirectBackend) PrivateLocationAgents(
+	ctx context.Context, orgUID, region string,
+) ([]*models.Agent, error) {
+	all, err := b.dbService.ListAgents(ctx, orgUID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]*models.Agent, 0, len(all))
+
+	for _, agent := range all {
+		if agent.Region == region {
+			out = append(out, agent)
+		}
+	}
+
+	return out, nil
+}
+
+// lastDisconnectScan bounds how many of the org's newest disconnect events
+// LastAgentDisconnect looks through for one of this region's agents.
+const lastDisconnectScan = 200
+
+// LastAgentDisconnect implements PrivateLocationReader: the newest
+// agent.disconnected event recorded for this private region.
+func (b *DirectBackend) LastAgentDisconnect(
+	ctx context.Context, orgUID, region string,
+) (*models.Event, error) {
+	events, err := b.dbService.ListEvents(ctx, &models.ListEventsFilter{
+		OrganizationUID: orgUID,
+		EventTypes:      []models.EventType{models.EventTypeAgentDisconnected},
+		Limit:           lastDisconnectScan,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, event := range events {
+		if eventRegion, _ := event.Payload[models.AgentEventPayloadRegion].(string); eventRegion == region {
+			return event, nil
+		}
+	}
+
+	return nil, nil //nolint:nilnil // no disconnect on record is a normal answer
+}
+
 // Hints subscribes to check.created events (the in-process express hint).
 func (b *DirectBackend) Hints() <-chan string {
 	return b.events.Listen("check.created")

@@ -235,6 +235,11 @@ const (
 	// and grades it against warning/critical thresholds. It is the first
 	// check type that inspects a value rather than a service.
 	CheckTypePrometheus CheckType = "prometheus"
+	// CheckTypePrivateLocation is the liveness monitor of one of the org's
+	// private locations (spec 2026-09-25-05): passive, evaluated on the jobs
+	// node from the location's agents' last_seen_at. System-created with the
+	// location.
+	CheckTypePrivateLocation CheckType = "private-location"
 	// CheckTypeSleep is a synthetic/testing check that sleeps for a configured
 	// duration. It performs no network I/O and exists as a deterministic load
 	// generator for the scheduler. It is NOT a customer-facing check type and
@@ -251,8 +256,21 @@ const (
 // and must be excluded when computing an org's scheduled demand against that
 // cap (spec 2026-08-26-03). Keep this the single definition — a second copy
 // would silently drift the gate and the demand figure apart.
+//
+// private-location (spec 2026-09-25-05) is passive too: it is driven by the
+// agents' own connections (last_seen_at), makes no outbound request, and must
+// be evaluated on the jobs node, never inside the private region it watches.
 func (t CheckType) IsPassive() bool {
-	return t == CheckTypeHeartbeat || t == CheckTypeEmail
+	return t == CheckTypeHeartbeat || t == CheckTypeEmail || t == CheckTypePrivateLocation
+}
+
+// IsQuotaExempt reports whether a check of this type is left out of the
+// MaxChecks quota. Only the private-location liveness monitor is (spec
+// 2026-09-25-05): it is system-created with each private location, costs one
+// indexed read, and charging for being told your agent is down would push orgs
+// to switch it off. It is still a real check everywhere else.
+func (t CheckType) IsQuotaExempt() bool {
+	return t == CheckTypePrivateLocation
 }
 
 // PassiveCheckTypes returns every passive check type, as the strings stored in
@@ -261,7 +279,7 @@ func (t CheckType) IsPassive() bool {
 // the jobs-node claim that is their only reader — spec 2026-09-25-04) and must
 // agree with IsPassive; a test pins that.
 func PassiveCheckTypes() []string {
-	return []string{string(CheckTypeHeartbeat), string(CheckTypeEmail)}
+	return []string{string(CheckTypeHeartbeat), string(CheckTypeEmail), string(CheckTypePrivateLocation)}
 }
 
 // Common output and config map keys used across checker implementations.
@@ -403,6 +421,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeRDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor RDP (Remote Desktop) servers", SupportsTunnel: true},
 	{Type: CheckTypePrometheus, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert on Prometheus metric thresholds", DefaultPeriod: time.Minute, SupportsTunnel: true, SupportsIPVersion: true},
+	{Type: CheckTypePrivateLocation, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Alert when a private location's agents go offline (system-created)", DefaultPeriod: time.Minute},
 	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
 
@@ -498,6 +517,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeNTP,
 		CheckTypeRDP,
 		CheckTypePrometheus,
+		CheckTypePrivateLocation,
 		CheckTypeSleep,
 	}
 }

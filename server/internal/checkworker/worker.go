@@ -1754,6 +1754,13 @@ func inFirstSignalGrace(check *models.Check, lastSignal *models.Result, period t
 func passiveVerdict(
 	ctx context.Context, be backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
 ) (checkerdef.Status, map[string]any, bool, error) {
+	// Dispatched by check type, inside the one passive loop (spec
+	// 2026-09-25-05): the private-location monitor has no inbound signal, it
+	// counts the location's connected agents.
+	if checkerdef.CheckType(checkJob.Type) == checkerdef.CheckTypePrivateLocation {
+		return privateLocationVerdict(ctx, be, checkJob, now)
+	}
+
 	period := time.Duration(checkJob.Period)
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 

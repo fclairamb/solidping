@@ -224,7 +224,7 @@ func (s *Service) RegionHealthWithJobs(ctx context.Context) (*RegionHealthReport
 		workers:           workers,
 		agents:            agents,
 		orgSlugs:          orgSlugs,
-		liveCutoff:        now.Add(-regions.WorkerLivenessWindow),
+		liveCutoff:        regions.LivenessCutoff(now),
 	})
 
 	sort.SliceStable(rows, func(i, j int) bool {
@@ -622,7 +622,7 @@ func agentCoverageForKey(agents []orgAgentRow, key regionKey, liveCutoff time.Ti
 			lastSeen = agent.LastSeenAt
 		}
 
-		if agent.Status == models.AgentStatusActive && !agent.LastSeenAt.Before(liveCutoff) {
+		if regions.IsAgentLive(agent.Status, agent.LastSeenAt, liveCutoff) {
 			liveWorkers++
 		}
 	}
