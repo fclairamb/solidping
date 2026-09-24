@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/asn1"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"time"
@@ -72,22 +73,39 @@ func (s *SocketLayer) Close() error {
 	return s.conn.Close()
 }
 
+// verifyRDPServerCertificate is the verification InsecureSkipVerify still
+// allows in StartTLS below: it cannot establish chain trust (RDP servers
+// routinely present a certificate that is self-signed or issued by an
+// internal CA the worker has no reason to trust — the same tradeoff already
+// accepted for the pre-auth handshake in checkrdp.inspectCertificate,
+// server/internal/checkers/checkrdp/checker.go), but it does refuse a
+// handshake with no certificate at all (a downgrade/MITM presenting nothing)
+// or a certificate that is not currently valid.
+func verifyRDPServerCertificate(cs tls.ConnectionState) error {
+	if len(cs.PeerCertificates) == 0 {
+		return errors.New("rdp: server presented no TLS certificate")
+	}
+
+	leaf := cs.PeerCertificates[0]
+	now := time.Now()
+	if now.Before(leaf.NotBefore) {
+		return fmt.Errorf("rdp: server certificate not valid until %s", leaf.NotBefore)
+	}
+	if now.After(leaf.NotAfter) {
+		return fmt.Errorf("rdp: server certificate expired at %s", leaf.NotAfter)
+	}
+
+	return nil
+}
+
 func (s *SocketLayer) StartTLS() error {
-	// InsecureSkipVerify is intentional and matches the same tradeoff already
-	// accepted for the pre-auth RDP handshake (see checkrdp.inspectCertificate
-	// in server/internal/checkers/checkrdp/checker.go): RDP servers routinely
-	// present a self-signed certificate generated at install time, so full
-	// chain validation against the system root pool would false-alarm on
-	// nearly every real-world target rather than catch anything. This TLS
-	// layer only wraps the outer transport before CredSSP/NLA runs the actual
-	// authentication; it is not relied on for peer identity.
-	// codeql[go/insecure-tls]
 	config := &tls.Config{
 		InsecureSkipVerify: true,
 		ServerName:         s.serverName,
 		MinVersion:         tls.VersionTLS12,
 		MaxVersion:         tls.VersionTLS12,
 		//		MaxVersion:               tls.VersionTLS13,
+		VerifyConnection: verifyRDPServerCertificate,
 	}
 	tlsConn := tls.Client(s.conn, config)
 	if err := tlsConn.Handshake(); err != nil {
