@@ -521,6 +521,16 @@ jobs:
           path: solidping
           retention-days: 7
 
+      # The docker and cli-release jobs only run on tags, so a Dockerfile
+      # that cannot resolve the Go modules (e.g. a new local `replace` whose
+      # go.mod is not copied into the dependency layer) otherwise surfaces
+      # only after the release is cut. Build just the dependency stages here.
+      - name: Build Docker dependency stages (tag-only images guard)
+        run: |
+          set -euo pipefail
+          docker build --target backend-deps -f Dockerfile .
+          docker build --target deps -f Dockerfile.sp .
+
       # Compile-only guard for the four targets server-release (tag-triggered,
       # below) publishes besides linux/amd64. That job cannot run on a PR — it
       # is gated on refs/tags/ — so this is the only place a broken
