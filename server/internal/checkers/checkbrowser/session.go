@@ -14,6 +14,7 @@ import (
 	"github.com/chromedp/chromedp/kb"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkersession"
 )
 
 // MaxPayloadBytes caps what a single page read hands back to a caller — the
@@ -31,7 +32,7 @@ const MaxPayloadBytes = checkerdef.MaxPayloadBytes
 // allowed. It is deliberately NOT an infrastructure failure — the browser is
 // fine, this worker is simply full — so it maps to a timeout verdict and
 // records nothing on the availability cache.
-var ErrSlotTimeout = errors.New("timed out waiting for a free browser slot " +
+var ErrSlotTimeout = checkersession.NewSlotTimeoutError("timed out waiting for a free browser slot " +
 	"(at most 4 browser checks run at a time on one worker)")
 
 // errSessionClosed is a page method called after Close. Infrastructure by
@@ -54,6 +55,19 @@ type infraError struct {
 }
 
 func (e *infraError) Error() string { return e.msg }
+
+// Infra declares the class to checkersession.Classifier.
+func (e *infraError) Infra() bool { return true }
+
+// infraClassifier is the browser's instance of the shared classification:
+// a closed page or a never-allocated browser is ours; anything that survives
+// the shared rules is ours only if it reads like a lost CDP transport.
+//
+//nolint:gochecknoglobals // immutable rule set
+var infraClassifier = checkersession.Classifier{
+	InfraSentinels: []error{errSessionClosed, errNoBrowserAllocated},
+	Fallback:       func(err error) bool { return isCDPTransportError(err.Error()) },
+}
 
 // Session is ONE live headless-Chrome page plus the concurrency slot it holds.
 //
@@ -236,24 +250,7 @@ const chromeMissingMessage = "Chrome/Chromium not found: install headless Chrome
 // A context deadline is deliberately NOT infrastructure: that is the check's
 // own timeout expiring, which the runtime reports as `timeout`.
 func Infra(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	var infra *infraError
-	if errors.As(err, &infra) {
-		return true
-	}
-
-	if errors.Is(err, errSessionClosed) || errors.Is(err, errNoBrowserAllocated) {
-		return true
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return false
-	}
-
-	return isCDPTransportError(err.Error())
+	return infraClassifier.Infra(err)
 }
 
 // run executes chromedp actions on a child of the session's browser context
