@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
@@ -322,6 +323,31 @@ func caseSweepNeverRanCheckGoesStaleFromCreation(t *testing.T, newWorld worldFac
 	r.Equal(0, w.sweepAt(t, created.Add(4*time.Minute)))
 	r.Equal(1, w.sweepAt(t, created.Add(6*time.Minute)))
 	r.Equal(models.CheckStatusStale, w.reload(t).Status)
+}
+
+// A private-location liveness monitor still `created` (its location has no
+// agent yet, so its evaluator writes nothing) never goes stale (spec
+// 2026-09-25-05). Positive control: the same monitor once it has a real status
+// goes stale like any check.
+func caseSweepMonitorAwaitingFirstAgentNeverGoesStale(t *testing.T, newWorld worldFactory) {
+	t.Helper()
+	r := require.New(t)
+
+	w := newWorld(t, func(c *models.Check) {
+		c.Type = string(checkerdef.CheckTypePrivateLocation)
+		c.Config = models.JSONMap{"region": "@office"}
+		c.Status = models.CheckStatusCreated
+	})
+	created := w.reload(t).CreatedAt
+
+	r.Equal(0, w.sweepAt(t, created.Add(time.Hour)))
+	r.Equal(models.CheckStatusCreated, w.reload(t).Status)
+
+	_, err := w.db.DB().NewUpdate().Model((*models.Check)(nil)).
+		Set("status = ?", models.CheckStatusDown).Where("uid = ?", w.check.UID).Exec(t.Context())
+	r.NoError(err)
+
+	r.Equal(1, w.sweepAt(t, created.Add(2*time.Hour)))
 }
 
 // A long-period check uses 3 × period, not the 5-minute floor — on SQLite the
@@ -664,6 +690,7 @@ func freshnessCases() []freshnessCase {
 	return []freshnessCase{
 		{"Sweep_EntersStaleAfterThreshold", caseSweepEntersStaleAfterThreshold},
 		{"Sweep_NeverRanCheckGoesStaleFromCreation", caseSweepNeverRanCheckGoesStaleFromCreation},
+		{"Sweep_MonitorAwaitingFirstAgentNeverGoesStale", caseSweepMonitorAwaitingFirstAgentNeverGoesStale},
 		{"Sweep_LongPeriodUsesThreePeriods", caseSweepLongPeriodUsesThreePeriods},
 		{"Sweep_IgnoresDisabledAndInternal", caseSweepIgnoresDisabledAndInternal},
 		{"Sweep_ResultWinsTheRace", caseSweepResultWinsTheRace},
