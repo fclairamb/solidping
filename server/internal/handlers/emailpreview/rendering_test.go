@@ -1,6 +1,8 @@
 package emailpreview_test
 
 import (
+	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -341,5 +343,101 @@ func TestPreview_EveryGradientKeepsASolidFallback(t *testing.T) {
 					tmpl, style)
 			}
 		})
+	}
+}
+
+// readBaseHTML returns base.html's source, the one stylesheet every template
+// dresses itself from.
+func readBaseHTML(t *testing.T) string {
+	t.Helper()
+
+	source, err := os.ReadFile(filepath.Join("..", "..", "email", "templates", "base.html"))
+	require.NoError(t, err)
+
+	return string(source)
+}
+
+// TestPalette_NoOldIdentityLeft pins the move to the electric identity. The old
+// blue (#0072d5 and its two lighter stops) and the crimson the accent bar used
+// to fade into (#da1d69) must not creep back into base.html: every mail links
+// to a dashboard that no longer uses them. The crimson logo is an <img>, not a
+// color in this file, so it is not affected by this check.
+func TestPalette_NoOldIdentityLeft(t *testing.T) {
+	t.Parallel()
+
+	source := strings.ToLower(readBaseHTML(t))
+	for _, hex := range []string{"#0072d5", "#2b8ee6", "#2b9bf4", "#da1d69"} {
+		require.NotContains(t, source, hex, "base.html still carries the old identity color %s", hex)
+	}
+}
+
+// ruleRE captures a single-line CSS rule from base.html's source by selector.
+func ruleRE(selector string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(selector) + ` \{([^}]*)\}`)
+}
+
+var hexColorRE = regexp.MustCompile(`#[0-9a-fA-F]{6}\b`)
+
+// relativeLuminance is the WCAG 2 relative luminance of a #rrggbb color.
+func relativeLuminance(t *testing.T, hex string) float64 {
+	t.Helper()
+
+	channel := func(s string) float64 {
+		var v int
+		_, err := fmt.Sscanf(s, "%02x", &v)
+		require.NoError(t, err)
+
+		c := float64(v) / 255
+		if c <= 0.03928 {
+			return c / 12.92
+		}
+
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+
+	return 0.2126*channel(hex[1:3]) + 0.7152*channel(hex[3:5]) + 0.0722*channel(hex[5:7])
+}
+
+// TestPalette_PrimaryButtonKeepsWhiteTextReadable checks the white label on the
+// primary button against its solid fallback (what Outlook renders) and against
+// every gradient stop (what everyone else renders). The spec's floor is 4.4:1:
+// the lightest stop, #007bce, sits at 4.44:1 by design, the same trade dash0
+// makes on its primary gradient.
+func TestPalette_PrimaryButtonKeepsWhiteTextReadable(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	match := ruleRE(".btn-primary td").FindStringSubmatch(readBaseHTML(t))
+	r.NotNil(match, "base.html has no single-line .btn-primary td rule")
+
+	body := match[1]
+	r.Contains(body, "background-color: #1e64ef", "the Outlook fallback must be the solid primary")
+	r.Contains(body, "background-image: linear-gradient", "the button lost its gradient")
+
+	colors := hexColorRE.FindAllString(body, -1)
+	r.GreaterOrEqual(len(colors), 4, "expected a fallback plus three gradient stops: %v", colors)
+
+	white := relativeLuminance(t, "#ffffff")
+	for _, color := range colors {
+		ratio := (white + 0.05) / (relativeLuminance(t, color) + 0.05)
+		r.GreaterOrEqual(ratio, 4.4, "white on %s is only %.2f:1", color, ratio)
+	}
+}
+
+// TestPalette_EveryLightGradientKeepsASolidFallback is the source-level twin of
+// TestPreview_EveryGradientKeepsASolidFallback: that one only sees rules a
+// fixture happens to render (the accent bar is skipped on bannered mail, the
+// legacy .cta on everything), this one walks every gradient in the file.
+func TestPalette_EveryLightGradientKeepsASolidFallback(t *testing.T) {
+	t.Parallel()
+
+	for _, line := range strings.Split(readBaseHTML(t), "\n") {
+		if !gradientDeclRE.MatchString(line) {
+			continue
+		}
+
+		require.Contains(t, line, "background-color:",
+			"a gradient has no solid fallback — it renders as nothing in Outlook: %s", strings.TrimSpace(line))
 	}
 }
