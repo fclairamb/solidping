@@ -342,18 +342,39 @@ wss://hostname/path  # With TLS
 
 Monitor Remote Desktop Protocol servers. Unlike a plain TCP/3389 port probe, this checker performs the **pre-auth RDP negotiation handshake** (X.224 Connection Request/Confirm, MS-RDPBCGR): a valid answer proves the RDP listener (TermService, xrdp, …) actually parsed the request — not just that a firewall forwards the port. The handshake needs **no credentials** and stops before any authentication.
 
+With **username and password** set, the check goes further: it completes a **real interactive Windows logon** — CredSSP/NLA, the full connection sequence, a settle wait until the screen stops painting, an optional screenshot, and an explicit session end (log off by default, or disconnect). See the caveats below; this mode is a user-visible logon, not a probe.
+
 | Option | Description | Default |
 |--------|-------------|---------|
 | Host | RDP server hostname or IP | - (required) |
 | Port | TCP port | `3389` |
-| Timeout | Check timeout (max `60s`) | `5s` |
+| Timeout | Check timeout (max `30s` pre-auth, `90s` with credentials) | `5s` pre-auth, `45s` with credentials |
 | Require NLA | Mark **down** unless the server selects Network Level Authentication (CredSSP) — catches NLA silently disabled by policy | off |
 | Cert warning (days) | Mark **warning** when the server certificate expires in at most this many days. `0` = off | off |
 | Cert critical (days) | Mark **down** when the server certificate expires in at most this many days. Must be ≤ Cert warning. `0` = off | off |
+| Username / Password | Perform an authenticated interactive logon. Both must be set together | off |
+| Domain | Windows domain for the logon (optional; local accounts leave it empty) | off |
+| Screenshot | Capture a PNG of the desktop once the logon settles (authenticated runs only) | off |
+| End session | `logoff` (default) or `disconnect` | `logoff` |
 
 - **Default verdict** = TCP connect + a valid X.224 Connection Confirm. A negotiation failure (`RDP_NEG_FAILURE`, e.g. `HYBRID_REQUIRED_BY_SERVER`) or a non-RDP answer yields **down**.
 - The negotiated **security protocol** (`rdp`, `tls`, `nla`, `nla_ex`, `rdstls`) and the server's negotiation flags are reported in the check output.
 - When a TLS-based protocol is selected, the checker completes one TLS handshake to read the **server certificate** (subject, issuer, expiry, self-signed flag). RDP certificates are routinely self-signed or from an internal CA, so only the leaf's expiry is inspected — the chain is deliberately not validated. An already-expired certificate is always **down**.
+- **Authenticated failure states** carry distinct codes in the check output: `auth_rejected` (bad password, locked account, or a domain that disabled NTLM), `logon_timed_out` (the desktop never settled within the timeout), and `session_disconnected` (the server ended the session — licensing, policy, or "another user is logged on").
+- A failed **log off** or screenshot after a successful logon is reported in the output details but never turns an `up` run down: the logon itself succeeded.
+- The check runs at most **4 RDP logons at a time** per worker; a saturated worker reports a timeout on the late check rather than queueing invisibly.
+
+:::warning Authenticated runs are real Windows logons
+Every authenticated run is a **real interactive Windows logon**:
+
+- it loads a user profile and runs logon scripts / GPOs;
+- it may consume an RDS client access licence;
+- on a single-session server (or with "restrict to one session per user") it can **disconnect a real logged-in user**;
+- it shows up in the Security event log (4624/4634) every run.
+
+So: use a dedicated monitoring account, never a person's account, and keep the interval long — the **minimum period is 15 minutes** for every authenticated run, enforced by the API.
+Authentication is NTLM through CredSSP only; Kerberos is not supported, so domains that disable NTLM will fail at NLA with a clear error.
+:::
 
 :::note Network access
 RDP hosts are typically reachable only from inside a network — run the check from a worker with network access to the host. The handshake is pre-auth and closes cleanly, so it generates connection events but no authentication-failure noise in Windows event logs.
