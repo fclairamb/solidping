@@ -4,19 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/freshness"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/realtime"
+	"github.com/fclairamb/solidping/server/internal/testsupport"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -53,7 +57,7 @@ func (h *hintLog) reset() {
 // pipeline (incidents.ProcessCheckResult) that leaves it.
 type world struct {
 	clk       *clock.Fake
-	db        *sqlite.Service
+	db        db.Service
 	incidents *incidents.Service
 	sweeper   *freshness.Service
 	org       *models.Organization
@@ -62,15 +66,26 @@ type world struct {
 	t0        time.Time
 }
 
-func newWorld(t *testing.T, configure func(*models.Check)) *world {
+// worldFactory builds one isolated world. Every case below runs on SQLite and
+// on real Postgres — the candidate query applies the exact threshold in SQL on
+// Postgres only, so both engines must agree on the outcome.
+type worldFactory func(t *testing.T, configure func(*models.Check)) *world
+
+func newSQLiteWorld(t *testing.T, configure func(*models.Check)) *world {
+	t.Helper()
+
+	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, dbSvc.Initialize(t.Context()))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	return newWorldOn(t, dbSvc, "freshness-test", configure)
+}
+
+func newWorldOn(t *testing.T, dbSvc db.Service, orgSlug string, configure func(*models.Check)) *world {
 	t.Helper()
 	ctx := t.Context()
 	r := require.New(t)
-
-	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
-	r.NoError(err)
-	r.NoError(dbSvc.Initialize(ctx))
-	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	bus := notifier.NewLocalEventNotifier()
 	hints := &hintLog{uids: map[string]bool{}}
@@ -114,7 +129,7 @@ func newWorld(t *testing.T, configure func(*models.Check)) *world {
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	incidentsSvc := incidents.NewService(dbSvc, jobs, clk, pub)
 
-	org := models.NewOrganization("freshness-test", "Freshness Test")
+	org := models.NewOrganization(orgSlug, "Freshness Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 	orgUIDs <- org.UID
 
@@ -177,15 +192,25 @@ func (w *world) submitAt(t *testing.T, at time.Time, status models.ResultStatus,
 	require.NoError(t, w.incidents.ProcessCheckResult(context.Background(), w.reload(t), result))
 }
 
+// sweepAt runs one sweep at `at` and reports whether THIS world's check moved
+// to stale (1) or not (0). The sweep is global by design — on the shared
+// Postgres database it also sweeps other cases' orgs — so the return value of
+// SweepStale itself is not what a case can assert on.
 func (w *world) sweepAt(t *testing.T, at time.Time) int {
 	t.Helper()
 
 	w.setClock(at)
 
-	marked, err := w.sweeper.SweepStale(t.Context(), at)
+	before := w.reload(t).Status
+
+	_, err := w.sweeper.SweepStale(t.Context(), at)
 	require.NoError(t, err)
 
-	return marked
+	if before != models.CheckStatusStale && w.reload(t).Status == models.CheckStatusStale {
+		return 1
+	}
+
+	return 0
 }
 
 func (w *world) activeIncident(t *testing.T) *models.Incident {
@@ -226,8 +251,8 @@ func (w *world) jobCount(t *testing.T) int {
 // A pinned check whose worker stops goes stale after max(3 × period, 5 min):
 // no incident, no notification, no event, the streak untouched, both clocks
 // cleared, and exactly one `checks` hint.
-func TestSweep_EntersStaleAfterThreshold(t *testing.T) {
-	t.Parallel()
+func caseSweepEntersStaleAfterThreshold(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) {
@@ -287,8 +312,8 @@ func TestSweep_EntersStaleAfterThreshold(t *testing.T) {
 
 // A check that never produced a result goes stale once it is older than the
 // threshold: it should have run by then.
-func TestSweep_NeverRanCheckGoesStaleFromCreation(t *testing.T) {
-	t.Parallel()
+func caseSweepNeverRanCheckGoesStaleFromCreation(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) { c.Status = models.CheckStatusCreated })
@@ -301,8 +326,8 @@ func TestSweep_NeverRanCheckGoesStaleFromCreation(t *testing.T) {
 
 // A long-period check uses 3 × period, not the 5-minute floor — on SQLite the
 // candidate query only applies the floor, so this pins the exact Go filter.
-func TestSweep_LongPeriodUsesThreePeriods(t *testing.T) {
-	t.Parallel()
+func caseSweepLongPeriodUsesThreePeriods(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) { c.Period = timeDuration(10 * time.Minute) })
@@ -314,8 +339,8 @@ func TestSweep_LongPeriodUsesThreePeriods(t *testing.T) {
 }
 
 // Disabled and internal checks are never considered.
-func TestSweep_IgnoresDisabledAndInternal(t *testing.T) {
-	t.Parallel()
+func caseSweepIgnoresDisabledAndInternal(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) { c.Enabled = false })
@@ -329,8 +354,8 @@ func TestSweep_IgnoresDisabledAndInternal(t *testing.T) {
 
 // A result landing at the same moment as the sweep wins: the guarded update is
 // a compare-and-set on both the status and the freshness reference.
-func TestSweep_ResultWinsTheRace(t *testing.T) {
-	t.Parallel()
+func caseSweepResultWinsTheRace(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -361,8 +386,8 @@ func TestSweep_ResultWinsTheRace(t *testing.T) {
 }
 
 // The first result after stale restores the status and bumps the change time.
-func TestLeaveStale_FirstResultRestoresStatus(t *testing.T) {
-	t.Parallel()
+func caseLeaveStaleFirstResultRestoresStatus(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, nil)
@@ -382,8 +407,8 @@ func TestLeaveStale_FirstResultRestoresStatus(t *testing.T) {
 // "Changed" is decided against the live row, never against the claim-time
 // snapshot a worker hands in: the snapshot still says `up` with an old failure
 // clock, the row says `stale` with both clocks cleared.
-func TestLeaveStale_DecidesAgainstTheLiveRowNotTheSnapshot(t *testing.T) {
-	t.Parallel()
+func caseLeaveStaleDecidesAgainstTheLiveRowNotTheSnapshot(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) { c.ConfirmationPeriodSeconds = 120 })
@@ -422,8 +447,8 @@ func TestLeaveStale_DecidesAgainstTheLiveRowNotTheSnapshot(t *testing.T) {
 }
 
 // A failure after a gap waits for a fresh confirmation window.
-func TestLeaveStale_FailureWaitsForFreshConfirmation(t *testing.T) {
-	t.Parallel()
+func caseLeaveStaleFailureWaitsForFreshConfirmation(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) { c.ConfirmationPeriodSeconds = 120 })
@@ -448,8 +473,8 @@ func TestLeaveStale_FailureWaitsForFreshConfirmation(t *testing.T) {
 // An open incident stays open while the check is stale, gets "monitoring
 // interrupted" and "resumed" on its timeline, and resolves only after a full
 // FRESH recovery window.
-func TestLeaveStale_OpenIncidentNeedsFreshRecoveryWindow(t *testing.T) {
-	t.Parallel()
+func caseLeaveStaleOpenIncidentNeedsFreshRecoveryWindow(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, func(c *models.Check) { c.RecoveryPeriodSeconds = 300 })
@@ -492,8 +517,8 @@ func TestLeaveStale_OpenIncidentNeedsFreshRecoveryWindow(t *testing.T) {
 
 // A check never ENTERS stale while its maintenance window is open; the first
 // sweep after the window evaluates it normally.
-func TestMaintenance_NeverEntersStaleDuringWindow(t *testing.T) {
-	t.Parallel()
+func caseMaintenanceNeverEntersStaleDuringWindow(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -514,8 +539,8 @@ func TestMaintenance_NeverEntersStaleDuringWindow(t *testing.T) {
 
 // A stale check leaves stale immediately if a result arrives during a window,
 // without any incident processing.
-func TestMaintenance_LeavesStaleDuringWindow(t *testing.T) {
-	t.Parallel()
+func caseMaintenanceLeavesStaleDuringWindow(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -538,8 +563,8 @@ func TestMaintenance_LeavesStaleDuringWindow(t *testing.T) {
 
 // A stale check whose first result inside a window is a failure reads
 // `validating`, never `down` with no incident behind it.
-func TestMaintenance_StaleFailureInWindowReadsValidating(t *testing.T) {
-	t.Parallel()
+func caseMaintenanceStaleFailureInWindowReadsValidating(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -561,8 +586,8 @@ func TestMaintenance_StaleFailureInWindowReadsValidating(t *testing.T) {
 
 // A multi-region check with one silent region is NOT stale: it is still being
 // checked. The per-region freshness shows the silent one.
-func TestSweep_OneSilentRegionIsNotStale(t *testing.T) {
-	t.Parallel()
+func caseSweepOneSilentRegionIsNotStale(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 	ctx := t.Context()
 
@@ -591,8 +616,8 @@ func TestSweep_OneSilentRegionIsNotStale(t *testing.T) {
 }
 
 // Abandoned and lifecycle rows never count as a real result.
-func TestProcessCheckResult_AbandonedDoesNotRefreshFreshness(t *testing.T) {
-	t.Parallel()
+func caseProcessCheckResultAbandonedDoesNotRefreshFreshness(t *testing.T, newWorld worldFactory) {
+	t.Helper()
 	r := require.New(t)
 
 	w := newWorld(t, nil)
@@ -624,4 +649,96 @@ func TestStaleCountsByRegion(t *testing.T) {
 		freshness.RegionLabelAny:     1,
 		freshness.RegionLabelPrivate: 2,
 	}, counts)
+}
+
+// portFreshnessPG is distinct from every other embedded-Postgres port claimed
+// in the repo.
+const portFreshnessPG = 15540
+
+type freshnessCase struct {
+	name string
+	run  func(t *testing.T, newWorld worldFactory)
+}
+
+func freshnessCases() []freshnessCase {
+	return []freshnessCase{
+		{"Sweep_EntersStaleAfterThreshold", caseSweepEntersStaleAfterThreshold},
+		{"Sweep_NeverRanCheckGoesStaleFromCreation", caseSweepNeverRanCheckGoesStaleFromCreation},
+		{"Sweep_LongPeriodUsesThreePeriods", caseSweepLongPeriodUsesThreePeriods},
+		{"Sweep_IgnoresDisabledAndInternal", caseSweepIgnoresDisabledAndInternal},
+		{"Sweep_ResultWinsTheRace", caseSweepResultWinsTheRace},
+		{"LeaveStale_FirstResultRestoresStatus", caseLeaveStaleFirstResultRestoresStatus},
+		{"LeaveStale_DecidesAgainstTheLiveRowNotTheSnapshot", caseLeaveStaleDecidesAgainstTheLiveRowNotTheSnapshot},
+		{"LeaveStale_FailureWaitsForFreshConfirmation", caseLeaveStaleFailureWaitsForFreshConfirmation},
+		{"LeaveStale_OpenIncidentNeedsFreshRecoveryWindow", caseLeaveStaleOpenIncidentNeedsFreshRecoveryWindow},
+		{"Maintenance_NeverEntersStaleDuringWindow", caseMaintenanceNeverEntersStaleDuringWindow},
+		{"Maintenance_LeavesStaleDuringWindow", caseMaintenanceLeavesStaleDuringWindow},
+		{"Maintenance_StaleFailureInWindowReadsValidating", caseMaintenanceStaleFailureInWindowReadsValidating},
+		{"Sweep_OneSilentRegionIsNotStale", caseSweepOneSilentRegionIsNotStale},
+		{"ProcessCheckResult_AbandonedDoesNotRefreshFreshness", caseProcessCheckResultAbandonedDoesNotRefreshFreshness},
+	}
+}
+
+func TestFreshness_SQLite(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range freshnessCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.run(t, newSQLiteWorld)
+		})
+	}
+}
+
+// TestFreshness_Postgres runs its cases sequentially on purpose (see the loop).
+//
+//nolint:paralleltest,tparallel // the sweep is global across orgs; parallel cases would sweep each other
+func TestFreshness_Postgres(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("skipping embedded-postgres test in -short mode")
+	}
+
+	ctx := t.Context()
+
+	dbSvc, err := postgres.New(ctx, &postgres.Config{
+		Embedded: true,
+		Port:     portFreshnessPG,
+		RunMode:  "test",
+	})
+	if err != nil {
+		testsupport.PostgresUnavailable(t, err)
+	}
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	if initErr := dbSvc.Initialize(ctx); initErr != nil {
+		testsupport.PostgresInitFailed(t, initErr)
+	}
+
+	var (
+		mu    sync.Mutex
+		count int
+	)
+
+	// One embedded server, one org per world.
+	factory := func(t *testing.T, configure func(*models.Check)) *world {
+		t.Helper()
+
+		mu.Lock()
+		count++
+		slug := fmt.Sprintf("freshness-pg-%03d", count)
+		mu.Unlock()
+
+		return newWorldOn(t, dbSvc, slug, configure)
+	}
+
+	// Sequential, unlike the SQLite runner: the sweep is global, so a case
+	// sweeping at "now + 1h" on the shared database would move a concurrently
+	// running case's check to stale mid-assertion.
+	for _, tc := range freshnessCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.run(t, factory)
+		})
+	}
 }
