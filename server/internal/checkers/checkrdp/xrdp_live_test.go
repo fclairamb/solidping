@@ -200,3 +200,48 @@ func TestRDPTunnelDial(t *testing.T) {
 	r.NoError(err)
 	r.Equal(checkerdef.StatusUp, result.Status, result.Output)
 }
+
+// TestXRDPInputAndReattach drives click+type against the live desktop (the
+// input verbs the JS `rdp` object exposes), then proves the disconnect mode's
+// reattach promise: the NEXT run succeeds against the session the previous run
+// left behind.
+//
+//nolint:paralleltest // one container for the whole flow
+func TestXRDPInputAndReattach(t *testing.T) {
+	r := require.New(t)
+	host, port := startXRDP(t)
+
+	cfg := &checkconfig.RDPConfig{
+		Host:       host,
+		Port:       port,
+		Username:   xrdpUser,
+		Password:   xrdpPass,
+		EndSession: checkconfig.EndSessionDisconnect,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	// Run 1: logon, drive the desktop, disconnect (session left running).
+	first, err := (&RDPChecker{}).Execute(ctx, cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, first.Status, first.Output)
+
+	session, err := OpenRDPSession(ctx, cfg, 0, 0, nil)
+	r.NoError(err, "the second run must reattach to the session the first left")
+
+	r.NoError(session.WaitForStable(ctx, stableQuiet))
+	r.NoError(session.Click(640, 400))
+	r.NoError(session.Type("hello"))
+	r.NoError(session.Key("enter"))
+
+	color, err := session.Pixel(10, 10)
+	r.NoError(err, "a settled desktop answers pixel reads")
+	_ = color
+
+	_, err = session.RegionHash(0, 0, 1280, 800)
+	r.NoError(err, "a settled desktop answers region hashes")
+
+	// Best-effort by contract: the container's teardown ends everything.
+	_ = session.EndLogoff()
+}
