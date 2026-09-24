@@ -1752,19 +1752,19 @@ func inFirstSignalGrace(check *models.Check, lastSignal *models.Result, period t
 // overdue branch a per-tick coin flip, reported the previous evaluation's
 // timestamp as lastSignalAt, and made the stale-run branch unreachable.
 func passiveVerdict(
-	ctx context.Context, be backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
+	ctx context.Context, workerBackend backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
 ) (checkerdef.Status, map[string]any, bool, error) {
 	// Dispatched by check type, inside the one passive loop (spec
 	// 2026-09-25-05): the private-location monitor has no inbound signal, it
 	// counts the location's connected agents.
 	if checkerdef.CheckType(checkJob.Type) == checkerdef.CheckTypePrivateLocation {
-		return privateLocationVerdict(ctx, be, checkJob, now)
+		return privateLocationVerdict(ctx, workerBackend, checkJob, now)
 	}
 
 	period := time.Duration(checkJob.Period)
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
-	lastSignals, err := be.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
+	lastSignals, err := workerBackend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
 		return 0, nil, false, fmt.Errorf("failed to get last signal: %w", err)
 	}

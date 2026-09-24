@@ -186,8 +186,11 @@ func TestPrivateLocationNotEvaluableOnAnAgent(t *testing.T) {
 
 	job := &models.CheckJob{Type: string(checkerdef.CheckTypePrivateLocation), Config: models.JSONMap{"region": "@office"}}
 
-	_, _, _, err := passiveVerdict(t.Context(), be, job, time.Now())
+	status, output, grace, err := passiveVerdict(t.Context(), be, job, time.Now())
 	r.ErrorIs(err, errPrivateLocationNotEvaluable)
+	r.Zero(status)
+	r.Nil(output)
+	r.False(grace)
 }
 
 // plEnv adds a private-location monitor and agents to a passiveEvalEnv.

@@ -45,9 +45,9 @@ var errPrivateLocationNotEvaluable = errors.New(
 // grace=true means "no active agent was ever enrolled and the monitor never
 // produced a result": write nothing, the check stays `created`, no incident.
 func privateLocationVerdict(
-	ctx context.Context, be backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
+	ctx context.Context, workerBackend backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
 ) (checkerdef.Status, map[string]any, bool, error) {
-	reader, ok := be.(backend.PrivateLocationReader)
+	reader, ok := workerBackend.(backend.PrivateLocationReader)
 	if !ok {
 		return 0, nil, false, errPrivateLocationNotEvaluable
 	}
@@ -103,29 +103,7 @@ func privateLocationRegion(checkJob *models.CheckJob) string {
 func privateLocationEvaluation(
 	region string, agents []*models.Agent, everEvaluated bool, now time.Time,
 ) (checkerdef.Status, map[string]any, bool) {
-	cutoff := regions.LivenessCutoff(now)
-
-	var (
-		active   []*models.Agent
-		offline  []*models.Agent
-		lastSeen *time.Time
-	)
-
-	for _, agent := range agents {
-		if agent.LastSeenAt != nil && (lastSeen == nil || agent.LastSeenAt.After(*lastSeen)) {
-			lastSeen = agent.LastSeenAt
-		}
-
-		if agent.Status != models.AgentStatusActive {
-			continue
-		}
-
-		active = append(active, agent)
-
-		if !regions.IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
-			offline = append(offline, agent)
-		}
-	}
+	active, offline, lastSeen := tallyLocationAgents(agents, regions.LivenessCutoff(now))
 
 	if len(active) == 0 && !everEvaluated {
 		return 0, nil, true
@@ -170,6 +148,37 @@ func privateLocationEvaluation(
 
 		return checkerdef.StatusDown, output, false
 	}
+}
+
+// tallyLocationAgents splits a location's agents into the active ones and,
+// among them, the offline ones, and returns the newest last_seen_at of any
+// agent bound to the location (revoked included, as region health does).
+func tallyLocationAgents(
+	agents []*models.Agent, cutoff time.Time,
+) ([]*models.Agent, []*models.Agent, *time.Time) {
+	var (
+		active   []*models.Agent
+		offline  []*models.Agent
+		lastSeen *time.Time
+	)
+
+	for _, agent := range agents {
+		if agent.LastSeenAt != nil && (lastSeen == nil || agent.LastSeenAt.After(*lastSeen)) {
+			lastSeen = agent.LastSeenAt
+		}
+
+		if agent.Status != models.AgentStatusActive {
+			continue
+		}
+
+		active = append(active, agent)
+
+		if !regions.IsAgentLive(agent.Status, agent.LastSeenAt, cutoff) {
+			offline = append(offline, agent)
+		}
+	}
+
+	return active, offline, lastSeen
 }
 
 // agentsConnectedMessage is the Up message: "1 agent connected" / "2 agents

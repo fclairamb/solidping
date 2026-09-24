@@ -1723,6 +1723,7 @@ func (s *Service) queueLifecycleNotifications(
 		// hang an incident on, and paging on-call for our outage would teach
 		// them to ignore theirs.
 		models.EventTypeRegionOffline, models.EventTypeRegionRecovered,
+		models.EventTypeAgentConnected, models.EventTypeAgentDisconnected,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,

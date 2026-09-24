@@ -29,13 +29,13 @@ func (e *env) agentEvents(eventType models.EventType) []*models.Event {
 	return events
 }
 
-// waitForEvents waits for the (asynchronous, best-effort) event write.
-func (e *env) waitForEvents(eventType models.EventType, count int) []*models.Event {
+// waitForEvent waits for the (asynchronous, best-effort) event write.
+func (e *env) waitForEvent(eventType models.EventType) []*models.Event {
 	e.t.Helper()
 
 	require.Eventually(e.t, func() bool {
-		return len(e.agentEvents(eventType)) >= count
-	}, 5*time.Second, 20*time.Millisecond, "expected %d %s event(s)", count, eventType)
+		return len(e.agentEvents(eventType)) > 0
+	}, 5*time.Second, 20*time.Millisecond, "expected a %s event", eventType)
 
 	return e.agentEvents(eventType)
 }
@@ -48,7 +48,7 @@ func TestConnectAndRevokedDisconnectAreRecorded(t *testing.T) {
 
 	conn, _, enrolled := e.enroll(e.mintToken(), "office-1")
 
-	connected := e.waitForEvents(models.EventTypeAgentConnected, 1)
+	connected := e.waitForEvent(models.EventTypeAgentConnected)
 	r.Len(connected, 1)
 	r.Equal(testRegion, connected[0].Payload[models.AgentEventPayloadRegion])
 	r.Equal(enrolled.AgentUID, connected[0].Payload["target_uid"])
@@ -68,7 +68,7 @@ func TestConnectAndRevokedDisconnectAreRecorded(t *testing.T) {
 	r.Error(readErr)
 	r.Equal(websocket.StatusCode(4403), websocket.CloseStatus(readErr))
 
-	disconnected := e.waitForEvents(models.EventTypeAgentDisconnected, 1)
+	disconnected := e.waitForEvent(models.EventTypeAgentDisconnected)
 	r.Len(disconnected, 1, "exactly one disconnect event")
 	r.Equal(models.AgentDisconnectReasonRevoked, disconnected[0].Payload[models.AgentEventPayloadReason])
 	r.Equal(testRegion, disconnected[0].Payload[models.AgentEventPayloadRegion])
@@ -81,11 +81,11 @@ func TestAgentGoingAwayIsRecordedAsError(t *testing.T) {
 	e := newEnv(t)
 
 	conn, _, _ := e.enroll(e.mintToken(), "office-1")
-	e.waitForEvents(models.EventTypeAgentConnected, 1)
+	e.waitForEvent(models.EventTypeAgentConnected)
 
 	r.NoError(conn.Close(websocket.StatusNormalClosure, "agent stopping"))
 
-	disconnected := e.waitForEvents(models.EventTypeAgentDisconnected, 1)
+	disconnected := e.waitForEvent(models.EventTypeAgentDisconnected)
 	r.Len(disconnected, 1)
 	r.Equal(models.AgentDisconnectReasonError, disconnected[0].Payload[models.AgentEventPayloadReason])
 }

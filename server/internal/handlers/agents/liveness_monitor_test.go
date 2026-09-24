@@ -133,6 +133,7 @@ func TestCreatingALocationCreatesItsMonitor(t *testing.T) {
 	r.NoError(s.svc.DeletePrivateRegion(ctx, "acme", "office"))
 	r.Empty(s.monitors(t))
 	r.Nil(s.region(t, "office"))
+	r.Nil(s.region(t, "lab"), "positive control: no such location either")
 }
 
 func TestBackfillCreatesExactlyOneAndRespectsTheOptOut(t *testing.T) {
