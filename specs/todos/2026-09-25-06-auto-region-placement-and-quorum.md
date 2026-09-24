@@ -159,6 +159,15 @@ cloud region turns dark, for every **auto** check placed there:
 
 Separable. Land A first, then B in the same spec or split it out.
 
+**Split out.** Part A shipped in full (verified by an independent audit with
+two fix rounds). Part B was deliberately not started — zero code, not
+half-implemented — and is now its own spec:
+[`2026-09-25-10-explicit-multi-region-quorum.md`](../../../todos/2026-09-25-10-explicit-multi-region-quorum.md)
+(in `specs/todos/`, once this file is archived to `specs/done/2026/09/`).
+The B1/B2 text below is kept for historical record only; the live version
+(with the added placement-interaction note and required surfaces) is in that
+spec.
+
 #### B1. Per-region state
 
 Keep the last status per (check, region), in a small table or derived from the
