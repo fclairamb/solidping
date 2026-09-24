@@ -16,6 +16,7 @@ import (
 	"github.com/dop251/goja"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	checkrdpconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrdp/config"
 )
 
 // browserOpenRE recognizes a script that drives a browser.
@@ -28,6 +29,12 @@ import (
 //
 // Compiled once, read-only.
 var browserOpenRE = regexp.MustCompile(`\bbrowser\s*\.\s*open\s*\(`)
+
+// rdpConnectRE recognizes a script that opens an RDP session — the same
+// heuristic and the same caveats as browserOpenRE, and the same reason it
+// must live at validation time: every rdp.connect is an AUTHENTICATED logon,
+// and running one every 30 s is exactly what the operational caveats forbid.
+var rdpConnectRE = regexp.MustCompile(`\brdp\s*\.\s*connect\s*\(`)
 
 const (
 	maxScriptSize = 64 * 1024 // 64KB max script size
@@ -186,28 +193,39 @@ func (c *JSConfig) SecretFields() []string {
 	return []string{fieldSecrets}
 }
 
-// MinPeriodHint raises this check's period floor to the `browser` type's when
-// the script opens a browser. Implements checkerdef.MinPeriodHint.
+// MinPeriodHint raises this check's period floor when the script uses a
+// resource whose own floor is higher than the `js` floor. Implements
+// checkerdef.MinPeriodHint.
 //
-// A `js` check is scheduled as a `js` check (30 s floor), but a script holding
-// a page for most of a 30 s window costs exactly what the `browser` floor
-// exists to prevent: on a 4-slot worker one such check starves every browser
-// check next to it into "timed out waiting for a free browser slot". So a
-// script that uses the browser inherits the browser's floor, decided here —
-// at validation time, the only place that sees both the period and the script.
+// Two triggers, each for the same shape of reason:
 //
-// Zero means "no opinion", which is every script that never opens a browser.
+//   - browser.open(): a script holding a page for most of a 30 s window costs
+//     what the browser floor exists to prevent — on a 4-slot worker one such
+//     check starves every browser check next to it.
+//   - rdp.connect(): every RDP session is a REAL interactive Windows logon —
+//     profile load, logon scripts/GPOs, an RDS licence, a Security event-log
+//     entry, and a possible kicked user on a single-session server. The 15
+//     minute authenticated floor enforces the "keep the interval long"
+//     mitigation instead of trusting the operator to have read the help text.
+//
+// The stricter (higher) of the matched floors wins when a script uses both.
+// Zero means "no opinion".
 func (c *JSConfig) MinPeriodHint() time.Duration {
-	if !browserOpenRE.MatchString(c.Script) {
-		return 0
+	hint := time.Duration(0)
+
+	if browserOpenRE.MatchString(c.Script) {
+		if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeBrowser); meta != nil {
+			hint = meta.MinPeriod
+		}
 	}
 
-	meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeBrowser)
-	if meta == nil {
-		return 0
+	if rdpConnectRE.MatchString(c.Script) {
+		if floor := checkrdpconfig.AuthenticatedMinPeriod; hint < floor {
+			hint = floor
+		}
 	}
 
-	return meta.MinPeriod
+	return hint
 }
 
 // Validate checks that the configuration fields are within acceptable bounds.

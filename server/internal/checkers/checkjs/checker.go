@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkjs/config"
+	checkrdp "github.com/fclairamb/solidping/server/internal/checkers/checkrdp"
 )
 
 // JS result map keys.
@@ -121,6 +122,12 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 	// early, threw, or was interrupted. Nothing else releases the browser slot
 	// (spec 2026-09-12-06 §3).
 	defer runtime.closeBrowser()
+
+	// Same rule for the RDP session: a script that returns early, throws or
+	// is interrupted never leaks an authenticated logon or its slot — and a
+	// script that ended without calling logoff() gets one, the check's
+	// default end-session mode.
+	defer runtime.closeRDP()
 
 	// Same rule for every socket the script opened: a script that returns
 	// early, throws or is interrupted never leaks a TCP/UDP/WebSocket
@@ -240,6 +247,16 @@ type jsRuntime struct {
 	screenshot   checkbrowser.Capture
 	screenshotAt time.Time
 
+	// rdp is the RDP session this execution opened, nil until rdp.connect().
+	// rdpOpened stays true after a close, which is what enforces the
+	// one-session-per-execution rule against a script that closes and
+	// re-connects.
+	rdp       checkrdp.RDPSession
+	rdpOpened bool
+	// rdpActions is the session-action budget, counted SEPARATELY from
+	// subCheckCount — see maxRDPActions.
+	rdpActions atomic.Int32
+
 	// sockets holds one disposer per connection the script opened through the
 	// `tcp` / `udp` / `websocket` globals, in open order. Execute defers
 	// closeSockets() over it, so nothing leaks whatever the script did.
@@ -309,6 +326,7 @@ func (r *jsRuntime) registerGlobals() {
 	r.registerHTTP()
 	r.registerBase64()
 	r.registerBrowser()
+	r.registerRDP()
 	r.registerTCP()
 	r.registerUDP()
 	r.registerWebSocket()

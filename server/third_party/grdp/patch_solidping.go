@@ -72,3 +72,41 @@ type shutdownRequestPDU struct{}
 func (*shutdownRequestPDU) Type2() uint8 { return pdu.PDUTYPE2_SHUTDOWN_REQUEST }
 
 func (*shutdownRequestPDU) Unpack(_ io.Reader) error { return nil }
+
+// SendScancode sends one scancode key event: press when release is false,
+// release when true. sc may carry the 0xE0 extended prefix (0xE04B for Left
+// Arrow); it is stripped and translated into KBDFLAGS_EXTENDED, which is the
+// form both the slow-path serializer and the fast-path encoder expect.
+//
+// `key()` composes named keys and combos out of these — scancodes, not
+// Unicode, because named keys and combos (Enter, ctrl+alt+end, win+r) have no
+// Unicode position.
+func (g *RdpClient) SendScancode(sc uint16, release bool) {
+	if !g.eventReady.Load() || g.pdu == nil {
+		return
+	}
+
+	g.flushMouseMove()
+	g.flushWheel()
+
+	p := &pdu.ScancodeKeyEvent{}
+	if sc&0xFF00 == 0xE000 {
+		p.KeyCode = sc & 0x00FF
+		p.KeyboardFlags |= pdu.KBDFLAGS_EXTENDED
+	} else {
+		p.KeyCode = sc
+	}
+
+	if release {
+		p.KeyboardFlags |= pdu.KBDFLAGS_RELEASE
+	}
+
+	g.pdu.SendInputEvents(pdu.INPUT_EVENT_SCANCODE, []pdu.InputEventsInterface{p})
+	g.notifyGfxLocalInput()
+}
+
+// EventReady reports whether the session accepts input events. A script can
+// poll it instead of acting blind after a session drop.
+func (g *RdpClient) EventReady() bool {
+	return g.eventReady.Load()
+}
