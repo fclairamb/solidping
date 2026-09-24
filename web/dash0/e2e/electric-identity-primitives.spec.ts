@@ -151,4 +151,68 @@ test.describe("electric identity primitives", () => {
     expect(escaped.image).toBe("none");
     expect(escaped.color).toBe(await probe(page, "bg-muted"));
   });
+  test("the design reference documents the new tokens, the gradient rules and the hero text rule", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await openDesignReference(page);
+
+    for (const id of [
+      "gradient-tokens",
+      "brand-color-rule",
+      "gradient-rules",
+      "gradient-text-rule",
+      "page-glow-swatch",
+      "hero-gradient-example",
+    ]) {
+      await expect(page.getByTestId(id), id).toBeVisible();
+    }
+
+    // Swatches paint the real tokens: the gradients as background-IMAGE.
+    const swatchBox = (text: string) =>
+      page
+        .locator("section#color-tokens")
+        .getByText(text, { exact: true })
+        .locator("xpath=../preceding-sibling::div[1]");
+    for (const token of ["--primary-gradient", "--accent-gradient", "--hero-gradient"]) {
+      expect((await paint(swatchBox(token))).image, token).toContain("linear-gradient");
+    }
+    expect((await paint(page.getByTestId("page-glow-swatch"))).image).toContain(
+      "radial-gradient",
+    );
+
+    // --chart-degraded has a swatch, and it is the theme's status-warning in
+    // BOTH themes (the token swaps with the theme like every other).
+    const degraded = swatchBox("--chart-degraded");
+    const lightDegraded = (await paint(degraded)).color;
+    expect(lightDegraded).toBe(await probe(page, "bg-status-warning"));
+
+    const isDark = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+    await page.getByTestId("theme-toggle").click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+      .toBe(!isDark);
+    await expect.poll(async () => (await paint(degraded)).color).not.toBe(lightDegraded);
+    expect((await paint(degraded)).color).toBe(await probe(page, "bg-status-warning"));
+    await expect(page.getByTestId("gradient-rules")).toBeVisible();
+
+    // The hero example obeys its own rule: the small label sits over the
+    // darker half. Position along a 135deg gradient line:
+    //   t = 0.5 + ((x - cx) + (y - cy)) * cos45 / ((w + h) * cos45)
+    // White text is >= 4.5:1 from t ~= 0.3 on (theme-tokens.test.ts).
+    const hero = page.getByTestId("hero-gradient-example");
+    const t = await hero.evaluate((tile) => {
+      const box = tile.getBoundingClientRect();
+      const label = tile.lastElementChild!.getBoundingClientRect();
+      const cx = box.left + box.width / 2;
+      const cy = box.top + box.height / 2;
+      return 0.5 + (label.left - cx + (label.top - cy)) / (box.width + box.height);
+    });
+    expect(t).toBeGreaterThanOrEqual(0.3);
+    // And the value on the light end is large text (>= 24px).
+    const valueSize = await hero.evaluate(
+      (tile) => parseFloat(getComputedStyle(tile.firstElementChild!).fontSize),
+    );
+    expect(valueSize).toBeGreaterThanOrEqual(24);
+  });
 });

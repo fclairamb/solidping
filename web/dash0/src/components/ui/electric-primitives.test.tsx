@@ -8,6 +8,7 @@ import { Switch } from "./switch";
 import { Checkbox } from "./checkbox";
 import { Input } from "./input";
 import { Textarea } from "./textarea";
+import { Select, SelectTrigger, SelectValue } from "./select";
 
 // Spec 2026-09-24-01 (electric identity, primitives). These pin the class
 // contract the design reference documents; the e2e suite
@@ -151,8 +152,16 @@ describe("Switch and Checkbox", () => {
 });
 
 describe("text field focus", () => {
-  it("input and textarea show border-ring plus a 3px ring at 25%", () => {
-    for (const html of [renderToStaticMarkup(<Input />), renderToStaticMarkup(<Textarea />)]) {
+  it("input, textarea and the select trigger show border-ring plus a 3px ring at 25%", () => {
+    const trigger = renderToStaticMarkup(
+      <Select>
+        <SelectTrigger aria-label="Region">
+          <SelectValue placeholder="Pick one" />
+        </SelectTrigger>
+      </Select>,
+    );
+    expect(trigger).toContain('role="combobox"');
+    for (const html of [renderToStaticMarkup(<Input />), renderToStaticMarkup(<Textarea />), trigger]) {
       const c = classesOf(html);
       expect(c).toEqual(
         expect.arrayContaining([
@@ -161,6 +170,9 @@ describe("text field focus", () => {
           "focus-visible:ring-ring/25",
         ]),
       );
+      // The old flush 1px ring (and the select's offset focus:ring-2) is gone.
+      expect(c).not.toContain("focus-visible:ring-1");
+      expect(c).not.toContain("focus:ring-2");
     }
   });
 });

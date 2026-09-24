@@ -135,11 +135,46 @@ describe("electric identity tokens", () => {
     expect(light["hero-gradient"]).toBe(
       "linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280))",
     );
-    expect(light["page-glow"]).toContain("oklch(0.7 0.15 225 / 0.13)");
-    expect(light["page-glow"]).toContain("200px");
-    expect(dark["page-glow"]).toContain("oklch(0.7 0.15 225 / 0.2)");
-    expect(dark["page-glow"]).toContain("oklch(0.5 0.23 275 / 0.15)");
-    expect(dark["page-glow"]).toContain("220px");
+  });
+
+  it("defines --page-glow layer by layer, stronger in dark", () => {
+    // Every layer's size, position, color and alpha — not a substring.
+    expect(light["page-glow"]).toBe(
+      "radial-gradient(45% 200px at 12% 0, oklch(0.7 0.15 225 / 0.13), transparent 70%), " +
+        "radial-gradient(40% 180px at 65% 0, oklch(0.5 0.23 275 / 0.09), transparent 70%)",
+    );
+    expect(dark["page-glow"]).toBe(
+      "radial-gradient(45% 220px at 12% 0, oklch(0.7 0.15 225 / 0.2), transparent 70%), " +
+        "radial-gradient(40% 200px at 65% 0, oklch(0.5 0.23 275 / 0.15), transparent 70%)",
+    );
+  });
+
+  it("leaves the tokens the spec does not list at their pre-spec values", () => {
+    // "Tokens not listed keep their current values" (spec §1).
+    const unchanged: [Record<string, string>, string, string][] = [
+      [light, "brand", "oklch(0.58 0.22 5)"],
+      [light, "brand-foreground", "oklch(0.98 0.01 5)"],
+      [light, "brand-muted", "oklch(0.92 0.05 5)"],
+      [light, "destructive", "oklch(0.6 0.22 25)"],
+      [light, "status-ok", "oklch(0.65 0.2 145)"],
+      [light, "status-warning", "oklch(0.75 0.18 85)"],
+      [light, "status-error", "oklch(0.6 0.22 25)"],
+      [light, "chart-2", "oklch(0.65 0.2 145)"],
+      [light, "chart-3", "oklch(0.75 0.18 85)"],
+      [light, "chart-4", "oklch(0.6 0.22 25)"],
+      [light, "radius", "0.625rem"],
+      [dark, "brand", "oklch(0.65 0.2 5)"],
+      [dark, "destructive", "oklch(0.65 0.2 25)"],
+      [dark, "status-warning", "oklch(0.8 0.16 85)"],
+      [dark, "chart-2", "oklch(0.7 0.18 145)"],
+      [dark, "chart-3", "oklch(0.8 0.16 85)"],
+      [dark, "chart-4", "oklch(0.65 0.2 25)"],
+      // The dark table lists foreground / card / popover fg, NOT secondary-fg.
+      [dark, "secondary-foreground", "oklch(0.95 0.01 250)"],
+    ];
+    for (const [tokens, name, value] of unchanged) {
+      expect(tokens[name], `${tokens === light ? "light" : "dark"} --${name}`).toBe(value);
+    }
   });
 
   it("defines --chart-degraded as the status-warning color of each theme", () => {
@@ -184,6 +219,20 @@ describe("electric identity contrast (acceptance criteria)", () => {
     expect(contrast(white, start)).toBeLessThan(3);
     // The checkbox / stepper check glyph sits on the middle stop: 3:1 non-text rule.
     expect(contrast(white, middle)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("--hero-gradient: large text anywhere, small text only from its darker half", () => {
+    // The design reference's rule for the hero tile. WCAG: large text
+    // (>= 24px, or >= 18.66px bold) needs 3:1, small text 4.5:1.
+    const [start, middle, end] = gradientStops(light["hero-gradient"]);
+    for (const stop of [start, middle, end]) {
+      expect(contrast(white, stop)).toBeGreaterThanOrEqual(3);
+    }
+    // Positive control: the light start is NOT safe for small text, which is
+    // why small labels must sit over the darker half.
+    expect(contrast(white, start)).toBeLessThan(4.5);
+    expect(contrast(white, middle)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(white, end)).toBeGreaterThanOrEqual(4.5);
   });
 
   it.each([
