@@ -331,3 +331,54 @@ func TestPassiveChecksAreNeverAutoPlaced(t *testing.T) {
 	r.Empty(resp.Regions)
 	r.Nil(resp.RegionCount)
 }
+
+// TestSwitchToAutoPlacementBulk: the checks list's bulk action converts every
+// eligible pinned check the way the migration does (same regions, count =
+// region count, empty pool), skips what cannot be auto, and dry-runs.
+func TestSwitchToAutoPlacementBulk(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+
+	pinned := w.create(t, checks.CreateCheckRequest{Regions: []string{"paris", "lauterbourg"}})
+	private := w.create(t, checks.CreateCheckRequest{Regions: []string{"@office"}})
+	auto := w.create(t, checks.CreateCheckRequest{})
+	heartbeat := w.create(t, checks.CreateCheckRequest{Type: "heartbeat", Config: map[string]any{}})
+
+	dry, err := w.svc.SwitchToAutoPlacement(ctx, w.org.Slug, &checks.AutoPlacementRequest{DryRun: true})
+	r.NoError(err)
+	r.True(dry.DryRun)
+	r.Len(dry.Data, 1, "only the cloud-pinned check is eligible")
+	r.Equal(pinned.UID, dry.Data[0].UID)
+	r.Empty(dry.Skipped, "skips are only reported for named checks")
+
+	stillPinned, err := w.svc.GetCheck(ctx, w.org.Slug, pinned.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Equal(models.PlacementPinned, stillPinned.Placement, "a dry run writes nothing")
+
+	named, err := w.svc.SwitchToAutoPlacement(ctx, w.org.Slug, &checks.AutoPlacementRequest{
+		CheckUIDs: []string{pinned.UID, private.UID, auto.UID, heartbeat.UID, "00000000-0000-0000-0000-000000000000"},
+	})
+	r.NoError(err)
+	r.Len(named.Data, 1)
+
+	reasons := map[string]string{}
+	for _, skip := range named.Skipped {
+		reasons[skip.UID] = skip.Reason
+	}
+
+	r.Equal(checks.AutoPlacementSkipPrivate, reasons[private.UID])
+	r.Equal(checks.AutoPlacementSkipAlready, reasons[auto.UID])
+	r.Equal(checks.AutoPlacementSkipPassive, reasons[heartbeat.UID])
+	r.Equal(checks.AutoPlacementSkipNotFound, reasons["00000000-0000-0000-0000-000000000000"])
+
+	switched, err := w.svc.GetCheck(ctx, w.org.Slug, pinned.UID, checks.GetCheckOptions{})
+	r.NoError(err)
+	r.Equal(models.PlacementAuto, switched.Placement)
+	r.Equal([]string{"paris", "lauterbourg"}, switched.Regions, "regions untouched")
+	r.Equal(2, *switched.RegionCount, "same cost")
+	r.Nil(switched.RegionPool)
+	r.ElementsMatch([]string{"paris", "lauterbourg"}, w.jobRegions(t, pinned.UID), "jobs untouched")
+}

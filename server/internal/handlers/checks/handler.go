@@ -634,6 +634,31 @@ func (h *Handler) CloneCheck(writer http.ResponseWriter, req *http.Request) erro
 	return h.WriteJSON(writer, http.StatusCreated, check)
 }
 
+// SwitchToAutoPlacement handles POST /api/v1/orgs/:org/checks/auto-placement,
+// the checks list's bulk "Switch to automatic placement" (spec 2026-09-25-06).
+func (h *Handler) SwitchToAutoPlacement(writer http.ResponseWriter, req *http.Request) error {
+	orgSlug := httpx.Param(req, "org")
+
+	var body AutoPlacementRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	resp, err := h.svc.SwitchToAutoPlacement(req.Context(), orgSlug, &body)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationNotFound) {
+			return h.WriteErrorErr(
+				writer, req, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		}
+
+		return h.WriteInternalError(writer, req, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // ExportChecks handles exporting all checks for an organization as JSON.
 func (h *Handler) ExportChecks(writer http.ResponseWriter, req *http.Request) error {
 	orgSlug := httpx.Param(req, "org")

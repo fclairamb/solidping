@@ -1078,6 +1078,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// segment is never captured as a check UID.
 	orgChecks.GET("/stats", checksHandler.GetCheckStats)
 	orgChecks.POST("", checksHandler.CreateCheck)
+	// Bulk "Switch to automatic placement" (spec 2026-09-25-06). A literal
+	// segment, registered ahead of the "/:checkUid" routes.
+	orgChecks.POST("/auto-placement", checksHandler.SwitchToAutoPlacement)
 
 	// Config-as-code surface (export/import/apply) is admin-only: import and
 	// apply mutate the whole check set, and apply can delete-by-absence.
