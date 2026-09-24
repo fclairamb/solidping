@@ -12,9 +12,9 @@ SolidPing ships a command-line client, `sp`, for managing your monitoring from t
 Every release publishes a prebuilt `sp` for macOS, Linux and Windows, on both Intel and ARM, under version-free names (the same stable URLs the server uses), plus a checksum file:
 
 ```bash
-# Pick your platform: darwin_amd64, darwin_arm64, linux_amd64, linux_arm64, windows_amd64
+# Pick your platform: darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64
 curl -sSL -o sp \
-  "https://github.com/fclairamb/solidping/releases/latest/download/sp_linux_amd64"
+  "https://github.com/fclairamb/solidping/releases/latest/download/sp-linux-amd64"
 chmod +x sp
 sudo mv sp /usr/local/bin/
 sp --version
@@ -25,16 +25,16 @@ Or pin a specific version by pointing the same file name at that release's tag:
 ```bash
 VERSION=0.31.0
 curl -sSL -o sp \
-  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp_linux_amd64"
+  "https://github.com/fclairamb/solidping/releases/download/v${VERSION}/sp-linux-amd64"
 ```
 
-On Windows, download `sp_windows_amd64.exe` and rename it to `sp.exe`:
+On Windows, download `sp-windows-amd64.exe` and rename it to `sp.exe`:
 
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/sp_windows_amd64.exe" -OutFile "sp.exe"
+Invoke-WebRequest -Uri "https://github.com/fclairamb/solidping/releases/latest/download/sp-windows-amd64.exe" -OutFile "sp.exe"
 ```
 
-Every binary also has a gzip twin — same name with `.gz` appended (for example `sp_linux_amd64.gz`), so the same `latest/download/` URLs work. The bare files are ~32 MB and the `.gz` twins ~12 MB. Decompress with `gunzip sp_linux_amd64.gz && chmod +x sp_linux_amd64`.
+Every binary also has a gzip twin — same name with `.gz` appended (for example `sp-linux-amd64.gz`), so the same `latest/download/` URLs work. The bare files are ~32 MB and the `.gz` twins ~12 MB. Decompress with `gunzip sp-linux-amd64.gz && chmod +x sp-linux-amd64`.
 
 In CI, or anywhere you would rather not manage a binary, use the image:
 

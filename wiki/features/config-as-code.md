@@ -106,7 +106,7 @@ Every tag publishes bare binaries with version-free names (`sp-darwin-amd64`,
 - name: Validate the SolidPing manifest
   run: |
     curl -sSL -o sp \
-      https://github.com/fclairamb/solidping/releases/latest/download/sp_linux_amd64
+      https://github.com/fclairamb/solidping/releases/latest/download/sp-linux-amd64
     chmod +x sp
     ./sp checks validate solidping/config.yaml
 ```
