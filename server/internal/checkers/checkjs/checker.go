@@ -495,6 +495,36 @@ func (r *jsRuntime) registerSolidping() {
 	_ = r.vm.Set("solidping", solidping)
 }
 
+// errSubCheckRDPLogon is the refusal an authenticated rdp sub-check gets.
+const errSubCheckRDPLogon = "an authenticated RDP logon cannot run as a sub-check: its 15-minute " +
+	"minimum period is enforced on the script's own check, which cannot see inside " +
+	"sub-check arguments. Use rdp.connect(), which carries that floor"
+
+// subCheckFloorRefusal refuses a sub-check whose CONFIG raises its own period
+// floor (checkerdef.MinPeriodHint) — today, an rdp check with credentials.
+//
+// The floor is enforced at validation time on the outer `js` check, by a
+// heuristic over its script text (rdp.connect). A sub-check's config is only
+// built at run time, from arguments the validator never sees, so running it
+// would let solidping.rdp({username, password}) — or solidping.check("rdp",
+// …) — perform a real Windows logon at the js check's 30 s period. Refusing
+// it at run time is the only way the floor holds whatever the call looks like.
+// A pre-auth rdp sub-check (no credentials) has no hint and still runs.
+func subCheckFloorRefusal(cfg checkerdef.Config) string {
+	hinter, ok := cfg.(checkerdef.MinPeriodHint)
+	if !ok || hinter.MinPeriodHint() == 0 {
+		return ""
+	}
+
+	if sourcer, hasSource := cfg.(checkerdef.MinPeriodHintSource); hasSource &&
+		sourcer.MinPeriodHintSource() == checkerdef.MinPeriodSourceRDP {
+		return errSubCheckRDPLogon
+	}
+
+	return fmt.Sprintf("this sub-check's config requires a minimum period of %s, "+
+		"which cannot be enforced on a sub-check", hinter.MinPeriodHint())
+}
+
 // check executes a sub-checker via the resolver.
 func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]any {
 	// Block recursive JS and heartbeat checks
@@ -585,6 +615,13 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 		return map[string]any{
 			jsKeyStatus: logLevelError,
 			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "invalid config: " + err.Error()},
+		}
+	}
+
+	if refusal := subCheckFloorRefusal(cfg); refusal != "" {
+		return map[string]any{
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: refusal},
 		}
 	}
 
