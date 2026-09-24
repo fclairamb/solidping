@@ -1676,6 +1676,10 @@ func (s *Service) queueLifecycleNotifications(
 		}
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
+		// An automatic re-placement (spec 2026-09-25-06) is the platform
+		// routing around its own outage: recorded on the check's timeline,
+		// never paged.
+		models.EventTypeCheckPlacementChanged,
 		// Ack and unack DO notify — they simply do not travel through here,
 		// exactly like incident.comment. Their transitions call
 		// queueAckNotifications / queueUnackNotifications directly, because the

@@ -86,6 +86,7 @@ func (e *testEnv) deps() *regionsweep.Deps {
 	return &regionsweep.Deps{
 		DB:       e.db,
 		Health:   e.checks,
+		Placer:   e.checks,
 		Jobs:     e.jobs,
 		Operator: opsnotifywire.Build(e.db, &services.Registry{Jobs: e.jobs}, nil),
 		BaseURL:  "https://solidping.acme.com",
@@ -163,6 +164,59 @@ func (e *testEnv) checkScheduled(
 	}
 
 	return check
+}
+
+// autoCheck creates an enabled, AUTOMATICALLY placed check currently placed
+// on regionSlugs, with its jobs materialized the way the write path does.
+func (e *testEnv) autoCheck(t *testing.T, org *models.Organization, name string, regionSlugs ...string) *models.Check {
+	t.Helper()
+
+	check := models.NewCheck(org.UID, strings.ToLower(strings.ReplaceAll(name, " ", "-")), "http")
+	check.Name = &name
+	check.Config = models.JSONMap{"url": "https://acme.com"}
+	check.Placement = models.PlacementAuto
+	count := len(regionSlugs)
+	check.RegionCount = &count
+	check.Regions = regionSlugs
+	require.NoError(t, e.db.CreateCheck(t.Context(), check))
+
+	return check
+}
+
+// reload re-reads a check.
+func (e *testEnv) reload(t *testing.T, check *models.Check) *models.Check {
+	t.Helper()
+
+	fresh, err := e.db.GetCheck(t.Context(), check.OrganizationUID, check.UID)
+	require.NoError(t, err)
+
+	return fresh
+}
+
+// jobRegions lists a check's job regions and their next run.
+func (e *testEnv) jobRegions(t *testing.T, check *models.Check) map[string]time.Time {
+	t.Helper()
+
+	jobs, err := e.db.ListCheckJobsByCheckUID(t.Context(), check.UID)
+	require.NoError(t, err)
+
+	out := make(map[string]time.Time, len(jobs))
+
+	for _, job := range jobs {
+		region := ""
+		if job.Region != nil {
+			region = *job.Region
+		}
+
+		var at time.Time
+		if job.ScheduledAt != nil {
+			at = *job.ScheduledAt
+		}
+
+		out[region] = at
+	}
+
+	return out
 }
 
 // admin adds an admin member with an email address to an org.

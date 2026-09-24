@@ -2,8 +2,10 @@ package regionsweep
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/regionoutage"
 )
@@ -20,6 +22,9 @@ type sweepRun struct {
 	// classifier is built lazily: most sweeps have no dark region and never
 	// need to load a single check.
 	classifier *classifier
+	// moved is every check re-placed this sweep: it is no longer blind, so
+	// the org notices leave it out.
+	moved map[string]bool
 }
 
 // apply performs every transition's side effects and persists the markers.
@@ -68,12 +73,19 @@ func (r *sweepRun) goDark(ctx context.Context, state *regionState) (*Transition,
 	marker.Phase = regionoutage.PhaseDark
 	marker.Since = r.darkSince(state)
 
+	// Re-place the automatic checks BEFORE telling anybody: a check moved to
+	// a healthy region is not blind, and its org must not be told it is.
+	replaced, err := r.replaceAutoChecks(ctx, state)
+	if err != nil {
+		return nil, err
+	}
+
 	notices, err := r.orgOfflineNotices(ctx, state, marker)
 	if err != nil {
 		return nil, err
 	}
 
-	operatorNotified := r.notifyOperatorDark(ctx, state, marker, notices)
+	operatorNotified := r.notifyOperatorDark(ctx, state, marker, notices, len(replaced))
 
 	marker.NotifiedOrgs = append(marker.NotifiedOrgs, orgUIDsOf(notices)...)
 
@@ -83,11 +95,12 @@ func (r *sweepRun) goDark(ctx context.Context, state *regionState) (*Transition,
 
 	r.deps.Logger.WarnContext(ctx, "Region went dark: jobs assigned and no live worker",
 		"region", state.slug, "since", marker.Since, "orgsNotified", len(notices),
-		"operatorNotified", operatorNotified)
+		"operatorNotified", operatorNotified, "checksReplaced", len(replaced))
 
 	return &Transition{
 		Region: state.slug, Kind: TransitionDark,
 		OrgsNotified: orgUIDsOf(notices), OperatorNotified: operatorNotified,
+		Replaced: replaced,
 	}, nil
 }
 
@@ -117,6 +130,19 @@ func (r *sweepRun) stayUnhealthy(ctx context.Context, state *regionState) error 
 	marker := r.nextMarker(state)
 
 	if marker.Phase == regionoutage.PhaseDark && state.seen == observedDark {
+		// Still dark: an automatic check that could not move last time (no
+		// healthy candidate then), or that was placed here since, gets another
+		// chance every sweep.
+		replaced, err := r.replaceAutoChecks(ctx, state)
+		if err != nil {
+			return err
+		}
+
+		if len(replaced) > 0 {
+			r.deps.Logger.InfoContext(ctx, "Region still dark: moved automatically placed checks off it",
+				"region", state.slug, "checksReplaced", len(replaced))
+		}
+
 		notices, err := r.orgOfflineNotices(ctx, state, marker)
 		if err != nil {
 			return err
@@ -185,4 +211,61 @@ func (r *sweepRun) stalledSince(state *regionState) time.Time {
 	}
 
 	return r.now
+}
+
+// replaceAutoChecks moves the automatically placed checks with a job in a
+// dark region to a healthy one (spec 2026-09-25-06 A2), and remembers them so
+// the org notices of this sweep leave them out. The candidate checks come from
+// this sweep's own job snapshot — the rows that decided the region is dark.
+func (r *sweepRun) replaceAutoChecks(ctx context.Context, state *regionState) ([]checks.PlacementChange, error) {
+	if r.deps.Placer == nil {
+		return nil, nil
+	}
+
+	uids := make([]string, 0)
+
+	for i := range r.jobs {
+		if r.jobs[i].Region == state.slug {
+			uids = append(uids, r.jobs[i].CheckUID)
+		}
+	}
+
+	if len(uids) == 0 {
+		return nil, nil
+	}
+
+	replaced, err := r.deps.Placer.ReplaceAutoChecks(ctx, checks.ReplacementRequest{
+		Region:    state.slug,
+		CheckUIDs: uids,
+		Healthy:   r.healthyRegions(),
+		Reason:    models.PlacementReasonRegionOffline,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("re-place automatic checks off %s: %w", state.slug, err)
+	}
+
+	if r.moved == nil {
+		r.moved = make(map[string]bool, len(replaced))
+	}
+
+	for i := range replaced {
+		r.moved[replaced[i].CheckUID] = true
+	}
+
+	return replaced, nil
+}
+
+// healthyRegions is every cloud region that can take a check right now, as
+// this sweep sees it: at least one live worker, and healthy after this sweep
+// (no dark or stalled phase, recovering ones included).
+func (r *sweepRun) healthyRegions() map[string]bool {
+	out := make(map[string]bool, len(r.states))
+
+	for _, state := range r.states {
+		if state.next == "" && state.row != nil && state.row.LiveWorkers > 0 {
+			out[state.slug] = true
+		}
+	}
+
+	return out
 }

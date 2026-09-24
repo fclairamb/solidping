@@ -240,7 +240,9 @@ func (r *sweepRun) impacts(ctx context.Context, region string) ([]orgImpact, err
 
 	for i := range rows {
 		check := rows[i]
-		if check.Internal || !check.Enabled {
+		if check.Internal || !check.Enabled || r.moved[check.UID] {
+			// A check re-placed this sweep (spec 2026-09-25-06) runs from a
+			// healthy region now: neither blind nor reduced.
 			continue
 		}
 

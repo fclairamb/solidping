@@ -60,12 +60,21 @@ type Reporter interface {
 	RegionHealthWithJobs(ctx context.Context) (*checks.RegionHealthReport, []checks.RegionJob, error)
 }
 
+// Placer moves automatically placed checks off a dark region (spec
+// 2026-09-25-06 A2). Production passes the same *checks.Service as Health.
+type Placer interface {
+	ReplaceAutoChecks(ctx context.Context, req checks.ReplacementRequest) ([]checks.PlacementChange, error)
+}
+
 // Deps is everything one sweep needs.
 type Deps struct {
 	// DB reads and writes markers, checks, orgs, members and events.
 	DB db.Service
 	// Health computes the region report. Required.
 	Health Reporter
+	// Placer re-places the auto checks of a dark region. Nil disables
+	// re-placement (every check then behaves as pinned).
+	Placer Placer
 	// Jobs queues the org emails. Nil skips them (the events are still
 	// written).
 	Jobs jobsvc.Service
@@ -101,6 +110,9 @@ type Transition struct {
 	// OperatorNotified reports whether the platform_watchdog recipients were
 	// sent a notice for it this sweep.
 	OperatorNotified bool
+	// Replaced are the automatically placed checks moved off the region this
+	// sweep (spec 2026-09-25-06).
+	Replaced []checks.PlacementChange
 }
 
 // Result is the outcome of one sweep.

@@ -17,6 +17,10 @@ const (
 	EventTypeCheckUpdated EventType = "check.updated"
 	// EventTypeCheckDeleted indicates a check was deleted.
 	EventTypeCheckDeleted EventType = "check.deleted"
+	// EventTypeCheckPlacementChanged records an automatically placed check
+	// being moved off a region that went dark (spec 2026-09-25-06). Payload:
+	// `from` and `to` region slugs and the `reason` (PlacementReason*).
+	EventTypeCheckPlacementChanged EventType = "check.placement_changed"
 
 	// EventTypeIncidentCreated indicates an incident was created.
 	EventTypeIncidentCreated EventType = "incident.created"
@@ -252,6 +256,19 @@ const (
 	// socket closes: before it, a disconnect left no trace at all and
 	// last_seen_at simply stopped moving.
 	EventTypeAgentDisconnected EventType = "agent.disconnected"
+)
+
+// check.placement_changed payload keys and reasons (spec 2026-09-25-06).
+const (
+	// PlacementEventPayloadFrom is the region the check was moved off.
+	PlacementEventPayloadFrom = "from"
+	// PlacementEventPayloadTo is the region the check was moved to.
+	PlacementEventPayloadTo = "to"
+	// PlacementEventPayloadReason is why it moved.
+	PlacementEventPayloadReason = "reason"
+
+	// PlacementReasonRegionOffline: the region went dark (no live worker).
+	PlacementReasonRegionOffline = "region_offline"
 )
 
 // Agent connection event payload keys and disconnect reasons (spec

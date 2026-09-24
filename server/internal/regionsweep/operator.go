@@ -19,7 +19,7 @@ const subjectPrefix = "[SolidPing watchdog] "
 // unless the hourly watchdog already did, which the shared anomaly marker
 // tells (spec 2026-09-25-03 §2).
 func (r *sweepRun) notifyOperatorDark(
-	ctx context.Context, state *regionState, marker *regionoutage.Marker, notices []orgNotice,
+	ctx context.Context, state *regionState, marker *regionoutage.Marker, notices []orgNotice, replaced int,
 ) bool {
 	blind := 0
 	for i := range notices {
@@ -38,6 +38,7 @@ func (r *sweepRun) notifyOperatorDark(
 		headline + ".",
 		fmt.Sprintf("%d check(s) in %d organization(s) run only from this region and are not running; "+
 			"each of those organizations was notified by email.", blind, len(notices)),
+		fmt.Sprintf("%d automatically placed check(s) were moved to another region.", replaced),
 		fmt.Sprintf("Remediation: bring a worker for %q back, or "+
 			"POST /api/v1/system/regions/migrate {\"from\":%q,\"to\":\"<live-region>\"}.", state.slug, state.slug),
 	}, "\n\n")

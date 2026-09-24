@@ -60,8 +60,11 @@ func (r *RegionHealthSweepJobRun) Run(ctx context.Context, jctx *jobdef.JobConte
 			}
 
 			deps := &regionsweep.Deps{
-				DB:       jctx.DBService,
-				Health:   reporter,
+				DB:     jctx.DBService,
+				Health: reporter,
+				// The same service moves automatically placed checks off a
+				// dark region (spec 2026-09-25-06).
+				Placer:   reporter,
 				Operator: operatorNoticeDeps(jctx),
 				Logger:   jctx.Logger,
 			}
