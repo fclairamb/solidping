@@ -152,7 +152,10 @@ function StripCell({
               })}
             </p>
           )}
-          {coveragePct !== null && coveragePct < LOW_BUCKET_COVERAGE * 100 && (
+          {/* Only for a cell WITH data: a no-data cell's headline already
+              says nothing was measured, and a "0%" there would be exactly the
+              fabricated figure a no-data cell must never carry. */}
+          {cell.hasData && coveragePct !== null && coveragePct < LOW_BUCKET_COVERAGE * 100 && (
             <p
               className="text-amber-600 dark:text-amber-400 tabular-nums"
               data-testid="availability-strip-coverage"
