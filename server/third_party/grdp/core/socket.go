@@ -105,8 +105,7 @@ func (s *SocketLayer) StartTLS() error {
 	// target. The same tradeoff is already open, unaddressed, on the pre-auth
 	// handshake in checkrdp.inspectCertificate (github alert #54).
 	config := &tls.Config{
-		// codeql[go/disabled-certificate-check]
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, // codeql[go/disabled-certificate-check]
 		ServerName:         s.serverName,
 		MinVersion:         tls.VersionTLS12,
 		MaxVersion:         tls.VersionTLS12,
