@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 import { expandSection } from "./section-helpers";
 
 // Coverage for spec 2026-07-16-04: a tunnel-capable check can be pointed at an
@@ -247,6 +248,7 @@ test.describe("SSH tunnel UX gaps", () => {
     await page.waitForLoadState("networkidle");
 
     // Put the check in the private region the bastion doesn't cover.
+    await choosePinnedRegions(page);
     await page.getByTestId(`region-option-@${regionSlug}`).click();
 
     await expandSection(page, "section-advanced-trigger");

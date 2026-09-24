@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 
 // Coverage for spec 2026-08-26-01: regions advertise a three-state browser
 // capability (spec 2026-08-19-03), and the region picker in check-form.tsx
@@ -35,6 +36,7 @@ test.describe("region picker browser capability", () => {
     await page.goto("orgs/test/checks/new?checkType=browser");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
 
     // A capable region is marked; a region that reports "no" is marked as
     // such; a region that reports nothing is NOT marked "no" — that
@@ -75,6 +77,7 @@ test.describe("region picker browser capability", () => {
     await page.goto("orgs/test/checks/new?checkType=tcp");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
 
     // A definite "no" still renders even for a check type that doesn't care
     // about browser capability — "no" always renders, per the model this

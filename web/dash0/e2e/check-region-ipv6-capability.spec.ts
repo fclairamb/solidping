@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 import { expandSection } from "./section-helpers";
 
 // Coverage for spec 2026-08-15-11: regions advertise a three-state IPv6 egress
@@ -45,6 +46,7 @@ test.describe("region picker IPv6 capability", () => {
     await page.goto("orgs/test/checks/new?checkType=tcp");
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
 
     // Every region is offered, in the server's order, before anything is pinned.
     expect(await regionOrder(page)).toEqual(["no-v6", "silent", "has-v6"]);

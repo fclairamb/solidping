@@ -1,4 +1,5 @@
 import { test, expect, API_BASE, type Page } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 
 // E2E for the Private locations page (spec 2026-07-16-02): create a private
 // region, mint an enrollment token (shown once), see it in the check-form
@@ -296,6 +297,7 @@ test.describe("Private locations", () => {
 
     // Pick a check type so the form (and its region picker) renders.
     await page.getByText("HTTP", { exact: false }).first().click();
+    await choosePinnedRegions(page);
 
     // The private region is offered under its org-relative slug with the
     // Private badge.

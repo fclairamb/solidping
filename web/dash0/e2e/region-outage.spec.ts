@@ -7,6 +7,7 @@ import {
   test,
   type Page,
 } from "./fixtures";
+import { choosePinnedRegions } from "./placement-helpers";
 
 // Region outage banners, spec 2026-09-25-03.
 //
@@ -161,6 +162,7 @@ test.describe("region outage", () => {
 
     await page.goto("orgs/test/checks/new?checkType=tcp");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
+    await choosePinnedRegions(page);
 
     await expect(page.getByTestId("region-offline-e2e-down")).toBeVisible();
     await expect(page.getByTestId("check-regions-offline-warning")).toHaveCount(0);
