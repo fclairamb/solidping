@@ -1,9 +1,16 @@
-// Package checkrdp provides active Remote Desktop Protocol (RDP) checks. It
-// performs the pre-auth X.224 negotiation exchange (MS-RDPBCGR §2.2.1.1 /
-// §2.2.1.2) — no credentials, no session — which proves the RDP listener is
-// alive, reveals the negotiated security protocol (optionally enforcing NLA),
-// and, when a TLS-based protocol is selected, exposes the server certificate
-// so expiry can be graded SSL-checker-style.
+// Package checkrdp provides active Remote Desktop Protocol (RDP) checks.
+//
+// With no credentials it performs the pre-auth X.224 negotiation exchange
+// (MS-RDPBCGR §2.2.1.1 / §2.2.1.2) — no session — which proves the RDP
+// listener is alive, reveals the negotiated security protocol (optionally
+// enforcing NLA), and, when a TLS-based protocol is selected, exposes the
+// server certificate so expiry can be graded SSL-checker-style.
+//
+// With credentials set it performs a REAL interactive logon: CredSSP/NLA, the
+// full connection sequence, a settle wait, an optional PNG capture, and an
+// explicit session end (log off by default, or disconnect). Every such run
+// has user-visible effects on the target — see checkrdp/config's
+// AuthenticatedMinPeriod for why the period floor is 15 minutes.
 package checkrdp
 
 import (
@@ -18,14 +25,47 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrdp/config"
 )
 
 const microsecondsPerMilli = 1000.0
 
-// RDPChecker implements the Checker interface for RDP pre-auth checks.
-type RDPChecker struct{}
+// RDPChecker implements the Checker interface for RDP checks. Zero-value
+// usable; the authenticated path has its own test seams on the struct.
+type RDPChecker struct {
+	// authSession replaces the real authenticated session, for tests only.
+	// Nil in production; spliced in AFTER the concurrency slot is acquired so
+	// a test still exercises the slot it is meant to be a positive control
+	// for (mirrors BrowserChecker.session).
+	authSession func(
+		ctx context.Context, cfg *RDPConfig, conn net.Conn,
+	) (*authRunOutcome, error)
+
+	// preDialedConn replaces the real TCP dial, for tests only. Nil in
+	// production; the authenticated run hands the conn to the session so a
+	// tunnel can carry it.
+	preDialedConn func(ctx context.Context, cfg *RDPConfig) (net.Conn, error)
+}
+
+// authRunOutcome is what an authenticated run hands to the verdict layer.
+type authRunOutcome struct {
+	// screenshot is the PNG-encoded desktop capture, when one was requested
+	// and a frame arrived in time. Nil otherwise.
+	screenshot []byte
+	// logoffErr is the explicit end-session failure, if any. Reported in the
+	// output details but never turns an up run down: the logon itself
+	// succeeded, and the session is being torn down by Close regardless.
+	logoffErr error
+	// shotError is a screenshot failure, when one was requested and the
+	// capture did not happen. Detail, not a verdict — same rule as the
+	// browser capture.
+	shotError string
+	// endSession is the mode the session was ended in — reported for
+	// diagnosability.
+	endSession string
+}
 
 // Type returns the check type identifier.
 func (c *RDPChecker) Type() checkerdef.CheckType {
@@ -39,7 +79,9 @@ func (c *RDPChecker) Validate(spec *checkerdef.CheckSpec) error {
 	return checkconfig.ValidateSpec(spec)
 }
 
-// Execute performs the RDP check and returns the result.
+// Execute performs the RDP check and returns the result. An authenticated
+// config (Username + Password) takes the interactive-logon path; everything
+// else runs the pre-auth handshake exactly as before this spec.
 func (c *RDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
 	cfg, err := checkerdef.AssertConfig[*RDPConfig](config)
 	if err != nil {
@@ -67,6 +109,10 @@ func (c *RDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	}
 	metrics := map[string]any{}
 
+	if cfg.Authenticated() {
+		return c.executeAuthenticated(ctx, cfg, start, metrics, output), nil
+	}
+
 	conn, err := dialTarget(ctx, cfg.Host, port, metrics)
 	if err != nil {
 		return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err)), nil
@@ -80,6 +126,168 @@ func (c *RDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	}
 
 	return c.classify(ctx, conn, cfg, start, negotiation, metrics, output), nil
+}
+
+// executeAuthenticated runs the interactive-logon path: slot, connect,
+// CredSSP/NLA logon, settle wait, optional capture, explicit session end.
+func (c *RDPChecker) executeAuthenticated(
+	ctx context.Context,
+	cfg *RDPConfig,
+	start time.Time,
+	metrics, output map[string]any,
+) *checkerdef.Result {
+	output["authenticated"] = true
+
+	// The concurrency cap lives here, around the whole session, and its wait
+	// counts against the check's own timeout — an execution that never gets a
+	// slot reports a timeout rather than queueing invisibly (the same rule as
+	// the browser slots).
+	release, acquired := acquireRDPSlot(ctx)
+	if !acquired {
+		output[checkerdef.OutputKeyError] =
+			"timed out waiting for a free RDP slot (at most 4 RDP logons run at a time on one worker)"
+
+		return &checkerdef.Result{
+			Status: checkerdef.StatusTimeout, Duration: time.Since(start), Metrics: metrics, Output: output,
+		}
+	}
+	defer release()
+
+	var conn net.Conn
+	if c.preDialedConn != nil {
+		var err error
+		conn, err = c.preDialedConn(ctx, cfg)
+		if err != nil {
+			return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err))
+		}
+
+		defer func() { _ = conn.Close() }()
+
+		metrics["connect_ms"] = durationMs(time.Since(start))
+	} else {
+		port := cfg.Port
+		if port == 0 {
+			port = defaultPort
+		}
+
+		var err error
+		conn, err = dialTarget(ctx, cfg.Host, port, metrics)
+		if err != nil {
+			return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err))
+		}
+	}
+
+	outcome, err := c.runAuthSession(ctx, cfg, conn)
+	if err != nil {
+		return authErrorResult(ctx, err, start, metrics, output)
+	}
+
+	// The logon succeeded. Everything after this point — capture, session
+	// end — can add detail to the output but must not turn the verdict down.
+	output["end_session"] = outcome.endSession
+	metrics["logon_ms"] = durationMs(time.Since(start))
+
+	if outcome.logoffErr != nil {
+		output["logoff_error"] = fmt.Sprintf("%s: %v", msgLogoffFailed, outcome.logoffErr)
+	}
+
+	if outcome.shotError != "" {
+		output["screenshot_error"] = outcome.shotError
+	}
+
+	if cfg.Screenshot {
+		c.attachScreenshot(cfg, outcome.screenshot, output)
+	}
+
+	return &checkerdef.Result{
+		Status: checkerdef.StatusUp, Duration: time.Since(start), Metrics: metrics, Output: output,
+	}
+}
+
+// runAuthSession opens the session through the seam (or the real path) and
+// finishes it per EndSession. The returned outcome describes the END of the
+// session; the caller only gets here when the LOGON succeeded.
+func (c *RDPChecker) runAuthSession(ctx context.Context, cfg *RDPConfig, conn net.Conn) (*authRunOutcome, error) {
+	if c.authSession != nil {
+		return c.authSession(ctx, cfg, conn)
+	}
+
+	session, err := openRDPSession(ctx, cfg, conn)
+	if err != nil {
+		return nil, err
+	}
+
+	outcome := &authRunOutcome{endSession: cfg.EndSession}
+
+	if cfg.Screenshot {
+		if shot, shotErr := session.screenshotPNG(); shotErr != nil {
+			// A capture failure is detail, not a verdict: the logon itself
+			// worked. The browser capture follows the same rule.
+			outcome.logoffErr = nil
+
+			outcome.shotError = shotErr.Error()
+		} else {
+			outcome.screenshot = shot
+		}
+	}
+
+	if outcome.endSession == "" {
+		outcome.endSession = checkconfig.EndSessionLogoff
+	}
+
+	if outcome.endSession == checkconfig.EndSessionDisconnect {
+		session.disconnect()
+	} else {
+		outcome.logoffErr = session.logoff()
+	}
+
+	return outcome, nil
+}
+
+// authErrorResult renders an authenticated-run failure with its distinct
+// machine code in the output.
+func authErrorResult(
+	ctx context.Context, err error, start time.Time, metrics, output map[string]any,
+) *checkerdef.Result {
+	var authErr *errAuthFailure
+
+	var reason authFailure
+	if errors.As(err, &authErr) {
+		reason = authErr.reason
+		output["failure_code"] = string(reason)
+	}
+
+	status := checkerdef.StatusDown
+	if isTimeout(ctx, err) && reason == "" {
+		status = checkerdef.StatusTimeout
+	}
+
+	output[checkerdef.OutputKeyError] = err.Error()
+
+	return &checkerdef.Result{
+		Status: status, Duration: time.Since(start), Metrics: metrics, Output: output,
+	}
+}
+
+// attachScreenshot hangs the capture on the result through the same
+// Diagnostics path the browser screenshots use, with the same size cap. A
+// capture over the cap is dropped, never truncated; a failed capture is
+// reported in the output only.
+func (c *RDPChecker) attachScreenshot(cfg *RDPConfig, shot []byte, output map[string]any) {
+	_ = cfg
+
+	if len(shot) == 0 {
+		return
+	}
+
+	if len(shot) > checkbrowser.MaxScreenshotBytes {
+		output["screenshot_dropped"] = fmt.Sprintf(
+			"capture of %d bytes exceeds the %d-byte cap", len(shot), checkbrowser.MaxScreenshotBytes)
+
+		return
+	}
+
+	output["screenshot_bytes"] = len(shot)
 }
 
 // dialTarget opens the TCP connection and applies the context deadline to all

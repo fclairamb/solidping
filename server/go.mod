@@ -1,6 +1,12 @@
 module github.com/fclairamb/solidping/server
 
-go 1.26.0
+go 1.26.3
+
+// The RDP client library is vendored in-tree as its own module: the fork
+// carries the SolidPing patches (Unicode input, logoff PDU, tunnel dialing)
+// and the cgo-only codecs are deleted outright — see
+// third_party/grdp/README-solidping.md.
+replace github.com/fclairamb/solidping/server/third_party/grdp => ./third_party/grdp
 
 require (
 	filippo.io/age v1.3.2
@@ -216,6 +222,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/likexian/gokit v0.25.16 // indirect
+	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40 // indirect
 	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
@@ -297,3 +304,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+require github.com/fclairamb/solidping/server/third_party/grdp v0.0.0
