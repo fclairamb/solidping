@@ -165,7 +165,10 @@
      stops are dark enough for white labels (>= 4.4:1 at every stop).
      --accent-gradient is brighter and DECORATIVE only (switch, checkbox,
      progress, stepper, header tile): white text on its cyan start is ~2.5:1,
-     so never put a label on it. */
+     so never put a label on it.
+     --hero-gradient (the hero KPI tile): white is ~3.4:1 on its cyan start,
+     enough for LARGE text only (>= 24px, or >= 18.66px bold); small labels
+     go over its darker half, which is >= 4.5:1 from ~30% of the way on. */
   --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
   --accent-gradient: linear-gradient(135deg, oklch(0.7 0.15 225) 0%, oklch(0.57 0.22 258) 50%, oklch(0.5 0.23 275) 100%);
   --hero-gradient: linear-gradient(135deg, oklch(0.62 0.17 232), oklch(0.5 0.23 265) 60%, oklch(0.38 0.19 280));
@@ -210,7 +213,7 @@
   --popover-foreground: oklch(0.96 0.01 255);
 
   --secondary: oklch(0.225 0.03 262);
-  --secondary-foreground: oklch(0.96 0.01 255);
+  --secondary-foreground: oklch(0.95 0.01 250);
 
   --muted: oklch(0.225 0.03 262);
   --muted-foreground: oklch(0.7 0.03 255);

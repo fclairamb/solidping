@@ -1372,7 +1372,8 @@ const GRADIENT_TOKENS: {
     name: "hero-gradient",
     varName: "--hero-gradient",
     utility: "bg-hero-gradient",
-    description: "The one hero KPI tile per page. Deepest end stop.",
+    description:
+      "The one hero KPI tile per page. White is only ≈3.4:1 on its light cyan start: large text (≥ 24px, or ≥ 18.66px bold) may sit anywhere on it, small labels only over its darker half (≥ 5.5:1 from the middle on).",
   },
 ];
 
@@ -1450,18 +1451,24 @@ function ButtonsBadgesSection() {
             ). One gradient per group: next to the primary action, everything
             else is outline, ghost or destructive.
           </p>
-          <p>
-            Text only sits on{" "}
+          <p data-testid="gradient-text-rule">
+            Small text sits only on{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
               --primary-gradient
             </code>{" "}
-            (or the hero gradient).{" "}
+            (≥ 4.4:1 white at every stop). On{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">
+              --hero-gradient
+            </code>{" "}
+            white is only about 3.4:1 at the light cyan start, so large text
+            (≥ 24px, or ≥ 18.66px bold) may go anywhere on it and small labels
+            only over its darker half (bottom-right, ≥ 5.5:1).{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
               --accent-gradient
             </code>{" "}
-            is brighter and carries no label. The gradients are identical in
-            light and dark; only the page glow gets stronger in dark. Toggle
-            the theme to check both.
+            is brighter still and carries no label. The gradients are
+            identical in light and dark; only the page glow gets stronger in
+            dark. Toggle the theme to check both.
           </p>
           <p>
             <strong>Gotcha:</strong>{" "}
@@ -1525,9 +1532,18 @@ function ButtonsBadgesSection() {
                 title="bg-accent-gradient (decorative, no text)"
                 className="inline-block h-9 w-24 rounded-lg bg-primary bg-accent-gradient"
               />
-              <span className="inline-flex h-9 items-center rounded-lg bg-primary bg-hero-gradient px-3 text-sm font-medium text-gradient-foreground">
-                bg-hero-gradient
-              </span>
+              {/* Large value on the light (top-left) end, small label only on
+                  the dark (bottom-right) half: white on the cyan start stop is
+                  ≈3.4:1, enough for large text only. */}
+              <div
+                className="flex h-24 w-56 flex-col justify-between rounded-lg bg-primary bg-hero-gradient p-3 text-gradient-foreground"
+                data-testid="hero-gradient-example"
+              >
+                <span className="text-2xl font-bold leading-none">99.98%</span>
+                <span className="self-end text-xs font-medium">
+                  bg-hero-gradient
+                </span>
+              </div>
               <span
                 className="inline-flex h-9 items-center rounded-lg bg-accent-gradient bg-none bg-muted px-3 text-sm"
                 data-testid="gradient-bg-none-example"
@@ -1536,7 +1552,7 @@ function ButtonsBadgesSection() {
               </span>
             </div>
           }
-          importLine={`// The three utilities (index.css) set background-IMAGE only: keep a flat\n// bg-primary underneath so the element still reads blue without the image.\n<span className="bg-primary bg-primary-gradient text-gradient-foreground" /> {/* labels */}\n<span className="bg-primary bg-accent-gradient" /> {/* decorative, no text */}\n<div className="bg-primary bg-hero-gradient text-gradient-foreground" /> {/* hero KPI tile */}\n\n// The bg-none escape hatch: flat muted, gradient gone.\n<span className="bg-accent-gradient bg-none bg-muted" />`}
+          importLine={`// The three utilities (index.css) set background-IMAGE only: keep a flat\n// bg-primary underneath so the element still reads blue without the image.\n<span className="bg-primary bg-primary-gradient text-gradient-foreground" /> {/* labels */}\n<span className="bg-primary bg-accent-gradient" /> {/* decorative, no text */}\n<div className="bg-primary bg-hero-gradient text-gradient-foreground" /> {/* hero KPI tile: large text anywhere, small labels on the dark half only */}\n\n// The bg-none escape hatch: flat muted, gradient gone.\n<span className="bg-accent-gradient bg-none bg-muted" />`}
         />
 
         <h3 className="text-sm font-medium">“On” states (accent gradient)</h3>
