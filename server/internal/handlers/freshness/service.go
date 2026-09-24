@@ -60,7 +60,7 @@ type Service struct {
 // NewService builds the freshness sweeper. rt may be nil (realtime disabled):
 // every Publisher method is nil-receiver safe.
 func NewService(
-	dbService db.Service, incidentSvc *incidents.Service, rt *realtime.Publisher, logger *slog.Logger,
+	dbService db.Service, incidentSvc *incidents.Service, realtimePub *realtime.Publisher, logger *slog.Logger,
 ) *Service {
 	if logger == nil {
 		logger = slog.Default()
@@ -69,7 +69,7 @@ func NewService(
 	return &Service{
 		db:           dbService,
 		incidents:    incidentSvc,
-		rt:           rt,
+		rt:           realtimePub,
 		logger:       logger,
 		gaugeRegions: make(map[string]struct{}),
 	}

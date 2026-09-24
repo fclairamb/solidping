@@ -614,37 +614,9 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	resultStatus := models.ResultStatus(*result.Status)
 
-	// Freshness first, for every REAL result and before anything else —
-	// including the maintenance early return below (spec 2026-09-25-02). The
-	// touch advances checks.last_result_at, and the row it reads back replaces
-	// the in-memory status/streak/clocks: `check` may be a claim-time snapshot
-	// (checkworker/backend.DirectBackend.processIncidents), and the freshness
-	// sweep may have moved the row to stale and cleared both clocks since.
-	wasStale := false
-	if resultStatus.IsRealForFreshness() {
-		s.refreshLiveState(ctx, check, result)
-		wasStale = check.Status == models.CheckStatusStale
-	}
-
-	// Skip incident processing if the check is in an active maintenance window
-	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
-	if mwErr != nil {
-		slog.WarnContext(ctx, "Failed to check maintenance window status",
-			"checkUID", check.UID, "error", mwErr)
-	}
-
-	if inMaintenance {
-		// Leaving stale is the one status write maintenance does not suppress:
-		// otherwise a check that went quiet and came back inside a window
-		// would keep reading "No data" until the window ends.
-		if wasStale {
-			return s.leaveStaleInMaintenance(ctx, check, resultStatus)
-		}
-
-		slog.InfoContext(ctx, "Skipping incident processing: check is in maintenance window",
-			"checkUID", check.UID)
-
-		return nil
+	wasStale, done, err := s.freshnessAndMaintenance(ctx, check, result, resultStatus)
+	if done {
+		return err
 	}
 
 	// Determine if this is a success, failure, or warning.
@@ -724,6 +696,49 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident, holdConfirmation)
 }
 
+// freshnessAndMaintenance is ProcessCheckResult's prelude: freshness first,
+// then the maintenance gate. `done` means the result has been fully handled
+// (in maintenance) and ProcessCheckResult must return `err`.
+//
+// Freshness runs for every REAL result and before anything else — including
+// the maintenance early return (spec 2026-09-25-02). The touch advances
+// checks.last_result_at, and the row it reads back replaces the in-memory
+// status/streak/clocks: `check` may be a claim-time snapshot
+// (checkworker/backend.DirectBackend.processIncidents), and the freshness sweep
+// may have moved the row to stale and cleared both clocks since.
+func (s *Service) freshnessAndMaintenance(
+	ctx context.Context, check *models.Check, result *models.Result, resultStatus models.ResultStatus,
+) (bool, bool, error) {
+	wasStale := false
+	if resultStatus.IsRealForFreshness() {
+		s.refreshLiveState(ctx, check, result)
+		wasStale = check.Status == models.CheckStatusStale
+	}
+
+	// Skip incident processing if the check is in an active maintenance window
+	inMaintenance, mwErr := s.IsCheckInActiveMaintenance(ctx, check.UID)
+	if mwErr != nil {
+		slog.WarnContext(ctx, "Failed to check maintenance window status",
+			"checkUID", check.UID, "error", mwErr)
+	}
+
+	if !inMaintenance {
+		return wasStale, false, nil
+	}
+
+	// Leaving stale is the one status write maintenance does not suppress:
+	// otherwise a check that went quiet and came back inside a window would
+	// keep reading "No data" until the window ends.
+	if wasStale {
+		return wasStale, true, s.leaveStaleInMaintenance(ctx, check, resultStatus)
+	}
+
+	slog.InfoContext(ctx, "Skipping incident processing: check is in maintenance window",
+		"checkUID", check.UID)
+
+	return wasStale, true, nil
+}
+
 // refreshLiveState advances the check's last_result_at to this result and
 // replaces the in-memory status, streak and clocks with the live row's. A
 // failure here is logged and the snapshot is used as before: freshness is
@@ -731,12 +746,12 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 func (s *Service) refreshLiveState(ctx context.Context, check *models.Check, result *models.Result) {
 	now := s.clock.Now()
 
-	at := result.PeriodStart
-	if at.IsZero() || at.After(now) {
-		at = now
+	resultAt := result.PeriodStart
+	if resultAt.IsZero() || resultAt.After(now) {
+		resultAt = now
 	}
 
-	state, err := s.db.TouchCheckLastResult(ctx, check.UID, at)
+	state, err := s.db.TouchCheckLastResult(ctx, check.UID, resultAt)
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to record the check's last result time",
 			"checkUID", check.UID, "error", err)
@@ -744,8 +759,8 @@ func (s *Service) refreshLiveState(ctx context.Context, check *models.Check, res
 		return
 	}
 
-	if check.LastResultAt == nil || check.LastResultAt.Before(at) {
-		check.LastResultAt = &at
+	if check.LastResultAt == nil || check.LastResultAt.Before(resultAt) {
+		check.LastResultAt = &resultAt
 	}
 
 	if state != nil {

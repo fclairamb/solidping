@@ -15,16 +15,16 @@ import (
 // TouchCheckLastResult advances last_result_at and returns the live row
 // (spec 2026-09-25-02). See db.Service for why the touch precedes the read.
 func (s *Service) TouchCheckLastResult(
-	ctx context.Context, checkUID string, at time.Time,
+	ctx context.Context, checkUID string, resultAt time.Time,
 ) (*models.CheckLiveState, error) {
-	at = at.UTC()
+	resultAt = resultAt.UTC()
 
 	if _, err := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
-		Set("last_result_at = ?", at).
+		Set("last_result_at = ?", resultAt).
 		Where("uid = ?", checkUID).
 		Where("deleted_at IS NULL").
-		Where("(last_result_at IS NULL OR last_result_at < ?)", at).
+		Where("(last_result_at IS NULL OR last_result_at < ?)", resultAt).
 		Exec(ctx); err != nil {
 		return nil, fmt.Errorf("touch check last result: %w", err)
 	}

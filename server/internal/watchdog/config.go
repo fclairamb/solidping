@@ -155,6 +155,12 @@ func (c *Config) applyDefaults() {
 		c.FleetCriticalDropPercent = DefaultFleetCriticalDropPercent
 	}
 
+	c.applyStaleDefaults()
+}
+
+// applyStaleDefaults fills the stale-incidents and stale-checks thresholds.
+// Split out of applyDefaults to keep each under the complexity cap.
+func (c *Config) applyStaleDefaults() {
 	if c.StaleIncidentMinMinutes <= 0 {
 		c.StaleIncidentMinMinutes = int(DefaultStaleIncidentMinAge / time.Minute)
 	}

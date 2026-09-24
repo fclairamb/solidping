@@ -247,7 +247,7 @@ func caseStaleChildStaysAttachedAndPages(t *testing.T, s *detachSetup) {
 	parent := s.check(t, "parent-stale", nil)
 	child := s.check(t, "child-stale", nil)
 	s.hardEdge(t, parent, child)
-	s.bindChannel(t, child, "child-channel")
+	s.bindChannel(t, child, "stale-child-channel")
 
 	s.at(0)
 	parent = s.fail(t, parent)

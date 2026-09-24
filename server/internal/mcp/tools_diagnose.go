@@ -170,9 +170,9 @@ func describeFreshness(check *checks.CheckResponse) []string {
 	silent := make([]checks.RegionFreshnessResponse, 0, len(check.RegionFreshness))
 	reporting := 0
 
-	for _, region := range check.RegionFreshness {
-		if region.Stale {
-			silent = append(silent, region)
+	for i := range check.RegionFreshness {
+		if check.RegionFreshness[i].Stale {
+			silent = append(silent, check.RegionFreshness[i])
 		} else {
 			reporting++
 		}
@@ -180,7 +180,8 @@ func describeFreshness(check *checks.CheckResponse) []string {
 
 	out := make([]string, 0, len(silent)+1)
 
-	for _, region := range silent {
+	for i := range silent {
+		region := &silent[i]
 		name := region.Region
 		if name == "" {
 			name = "the default region"
