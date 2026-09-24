@@ -136,19 +136,6 @@ interface ChecksIndexSearch {
   type?: string;
   groupBy?: GroupByMode;
   q?: string;
-  /**
-   * Restricts the list to the checks the degraded dry run has flagged (spec
-   * 2026-09-22-03) — what enabling degraded detection would have caught. In the
-   * URL, not local state, because it is a view somebody shares.
-   *
-   * A BOOLEAN, like graphFull on the check-detail route, not the string "true":
-   * TanStack Router's default stringifier JSON-encodes a string whose text is
-   * itself valid JSON, so a string "true" went into the URL as `%22true%22` and
-   * a hand-typed or shared `?wouldHaveFired=true` came back as the boolean
-   * `true`, which the string comparison then missed — the filter silently did
-   * nothing for exactly the people a shareable URL is for.
-   */
-  wouldHaveFired?: true;
 }
 
 // Status tokens the faceted filter offers, in display order. `degraded` is
@@ -207,13 +194,6 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
       ? (search.groupBy as GroupByMode)
       : undefined,
     q: typeof search.q === "string" && search.q ? search.q : undefined,
-    // Accept both spellings: the default parser hands us a native boolean for
-    // `?wouldHaveFired=true`, and the quoted form is what already-shared links
-    // from the string-typed version carry.
-    wouldHaveFired:
-      search.wouldHaveFired === true || search.wouldHaveFired === "true"
-        ? true
-        : undefined,
   }),
 });
 
@@ -1055,7 +1035,6 @@ function ChecksIndexPage() {
     type: typeParam,
     groupBy: groupByParam,
     q: qParam,
-    wouldHaveFired: wouldHaveFiredParam,
   } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
@@ -1184,7 +1163,6 @@ function ChecksIndexPage() {
     statusValues.length > 0 ||
     typeValues.length > 0 ||
     Boolean(labelsParam) ||
-    Boolean(wouldHaveFiredParam) ||
     internalFilter !== "false";
 
   // Live updates: a `checks` hint (status transition, membership/config
@@ -1238,7 +1216,6 @@ function ChecksIndexPage() {
     // by the list error state) rather than silently vanish from the request.
     status: statusParam,
     type: typeParam,
-    wouldHaveFired: wouldHaveFiredParam ? "true" : undefined,
     limit: 100,
     // Load the stream in the exact order the page renders it, so the top of
     // the page fills first instead of arriving in unrelated created_at order:
@@ -1690,25 +1667,6 @@ function ChecksIndexPage() {
           triggerLabel={typeTriggerLabel}
           testId="type-filter"
         />
-        {/* The degraded dry run's own view (spec 2026-09-22-03): the checks the
-            evaluator WOULD have flagged. A plain toggle rather than a faceted
-            filter — there is exactly one thing to ask. */}
-        <Button
-          variant={wouldHaveFiredParam ? "secondary" : "outline"}
-          aria-pressed={Boolean(wouldHaveFiredParam)}
-          onClick={() =>
-            void navigate({
-              search: (prev) => ({
-                ...prev,
-                wouldHaveFired: prev.wouldHaveFired ? undefined : true,
-              }),
-              replace: true,
-            })
-          }
-          data-testid="would-have-fired-filter"
-        >
-          {t("wouldHaveFiredFilter")}
-        </Button>
         <Button
           variant="outline"
           onClick={handleRefresh}

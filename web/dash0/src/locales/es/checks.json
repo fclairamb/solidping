@@ -338,8 +338,8 @@
     "degraded": {
       "title": "Detección de degradación",
       "help": "Un segundo detector junto al periodo de confirmación: informa de un check que falla de forma intermitente, o que responde mucho más lento de lo habitual, incluso cuando ningún fallo dura lo suficiente para confirmar una caída. Ambas reglas cuentan SONDAS, no segundos.",
-      "enabled": "Abrir incidencias de degradación",
-      "enabledHelp": "Desactivado significa simulación: las reglas se siguen evaluando y la página del check indica cuándo se habrían activado, pero no se abre nada ni se notifica a nadie.",
+      "enabled": "Activar la detección de degradación",
+      "enabledHelp": "Desactivado: la detección de degradación no se evalúa para este check. Desactivarla cierra el incidente de degradación abierto del check, si lo hay.",
       "failures": "Sondas fallidas (M)",
       "failuresHelp": "Se activa cuando este número de las últimas N sondas ha fallado. 0 desactiva la regla de fallos.",
       "failuresWindow": "Ventana de fallos (N sondas)",
@@ -353,7 +353,7 @@
       "slowThresholdOff": "La regla de lentitud está desactivada hasta que fijes un umbral: la latencia no se informa en ningún otro sitio.",
       "slowThresholdSuggestion": "Sugerencia: {{value}} ms, alrededor del doble del p95 observado de este check.",
       "slowThresholdSuggestionApply": "Usar la sugerencia",
-      "summaryOff": "Simulación: no se abre nada",
+      "summaryOff": "Desactivada, no se evalúa",
       "summaryOn": "{{failures}} de {{failuresWindow}} sondas fallidas, {{slow}}",
       "summarySlowArmed": "{{slow}} de {{slowWindow}} sondas por encima de {{threshold}} ms",
       "summarySlowOff": "regla de lentitud desactivada"
@@ -705,14 +705,6 @@
         "down": "Caído",
         "noData": "Sin datos"
       }
-    },
-    "degraded": {
-      "bannerTitle": "Este check se habría marcado como degradado",
-      "bannerDescription": "La detección de degradación está desactivada para este check, así que no se informó nada, pero las reglas se habrían activado el {{when}}.",
-      "bannerWindowLink": "Ver el periodo",
-      "enableAction": "Activar la detección de degradación",
-      "enabled": "Detección de degradación activada para este check",
-      "enableFailed": "No se pudo activar la detección de degradación"
     },
     "placement": {
       "title": "Ubicación",
@@ -1211,7 +1203,6 @@
     "title": "Aún no hay grupos de checks",
     "description": "Un grupo reúne checks relacionados en un contenedor exclusivo: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno con el botón Nuevo grupo de arriba."
   },
-  "wouldHaveFiredFilter": "Se habría activado",
   "regionOutage": {
     "blindTitle": "Región {{regions}} fuera de línea desde las {{time}}: este check no se está ejecutando",
     "reducedTitle": "Región {{regions}} fuera de línea desde las {{time}}: se ejecuta desde {{live}} de {{total}} regiones",

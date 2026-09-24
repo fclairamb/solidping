@@ -338,8 +338,8 @@
     "degraded": {
       "title": "Beeinträchtigungserkennung",
       "help": "Ein zweiter Detektor neben der Bestätigungsperiode: er meldet einen Check, der sporadisch fehlschlägt oder viel langsamer antwortet als gewöhnlich, auch wenn kein einzelner Fehler lange genug dauert, um einen Ausfall zu bestätigen. Beide Regeln zählen PROBES, keine Sekunden.",
-      "enabled": "Beeinträchtigungs-Incidents öffnen",
-      "enabledHelp": "Aus bedeutet Probelauf: die Regeln werden weiter ausgewertet und die Check-Seite zeigt, wann sie ausgelöst hätten, aber es wird nichts geöffnet und niemand benachrichtigt.",
+      "enabled": "Beeinträchtigungserkennung aktivieren",
+      "enabledHelp": "Aus: die Beeinträchtigungserkennung wird für diesen Check nicht ausgewertet. Beim Ausschalten wird ein offener Beeinträchtigungsvorfall dieses Checks geschlossen.",
       "failures": "Fehlgeschlagene Probes (M)",
       "failuresHelp": "Löst aus, wenn so viele der letzten N Probes fehlgeschlagen sind. 0 schaltet die Fehlerregel aus.",
       "failuresWindow": "Fehlerfenster (N Probes)",
@@ -353,7 +353,7 @@
       "slowThresholdOff": "Die Langsam-Regel bleibt aus, solange kein Schwellwert gesetzt ist — Latenz wird nirgends sonst gemeldet.",
       "slowThresholdSuggestion": "Vorschlag: {{value}} ms, etwa das Doppelte des beobachteten p95 dieses Checks.",
       "slowThresholdSuggestionApply": "Vorschlag übernehmen",
-      "summaryOff": "Probelauf — es wird nichts geöffnet",
+      "summaryOff": "Aus, wird nicht ausgewertet",
       "summaryOn": "{{failures}} von {{failuresWindow}} fehlgeschlagenen Probes, {{slow}}",
       "summarySlowArmed": "{{slow}} von {{slowWindow}} Probes über {{threshold}} ms",
       "summarySlowOff": "Langsam-Regel aus"
@@ -705,14 +705,6 @@
         "down": "Ausfall",
         "noData": "Keine Daten"
       }
-    },
-    "degraded": {
-      "bannerTitle": "Dieser Check wäre als beeinträchtigt markiert worden",
-      "bannerDescription": "Die Beeinträchtigungserkennung ist für diesen Check deaktiviert, daher wurde nichts gemeldet — die Regeln hätten aber am {{when}} ausgelöst.",
-      "bannerWindowLink": "Zeitraum ansehen",
-      "enableAction": "Beeinträchtigungserkennung aktivieren",
-      "enabled": "Beeinträchtigungserkennung für diesen Check aktiviert",
-      "enableFailed": "Beeinträchtigungserkennung konnte nicht aktiviert werden"
     },
     "placement": {
       "title": "Platzierung",
@@ -1211,7 +1203,6 @@
     "title": "Noch keine Check-Gruppen",
     "description": "Eine Gruppe fasst zusammengehörige Checks in einem exklusiven Behälter zusammen — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine über die Schaltfläche Neue Gruppe oben an."
   },
-  "wouldHaveFiredFilter": "Hätte ausgelöst",
   "regionOutage": {
     "blindTitle": "Region {{regions}} offline seit {{time}}: dieser Check läuft nicht",
     "reducedTitle": "Region {{regions}} offline seit {{time}}: läuft in {{live}} von {{total}} Regionen",

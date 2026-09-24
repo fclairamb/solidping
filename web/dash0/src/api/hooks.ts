@@ -200,14 +200,11 @@ export interface Check {
   degradedSlowWindow?: number;
   slowThresholdMs?: number;
   /**
-   * Whether degraded detection may OPEN incidents on this check. Every check
-   * that predates the feature is off and runs as a DRY RUN instead, which only
-   * stamps `degradedWouldFireAt` — the banner on the check page and the
-   * `wouldHaveFired` filter on the list are what turn that into adoption.
+   * Whether degraded detection runs on this check. When false it is not
+   * evaluated at all. Checks that predate the feature are off, new checks
+   * are on. Turning it off resolves the check's open degraded incident.
    */
   degradedEnabled?: boolean;
-  /** When the dry run first saw a degraded condition. Absent = never. */
-  degradedWouldFireAt?: string | null;
   createdAt?: string;
   /**
    * The uid of whoever created this check, absent when nobody did — the
@@ -673,7 +670,7 @@ export interface IncidentDetail {
   escalatedAt?: string;
   resolvedAt?: string;
   resolvedBy?: string;
-  resolutionType?: "auto" | "manual" | "expired";
+  resolutionType?: "auto" | "manual" | "expired" | "escalated" | "disabled";
   failureCount?: number;
   relapseCount?: number;
   /**
@@ -735,8 +732,6 @@ function buildChecksUrl(
     checkGroupUid?: string;
     internal?: string;
     status?: string;
-    /** "true" restricts to the checks the degraded dry run has flagged. */
-    wouldHaveFired?: string;
     limit?: number;
     cursor?: string;
     /** Opt-in ordering. "group" = group sortOrder asc, ungrouped last, then
@@ -753,8 +748,6 @@ function buildChecksUrl(
     params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
   if (options?.status) params.set("status", options.status);
-  if (options?.wouldHaveFired)
-    params.set("wouldHaveFired", options.wouldHaveFired);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
   if (options?.sort) params.set("sort", options.sort);
@@ -846,8 +839,6 @@ export function useInfiniteChecks(
     checkGroupUid?: string;
     internal?: string;
     status?: string;
-    /** "true" restricts to the checks the degraded dry run has flagged. */
-    wouldHaveFired?: string;
     limit?: number;
     /** Opt-in ordering; "group" loads in the page's display order. */
     sort?: string;

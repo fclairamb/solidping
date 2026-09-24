@@ -338,8 +338,8 @@
     "degraded": {
       "title": "Détection de dégradation",
       "help": "Un second détecteur à côté de la période de confirmation : il signale un check qui échoue par intermittence, ou qui répond beaucoup plus lentement que d'habitude, même quand aucun échec ne dure assez longtemps pour confirmer une panne. Les deux règles comptent des SONDES, pas des secondes.",
-      "enabled": "Ouvrir des incidents de dégradation",
-      "enabledHelp": "Désactivé = simulation : les règles sont quand même évaluées et la page du check indique quand elles se seraient déclenchées, mais rien n'est ouvert et personne n'est notifié.",
+      "enabled": "Activer la détection de dégradation",
+      "enabledHelp": "Désactivé : la détection de dégradation n'est pas évaluée pour ce check. La désactiver clôt l'incident de dégradation ouvert sur ce check, s'il y en a un.",
       "failures": "Sondes en échec (M)",
       "failuresHelp": "Se déclenche quand ce nombre des N dernières sondes a échoué. 0 désactive la règle d'échec.",
       "failuresWindow": "Fenêtre d'échec (N sondes)",
@@ -353,7 +353,7 @@
       "slowThresholdOff": "La règle de lenteur reste désactivée tant qu'aucun seuil n'est défini — la latence n'est signalée nulle part ailleurs.",
       "slowThresholdSuggestion": "Suggestion : {{value}} ms, environ deux fois le p95 observé de ce check.",
       "slowThresholdSuggestionApply": "Utiliser la suggestion",
-      "summaryOff": "Simulation — rien n'est ouvert",
+      "summaryOff": "Désactivée, non évaluée",
       "summaryOn": "{{failures}} sondes en échec sur {{failuresWindow}}, {{slow}}",
       "summarySlowArmed": "{{slow}} sondes sur {{slowWindow}} au-delà de {{threshold}} ms",
       "summarySlowOff": "règle de lenteur désactivée"
@@ -749,14 +749,6 @@
         "down": "Hors service",
         "noData": "Aucune donnée"
       }
-    },
-    "degraded": {
-      "bannerTitle": "Ce check aurait été signalé comme dégradé",
-      "bannerDescription": "La détection de dégradation est désactivée pour ce check, donc rien n'a été signalé — mais les règles se seraient déclenchées le {{when}}.",
-      "bannerWindowLink": "Voir la période",
-      "enableAction": "Activer la détection de dégradation",
-      "enabled": "Détection de dégradation activée pour ce check",
-      "enableFailed": "Impossible d'activer la détection de dégradation"
     },
     "placement": {
       "title": "Placement",
@@ -1211,7 +1203,6 @@
     "title": "Aucun groupe de checks",
     "description": "Un groupe rassemble des checks liés dans un ensemble exclusif : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un avec le bouton Nouveau groupe ci-dessus."
   },
-  "wouldHaveFiredFilter": "Aurait été signalé",
   "regionOutage": {
     "blindTitle": "Région {{regions}} hors ligne depuis {{time}} : ce check ne s'exécute pas",
     "reducedTitle": "Région {{regions}} hors ligne depuis {{time}} : exécuté depuis {{live}} régions sur {{total}}",

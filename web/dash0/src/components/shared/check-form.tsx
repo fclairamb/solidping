@@ -220,8 +220,7 @@ export interface DegradedPayload {
  * behind it): a typed **0 must reach the server** — it is the documented way to
  * turn a rule off — while a **blank field must be omitted**, so the server's own
  * code default stands and editing a check's name never silently rewrites its
- * rules. `degradedEnabled` is always sent: a boolean has no "unset" spelling,
- * and switching it on is what retires the dry-run banner.
+ * rules. `degradedEnabled` is always sent: a boolean has no "unset" spelling.
  */
 export function buildDegradedPayload(fields: DegradedFormFields): DegradedPayload {
   const numeric = (raw: string): number | undefined => {

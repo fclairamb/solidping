@@ -101,7 +101,6 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { SloCoverageChip } from "@/components/slos/slo-coverage-chip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
-import { DegradedDryRunBanner } from "@/components/checks/degraded-dry-run-banner";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
@@ -961,16 +960,6 @@ function CheckDetailPage() {
       );
   }, [incidents]);
 
-  // The banner links into the window the dry run judged, not to a default 24 h
-  // view where seven failures are seven pixels.
-  const degradedWindowUrl = useMemo(() => {
-    const stamp = check?.degradedWouldFireAt;
-    if (!stamp) return undefined;
-    const to = new Date(stamp).getTime();
-    if (!Number.isFinite(to)) return undefined;
-    return { graphFrom: to - 60 * 60 * 1000, graphTo: to };
-  }, [check?.degradedWouldFireAt]);
-
   const deleteCheck = useDeleteCheck(org);
   const cloneCheck = useCloneCheck(org);
   const updateCheck = useUpdateCheck(org, checkUid);
@@ -1431,17 +1420,6 @@ function CheckDetailPage() {
           offline. Blind (every region down) means the check is not running at
           all — the "No data" status is our outage, not the target's. */}
       <CheckRegionOutageBanner check={check} regions={regionsData?.regions} />
-
-      {/* Degraded dry-run banner (spec 2026-09-22-03). Degraded detection ships
-          OFF for every check that predates it — upgrading must never start
-          notifying on its own — so the evaluator runs as a dry run and stamps
-          when it WOULD have fired. This banner is the entire adoption path:
-          without it the feature is a column nobody ever turns on. */}
-      <DegradedDryRunBanner
-        org={org}
-        check={check}
-        windowUrl={degradedWindowUrl}
-      />
 
       {/* Duty-cycle warning (spec 2026-07-01-04 D3): the check's execution
           cost eats >= 50% of a runner slot — nudge toward a longer period. */}
