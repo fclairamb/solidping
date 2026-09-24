@@ -31,6 +31,7 @@ WORKDIR /src
 
 # Dependencies first so a source-only change reuses the module cache.
 COPY go.mod go.sum ./
+COPY third_party/grdp/go.mod third_party/grdp/go.sum ./third_party/grdp/
 RUN go mod download
 
 COPY . .
