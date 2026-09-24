@@ -608,12 +608,27 @@ handful of them re-themes the whole page without touching a single selector:
 | `--card-foreground` | Text inside section cards |
 | `--border` | Hairlines, separators and card outlines |
 | `--muted` / `--muted-foreground` | Secondary surfaces and secondary text |
+| `--primary` | Buttons, links, maintenance state (also tints the button shadow and the response-time chart) |
+| `--primary-foreground` | Text drawn on a solid `--primary` fill (badges) |
+| `--primary-gradient` | Button fill; set it to your color (a flat `linear-gradient(<c>, <c>)` works) to drop the gradient |
+| `--gradient-foreground` | Button label, drawn on `--primary-gradient` |
 | `--status-ok` | "Operational" green: dots, badges, uptime bars |
 | `--status-warning` | "Degraded" amber |
 | `--status-error` | "Down" red |
 | `--radius` | Corner radius used across the page |
 
 Colors accept any CSS color syntax (`#rrggbb`, `rgb()`, `oklch()`, …).
+
+The subscribe and unlock buttons paint `--primary-gradient` on top of
+`--primary`. If your stylesheet already sets `--primary`, set
+`--primary-gradient` too, or the buttons keep SolidPing's blue gradient:
+
+```css
+:root {
+  --primary: #ff5500;
+  --primary-gradient: linear-gradient(#ff5500, #ff5500);
+}
+```
 
 Rules placed inside a `.dark { … }` block apply when the page is in dark mode;
 rules in `:root { … }` apply to light mode. A visitor lands in dark mode

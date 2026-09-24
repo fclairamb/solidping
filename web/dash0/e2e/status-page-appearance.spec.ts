@@ -221,6 +221,12 @@ test.describe("Status page appearance editor", () => {
       "--status-ok",
       "--status-warning",
       "--status-error",
+      // The button knobs (spec 2026-09-24-04): the gradient would otherwise
+      // be the one piece of the page an operator could not re-theme.
+      "--primary:",
+      "--primary-foreground",
+      "--primary-gradient",
+      "--gradient-foreground",
       ".dark",
       // The `sp-*` element hooks are part of the same documented API.
       ".sp-logo",
