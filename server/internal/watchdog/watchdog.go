@@ -138,6 +138,12 @@ type Report struct {
 	StrandedJobs int
 	// StaleIncidents is the count of frozen active incidents.
 	StaleIncidents int
+	// CloudWorkersActive is liveWorkers per CLOUD region, straight off the
+	// RegionHealth report the dark-region detector evaluated — the source of
+	// solidping_workers_active, so the gauge can never disagree with the
+	// detector. Nil when that detector failed. Private regions are never
+	// included: their slug is org-relative.
+	CloudWorkersActive map[string]int
 }
 
 // HasFailures reports whether any detector errored this run.
@@ -229,8 +235,17 @@ func (s *Service) Evaluate(ctx context.Context, cfg *Config) *Report {
 		run  func(context.Context, *Config) ([]Anomaly, error)
 	}
 
+	var regionReport *checks.RegionHealthReport
+
+	darkRegions := func(ctx context.Context, cfg *Config) ([]Anomaly, error) {
+		anomalies, evaluated, err := s.detectDarkRegions(ctx, cfg)
+		regionReport = evaluated
+
+		return anomalies, err
+	}
+
 	for _, detector := range []detectorFn{
-		{DetectorDarkRegion, s.detectDarkRegions},
+		{DetectorDarkRegion, darkRegions},
 		{DetectorFleetCollapse, s.detectFleetCollapse},
 		{DetectorStaleIncidents, s.detectStaleIncidents},
 	} {
@@ -242,6 +257,10 @@ func (s *Service) Evaluate(ctx context.Context, cfg *Config) *Report {
 		}
 
 		report.Anomalies = append(report.Anomalies, anomalies...)
+	}
+
+	if report.DetectorSucceeded(DetectorDarkRegion) {
+		report.CloudWorkersActive = cloudWorkersActive(regionReport)
 	}
 
 	report.StrandedJobs = countFor(report.Anomalies, DetectorDarkRegion)

@@ -6,7 +6,6 @@ import "github.com/prometheus/client_golang/prometheus"
 // Prometheus metric label names used across multiple metrics.
 const (
 	labelCheckType    = "check_type"
-	labelCheckSlug    = "check_slug"
 	labelStatus       = "status"
 	labelRegion       = "region"
 	labelOrganization = "organization"
@@ -70,38 +69,18 @@ var (
 		[]string{labelRegion},
 	)
 
-	// CheckUp indicates whether a check is currently UP (1) or DOWN (0).
-	CheckUp = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "solidping_check_up",
-			Help: "1 if check is currently UP, 0 otherwise",
-		},
-		[]string{labelCheckSlug, labelCheckType, labelRegion, labelOrganization},
-	)
-
-	// CheckStatusStreak tracks consecutive results with current status.
-	CheckStatusStreak = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "solidping_check_status_streak",
-			Help: "Consecutive results with current status",
-		},
-		[]string{labelCheckSlug, labelCheckType, labelOrganization},
-	)
-
-	// ChecksConfigured tracks the number of configured checks.
-	ChecksConfigured = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "solidping_checks_configured",
-			Help: "Number of configured checks",
-		},
-		[]string{labelCheckType, labelOrganization, "enabled"},
-	)
-
-	// WorkersActive tracks the number of active workers.
+	// WorkersActive is the live-worker count per CLOUD region, exactly as
+	// checks.Service.RegionHealth computes it (spec 2026-09-25-01). It is
+	// written by the platform watchdog's region pass (Reset, then one series
+	// per cloud region), so it is absent while the watchdog is disabled.
+	// Private (`@`) regions are never exported: their slug is org-relative and
+	// one label would merge every org's region of that name.
 	WorkersActive = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "solidping_workers_active",
-			Help: "Number of active workers",
+			Help: "Live workers serving each cloud region, as computed by the region health report. " +
+				"Populated by the platform watchdog region pass; absent while the watchdog is disabled. " +
+				"Private regions are never exported.",
 		},
 		[]string{labelRegion},
 	)
@@ -686,7 +665,6 @@ var (
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
-		CheckUp, CheckStatusStreak, ChecksConfigured,
 		WorkersActive, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,

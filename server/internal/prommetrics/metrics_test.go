@@ -100,40 +100,16 @@ func TestMetrics(t *testing.T) {
 
 	r.True(found, "solidping_check_scheduling_delay_seconds metric not found")
 
-	// Set check status to UP
-	prommetrics.SetCheckStatus("my-check", "http", "us-east-1", "default", true)
-
-	families, err = reg.Gather()
-	r.NoError(err)
-
-	for _, f := range families {
-		if f.GetName() == "solidping_check_up" {
-			r.InDelta(1.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
-		}
-	}
-
-	// Set check status to DOWN
-	prommetrics.SetCheckStatus("my-check", "http", "us-east-1", "default", false)
-
-	families, err = reg.Gather()
-	r.NoError(err)
-
-	for _, f := range families {
-		if f.GetName() == "solidping_check_up" {
-			r.InDelta(0.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
-		}
-	}
-
-	// Set checks configured
-	prommetrics.SetChecksConfigured("http", "default", "true", 5)
-
-	families, err = reg.Gather()
-	r.NoError(err)
-
-	for _, f := range families {
-		if f.GetName() == "solidping_checks_configured" {
-			r.InDelta(5.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
-		}
+	// The dead per-check gauges were removed (spec 2026-09-25-01): nothing
+	// wrote them, and their per-check labels are unbounded cardinality. An
+	// empty GaugeVec never shows up in Gather, so absence is proven by
+	// registering a probe under each name: a registry already holding the old
+	// labeled collector rejects a same-name descriptor with other labels.
+	for _, name := range []string{
+		"solidping_check_up", "solidping_check_status_streak", "solidping_checks_configured",
+	} {
+		r.NoError(reg.Register(prometheus.NewGauge(prometheus.GaugeOpts{Name: name, Help: "probe"})),
+			"%s must no longer be registered", name)
 	}
 
 	// Record incident
