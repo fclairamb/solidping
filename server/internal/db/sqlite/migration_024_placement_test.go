@@ -46,16 +46,24 @@ func TestMigration024DefaultedChecksBecomeAuto(t *testing.T) {
 
 	cases := []struct {
 		uid, checkType, regions string
+		deleted                 bool
 		wantAuto                bool
 		wantCount               int
 	}{
-		{"chk-default", "http", `["gravelines","paris"]`, true, 2},
-		{"chk-reordered", "http", `["paris","gravelines"]`, true, 2},
-		{"chk-subset", "http", `["gravelines"]`, false, 0},
-		{"chk-superset", "http", `["gravelines","paris","tokyo"]`, false, 0},
-		{"chk-private", "http", `["gravelines","@office"]`, false, 0},
-		{"chk-passive", "heartbeat", `["gravelines","paris"]`, false, 0},
-		{"chk-dup", "http", `["gravelines","gravelines","paris"]`, false, 0},
+		{uid: "chk-default", checkType: "http", regions: `["gravelines","paris"]`, wantAuto: true, wantCount: 2},
+		{uid: "chk-reordered", checkType: "http", regions: `["paris","gravelines"]`, wantAuto: true, wantCount: 2},
+		{uid: "chk-subset", checkType: "http", regions: `["gravelines"]`},
+		{uid: "chk-superset", checkType: "http", regions: `["gravelines","paris","tokyo"]`},
+		{uid: "chk-private", checkType: "http", regions: `["gravelines","@office"]`},
+		{uid: "chk-passive", checkType: "heartbeat", regions: `["gravelines","paris"]`},
+		{uid: "chk-dup", checkType: "http", regions: `["gravelines","gravelines","paris"]`},
+		// Negative controls (spec 2026-09-25-06 Part A3, HIGH PRIORITY: this
+		// migration rewrites real production rows): a soft-deleted check
+		// sitting exactly on the default regions must NOT be converted, and
+		// neither must a private-location check — the migration's own type
+		// exclusion list names it alongside heartbeat/email.
+		{uid: "chk-soft-deleted", checkType: "http", regions: `["gravelines","paris"]`, deleted: true},
+		{uid: "chk-private-location", checkType: "private-location", regions: `["gravelines","paris"]`},
 	}
 
 	for _, c := range cases {
@@ -64,6 +72,10 @@ func TestMigration024DefaultedChecksBecomeAuto(t *testing.T) {
 		exec(`insert into check_jobs (uid, organization_uid, check_uid, region, type, period, scheduled_at)
 		      values (?, 'org-1', ?, 'gravelines', ?, '00:01:00', '2026-09-25 10:00:00')`,
 			"job-"+c.uid, c.uid, c.checkType)
+
+		if c.deleted {
+			exec(`update checks set deleted_at = '2026-09-25 09:00:00' where uid = ?`, c.uid)
+		}
 	}
 
 	execMigrationFile(ctx, t, database, "024_v0_33_0.up.sql")
