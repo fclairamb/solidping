@@ -37,6 +37,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -169,8 +170,10 @@
   --aurora-cyan: oklch(0.7 0.15 225);
   --aurora-accent: oklch(0.85 0.12 220);
 
-  /* Destructive: Red */
-  --destructive: oklch(0.6 0.22 25);
+  /* Destructive: Red. Darkened from 0.6 so a white label on the fill
+     clears 4.5:1 (see src/theme-tokens.test.ts). */
+  --destructive: oklch(0.57 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
 
   /* Status colors */
   --status-ok: oklch(0.65 0.2 145);
@@ -256,7 +259,13 @@
 
   /* No --sidebar-* here, on purpose: see :root.dark below. */
 
+  /* Unchanged from light's pre-spec value: this token is also the color of
+     ~197 text-destructive usages on dark surfaces, which stay >= 4.5:1 at
+     0.65. The white destructive-button label gets its contrast from a
+     darker FILL (button.tsx's dark:bg-destructive/80 / /70), not from
+     darkening this token. */
   --destructive: oklch(0.65 0.2 25);
+  --destructive-foreground: oklch(1 0 0);
 
   --status-ok: oklch(0.7 0.18 145);
   --status-ok-foreground: oklch(0.8 0.15 145);
