@@ -1180,14 +1180,25 @@ export function CheckForm({
         // left the check one write path away from staying pinned forever
         // instead of reassignable the moment a second region joins (A3's "N =
         // the number available" case). maxAutoRegionCount is already exactly
-        // that count (1 on a true single-region install). Editing an
-        // already-hidden picker still omits the field: PATCH semantics are
-        // "unchanged", same as every other hidden field in this form.
+        // that count (1 on a true single-region install).
+        // BUT this only holds when the form's own `placement` state (set at
+        // init from `orgDefaultIsPrivate`, see above) actually landed on
+        // "auto" — if the org's default regions are private (e.g. a lone
+        // `@office` agent), `placement` is "pinned" and there is no cloud
+        // region to auto-place into, so sending "auto" here would 400 with
+        // errNoEligibleRegion. Also require availableRegions to have loaded:
+        // while it's still undefined, maxAutoRegionCount falls back to 1
+        // (Math.max(1, 0)), which would force-create as auto/N=1 instead of
+        // letting the server apply its own default. In both of those cases,
+        // omit the field and let the server decide, exactly like edit mode
+        // already does. Editing an already-hidden picker still omits the
+        // field: PATCH semantics are "unchanged", same as every other hidden
+        // field in this form.
         ...(showRegions
           ? isAutoPlacement
             ? { placement: "auto" as const, regionCount: autoRegionCount }
             : { placement: "pinned" as const, regions: selectedRegions }
-          : mode === "create" && !isPassiveCheckType(type)
+          : mode === "create" && !isPassiveCheckType(type) && isAutoPlacement && availableRegions !== undefined
             ? { placement: "auto" as const, regionCount: maxAutoRegionCount }
             : {}),
         // Mirrors the checkGroupUid/escalationPolicyUid PATCH idiom: a

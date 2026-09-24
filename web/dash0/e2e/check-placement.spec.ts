@@ -101,7 +101,25 @@ test.describe("Region placement", () => {
     const name = `E2E Single Region Auto ${Date.now()}`;
     await page.getByTestId("check-name-input").fill(name);
     await page.getByTestId("check-url-input").fill("https://example.com/single-region-auto");
-    await page.getByTestId("check-submit-button").click();
+
+    // The load-bearing assertion is the request body itself, not the stored
+    // check below: this test server's org default happens to be the cloud
+    // "default" region, so the OLD "send nothing, let the server apply its
+    // own create-time default" code path and the NEW "send {placement:
+    // 'auto', regionCount: 1}" code path both end up with the exact same
+    // stored check (auto, N=1, regions=["default"]). Only inspecting the
+    // request payload distinguishes a hidden-picker create that explicitly
+    // asks for automatic placement from one that silently omitted the field.
+    const [request] = await Promise.all([
+      page.waitForRequest(
+        (req) => req.url().includes("/api/v1/orgs/test/checks") && req.method() === "POST",
+      ),
+      page.getByTestId("check-submit-button").click(),
+    ]);
+    const requestBody = request.postDataJSON() as Record<string, unknown>;
+    expect(requestBody.placement).toBe("auto");
+    expect(requestBody.regionCount).toBe(1);
+
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
 
     const uid = page.url().split("/checks/")[1].split(/[/?#]/)[0];
@@ -113,6 +131,82 @@ test.describe("Region placement", () => {
     await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+  });
+
+  // The regression this same fix closed: when the hidden picker's one
+  // eligible region is private (org default is a lone `@office` agent —
+  // there is no cloud region to auto-place into), the old unconditional
+  // `{placement: "auto", regionCount: N}` would 400 with errNoEligibleRegion.
+  // There is no public API to make an org's REAL default_regions a private
+  // location from a test (it's a platform-only parameter), so both the
+  // regions list and the create response are mocked here; the assertion that
+  // actually proves the fix is the intercepted REQUEST body — it must not
+  // ask for automatic placement — exactly mirroring the previous test's
+  // technique.
+  test("a new check whose sole eligible region is private stays pinned, not auto", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.route("**/api/v1/orgs/*/regions", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [{ slug: "@office", emoji: "🏢", name: "Office", status: "online", private: true }],
+          defaultRegions: ["@office"],
+        }),
+      }),
+    );
+
+    let capturedBody: Record<string, unknown> | undefined;
+    await page.route("**/api/v1/orgs/*/checks", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      capturedBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uid: "00000000-0000-0000-0000-000000000000",
+          placement: "pinned",
+          regions: ["@office"],
+        }),
+      });
+    });
+
+    // Warm the shared `["regions", org]` query cache from the checks list
+    // page, then navigate client-side into the form — check-form.tsx seeds
+    // its `placement` state from `defaultRegions` in a lazy useState
+    // initializer that runs once at mount and is never resynced, so a
+    // fresh direct load of /checks/new would still be racing the very
+    // regions fetch this test depends on and could read the pre-fetch
+    // "undefined" default (orgDefaultIsPrivate = false) instead of the
+    // mocked private default.
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // The picker never renders: there is nothing to choose between — the
+    // same hidden-picker branch as the previous test, but now the sole
+    // region is private.
+    await expect(page.getByTestId("check-regions-picker")).toHaveCount(0);
+
+    await page.getByTestId("check-name-input").fill(`E2E Private Default Pinned ${Date.now()}`);
+    await page.getByTestId("check-url-input").fill("https://example.com/private-default-pinned");
+    await page.getByTestId("check-submit-button").click();
+
+    await expect.poll(() => capturedBody).toBeTruthy();
+    // The regression: the OLD code unconditionally sent placement: "auto"
+    // here, which has no eligible cloud region to place into. The fix omits
+    // the field entirely and lets the server apply its own default, which
+    // resolves to pinned when the org's default regions are private.
+    expect(capturedBody?.placement).not.toBe("auto");
+    expect(capturedBody).not.toHaveProperty("regionCount");
   });
 
   test("a check created with explicit regions stays pinned", async ({ authenticatedPage }) => {

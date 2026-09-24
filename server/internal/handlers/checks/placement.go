@@ -389,7 +389,11 @@ func (s *Service) requestedIntent(ctx context.Context, orgUID string, req *place
 //     placement unless the request also names regions.
 //   - `regions` set, non-empty: pinned to those regions.
 //   - `regions: []`: back to the default (automatic, unless the org's own
-//     defaults name a private location).
+//     defaults name a private location) — except when the check's CURRENT
+//     regions already include a private (@) one and the resolved intent is
+//     auto: that combination is rejected outright (errPrivateRegionAuto)
+//     rather than silently dropping the private region and falling back to
+//     auto without it.
 //   - `regionCount` / `regionPool` set: automatic.
 //   - an auto check whose config changed (a new ipVersion or tunnel may change
 //     which regions are eligible) or that is re-enabled: re-evaluated, which
