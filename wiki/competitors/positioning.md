@@ -301,3 +301,12 @@ stays there. The competitive *fact* it rests on: SolidPing is the only tool in t
 survey that is simultaneously self-hostable at zero cost **and** capable of
 distributed multi-region confirmation; every SaaS competitor caps monitors/seats
 and rents you your own data.
+
+> **Correction (2026-09-25): "multi-region confirmation" is not a stated rule
+> yet.** Today a multi-region check opens an incident only when *every* region
+> fails for the whole confirmation period (any success clears the clock), and a
+> failure seen from one region alone is never surfaced. That is an accidental
+> "all regions agree" rule, not a configurable quorum. The explicit quorum
+> (`failQuorum`, per-region state, a visible "regional issue" warning) is Part B
+> of spec 2026-09-25-06 and has not shipped. Automatic placement and failover
+> (Part A) have. Do not claim quorum-based confirmation until Part B lands.

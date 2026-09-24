@@ -194,3 +194,34 @@ are SHA-256 of the *recipient public keys*.
 does not need to reseal anything.** The recipient set is unchanged because
 `agents.region` and `checks.regions` are rewritten with the same expression, so
 `ListActiveAgentsByRegion` keeps returning the same agents.
+
+## Placement: pinned vs auto (spec 2026-09-25-06)
+
+`checks.placement` records the INTENT behind `checks.regions`:
+
+- `pinned` — `regions` is the user's explicit list. Nothing ever rewrites it.
+- `auto` — `regions` is the CURRENT placement, chosen by
+  `regions.Place` (org defaults → system defaults → declared order, filtered by
+  `region_pool`, the check's required capabilities and region health) and
+  rewritten by the region sweep (`checks.Service.ReplaceAutoChecks`, hooked into
+  `regionsweep` on the dark transition and every dark sweep after it).
+
+The placement deliberately lives in `checks.regions` rather than in a side
+table: `ReconcileStaleJobSchedules` (boot repair), `reconcileCheckJobs`, the
+phase computation and the rate accounting all read `checks.regions`, so any
+placement kept elsewhere would be "healed" away at the next boot.
+
+Rules that must hold on every write path (create, PATCH, PUT-by-slug, import,
+apply, clone, the bulk switch):
+
+- a private (`@`) region is pinned-only: auto never places into one, a pool may
+  not name one, and a check naming one cannot be auto;
+- passive checks (heartbeat, email, private-location) have no regions and are
+  always `pinned` with no count/pool (`models.Check.NormalizePassiveRegions`);
+- `placement: auto` with a non-empty `regions` is a contradiction
+  (`INVALID_PLACEMENT`), an explicit `regions` list means pinned;
+- nothing ever moves an auto check back to a recovered region.
+
+Every path resolves placement through `internal/handlers/checks/placement.go`
+(`resolveCreatePlacement` / `resolveUpdatePlacement`); the config-as-code diff
+calls the same resolution so a capped `regionCount` converges.
