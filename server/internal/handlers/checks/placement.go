@@ -738,3 +738,80 @@ func (s *Service) validatePlacementFindings(
 
 	return outcome.regions
 }
+
+// projectPlacementToExport fills the placement fields of an exported check:
+// only an automatic check carries them — and it carries NO regions: they are
+// the scheduler's current placement, not something the document owns, and
+// re-importing them would pin the check (an explicit list means pinned).
+func projectPlacementToExport(check *models.Check, exported *ExportCheck) {
+	if !check.IsAutoPlaced() {
+		return
+	}
+
+	exported.Placement = models.PlacementAuto
+	exported.Regions = nil
+
+	if check.RegionCount != nil {
+		count := *check.RegionCount
+		exported.RegionCount = &count
+	}
+
+	if len(check.RegionPool) > 0 {
+		exported.RegionPool = slices.Clone(check.RegionPool)
+	}
+}
+
+// diffPlacement reports the placement fields an upsert of desired would
+// change, computed with the very resolution the write runs
+// (resolveUpdatePlacement) — so a regionCount the write caps (fewer eligible
+// regions, the rate limit) diffs against what will actually be stored, and a
+// plan converges instead of reporting the same change forever.
+func (s *Service) diffPlacement(
+	ctx context.Context, existing *models.Check, current, desired *ExportCheck,
+) []CheckFieldChange {
+	upsertReq := buildImportUpsertRequest(desired, nil)
+
+	updateReq := UpdateCheckRequest{Config: &upsertReq.Config, Enabled: upsertReq.Enabled, Period: upsertReq.Period}
+	if len(upsertReq.Regions) > 0 {
+		updateReq.Regions = &upsertReq.Regions
+	}
+
+	applyUpsertPlacement(&updateReq, &upsertReq)
+
+	outcome, err := s.resolveUpdatePlacement(
+		ctx, existing, s.updatePlacementSubject(existing, &updateReq), updatePlacementRequest(&updateReq), true,
+	)
+	if err != nil || outcome == nil {
+		// An invalid placement is reported by the validation pass, not as a
+		// field change; no outcome is no change.
+		return nil
+	}
+
+	var changes []CheckFieldChange
+
+	add := func(field, from, to string) {
+		if from != to {
+			changes = append(changes, CheckFieldChange{Field: field, From: from, To: to})
+		}
+	}
+
+	currentPlacement := current.Placement
+	if currentPlacement == "" {
+		currentPlacement = models.PlacementPinned
+	}
+
+	var wantCount *int
+
+	var wantPool []string
+
+	if outcome.placement == models.PlacementAuto {
+		wantCount = outcome.regionCount
+		wantPool = outcome.regionPool
+	}
+
+	add(fieldPlacement, currentPlacement, outcome.placement)
+	add(fieldRegionCount, intPtrString(current.RegionCount), intPtrString(wantCount))
+	add(fieldRegionPool, joinSortedRegions(current.RegionPool), joinSortedRegions(wantPool))
+
+	return changes
+}

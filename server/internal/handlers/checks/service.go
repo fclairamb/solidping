@@ -861,8 +861,8 @@ type CheckResponse struct {
 	RegionCount *int     `json:"regionCount,omitempty"`
 	RegionPool  []string `json:"regionPool,omitempty"`
 	Enabled     *bool    `json:"enabled,omitempty"`
-	Internal *bool                       `json:"internal,omitempty"`
-	Period   *string                     `json:"period,omitempty"`
+	Internal    *bool    `json:"internal,omitempty"`
+	Period      *string  `json:"period,omitempty"`
 	// RegionSpread is the resolved inter-region scheduling offset override
 	// (spec 2026-07-20-05), a duration string (HH:MM:SS). Omitted when the
 	// check uses the default period/region_count spread.
@@ -3582,11 +3582,18 @@ type ExportCheck struct {
 	// PreviousSlug, when set on an apply manifest, makes a slug rename
 	// reconcile in place (rather than delete+create). Ignored by export and
 	// import; only the apply reconcile path consults it.
-	PreviousSlug              string            `json:"previousSlug,omitempty"`
-	Description               string            `json:"description,omitempty"`
-	Type                      string            `json:"type"`
-	Config                    map[string]any    `json:"config"`
-	Regions                   []string          `json:"regions,omitempty"`
+	PreviousSlug string         `json:"previousSlug,omitempty"`
+	Description  string         `json:"description,omitempty"`
+	Type         string         `json:"type"`
+	Config       map[string]any `json:"config"`
+	Regions      []string       `json:"regions,omitempty"`
+	// Placement / RegionCount / RegionPool (spec 2026-09-25-06). Placement is
+	// "auto" for an automatically placed check; absent reads as pinned when
+	// regions are listed, and as "no opinion" otherwise. An auto check's
+	// regions belong to the scheduler, so the v2 exporter omits them.
+	Placement                 string            `json:"placement,omitempty"`
+	RegionCount               *int              `json:"regionCount,omitempty"`
+	RegionPool                []string          `json:"regionPool,omitempty"`
 	Labels                    map[string]string `json:"labels,omitempty"`
 	Enabled                   bool              `json:"enabled"`
 	Internal                  bool              `json:"internal,omitempty"`
@@ -3890,6 +3897,8 @@ func projectChecksToExport(
 		if check.Description != nil {
 			exported.Description = *check.Description
 		}
+
+		projectPlacementToExport(check, &exported)
 
 		if check.CheckGroupUID != nil {
 			if name, ok := groupMap[*check.CheckGroupUID]; ok {
@@ -4619,6 +4628,18 @@ func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string)
 	}
 
 	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
+
+	if exportedCheck.Placement != "" {
+		placement := exportedCheck.Placement
+		upsertReq.Placement = &placement
+	}
+
+	upsertReq.RegionCount = exportedCheck.RegionCount
+
+	if exportedCheck.RegionPool != nil {
+		pool := append([]string(nil), exportedCheck.RegionPool...)
+		upsertReq.RegionPool = &pool
+	}
 
 	return upsertReq
 }

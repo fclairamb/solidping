@@ -314,10 +314,14 @@ func (s *Service) diffCheck(
 		}
 
 		if resolved, err := s.resolveRegionsForType(ctx, checkType, desired.Regions, org.UID); err == nil {
-			add(fieldRegions, joinSortedRegions(current.Regions), joinSortedRegions(resolved))
+			// existing.Regions, not current.Regions: an automatic check's
+			// projection carries no regions (the document does not own them),
+			// but pinning it to the regions it already runs from moves nothing.
+			add(fieldRegions, joinSortedRegions(existing.Regions), joinSortedRegions(resolved))
 		}
 	}
 
+	changes = append(changes, s.diffPlacement(ctx, existing, current, desired)...)
 	changes = append(changes, diffLabels(current.Labels, desired.Labels, opts)...)
 	changes = append(changes, diffCheckConfig(existing, current, desired)...)
 	changes = append(changes, diffDependsOn(current.DependsOn, desired.DependsOn)...)

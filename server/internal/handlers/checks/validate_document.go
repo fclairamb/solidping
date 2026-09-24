@@ -95,6 +95,7 @@ func DocumentIssueCodes() []string {
 		CodeInvalidPeriod,
 		CodeInvalidLabel,
 		CodeRegionFormat,
+		CodeInvalidPlacement,
 		CodeInvalidDependsOn,
 		CodeDependencyCycle,
 		CodeUnresolvedSecretRef,
@@ -615,6 +616,33 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 				Message: fmt.Sprintf("region %q must be a slug or \"@private-location\"", region),
 			})
 		}
+	}
+
+	return append(issues, documentPlacementIssues(check, where)...)
+}
+
+// documentPlacementIssues holds a document check's placement fields to the
+// same request rules the write path enforces (spec 2026-09-25-06).
+func documentPlacementIssues(check *ExportCheck, where string) []DocumentIssue {
+	req := &placementRequest{Regions: check.Regions, RegionsSet: len(check.Regions) > 0, RegionCount: check.RegionCount}
+
+	if check.Placement != "" {
+		placement := check.Placement
+		req.Placement = &placement
+	}
+
+	if check.RegionPool != nil {
+		pool := check.RegionPool
+		req.RegionPool = &pool
+	}
+
+	findings := placementRequestFindings(req)
+	issues := make([]DocumentIssue, 0, len(findings))
+
+	for i := range findings {
+		issues = append(issues, DocumentIssue{
+			Where: where, Field: findings[i].Name, Code: CodeInvalidPlacement, Message: findings[i].Message,
+		})
 	}
 
 	return issues

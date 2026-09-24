@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -60,21 +61,28 @@ type exportDefaultsV2 struct {
 // exportCheckV2 is one check in the v2 wire shape. Every defaulted field is
 // omitempty: it appears only when it differs from the document default.
 type exportCheckV2 struct {
-	Name                string            `json:"name,omitempty"`
-	Slug                string            `json:"slug"`
-	PreviousSlug        string            `json:"previousSlug,omitempty"`
-	Description         string            `json:"description,omitempty"`
-	Type                string            `json:"type"`
-	Config              map[string]any    `json:"config"`
-	Group               string            `json:"group,omitempty"`
-	Labels              map[string]string `json:"labels,omitempty"`
-	Regions             []string          `json:"regions,omitempty"`
-	Disabled            bool              `json:"disabled,omitempty"`
-	Internal            bool              `json:"internal,omitempty"`
-	Period              string            `json:"period,omitempty"`
-	ConfirmationPeriod  string            `json:"confirmationPeriod,omitempty"`
-	EscalationThreshold *int              `json:"escalationThreshold,omitempty"`
-	RecoveryPeriod      string            `json:"recoveryPeriod,omitempty"`
+	Name         string            `json:"name,omitempty"`
+	Slug         string            `json:"slug"`
+	PreviousSlug string            `json:"previousSlug,omitempty"`
+	Description  string            `json:"description,omitempty"`
+	Type         string            `json:"type"`
+	Config       map[string]any    `json:"config"`
+	Group        string            `json:"group,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"`
+	Regions      []string          `json:"regions,omitempty"`
+	// Placement is "auto" for an automatically placed check (spec
+	// 2026-09-25-06), which then carries regionCount / regionPool and NO
+	// regions: those are the scheduler's, and the document default regions
+	// never apply to it. Absent for a pinned check.
+	Placement           string   `json:"placement,omitempty"`
+	RegionCount         *int     `json:"regionCount,omitempty"`
+	RegionPool          []string `json:"regionPool,omitempty"`
+	Disabled            bool     `json:"disabled,omitempty"`
+	Internal            bool     `json:"internal,omitempty"`
+	Period              string   `json:"period,omitempty"`
+	ConfirmationPeriod  string   `json:"confirmationPeriod,omitempty"`
+	EscalationThreshold *int     `json:"escalationThreshold,omitempty"`
+	RecoveryPeriod      string   `json:"recoveryPeriod,omitempty"`
 	// TracerouteOnFailure is `on` or `off`; absent means `inherit` (spec
 	// 2026-08-21-10). DELIBERATELY NOT part of the defaults block: it is a
 	// policy an operator sets on the few checks that need it, so a modal
@@ -141,7 +149,9 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 	// period to seconds as we go so the modal math and the per-check override
 	// rendering share the result.
 	periodSecs := make([]int, len(doc.Checks))
-	regionsList := make([][]string, len(doc.Checks))
+	// Only pinned checks feed the modal regions default: an auto check's
+	// regions are not part of the document.
+	regionsList := make([][]string, 0, len(doc.Checks))
 	confirmationList := make([]int, len(doc.Checks))
 	escalationList := make([]int, len(doc.Checks))
 	recoveryList := make([]int, len(doc.Checks))
@@ -158,7 +168,11 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 		}
 
 		periodSecs[i] = secs
-		regionsList[i] = check.Regions
+
+		if check.Placement != models.PlacementAuto {
+			regionsList = append(regionsList, check.Regions)
+		}
+
 		confirmationList[i] = deref(check.ConfirmationPeriodSeconds)
 		escalationList[i] = deref(check.EscalationThreshold)
 		recoveryList[i] = deref(check.RecoveryPeriodSeconds)
@@ -214,7 +228,12 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 			DependsOn:              check.DependsOn,
 		}
 
-		if !equalStringSlice(check.Regions, defRegions) {
+		if check.Placement == models.PlacementAuto {
+			// No regions: see projectPlacementToExport.
+			entry.Placement = models.PlacementAuto
+			entry.RegionCount = check.RegionCount
+			entry.RegionPool = check.RegionPool
+		} else if !equalStringSlice(check.Regions, defRegions) {
 			entry.Regions = check.Regions
 		}
 		entry.Period = durationOverride(periodSecs[i], defPeriod)
@@ -331,13 +350,18 @@ func resolveCheckV2(wire *exportCheckV2, defaults *exportDefaultsV2) (ExportChec
 		SlowThresholdMs:        wire.SlowThresholdMs,
 		DegradedEnabled:        wire.DegradedEnabled,
 		DependsOn:              wire.DependsOn,
+		Placement:              wire.Placement,
+		RegionCount:            wire.RegionCount,
+		RegionPool:             wire.RegionPool,
 	}
 
-	// Regions: check value → document default → absent.
+	// Regions: check value → document default → absent. The default never
+	// applies to an automatically placed check, whose regions the document
+	// does not own (spec 2026-09-25-06).
 	switch {
 	case len(wire.Regions) > 0:
 		out.Regions = wire.Regions
-	case len(defaults.Regions) > 0:
+	case len(defaults.Regions) > 0 && wire.Placement != models.PlacementAuto:
 		out.Regions = defaults.Regions
 	}
 
