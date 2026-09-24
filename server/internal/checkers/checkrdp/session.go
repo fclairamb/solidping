@@ -14,6 +14,7 @@ import (
 
 	grdp "github.com/fclairamb/solidping/server/third_party/grdp"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	checkconfig "github.com/fclairamb/solidping/server/internal/checkers/checkrdp/config"
 )
 
@@ -203,6 +204,10 @@ func openRDPSession(
 
 		if conn != nil {
 			return nil, errors.New("server redirected the RDP session; reconnecting through a pre-supplied connection is not supported")
+		}
+
+		if tunneled := checkerdef.TunnelDialerFrom(ctx); tunneled != nil {
+			return tunneled.DialContext(ctx, "tcp", hostPort)
 		}
 
 		var d net.Dialer

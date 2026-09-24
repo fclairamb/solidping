@@ -292,12 +292,28 @@ func (c *RDPChecker) attachScreenshot(cfg *RDPConfig, shot []byte, output map[st
 
 // dialTarget opens the TCP connection and applies the context deadline to all
 // subsequent reads/writes. It records connect_ms on success.
+//
+// When the check is tunneled the dialer on the context wins and local name
+// resolution is skipped — the direct-tcpip request carries the hostname and
+// the bastion resolves it (the same rule every tunnel-capable checker follows).
 func dialTarget(ctx context.Context, host string, port int, metrics map[string]any) (net.Conn, error) {
 	dialer := &net.Dialer{}
 
 	connectStart := time.Now()
 
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	var (
+		conn net.Conn
+		err  error
+	)
+
+	address := net.JoinHostPort(host, strconv.Itoa(port))
+
+	if tunneled := checkerdef.TunnelDialerFrom(ctx); tunneled != nil {
+		conn, err = tunneled.DialContext(ctx, "tcp", address)
+	} else {
+		conn, err = dialer.DialContext(ctx, "tcp", address)
+	}
+
 	if err != nil {
 		return nil, err
 	}
