@@ -99,7 +99,9 @@ function RegisterPage() {
     <AuthSplitLayout>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
+          {/* Below lg the layout shows the wordmark above the card: the card's
+              own mark only appears on lg+, so a phone sees one mark. */}
+          <div className="mb-4 hidden justify-center lg:flex">
             <Logo size={64} />
           </div>
           <CardTitle className="text-2xl">{t("auth:createAccount")}</CardTitle>

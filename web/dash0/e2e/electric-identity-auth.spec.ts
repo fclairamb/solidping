@@ -42,6 +42,11 @@ async function formColumnGlow(page: Page) {
   return column.evaluate((el) => getComputedStyle(el).backgroundImage);
 }
 
+/** Every SolidPing mark (icon or wordmark) currently painted on the page. */
+function visibleLogos(page: Page) {
+  return page.locator('img[alt="SolidPing"]:visible');
+}
+
 async function hasHorizontalScroll(page: Page) {
   return page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -106,6 +111,9 @@ for (const theme of ["light", "dark"] as const) {
           await expect(page.getByTestId("auth-mobile-wordmark")).toHaveCount(0);
           await expect(page.getByTestId("login-logo")).toBeVisible();
         }
+        // Exactly one SolidPing mark on a phone: the layout wordmark OR the
+        // card's own, never both stacked.
+        await expect(visibleLogos(page)).toHaveCount(1);
         expect(await hasHorizontalScroll(page)).toBe(false);
         if (name === "login") {
           await page.screenshot({
@@ -125,6 +133,7 @@ for (const theme of ["light", "dark"] as const) {
         theme === "dark" ? NAVY_DARK : NAVY_LIGHT,
       );
       await expect(panel.getByText("SolidPing", { exact: true })).toBeVisible();
+      await expect(visibleLogos(page)).toHaveCount(1);
       expect(await hasHorizontalScroll(page)).toBe(false);
     });
   });
