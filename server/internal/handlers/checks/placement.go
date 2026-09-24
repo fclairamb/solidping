@@ -62,6 +62,9 @@ var (
 	errNoEligibleRegion  = errors.New(
 		"regions: no cloud region can run this check automatically (check the regionPool and the regions' " +
 			"capabilities), so it cannot be placed")
+	errPrivateRegionAuto = errors.New(
+		"regions: a check whose regions include a private (@) region cannot use automatic placement — " +
+			"remove the private region first, or keep placement \"pinned\"")
 )
 
 // isPlacementError reports whether err is a placement request rejection — a
@@ -73,7 +76,8 @@ func isPlacementError(err error) bool {
 		errors.Is(err, errRegionsWithAutoPlacement) ||
 		errors.Is(err, errAutoFieldsOnPinned) ||
 		errors.Is(err, errRegionPoolUnknown) ||
-		errors.Is(err, errNoEligibleRegion)
+		errors.Is(err, errNoEligibleRegion) ||
+		errors.Is(err, errPrivateRegionAuto)
 }
 
 // placementFieldOf names the request field a placement error is about.
@@ -83,7 +87,8 @@ func placementFieldOf(err error) string {
 		return fieldRegionCount
 	case errors.Is(err, errRegionPoolPrivate), errors.Is(err, errRegionPoolUnknown):
 		return fieldRegionPool
-	case errors.Is(err, errRegionsWithAutoPlacement), errors.Is(err, errNoEligibleRegion):
+	case errors.Is(err, errRegionsWithAutoPlacement), errors.Is(err, errNoEligibleRegion),
+		errors.Is(err, errPrivateRegionAuto):
 		return fieldRegions
 	default:
 		return fieldPlacement
@@ -407,6 +412,14 @@ func (s *Service) resolveUpdatePlacement(
 	intent, err := s.updateIntent(ctx, check, req, reevaluate)
 	if err != nil || intent == "" {
 		return nil, err
+	}
+
+	// Auto never places into, or out of, a private (@) region: a check whose
+	// stored regions include one must stay pinned. Mirrors the bulk switch's
+	// private_region skip (placement_bulk.go), but as a hard rejection here
+	// since a PATCH is a single check the caller can fix.
+	if intent == models.PlacementAuto && slices.ContainsFunc(check.Regions, regions.IsPrivateRegion) {
+		return nil, errPrivateRegionAuto
 	}
 
 	if intent == models.PlacementPinned {

@@ -319,6 +319,43 @@ func TestUpdateSwitchesPlacement(t *testing.T) {
 	r.Equal(models.PlacementPinned, renamed.Placement)
 }
 
+// TestUpdateToAutoRejectsPrivateRegion: a PATCH placement: auto on a check
+// whose regions include a private (@) region is refused — auto never places
+// into, or out of, an @ region (mirrors the bulk switch's private_region
+// skip). The check must be left untouched, not silently switched to auto on
+// whatever cloud regions remain.
+func TestUpdateToAutoRejectsPrivateRegion(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+	w := newPlacementWorld(t, 0, "gravelines", "paris")
+
+	private := w.create(t, checks.CreateCheckRequest{Regions: []string{"@office", "paris"}})
+
+	_, err := w.svc.UpdateCheck(ctx, w.org.Slug, private.UID, &checks.UpdateCheckRequest{
+		Placement: strPtr(models.PlacementAuto),
+	})
+	r.Error(err)
+
+	unchanged, getErr := w.svc.GetCheck(ctx, w.org.Slug, private.UID, checks.GetCheckOptions{})
+	r.NoError(getErr)
+	r.Equal(models.PlacementPinned, unchanged.Placement)
+	r.Equal([]string{"@office", "paris"}, unchanged.Regions, "the private region is not silently dropped")
+
+	// The same rejection applies when the reset ("regions: []") path would
+	// otherwise resolve to the default (auto) placement.
+	_, err = w.svc.UpdateCheck(ctx, w.org.Slug, private.UID, &checks.UpdateCheckRequest{
+		Regions: &[]string{},
+	})
+	r.Error(err)
+
+	stillUnchanged, getErr := w.svc.GetCheck(ctx, w.org.Slug, private.UID, checks.GetCheckOptions{})
+	r.NoError(getErr)
+	r.Equal(models.PlacementPinned, stillUnchanged.Placement)
+	r.Equal([]string{"@office", "paris"}, stillUnchanged.Regions)
+}
+
 // TestPassiveChecksAreNeverAutoPlaced: a heartbeat has no region to place.
 func TestPassiveChecksAreNeverAutoPlaced(t *testing.T) {
 	t.Parallel()
