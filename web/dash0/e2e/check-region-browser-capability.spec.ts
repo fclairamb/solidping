@@ -64,8 +64,11 @@ test.describe("region picker browser capability", () => {
 
     const noBrowserCheckbox = page.getByTestId("region-option-no-browser").getByRole("checkbox");
     await expect(noBrowserCheckbox).toBeEnabled();
+    // It may start checked: "Choose regions" seeds the picker with the org's
+    // default regions (spec 2026-09-25-06). Selectable means it toggles.
+    const before = await noBrowserCheckbox.getAttribute("data-state");
     await noBrowserCheckbox.click();
-    await expect(noBrowserCheckbox).toHaveAttribute("data-state", "checked");
+    await expect(noBrowserCheckbox).toHaveAttribute("data-state", before === "checked" ? "unchecked" : "checked");
   });
 
   test("stays quiet on unknown for a non-browser check, still shows a definite no", async ({
