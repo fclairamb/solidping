@@ -477,7 +477,7 @@ func (r *jsRuntime) registerSolidping() {
 	checkerTypes := []string{
 		"http", "tcp", "dns", "ssl", "icmp", "smtp", "udp", "ssh",
 		"pop3", "imap", "websocket", "postgresql", "ftp", "sftp", "domain",
-		"browser",
+		"browser", "rdp",
 	}
 
 	for _, typeName := range checkerTypes {
