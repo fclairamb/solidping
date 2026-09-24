@@ -1011,7 +1011,15 @@
     "statusTimeout": "Tiempo de espera agotado",
     "statusError": "Error",
     "heartbeatHelp": "No se necesita configuración adicional. Se generará una URL de heartbeat tras la creación.",
-    "emailGeneratedHelp": "Se generará una dirección de correo para esta comprobación. Envíe cualquier correo a esa dirección para informar de una ejecución exitosa. Use direccionamiento con más (token+down@…) o [DOWN] en el asunto para informar de un fallo."
+    "emailGeneratedHelp": "Se generará una dirección de correo para esta comprobación. Envíe cualquier correo a esa dirección para informar de una ejecución exitosa. Use direccionamiento con más (token+down@…) o [DOWN] en el asunto para informar de un fallo.",
+    "rdpDomainOptional": "Dominio (opcional)",
+    "rdpLogonHelp": "Con usuario y contraseña la comprobación realiza una AUTÉNTICA sesión interactiva: carga el perfil y espera a que la pantalla se estabilice antes del veredicto. Si deja ambos vacíos se mantiene la comprobación pre-autenticación.",
+    "rdpScreenshot": "Capturar el escritorio cuando la sesión se estabilice",
+    "rdpEndSession": "Fin de sesión",
+    "rdpEndSessionLogoff": "Cerrar sesión (predeterminado)",
+    "rdpEndSessionDisconnect": "Solo desconectar (la sesión sigue en el servidor)",
+    "rdpEndSessionHelp": "Cerrar sesión elimina la sesión del servidor. Desconectar la deja en marcha hasta que la política de inactividad del servidor la finalice, de modo que la siguiente ejecución se vuelva a adjuntar (comprobaciones más rápidas).",
+    "rdpCaveatsHelp": "Cada ejecución autenticada es una sesión interactiva real de Windows: carga un perfil de usuario, ejecuta scripts de inicio y GPO, puede consumir una licencia RDS, puede desconectar a un usuario real en un servidor de sesión única y aparece en el registro de seguridad (4624/4634) en cada ejecución. Use una cuenta de monitorización dedicada, nunca la cuenta de una persona."
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",

@@ -307,29 +307,75 @@ export interface RdpState {
   requireNLA: boolean;
   warningDays: string;
   criticalDays: string;
+  username: string;
+  password: string;
+  domain: string;
+  screenshot: boolean;
+  endSession: string;
 }
 
 export const rdpModule: CheckTypeModule<RdpState> = {
   types: ["rdp"],
-  ownedKeys: ["host", "port", "require_nla", "warning_days", "critical_days"],
+  ownedKeys: [
+    "host",
+    "port",
+    "require_nla",
+    "warning_days",
+    "critical_days",
+    "username",
+    "password",
+    "domain",
+    "screenshot",
+    "end_session",
+  ],
   fromConfig: (config) => ({
     host: getConfigField(config, "host"),
     port: getConfigField(config, "port"),
     requireNLA: getConfigField(config, "require_nla") === "true",
     warningDays: getConfigField(config, "warning_days"),
     criticalDays: getConfigField(config, "critical_days"),
+    username: getConfigField(config, "username"),
+    password: getConfigField(config, "password"),
+    domain: getConfigField(config, "domain"),
+    screenshot: getConfigField(config, "screenshot") === "true",
+    endSession: getConfigField(config, "end_session"),
   }),
   toConfig: (state) => {
     const cfg: CheckConfig = {};
     if (state.host) cfg.host = state.host;
     if (state.port) cfg.port = parseInt(state.port, 10);
     if (state.requireNLA) cfg.require_nla = true;
+    if (state.username) cfg.username = state.username;
+    if (state.password) cfg.password = state.password;
+    if (state.domain) cfg.domain = state.domain;
+    if (state.screenshot) cfg.screenshot = true;
+    if (state.endSession) cfg.end_session = state.endSession;
     if (state.warningDays) cfg.warning_days = parseInt(state.warningDays, 10);
     if (state.criticalDays) cfg.critical_days = parseInt(state.criticalDays, 10);
-    return { config: cfg, errors: hostRequired(state.host) };
+    return { config: cfg, errors: rdpErrors(state) };
   },
   Fields: RdpFields,
 };
+
+// rdpErrors checks the credentials pairing the backend validator enforces:
+// username and password go together, and screenshot needs both.
+function rdpErrors(state: RdpState): FieldErrors {
+  const errors: FieldErrors = hostRequired(state.host);
+
+  const hasUser = Boolean(state.username);
+  const hasPass = Boolean(state.password);
+  if (hasUser && !hasPass) {
+    errors.push({ name: "password", message: "Password is required when a username is set." });
+  }
+  if (hasPass && !hasUser) {
+    errors.push({ name: "username", message: "Username is required when a password is set." });
+  }
+  if (state.screenshot && !(hasUser && hasPass)) {
+    errors.push({ name: "screenshot", message: "Screenshot requires username and password (an authenticated logon)." });
+  }
+
+  return errors;
+}
 
 function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) {
   const { t } = useTranslation("checks");
@@ -421,8 +467,97 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
           </p>
         </div>
       </div>
+      <div className="space-y-2">
+        <div className="flex gap-4">
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="rdp-username">{t("form.usernameOptional")}</Label>
+            <Input
+              id="rdp-username"
+              type="text"
+              placeholder="svc-monitor"
+              value={state.username}
+              onChange={(e) => onChange({ ...state, username: e.target.value })}
+              className={cn(
+                getFieldError(errors, "username") && "border-destructive",
+              )}
+              data-testid="check-rdp-username-input"
+            />
+          </div>
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="rdp-domain">{t("misc.rdpDomainOptional")}</Label>
+            <Input
+              id="rdp-domain"
+              type="text"
+              placeholder="acme"
+              value={state.domain}
+              onChange={(e) => onChange({ ...state, domain: e.target.value })}
+              data-testid="check-rdp-domain-input"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="rdp-password">{t("form.passwordOptional")}</Label>
+          <Input
+            id="rdp-password"
+            type="password"
+            value={state.password}
+            onChange={(e) => onChange({ ...state, password: e.target.value })}
+            className={cn(
+              getFieldError(errors, "password") && "border-destructive",
+            )}
+            data-testid="check-rdp-password-input"
+          />
+          {getFieldError(errors, "username") && (
+            <p className="text-xs text-destructive">
+              {getFieldError(errors, "username")}
+            </p>
+          )}
+          {getFieldError(errors, "password") && (
+            <p className="text-xs text-destructive">
+              {getFieldError(errors, "password")}
+            </p>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {t("misc.rdpLogonHelp")}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={state.screenshot}
+            onCheckedChange={(v) => onChange({ ...state, screenshot: v === true })}
+            data-testid="check-rdp-screenshot-checkbox"
+          />
+          <span className="text-sm">{t("misc.rdpScreenshot")}</span>
+        </label>
+        {getFieldError(errors, "screenshot") && (
+          <p className="text-xs text-destructive">
+            {getFieldError(errors, "screenshot")}
+          </p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="rdp-end-session">{t("misc.rdpEndSession")}</Label>
+        <select
+          id="rdp-end-session"
+          value={state.endSession}
+          onChange={(e) => onChange({ ...state, endSession: e.target.value })}
+          className="w-40 rounded-md border bg-transparent px-2 py-1 text-sm"
+          data-testid="check-rdp-end-session-select"
+        >
+          <option value="">{t("misc.rdpEndSessionLogoff")}</option>
+          <option value="disconnect">{t("misc.rdpEndSessionDisconnect")}</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          {t("misc.rdpEndSessionHelp")}
+        </p>
+      </div>
       <p className="text-xs text-muted-foreground">
         {t("misc.rdpPreAuthHelp")}
+      </p>
+      <p className="text-xs text-amber-600 dark:text-amber-500">
+        {t("misc.rdpCaveatsHelp")}
       </p>
     </>
   );
