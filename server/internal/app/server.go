@@ -64,6 +64,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/degradedeval"
+	"github.com/fclairamb/solidping/server/internal/handlers/freshness"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
@@ -1926,6 +1927,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// lives on the check, and the incidents it opens are ordinary incidents.
 	s.services.Degraded = degradedeval.NewService(
 		s.dbService, incidentsService, s.services.Clock, slog.Default(),
+	)
+
+	// Check freshness (spec 2026-09-25-02): the minute sweep that moves a
+	// check whose results stopped to `stale`. Same interface-registration
+	// pattern, for the same import-cycle reason.
+	s.services.Freshness = freshness.NewService(
+		s.dbService, incidentsService, s.services.Realtime, slog.Default(),
 	)
 	sloAlertsHandler := sloalerts.NewHandler(sloAlertsService, s.config)
 	orgSLOs.GET("/:uid/alert-policies", sloAlertsHandler.List)

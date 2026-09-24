@@ -42,6 +42,13 @@ type DegradedEvaluator interface {
 	EvaluateDegraded(ctx context.Context, now time.Time) (int, error)
 }
 
+// FreshnessSweeper runs one sweep of the check-freshness rule (spec
+// 2026-09-25-02) and returns how many checks it moved to stale. An interface
+// for the same import-cycle reason as DegradedEvaluator.
+type FreshnessSweeper interface {
+	SweepStale(ctx context.Context, now time.Time) (int, error)
+}
+
 // Registry holds all application services for dependency injection.
 type Registry struct {
 	Jobs           jobsvc.Service
@@ -75,6 +82,10 @@ type Registry struct {
 	// (spec 2026-09-22-03). Nil in tests and in processes that run no job
 	// worker — the job checks before calling.
 	Degraded DegradedEvaluator
+	// Freshness moves silent checks to the `stale` status once a minute (spec
+	// 2026-09-25-02). Nil in tests and in processes that run no job worker —
+	// the job checks before calling.
+	Freshness FreshnessSweeper
 	// SMS resolves, per org and per capability, whether a phone send goes
 	// through the org's own Twilio integration (bring-your-own) or the
 	// instance-level provider (server-provided, the default). Nil only in

@@ -172,10 +172,37 @@ func (r *StartupJobRun) ensureGlobalSweeps(ctx context.Context, jctx *jobdef.Job
 		return err
 	}
 
+	// Check freshness, every minute (spec 2026-09-25-02).
+	if err := r.ensureGlobalSweep(ctx, jctx, jobdef.JobTypeCheckFreshnessSweep, "check freshness sweep"); err != nil {
+		return err
+	}
+
 	// The platform watchdog, hourly: an instance that went blind between two
 	// deploys is reported on the first cycle after the restart rather than an
 	// hour later (spec 2026-08-24-10).
 	return r.ensurePlatformWatchdogJob(ctx, jctx)
+}
+
+// ensureGlobalSweep provisions one global self-rescheduling sweep. CreateJob
+// dedupes on type+config+org+pending, so a restart won't stack a duplicate.
+func (r *StartupJobRun) ensureGlobalSweep(
+	ctx context.Context, jctx *jobdef.JobContext, jobType jobdef.JobType, what string,
+) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping sweep provisioning (services not available)", "sweep", what)
+
+		return nil
+	}
+
+	if _, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobType), nil, nil); err != nil {
+		log.InfoContext(ctx, "Failed to create sweep job (non-fatal)", "sweep", what, "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured sweep job exists", "sweep", what)
+	}
+
+	return nil
 }
 
 // ensureSLOBurnEvalJob provisions the global SLO burn-rate evaluation sweep.

@@ -18,6 +18,11 @@ func SetWorkersActive(region string, count float64) {
 	WorkersActive.WithLabelValues(region).Set(count)
 }
 
+// SetChecksStale sets the stale-check count for one placement region label.
+func SetChecksStale(region string, count float64) {
+	ChecksStale.WithLabelValues(region).Set(count)
+}
+
 // SetWorkerFreeRunners sets the available runner slots for a worker.
 func SetWorkerFreeRunners(workerUID, region string, count float64) {
 	WorkerFreeRunners.WithLabelValues(workerUID, region).Set(count)

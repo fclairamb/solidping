@@ -156,6 +156,15 @@ const (
 	// Deliberately absent from publiclyCreatableJobTypes — it opens incidents
 	// and therefore notifies people.
 	JobTypeDegradedEval JobType = "degraded_eval"
+	// JobTypeCheckFreshnessSweep moves checks whose newest real result is
+	// older than max(3 × period, 5 min) to the `stale` ("No data") status
+	// (spec 2026-09-25-02). Global and self-rescheduling every minute: the
+	// whole point is that a dead region stops reading green within minutes,
+	// not hours.
+	//
+	// Deliberately absent from publiclyCreatableJobTypes — it rewrites check
+	// status across every organization.
+	JobTypeCheckFreshnessSweep JobType = "check_freshness_sweep"
 	// JobTypePlatformWatchdog is the hourly internal watchdog (spec
 	// 2026-08-24-10): it evaluates the platform's own vitals — dark regions
 	// with assigned work, a collapse in fleet execution rate, active incidents

@@ -85,6 +85,23 @@ var (
 		[]string{labelRegion},
 	)
 
+	// ChecksStale is the number of checks currently in the `stale` ("No data")
+	// status, by the region of their placement (spec 2026-09-25-02): one count
+	// per check_jobs region, so a multi-region check counts once in each of its
+	// regions. `any` stands for an any-region job (and for a stale check with
+	// no job at all); every private (`@`) region folds into `private`, because
+	// their slugs are org-relative and one label would merge orgs. Written by
+	// the minute freshness sweep; a region that recovers is set back to 0
+	// rather than dropped, so an alert on `> 0` keeps a series to evaluate.
+	ChecksStale = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_checks_stale",
+			Help: "Checks with no recent real result (status stale, UI \"No data\"), by placement region. " +
+				"Private regions are folded into region=\"private\", any-region jobs into region=\"any\".",
+		},
+		[]string{labelRegion},
+	)
+
 	// WorkerFreeRunners tracks available runner slots per worker.
 	WorkerFreeRunners = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -665,7 +682,7 @@ var (
 		WatchdogAnomalies, WatchdogStrandedJobs, WatchdogStaleIncidents,
 		WatchdogDetectorFailures, WatchdogLastRun,
 		CheckExecutions, CheckDuration, SchedulingDelay,
-		WorkersActive, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
+		WorkersActive, ChecksStale, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
 		HTTPRateLimited,

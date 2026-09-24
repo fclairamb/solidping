@@ -58,6 +58,9 @@ var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
 	jobdef.JobTypeDegradedEval: func() jobdef.JobDefinition {
 		return &DegradedEvalJobDefinition{}
 	},
+	jobdef.JobTypeCheckFreshnessSweep: func() jobdef.JobDefinition {
+		return &CheckFreshnessSweepJobDefinition{}
+	},
 	jobdef.JobTypePlatformWatchdog: func() jobdef.JobDefinition {
 		return &PlatformWatchdogJobDefinition{}
 	},
