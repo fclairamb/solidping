@@ -103,6 +103,7 @@ import { NeedsResealAlert } from "@/components/checks/needs-reseal-alert";
 import { DegradedDryRunBanner } from "@/components/checks/degraded-dry-run-banner";
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
+import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
@@ -1600,8 +1601,10 @@ function CheckDetailPage() {
                 {check.enabled === false && (
                   <Badge variant="outline">{t("checks:detail.disabled")}</Badge>
                 )}
+                <StaleSince check={check} />
               </div>
             </div>
+            <RegionFreshnessList check={check} regions={regionsData?.regions} />
             {flapSummary && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground">

@@ -26,6 +26,7 @@
     "up": "Aktiv",
     "down": "Ausfall",
     "warning": "Warnung",
+    "stale": "Keine Daten",
     "created": "Ausstehend",
     "degraded": "Beeinträchtigt",
     "abandoned": "Abgebrochen",
@@ -47,6 +48,7 @@
     "up": "aktiv",
     "down": "ausgefallen",
     "warning": "Warnung",
+    "stale": "ohne Daten",
     "degraded": "beeinträchtigt",
     "validating": "wird geprüft",
     "created": "ausstehend"
@@ -511,12 +513,24 @@
     "summary": {
       "currentlyUp": "Aktuell online seit",
       "currentlyDown": "Aktuell offline seit",
+      "noDataFor": "Keine Daten seit",
       "statusFallback": "Status",
       "unknown": "Unbekannt",
       "lastChecked": "Zuletzt geprüft",
       "ago": "vor {{duration}}",
       "never": "Nie",
       "incidents": "Vorfälle"
+    },
+    "freshness": {
+      "title": "Aktualität je Region",
+      "noDataSince": "Keine Daten seit {{time}}",
+      "noDataEver": "Noch keine Daten",
+      "silentRegion_one": "Kein Ergebnis von {{region}} seit {{time}}, {{count}} andere Region meldet",
+      "silentRegion_other": "Kein Ergebnis von {{region}} seit {{time}}, {{count}} andere Regionen melden",
+      "silentRegionNever_one": "Kein aktuelles Ergebnis von {{region}}, {{count}} andere Region meldet",
+      "silentRegionNever_other": "Kein aktuelles Ergebnis von {{region}}, {{count}} andere Regionen melden",
+      "defaultRegion": "Standardregion",
+      "noResultRecently": "kein Ergebnis in 24 Std."
     },
     "chart": {
       "title": "Antwortzeiten",

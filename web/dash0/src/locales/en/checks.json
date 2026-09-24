@@ -26,6 +26,7 @@
     "up": "Up",
     "down": "Down",
     "warning": "Warning",
+    "stale": "No data",
     "created": "Pending",
     "degraded": "Degraded",
     "abandoned": "Abandoned",
@@ -47,6 +48,7 @@
     "up": "up",
     "down": "down",
     "warning": "warning",
+    "stale": "no data",
     "degraded": "degraded",
     "validating": "validating",
     "created": "pending"
@@ -555,12 +557,24 @@
     "summary": {
       "currentlyUp": "Currently up for",
       "currentlyDown": "Currently down for",
+      "noDataFor": "No data for",
       "statusFallback": "Status",
       "unknown": "Unknown",
       "lastChecked": "Last checked",
       "ago": "{{duration}} ago",
       "never": "Never",
       "incidents": "Incidents"
+    },
+    "freshness": {
+      "title": "Region freshness",
+      "noDataSince": "No data since {{time}}",
+      "noDataEver": "No data yet",
+      "silentRegion_one": "No result from {{region}} since {{time}}, {{count}} other region reporting",
+      "silentRegion_other": "No result from {{region}} since {{time}}, {{count}} other regions reporting",
+      "silentRegionNever_one": "No recent result from {{region}}, {{count}} other region reporting",
+      "silentRegionNever_other": "No recent result from {{region}}, {{count}} other regions reporting",
+      "defaultRegion": "Default region",
+      "noResultRecently": "no result in 24h"
     },
     "chart": {
       "title": "Response Times",

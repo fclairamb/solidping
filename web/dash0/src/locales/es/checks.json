@@ -26,6 +26,7 @@
     "up": "Activo",
     "down": "Caído",
     "warning": "Advertencia",
+    "stale": "Sin datos",
     "created": "Pendiente",
     "degraded": "Degradado",
     "abandoned": "Abandonado",
@@ -47,6 +48,7 @@
     "up": "activos",
     "down": "caídos",
     "warning": "advertencia",
+    "stale": "sin datos",
     "degraded": "degradados",
     "validating": "validando",
     "created": "pendientes"
@@ -511,12 +513,24 @@
     "summary": {
       "currentlyUp": "En línea desde hace",
       "currentlyDown": "Fuera de línea desde hace",
+      "noDataFor": "Sin datos desde hace",
       "statusFallback": "Estado",
       "unknown": "Desconocido",
       "lastChecked": "Última comprobación",
       "ago": "hace {{duration}}",
       "never": "Nunca",
       "incidents": "Incidentes"
+    },
+    "freshness": {
+      "title": "Actualidad por región",
+      "noDataSince": "Sin datos desde las {{time}}",
+      "noDataEver": "Aún sin datos",
+      "silentRegion_one": "Ningún resultado de {{region}} desde las {{time}}, {{count}} otra región informando",
+      "silentRegion_other": "Ningún resultado de {{region}} desde las {{time}}, {{count}} otras regiones informando",
+      "silentRegionNever_one": "Ningún resultado reciente de {{region}}, {{count}} otra región informando",
+      "silentRegionNever_other": "Ningún resultado reciente de {{region}}, {{count}} otras regiones informando",
+      "defaultRegion": "Región predeterminada",
+      "noResultRecently": "sin resultados en 24 h"
     },
     "chart": {
       "title": "Tiempos de respuesta",

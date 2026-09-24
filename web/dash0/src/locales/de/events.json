@@ -32,6 +32,8 @@
     "incident.unsnoozed": "Stummschaltung aufgehoben",
     "incident.rolled_up": "Übergeordnetem Vorfall zugeordnet",
     "incident.rollup_detached": "Vom übergeordneten Vorfall gelöst",
+    "incident.monitoring_interrupted": "Überwachung unterbrochen",
+    "incident.monitoring_resumed": "Überwachung fortgesetzt",
     "incident.comment": "Kommentar",
     "statuspage.incident.published": "Auf Statusseite veröffentlicht",
     "statuspage.incident.updated": "Statusseiten-Vorfall aktualisiert",

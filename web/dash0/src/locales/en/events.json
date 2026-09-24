@@ -32,6 +32,8 @@
     "incident.unsnoozed": "Incident Unsnoozed",
     "incident.rolled_up": "Rolled Up Under Parent",
     "incident.rollup_detached": "Detached from Parent",
+    "incident.monitoring_interrupted": "Monitoring Interrupted",
+    "incident.monitoring_resumed": "Monitoring Resumed",
     "incident.comment": "Comment",
     "statuspage.incident.published": "Published to Status Page",
     "statuspage.incident.updated": "Status Page Incident Updated",

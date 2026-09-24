@@ -137,7 +137,17 @@ const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]
     // lazy poll (spec 2026-09-01-01). Deliberately added to the "checks"
     // kind, NOT "results" below — see that block's comment for why a
     // results hint must never trigger an org-wide refetch.
-    checks: [orgRoot("checks"), infiniteOrgRoot("checks"), orgRoot("check-stats")],
+    //
+    // checkGroups too (spec 2026-09-25-02): a group's status is rolled up
+    // from its members, so a member transition — up→stale when a region goes
+    // dark, stale→up when it comes back — must refresh the group rows, or a
+    // group keeps reading green over members that stopped reporting.
+    checks: [
+      orgRoot("checks"),
+      infiniteOrgRoot("checks"),
+      orgRoot("check-stats"),
+      orgRoot("checkGroups"),
+    ],
     // The checks-list roots are deliberately ABSENT here (spec
     // 2026-08-09-07). Check workers write results continuously, so a busy org
     // emits a "results" hint essentially without pause; refetching the whole

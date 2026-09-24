@@ -26,6 +26,7 @@
     "up": "Opérationnel",
     "down": "En panne",
     "warning": "Avertissement",
+    "stale": "Aucune donnée",
     "created": "En attente",
     "degraded": "Dégradé",
     "abandoned": "Abandonné",
@@ -47,6 +48,7 @@
     "up": "opérationnels",
     "down": "en panne",
     "warning": "avertissement",
+    "stale": "sans données",
     "degraded": "dégradés",
     "validating": "en validation",
     "created": "en attente"
@@ -555,12 +557,24 @@
     "summary": {
       "currentlyUp": "En ligne depuis",
       "currentlyDown": "Hors ligne depuis",
+      "noDataFor": "Aucune donnée depuis",
       "statusFallback": "Statut",
       "unknown": "Inconnu",
       "lastChecked": "Dernière vérification",
       "ago": "il y a {{duration}}",
       "never": "Jamais",
       "incidents": "Incidents"
+    },
+    "freshness": {
+      "title": "Fraîcheur par région",
+      "noDataSince": "Aucune donnée depuis {{time}}",
+      "noDataEver": "Aucune donnée pour le moment",
+      "silentRegion_one": "Aucun résultat de {{region}} depuis {{time}}, {{count}} autre région active",
+      "silentRegion_other": "Aucun résultat de {{region}} depuis {{time}}, {{count}} autres régions actives",
+      "silentRegionNever_one": "Aucun résultat récent de {{region}}, {{count}} autre région active",
+      "silentRegionNever_other": "Aucun résultat récent de {{region}}, {{count}} autres régions actives",
+      "defaultRegion": "Région par défaut",
+      "noResultRecently": "aucun résultat en 24 h"
     },
     "chart": {
       "title": "Temps de réponse",

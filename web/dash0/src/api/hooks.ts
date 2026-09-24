@@ -75,6 +75,16 @@ export interface UpdateCheckGroupRequest {
   escalationPolicyUid?: string;
 }
 
+/** One region's freshness for a check (spec 2026-09-25-02). */
+export interface RegionFreshness {
+  /** Region slug; "" for results that carry no region. */
+  region: string;
+  /** Newest real result from this region; null when none within raw retention. */
+  lastResultAt: string | null;
+  /** True when lastResultAt is older than the check's stale threshold, or missing. */
+  stale: boolean;
+}
+
 export interface Check {
   uid: string;
   name?: string;
@@ -188,7 +198,29 @@ export interface Check {
    */
   createdBy?: string | null;
   updatedAt?: string;
-  status?: "up" | "down" | "validating" | "created" | "degraded" | "unknown";
+  status?:
+    | "up"
+    | "down"
+    | "validating"
+    | "warning"
+    | "stale"
+    | "created"
+    | "degraded"
+    | "unknown";
+  /** When the check entered its current status (spec 2026-09-25-02). */
+  statusChangedAt?: string;
+  /**
+   * Newest REAL result across every region — never an abandoned or lifecycle
+   * row. What "last checked" and "No data since" read.
+   */
+  lastResultAt?: string;
+  /** max(3 × period, 5 min), in seconds: silence longer than this is "No data". */
+  staleThresholdSeconds?: number;
+  /**
+   * Per-region newest real result (only with `with=region_freshness`): how a
+   * silent region shows up while another keeps the check fresh.
+   */
+  regionFreshness?: RegionFreshness[];
   lastResult?: {
     uid?: string;
     status?: "up" | "down" | "error" | "timeout" | "created" | "abandoned";
@@ -825,12 +857,14 @@ export function useCheck(
     // consumer (breadcrumb, detail page, edit form, badge picker) shares it,
     // so a live invalidation produces exactly one HTTP request. The `with`
     // embed is always requested so the superset payload (name + lastResult +
-    // lastStatusChange) satisfies every consumer; extra embeds are ignored by
-    // those that only need `name`.
+    // lastStatusChange + regionFreshness) satisfies every consumer; extra
+    // embeds are ignored by those that only need `name`. region_freshness is
+    // one grouped query over the check's raw rows (spec 2026-09-25-02): it is
+    // what names a silent region on the detail page.
     queryKey: ["check", org, uid],
     queryFn: async () =>
       apiFetch<Check>(
-        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change`,
+        `/api/v1/orgs/${org}/checks/${uid}?with=last_result,last_status_change,region_freshness`,
       ),
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,

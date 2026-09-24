@@ -32,6 +32,8 @@
     "incident.unsnoozed": "Silencio anulado",
     "incident.rolled_up": "Agrupado en el incidente principal",
     "incident.rollup_detached": "Separado del incidente principal",
+    "incident.monitoring_interrupted": "Monitoreo interrumpido",
+    "incident.monitoring_resumed": "Monitoreo reanudado",
     "incident.comment": "Comentario",
     "statuspage.incident.published": "Publicado en la página de estado",
     "statuspage.incident.updated": "Incidente de la página de estado actualizado",

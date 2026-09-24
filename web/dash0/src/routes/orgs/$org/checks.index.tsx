@@ -118,6 +118,7 @@ import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDemoEditCheck } from "@/lib/demo";
 import { statusStyle } from "@/lib/status-style";
+import { rollupSectionStatus } from "@/lib/status-rollup";
 import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 // The checks index can bucket its rows by check group (server-side entity,
@@ -153,7 +154,10 @@ interface ChecksIndexSearch {
 // (server/internal/db/models/check.go), so it would sit in the list as a dead
 // option nothing could ever match. `?status=degraded` still parses and 200s
 // if a caller hand-types it — this only decides what the popover renders.
-const STATUS_FILTER_VALUES = ["up", "down", "validating", "warning", "created"] as const;
+// `stale` ("No data", spec 2026-09-25-02) sits right after the failure
+// states: a check nobody is measuring is the next thing an operator hunts for
+// when a region goes dark.
+const STATUS_FILTER_VALUES = ["up", "down", "validating", "warning", "stale", "created"] as const;
 
 // Group slugs are 3-100 chars: a lowercase letter followed by 2-99 lowercase
 // letters/digits/hyphens. This mirrors slugRegex in
@@ -242,12 +246,15 @@ function writeCollapsedGroup(org: string, groupUid: string, collapsed: boolean):
 }
 
 // Severity order for the group header's compact member summary — failures
-// first (the thing you came to see), the healthy count last.
+// first (the thing you came to see), the healthy count last. Same rank as the
+// group rollup (models.RollupGroupStatus): down > validating > warning >
+// stale > up.
 const MEMBER_SUMMARY_ORDER = [
   "down",
   "degraded",
-  "warning",
   "validating",
+  "warning",
+  "stale",
   "created",
   "up",
 ] as const;
@@ -323,33 +330,25 @@ function formatMemberSummary(
 // which carry a precomputed status/memberStatusCounts from the API) — the
 // aggregate status here is a pure client-side function of the currently
 // loaded rows, following the exact same worst-of precedence as
-// models.RollupGroupStatus (server/internal/db/models/check_group_status.go):
-// down if every considered (enabled) member is down, degraded if some (not
-// all) are down, warning if none are down but at least one is warning,
-// validating if none are down/warning but at least one is validating, up if
-// at least one is up, otherwise created.
+// models.RollupGroupStatus (server/internal/db/models/check_group_status.go),
+// rank down > validating > warning > stale > up: down if every considered
+// (enabled) member is down, degraded if some (not all) are down, validating
+// if none are down but at least one is validating, warning if none are
+// down/validating but at least one is warning, stale ("No data") if otherwise
+// any member stopped reporting — an all-stale section reads stale, never
+// created — up if at least one is up, otherwise created.
 function computeHostSectionStatus(checks: Check[]): {
   status: string;
   counts: Record<string, number>;
 } {
   const counts: Record<string, number> = {};
-  let total = 0;
   for (const check of checks) {
     if (check.enabled === false) continue;
     const status = check.status ?? "created";
     counts[status] = (counts[status] ?? 0) + 1;
-    total++;
   }
 
-  if (total === 0) return { status: "created", counts };
-
-  const down = counts.down ?? 0;
-  if (down === total) return { status: "down", counts };
-  if (down > 0) return { status: "degraded", counts };
-  if ((counts.warning ?? 0) > 0) return { status: "warning", counts };
-  if ((counts.validating ?? 0) > 0) return { status: "validating", counts };
-  if ((counts.up ?? 0) > 0) return { status: "up", counts };
-  return { status: "created", counts };
+  return { status: rollupSectionStatus(counts), counts };
 }
 
 // A group/host section is an elevated card whose header is a tinted band with

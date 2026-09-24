@@ -120,6 +120,7 @@ import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EvaluationCard } from "@/components/checks/evaluation-card";
 import { StatusDot } from "@/components/shared/status-dot";
+import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import { BrowserCapabilityIcon } from "@/components/shared/browser-capability";
@@ -130,7 +131,7 @@ import {
   sloStateBadgeClass,
 } from "@/lib/slo-format";
 import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
-import type { SloBurndown } from "@/api/hooks";
+import type { Check as CheckModel, SloBurndown } from "@/api/hooks";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
@@ -2131,6 +2132,9 @@ function ButtonsBadgesSection() {
                 <StatusDot status="down" /> Down
               </span>
               <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="stale" /> No data
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
                 <StatusDot status="unknown" /> Unknown
               </span>
               <span className="inline-flex items-center gap-1.5 text-sm">
@@ -2140,6 +2144,72 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Check status badges</h3>
+        <p className="text-sm text-muted-foreground">
+          Every check status goes through{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            StatusBadge
+          </code>
+          , which always reads its label from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            checks:status.*
+          </code>{" "}
+          — never the raw wire token. <strong>No data</strong> (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            stale
+          </code>
+          , spec 2026-09-25-02) is a check nobody is measuring: no real result
+          for max(3 × period, 5 min). It is neither up nor down, so it is gray
+          and carries a clock — never green. The raw status stays on{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            data-status
+          </code>{" "}
+          for tests.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status="up" />
+              <StatusBadge status="warning" />
+              <StatusBadge status="validating" />
+              <StatusBadge status="down" />
+              <StatusBadge status="stale" />
+              <StatusBadge status="created" />
+            </div>
+          }
+          importLine={`import { StatusBadge } from "@/components/shared/status-badge";\n\n<StatusBadge status={check.status} />`}
+        />
+
+        <h3 className="text-sm font-medium">No data &amp; region freshness</h3>
+        <p className="text-sm text-muted-foreground">
+          The check detail header of a stale check says how long nobody has
+          been looking ("No data since 13:41"), and lists every region's own
+          age whenever one of them is silent — a check still reporting from
+          another region keeps its status, and this list is how the dead region
+          shows up anyway. Both read the server's{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            lastResultAt
+          </code>{" "}
+          and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            regionFreshness
+          </code>{" "}
+          (<code className="text-xs">with=region_freshness</code>), never a
+          client-side re-derivation.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <StatusBadge status="stale" />
+                <StaleSince check={DESIGN_REF_STALE_CHECK} />
+              </div>
+              <RegionFreshnessList check={DESIGN_REF_STALE_CHECK} />
+            </div>
+          }
+          importLine={`import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";\n\n<StatusBadge status={check.status} />\n<StaleSince check={check} />\n<RegionFreshnessList check={check} regions={regionsData?.regions} />`}
         />
 
         <h3 className="text-sm font-medium">IPv6 capability badge</h3>
@@ -3388,6 +3458,19 @@ type MockRow = {
   name: string;
   status: "up" | "down" | "warning" | "degraded";
   latency: string;
+};
+
+// A stale check for the "No data & region freshness" example: one region
+// went silent eight hours ago, the check produced nothing anywhere since.
+const DESIGN_REF_STALE_CHECK: CheckModel = {
+  uid: "design-ref-stale",
+  name: "api.example.com",
+  status: "stale",
+  lastResultAt: new Date(Date.now() - 8 * 3600_000).toISOString(),
+  regionFreshness: [
+    { region: "eu-west", lastResultAt: new Date(Date.now() - 8 * 3600_000).toISOString(), stale: true },
+    { region: "lauterbourg", lastResultAt: new Date(Date.now() - 8 * 3600_000).toISOString(), stale: true },
+  ],
 };
 
 const MOCK_ROWS: MockRow[] = [
