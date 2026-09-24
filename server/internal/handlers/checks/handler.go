@@ -29,7 +29,7 @@ import (
 var errInvalidStatus = errors.New("invalid status filter token")
 
 // parseStatusFilter accepts a comma-separated list of status tokens
-// (up/down/created/validating/degraded/warning) and returns the matching
+// (up/down/created/validating/degraded/warning/stale) and returns the matching
 // CheckStatus values.
 func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 	parts := strings.Split(s, ",")
@@ -52,6 +52,8 @@ func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 			out = append(out, models.CheckStatusDegraded)
 		case "warning":
 			out = append(out, models.CheckStatusWarning)
+		case models.WireStatusStale:
+			out = append(out, models.CheckStatusStale)
 		default:
 			return nil, fmt.Errorf("%w: %s", errInvalidStatus, token)
 		}
@@ -474,6 +476,8 @@ func (h *Handler) GetCheck(writer http.ResponseWriter, req *http.Request) error 
 				opts.IncludeLastResult = true
 			case "last_status_change":
 				opts.IncludeLastStatusChange = true
+			case "region_freshness":
+				opts.IncludeRegionFreshness = true
 			}
 		}
 	}

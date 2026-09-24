@@ -205,3 +205,34 @@ func TestDiagnoseCheck_MissingIdentifier(t *testing.T) {
 	r.Len(result.Content, 1)
 	r.Contains(result.Content[0].Text, "identifier is required")
 }
+
+// A dead region must be NAMED, not merely absent from the per-region trimmed
+// results (spec 2026-09-25-02).
+func TestDescribeFreshness(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	lastSeen := time.Date(2026, 9, 24, 13, 41, 0, 0, time.UTC)
+	fresh := time.Date(2026, 9, 24, 21, 40, 0, 0, time.UTC)
+
+	check := &checks.CheckResponse{
+		Status: "up",
+		RegionFreshness: []checks.RegionFreshnessResponse{
+			{Region: "eu-west", LastResultAt: &fresh},
+			{Region: "lauterbourg", LastResultAt: &lastSeen, Stale: true},
+			{Region: "us-east", LastResultAt: &fresh},
+		},
+	}
+
+	r.Equal([]string{
+		"no result from lauterbourg since 2026-09-24T13:41:00Z, 2 other region(s) reporting",
+	}, describeFreshness(check))
+
+	// Every region reporting: nothing to say.
+	check.RegionFreshness[1] = checks.RegionFreshnessResponse{Region: "lauterbourg", LastResultAt: &fresh}
+	r.Empty(describeFreshness(check))
+
+	// A stale check with no region breakdown still says so.
+	r.Equal([]string{"no result from any region since 2026-09-24T13:41:00Z"},
+		describeFreshness(&checks.CheckResponse{Status: "stale", LastResultAt: &lastSeen}))
+}

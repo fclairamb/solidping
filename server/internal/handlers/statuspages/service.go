@@ -830,6 +830,12 @@ type ResourceCheckInfo struct {
 	// extra per-group query on a public, polled endpoint. Absent rather than
 	// guessed: the board simply omits the duration it does not know.
 	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
+	// LastResultAt is when the component was last actually measured — set only
+	// when Status is "stale", so the page can say "No data, last checked 13:41"
+	// instead of a bare gray dot (spec 2026-09-25-02). Absent otherwise, and
+	// absent for a group resource (same no-extra-query rule as
+	// StatusChangedAt). Nil on a stale check that never produced a result.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
 }
 
 // ResourceAvailabilityData contains availability and performance data for public display.
@@ -4111,6 +4117,10 @@ const (
 	statusWarning   = "warning"
 	statusDegraded  = uptimebar.StatusDegraded
 	statusDownValue = uptimebar.StatusDown
+	// statusStale is a component nobody is measuring right now (spec
+	// 2026-09-25-02): rendered as the neutral "No data, last checked …",
+	// never as "operational".
+	statusStale = models.WireStatusStale
 )
 
 // availabilityToStatus classifies a bucket's availability percentage into the
@@ -4376,6 +4386,8 @@ func publicCheckStatus(status models.CheckStatus) string {
 		return statusWarning
 	case models.CheckStatusDegraded:
 		return statusDegraded
+	case models.CheckStatusStale:
+		return statusStale
 	default:
 		return statusCreated
 	}
@@ -4402,13 +4414,19 @@ func (s *Service) getCheckInfo(
 		inMaintenance = anyWindowActive(windows)
 	}
 
-	return &ResourceCheckInfo{
+	info := &ResourceCheckInfo{
 		Name:            check.Name,
 		Type:            check.Type,
 		Status:          publicCheckStatus(check.Status),
 		InMaintenance:   inMaintenance,
 		StatusChangedAt: check.StatusChangedAt,
-	}, check.Status, nil
+	}
+
+	if check.Status == models.CheckStatusStale {
+		info.LastResultAt = check.LastResultAt
+	}
+
+	return info, check.Status, nil
 }
 
 // getGroupInfo builds the live block for a GROUP resource: the group's name,

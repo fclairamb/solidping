@@ -1354,3 +1354,43 @@ func TestRenderUptimeBarRowEvenWidths(t *testing.T) {
 	// Segment widths plus the (n-1) 1-px gaps sum to exactly the bar width.
 	r.Equal(width, sum+(n-1))
 }
+
+// A check whose newest real result is older than max(3 × period, 5 min)
+// renders the gray "no data" status badge, whatever its newest raw row says
+// (spec 2026-09-25-02). Positive control first: the same row, fresh, is "up".
+func TestGenerateBadge_StaleRendersNoData(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org, check := setupBadgeResultsTest(t)
+
+	up := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 40)
+	r.NoError(svc.dbSvc.CreateResult(ctx, up))
+
+	_, err := svc.dbSvc.TouchCheckLastResult(ctx, check.UID, time.Now())
+	r.NoError(err)
+
+	fresh, err := svc.GenerateBadge(ctx, org.Slug, check.UID, "status", BadgeOptions{})
+	r.NoError(err)
+	r.Contains(fresh, ">"+statusUp+"<")
+	r.Contains(fresh, ColorGreen)
+	r.NotContains(fresh, statusNoData)
+
+	// The check goes quiet: its newest real result is now an hour old.
+	stale := models.NewCheck(org.UID, "quiet", "http")
+	r.NoError(svc.dbSvc.CreateCheck(ctx, stale))
+
+	old := models.NewResult(org.UID, stale.UID, models.ResultStatusUp, 40)
+	old.PeriodStart = time.Now().Add(-time.Hour)
+	r.NoError(svc.dbSvc.CreateResult(ctx, old))
+
+	_, err = svc.dbSvc.TouchCheckLastResult(ctx, stale.UID, old.PeriodStart)
+	r.NoError(err)
+
+	svg, err := svc.GenerateBadge(ctx, org.Slug, stale.UID, "status,duration", BadgeOptions{})
+	r.NoError(err)
+	r.Contains(svg, statusNoData)
+	r.Contains(svg, ColorGray)
+	r.NotContains(svg, ColorGreen)
+	r.NotContains(svg, "↑", "the uptime duration counts from a reading that is no longer current")
+}

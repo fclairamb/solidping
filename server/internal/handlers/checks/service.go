@@ -860,7 +860,23 @@ type CheckResponse struct {
 	// "validating" (failure observed but threshold not crossed), "created",
 	// or "degraded". Distinct from LastResult.Status, which echoes the raw
 	// result row.
-	Status           string                    `json:"status,omitempty"`
+	Status string `json:"status,omitempty"`
+	// StatusChangedAt is when the check entered its CURRENT status (the row's
+	// status_changed_at). Always emitted when set, so a "down for 12 min" /
+	// "no data since 13:41" timer never depends on with=last_status_change.
+	StatusChangedAt *time.Time `json:"statusChangedAt,omitempty"`
+	// LastResultAt is the newest REAL result across every region (never an
+	// abandoned or lifecycle row) — the fact the freshness rule measures
+	// (spec 2026-09-25-02). Omitted for a check that never produced one.
+	LastResultAt *time.Time `json:"lastResultAt,omitempty"`
+	// StaleThresholdSeconds is max(3 × period, 5 min): how long the check may
+	// go without a real result before it is `stale`. Exposed so a client can
+	// apply the same rule per region instead of re-deriving it.
+	StaleThresholdSeconds int `json:"staleThresholdSeconds,omitempty"`
+	// RegionFreshness is the per-region newest real result (detail only,
+	// with=region_freshness). A check still reporting from some region is still
+	// being checked; this list is how a silent region shows up anyway.
+	RegionFreshness  []RegionFreshnessResponse `json:"regionFreshness,omitempty"`
 	LastResult       *LastResultResponse       `json:"lastResult,omitempty"`
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
@@ -935,6 +951,19 @@ type CheckResponse struct {
 	// responses never carry it — and omitted until the check's first run
 	// produces a cost signal.
 	Scheduling *CheckSchedulingResponse `json:"scheduling,omitempty"`
+}
+
+// RegionFreshnessResponse is one region's freshness for a check (spec
+// 2026-09-25-02): "no result from lauterbourg since 13:41, 2 other regions
+// reporting". Region is "" for results that carry no region.
+type RegionFreshnessResponse struct {
+	Region string `json:"region"`
+	// LastResultAt is the region's newest real raw result. Nil when a
+	// configured region has none inside the raw retention (about a day).
+	LastResultAt *time.Time `json:"lastResultAt"`
+	// Stale is true when that result is older than the check's threshold (or
+	// missing altogether).
+	Stale bool `json:"stale"`
 }
 
 // FlapStateResponse surfaces a check's live adaptive-recovery (flapping)
@@ -1023,6 +1052,21 @@ func lastStatusChangeOf(check *models.Check) *LastStatusChangeResponse {
 	}
 }
 
+// StatusNoDataLabel is how a human-facing surface (chat commands, CLI) says
+// "stale": the wire keeps the machine token, people read "no data".
+const StatusNoDataLabel = "no data"
+
+// StatusChangeLabel renders a lastStatusChange status for humans: the wire
+// value ("UP", "DOWN", …) as-is, except STALE, which reads "no data" (spec
+// 2026-09-25-02) — "STALE for 3h" means nothing to someone on call.
+func StatusChangeLabel(status string) string {
+	if strings.EqualFold(status, models.WireStatusStale) {
+		return StatusNoDataLabel
+	}
+
+	return status
+}
+
 // ListChecksOptions contains options for listing checks.
 type ListChecksOptions struct {
 	IncludeLastResult       bool
@@ -1067,6 +1111,9 @@ type ListChecksResponse struct {
 type GetCheckOptions struct {
 	IncludeLastResult       bool
 	IncludeLastStatusChange bool
+	// IncludeRegionFreshness attaches the per-region newest real result
+	// (with=region_freshness, spec 2026-09-25-02). One grouped query.
+	IncludeRegionFreshness bool
 }
 
 // ListChecks retrieves checks for an organization with pagination and filtering.
@@ -1684,7 +1731,60 @@ func (s *Service) GetCheck(
 		response.LastStatusChange = lastStatusChangeOf(check)
 	}
 
+	if opts.IncludeRegionFreshness {
+		freshness, freshErr := s.regionFreshness(ctx, check)
+		if freshErr != nil {
+			return CheckResponse{}, freshErr
+		}
+
+		response.RegionFreshness = freshness
+	}
+
 	return response, nil
+}
+
+// regionFreshness builds the per-region freshness list: every region that
+// produced a real raw result, plus every configured region that did not (with
+// a nil time — silent for longer than the raw retention, or never ran).
+func (s *Service) regionFreshness(ctx context.Context, check *models.Check) ([]RegionFreshnessResponse, error) {
+	rows, err := s.db.ListLastRealResultPerRegion(ctx, check.OrganizationUID, check.UID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get region freshness: %w", err)
+	}
+
+	return BuildRegionFreshness(check, rows, s.now()), nil
+}
+
+// BuildRegionFreshness is the pure half of regionFreshness, shared with the MCP
+// diagnose tool. Rows keep the query's region order; configured regions with
+// no row are appended in their configured order.
+func BuildRegionFreshness(
+	check *models.Check, rows []models.RegionLastResult, now time.Time,
+) []RegionFreshnessResponse {
+	threshold := check.StaleThreshold()
+	out := make([]RegionFreshnessResponse, 0, len(rows)+len(check.Regions))
+	seen := make(map[string]bool, len(rows))
+
+	for i := range rows {
+		at := rows[i].LastResultAt
+		seen[rows[i].Region] = true
+		out = append(out, RegionFreshnessResponse{
+			Region:       rows[i].Region,
+			LastResultAt: &at,
+			Stale:        now.Sub(at) > threshold,
+		})
+	}
+
+	for _, region := range check.Regions {
+		if seen[region] {
+			continue
+		}
+
+		seen[region] = true
+		out = append(out, RegionFreshnessResponse{Region: region, Stale: true})
+	}
+
+	return out
 }
 
 // UpdateCheckRequest represents a request to update a check.
@@ -3182,6 +3282,9 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Period:                    &periodStr,
 		RegionSpread:              regionSpreadStr,
 		Status:                    check.Status.String(),
+		StatusChangedAt:           check.StatusChangedAt,
+		LastResultAt:              check.LastResultAt,
+		StaleThresholdSeconds:     int(check.StaleThreshold().Seconds()),
 		CreatedAt:                 &check.CreatedAt,
 		CreatedBy:                 check.CreatedBy,
 		ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,

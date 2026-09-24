@@ -207,7 +207,7 @@ func checksList(ctx context.Context, svc *Service, cmd *Command) (*CommandRespon
 		line := fmt.Sprintf("• `%s`, every %s", slug, timeutils.FormatPeriod(period))
 
 		if check.LastStatusChange != nil {
-			line += fmt.Sprintf(", %s for %s", check.LastStatusChange.Status,
+			line += fmt.Sprintf(", %s for %s", checks.StatusChangeLabel(check.LastStatusChange.Status),
 				timeutils.FormatHumanReadable(time.Since(check.LastStatusChange.Time)))
 		}
 

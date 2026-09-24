@@ -150,7 +150,7 @@ func (h *Handler) handleChecksList(ctx context.Context, activity *Activity) erro
 
 		if check.LastStatusChange != nil {
 			line += fmt.Sprintf(", %s for %s",
-				check.LastStatusChange.Status,
+				checks.StatusChangeLabel(check.LastStatusChange.Status),
 				timeutils.FormatHumanReadable(time.Since(check.LastStatusChange.Time)))
 		}
 
