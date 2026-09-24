@@ -171,7 +171,8 @@ func createCheckDef() ToolDefinition {
 			),
 			"regions": arrayOfStringsProp(
 				"Region slugs to run the check from, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
-					"Defaults to all org regions when omitted.",
+					"Defaults to the org's default regions when omitted (org default_regions " +
+					"parameter, else the system default, else every declared region).",
 			),
 			schemaKeyEnabled: boolProp("Whether the check should run. Default true."),
 			"period": stringProp(
@@ -252,10 +253,14 @@ func updateCheckDef() ToolDefinition {
 			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
 			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
 			"regions": arrayOfStringsProp(
-				"Replace region list, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
-					"Pass an empty array to run from no regions (effectively pauses execution).",
+				"Replace the region list, e.g. [\"eu-west-1\",\"us-east-1\"]. An empty array " +
+					"resets the check to the default regions (org default_regions parameter, else " +
+					"the system default, else every declared region). The check keeps running from " +
+					"those regions; use enabled: false to stop it.",
 			),
-			schemaKeyEnabled: boolProp("Toggle whether the check runs."),
+			schemaKeyEnabled: boolProp(
+				"Toggle whether the check runs. Set to false to pause the check, true to resume it.",
+			),
 			"period": stringProp(
 				"New check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds.",
 			),

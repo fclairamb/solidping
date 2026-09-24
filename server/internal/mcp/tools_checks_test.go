@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -91,4 +92,53 @@ func TestListChecksDef_LabelsIsObject(t *testing.T) {
 	r.True(ok)
 	r.Contains(desc, "JSON object")
 	r.Contains(desc, "env")
+}
+
+func TestUpdateCheckDef_RegionsDoesNotClaimToPause(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := updateCheckDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	regionsProp, ok := props["regions"].(map[string]any)
+	r.True(ok)
+	desc, ok := regionsProp[schemaKeyDescription].(string)
+	r.True(ok)
+	r.NotContains(strings.ToLower(desc), "pause")
+	r.Contains(strings.ToLower(desc), "default")
+}
+
+func TestUpdateCheckDef_EnabledMentionsPause(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := updateCheckDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	enabledProp, ok := props[schemaKeyEnabled].(map[string]any)
+	r.True(ok)
+	desc, ok := enabledProp[schemaKeyDescription].(string)
+	r.True(ok)
+	r.Contains(strings.ToLower(desc), "pause")
+}
+
+func TestCreateCheckDef_RegionsDoesNotClaimAllOrgRegions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := createCheckDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+	regionsProp, ok := props["regions"].(map[string]any)
+	r.True(ok)
+	desc, ok := regionsProp[schemaKeyDescription].(string)
+	r.True(ok)
+	r.NotContains(desc, "all org regions")
 }
