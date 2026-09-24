@@ -21,6 +21,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldX,
+  Shuffle,
   TrendingUp,
   Undo2,
   Unplug,
@@ -102,6 +103,10 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // outage dot: it is OUR outage, not the org's target going down.
   "region.offline": { emoji: "📴", tone: TONE_DESTRUCTIVE },
   "region.recovered": { emoji: "📶", tone: TONE_EMERALD },
+  // An automatically placed check moved off a region that went dark (spec
+  // 2026-09-25-06). Emerald: the platform routed around its own outage and the
+  // check kept running — nothing for the org to fix. 🔀 reads as "rerouted".
+  "check.placement_changed": { emoji: "🔀", tone: TONE_EMERALD },
   // One of the org's private-location agents connected or lost its connection
   // (spec 2026-09-25-05). The disconnect is amber, not destructive: a single
   // agent dropping is routine (restart, upgrade) and the location's liveness
@@ -350,6 +355,7 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "statuspage.custom_domain.demoted": { icon: Globe, tone: MARK_DANGER },
   "region.offline": { icon: WifiOff, tone: MARK_DANGER, loud: true },
   "region.recovered": { icon: Wifi, tone: MARK_SUCCESS },
+  "check.placement_changed": { icon: Shuffle, tone: MARK_SUCCESS },
   "agent.connected": { icon: Plug, tone: MARK_SUCCESS },
   "agent.disconnected": { icon: Unplug, tone: MARK_WARNING },
   "auth.login_succeeded": { icon: LogIn, tone: MARK_QUIET },

@@ -216,6 +216,9 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // dash0 owns the pairing outright.
     ["region.offline", "📴"],
     ["region.recovered", "📶"],
+    // Automatic re-placement (spec 2026-09-25-06): an audit/timeline event
+    // only, never sent through a chat integration, so dash0 owns the pairing.
+    ["check.placement_changed", "🔀"],
     // Private-location agent connections (spec 2026-09-25-05). Recorded as
     // audit events only, never sent through a chat integration, so dash0 owns
     // the pairing outright.

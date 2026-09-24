@@ -358,7 +358,17 @@
       "summarySlowArmed": "{{slow}} de {{slowWindow}} sondas por encima de {{threshold}} ms",
       "summarySlowOff": "regla de lentitud desactivada"
     },
-    "privateLocationIntervalHint": "Con qué frecuencia SolidPing comprueba que los agentes de la ubicación están conectados. Un agente cuenta como desconectado tras 5 minutos sin contacto."
+    "privateLocationIntervalHint": "Con qué frecuencia SolidPing comprueba que los agentes de la ubicación están conectados. Un agente cuenta como desconectado tras 5 minutos sin contacto.",
+    "placement": {
+      "autoSummary_one": "Automática ({{count}} región)",
+      "autoSummary_other": "Automática ({{count}} regiones)",
+      "chooseRegions": "Elegir regiones",
+      "useAuto": "Usar ubicación automática",
+      "autoHint": "SolidPing ejecuta esta comprobación desde regiones sanas y la mueve a otra cuando una región deja de funcionar.",
+      "pinnedHint": "Fijada: la comprobación se ejecuta exactamente desde estas regiones y nunca se mueve.",
+      "regionCount": "Número de regiones",
+      "current": "Se ejecuta actualmente desde {{regions}}"
+    }
   },
   "types": {
     "http": "HTTP",
@@ -703,6 +713,21 @@
       "enableAction": "Activar la detección de degradación",
       "enabled": "Detección de degradación activada para este check",
       "enableFailed": "No se pudo activar la detección de degradación"
+    },
+    "placement": {
+      "title": "Ubicación",
+      "auto_one": "Automática, {{count}} región: {{regions}}",
+      "auto_other": "Automática, {{count}} regiones: {{regions}}",
+      "pinned": "Fijada: {{regions}}",
+      "pool": "Candidatas: {{regions}}",
+      "history": "Historial de ubicación",
+      "historyEntry": "{{from}} → {{to}} a las {{time}}, {{reason}}",
+      "reasons": {
+        "region_offline": "región fuera de línea",
+        "other": "movida"
+      },
+      "lastResult": "último resultado",
+      "noResult": "aún sin resultado"
     }
   },
   "endpoints": {
@@ -1199,5 +1224,16 @@
     "andMore": "{{names}} y {{count}} más",
     "formWarning": "{{regions}} está fuera de línea. Un check que solo se ejecuta desde ella no correrá hasta que vuelva.",
     "offlineBadge": "Fuera de línea"
+  },
+  "autoPlacement": {
+    "button": "Ubicación automática",
+    "title": "Pasar a ubicación automática",
+    "description_one": "{{count}} comprobación fijada pasará a ubicación automática. Conserva sus regiones y su número de regiones actuales, así que su coste no cambia: solo se mueve cuando una de sus regiones deja de funcionar.",
+    "description_other": "{{count}} comprobaciones fijadas pasarán a ubicación automática. Cada una conserva sus regiones y su número de regiones actuales, así que el coste no cambia: una comprobación solo se mueve cuando una de sus regiones deja de funcionar.",
+    "none": "Todas las comprobaciones que pueden ubicarse automáticamente ya lo están. Las comprobaciones fijadas a una ubicación privada siguen fijadas.",
+    "confirm": "Cambiar",
+    "switched_one": "{{count}} comprobación pasada a ubicación automática",
+    "switched_other": "{{count}} comprobaciones pasadas a ubicación automática",
+    "failed": "No se pudieron pasar las comprobaciones a ubicación automática"
   }
 }

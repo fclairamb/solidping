@@ -25,6 +25,7 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AutoPlacementBulkButton } from "@/components/checks/auto-placement-bulk";
 import {
   useInfiniteChecks,
   useRegions,
@@ -1568,6 +1569,8 @@ function ChecksIndexPage() {
               <Upload className="mr-2 h-4 w-4" />
               {t("import")}
             </Button>
+            {/* Bulk "Switch to automatic placement" (spec 2026-09-25-06). */}
+            <AutoPlacementBulkButton org={org} />
             <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
               <FolderPlus className="sm:mr-2 h-4 w-4" />
               <span className="hidden sm:inline">{t("newGroup")}</span>

@@ -85,6 +85,13 @@ export interface RegionFreshness {
   stale: boolean;
 }
 
+/**
+ * Placement intent (spec 2026-09-25-06): `pinned` runs exactly from `regions`
+ * and never moves; `auto` lets the scheduler place the check on `regionCount`
+ * healthy regions and move it off a region that goes dark.
+ */
+export type CheckPlacement = "pinned" | "auto";
+
 export interface Check {
   uid: string;
   name?: string;
@@ -159,7 +166,18 @@ export interface Check {
    * Undefined when the check targets no private location.
    */
   needsReseal?: boolean;
+  /**
+   * Where the check runs. For a pinned check, the user's explicit list; for an
+   * automatically placed one, the CURRENT placement, chosen by the scheduler
+   * and rewritten when one of its regions goes dark (spec 2026-09-25-06).
+   */
   regions?: string[];
+  /** Placement intent (spec 2026-09-25-06). Absent on older servers = pinned. */
+  placement?: CheckPlacement;
+  /** Automatic placement only: how many regions run the check. */
+  regionCount?: number;
+  /** Automatic placement only: candidate cloud regions; absent = any. */
+  regionPool?: string[];
   /**
    * Optional inter-region scheduling offset override ("spread"), as
    * "HH:MM:SS". Present only when a non-default value is set — absent means
@@ -341,7 +359,12 @@ export interface CreateCheckRequest {
     | "prometheus"
     | "sleep";
   config: Record<string, unknown>;
+  /** An explicit list pins the check. Omit to let it be placed automatically. */
   regions?: string[];
+  /** Placement intent; omitted = inferred (regions given → pinned, else auto). */
+  placement?: CheckPlacement;
+  regionCount?: number;
+  regionPool?: string[];
   /** Omit to use the automatic default (period / region count). */
   regionSpread?: string;
   labels?: Record<string, string>;
@@ -383,7 +406,12 @@ export interface UpdateCheckRequest {
   /** A UID assigns it, "" clears it (inherit), omit leaves unchanged. */
   escalationPolicyUid?: string;
   config?: Record<string, unknown>;
+  /** A non-empty list pins the check; [] puts it back on the default placement. */
   regions?: string[];
+  /** `auto` keeps the current count and still-healthy regions; `pinned` freezes them. */
+  placement?: CheckPlacement;
+  regionCount?: number;
+  regionPool?: string[];
   /** A duration string sets it, "" clears it back to automatic, omit leaves unchanged. */
   regionSpread?: string;
   labels?: Record<string, string>;
@@ -1044,6 +1072,57 @@ export function useCloneCheck(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
+/** One check switched to automatic placement (spec 2026-09-25-06). */
+export interface AutoPlacementItem {
+  uid: string;
+  slug?: string;
+  name?: string;
+  regions: string[];
+  regionCount: number;
+}
+
+/** Response of POST /checks/auto-placement. */
+export interface AutoPlacementResponse {
+  dryRun: boolean;
+  data: AutoPlacementItem[];
+  skipped: { uid: string; slug?: string; reason: string }[];
+}
+
+/** Dry-runs the checks list's bulk "Switch to automatic placement": which
+ * pinned checks would switch. Only fetched while the dialog is open. */
+export function useAutoPlacementPreview(org: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["autoPlacementPreview", org],
+    queryFn: () =>
+      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
+        method: "POST",
+        body: JSON.stringify({ dryRun: true }),
+      }),
+    enabled: !!org && enabled,
+    staleTime: 0,
+  });
+}
+
+/** Switches every eligible pinned check (or the named ones) to automatic
+ * placement: same regions, same count, empty pool — only failover is gained. */
+export function useSwitchToAutoPlacement(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (checkUids?: string[]) =>
+      apiFetch<AutoPlacementResponse>(`/api/v1/orgs/${org}/checks/auto-placement`, {
+        method: "POST",
+        body: JSON.stringify(checkUids && checkUids.length > 0 ? { checkUids } : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+      queryClient.invalidateQueries({ queryKey: ["check", org] });
+      queryClient.invalidateQueries({ queryKey: ["autoPlacementPreview", org] });
     },
   });
 }

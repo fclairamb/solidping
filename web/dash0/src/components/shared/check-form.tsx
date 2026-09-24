@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, Shuffle, WifiOff } from "lucide-react";
 import {
   useCheckValidationResult,
   getFieldError,
@@ -57,7 +57,8 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { Link } from "@tanstack/react-router";
 import { ApiError } from "@/api/client";
-import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
+import type { Check as CheckModel, CheckGroup, CheckPlacement, RegionDefinition, SampleConfig } from "@/api/hooks";
+import { regionDisplayLabel } from "@/lib/region-label";
 import {
   useChecks,
   useCheckTypes,
@@ -389,6 +390,10 @@ export interface CheckFormData {
   period?: string;
   config?: Record<string, unknown>;
   regions?: string[];
+  /** Placement intent (spec 2026-09-25-06): `auto` sends regionCount and no
+   * regions; `pinned` sends the explicit regions. */
+  placement?: CheckPlacement;
+  regionCount?: number;
   /** "" clears an existing override back to automatic; omit to leave unchanged. */
   regionSpread?: string;
   /** `inherit` | `on` | `off` — the per-check path-trace policy. */
@@ -743,6 +748,19 @@ export function CheckForm({
   );
 
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
+  // Placement (spec 2026-09-25-06). A new check is placed automatically unless
+  // the caller pre-selected regions (a `?region=` prefill) or the org's own
+  // default regions name a private location — the server applies the very same
+  // default. An existing check keeps what it has; an older server that sends no
+  // placement is pinned.
+  const orgDefaultIsPrivate = (defaultRegions ?? []).some((slug) => slug.startsWith("@"));
+  const [placement, setPlacement] = useState<CheckPlacement>(() => {
+    if (initialData?.placement) return initialData.placement;
+    if (mode === "edit") return "pinned";
+
+    return (initialData?.regions?.length ?? 0) > 0 || orgDefaultIsPrivate ? "pinned" : "auto";
+  });
+  const [regionCount, setRegionCount] = useState<number | undefined>(initialData?.regionCount);
   // Region Spread: "" = unset (keep automatic default). Seeded from the
   // stored override, if any — absent means the check uses the automatic
   // period/region-count default.
@@ -881,24 +899,45 @@ export function CheckForm({
   // out so users understand multi-region multiplies coverage, not divides it.
   const regionPeriodSeconds = hmsToSeconds(isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period);
 
+  // Regions automatic placement may choose from: cloud regions only (a
+  // private location is pinned-only), minus those that report no headless
+  // Chrome for a browser check. A client-side mirror of the server's rule, only
+  // used to size the region-count picker — the server has the last word, and
+  // says so with a PLACEMENT_REGION_COUNT_REDUCED warning.
+  const eligibleAutoRegions = useMemo(
+    () =>
+      (availableRegions ?? []).filter(
+        (region) =>
+          !region.private && !(type === "browser" && browserCapability(region.capabilities) === "no"),
+      ),
+    [availableRegions, type],
+  );
+  const maxAutoRegionCount = Math.max(1, eligibleAutoRegions.length);
+  const autoRegionCount = Math.min(regionCount ?? 2, maxAutoRegionCount);
+  const isAutoPlacement = placement === "auto";
+  // How many regions will run the check: the automatic N, or the picked ones.
+  const activeRegionCount = isAutoPlacement ? autoRegionCount : selectedRegions.length;
+
   // Region Spread is only meaningful once 2+ regions are actually selected
   // (a single region has nothing to stagger against) — mirrors the existing
   // regions-hint visibility gate below.
-  const hasMultiRegionSpread = showRegions && selectedRegions.length > 1;
+  const hasMultiRegionSpread = showRegions && activeRegionCount > 1;
 
   const selectedOfflineRegions = useMemo(
     () =>
-      (availableRegions ?? []).filter(
-        (region) => selectedRegions.includes(region.slug) && isRegionOffline(region),
-      ),
-    [availableRegions, selectedRegions],
+      isAutoPlacement
+        ? []
+        : (availableRegions ?? []).filter(
+            (region) => selectedRegions.includes(region.slug) && isRegionOffline(region),
+          ),
+    [availableRegions, selectedRegions, isAutoPlacement],
   );
   const hasRegionSpreadInput = regionSpreadValue.trim() !== "";
   const regionSpreadSeconds = hasRegionSpreadInput
     ? Math.round(Number(regionSpreadValue) * regionSpreadUnitSeconds[regionSpreadUnit])
     : null;
   const autoRegionSpreadSeconds =
-    selectedRegions.length > 0 ? Math.floor(regionPeriodSeconds / selectedRegions.length) : 0;
+    activeRegionCount > 0 ? Math.floor(regionPeriodSeconds / activeRegionCount) : 0;
   // Client-side mirror of the backend bound 0 <= regionSpread < period
   // (service.go's validateRegionSpread) — catches the common mistakes before
   // a round trip; the backend VALIDATION_ERROR is still authoritative and
@@ -1006,8 +1045,12 @@ export function CheckForm({
     {
       type,
       config: currentConfig,
-      // A passive check has no regions (spec 2026-09-25-04).
-      regions: isPassiveCheckType(type) ? [] : selectedRegions,
+      // A passive check has no regions (spec 2026-09-25-04), and an
+      // automatically placed one lets the server choose them (2026-09-25-06).
+      regions: isPassiveCheckType(type) || (showRegions && isAutoPlacement) ? [] : selectedRegions,
+      ...(showRegions
+        ? { placement, ...(isAutoPlacement ? { regionCount: autoRegionCount } : {}) }
+        : {}),
       slug,
       // Passive checks have no probe cadence, so their "expected interval" is
       // not a schedule and must not be projected against the rate cap.
@@ -1127,7 +1170,13 @@ export function CheckForm({
         period: isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period,
         // Don't send config for passive edits — the token is managed by the backend
         ...(isPassiveCheckType(type) && mode === "edit" ? {} : { config }),
-        ...(showRegions ? { regions: selectedRegions } : {}),
+        // Automatic placement sends the count and lets the server choose the
+        // regions; pinned sends the explicit list (spec 2026-09-25-06).
+        ...(showRegions
+          ? isAutoPlacement
+            ? { placement: "auto" as const, regionCount: autoRegionCount }
+            : { placement: "pinned" as const, regions: selectedRegions }
+          : {}),
         // Mirrors the checkGroupUid/escalationPolicyUid PATCH idiom: a
         // duration string sets the override, "" clears it back to automatic
         // on edit, and the key is omitted (untouched) whenever the field
@@ -1613,72 +1662,104 @@ export function CheckForm({
               </div>
 
               {showRegions && (
-                <div className="space-y-2" data-testid="check-regions-picker">
+                <div className="space-y-2" data-testid="check-regions-picker" data-placement={placement}>
                   <Label>{t("form.regions")}</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {orderedRegions.map((region) => {
-                      const ipv6 = ipv6Capability(region.capabilities);
-                      const browser = browserCapability(region.capabilities);
-                      // De-emphasise only when the check is pinned to ipv6 and
-                      // the region does not advertise it. Never disabled, never
-                      // hidden — the advertised value is a hint, not a gate.
-                      const deemphasised = pinnedIpv6 && ipv6 !== "yes";
+                  {isAutoPlacement ? (
+                    <AutoPlacementSummary
+                      count={autoRegionCount}
+                      maxCount={maxAutoRegionCount}
+                      onCountChange={setRegionCount}
+                      onChoose={() => setPlacement("pinned")}
+                      currentRegions={
+                        mode === "edit" && initialData?.placement === "auto"
+                          ? (initialData.regions ?? []).map((slug) => regionDisplayLabel(availableRegions, slug))
+                          : []
+                      }
+                      reducedWarning={getFieldError(fieldWarnings, "regionCount")}
+                    />
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        {orderedRegions.map((region) => {
+                          const ipv6 = ipv6Capability(region.capabilities);
+                          const browser = browserCapability(region.capabilities);
+                          // De-emphasise only when the check is pinned to ipv6 and
+                          // the region does not advertise it. Never disabled, never
+                          // hidden — the advertised value is a hint, not a gate.
+                          const deemphasised = pinnedIpv6 && ipv6 !== "yes";
 
-                      return (
-                        <label
-                          key={region.slug}
-                          className={cn(
-                            "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
-                            deemphasised && "opacity-60"
-                          )}
-                          data-testid={`region-option-${region.slug}`}
-                          data-ipv6={ipv6}
-                          data-browser={browser}
-                        >
-                          <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
-                          <span className="text-sm">{region.emoji} {region.name}</span>
-                          <span className="ml-auto flex items-center gap-1">
-                            {region.private && (
-                              <Badge variant="secondary" className="text-[10px]" title={t("form.privateRegionTitle")}>
-                                {t("form.privateRegionBadge")}
-                              </Badge>
-                            )}
-                            {isRegionOffline(region) && (
-                              <Badge
-                                variant="destructive"
-                                className="text-[10px]"
-                                data-testid={`region-offline-${region.slug}`}
-                              >
-                                {t("regionOutage.offlineBadge")}
-                              </Badge>
-                            )}
-                            {/* Icon-only so it stays quiet next to the IPv6
-                                text badge — a second text badge would crowd
-                                the picker. Always meaningful for a browser
-                                check; for other types it only speaks up when
-                                it has a definite yes/no, staying silent on
-                                "unknown". */}
-                            <BrowserCapabilityIcon
-                              capability={browser}
-                              hideUnknown={type !== "browser"}
-                              data-testid={`region-browser-${region.slug}`}
-                            />
-                            {/* "yes" is always marked; "no" is always shown so
-                                its absence can never be misread. "unknown" gets
-                                a neutral badge only while ipv6 is pinned, where
-                                the distinction actually matters. */}
-                            <Ipv6CapabilityBadge
-                              capability={ipv6}
-                              hideUnknown={!pinnedIpv6}
-                              className="text-[10px]"
-                              data-testid={`region-ipv6-${region.slug}`}
-                            />
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t("form.selectRegionsHint")}</p>
+                          return (
+                            <label
+                              key={region.slug}
+                              className={cn(
+                                "flex flex-wrap items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50",
+                                deemphasised && "opacity-60"
+                              )}
+                              data-testid={`region-option-${region.slug}`}
+                              data-ipv6={ipv6}
+                              data-browser={browser}
+                            >
+                              <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
+                              <span className="text-sm">{region.emoji} {region.name}</span>
+                              <span className="ml-auto flex items-center gap-1">
+                                {region.private && (
+                                  <Badge variant="secondary" className="text-[10px]" title={t("form.privateRegionTitle")}>
+                                    {t("form.privateRegionBadge")}
+                                  </Badge>
+                                )}
+                                {isRegionOffline(region) && (
+                                  <Badge
+                                    variant="destructive"
+                                    className="text-[10px]"
+                                    data-testid={`region-offline-${region.slug}`}
+                                  >
+                                    {t("regionOutage.offlineBadge")}
+                                  </Badge>
+                                )}
+                                {/* Icon-only so it stays quiet next to the IPv6
+                                    text badge — a second text badge would crowd
+                                    the picker. Always meaningful for a browser
+                                    check; for other types it only speaks up when
+                                    it has a definite yes/no, staying silent on
+                                    "unknown". */}
+                                <BrowserCapabilityIcon
+                                  capability={browser}
+                                  hideUnknown={type !== "browser"}
+                                  data-testid={`region-browser-${region.slug}`}
+                                />
+                                {/* "yes" is always marked; "no" is always shown so
+                                    its absence can never be misread. "unknown" gets
+                                    a neutral badge only while ipv6 is pinned, where
+                                    the distinction actually matters. */}
+                                <Ipv6CapabilityBadge
+                                  capability={ipv6}
+                                  hideUnknown={!pinnedIpv6}
+                                  className="text-[10px]"
+                                  data-testid={`region-ipv6-${region.slug}`}
+                                />
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t("form.selectRegionsHint")}</p>
+                      {eligibleAutoRegions.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("form.placement.pinnedHint")}{" "}
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-xs"
+                            onClick={() => setPlacement("auto")}
+                            data-testid="check-placement-use-auto"
+                          >
+                            {t("form.placement.useAuto")}
+                          </Button>
+                        </p>
+                      )}
+                    </>
+                  )}
                   {/* Warn before someone pins a check to a region the
                       server holds as offline (spec 2026-09-25-03). Advisory:
                       the region may be back by the time the check is saved. */}
@@ -1716,7 +1797,7 @@ export function CheckForm({
                       })}
                     </p>
                   )}
-                  {selectedRegions.length > 1 && regionPeriodSeconds > 0 && (
+                  {activeRegionCount > 1 && regionPeriodSeconds > 0 && (
                     <p className="text-xs text-muted-foreground" data-testid="regions-period-hint">
                       {hasRegionSpreadInput && !regionSpreadError
                         ? t("form.regionsHintSpread", {
@@ -1783,7 +1864,7 @@ export function CheckForm({
                               })
                             : t("form.regionSpreadAutomatic", {
                                 spread: formatDuration(autoRegionSpreadSeconds),
-                                count: selectedRegions.length,
+                                count: activeRegionCount,
                                 defaultValue: "Automatic: {{spread}} (period / {{count}} regions)",
                               })}
                         </p>
@@ -2365,5 +2446,81 @@ export function CheckForm({
         </form>
       </div>
     </CheckFormFieldsProvider>
+  );
+}
+
+/**
+ * The automatic-placement half of the region picker (spec 2026-09-25-06):
+ * "Regions: Automatic (2 regions) · Choose regions", the region count, and on
+ * an existing automatic check the regions it currently runs from.
+ */
+export function AutoPlacementSummary({
+  count,
+  maxCount,
+  onCountChange,
+  onChoose,
+  currentRegions,
+  reducedWarning,
+}: {
+  count: number;
+  maxCount: number;
+  onCountChange: (count: number) => void;
+  onChoose: () => void;
+  currentRegions: string[];
+  reducedWarning?: string;
+}) {
+  const { t } = useTranslation("checks");
+
+  return (
+    <div className="space-y-2 rounded-md border p-3" data-testid="check-placement-auto">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <Shuffle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <span className="font-medium" data-testid="check-placement-auto-summary">
+          {t("form.placement.autoSummary", { count })}
+        </span>
+        <span className="text-muted-foreground" aria-hidden="true">·</span>
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto p-0"
+          onClick={onChoose}
+          data-testid="check-placement-choose"
+        >
+          {t("form.placement.chooseRegions")}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("form.placement.autoHint")}</p>
+      {maxCount > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor="regionCount" className="text-sm font-normal">
+            {t("form.placement.regionCount")}
+          </Label>
+          <Select value={String(count)} onValueChange={(value) => onCountChange(Number(value))}>
+            <SelectTrigger id="regionCount" className="w-20" data-testid="check-placement-region-count">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: maxCount }, (_, i) => i + 1).map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {currentRegions.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="check-placement-current">
+          {t("form.placement.current", { regions: currentRegions.join(", ") })}
+        </p>
+      )}
+      {reducedWarning && (
+        <Alert variant="warning" data-testid="check-placement-reduced-warning">
+          <AlertTriangle />
+          <AlertDescription>{reducedWarning}</AlertDescription>
+        </Alert>
+      )}
+    </div>
   );
 }

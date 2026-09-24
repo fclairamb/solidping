@@ -358,7 +358,17 @@
       "summarySlowArmed": "{{slow}} sondes sur {{slowWindow}} au-delà de {{threshold}} ms",
       "summarySlowOff": "règle de lenteur désactivée"
     },
-    "privateLocationIntervalHint": "Fréquence à laquelle SolidPing vérifie que les agents de l'emplacement sont connectés. Un agent est considéré hors ligne après 5 minutes sans contact."
+    "privateLocationIntervalHint": "Fréquence à laquelle SolidPing vérifie que les agents de l'emplacement sont connectés. Un agent est considéré hors ligne après 5 minutes sans contact.",
+    "placement": {
+      "autoSummary_one": "Automatique ({{count}} région)",
+      "autoSummary_other": "Automatique ({{count}} régions)",
+      "chooseRegions": "Choisir les régions",
+      "useAuto": "Utiliser le placement automatique",
+      "autoHint": "SolidPing exécute ce contrôle depuis des régions saines et le déplace vers une autre quand une région tombe.",
+      "pinnedHint": "Épinglé : le contrôle s'exécute exactement depuis ces régions et n'est jamais déplacé.",
+      "regionCount": "Nombre de régions",
+      "current": "S'exécute actuellement depuis {{regions}}"
+    }
   },
   "types": {
     "http": "HTTP",
@@ -747,6 +757,21 @@
       "enableAction": "Activer la détection de dégradation",
       "enabled": "Détection de dégradation activée pour ce check",
       "enableFailed": "Impossible d'activer la détection de dégradation"
+    },
+    "placement": {
+      "title": "Placement",
+      "auto_one": "Automatique, {{count}} région : {{regions}}",
+      "auto_other": "Automatique, {{count}} régions : {{regions}}",
+      "pinned": "Épinglé : {{regions}}",
+      "pool": "Candidates : {{regions}}",
+      "history": "Historique du placement",
+      "historyEntry": "{{from}} → {{to}} à {{time}}, {{reason}}",
+      "reasons": {
+        "region_offline": "région hors ligne",
+        "other": "déplacé"
+      },
+      "lastResult": "dernier résultat",
+      "noResult": "pas encore de résultat"
     }
   },
   "endpoints": {
@@ -1199,5 +1224,16 @@
     "andMore": "{{names}} et {{count}} autres",
     "formWarning": "{{regions}} est hors ligne. Un check qui ne s'exécute que depuis cette région ne tournera pas avant son retour.",
     "offlineBadge": "Hors ligne"
+  },
+  "autoPlacement": {
+    "button": "Placement automatique",
+    "title": "Passer au placement automatique",
+    "description_one": "{{count}} contrôle épinglé passera au placement automatique. Il garde ses régions et son nombre de régions actuels, donc son coût ne change pas : il ne bouge que si l'une de ses régions tombe.",
+    "description_other": "{{count}} contrôles épinglés passeront au placement automatique. Chacun garde ses régions et son nombre de régions actuels, donc le coût ne change pas : un contrôle ne bouge que si l'une de ses régions tombe.",
+    "none": "Tous les contrôles qui peuvent être placés automatiquement le sont déjà. Les contrôles épinglés sur un site privé restent épinglés.",
+    "confirm": "Basculer",
+    "switched_one": "{{count}} contrôle passé en placement automatique",
+    "switched_other": "{{count}} contrôles passés en placement automatique",
+    "failed": "Impossible de passer les contrôles en placement automatique"
   }
 }

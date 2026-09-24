@@ -20,6 +20,7 @@
     "check.created": "Comprobación creada",
     "check.updated": "Comprobación actualizada",
     "check.deleted": "Comprobación eliminada",
+    "check.placement_changed": "Comprobación movida a otra región",
     "incident.created": "Incidente creado",
     "incident.opened": "Incidente abierto",
     "incident.resolved": "Incidente resuelto",

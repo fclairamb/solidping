@@ -20,6 +20,7 @@
     "check.created": "Check Created",
     "check.updated": "Check Updated",
     "check.deleted": "Check Deleted",
+    "check.placement_changed": "Check Moved to Another Region",
     "incident.created": "Incident Created",
     "incident.opened": "Incident Opened",
     "incident.resolved": "Incident Resolved",

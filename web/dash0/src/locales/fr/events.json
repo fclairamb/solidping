@@ -20,6 +20,7 @@
     "check.created": "Contrôle créé",
     "check.updated": "Contrôle mis à jour",
     "check.deleted": "Contrôle supprimé",
+    "check.placement_changed": "Contrôle déplacé vers une autre région",
     "incident.created": "Incident créé",
     "incident.opened": "Incident ouvert",
     "incident.resolved": "Incident résolu",

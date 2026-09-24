@@ -125,6 +125,8 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { EvaluationCard } from "@/components/checks/evaluation-card";
 import { StatusDot } from "@/components/shared/status-dot";
 import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
+import { CheckPlacementDetail } from "@/components/checks/check-placement";
+import { AutoPlacementSummary } from "@/components/shared/check-form";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
 import { BrowserCapabilityIcon } from "@/components/shared/browser-capability";
@@ -1674,6 +1676,7 @@ function Swatch({
 }
 
 function ButtonsBadgesSection() {
+  const { org } = Route.useParams();
   return (
     <Section
       id="buttons-badges"
@@ -2214,6 +2217,40 @@ function ButtonsBadgesSection() {
             </div>
           }
           importLine={`import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";\n\n<StatusBadge status={check.status} />\n<StaleSince check={check} />\n<RegionFreshnessList check={check} regions={regionsData?.regions} />`}
+        />
+
+        <h3 className="text-sm font-medium">Region placement</h3>
+        <p className="text-sm text-muted-foreground">
+          A check is either <strong>pinned</strong> (it runs from exactly the
+          regions the user chose, and never moves) or placed{" "}
+          <strong>automatically</strong> (spec 2026-09-25-06): the scheduler
+          picks N healthy regions and moves the check off a region that goes
+          dark. The form shows the automatic mode as one line with a "Choose
+          regions" way out to the pinned picker; the check detail shows the
+          placement, each region's last result (from{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            regionFreshness
+          </code>
+          ) and the automatic moves (the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            check.placement_changed
+          </code>{" "}
+          events).
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-3">
+              <AutoPlacementSummary
+                count={2}
+                maxCount={4}
+                onCountChange={() => {}}
+                onChoose={() => {}}
+                currentRegions={["Paris (paris)", "Gravelines (gravelines)"]}
+              />
+              <CheckPlacementDetail org={org} check={DESIGN_REF_AUTO_CHECK} />
+            </div>
+          }
+          importLine={`import { AutoPlacementSummary } from "@/components/shared/check-form";\nimport { CheckPlacementDetail } from "@/components/checks/check-placement";\n\n<CheckPlacementDetail org={org} check={check} regions={regionsData?.regions} />`}
         />
 
         <h3 className="text-sm font-medium">IPv6 capability badge</h3>
@@ -3466,6 +3503,19 @@ type MockRow = {
 
 // A stale check for the "No data & region freshness" example: one region
 // went silent eight hours ago, the check produced nothing anywhere since.
+const DESIGN_REF_AUTO_CHECK: CheckModel = {
+  uid: "design-ref-auto",
+  name: "api.example.com",
+  status: "up",
+  placement: "auto",
+  regionCount: 2,
+  regions: ["paris", "gravelines"],
+  regionFreshness: [
+    { region: "paris", lastResultAt: new Date(Date.now() - 40_000).toISOString(), stale: false },
+    { region: "gravelines", lastResultAt: new Date(Date.now() - 65_000).toISOString(), stale: false },
+  ],
+};
+
 const DESIGN_REF_STALE_CHECK: CheckModel = {
   uid: "design-ref-stale",
   name: "api.example.com",

@@ -105,6 +105,7 @@ import { DegradedDryRunBanner } from "@/components/checks/degraded-dry-run-banne
 import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status-page-dialog";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
+import { CheckPlacementDetail } from "@/components/checks/check-placement";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
@@ -1578,20 +1579,9 @@ function CheckDetailPage() {
                 <div>{check.period}</div>
               </div>
             )}
-            {check.regions && check.regions.length > 0 && (
-              <div>
-                <div className="text-sm font-medium text-muted-foreground mb-1">
-                  {t("checks:detail.regionsLabel")}
-                </div>
-                <div className="flex gap-1 flex-wrap">
-                  {check.regions.map((slug) => (
-                    <Badge key={slug} variant="outline">
-                      {regionDisplayLabel(regionsData?.regions, slug)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Placement + regions + per-region last result + the automatic
+                moves (spec 2026-09-25-06). */}
+            <CheckPlacementDetail org={org} check={check} regions={regionsData?.regions} />
             <TunnelVia org={org} check={check} />
             <TunnelDependents org={org} check={check} />
             <DeliveryVia org={org} check={check} />

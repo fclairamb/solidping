@@ -358,7 +358,17 @@
       "summarySlowArmed": "{{slow}} of {{slowWindow}} probes over {{threshold}} ms",
       "summarySlowOff": "slow rule off"
     },
-    "privateLocationIntervalHint": "How often SolidPing checks that the location's agents are connected. An agent counts as offline after 5 minutes without contact."
+    "privateLocationIntervalHint": "How often SolidPing checks that the location's agents are connected. An agent counts as offline after 5 minutes without contact.",
+    "placement": {
+      "autoSummary_one": "Automatic ({{count}} region)",
+      "autoSummary_other": "Automatic ({{count}} regions)",
+      "chooseRegions": "Choose regions",
+      "useAuto": "Use automatic placement",
+      "autoHint": "SolidPing runs this check from healthy regions and moves it to another one when a region goes offline.",
+      "pinnedHint": "Pinned: the check runs from exactly these regions and is never moved.",
+      "regionCount": "Number of regions",
+      "current": "Currently running from {{regions}}"
+    }
   },
   "types": {
     "http": "HTTP",
@@ -747,6 +757,21 @@
       "enableAction": "Enable degraded detection",
       "enabled": "Degraded detection enabled for this check",
       "enableFailed": "Could not enable degraded detection"
+    },
+    "placement": {
+      "title": "Placement",
+      "auto_one": "Automatic, {{count}} region: {{regions}}",
+      "auto_other": "Automatic, {{count}} regions: {{regions}}",
+      "pinned": "Pinned: {{regions}}",
+      "pool": "Candidates: {{regions}}",
+      "history": "Placement history",
+      "historyEntry": "{{from}} → {{to}} at {{time}}, {{reason}}",
+      "reasons": {
+        "region_offline": "region offline",
+        "other": "moved"
+      },
+      "lastResult": "last result",
+      "noResult": "no result yet"
     }
   },
   "endpoints": {
@@ -1199,5 +1224,16 @@
     "andMore": "{{names}} and {{count}} more",
     "formWarning": "{{regions}} is offline right now. A check that runs only from it will not run until it is back.",
     "offlineBadge": "Offline"
+  },
+  "autoPlacement": {
+    "button": "Automatic placement",
+    "title": "Switch to automatic placement",
+    "description_one": "{{count}} pinned check will switch to automatic placement. It keeps its current regions and region count, so its cost does not change: it only moves when one of its regions goes offline.",
+    "description_other": "{{count}} pinned checks will switch to automatic placement. Each keeps its current regions and region count, so the cost does not change: a check only moves when one of its regions goes offline.",
+    "none": "Every check that can be placed automatically already is. Checks pinned to a private location stay pinned.",
+    "confirm": "Switch",
+    "switched_one": "{{count}} check switched to automatic placement",
+    "switched_other": "{{count}} checks switched to automatic placement",
+    "failed": "Could not switch checks to automatic placement"
   }
 }

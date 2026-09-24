@@ -358,7 +358,17 @@
       "summarySlowArmed": "{{slow}} von {{slowWindow}} Probes über {{threshold}} ms",
       "summarySlowOff": "Langsam-Regel aus"
     },
-    "privateLocationIntervalHint": "Wie oft SolidPing prüft, ob die Agenten des Standorts verbunden sind. Ein Agent gilt nach 5 Minuten ohne Kontakt als getrennt."
+    "privateLocationIntervalHint": "Wie oft SolidPing prüft, ob die Agenten des Standorts verbunden sind. Ein Agent gilt nach 5 Minuten ohne Kontakt als getrennt.",
+    "placement": {
+      "autoSummary_one": "Automatisch ({{count}} Region)",
+      "autoSummary_other": "Automatisch ({{count}} Regionen)",
+      "chooseRegions": "Regionen wählen",
+      "useAuto": "Automatische Platzierung verwenden",
+      "autoHint": "SolidPing führt diese Prüfung aus gesunden Regionen aus und verschiebt sie, wenn eine Region ausfällt.",
+      "pinnedHint": "Fixiert: Die Prüfung läuft genau aus diesen Regionen und wird nie verschoben.",
+      "regionCount": "Anzahl der Regionen",
+      "current": "Läuft derzeit aus {{regions}}"
+    }
   },
   "types": {
     "http": "HTTP",
@@ -703,6 +713,21 @@
       "enableAction": "Beeinträchtigungserkennung aktivieren",
       "enabled": "Beeinträchtigungserkennung für diesen Check aktiviert",
       "enableFailed": "Beeinträchtigungserkennung konnte nicht aktiviert werden"
+    },
+    "placement": {
+      "title": "Platzierung",
+      "auto_one": "Automatisch, {{count}} Region: {{regions}}",
+      "auto_other": "Automatisch, {{count}} Regionen: {{regions}}",
+      "pinned": "Fixiert: {{regions}}",
+      "pool": "Kandidaten: {{regions}}",
+      "history": "Platzierungsverlauf",
+      "historyEntry": "{{from}} → {{to}} um {{time}}, {{reason}}",
+      "reasons": {
+        "region_offline": "Region offline",
+        "other": "verschoben"
+      },
+      "lastResult": "letztes Ergebnis",
+      "noResult": "noch kein Ergebnis"
     }
   },
   "endpoints": {
@@ -1199,5 +1224,16 @@
     "andMore": "{{names}} und {{count}} weitere",
     "formWarning": "{{regions}} ist gerade offline. Ein Check, der nur dort läuft, läuft erst wieder, wenn sie zurück ist.",
     "offlineBadge": "Offline"
+  },
+  "autoPlacement": {
+    "button": "Automatische Platzierung",
+    "title": "Auf automatische Platzierung umstellen",
+    "description_one": "{{count}} fixierte Prüfung wird auf automatische Platzierung umgestellt. Sie behält ihre aktuellen Regionen und deren Anzahl, die Kosten ändern sich also nicht: Sie wird nur verschoben, wenn eine ihrer Regionen ausfällt.",
+    "description_other": "{{count}} fixierte Prüfungen werden auf automatische Platzierung umgestellt. Jede behält ihre aktuellen Regionen und deren Anzahl, die Kosten ändern sich also nicht: Eine Prüfung wird nur verschoben, wenn eine ihrer Regionen ausfällt.",
+    "none": "Alle Prüfungen, die automatisch platziert werden können, sind es bereits. Prüfungen, die an einen privaten Standort gebunden sind, bleiben fixiert.",
+    "confirm": "Umstellen",
+    "switched_one": "{{count}} Prüfung auf automatische Platzierung umgestellt",
+    "switched_other": "{{count}} Prüfungen auf automatische Platzierung umgestellt",
+    "failed": "Prüfungen konnten nicht auf automatische Platzierung umgestellt werden"
   }
 }
