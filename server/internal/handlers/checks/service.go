@@ -326,6 +326,12 @@ func parsedConfigForType(checkType string, configMap map[string]any) checkerdef.
 // documented floor is 30s and the error would otherwise read as a bug.
 const browserFloorReason = "scripts that open a browser have the browser check's 1m floor"
 
+// rdpFloorReason is the same idea for an authenticated RDP run (a `js` script
+// calling rdp.connect, or an rdp check with credentials): the floor exists
+// because every such run is a real interactive Windows logon, and the message
+// must say so rather than read as a bug.
+const rdpFloorReason = "authenticated RDP runs are real interactive logons; the floor keeps the interval long"
+
 // formatPeriodBound renders a period bound compactly, the way users write
 // periods: whole hours as "6h", whole minutes at or above ten minutes as
 // "15m", and everything else in seconds ("60s", "30s", "10s") so the common
@@ -379,7 +385,11 @@ func validatePeriodForType(
 	if hinter, ok := config.(checkerdef.MinPeriodHint); ok && config != nil {
 		if hint := hinter.MinPeriodHint(); hint > minPeriod {
 			minPeriod = hint
+
 			reason = browserFloorReason
+			if checkType == string(checkerdef.CheckTypeRDP) {
+				reason = rdpFloorReason
+			}
 		}
 	}
 

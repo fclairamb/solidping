@@ -490,16 +490,40 @@ export function CheckForm({
 
 
   // Get period constraints for a given type
-  function getPeriodConstraints(t: string) {
+  function getPeriodConstraints(t: string, config?: unknown) {
     const info = checkTypeInfoMap.get(t);
-    const minSec = info?.minPeriodSeconds || globalMinPeriodSeconds;
+    const minSec = Math.max(
+      info?.minPeriodSeconds || 0,
+      configMinPeriodHint(t, config) || 0,
+      globalMinPeriodSeconds,
+    );
     const maxSec = info?.maxPeriodSeconds || 0;
     const defSec = info?.defaultPeriodSeconds || defaultPeriodSeconds[t] || globalDefaultPeriodSeconds;
-    return { minSec, maxSec, defSec };
+    return { minSec, maxSec, defSec: Math.max(defSec, minSec) };
   }
 
-  function getDefaultPeriodHMS(t: string): string {
-    const { defSec } = getPeriodConstraints(t);
+  // configMinPeriodHint mirrors checkerdef.MinPeriodHint server-side: config
+  // CONTENT can raise the type's own floor (rdp with credentials = 15m). The
+  // heuristic is deliberately the same regex the server compiles, kept here so
+  // the period picker shows a legal default before the first save.
+  function configMinPeriodHint(t: string, config: unknown): number {
+    if (t !== "rdp" && t !== "js") return 0;
+    const script = config && typeof config === "object" && "script" in config
+      ? String((config as { script?: unknown }).script ?? "")
+      : "";
+    if (t === "js") {
+      return /\brdp\s*\.\s*connect\s*\(/.test(script) ? 15 * 60 : 0;
+    }
+
+    // rdp: the form state is typed per module; read the credential fields.
+    const rdp = config as { username?: unknown; password?: unknown } | null;
+    if (rdp?.username && rdp?.password) return 15 * 60;
+
+    return 0;
+  }
+
+  function getDefaultPeriodHMS(t: string, config?: unknown): string {
+    const { defSec } = getPeriodConstraints(t, config);
     return secondsToHMS(defSec);
   }
 
@@ -656,7 +680,11 @@ export function CheckForm({
     );
   }
   const [period, setPeriod] = useState(
-    canonicalPeriodHMS(initialData?.period) || getDefaultPeriodHMS(initialType),
+    canonicalPeriodHMS(initialData?.period) ||
+      getDefaultPeriodHMS(
+        initialType,
+        checkTypeRegistry[initialType].fromConfig(initialData?.config ?? {}),
+      ),
   );
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
   const [periodValue, setPeriodValue] = useState(initialPeriod.value);
@@ -800,7 +828,7 @@ export function CheckForm({
 
   // Interval options filtered by type constraints
   const intervalOptions = useMemo(() => {
-    const { minSec, maxSec } = getPeriodConstraints(type);
+    const { minSec, maxSec } = getPeriodConstraints(type, configState);
     return withCustomIntervalOption(
       buildIntervalOptions(minSec, maxSec),
       initialData?.period,
@@ -811,7 +839,21 @@ export function CheckForm({
         }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, checkTypeInfoMap, initialData?.period, t]);
+  }, [type, configState, checkTypeInfoMap, initialData?.period, t]);
+
+  // The config-derived period floor is LIVE: filling in rdp credentials turns
+  // the check into an authenticated logon mid-form, so the selection must rise
+  // to the legal floor before submit. Only ever raises — a longer period the
+  // operator already picked is left alone, and an edit whose stored period is
+  // already legal is untouched.
+  useEffect(() => {
+    const { minSec } = getPeriodConstraints(type, configState);
+    const currentSec = hmsToSeconds(period);
+    if (currentSec > 0 && currentSec < minSec) {
+      setPeriod(secondsToHMS(minSec));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, configState]);
 
   // Live polling interval (seconds) used by the Confirmation / Recovery estimate
   // lines. Active checks have a real cadence (the selected HMS interval); passive
@@ -1369,15 +1411,20 @@ export function CheckForm({
                                   // Re-seed the active module's state, carrying
                                   // over shared fields (host, url, …) from the
                                   // previously-serialized config.
-                                  setConfigState(
-                                    checkTypeRegistry[newType].fromConfig(currentConfig),
-                                  );
+                                  const nextConfigState = checkTypeRegistry[
+                                    newType
+                                  ].fromConfig(currentConfig);
+                                  setConfigState(nextConfigState);
                                   // Drop the passthrough: the keys the PREVIOUS
                                   // type did not model mean nothing to the new
                                   // one, and the new checker would reject them.
                                   setPassthroughSource({ type: newType, config: {} });
                                   setType(newType);
-                                  setPeriod(getDefaultPeriodHMS(newType));
+                                  // The period default is config-DEPENDENT for
+                                  // types whose config content raises the floor
+                                  // (rdp with credentials = 15m): reseed first,
+                                  // then ask the module for its hint.
+                                  setPeriod(getDefaultPeriodHMS(newType, nextConfigState));
                                   onTypeChange?.(newType);
                                   setTypeSearchOpen(false);
                                   setTypeSearch("");

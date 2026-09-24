@@ -718,6 +718,53 @@ test.describe("Checks", () => {
     });
   });
 
+  test("RDP logon mode round-trips credentials and the caveat help renders", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /^RDP/i }).click();
+
+    // The logon fields and the caveat sentence render on the base form.
+    await expect(page.getByTestId("check-rdp-username-input")).toBeVisible();
+    await expect(page.getByTestId("check-rdp-password-input")).toBeVisible();
+    await expect(page.getByTestId("check-rdp-end-session-select")).toBeVisible();
+    await expect(page.getByText(/real interactive Windows logon/i)).toBeVisible();
+
+    const checkName = `E2E RDP Logon ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-host-input").fill("rdp.example.internal");
+    await page.getByTestId("check-rdp-username-input").fill("svc-monitor");
+    await page.getByTestId("check-rdp-password-input").fill("solidpass");
+    await page.getByTestId("check-rdp-end-session-select").selectOption("disconnect");
+    await page.getByTestId("check-rdp-screenshot-checkbox").click();
+
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // Round-trip through the edit form.
+    await page
+      .getByTestId("check-detail-header")
+      .getByRole("link", { name: "Edit" }).click();
+    await page.waitForURL(/\/edit/);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-rdp-username-input")).toHaveValue("svc-monitor");
+    await expect(page.getByTestId("check-rdp-end-session-select")).toHaveValue("disconnect");
+    await expect(page.getByTestId("check-rdp-screenshot-checkbox")).toBeChecked();
+  });
+
   test("TCP check form round-trips an escaped payload and a regex expectation", async ({
     authenticatedPage,
   }) => {
