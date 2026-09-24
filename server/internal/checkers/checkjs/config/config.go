@@ -211,21 +211,38 @@ func (c *JSConfig) SecretFields() []string {
 // The stricter (higher) of the matched floors wins when a script uses both.
 // Zero means "no opinion".
 func (c *JSConfig) MinPeriodHint() time.Duration {
-	hint := time.Duration(0)
+	hint, _ := c.minPeriodHint()
+
+	return hint
+}
+
+// MinPeriodHintSource names the floor MinPeriodHint returned — the RDP one
+// when the script calls rdp.connect (it is the higher of the two), else the
+// browser one. Implements checkerdef.MinPeriodHintSource.
+func (c *JSConfig) MinPeriodHintSource() string {
+	_, source := c.minPeriodHint()
+
+	return source
+}
+
+// minPeriodHint is the shared body: the winning floor and which heuristic
+// produced it.
+func (c *JSConfig) minPeriodHint() (time.Duration, string) {
+	hint, source := time.Duration(0), ""
 
 	if browserOpenRE.MatchString(c.Script) {
 		if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckTypeBrowser); meta != nil {
-			hint = meta.MinPeriod
+			hint, source = meta.MinPeriod, checkerdef.MinPeriodSourceBrowser
 		}
 	}
 
 	if rdpConnectRE.MatchString(c.Script) {
 		if floor := checkrdpconfig.AuthenticatedMinPeriod; hint < floor {
-			hint = floor
+			hint, source = floor, checkerdef.MinPeriodSourceRDP
 		}
 	}
 
-	return hint
+	return hint, source
 }
 
 // Validate checks that the configuration fields are within acceptable bounds.

@@ -275,12 +275,29 @@ func (c *RDPConfig) Authenticated() bool {
 // is exactly the mistake the caveats warn against, so the floor enforces the
 // mitigation instead of trusting the operator to have read the help text. The
 // pre-auth check keeps the global floor: it is a cheap handshake.
+//
+// Keyed on Username alone, NOT on Authenticated(): with credential encryption
+// on, the password is split out of the public config before the period is
+// validated on update, so a username-and-password check reads as
+// "username, no password" at that point. Validate already refuses a username
+// without a password, so a username is only ever present on an authenticated
+// check.
 func (c *RDPConfig) MinPeriodHint() time.Duration {
-	if !c.Authenticated() {
+	if c.Username == "" {
 		return 0
 	}
 
 	return AuthenticatedMinPeriod
+}
+
+// MinPeriodHintSource names the RDP floor. Implements
+// checkerdef.MinPeriodHintSource.
+func (c *RDPConfig) MinPeriodHintSource() string {
+	if c.MinPeriodHint() == 0 {
+		return ""
+	}
+
+	return checkerdef.MinPeriodSourceRDP
 }
 
 // Validate performs config-only validation (no network). It also fills in

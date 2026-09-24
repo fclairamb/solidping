@@ -332,6 +332,49 @@ const browserFloorReason = "scripts that open a browser have the browser check's
 // must say so rather than read as a bug.
 const rdpFloorReason = "authenticated RDP runs are real interactive logons; the floor keeps the interval long"
 
+// validateConfigDerivedFloor holds an unchanged period to the floor a NEW
+// config raises (see configPeriodHint), and to nothing else.
+func validateConfigDerivedFloor(checkType string, period time.Duration, config checkerdef.Config) error {
+	if period == 0 || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
+		return nil
+	}
+
+	if hint, reason := configPeriodHint(config); hint > 0 && period < hint {
+		return &periodBoundError{CheckType: checkType, Bound: hint, Reason: reason}
+	}
+
+	return nil
+}
+
+// configPeriodHint is the config-derived floor and the sentence explaining it:
+// the reason follows the heuristic that actually produced the hint (a `js`
+// script calling rdp.connect gets the RDP reason, not the browser one).
+func configPeriodHint(config checkerdef.Config) (time.Duration, string) {
+	hinter, ok := config.(checkerdef.MinPeriodHint)
+	if !ok || config == nil {
+		return 0, ""
+	}
+
+	hint := hinter.MinPeriodHint()
+	if hint == 0 {
+		return 0, ""
+	}
+
+	source := ""
+	if sourcer, hasSource := config.(checkerdef.MinPeriodHintSource); hasSource {
+		source = sourcer.MinPeriodHintSource()
+	}
+
+	switch source {
+	case checkerdef.MinPeriodSourceRDP:
+		return hint, rdpFloorReason
+	case checkerdef.MinPeriodSourceBrowser:
+		return hint, browserFloorReason
+	default:
+		return hint, ""
+	}
+}
+
 // formatPeriodBound renders a period bound compactly, the way users write
 // periods: whole hours as "6h", whole minutes at or above ten minutes as
 // "15m", and everything else in seconds ("60s", "30s", "10s") so the common
@@ -382,15 +425,8 @@ func validatePeriodForType(
 	// max(type floor, config-derived floor).
 	var reason string
 
-	if hinter, ok := config.(checkerdef.MinPeriodHint); ok && config != nil {
-		if hint := hinter.MinPeriodHint(); hint > minPeriod {
-			minPeriod = hint
-
-			reason = browserFloorReason
-			if checkType == string(checkerdef.CheckTypeRDP) {
-				reason = rdpFloorReason
-			}
-		}
+	if hint, hintReason := configPeriodHint(config); hint > minPeriod {
+		minPeriod, reason = hint, hintReason
 	}
 
 	if period < minPeriod {
@@ -1837,6 +1873,19 @@ func (s *Service) UpdateCheck(
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
 			return CheckResponse{}, cfgErr
+		}
+
+		// A config-only PATCH must not be a way around a config-derived
+		// floor either: adding credentials to an rdp check (or rdp.connect to
+		// a script) that already runs faster than the floor is refused. Only
+		// the config-derived floor is re-checked here — the type's own bound
+		// stays grandfathered until the period itself is written.
+		if req.Period == nil && !check.Internal {
+			if floorErr := validateConfigDerivedFloor(
+				check.Type, time.Duration(check.Period), parsedConfigForType(check.Type, check.Config),
+			); floorErr != nil {
+				return CheckResponse{}, floorErr
+			}
 		}
 	} else if req.Regions != nil {
 		// A regions-only PATCH still has to re-validate a tunnel reference: the

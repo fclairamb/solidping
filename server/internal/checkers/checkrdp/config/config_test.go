@@ -171,8 +171,13 @@ func TestRDPMinPeriodHintBothPaths(t *testing.T) {
 	preAuth := &RDPConfig{Host: "rdp.acme.com"}
 	r.Equal(time.Duration(0), preAuth.MinPeriodHint())
 
-	halfOnly := &RDPConfig{Host: "rdp.acme.com", Username: "u"}
-	r.Equal(time.Duration(0), halfOnly.MinPeriodHint(), "half a credential pair is not an authenticated run")
+	// A username alone raises the floor: it is what the public half of an
+	// encrypted authenticated config looks like (see
+	// TestRDPMinPeriodHintKeysOnUsername). Validate refuses it as a live
+	// config, so it can only ever be that.
+	usernameOnly := &RDPConfig{Host: "rdp.acme.com", Username: "u"}
+	r.Equal(15*time.Minute, usernameOnly.MinPeriodHint())
+	r.Error(usernameOnly.Validate(), "a username without a password is still not a runnable config")
 
 	authed := &RDPConfig{Host: "rdp.acme.com", Username: "u", Password: "p"}
 	r.Equal(15*time.Minute, authed.MinPeriodHint())
@@ -195,4 +200,22 @@ func TestValidateSpecWithCredentials(t *testing.T) {
 	r.NoError(ValidateSpec(spec))
 	r.Equal("RDP: rdp.acme.com", spec.Name)
 	r.Equal("rdp-rdp-acme-com", spec.Slug)
+}
+
+// TestRDPMinPeriodHintKeysOnUsername pins the encryption-safe floor: the
+// update path validates the period against the PUBLIC config, where the
+// password has been split out by credential encryption. A username alone
+// must still raise the floor, and name the RDP source.
+func TestRDPMinPeriodHintKeysOnUsername(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	public := &RDPConfig{Host: "rdp.acme.com", Username: "svc-monitor"}
+	r.False(public.Authenticated(), "no password in the public half")
+	r.Equal(AuthenticatedMinPeriod, public.MinPeriodHint(), "the floor must not depend on the password")
+	r.Equal(checkerdef.MinPeriodSourceRDP, public.MinPeriodHintSource())
+
+	preAuth := &RDPConfig{Host: "rdp.acme.com"}
+	r.Empty(preAuth.MinPeriodHintSource())
 }
