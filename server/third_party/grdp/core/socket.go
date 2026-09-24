@@ -99,13 +99,13 @@ func verifyRDPServerCertificate(cs tls.ConnectionState) error {
 }
 
 func (s *SocketLayer) StartTLS() error {
+	// InsecureSkipVerify below is intentional, see verifyRDPServerCertificate
+	// above — RDP servers routinely present a self-signed or internally-issued
+	// certificate, so chain validation would false-alarm on nearly every real
+	// target. The same tradeoff is already open, unaddressed, on the pre-auth
+	// handshake in checkrdp.inspectCertificate (github alert #54).
 	config := &tls.Config{
-		// codeql[go/disabled-certificate-check]: intentional, see
-		// verifyRDPServerCertificate above — RDP servers routinely present a
-		// self-signed or internally-issued certificate, so chain validation
-		// would false-alarm on nearly every real target. The same tradeoff is
-		// already open, unaddressed, on the pre-auth handshake in
-		// checkrdp.inspectCertificate (github alert #54).
+		// codeql[go/disabled-certificate-check]
 		InsecureSkipVerify: true,
 		ServerName:         s.serverName,
 		MinVersion:         tls.VersionTLS12,
