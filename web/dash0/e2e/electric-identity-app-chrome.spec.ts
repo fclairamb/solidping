@@ -28,6 +28,16 @@ async function useTheme(page: Page, theme: "light" | "dark") {
 /** Computed style of the desktop sidebar pieces, read in one round trip. */
 async function sidebarPaint(page: Page) {
   return page.evaluate(() => {
+    // A custom property reads back as its raw (minified in a production
+    // build) text; resolve it through a probe's computed color instead.
+    const resolve = (host: Element, name: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = `var(${name})`;
+      host.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    };
     const root = document.querySelector<HTMLElement>('[data-slot="sidebar"].group');
     const inner = document.querySelector<HTMLElement>('[data-slot="sidebar-inner"]');
     const container = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
@@ -36,8 +46,8 @@ async function sidebarPaint(page: Page) {
     if (!root || !inner || !container || !label) throw new Error("sidebar not rendered");
     return {
       rootIsDark: root.classList.contains("dark"),
-      sidebarVar: getComputedStyle(root).getPropertyValue("--sidebar").trim(),
-      innerSidebarVar: getComputedStyle(inner).getPropertyValue("--sidebar").trim(),
+      sidebarVar: resolve(root, "--sidebar"),
+      innerSidebarVar: resolve(inner, "--sidebar"),
       background: getComputedStyle(inner).backgroundColor,
       image: getComputedStyle(inner).backgroundImage,
       border: getComputedStyle(container).borderRightColor,
@@ -298,9 +308,16 @@ test.describe("hero KPI tile", () => {
     await expect(sheet).toHaveCSS("background-color", NAVY_LIGHT);
     await expect(sheet).toHaveCSS("background-image", /linear-gradient/);
     await expect(sheet).toHaveCSS("border-right-color", SIDEBAR_BORDER_LIGHT);
-    expect(await sheet.evaluate((el) => getComputedStyle(el).getPropertyValue("--sidebar").trim())).toBe(
-      NAVY_LIGHT,
-    );
+    expect(
+      await sheet.evaluate((el) => {
+        const probe = document.createElement("span");
+        probe.style.color = "var(--sidebar)";
+        el.appendChild(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      }),
+    ).toBe(NAVY_LIGHT);
     await expect(sheet.locator('[data-sidebar="group-label"]').first()).toHaveCSS(
       "color",
       SIDEBAR_MUTED_FG,
