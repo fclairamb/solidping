@@ -114,8 +114,10 @@ test.describe("Sidebar User and Org Info", () => {
     const avatarImg = userMenuButton.locator("img");
     await expect(avatarImg).not.toBeVisible();
 
-    // Should have the fallback icon container
-    const fallbackIcon = userMenuButton.locator(".bg-muted");
+    // Should have the fallback icon container. Located by test id, not by
+    // its fill: the chip moved off bg-muted when the sidebar went always-dark
+    // (spec 2026-09-24-02), where the dark --muted is ~1:1 on the navy.
+    const fallbackIcon = userMenuButton.getByTestId("user-avatar-fallback");
     await expect(fallbackIcon).toBeVisible();
   });
 });
