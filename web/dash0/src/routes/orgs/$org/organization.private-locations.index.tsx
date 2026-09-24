@@ -547,10 +547,7 @@ function AgentsCard({ org }: { org: string }) {
                         data-testid={`agent-version-${agent.uid}`}
                       />
                     </TableCell>
-                    <TableCell
-                      className="text-sm text-muted-foreground"
-                      data-testid={`agent-last-seen-${agent.uid}`}
-                    >
+                    <TableCell className="text-sm text-muted-foreground">
                       <div className="flex flex-wrap items-center gap-2">
                         {agent.status === "active" && (
                           <Badge
@@ -563,13 +560,15 @@ function AgentsCard({ org }: { org: string }) {
                               : t("privateLocations.agents.offline", "Offline")}
                           </Badge>
                         )}
-                        {agent.lastSeenAt ? (
-                          <span title={new Date(agent.lastSeenAt).toLocaleString()}>
-                            <LiveDurationAgo since={agent.lastSeenAt} />
-                          </span>
-                        ) : (
-                          t("privateLocations.agents.never", "never")
-                        )}
+                        <span data-testid={`agent-last-seen-${agent.uid}`}>
+                          {agent.lastSeenAt ? (
+                            <span title={new Date(agent.lastSeenAt).toLocaleString()}>
+                              <LiveDurationAgo since={agent.lastSeenAt} />
+                            </span>
+                          ) : (
+                            t("privateLocations.agents.never", "never")
+                          )}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>
