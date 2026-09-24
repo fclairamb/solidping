@@ -200,3 +200,68 @@ questions.
 - **Public "platform status" page on `status.solidping.io`?** Decision: out of scope for this
   spec. It is a config change on a separate SolidPing status-page instance, not code in this
   repo — no engineering action here. Whoever owns that instance can opt in later.
+
+## Implementation Plan
+
+### §1 Sweep job
+- New job type `region_health_sweep` (`jobdef.JobTypeRegionHealthSweep`), registered in
+  `jobtypes/registry.go`, seeded by `ensureGlobalSweeps` via `ensureGlobalSweep`, built on
+  `periodicSweep` (1 min, `intervalSeconds` override). Not publicly creatable.
+- New package `internal/regionsweep` holds the logic (testable without a job runner). It calls
+  one new `checks.Service.RegionHealthWithJobs` (same scans as `RegionHealth`; the check_jobs
+  scan additionally carries `check_uid` and `period`, returned as `[]checks.RegionJob`).
+  `RegionHealth` becomes a thin wrapper, so "dark" keeps one definition.
+- Cloud rows only (`Organization == ""` and not `@`). Per region, observation:
+  dark = `Jobs > 0 && LiveWorkers == 0`; stalled = `LiveWorkers > 0` and a job overdue past
+  `max(2 × period, 5 min)`; healthy otherwise (including `Jobs == 0`: nothing stranded).
+- State lives in a new leaf package `internal/regionoutage`: one global `state_entries`
+  row per region, key `region-outage:<slug>`, 30-day TTL, fields `phase` (dark|stalled),
+  `since` (LastWorkerSeenAt for dark), `detectedAt`, `healthyStreak`, `notifiedOrgs`.
+  Transitions: none→dark, none→stalled, stalled→dark (escalation), dark/stalled→recovered after
+  2 consecutive healthy sweeps. A bad observation resets the streak. A region that has a marker
+  but no row any more counts as healthy.
+
+### §2 Operator, no double notify (shared marker)
+- Sweep delivers dark/stalled/recovered to `platform_watchdog.recipients` through
+  `opsnotify.DeliverToUser` (new event label `watchdog.region`). Recipients are empty when the
+  watchdog is disabled; the sweep still transitions, logs and meters.
+- Dedup by sharing the watchdog anomaly marker `watchdog:anomaly:dark-region:<slug>`:
+  new `watchdog.ClaimNotification` writes it in the watchdog's own format (severity critical
+  for dark, warning for stalled) only when the sweep actually delivers; if the watchdog already
+  holds it at >= that severity the sweep stays quiet. The watchdog then reads it as ongoing.
+  Recovery clears it (`watchdog.ClearNotification`) and tells the operator only if it existed.
+- Watchdog guard: `reconcileResolved` never resolves a `dark-region:<slug>` fingerprint while
+  a `region-outage:<slug>` marker exists (its lower-bar detector can miss a 1-check region, so
+  "anomaly gone" is not evidence of recovery; the sweep owns the lifecycle).
+
+### §3 Org notices
+- On the dark transition (and on later sweeps while dark, for orgs not yet in
+  `notifiedOrgs`), classify every non-internal, non-deleted check with a job in the region:
+  blind = every job region of the check is dark (cloud: sweep phase dark after this pass,
+  private: `LiveWorkers == 0`), reduced otherwise. Orgs with >= 1 blind check get one
+  `region.offline` event + one email per owner/admin (template `region-offline.html`), listing
+  their own blind checks (capped at 20, with links) and the reduced count. Org UIDs go in the
+  marker. Recovery sends `region.recovered` + `region-recovered.html` to exactly those orgs.
+- New `models.EventTypeRegionOffline` / `EventTypeRegionRecovered`, added to both exhaustive
+  switches, dash0 event display maps + locales, wiki events catalogue.
+
+### §4 dash0 + regions endpoint
+- `GET /orgs/:org/regions`: cloud entries gain `status` (`online|offline`) and `offlineSince`
+  from the sweep markers (offline = phase dark). OpenAPI updated.
+- New shared component `RegionOutageBanner` (Alert, destructive for blind, warning for
+  reduced) on check detail and a summary alert on the checks list; check form warns when an
+  offline region is selected. Added to the design reference; locale keys in en/fr/de/es.
+
+### §5 Metrics (no duplicate)
+- `solidping_workers_active{region}` (spec 01) already means "live workers per cloud region
+  from RegionHealth", i.e. exactly the proposed `solidping_region_live_workers`. No new gauge:
+  ownership moves to the per-minute sweep (always on), and the watchdog stops setting it
+  (`Report.CloudWorkersActive` and `publishWorkersActive` removed) so there is one writer.
+- New `solidping_region_dark{region}` 0/1, set by the sweep for every cloud region each run.
+
+### Tests
+- `regionsweep` tests (SQLite): one pinned check → org + operator notified once, no repeat;
+  reduced multi-region check → no org notice; short beat gap (inside window) → no transition;
+  recovery notifies exactly marker orgs once (needs 2 healthy sweeps); two orgs → two notices
+  with their own checks; private `@` region never reported; watchdog+sweep no double operator
+  notice (both orders); watchdog disabled → still transitions and meters.
