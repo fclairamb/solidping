@@ -1103,6 +1103,32 @@ func (m *mockDBService) UpdateCheckFlapState(
 	panic("not implemented")
 }
 
+func (m *mockDBService) TouchCheckLastResult(
+	_ context.Context, _ string, _ time.Time,
+) (*models.CheckLiveState, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStaleCandidates(_ context.Context, _ time.Time, _ int) ([]*models.Check, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MarkCheckStale(
+	_ context.Context, _ string, _ models.CheckStatus, _, _ time.Time,
+) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListStaleCheckPlacements(_ context.Context) ([]models.StaleCheckPlacement, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListLastRealResultPerRegion(
+	_ context.Context, _, _ string,
+) ([]models.RegionLastResult, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateSeverity(_ context.Context, _ *models.Severity) error {
 	panic("not implemented")
 }

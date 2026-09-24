@@ -767,6 +767,38 @@ type Service interface {
 		lastOutageAt time.Time,
 	) error
 
+	// Check freshness (spec 2026-09-25-02)
+	//
+	// TouchCheckLastResult advances checks.last_result_at to `at` (never
+	// backwards) and returns the row's CURRENT status, streak and clocks, read
+	// AFTER the touch. The order is what makes it race-safe against the
+	// freshness sweep: once the touch commits, the sweep's guarded update can
+	// no longer match the row, so the state returned is the one this result
+	// must be decided against. Returns (nil, nil) when the check is gone.
+	TouchCheckLastResult(ctx context.Context, checkUID string, at time.Time) (*models.CheckLiveState, error)
+	// ListStaleCandidates returns enabled, non-internal, live checks that are
+	// not already stale and whose coalesce(last_result_at, created_at) is older
+	// than `now - 5 min` — the floor of models.StaleThreshold, which is the
+	// indexed half of the predicate. Callers apply the exact per-check
+	// threshold themselves (Postgres also applies it in SQL). Oldest first,
+	// capped at limit.
+	ListStaleCandidates(ctx context.Context, now time.Time, limit int) ([]*models.Check, error)
+	// MarkCheckStale is the sweep's ONE write: a compare-and-set that moves
+	// the check to CheckStatusStale only if it still carries oldStatus and its
+	// freshness reference is still older than cutoff. It stamps
+	// status_changed_at and clears BOTH incident clocks, and deliberately
+	// leaves status_streak alone. Reports whether the row was changed — false
+	// means a result won the race.
+	MarkCheckStale(
+		ctx context.Context, checkUID string, oldStatus models.CheckStatus, cutoff, now time.Time,
+	) (bool, error)
+	// ListStaleCheckPlacements returns every stale, enabled, live check joined
+	// to each of its check_jobs placement regions.
+	ListStaleCheckPlacements(ctx context.Context) ([]models.StaleCheckPlacement, error)
+	// ListLastRealResultPerRegion returns, per region, the newest real raw
+	// result of one check (raw retention bounds how far back it can see).
+	ListLastRealResultPerRegion(ctx context.Context, orgUID, checkUID string) ([]models.RegionLastResult, error)
+
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)

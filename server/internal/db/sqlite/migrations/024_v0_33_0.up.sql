@@ -1,0 +1,48 @@
+-- v0.33.0 — the ONE consolidated SQLite migration for the (still unreleased)
+-- v0.33.0 release. 023_v0_32_0 shipped, so this is the next free number and
+-- every schema change of this cycle is appended here as a new SECTION, per
+-- wiki/conventions/database.md. Mirrors the Postgres twin (024_v0_33_0) section
+-- for section.
+--
+--   SECTION: check-freshness   checks.last_result_at, its backfill and the
+--                              freshness-sweep index
+--
+-- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
+-- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
+-- alone, so appending a section to 024 does not re-run it: set
+-- `SP_DB_RESET=true` (test/demo run mode) or delete the SQLite file.
+-- **Do not run `solidping migrate repair`** — it rewrites the recorded
+-- checksum without applying anything.
+
+-- ==========================================================================
+-- SECTION: check-freshness  (spec 2026-09-25-02)
+--
+-- See the Postgres twin for the rationale: the newest REAL result time,
+-- denormalized so the freshness sweep that moves silent checks to `stale` (10)
+-- is one indexed query. Backfilled from the newest real raw row; NULL when
+-- there is none (the sweep then measures from created_at).
+--
+-- SQLite has no `add column if not exists`; this runs once on a database that
+-- has never seen 024.
+-- ==========================================================================
+
+alter table checks add column last_result_at text;
+
+--bun:split
+
+update checks
+   set last_result_at = (
+     select max(r.period_start)
+       from results r
+      where r.organization_uid = checks.organization_uid
+        and r.check_uid = checks.uid
+        and r.period_type = 'raw'
+        and r.status in (3, 4, 5, 6, 8)
+   )
+ where deleted_at is null;
+
+--bun:split
+
+create index if not exists idx_checks_freshness
+  on checks (coalesce(last_result_at, created_at))
+  where deleted_at is null and enabled = 1 and internal = 0 and status <> 10;

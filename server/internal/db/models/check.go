@@ -20,8 +20,11 @@ const (
 	CheckStatusDown CheckStatus = 4
 	// CheckStatusValidating is the transient state between "first failure
 	// observed" and "incident opens" — the failure has been seen but the
-	// configured ConfirmationPeriod hasn't elapsed yet. Display-only:
-	// never triggers notifications, never gates the incident state machine.
+	// configured ConfirmationPeriod hasn't elapsed yet. It never triggers
+	// notifications on its own, but it DOES gate the incident state machine
+	// of its dependents: a hard child whose confirmation elapses while an
+	// ancestor is still validating is held (spec 2026-08-31-06,
+	// incidents.ancestorHoldRemaining).
 	CheckStatusValidating CheckStatus = 5
 	// CheckStatusDegraded is the aggregated/summary status: a rolled-up window
 	// contained warning(s) but no dominating failure. Not produced by the live
@@ -32,7 +35,60 @@ const (
 	// there is something to report. Display-only like CheckStatusValidating —
 	// never triggers notifications, never gates the incident state machine.
 	CheckStatusWarning CheckStatus = 8
+	// CheckStatusStale means "no data": the check's newest real result, across
+	// every region, is older than StaleThreshold(period) (spec 2026-09-25-02).
+	// It is neither up nor down. Only the freshness sweeper enters it (a
+	// guarded compare-and-set that bypasses the incident pipeline entirely);
+	// the next real result leaves it through ProcessCheckResult.
+	//
+	// 10, not the free 2/6/9: check and result statuses share one integer
+	// space by convention (1 created, 3 up, 4 down, 7 degraded, 8 warning mean
+	// the same on both columns) and 1-9 are all live result codes — 9 is
+	// ResultStatusAbandoned. 10 can never be misread as a result.
+	CheckStatusStale CheckStatus = 10
 )
+
+// staleMinThreshold is the floor of the staleness threshold: a 10-second
+// check is not declared dead after 30 seconds of silence.
+const staleMinThreshold = 5 * time.Minute
+
+// stalePeriodMultiplier is how many periods of silence make a check stale.
+const stalePeriodMultiplier = 3
+
+// StaleThreshold is how long a check may go without a real result before it
+// is stale: max(3 × period, 5 min). One definition, read by the sweeper, the
+// badge and the API, so they can never disagree on what "no data" means.
+func StaleThreshold(period time.Duration) time.Duration {
+	threshold := stalePeriodMultiplier * period
+	if threshold < staleMinThreshold {
+		return staleMinThreshold
+	}
+
+	return threshold
+}
+
+// StaleThreshold is the check's own staleness threshold.
+func (c *Check) StaleThreshold() time.Duration {
+	return StaleThreshold(time.Duration(c.Period))
+}
+
+// FreshnessReference is the instant the staleness rule measures from: the
+// newest real result, or the creation time for a check that never produced
+// one (it should have run by then).
+func (c *Check) FreshnessReference() time.Time {
+	if c.LastResultAt != nil {
+		return *c.LastResultAt
+	}
+
+	return c.CreatedAt
+}
+
+// IsDataStale reports whether the check's newest real result is older than
+// its threshold as of now — the raw freshness fact, independent of whether
+// the sweeper has already written CheckStatusStale.
+func (c *Check) IsDataStale(now time.Time) bool {
+	return now.Sub(c.FreshnessReference()) > c.StaleThreshold()
+}
 
 // String returns the lowercase wire name for a CheckStatus, used by the
 // dashboard to key status colors and labels. Unknown values fall back to
@@ -51,6 +107,8 @@ func (s CheckStatus) String() string {
 		return WireStatusDegraded
 	case CheckStatusWarning:
 		return WireStatusWarning
+	case CheckStatusStale:
+		return WireStatusStale
 	default:
 		return WireStatusUnknown
 	}
@@ -256,6 +314,13 @@ type Check struct {
 	Status          CheckStatus `bun:"status,notnull"`
 	StatusStreak    int         `bun:"status_streak,notnull"`
 	StatusChangedAt *time.Time  `bun:"status_changed_at"`
+	// LastResultAt is the execution time of the newest REAL result (up, down,
+	// timeout, error, warning — never the created/running/abandoned
+	// placeholders), across every region. Denormalized so the freshness sweep
+	// is one indexed query instead of a scan of `results` (spec 2026-09-25-02).
+	// Written only by incidents.ProcessCheckResult, including for checks in
+	// maintenance. NULL for a check that never produced a result.
+	LastResultAt *time.Time `bun:"last_result_at"`
 
 	CreatedAt time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time  `bun:"updated_at,notnull,default:current_timestamp"`

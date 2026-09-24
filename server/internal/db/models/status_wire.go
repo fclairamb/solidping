@@ -27,6 +27,9 @@ const (
 	// abandoned-result reaper finalized: terminal, but excluded from every
 	// availability calculation (spec 2026-08-18-10).
 	WireStatusAbandoned = "abandoned"
+	// WireStatusStale is the wire name for a check with no recent real result
+	// (spec 2026-09-25-02). The UI labels it "No data".
+	WireStatusStale = "stale"
 	// WireStatusUnknown is the fallback wire name for an unrecognized status.
 	WireStatusUnknown = "unknown"
 )
