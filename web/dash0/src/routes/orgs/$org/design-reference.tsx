@@ -5,11 +5,13 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
+  Activity,
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
+  Bell,
   Bot,
   Building,
   Check,
@@ -22,7 +24,9 @@ import {
   Info,
   Building2,
   KeyRound,
+  LayoutDashboard,
   Layers,
+  ListChecks,
   Loader2,
   LogOut,
   Moon,
@@ -39,8 +43,11 @@ import {
   Search,
   Sun,
   Trash2,
+  TrendingUp,
   Upload,
+  User2,
   Wand2,
+  Webhook,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -87,6 +94,16 @@ import {
 import { FacetedFilter } from "@/components/shared/faceted-filter";
 import { OnboardingChecklistCard } from "@/components/dashboard/onboarding-checklist";
 import { PageHeader } from "@/components/shared/page-header";
+import { KpiTile } from "@/components/shared/kpi-tile";
+import { AVAILABILITY_TIER_HERO_BADGE } from "@/lib/availability-tier";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
@@ -136,7 +153,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
@@ -234,6 +251,7 @@ const LAST_SEEN_TOKEN_DEMO_DATE = new Date(
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "conventions", label: "Conventions" },
+  { id: "app-chrome", label: "App chrome" },
   { id: "page-header", label: "Page header" },
   { id: "button-placement", label: "Button placement" },
   { id: "docs-link", label: "Docs link" },
@@ -292,6 +310,7 @@ function DesignReferencePage() {
       <SubNav />
       <OverviewSection />
       <ConventionsSection />
+      <AppChromeSection />
       <PageHeaderSection />
       <ButtonPlacementSection />
       <DocsLinkSection />
@@ -644,9 +663,201 @@ function PageThemeToggle() {
   );
 }
 
+// Spec 2026-09-24-02: the app chrome. A static replica (inert: nothing in it
+// is focusable or clickable) built from the REAL sidebar primitives, so a
+// change to the active item, the group label or the tokens shows up here.
+const CHROME_REPLICA_ITEMS: {
+  group: string;
+  items: { label: string; icon: typeof ListChecks; active?: boolean }[];
+}[] = [
+  {
+    group: "Monitoring",
+    items: [
+      { label: "Dashboard", icon: LayoutDashboard, active: true },
+      { label: "Checks", icon: ListChecks },
+      { label: "Incidents", icon: AlertTriangle },
+    ],
+  },
+  {
+    group: "Alerting",
+    items: [
+      { label: "Integrations", icon: Webhook },
+      { label: "My alerts", icon: Bell },
+    ],
+  },
+];
+
+function SidebarReplica() {
+  return (
+    <div
+      inert
+      data-testid="sidebar-replica"
+      className="dark flex w-64 max-w-full flex-col overflow-hidden rounded-lg border border-sidebar-border bg-sidebar bg-sidebar-gradient text-sidebar-foreground"
+    >
+      <div className="flex items-center gap-2 p-4 pb-2">
+        <Logo size={28} />
+        <div className="flex flex-col gap-0.5 leading-none">
+          <span className="text-sm font-bold tracking-[-0.01em]">SolidPing</span>
+          <span className="text-xs text-sidebar-muted-foreground">Acme production</span>
+        </div>
+      </div>
+      {CHROME_REPLICA_ITEMS.map(({ group, items }) => (
+        <SidebarGroup key={group}>
+          <SidebarGroupLabel>{group}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {items.map(({ label, icon: Icon, active }) => (
+                <SidebarMenuItem key={label}>
+                  <SidebarMenuButton asChild isActive={active}>
+                    <span>
+                      <Icon />
+                      <span>{label}</span>
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+      <div className="mt-2 flex items-center justify-around gap-1 border-t border-sidebar-border px-2 py-2">
+        <span className="text-xl leading-none">{"\u{1F1FA}\u{1F1F8}"}</span>
+        <Moon className="h-4 w-4" />
+        <span className="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground" />
+        <span className="text-xs text-muted-foreground">v1.4.0</span>
+      </div>
+      <div className="flex items-center gap-2 px-4 pb-4 pt-1">
+        <div className="flex size-8 items-center justify-center rounded-lg bg-white/10">
+          <User2 className="size-4" />
+        </div>
+        <div className="grid text-sm leading-tight">
+          <span className="font-semibold">alice@acme.com</span>
+          <span className="text-xs text-sidebar-muted-foreground">Administrator</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppChromeSection() {
+  return (
+    <Section
+      id="app-chrome"
+      title="App chrome"
+      description="The frame every org page sits in: an always-dark navy sidebar, the page header's gradient icon tile, and one faint glow at the top of the content. Toggle the theme here: the sidebar stays navy in both, dark mode only deepens it."
+    >
+      <div className="rounded-md border bg-card p-4">
+        <PageThemeToggle />
+      </div>
+
+      <h3 className="text-sm font-medium">Sidebar: always dark navy</h3>
+      <div className="space-y-2 text-sm text-muted-foreground" data-testid="sidebar-rules">
+        <p>
+          The{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Sidebar</code>{" "}
+          primitive puts{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">class=&quot;dark&quot;</code>{" "}
+          on its root (desktop, collapsed icon rail and the mobile sheet alike),
+          so everything inside reads the dark tokens in both themes: a{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-muted-foreground</code>{" "}
+          or{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">hover:bg-accent</code>{" "}
+          nested in it just works. Don&apos;t chase light-theme tokens one by
+          one. Menus and tooltips opened from it portal to{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">body</code> and
+          keep the page&apos;s theme: a light menu opening from the navy is
+          expected. The theme toggle reads{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">html.dark</code>,
+          never the sidebar&apos;s class.
+        </p>
+        <p>
+          The{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-*</code>{" "}
+          tokens are declared on{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">:root</code> and{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">:root.dark</code>{" "}
+          only, never in the generic{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">.dark</code>{" "}
+          block: the sidebar element carries that class in light mode too, and
+          would otherwise pin itself to the dark-mode values. Surface:{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-sidebar bg-sidebar-gradient</code>
+          . Active item:{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-active</code>{" "}
+          wash, semibold, and a 3px{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-primary</code>{" "}
+          cyan bar on the sidebar&apos;s edge. Hover is the flat 5% white{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">--sidebar-accent</code>
+          . Group labels and secondary lines use{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">text-sidebar-muted-foreground</code>
+          . The crimson logo sits straight on the navy, no tile behind it.
+        </p>
+      </div>
+      <ExampleRow
+        preview={<SidebarReplica />}
+        importLine={`import { Sidebar, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";\n\n// The primitives carry the navy, the dark scope and the active marker.\n// Compose them; don't restyle them per page.\n<SidebarMenuButton asChild isActive={location.pathname === itemPath}>\n  <Link to={item.path} params={{ org }}>\n    <item.icon />\n    <span>{title}</span>\n  </Link>\n</SidebarMenuButton>`}
+      />
+
+      <h3 className="text-sm font-medium">Page header tile</h3>
+      <p className="text-sm text-muted-foreground">
+        Brand tone by default, neutral for third-party logos. Full rules in the{" "}
+        <a href="#page-header" className="text-primary hover:underline">
+          Page header
+        </a>{" "}
+        section.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="w-full space-y-4">
+            <PageHeader icon={LayoutDashboard} title="Dashboard" />
+            <PageHeader icon={Webhook} title="Slack" tone="neutral" />
+          </div>
+        }
+        importLine={`<PageHeader icon={LayoutDashboard} title="Dashboard" />\n<PageHeader icon={Webhook} title="Slack" tone="neutral" />`}
+      />
+
+      <h3 className="text-sm font-medium">Page glow</h3>
+      <p className="text-sm text-muted-foreground" data-testid="page-glow-rule">
+        One decorative layer at the top of the org content area, painted with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">--page-glow</code>{" "}
+        (stronger in dark), 260px tall. The org layout owns it — pages never
+        add their own. It is{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">absolute</code>{" "}
+        (no layout shift, no scroll),{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">pointer-events-none</code>{" "}
+        (it never covers a click target),{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">aria-hidden</code>{" "}
+        and{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">print:hidden</code>
+        ; the header and content are{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">relative</code>{" "}
+        so they paint over it. The top bar is{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-background/60 backdrop-blur</code>{" "}
+        so the glow shows through it.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="relative h-40 w-full overflow-hidden rounded-md border bg-background">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[260px] bg-page-glow"
+            />
+            <div className="relative flex h-10 items-center border-b bg-background/60 px-3 text-xs text-muted-foreground backdrop-blur">
+              Acme production › Dashboard
+            </div>
+            <div className="relative p-3 text-sm">Page content paints over the glow.</div>
+          </div>
+        }
+        importLine={`// Already in routes/orgs/$org.tsx — shown for reference, don't repeat it.\n<div\n  aria-hidden="true"\n  className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[260px] bg-page-glow print:hidden"\n/>`}
+      />
+    </Section>
+  );
+}
+
 function PageHeaderSection() {
   const pageHeaderSnippet = `// Canonical page header for every list and section page.
-// Boxed muted icon tile, text-2xl title, optional subtitle, right-aligned actions.
+// Accent-gradient icon tile (tone="brand", the default), a bold text-2xl title,
+// optional subtitle, right-aligned actions. tone="neutral" = the flat muted
+// tile, for a third-party logo that must keep its own colors.
 import { PageHeader } from "@/components/shared/page-header";
 
 <PageHeader
@@ -675,8 +886,18 @@ import { PageHeader } from "@/components/shared/page-header";
       </h3>
       <p className="text-sm text-muted-foreground">
         Pass icon, title, an optional description, and right-aligned actions; it
-        renders a rounded muted icon tile, a text-2xl font-semibold title, the
-        muted subtitle below, and the actions on the right. Discovery, checks,
+        renders a 40px <code className="rounded bg-muted px-1 py-0.5 text-xs">rounded-lg</code>{" "}
+        icon tile painted with{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-accent-gradient</code>{" "}
+        (a white{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">--gradient-foreground</code>{" "}
+        icon and a soft{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">shadow-tile</code>{" "}
+        drop tinted with --primary), a{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          text-2xl font-bold tracking-[-0.025em]
+        </code>{" "}
+        title, the muted subtitle below, and the actions on the right. Discovery, checks,
         incidents, status-pages, on-call, integrations, badges, me/notifications
         and the rest all ship it — use it for every new page rather than
         hand-rolling an inline header.
@@ -697,11 +918,47 @@ import { PageHeader } from "@/components/shared/page-header";
         />
       </div>
       <CodeSnippet code={pageHeaderSnippet} />
+      <h3 className="text-sm font-medium" id="page-header-tone">
+        Tile tone: brand (default) or neutral
+      </h3>
+      <p className="text-sm text-muted-foreground" data-testid="page-header-tone-rule">
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">tone=&quot;brand&quot;</code>{" "}
+        is the default and what every product page uses.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">tone=&quot;neutral&quot;</code>{" "}
+        renders the flat{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-muted</code> tile
+        for a third-party logo that must keep its own colors (the integration
+        detail page shows the provider&apos;s mark on it). Use the prop, not an{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">iconClassName</code>{" "}
+        background: a flat{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-*</code> only
+        clears the gradient when it goes through{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">cn()</code> (see
+        Buttons &amp; badges → Gradients).
+      </p>
+      <ExampleRow
+        preview={
+          <div className="w-full space-y-4" data-testid="page-header-tones">
+            <PageHeader
+              icon={ListChecks}
+              title="Checks"
+              description='tone="brand" (default)'
+            />
+            <PageHeader
+              icon={Webhook}
+              title="Slack"
+              tone="neutral"
+              description='tone="neutral": a provider logo on the flat tile'
+            />
+          </div>
+        }
+        importLine={`import { PageHeader } from "@/components/shared/page-header";\n\n<PageHeader icon={ListChecks} title="Checks" />\n\n// Third-party logo: keep its colors on the flat tile.\n<PageHeader icon={integrationIconComponent(integration.type)} title={integration.name} tone="neutral" />`}
+      />
       <p className="text-sm text-muted-foreground">
         Notes: pass the same per-page Lucide icon you would have rendered inline
         —{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
-        wraps it in the muted tile for you. Put the primary action(s) that used
+        wraps it in the gradient tile for you. Put the primary action(s) that used
         to sit in the header row (e.g.{" "}
         <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>,
         export/import, a refresh button) into the{" "}
@@ -1366,14 +1623,14 @@ const GRADIENT_TOKENS: {
     varName: "--accent-gradient",
     utility: "bg-accent-gradient",
     description:
-      "Brighter, DECORATIVE only (white on its cyan start is ≈2.5:1). Switch / checkbox / progress / stepper “on” states, the page-header icon tile. No text on it.",
+      "Brighter, DECORATIVE only (white on its cyan start is ≈2.5:1). Switch / checkbox / progress / stepper “on” states, the page-header icon tile (a white ICON, no text). No text on it.",
   },
   {
     name: "hero-gradient",
     varName: "--hero-gradient",
     utility: "bg-hero-gradient",
     description:
-      "The one hero KPI tile per page. White is only ≈3.4:1 on its light cyan start: large text (≥ 24px, or ≥ 18.66px bold) may sit anywhere on it, small labels only over its darker half (≥ 5.5:1 from the middle on).",
+      "The one hero KPI tile per page. White is only ≈3.4:1 on its light cyan start: large text (≥ 24px, or ≥ 18.66px bold) may sit anywhere on it, small labels only over its darker half (≥ 5.5:1 from the middle on). KpiTile's hero crops it to that darker end (bg-size-[180%_180%] bg-bottom-right).",
   },
 ];
 
@@ -1462,7 +1719,13 @@ function ButtonsBadgesSection() {
             </code>{" "}
             white is only about 3.4:1 at the light cyan start, so large text
             (≥ 24px, or ≥ 18.66px bold) may go anywhere on it and small labels
-            only over its darker half (bottom-right, ≥ 5.5:1).{" "}
+            only over its darker half (bottom-right, ≥ 5.5:1). The hero KPI
+            tile is the sanctioned variant: it crops the gradient to its darker
+            end so its 90% white small text can sit anywhere (see{" "}
+            <a href="#kpi-tiles" className="text-primary hover:underline">
+              KPI tiles
+            </a>
+            ).{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
               --accent-gradient
             </code>{" "}
@@ -5504,66 +5767,123 @@ const selected = parseFacetedFilterParam(statusParam, new Set(["up", "down", …
 function KpiTileSection() {
   const { org } = Route.useParams();
   const snippet = `import { Link } from "@tanstack/react-router";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { KpiTile } from "@/components/shared/kpi-tile";
+import { AVAILABILITY_TIER_HERO_BADGE } from "@/lib/availability-tier";
 
 // Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
-<Link
-  to="/orgs/$org/checks"
-  params={{ org }}
-  className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
->
-  <Card className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
-      <Icon className="h-4 w-4 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      <div className="text-3xl font-bold tracking-tight tabular-nums">42</div>
-      <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
-    </CardContent>
-  </Card>
-</Link>`;
+// Every tile lifts on hover (motion-safe) — no nested interactive elements.
+<Link to="/orgs/$org/checks" params={{ org }} className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+  <KpiTile
+    label="Monitored"
+    value={42}
+    icon={<ListChecks className="h-4 w-4 text-primary" />}
+    sub="2 disabled"
+  />
+</Link>
+
+// ONE hero per page: the headline number. Its status badge is a SOLID
+// white chip (a pale translucent badge loses its meaning on the gradient).
+<KpiTile
+  variant="hero"
+  label="24h availability"
+  value="99.87%"
+  icon={<TrendingUp className="h-4 w-4" />}
+  badge={
+    <span className={\`text-[11px] font-semibold px-2 py-0.5 rounded-full \${AVAILABILITY_TIER_HERO_BADGE.operational}\`}>
+      Operational
+    </span>
+  }
+  sub="Fleet uptime health"
+/>`;
   return (
     <Section
       id="kpi-tiles"
       title="KPI tiles"
-      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (cursor-pointer, hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) and the wrapping Link carries a focus-visible ring (focus-visible:ring-2 focus-visible:ring-ring) — no nested interactive elements inside."
+      description="Large-number summary cards used on the org dashboard: the shared KpiTile (@/components/shared/kpi-tile), in a default and a hero variant. Link tiles to drill-down list pages; leave purely metric tiles static. Every tile lifts on hover behind motion-safe (motion-safe:hover:-translate-y-0.5); a default tile deepens to shadow-card-hover, the hero keeps its tinted shadow-hero. A wrapping Link carries the focus-visible ring — no nested interactive elements inside."
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="space-y-2 text-sm text-muted-foreground" data-testid="kpi-hero-rules">
+        <p>
+          <strong className="text-foreground">One hero tile per page.</strong>{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;hero&quot;</code>{" "}
+          is the page&apos;s headline number (on the dashboard, the 24h
+          availability); every other tile stays default. Two heroes cancel each
+          other out.
+        </p>
+        <p>
+          The hero paints{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-hero-gradient</code>{" "}
+          cropped to its darker end (
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-size-[180%_180%] bg-bottom-right</code>
+          , so only t ≥ 0.44 of the gradient is visible). That is the
+          sanctioned way to put SMALL text on the hero gradient: its label and
+          sub line are white at 90% and wrap anywhere on a narrow tile, and
+          over the cropped gradient they read ≥ 4.69:1 at the lightest point.
+          On the uncropped gradient even pure white fails at the cyan start,
+          and 80% white fails over most of it. The value is large text, the
+          icon chip is{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-white/15</code>
+          , and a status badge on it is a solid{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">bg-white</code>{" "}
+          chip keeping its light-theme text color in both themes (
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">AVAILABILITY_TIER_HERO_BADGE</code>
+          ).
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="kpi-tile-examples">
         <Link
           to="/orgs/$org/checks"
           params={{ org }}
           className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <Card className="cursor-pointer transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Monitored
-              </CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold tracking-tight tabular-nums">
-                42
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
-            </CardContent>
-          </Card>
+          <KpiTile
+            label="Monitored"
+            value={42}
+            icon={<ListChecks className="h-4 w-4 text-primary" />}
+            badge={
+              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                40 up
+              </span>
+            }
+            sub="2 disabled"
+          />
         </Link>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Availability (static)
-            </CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold tracking-tight tabular-nums">
-              99.98%
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">24h window</p>
-          </CardContent>
-        </Card>
+        <KpiTile
+          variant="hero"
+          label="24h availability"
+          value="99.87%"
+          icon={<TrendingUp className="h-4 w-4" />}
+          badge={
+            <span
+              className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full ${AVAILABILITY_TIER_HERO_BADGE.operational}`}
+            >
+              Operational
+            </span>
+          }
+          sub="Fleet uptime health"
+        />
+        <KpiTile
+          label="Active incidents"
+          value={3}
+          icon={<Activity className="h-4 w-4 text-amber-500" />}
+          valueClassName="text-amber-600 dark:text-amber-500"
+          sub="Oldest open 2h ago"
+        />
+      </div>
+      <div className="flex flex-wrap gap-2" data-testid="kpi-hero-badges">
+        {(Object.keys(AVAILABILITY_TIER_HERO_BADGE) as (keyof typeof AVAILABILITY_TIER_HERO_BADGE)[]).map(
+          (tier) => (
+            <span
+              key={tier}
+              className="inline-flex rounded-lg bg-primary bg-hero-gradient bg-size-[180%_180%] bg-bottom-right p-2"
+            >
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${AVAILABILITY_TIER_HERO_BADGE[tier]}`}
+              >
+                {tier}
+              </span>
+            </span>
+          ),
+        )}
       </div>
       <CodeSnippet code={snippet} />
     </Section>
