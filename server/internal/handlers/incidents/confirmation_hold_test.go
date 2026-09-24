@@ -239,7 +239,45 @@ func holdCases() []holdCase {
 		{name: "NoParentsUnchanged", run: caseNoParentsUnchanged},
 		{name: "Reopen_HeldThenSuppressed", run: caseReopenHeldThenSuppressed},
 		{name: "StatusCoherence_StaysValidatingWhileHeld", run: caseStatusCoherence},
+		{name: "StaleParentNeverGates", run: caseStaleParentNeverGates},
 	}
+}
+
+// A STALE parent never holds its children (spec 2026-09-25-02 §3, deliberate).
+// The parent was mid-confirmation when its results stopped and the freshness
+// sweep moved it to stale. Suppressing the child because of a parent we cannot
+// see risks a missed page; releasing it only risks an extra one — so the child
+// opens and pages at its own confirmation, exactly like the positive control.
+func caseStaleParentNeverGates(t *testing.T, s *holdSetup) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	parent := s.check(t, "rabbitmq-stale", nil)
+	child := s.check(t, "consumer-stale", nil)
+	s.hardEdge(t, parent, child)
+
+	s.at(0)
+	parent = s.fail(t, parent)
+	r.Equal(models.CheckStatusValidating, parent.Status)
+
+	// The parent's results stop; the sweep's guarded update moves it to stale.
+	changed, err := s.dbSvc.MarkCheckStale(ctx, parent.UID, models.CheckStatusValidating,
+		s.clk.Now().Add(time.Hour), s.clk.Now())
+	r.NoError(err)
+	r.True(changed)
+
+	child = s.fail(t, child)
+	r.Equal(models.CheckStatusValidating, child.Status)
+
+	s.at(120 * time.Second)
+	child = s.fail(t, child)
+	r.Equal(models.CheckStatusDown, child.Status, "a stale parent must not hold the child")
+
+	childInc := s.activeIncident(t, child)
+	r.False(childInc.PagingSuppressed)
+	r.Nil(childInc.CausedByIncidentUID)
 }
 
 // 1. Core. The outage, replayed: the child's health endpoint dies first, the

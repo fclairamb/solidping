@@ -229,7 +229,54 @@ func detachCases() []detachCase {
 		{name: "Relapse_BeforeResolve_StillPages", run: caseRelapseBeforeResolveStillPages},
 		{name: "StillDown_Unchanged_ReopensAndPages", run: caseStillDownUnchangedReopensAndPages},
 		{name: "Reopen_PreviouslyDetached_NoFailingParent_AttributionCleared", run: caseReopenClearsAttribution},
+		{name: "StaleChild_StaysAttachedAndPages", run: caseStaleChildStaysAttachedAndPages},
 	}
+}
+
+// A STALE child is not a recovered child (spec 2026-09-25-02 §3). Before the
+// fix, reEvaluateChild detached every child whose status was not `down`, so a
+// child whose results had stopped was silently un-suppressed and never paged.
+// Unknown is not recovered: it takes the still-down branch — reopened, paged,
+// attribution kept.
+func caseStaleChildStaysAttachedAndPages(t *testing.T, s *detachSetup) {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	parent := s.check(t, "parent-stale", nil)
+	child := s.check(t, "child-stale", nil)
+	s.hardEdge(t, parent, child)
+	s.bindChannel(t, child, "child-channel")
+
+	s.at(0)
+	parent = s.fail(t, parent)
+	parentInc := s.activeIncident(t, parent)
+
+	s.at(30 * time.Second)
+	child = s.fail(t, child)
+	childInc := s.activeIncident(t, child)
+	r.True(childInc.PagingSuppressed)
+
+	// The child's results stop; the freshness sweep moves it to stale.
+	s.at(10 * time.Minute)
+	changed, err := s.dbSvc.MarkCheckStale(ctx, child.UID, models.CheckStatusDown,
+		s.clk.Now().Add(-5*time.Minute), s.clk.Now())
+	r.NoError(err)
+	r.True(changed)
+
+	// The parent resolves while the child is stale.
+	s.succeed(t, parent)
+	r.Equal(models.IncidentStateResolved, s.reload(t, parentInc).State)
+
+	reEvaluated := s.reload(t, childInc)
+	r.Equal(models.IncidentStateActive, reEvaluated.State, "no data is not a recovery")
+	r.False(reEvaluated.PagingSuppressed)
+	r.NotNil(reEvaluated.CausedByIncidentUID)
+	r.Empty(s.eventsOfType(t, childInc, models.EventTypeIncidentRollupDetached),
+		"a stale child must never be detached")
+	r.Len(s.eventsOfType(t, childInc, models.EventTypeIncidentReopened), 1)
+	r.Positive(s.pendingNotificationJobs(t), "a stale child pages instead of being silently released")
 }
 
 // 1. The core fix: a child whose check recovered ahead of its parent keeps
