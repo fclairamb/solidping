@@ -521,6 +521,24 @@ jobs:
           path: solidping
           retention-days: 7
 
+      # server-release and cli-release (tag-triggered, below) publish every
+      # binary compressed only — a bare executable is never uploaded (spec
+      # 2026-09-25-08) — but those jobs only run on refs/tags/, so a typo in
+      # the gzip/zip invocation would otherwise surface only when cutting a
+      # real release. Smoke-test the exact packaging commands here, on the
+      # binary this job already built, discarding the output.
+      - name: Smoke-test the release packaging commands (gzip/zip invocations)
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          cp solidping "$tmp/solidping-linux-amd64"
+          gzip -9 -n "$tmp/solidping-linux-amd64"
+          test -f "$tmp/solidping-linux-amd64.gz"
+          cp solidping "$tmp/solidping.exe"
+          (cd "$tmp" && zip -9 -j solidping-windows-amd64.zip solidping.exe)
+          unzip -l "$tmp/solidping-windows-amd64.zip" | grep -q ' solidping\.exe$'
+          rm -rf "$tmp"
+
       # The docker and cli-release jobs only run on tags, so a Dockerfile
       # that cannot resolve the Go modules (e.g. a new local `replace` whose
       # go.mod is not copied into the dependency layer) otherwise surfaces
@@ -928,15 +946,19 @@ jobs:
           go-version: "1.27"
           cache-dependency-path: server/go.sum
 
-      # Bare binaries with fixed, version-free names — the same shape the
-      # server binaries use (server-release below): these are the exact URLs
-      # the install docs reference (web/docs/docs/cli.md), so
-      # releases/latest/download/<name> is a stable contract no matter which
-      # version is latest. Until spec 2026-09-11-04 a release published ZERO
-      # assets, so `sp checks validate config.yaml` — the validator the docs
-      # point at — could not be obtained by a GitHub Actions job at all, and
-      # third parties kept maintaining their own Python re-implementations
-      # instead. A validator nobody can download is a validator nobody uses.
+      # Fixed, version-free names — the same shape the server binaries use
+      # (server-release below): these are the exact URLs the install docs
+      # reference (web/docs/docs/cli.md), so releases/latest/download/<name>
+      # is a stable contract no matter which version is latest. Until spec
+      # 2026-09-11-04 a release published ZERO assets, so
+      # `sp checks validate config.yaml` — the validator the docs point at —
+      # could not be obtained by a GitHub Actions job at all, and third
+      # parties kept maintaining their own Python re-implementations instead.
+      # A validator nobody can download is a validator nobody uses. Every
+      # asset here ships compressed only (spec 2026-09-25-08): the bare
+      # executable is never uploaded, so the published name always carries a
+      # `.gz` (or `.zip` on Windows, which has no built-in gunzip) — see the
+      # compression step below.
       - name: Build sp for every published platform
         working-directory: server
         run: |
@@ -953,7 +975,7 @@ jobs:
             [darwin/arm64]=sp-darwin-arm64
             [linux/amd64]=sp-linux-amd64
             [linux/arm64]=sp-linux-arm64
-            [windows/amd64]=sp-windows-amd64.exe
+            [windows/amd64]=sp.exe
           )
 
           for target in "${!OUT[@]}"; do
@@ -970,24 +992,40 @@ jobs:
             echo "::endgroup::"
           done
 
-          # Gzip twins alongside the bare binaries. sp reaches check configs
-          # through internal/checkers/configregistry, the config-only registry,
-          # so it links no checker implementation (no client-go, go-ora, grpc,
-          # chromedp, ...) and the bare files are ~32 MB rather than the ~99 MB
-          # they were before that split. gzip still halves the download again
-          # (~12 MB), and the bare names stay the canonical, unpinned contract
-          # (the .gz twins mirror them 1:1, so both are version-free).
-          echo "::group::gzip the sp binaries"
-          for file in ../dist/sp-*; do
-            case "$file" in
-              *.gz) continue ;;
-            esac
-            gzip -9 -k "$file"
+          # Compress every binary in place, never publish it bare: sp reaches
+          # check configs through internal/checkers/configregistry, the
+          # config-only registry, so it links no checker implementation (no
+          # client-go, go-ora, grpc, chromedp, ...) and the bare files are
+          # ~32 MB rather than the ~99 MB they were before that split; `.gz`
+          # (`gzip -9 -n` — no `-k`, so the bare file is removed; `-n` drops
+          # the embedded name/mtime so the archive is reproducible) halves
+          # that again for the four Unix targets. Windows gets a `.zip`
+          # instead, since Windows has no built-in gunzip: the target above
+          # was built straight to the bare runnable name `sp.exe`, so
+          # `zip -j` (junk the source path) stores that same short name as
+          # the archive's single entry — what a user runs after extracting,
+          # with platform/arch staying in the archive's own name.
+          echo "::group::compress the sp binaries"
+          cd ../dist
+          for file in sp-darwin-amd64 sp-darwin-arm64 sp-linux-amd64 sp-linux-arm64; do
+            gzip -9 -n "$file"
           done
+          zip -9 -j sp-windows-amd64.zip sp.exe
+          rm sp.exe
           echo "::endgroup::"
 
-          cd ../dist
-          sha256sum sp-* > sp-checksums.txt
+          # Guard: the upload step below globs dist/sp-*, so a packaging bug
+          # that leaves a bare executable behind would otherwise be
+          # republished silently alongside its compressed twin.
+          for file in sp-*; do
+            case "$file" in
+              *.gz | *.zip | *-checksums.txt) continue ;;
+            esac
+            echo "::error::bare executable left in dist/: $file" >&2
+            exit 1
+          done
+
+          sha256sum sp-*.gz sp-*.zip > sp-checksums.txt
           ls -l
 
       # The generated JSON Schemas of every check type's `config`, as a release
@@ -1145,12 +1183,16 @@ jobs:
       # Fixed, version-free names: these are the exact URLs the install docs
       # already reference (web/docs/docs/installation/{linux,windows}.md), so
       # releases/latest/download/<name> is a stable contract no matter which
-      # version is latest. Bare binaries, not tarballs — unlike `sp`, whose
-      # audience (CI jobs) pins versions, a self-hosted server is downloaded
-      # once, and this way Windows users get a runnable .exe with no tar
-      # step. -s -w strips symbols/DWARF (the unstripped binary is ~250MB —
-      # the embedded docs alone are ~49MB); pclntab is kept regardless, so
-      # panics still print symbolic stack traces and pprof still works.
+      # version is latest. Compressed only, never a bare executable (spec
+      # 2026-09-25-08) — unlike `sp`, whose audience (CI jobs) pins versions,
+      # a self-hosted server is downloaded once and is the largest file we
+      # publish (it embeds dash0, status0 and the docs), so shipping it bare
+      # was always the odd one out. Windows still gets a runnable file with
+      # no separate extraction tool needed: `.zip` instead of `.gz`, since
+      # Windows has no built-in gunzip. -s -w strips symbols/DWARF (the
+      # unstripped binary is ~250MB — the embedded docs alone are ~49MB);
+      # pclntab is kept regardless, so panics still print symbolic stack
+      # traces and pprof still works.
       - name: Build the server for every published platform
         working-directory: server
         run: |
@@ -1165,7 +1207,7 @@ jobs:
           declare -A OUT=(
             [linux/amd64]=solidping-linux-amd64
             [linux/arm64]=solidping-linux-arm64
-            [windows/amd64]=solidping-windows-amd64.exe
+            [windows/amd64]=solidping.exe
             [darwin/amd64]=solidping-darwin-amd64
             [darwin/arm64]=solidping-darwin-arm64
           )
@@ -1184,8 +1226,35 @@ jobs:
             echo "::endgroup::"
           done
 
+          # Compress every binary in place, never publish it bare: `.gz`
+          # (`gzip -9 -n` — no `-k`, so the bare file is removed; `-n` drops
+          # the embedded name/mtime so the archive is reproducible) for the
+          # four Unix targets. The Windows target above was built straight to
+          # the bare runnable name `solidping.exe`, so `zip -j` (junk the
+          # source path) stores that same short name as the archive's single
+          # entry — what a user runs after extracting, with platform/arch
+          # staying in the archive's own name.
+          echo "::group::compress the server binaries"
           cd ../dist
-          sha256sum solidping-* > solidping-checksums.txt
+          for file in solidping-linux-amd64 solidping-linux-arm64 solidping-darwin-amd64 solidping-darwin-arm64; do
+            gzip -9 -n "$file"
+          done
+          zip -9 -j solidping-windows-amd64.zip solidping.exe
+          rm solidping.exe
+          echo "::endgroup::"
+
+          # Guard: the upload step below globs dist/solidping-*, so a
+          # packaging bug that leaves a bare executable behind would
+          # otherwise be republished silently alongside its compressed twin.
+          for file in solidping-*; do
+            case "$file" in
+              *.gz | *.zip | *-checksums.txt) continue ;;
+            esac
+            echo "::error::bare executable left in dist/: $file" >&2
+            exit 1
+          done
+
+          sha256sum solidping-*.gz solidping-*.zip > solidping-checksums.txt
           ls -l
 
       # release-please creates the GitHub release from the same tag push that
