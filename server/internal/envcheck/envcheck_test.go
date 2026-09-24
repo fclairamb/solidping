@@ -78,6 +78,27 @@ func TestCheckEnvironEncryptionMasterKeySilent(t *testing.T) {
 	r.Empty(checkEnviron([]string{"SP_ENCRYPTION_AUTO_MIGRATE=false"}))
 }
 
+// TestCheckEnvironManualReaderGapsSilent is the regression test for the
+// prod incident (v0.32.1): SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET and
+// SP_SYSTEM_AGENT_ENROLLMENT_TOKENS are read manually (internal/app/saas.go,
+// internal/app/systemagents.go) but were missing from
+// otherManualReaderEnvVars(), so envcheck warned about them as unrecognized —
+// for the upgrade-token secret, with a didYouMean=SP_TOKEN suggestion an
+// operator could act on and break the SaaS upgrade-token flow. Also covers
+// the two further gaps the source sweep found: SP_SUPPORT_RETENTION_DAYS
+// (internal/jobs/jobtypes/job_support_cleanup.go) and
+// SP_TEST_PG_BINARIES_PATH (internal/db/postgres/embeddedpg — despite the
+// SP_TEST_ name, live in the postgres-embedded deployment mode).
+func TestCheckEnvironManualReaderGapsSilent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	r.Empty(checkEnviron([]string{"SP_ENTITLEMENTS_BILLING_UPGRADE_TOKEN_SECRET=deadbeef"}))
+	r.Empty(checkEnviron([]string{"SP_SYSTEM_AGENT_ENROLLMENT_TOKENS=eu-west-1=spe_abc"}))
+	r.Empty(checkEnviron([]string{"SP_SUPPORT_RETENTION_DAYS=0"}))
+	r.Empty(checkEnviron([]string{"SP_TEST_PG_BINARIES_PATH=/data/pg-bin"}))
+}
+
 // TestCheckEnvironDedupes: a name appearing twice yields a single warning.
 func TestCheckEnvironDedupes(t *testing.T) {
 	t.Parallel()
