@@ -40,13 +40,14 @@ type RegionLastResult struct {
 // job. The watchdog's stale-checks detector and the solidping_checks_stale
 // gauge both read it.
 type StaleCheckPlacement struct {
-	CheckUID        string     `bun:"check_uid"`
-	OrganizationUID string     `bun:"organization_uid"`
-	CheckSlug       *string    `bun:"check_slug"`
-	CheckName       *string    `bun:"check_name"`
-	Region          string     `bun:"region"`
-	LastResultAt    *time.Time `bun:"last_result_at"`
-	CreatedAt       time.Time  `bun:"created_at"`
+	CheckUID         string     `bun:"check_uid"`
+	OrganizationUID  string     `bun:"organization_uid"`
+	OrganizationSlug string     `bun:"organization_slug"`
+	CheckSlug        *string    `bun:"check_slug"`
+	CheckName        *string    `bun:"check_name"`
+	Region           string     `bun:"region"`
+	LastResultAt     *time.Time `bun:"last_result_at"`
+	CreatedAt        time.Time  `bun:"created_at"`
 }
 
 // realResultStatuses are the result statuses that count as a real reading of

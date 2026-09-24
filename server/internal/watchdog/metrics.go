@@ -14,7 +14,9 @@ import (
 // precisely the confusion this whole spec is about.
 //
 //nolint:gochecknoglobals // static vocabulary, treated as a constant
-var allDetectors = []string{DetectorDarkRegion, DetectorFleetCollapse, DetectorStaleIncidents}
+var allDetectors = []string{
+	DetectorDarkRegion, DetectorFleetCollapse, DetectorStaleIncidents, DetectorStaleChecks,
+}
 
 //nolint:gochecknoglobals // static vocabulary, treated as a constant
 var allSeverities = []Severity{SeverityInfo, SeverityWarning, SeverityCritical}

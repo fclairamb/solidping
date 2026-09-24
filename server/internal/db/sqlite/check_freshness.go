@@ -115,8 +115,10 @@ func (s *Service) ListStaleCheckPlacements(ctx context.Context) ([]models.StaleC
 
 	err := s.db.NewSelect().
 		TableExpr("checks AS c").
+		Join("JOIN organizations AS o ON o.uid = c.organization_uid").
 		Join("LEFT JOIN check_jobs AS cj ON cj.check_uid = c.uid").
-		ColumnExpr("c.uid AS check_uid, c.organization_uid, c.slug AS check_slug, c.name AS check_name").
+		ColumnExpr("c.uid AS check_uid, c.organization_uid, o.slug AS organization_slug").
+		ColumnExpr("c.slug AS check_slug, c.name AS check_name").
 		ColumnExpr("coalesce(cj.region, '') AS region, c.last_result_at, c.created_at").
 		Where("c.status = ?", models.CheckStatusStale).
 		Where("c.deleted_at IS NULL").

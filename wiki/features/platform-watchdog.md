@@ -42,9 +42,9 @@ report. The retryable error is still returned, so the retry fires and the
 failure stays visible; `CreateJob` dedupes on type+config+org+pending, so the
 retry's own reschedule cannot stack a duplicate.
 
-## The three detectors
+## The four detectors
 
-Each runs **independently**. One that errors (or panics) is recorded in
+Each runs **independently** (`stale-checks` excepted, see below). One that errors (or panics) is recorded in
 `Report.Failed`, logged, counted on
 `solidping_watchdog_detector_failures_total`, and never stops the others. A
 watchdog that goes quiet because one query broke would reproduce the exact
@@ -93,6 +93,24 @@ Active incidents whose check has produced no result for longer than
 default `max(3 × period, 15m)`. Disabled and deleted checks are excluded: a
 check nobody executes on purpose is not a mystery. Folded into **one** anomaly
 carrying the count and the three oldest, never one page per frozen incident.
+
+### 4. `stale-checks`
+
+Checks in the `stale` ("No data") status — no real result for
+`max(3 × period, 5 min)`, set by the minute freshness sweep (spec
+`2026-09-25-02`) — whose placement regions are **not all dark**. A stale check
+in a dark region is the dark-region detector's to report (and the org's region
+notice's), so it is left out: one outage, one report. What remains is the
+platform bug class — a stuck scheduler, a lease leak, rate limiting — which only
+the operator can fix. An any-region job counts as dark only when every cloud
+region is. Folded into **one** anomaly (subject `unexplained`) carrying the count
+and the three longest-silent checks; critical at `staleChecksCriticalCount`.
+
+This detector reads the dark-region detector's `RegionHealth` report, so it is
+the one detector that is **not** independent: when the dark-region pass fails,
+`stale-checks` fails too (with `ErrRegionHealthUnavailable`) rather than guess —
+reporting every stale check would double-report the outage, reporting none
+would read as healthy.
 
 ## Anti-flood: transitions, not state
 
@@ -143,6 +161,7 @@ Every threshold is overridable; unset (or zero) means the default:
 | `fleetDropPercent` / `fleetMinBaseline` / `fleetCriticalDropPercent` | 50 / 100 / 80 |
 | `staleIncidentMinMinutes` / `staleIncidentPeriodMultiplier` | 15 / 3 |
 | `staleIncidentCriticalCount` / `staleIncidentScanLimit` | 10 / 2000 |
+| `staleChecksCriticalCount` | 10 |
 
 ## Delivery
 
@@ -183,6 +202,7 @@ Prometheus alert independently:
 | `solidping_watchdog_detector_failures_total{detector}` | detector runs that errored |
 | `solidping_watchdog_last_run_timestamp_seconds` | staleness of the watchdog itself |
 | `solidping_workers_active{region}` | live workers per cloud region, from the dark-region pass's `RegionHealth` report (absent while the watchdog is disabled) |
+| `solidping_checks_stale{region}` | checks currently `stale`, by placement region (`any` for an any-region job, `private` for every `@` region). Published every minute by the freshness sweep, not by the watchdog, so it exists even while the watchdog is disabled |
 
 A detector that errored leaves its anomaly gauge at the previous value rather
 than writing a `0`: publishing "healthy" as a fact when the watchdog could not
