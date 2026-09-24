@@ -357,7 +357,8 @@
       "summaryOn": "{{failures}} sondes en échec sur {{failuresWindow}}, {{slow}}",
       "summarySlowArmed": "{{slow}} sondes sur {{slowWindow}} au-delà de {{threshold}} ms",
       "summarySlowOff": "règle de lenteur désactivée"
-    }
+    },
+    "privateLocationIntervalHint": "Fréquence à laquelle SolidPing vérifie que les agents de l'emplacement sont connectés. Un agent est considéré hors ligne après 5 minutes sans contact."
   },
   "types": {
     "http": "HTTP",
@@ -418,7 +419,9 @@
     "rdpDescription": "Surveiller les serveurs RDP (Bureau à distance)",
     "sleep": "Sleep",
     "sleepDescription": "Attendre une durée fixe (synthétique/test, sans I/O réseau)",
-    "email": "E-mail"
+    "email": "E-mail",
+    "private-location": "Emplacement privé",
+    "private-locationDescription": "Alerte quand les agents d'un emplacement privé se déconnectent"
   },
   "freebox": {
     "discover": "Découvrir depuis la Freebox",
@@ -1033,7 +1036,9 @@
     "rdpEndSessionLogoff": "Déconnexion (défaut)",
     "rdpEndSessionDisconnect": "Déconnexion (la session reste sur le serveur)",
     "rdpEndSessionHelp": "La déconnexion supprime la session du serveur. La déconnexion réseau la laisse tourner jusqu'à ce que la politique d'inactivité du serveur la termine : l'exécution suivante s'y rattache (vérifications plus rapides).",
-    "rdpCaveatsHelp": "Chaque exécution authentifiée est une vraie connexion Windows interactive : chargement d'un profil utilisateur, scripts d'ouverture de session et GPO, consommation possible d'une licence RDS, déconnexion possible d'un utilisateur réel sur un serveur à session unique, et une trace 4624/4634 dans le journal de sécurité à chaque exécution. Utilisez un compte de supervision dédié, jamais le compte d'une personne."
+    "rdpCaveatsHelp": "Chaque exécution authentifiée est une vraie connexion Windows interactive : chargement d'un profil utilisateur, scripts d'ouverture de session et GPO, consommation possible d'une licence RDS, déconnexion possible d'un utilisateur réel sur un serveur à session unique, et une trace 4624/4634 dans le journal de sécurité à chaque exécution. Utilisez un compte de supervision dédié, jamais le compte d'une personne.",
+    "privateLocationRegion": "Emplacement privé",
+    "privateLocationHelp": "SolidPing a créé ce check avec l'emplacement. Il surveille les agents de l'emplacement et passe en panne quand aucun n'est connecté. L'emplacement surveillé ne peut pas être changé."
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",

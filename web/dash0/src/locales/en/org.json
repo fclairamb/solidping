@@ -342,7 +342,15 @@
       "create": "Add location",
       "deleteTitle": "Delete private location?",
       "deleteDescription": "Checks targeting this location will stop being scheduled there. Locations with enrolled agents cannot be deleted — revoke the agents first.",
-      "deleteConfirm": "Delete"
+      "deleteConfirm": "Delete",
+      "stateOnline": "Online",
+      "stateDegraded": "Degraded",
+      "stateOffline": "Offline",
+      "stateEmpty": "No agent",
+      "onlineCount": "{{online}}/{{total}} online",
+      "monitor": "Liveness monitor",
+      "monitorOff": "Liveness monitor off",
+      "monitorEnable": "Turn on"
     },
     "cancel": "Cancel",
     "token": {
@@ -369,7 +377,9 @@
       "removeDescription": "This agent is already revoked. Removing it clears it from the list immediately, instead of waiting for the automatic two-day cleanup.",
       "revokeDescription": "The agent loses access immediately and stops receiving checks. It already saw the credentials sealed to it — rotate them. This cannot be undone; enroll a new agent to replace it.",
       "removeConfirm": "Remove",
-      "revokeConfirm": "Revoke"
+      "revokeConfirm": "Revoke",
+      "online": "Online",
+      "offline": "Offline"
     },
     "tokens": {
       "title": "Pending enrollment tokens",

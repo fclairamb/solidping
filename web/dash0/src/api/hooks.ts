@@ -107,6 +107,7 @@ export interface Check {
     | "ssl"
     | "heartbeat"
     | "email"
+    | "private-location"
     | "domain"
     | "smtp"
     | "udp"
@@ -305,6 +306,7 @@ export interface CreateCheckRequest {
     | "ssl"
     | "heartbeat"
     | "email"
+    | "private-location"
     | "domain"
     | "smtp"
     | "udp"
@@ -7339,9 +7341,29 @@ export interface PrivateRegion {
   /** Stored region string, org-relative, e.g. `@dc1`. */
   region: string;
   agentCount: number;
+  /** Active agents seen within the liveness window (spec 2026-09-25-05). */
+  onlineAgentCount?: number;
+  /** Overall state, from the same liveness rule as the location's liveness
+   * monitor: every active agent online, some, none, or no agent enrolled. */
+  state?: PrivateLocationState;
+  /** The check watching this location's agents, when it has one. */
+  livenessMonitor?: PrivateLocationMonitor;
+  /** The org turned the monitor off (deleted, which is remembered, or
+   * disabled). The page offers a one-click re-enable. */
+  livenessMonitorOff?: boolean;
   /** Egress families this location's LIVE agents report — today only `ipv6`,
    * three-state ("yes" / "no" / "unknown"). See spec 2026-08-15-11. */
   capabilities?: Record<string, string>;
+}
+
+export type PrivateLocationState = "online" | "degraded" | "offline" | "empty";
+
+export interface PrivateLocationMonitor {
+  uid: string;
+  slug: string;
+  enabled: boolean;
+  /** The check's status wire name (up, down, warning, created, …). */
+  status: string;
 }
 
 export interface AgentInfo {
@@ -7363,6 +7385,10 @@ export interface AgentInfo {
    * predating this feature, or one that has not sent a claim frame yet —
    * and must be rendered as unknown, never as drifted. */
   version?: string | null;
+  /** Active and seen within the liveness window — the same rule the
+   * location's liveness monitor uses, computed server-side (spec
+   * 2026-09-25-05). */
+  online?: boolean;
 }
 
 export interface EnrollmentToken {
@@ -7396,6 +7422,9 @@ export function usePrivateRegions(org: string) {
       return response.data || [];
     },
     enabled: !!org,
+    // Same cadence as the agent list: each location's online/offline state
+    // is live (spec 2026-09-25-05).
+    refetchInterval: 30_000,
   });
 }
 
@@ -7411,6 +7440,26 @@ export function useCreatePrivateRegion(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
       queryClient.invalidateQueries({ queryKey: ["regions", org] });
+      // The location's liveness monitor was created with it.
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+    },
+  });
+}
+
+/** One-click re-enable of a private location's liveness monitor (spec
+ * 2026-09-25-05): clears the opt-out and re-enables or recreates the check. */
+export function useEnableLivenessMonitor(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<PrivateLocationMonitor>(
+        `/api/v1/orgs/${org}/private-regions/${slug}/liveness-monitor`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }
@@ -7429,6 +7478,8 @@ export function useDeletePrivateRegion(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["private-regions", org] });
       queryClient.invalidateQueries({ queryKey: ["regions", org] });
+      // Its liveness monitor was deleted with it.
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }

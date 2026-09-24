@@ -109,7 +109,16 @@ const globalMinPeriodSeconds = 10;
 // the flappingSummary line below.
 const defaultReopenCooldownMultiplier = 5;
 
-export const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
+// `systemCreated` types exist only because the server made them (the
+// private-location liveness monitor, spec 2026-09-25-05): the edit form shows
+// their label, the new-check picker never offers them.
+export const checkTypes: {
+  value: CheckType;
+  label: string;
+  description: string;
+  synthetic?: boolean;
+  systemCreated?: boolean;
+}[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
   { value: "tcp", label: "TCP", description: "Check TCP port connectivity" },
   { value: "icmp", label: "ICMP", description: "Ping hosts using ICMP" },
@@ -149,6 +158,7 @@ export const checkTypes: { value: CheckType; label: string; description: string;
   { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
   { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
   { value: "rdp", label: "RDP", description: "Monitor RDP (Remote Desktop) servers" },
+  { value: "private-location", label: "Private location", description: "Alert when a private location's agents go offline", systemCreated: true },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
 
@@ -452,11 +462,12 @@ export function CheckForm({
   const { data: apiCheckTypes } = useCheckTypes(org);
   const { user } = useAuth();
   const availableCheckTypes = useMemo(() => {
+    const creatable = checkTypes.filter((ct) => !ct.systemCreated);
     const base =
       !apiCheckTypes || apiCheckTypes.length === 0
-        ? checkTypes
+        ? creatable
         : // Build list from API data, matching against local entries for labels
-          checkTypes.filter((ct) =>
+          creatable.filter((ct) =>
             new Set(apiCheckTypes.filter((t) => t.enabled).map((t) => t.type)).has(ct.value),
           );
 
@@ -1536,7 +1547,9 @@ export function CheckForm({
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="period">
-                  {isPassiveCheckType(type) ? t("form.expectedInterval") : t("form.checkInterval")}
+                  {isPassiveCheckType(type) && type !== "private-location"
+                    ? t("form.expectedInterval")
+                    : t("form.checkInterval")}
                 </Label>
                 {isPassiveCheckType(type) ? (
                   <div className="flex gap-2">
@@ -1593,6 +1606,9 @@ export function CheckForm({
                 )}
                 {type === "email" && (
                   <p className="text-xs text-muted-foreground">{t("form.emailIntervalHint")}</p>
+                )}
+                {type === "private-location" && (
+                  <p className="text-xs text-muted-foreground">{t("form.privateLocationIntervalHint")}</p>
                 )}
               </div>
 

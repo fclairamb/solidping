@@ -357,7 +357,8 @@
       "summaryOn": "{{failures}} of {{failuresWindow}} failed probes, {{slow}}",
       "summarySlowArmed": "{{slow}} of {{slowWindow}} probes over {{threshold}} ms",
       "summarySlowOff": "slow rule off"
-    }
+    },
+    "privateLocationIntervalHint": "How often SolidPing checks that the location's agents are connected. An agent counts as offline after 5 minutes without contact."
   },
   "types": {
     "http": "HTTP",
@@ -418,7 +419,9 @@
     "rdpDescription": "Monitor RDP (Remote Desktop) servers",
     "sleep": "Sleep",
     "sleepDescription": "Sleep for a fixed duration (synthetic/testing, no network I/O)",
-    "email": "Email"
+    "email": "Email",
+    "private-location": "Private location",
+    "private-locationDescription": "Alert when a private location's agents go offline"
   },
   "freebox": {
     "discover": "Discover from Freebox",
@@ -1033,7 +1036,9 @@
     "rdpEndSessionLogoff": "Log off (default)",
     "rdpEndSessionDisconnect": "Disconnect (session stays on the server)",
     "rdpEndSessionHelp": "Log off removes the session from the server. Disconnect leaves it running until the server's idle policy ends it, so the next run reattaches to it (faster checks).",
-    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest."
+    "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest.",
+    "privateLocationRegion": "Private location",
+    "privateLocationHelp": "SolidPing created this check with the location. It watches the location's agents and goes down when none is connected. The location it watches cannot be changed."
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",

@@ -342,7 +342,15 @@
       "create": "Añadir ubicación",
       "deleteTitle": "¿Eliminar la ubicación privada?",
       "deleteDescription": "Los checks dirigidos a esta ubicación dejarán de programarse ahí. Las ubicaciones con agentes inscritos no se pueden eliminar — revoque primero los agentes.",
-      "deleteConfirm": "Eliminar"
+      "deleteConfirm": "Eliminar",
+      "stateOnline": "En línea",
+      "stateDegraded": "Degradada",
+      "stateOffline": "Sin conexión",
+      "stateEmpty": "Sin agente",
+      "onlineCount": "{{online}}/{{total}} en línea",
+      "monitor": "Supervisión de agentes",
+      "monitorOff": "Supervisión de agentes desactivada",
+      "monitorEnable": "Activar"
     },
     "cancel": "Cancelar",
     "token": {
@@ -369,7 +377,9 @@
       "removeDescription": "Este agente ya está revocado. Eliminarlo lo borra de la lista de inmediato, en lugar de esperar a la limpieza automática tras dos días.",
       "revokeDescription": "El agente pierde el acceso de inmediato y deja de recibir checks. Ya ha visto las credenciales selladas para él — rótelas. Esto no se puede deshacer; inscriba un nuevo agente para reemplazarlo.",
       "removeConfirm": "Eliminar",
-      "revokeConfirm": "Revocar"
+      "revokeConfirm": "Revocar",
+      "online": "En línea",
+      "offline": "Sin conexión"
     },
     "tokens": {
       "title": "Tokens de inscripción pendientes",

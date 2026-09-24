@@ -276,6 +276,26 @@ Because the running agent keeps no local state, the Deployment needs no volume,
 no `fsGroup`, and no `strategy: Recreate` — it can use the default rolling
 update and be rescheduled onto any node freely.
 
+## Knowing when an agent goes offline
+
+Only you can restart an agent that runs on your machine, so SolidPing tells you
+when one stops.
+
+- **Online / Offline.** The Private Locations page shows each agent as online
+  when it was seen in the last 5 minutes, and each location as online, degraded
+  (some agents offline), offline or without agent.
+- **A liveness monitor per location.** Creating a location also creates a check,
+  `Private location: <name>`, that goes down when none of the location's agents
+  is connected, and warns when some are not. It pages through your escalation
+  policy and integrations like any check, can sit under a maintenance window
+  during a planned agent upgrade, and does not count toward your check quota.
+  See [Private Location Liveness](./check-types.md#private-location-liveness).
+  You can disable or delete it; the page then shows **Liveness monitor off**
+  with a button to turn it back on.
+- **Connection events.** Each agent connection and disconnection is recorded in
+  the [audit log](./audit-log.md), with the disconnect reason. The monitor's
+  down result quotes the last one.
+
 ## 4. Target the location from a check
 
 The check form's region picker lists your private locations alongside the

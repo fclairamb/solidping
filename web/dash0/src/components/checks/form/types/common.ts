@@ -47,6 +47,7 @@ export type CheckType =
   | "sip"
   | "ntp"
   | "rdp"
+  | "private-location"
   | "sleep";
 
 export type CheckConfig = Record<string, unknown>;

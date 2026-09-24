@@ -33,13 +33,16 @@ export const PERIOD_STEP_SECONDS = [
  * therefore excluded from this page entirely — listing it would invite users
  * to slow down checks that cost them nothing.
  *
+ * The private-location liveness monitor (spec 2026-09-25-05) is passive too:
+ * SolidPing evaluates it from the location's agents, never inside a region.
+ *
  * This is dash0's ONE definition of "passive" (spec 2026-09-25-04): the check
  * form (which hides the region picker for these types, since they are
  * evaluated by SolidPing itself and never run inside a region) and the check
  * detail page import it rather than keep their own copy.
  */
 export function isPassiveCheckType(type?: string | null): boolean {
-  return type === "heartbeat" || type === "email";
+  return type === "heartbeat" || type === "email" || type === "private-location";
 }
 
 /**

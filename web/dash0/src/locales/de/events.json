@@ -76,7 +76,9 @@
     "maintenance_window.deleted": "Wartungsfenster gelöscht",
     "config.applied": "Konfiguration angewendet",
     "org.settings_updated": "Organisationseinstellungen geändert",
-    "auth.token_misuse": "Missbrauchsversuch mit Token"
+    "auth.token_misuse": "Missbrauchsversuch mit Token",
+    "agent.connected": "Agent verbunden",
+    "agent.disconnected": "Agent getrennt"
   },
   "descriptions": {
     "org.activation.signup_completed": "Ihre Organisation ist eingerichtet und einsatzbereit.",

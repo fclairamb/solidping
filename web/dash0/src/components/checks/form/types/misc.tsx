@@ -1029,3 +1029,40 @@ function EmailFields() {
     </p>
   );
 }
+
+// ── Private location liveness (passive, system-created) ──
+// Spec 2026-09-25-05. SolidPing creates one per private location; the form
+// only ever edits it, and the location it watches is read-only (the server
+// refuses a change too). The shared form omits `config` from a passive
+// check's edit payload, so the region is never resubmitted.
+export interface PrivateLocationState {
+  region: string;
+}
+
+export const privateLocationModule: CheckTypeModule<PrivateLocationState> = {
+  types: ["private-location"],
+  ownedKeys: ["region"],
+  fromConfig: (config) => ({ region: getConfigField(config, "region") }),
+  toConfig: (state) => ({
+    config: { region: state.region },
+    errors: state.region ? [] : [{ name: "region", message: "Region is required" }],
+  }),
+  Fields: PrivateLocationFields,
+};
+
+function PrivateLocationFields({ state }: CheckTypeFieldsProps<PrivateLocationState>) {
+  const { t } = useTranslation("checks");
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="privateLocationRegion">{t("misc.privateLocationRegion")}</Label>
+      <Input
+        id="privateLocationRegion"
+        value={state.region}
+        disabled
+        readOnly
+        data-testid="check-private-location-region"
+      />
+      <p className="text-sm text-muted-foreground">{t("misc.privateLocationHelp")}</p>
+    </div>
+  );
+}

@@ -5017,7 +5017,7 @@ const CHECK_TYPE_FAMILY_TABLE: {
   { family: "Game", types: "a2s, minecraft", tone: "lime" },
   {
     family: "Infra",
-    types: "docker, prometheus, freebox_line, kubernetes",
+    types: "docker, prometheus, freebox_line, kubernetes, private-location",
     tone: "sky",
   },
   {

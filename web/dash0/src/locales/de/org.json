@@ -342,7 +342,15 @@
       "create": "Standort hinzufügen",
       "deleteTitle": "Privaten Standort löschen?",
       "deleteDescription": "Checks, die auf diesen Standort abzielen, werden dort nicht mehr geplant. Standorte mit registrierten Agenten können nicht gelöscht werden — widerrufen Sie zuerst die Agenten.",
-      "deleteConfirm": "Löschen"
+      "deleteConfirm": "Löschen",
+      "stateOnline": "Verbunden",
+      "stateDegraded": "Eingeschränkt",
+      "stateOffline": "Getrennt",
+      "stateEmpty": "Kein Agent",
+      "onlineCount": "{{online}}/{{total}} verbunden",
+      "monitor": "Agentenüberwachung",
+      "monitorOff": "Agentenüberwachung aus",
+      "monitorEnable": "Einschalten"
     },
     "cancel": "Abbrechen",
     "token": {
@@ -369,7 +377,9 @@
       "removeDescription": "Dieser Agent ist bereits widerrufen. Ihn zu entfernen löscht ihn sofort aus der Liste, statt auf die automatische Bereinigung nach zwei Tagen zu warten.",
       "revokeDescription": "Der Agent verliert sofort den Zugriff und erhält keine Checks mehr. Er hat die für ihn versiegelten Zugangsdaten bereits gesehen — rotieren Sie sie. Dies kann nicht rückgängig gemacht werden; registrieren Sie einen neuen Agenten als Ersatz.",
       "removeConfirm": "Entfernen",
-      "revokeConfirm": "Widerrufen"
+      "revokeConfirm": "Widerrufen",
+      "online": "Verbunden",
+      "offline": "Getrennt"
     },
     "tokens": {
       "title": "Ausstehende Registrierungstoken",

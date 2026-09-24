@@ -342,7 +342,15 @@
       "create": "Ajouter un emplacement",
       "deleteTitle": "Supprimer l'emplacement privé ?",
       "deleteDescription": "Les checks ciblant cet emplacement cesseront d'y être planifiés. Les emplacements comportant des agents inscrits ne peuvent pas être supprimés — révoquez d'abord les agents.",
-      "deleteConfirm": "Supprimer"
+      "deleteConfirm": "Supprimer",
+      "stateOnline": "En ligne",
+      "stateDegraded": "Dégradé",
+      "stateOffline": "Hors ligne",
+      "stateEmpty": "Aucun agent",
+      "onlineCount": "{{online}}/{{total}} en ligne",
+      "monitor": "Surveillance des agents",
+      "monitorOff": "Surveillance des agents désactivée",
+      "monitorEnable": "Activer"
     },
     "cancel": "Annuler",
     "token": {
@@ -369,7 +377,9 @@
       "removeDescription": "Cet agent est déjà révoqué. Le retirer l'efface immédiatement de la liste, au lieu d'attendre le nettoyage automatique après deux jours.",
       "revokeDescription": "L'agent perd immédiatement l'accès et cesse de recevoir des checks. Il a déjà vu les identifiants scellés à son intention — faites-les tourner. Cette action est irréversible ; inscrivez un nouvel agent pour le remplacer.",
       "removeConfirm": "Retirer",
-      "revokeConfirm": "Révoquer"
+      "revokeConfirm": "Révoquer",
+      "online": "En ligne",
+      "offline": "Hors ligne"
     },
     "tokens": {
       "title": "Jetons d'inscription en attente",

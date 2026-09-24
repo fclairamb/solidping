@@ -357,7 +357,8 @@
       "summaryOn": "{{failures}} von {{failuresWindow}} fehlgeschlagenen Probes, {{slow}}",
       "summarySlowArmed": "{{slow}} von {{slowWindow}} Probes über {{threshold}} ms",
       "summarySlowOff": "Langsam-Regel aus"
-    }
+    },
+    "privateLocationIntervalHint": "Wie oft SolidPing prüft, ob die Agenten des Standorts verbunden sind. Ein Agent gilt nach 5 Minuten ohne Kontakt als getrennt."
   },
   "types": {
     "http": "HTTP",
@@ -418,7 +419,9 @@
     "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)",
     "freebox_line": "Freebox-Leitungsqualität",
     "freebox_lineDescription": "xDSL/FTTH-Leitungsqualität über Freebox OS überwachen",
-    "email": "E-Mail"
+    "email": "E-Mail",
+    "private-location": "Privater Standort",
+    "private-locationDescription": "Alarm, wenn die Agenten eines privaten Standorts getrennt sind"
   },
   "dnsbl": {
     "target": "Ziel-IP oder Hostname",
@@ -1033,7 +1036,9 @@
     "rdpEndSessionLogoff": "Abmelden (Standard)",
     "rdpEndSessionDisconnect": "Nur trennen (Sitzung bleibt auf dem Server)",
     "rdpEndSessionHelp": "Abmelden entfernt die Sitzung vom Server. Trennen lässt sie laufen, bis die Idle-Richtlinie des Servers sie beendet — der nächste Lauf hängt sich wieder an (schnellere Prüfungen).",
-    "rdpCaveatsHelp": "Jede authentifizierte Ausführung ist eine echte interaktive Windows-Anmeldung: Benutzerprofil, Anmeldeskripte und GPOs, möglicher Verbrauch einer RDS-Lizenz, auf Einzelsitzungsservern ein möglicherweise abgemeldeter echter Benutzer, und pro Ausführung ein Eintrag 4624/4634 im Sicherheitsprotokoll. Verwenden Sie ein dediziertes Überwachungskonto, nie das Konto einer Person."
+    "rdpCaveatsHelp": "Jede authentifizierte Ausführung ist eine echte interaktive Windows-Anmeldung: Benutzerprofil, Anmeldeskripte und GPOs, möglicher Verbrauch einer RDS-Lizenz, auf Einzelsitzungsservern ein möglicherweise abgemeldeter echter Benutzer, und pro Ausführung ein Eintrag 4624/4634 im Sicherheitsprotokoll. Verwenden Sie ein dediziertes Überwachungskonto, nie das Konto einer Person.",
+    "privateLocationRegion": "Privater Standort",
+    "privateLocationHelp": "SolidPing hat diesen Check zusammen mit dem Standort angelegt. Er überwacht die Agenten des Standorts und ist ausgefallen, wenn keiner verbunden ist. Der überwachte Standort kann nicht geändert werden."
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",

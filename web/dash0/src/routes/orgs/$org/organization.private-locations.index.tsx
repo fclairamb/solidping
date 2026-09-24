@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, Copy, Check as CheckIcon, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Activity, Bot, Copy, Check as CheckIcon, KeyRound, Plus, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -44,12 +44,14 @@ import {
   useCreatePrivateRegion,
   useDeleteEnrollmentToken,
   useDeletePrivateRegion,
+  useEnableLivenessMonitor,
   useEnrollmentTokens,
   useMintEnrollmentToken,
   usePrivateRegions,
   useRevokeAgent,
   useVersion,
   type MintedEnrollmentToken,
+  type PrivateLocationState,
   type PrivateRegion,
 } from "@/api/hooks";
 import { DocsLink } from "@/components/shared/docs-link";
@@ -63,6 +65,7 @@ import {
 } from "@/components/shared/browser-capability";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveDurationAgo } from "@/components/shared/relative-time";
+import { StatusBadge } from "@/components/shared/status-badge";
 
 export const Route = createFileRoute("/orgs/$org/organization/private-locations/")({
   component: PrivateLocationsPage,
@@ -83,6 +86,82 @@ function PrivateLocationsPage() {
 // ---------------------------------------------------------------------------
 // Private regions
 // ---------------------------------------------------------------------------
+
+// Per-location state badge (spec 2026-09-25-05): the same liveness rule as the
+// location's liveness monitor, computed server-side.
+const LOCATION_STATE_VARIANT: Record<PrivateLocationState, "success" | "warning" | "destructive" | "secondary"> = {
+  online: "success",
+  degraded: "warning",
+  offline: "destructive",
+  empty: "secondary",
+};
+
+function LocationStateBadge({ region }: { region: PrivateRegion }) {
+  const { t } = useTranslation(["org"]);
+  const state: PrivateLocationState = region.state ?? (region.agentCount > 0 ? "online" : "empty");
+  const online = region.onlineAgentCount ?? region.agentCount;
+
+  const label = {
+    online: t("privateLocations.regions.stateOnline", "Online"),
+    degraded: t("privateLocations.regions.stateDegraded", "Degraded"),
+    offline: t("privateLocations.regions.stateOffline", "Offline"),
+    empty: t("privateLocations.regions.stateEmpty", "No agent"),
+  }[state];
+
+  return (
+    <div className="flex items-center gap-2">
+      <Badge variant={LOCATION_STATE_VARIANT[state]} data-testid={`private-region-state-${region.slug}`} data-state={state}>
+        {label}
+      </Badge>
+      <span className="text-xs text-muted-foreground" data-testid={`private-region-online-${region.slug}`}>
+        {t("privateLocations.regions.onlineCount", "{{online}}/{{total}} online", {
+          online,
+          total: region.agentCount,
+        })}
+      </span>
+    </div>
+  );
+}
+
+// LivenessMonitorCell links a location to its liveness monitor, or offers the
+// one-click re-enable when the org turned it off (spec 2026-09-25-05).
+function LivenessMonitorCell({ org, region }: { org: string; region: PrivateRegion }) {
+  const { t } = useTranslation(["org"]);
+  const enable = useEnableLivenessMonitor(org);
+  const monitor = region.livenessMonitor;
+
+  if (region.livenessMonitorOff || !monitor) {
+    return (
+      <div className="flex flex-wrap items-center gap-2" data-testid={`liveness-monitor-off-${region.slug}`}>
+        <span className="text-xs text-muted-foreground">
+          {t("privateLocations.regions.monitorOff", "Liveness monitor off")}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => enable.mutate(region.slug)}
+          disabled={enable.isPending}
+          data-testid={`enable-liveness-monitor-${region.slug}`}
+        >
+          {t("privateLocations.regions.monitorEnable", "Turn on")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      to="/orgs/$org/checks/$checkUid"
+      params={{ org, checkUid: monitor.uid }}
+      search={{ graphPeriod: undefined, graphFull: undefined, region: undefined }}
+      className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline"
+      data-testid={`liveness-monitor-link-${region.slug}`}
+    >
+      <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+      <StatusBadge status={monitor.status} />
+    </Link>
+  );
+}
 
 function RegionsCard({ org }: { org: string }) {
   const { t } = useTranslation(["org"]);
@@ -179,6 +258,7 @@ function RegionsCard({ org }: { org: string }) {
                   <TableHead>{t("privateLocations.regions.name", "Name")}</TableHead>
                   <TableHead>{t("privateLocations.regions.region", "Region")}</TableHead>
                   <TableHead>{t("privateLocations.regions.agents", "Agents")}</TableHead>
+                  <TableHead>{t("privateLocations.regions.monitor", "Liveness monitor")}</TableHead>
                   <TableHead>{t("privateLocations.regions.ipv6", "IPv6")}</TableHead>
                   <TableHead className="w-24 text-right">
                     {t("privateLocations.regions.actions", "Actions")}
@@ -198,9 +278,10 @@ function RegionsCard({ org }: { org: string }) {
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{region.region}</code>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={region.agentCount > 0 ? "default" : "secondary"}>
-                        {region.agentCount}
-                      </Badge>
+                      <LocationStateBadge region={region} />
+                    </TableCell>
+                    <TableCell>
+                      <LivenessMonitorCell org={org} region={region} />
                     </TableCell>
                     {/* Egress families this location's live agents report
                         (spec 2026-08-15-11). This is the one case the user can
@@ -470,13 +551,26 @@ function AgentsCard({ org }: { org: string }) {
                       className="text-sm text-muted-foreground"
                       data-testid={`agent-last-seen-${agent.uid}`}
                     >
-                      {agent.lastSeenAt ? (
-                        <span title={new Date(agent.lastSeenAt).toLocaleString()}>
-                          <LiveDurationAgo since={agent.lastSeenAt} />
-                        </span>
-                      ) : (
-                        t("privateLocations.agents.never", "never")
-                      )}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {agent.status === "active" && (
+                          <Badge
+                            variant={agent.online ? "success" : "destructive"}
+                            data-testid={`agent-online-${agent.uid}`}
+                            data-online={agent.online ? "true" : "false"}
+                          >
+                            {agent.online
+                              ? t("privateLocations.agents.online", "Online")
+                              : t("privateLocations.agents.offline", "Offline")}
+                          </Badge>
+                        )}
+                        {agent.lastSeenAt ? (
+                          <span title={new Date(agent.lastSeenAt).toLocaleString()}>
+                            <LiveDurationAgo since={agent.lastSeenAt} />
+                          </span>
+                        ) : (
+                          t("privateLocations.agents.never", "never")
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={agent.status === "active" ? "default" : "destructive"}>

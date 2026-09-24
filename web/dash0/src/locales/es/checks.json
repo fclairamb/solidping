@@ -357,7 +357,8 @@
       "summaryOn": "{{failures}} de {{failuresWindow}} sondas fallidas, {{slow}}",
       "summarySlowArmed": "{{slow}} de {{slowWindow}} sondas por encima de {{threshold}} ms",
       "summarySlowOff": "regla de lentitud desactivada"
-    }
+    },
+    "privateLocationIntervalHint": "Con qué frecuencia SolidPing comprueba que los agentes de la ubicación están conectados. Un agente cuenta como desconectado tras 5 minutos sin contacto."
   },
   "types": {
     "http": "HTTP",
@@ -418,7 +419,9 @@
     "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)",
     "freebox_line": "Calidad de línea Freebox",
     "freebox_lineDescription": "Supervisar la calidad de línea xDSL/FTTH mediante Freebox OS",
-    "email": "Correo"
+    "email": "Correo",
+    "private-location": "Ubicación privada",
+    "private-locationDescription": "Alerta cuando los agentes de una ubicación privada se desconectan"
   },
   "dnsbl": {
     "target": "IP o nombre de host objetivo",
@@ -1033,7 +1036,9 @@
     "rdpEndSessionLogoff": "Cerrar sesión (predeterminado)",
     "rdpEndSessionDisconnect": "Solo desconectar (la sesión sigue en el servidor)",
     "rdpEndSessionHelp": "Cerrar sesión elimina la sesión del servidor. Desconectar la deja en marcha hasta que la política de inactividad del servidor la finalice, de modo que la siguiente ejecución se vuelva a adjuntar (comprobaciones más rápidas).",
-    "rdpCaveatsHelp": "Cada ejecución autenticada es una sesión interactiva real de Windows: carga un perfil de usuario, ejecuta scripts de inicio y GPO, puede consumir una licencia RDS, puede desconectar a un usuario real en un servidor de sesión única y aparece en el registro de seguridad (4624/4634) en cada ejecución. Use una cuenta de monitorización dedicada, nunca la cuenta de una persona."
+    "rdpCaveatsHelp": "Cada ejecución autenticada es una sesión interactiva real de Windows: carga un perfil de usuario, ejecuta scripts de inicio y GPO, puede consumir una licencia RDS, puede desconectar a un usuario real en un servidor de sesión única y aparece en el registro de seguridad (4624/4634) en cada ejecución. Use una cuenta de monitorización dedicada, nunca la cuenta de una persona.",
+    "privateLocationRegion": "Ubicación privada",
+    "privateLocationHelp": "SolidPing creó este check junto con la ubicación. Vigila los agentes de la ubicación y cae cuando ninguno está conectado. La ubicación vigilada no se puede cambiar."
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",

@@ -56,6 +56,7 @@ const ALL_CHECK_TYPES: Record<CheckType, true> = {
   sip: true,
   ntp: true,
   rdp: true,
+  "private-location": true,
   sleep: true,
 };
 const CHECK_TYPES = Object.keys(ALL_CHECK_TYPES) as CheckType[];

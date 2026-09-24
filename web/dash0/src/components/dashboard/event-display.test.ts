@@ -216,6 +216,11 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // dash0 owns the pairing outright.
     ["region.offline", "📴"],
     ["region.recovered", "📶"],
+    // Private-location agent connections (spec 2026-09-25-05). Recorded as
+    // audit events only, never sent through a chat integration, so dash0 owns
+    // the pairing outright.
+    ["agent.connected", "🔌"],
+    ["agent.disconnected", "🪫"],
     // Security audit trail (spec 2026-08-21-09). Same ownership story again:
     // no backend chat integration hand-authors a message for an auth event, so
     // dash0 owns the pairing outright. The five are pinned because they must
