@@ -52,8 +52,13 @@ type ValidateCheckRequest struct {
 	// Regions is the check's selected region set. Supplied so the tunnel region
 	// rules (spec 2026-07-18-07) can be validated live — a `tunnelCheckUid`
 	// reference is legal or not depending on which regions the check runs in.
-	Regions   []string             `json:"regions,omitempty"`
-	DependsOn []ExportedDependency `json:"dependsOn,omitempty"`
+	Regions []string `json:"regions,omitempty"`
+	// Placement / RegionCount / RegionPool mirror CreateCheckRequest (spec
+	// 2026-09-25-06), checked by the same rules.
+	Placement   *string              `json:"placement,omitempty"`
+	RegionCount *int                 `json:"regionCount,omitempty"`
+	RegionPool  []string             `json:"regionPool,omitempty"`
+	DependsOn   []ExportedDependency `json:"dependsOn,omitempty"`
 	// Period is the proposed execution interval ("HH:MM:SS" or a Go duration).
 	// Optional: supplied so the period bounds and the org-rate projection
 	// (spec 2026-08-26-05) can be evaluated live. Absent means "not proposed"
@@ -847,8 +852,15 @@ type CheckResponse struct {
 	// a region whose live workers report no IPv6 egress" (spec 2026-08-15-11).
 	// Never populated on read paths, and never a reason to reject a write.
 	Warnings []base.ValidationErrorField `json:"warnings,omitempty"`
-	Regions  []string                    `json:"regions,omitempty"`
-	Enabled  *bool                       `json:"enabled,omitempty"`
+	// Regions is where the check runs: the user's list for a pinned check,
+	// the current placement for an automatic one.
+	Regions []string `json:"regions,omitempty"`
+	// Placement is `pinned` or `auto` (spec 2026-09-25-06). RegionCount and
+	// RegionPool are set for an automatic check only.
+	Placement   string   `json:"placement,omitempty"`
+	RegionCount *int     `json:"regionCount,omitempty"`
+	RegionPool  []string `json:"regionPool,omitempty"`
+	Enabled     *bool    `json:"enabled,omitempty"`
 	Internal *bool                       `json:"internal,omitempty"`
 	Period   *string                     `json:"period,omitempty"`
 	// RegionSpread is the resolved inter-region scheduling offset override
@@ -1410,7 +1422,17 @@ type CreateCheckRequest struct {
 	Type          string         `json:"type"`
 	Config        map[string]any `json:"config"`
 	Regions       []string       `json:"regions"`
-	Enabled       *bool          `json:"enabled"`
+	// Placement is `pinned` or `auto` (spec 2026-09-25-06). Absent: an
+	// explicit regions list means pinned; otherwise the check is placed
+	// automatically (unless the org's default_regions names a private
+	// location).
+	Placement *string `json:"placement,omitempty"`
+	// RegionCount is N for an automatic placement (default 2); RegionPool
+	// restricts its candidates to these cloud slugs (empty = any). Either one
+	// implies placement auto.
+	RegionCount *int     `json:"regionCount,omitempty"`
+	RegionPool  []string `json:"regionPool,omitempty"`
+	Enabled     *bool    `json:"enabled"`
 	// Internal is DECODED ONLY SO IT CAN BE REFUSED (spec 2026-08-27-01).
 	// Any non-nil value — including an explicit `false` — fails the request
 	// with ErrInternalFieldNotWritable. See that error for why.
@@ -1525,6 +1547,7 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// The resolved region set must be on the model before applyEncryption
 	// runs: credential sealing keys off the check's private regions.
 	check.Regions = resolvedRegions
+	plan.placement.applyTo(check)
 
 	// Split the (already normalized and validated) config's secrets out and
 	// encrypt them under the org DEK — and/or seal them to the private
@@ -1665,7 +1688,10 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// The check is already written at this point — a region-capability mismatch
 	// (IPv6, headless Chrome) is reported, never enforced.
-	response.Warnings = s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions)
+	response.Warnings = append(
+		s.regionCapabilityWarnings(ctx, org.UID, check.Type, check.Config, check.Regions),
+		plan.placement.warnings...,
+	)
 
 	// A brand-new check that matches a status page selector has to appear on
 	// that page with no manual action — that is the entire point of dynamic
@@ -1798,8 +1824,16 @@ type UpdateCheckRequest struct {
 	Description   *string         `json:"description,omitempty"`
 	CheckGroupUID *string         `json:"checkGroupUid"`
 	Config        *map[string]any `json:"config,omitempty"`
-	Regions       *[]string       `json:"regions,omitempty"`
-	Enabled       *bool           `json:"enabled,omitempty"`
+	// Regions set to a non-empty list pins the check to it; an empty list
+	// puts the check back on the default placement (spec 2026-09-25-06).
+	Regions *[]string `json:"regions,omitempty"`
+	// Placement switches the placement intent. `pinned` without regions
+	// freezes the current placement; `auto` without regionCount keeps the
+	// current region count.
+	Placement   *string   `json:"placement,omitempty"`
+	RegionCount *int      `json:"regionCount,omitempty"`
+	RegionPool  *[]string `json:"regionPool,omitempty"`
+	Enabled     *bool     `json:"enabled,omitempty"`
 	// Internal is decoded only so it can be refused — see
 	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
 	Internal *bool              `json:"internal,omitempty"`
@@ -1860,7 +1894,13 @@ type UpsertCheckRequest struct {
 	Type          string         `json:"type"`
 	Config        map[string]any `json:"config"`
 	Regions       []string       `json:"regions,omitempty"`
-	Enabled       *bool          `json:"enabled"`
+	// Placement / RegionCount / RegionPool (spec 2026-09-25-06). A document
+	// is declarative: `placement: auto` with no regionPool means "any region",
+	// and switches an existing pinned check even though `regions` is empty.
+	Placement   *string   `json:"placement,omitempty"`
+	RegionCount *int      `json:"regionCount,omitempty"`
+	RegionPool  *[]string `json:"regionPool,omitempty"`
+	Enabled     *bool     `json:"enabled"`
 	// Internal is decoded only so it can be refused — see
 	// ErrInternalFieldNotWritable (spec 2026-08-27-01).
 	Internal *bool             `json:"internal,omitempty"`
@@ -1977,15 +2017,25 @@ func (s *Service) UpdateCheck(
 			update.EscalationPolicyUID = req.EscalationPolicyUID
 		}
 	}
-	// Resolve a region patch BEFORE the config handling so credential sealing
-	// sees the regions the check will have after this PATCH.
-	if req.Regions != nil {
-		resolvedRegions, regErr := s.resolveRegionsForType(ctx, check.Type, *req.Regions, org.UID)
-		if regErr != nil {
-			return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", regErr)
+	// Resolve the placement (and so the regions) BEFORE the config handling so
+	// credential sealing sees the regions the check will have after this
+	// PATCH (spec 2026-09-25-06). A nil outcome leaves them untouched.
+	placement, placementErr := s.resolveUpdatePlacement(
+		ctx, check, s.updatePlacementSubject(check, req), updatePlacementRequest(req),
+		req.Config != nil || (req.Enabled != nil && *req.Enabled && !check.Enabled),
+	)
+	if placementErr != nil {
+		if isPlacementError(placementErr) {
+			return CheckResponse{}, placementErr
 		}
-		check.Regions = resolvedRegions
-		update.Regions = &resolvedRegions
+
+		return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", placementErr)
+	}
+
+	regionsChanged := placement != nil
+	if regionsChanged {
+		check.Regions = placement.regions
+		placement.applyToUpdate(&update)
 	}
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
@@ -1995,7 +2045,7 @@ func (s *Service) UpdateCheck(
 		if floorErr := validateConfigOnlyPatchFloor(check, req.Period); floorErr != nil {
 			return CheckResponse{}, floorErr
 		}
-	} else if req.Regions != nil {
+	} else if regionsChanged {
 		// A regions-only PATCH still has to re-validate a tunnel reference: the
 		// dependent's private regions must stay covered by the SSH check (spec
 		// 2026-07-18-07, decisions 1–2). When req.Config is set, applyConfigUpdate
@@ -2011,7 +2061,7 @@ func (s *Service) UpdateCheck(
 	// sealed-only) while other checks tunnel through it must not silently strand
 	// them. Runs against the post-update state (regions resolved above; sealing
 	// applied by applyConfigUpdate when config changed).
-	if req.Regions != nil || req.Config != nil {
+	if regionsChanged || req.Config != nil {
 		if coverErr := s.assertTunnelRegionsStillCover(ctx, check); coverErr != nil {
 			return CheckResponse{}, coverErr
 		}
@@ -2127,7 +2177,7 @@ func (s *Service) UpdateCheck(
 
 	// Reconcile check jobs if regions, period, spread, enabled, or config
 	// changed (a regionSpread-only edit re-levels the per-region phases).
-	if req.Regions != nil || req.Period != nil || req.RegionSpread != nil ||
+	if regionsChanged || req.Period != nil || req.RegionSpread != nil ||
 		req.Enabled != nil || req.Config != nil {
 		updatedCheck, fetchErr := s.db.GetCheck(ctx, org.UID, check.UID)
 		if fetchErr != nil {
@@ -2165,6 +2215,9 @@ func (s *Service) UpdateCheck(
 	response.Warnings = s.regionCapabilityWarnings(
 		ctx, org.UID, updatedCheck.Type, updatedCheck.Config, updatedCheck.Regions,
 	)
+	if placement != nil {
+		response.Warnings = append(response.Warnings, placement.warnings...)
+	}
 
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
@@ -2286,6 +2339,8 @@ func (s *Service) UpsertCheck(
 		if len(req.Regions) > 0 {
 			updateReq.Regions = &req.Regions
 		}
+
+		applyUpsertPlacement(&updateReq, req)
 
 		updatedCheck, updateErr := s.UpdateCheck(ctx, orgSlug, slug, &updateReq)
 		if updateErr != nil {
@@ -3291,6 +3346,9 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		TargetHost:                checkerdef.ExtractTargetHost(publicConfig),
 		ConfigPrivateKeys:         privateKeys,
 		Regions:                   check.Regions,
+		Placement:                 check.EffectivePlacement(),
+		RegionCount:               autoOnlyCount(check),
+		RegionPool:                autoOnlyPool(check),
 		Enabled:                   &check.Enabled,
 		Internal:                  &check.Internal,
 		Period:                    &periodStr,
@@ -4739,6 +4797,15 @@ func (s *Service) cloneBuildCheck(
 
 	clone.Config = source.Config
 	clone.Regions = append([]string(nil), source.Regions...)
+	// The placement intent travels with the regions (spec 2026-09-25-06): a
+	// clone of an automatic check is automatic, starting from the same
+	// placement.
+	clone.Placement = source.EffectivePlacement()
+	if source.RegionCount != nil {
+		count := *source.RegionCount
+		clone.RegionCount = &count
+	}
+	clone.RegionPool = append([]string(nil), source.RegionPool...)
 	clone.Period = source.Period
 	// A clone is NEVER internal, whatever the source is (spec 2026-08-27-01).
 	// Copying the flag would be the same quota bypass as accepting `internal`

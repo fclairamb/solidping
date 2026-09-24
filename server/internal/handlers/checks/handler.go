@@ -967,6 +967,9 @@ func isCheckFieldValidationError(err error) bool {
 		errors.Is(err, errFlapBackoffTooSmall) ||
 		errors.Is(err, errMaxRecoveryMultTooSmall) ||
 		errors.Is(err, errInvalidTraceroutePolicy) ||
+		// Placement (spec 2026-09-25-06): a contradictory or unplaceable
+		// placement request is the caller's to fix.
+		isPlacementError(err) ||
 		errors.As(err, &periodErr)
 }
 

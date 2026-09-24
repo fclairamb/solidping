@@ -86,6 +86,9 @@ type createPlan struct {
 	regions          []string
 	effective        map[string]any
 	userProvidedSlug bool
+	// placement is the resolved placement (spec 2026-09-25-06); regions above
+	// is its region list.
+	placement *placementOutcome
 }
 
 // planCreateCheck runs every request-level rule the create path enforces and
@@ -164,10 +167,27 @@ func (s *Service) planCreateCheck(
 	// 2026-07-16-02) keys off the check's private regions, and the tunnel
 	// region rules (spec 2026-07-18-07) are validated against the resolved
 	// set, not the raw request.
-	resolvedRegions, err := s.resolveRegionsForType(ctx, req.Type, req.Regions, org.UID)
+	//
+	// Placement (spec 2026-09-25-06) decides the region set: pinned resolves it
+	// exactly as before; auto places the check. Resolved against the RAW
+	// request config: the capabilities it reads (browser, ipVersion) are
+	// public keys the normalization below never rewrites.
+	placement, err := s.resolveCreatePlacement(ctx, &placementSubject{
+		orgUID:    org.UID,
+		checkType: req.Type,
+		config:    req.Config,
+		period:    effectivePeriod,
+		enabled:   req.Enabled == nil || *req.Enabled,
+	}, createPlacementRequest(&req))
 	if err != nil {
+		if isPlacementError(err) {
+			return nil, err
+		}
+
 		return nil, fmt.Errorf("failed to resolve regions: %w", err)
 	}
+
+	resolvedRegions := placement.regions
 
 	// Demo-session payload rules (spec 2026-09-06-02). Deliberately AFTER
 	// ResolveRegionsForCheck so the region rule is applied to the resolved,
@@ -272,6 +292,7 @@ func (s *Service) planCreateCheck(
 		regions:          resolvedRegions,
 		effective:        effective,
 		userProvidedSlug: userProvidedSlug,
+		placement:        placement,
 	}, nil
 }
 
@@ -395,13 +416,31 @@ func (s *Service) planUpdateCheck(
 
 	regionsForCheck := existing.JobRegions()
 
+	// The same placement resolution the real update runs (spec 2026-09-25-06),
+	// from the same PATCH the upsert would build — so an unknown regionPool
+	// slug, a contradiction between regions and placement, or a pool no
+	// region can serve fails the dry run exactly as it fails the apply.
+	updateReq := UpdateCheckRequest{Config: &req.Config, Enabled: req.Enabled, Period: req.Period}
 	if len(req.Regions) > 0 {
-		resolved, regErr := s.resolveRegionsForType(ctx, existing.Type, req.Regions, org.UID)
-		if regErr != nil {
-			return fmt.Errorf("failed to resolve regions: %w", regErr)
+		updateReq.Regions = &req.Regions
+	}
+
+	applyUpsertPlacement(&updateReq, req)
+
+	placement, placementErr := s.resolveUpdatePlacement(
+		ctx, existing, s.updatePlacementSubject(existing, &updateReq), updatePlacementRequest(&updateReq),
+		updateReq.Config != nil, // UpsertCheck always forwards the config, so the real update re-evaluates too
+	)
+	if placementErr != nil {
+		if isPlacementError(placementErr) {
+			return placementErr
 		}
 
-		regionsForCheck = resolved
+		return fmt.Errorf("failed to resolve regions: %w", placementErr)
+	}
+
+	if placement != nil {
+		regionsForCheck = placement.regions
 	}
 
 	if req.Config != nil && checkHoldsSecretConfig(existing) {
@@ -553,6 +592,9 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		Type:          req.Type,
 		Config:        req.Config,
 		Regions:       req.Regions,
+		Placement:     req.Placement,
+		RegionCount:   req.RegionCount,
+		RegionPool:    poolOf(req.RegionPool),
 		Enabled:       req.Enabled,
 		// Internal is deliberately NOT forwarded (spec 2026-08-27-01).
 		Period:                    req.Period,

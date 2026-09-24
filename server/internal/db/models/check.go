@@ -256,8 +256,8 @@ type Check struct {
 	// nil or empty means any cloud region. Nil for a pinned check.
 	RegionPool []string           `bun:"region_pool,type:text[],array,nullzero"`
 	Enabled    bool               `bun:"enabled,notnull"`
-	Internal     bool               `bun:"internal,notnull"`
-	Period       timeutils.Duration `bun:"period,notnull"`
+	Internal   bool               `bun:"internal,notnull"`
+	Period     timeutils.Duration `bun:"period,notnull"`
 
 	// CreatedBy is the users.uid of whoever created this check, or NULL when
 	// nobody did — the startup job's seeded samples, and every check that

@@ -245,6 +245,12 @@ func (s *Service) getSystemDefaultRegions(ctx context.Context) ([]string, error)
 	return slugs, nil
 }
 
+// SystemDefaultRegions returns the system-level default region slugs (the
+// `default_regions` system parameter), nil when unset.
+func (s *Service) SystemDefaultRegions(ctx context.Context) ([]string, error) {
+	return s.getSystemDefaultRegions(ctx)
+}
+
 // ResolveRegionsForCheck determines the effective regions for a check.
 // Priority: check regions > org default > system default > all defined regions.
 //

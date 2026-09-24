@@ -170,6 +170,12 @@ type requestFieldValues struct {
 	FlappingWindowSeconds     *int
 	FlapBackoffFactor         *int
 	MaxRecoveryMultiplier     *int
+
+	// Placement is the placement half of the request (spec 2026-09-25-06).
+	// Nil skips the placement rules (the write paths run them earlier, in
+	// resolveCreatePlacement / resolveUpdatePlacement, with the same
+	// placementRequestFindings).
+	Placement *placementRequest
 }
 
 // requestFieldFinding is one request-level guard's outcome: enough to build
@@ -204,6 +210,10 @@ func requestFieldFindings(values requestFieldValues) []requestFieldFinding {
 	findings = appendTracerouteFinding(findings, values)
 	findings = appendFlappingFindings(findings, values)
 	findings = appendIncidentPeriodFindings(findings, values)
+
+	if values.Placement != nil {
+		findings = append(findings, placementRequestFindings(values.Placement)...)
+	}
 
 	return findings
 }
@@ -449,12 +459,14 @@ func (s *Service) ValidateCheck(
 
 	// Advisory only, and evaluated LAST so it can never mask a real error.
 	if orgUID != "" {
+		proposedRegions := s.validatePlacementFindings(ctx, orgUID, req, effective, period, findings)
+
 		findings.warnings = append(
 			findings.warnings,
-			s.regionCapabilityWarnings(ctx, orgUID, req.Type, effective, req.Regions)...,
+			s.regionCapabilityWarnings(ctx, orgUID, req.Type, effective, proposedRegions)...,
 		)
 
-		s.orgRateWarning(ctx, orgUID, req, period, findings)
+		s.orgRateWarning(ctx, orgUID, req, period, proposedRegions, findings)
 	}
 
 	return findings.response(), nil
@@ -583,6 +595,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		Placement:                 validatePlacementRequest(req),
 	})
 	for i := range fieldFindings {
 		findings.addError(fieldFindings[i].Name, fieldFindings[i].Code, fieldFindings[i].Message)
@@ -602,7 +615,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 // gate and so draw no execution budget at all.
 func (s *Service) orgRateWarning(
 	ctx context.Context, orgUID string, req *ValidateCheckRequest,
-	period time.Duration, findings *validateFindings,
+	period time.Duration, proposedRegions []string, findings *validateFindings,
 ) {
 	if s.entitlements == nil || period <= 0 || checkerdef.CheckType(req.Type).IsPassive() {
 		return
@@ -613,15 +626,11 @@ func (s *Service) orgRateWarning(
 		return
 	}
 
-	// Resolve the region set the same way the write path does: an empty
-	// selection means "the org's defaults", which is frequently more than one
-	// region — projecting the raw request would under-count exactly the case
-	// (a fresh check, no regions touched) the warning exists for.
-	proposedRegions := req.Regions
-	if resolved, resolveErr := s.regions.ResolveRegionsForCheck(ctx, req.Regions, orgUID); resolveErr == nil {
-		proposedRegions = resolved
-	}
-
+	// proposedRegions is the region set the write path would store — the
+	// placement resolved by validatePlacementFindings, which for an empty
+	// selection is the automatic placement (frequently more than one region).
+	// Projecting the raw request would under-count exactly the case (a fresh
+	// check, no regions touched) the warning exists for.
 	projected, err := s.entitlements.ProjectChecksPerMinute(ctx, orgUID, entcore.CheckRateProposal{
 		ExcludeCheckUID: req.ExcludeCheckUID,
 		Type:            req.Type,
