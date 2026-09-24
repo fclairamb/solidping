@@ -1689,6 +1689,10 @@ function ButtonsBadgesSection() {
           }
           importLine={`import { Button } from "@/components/ui/button";`}
         />
+        <ExampleRow
+          preview={<Button variant="brand">Sign in</Button>}
+          importLine={`// Auth pages only (login, register…): the crimson of the logo, matching the\n// card's border-t-brand. Everywhere else the primary action is the default variant.\n<Button variant="brand">Sign in</Button>`}
+        />
 
         <h3 className="text-sm font-medium" id="gradients">
           Gradients

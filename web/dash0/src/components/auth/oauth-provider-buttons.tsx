@@ -54,12 +54,18 @@ export function OAuthProviderButtons({
   return (
     <div className="mb-3">
       <div className="grid grid-cols-2 gap-2">
-        {providers.map((provider) => (
+        {providers.map((provider, i) => (
           <Button
             key={provider.type}
             variant="outline"
             size="sm"
-            className="w-full"
+            // An odd count would leave the last button alone in a half-empty
+            // row, so it spans both columns instead.
+            className={
+              providers.length % 2 === 1 && i === providers.length - 1
+                ? "col-span-2 w-full"
+                : "w-full"
+            }
             disabled={disabled}
             onClick={() =>
               startOAuthLogin({ org, providerType: provider.type, returnTo })

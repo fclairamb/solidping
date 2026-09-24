@@ -14,6 +14,10 @@ import { cn } from "@/lib/utils";
 // reads blue if the gradient ever fails to paint. Labels sit only on
 // --primary-gradient (>= 4.4:1 white at every stop), never on the brighter
 // --accent-gradient. The hover lift is behind motion-safe:.
+//
+// Brand variant: the solid crimson of the logo, for the primary action of the
+// auth pages (login, register…), whose card already carries the crimson top
+// border. Anywhere else, the primary action stays on the default variant.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
@@ -21,6 +25,8 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-primary bg-primary-gradient text-gradient-foreground inset-shadow-highlight shadow-primary hover:brightness-105 hover:shadow-primary-hover motion-safe:hover:-translate-y-px",
+        brand:
+          "bg-brand text-brand-foreground inset-shadow-highlight shadow-sm hover:bg-brand/90 motion-safe:hover:-translate-y-px",
         destructive:
           "bg-destructive text-white shadow-destructive hover:bg-destructive/90 hover:shadow-destructive-hover",
         outline:

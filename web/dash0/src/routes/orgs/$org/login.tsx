@@ -610,16 +610,15 @@ function LoginPage() {
   return (
     <AuthSplitLayout>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4" data-testid="login-logo">
-            <Logo size={64} />
+        {/* Compact header: the wordmark says SolidPing, the title says where
+            you are signing in, so the form starts above the fold on a phone. */}
+        <CardHeader className="text-center pb-4">
+          <div className="flex justify-center mb-2" data-testid="login-logo">
+            <Logo size={36} variant="wordmark" />
           </div>
-          <CardTitle className="text-2xl" data-testid="login-title">
-            SolidPing
+          <CardTitle className="text-xl" data-testid="login-title">
+            {t("signInTo", { org })}
           </CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("organizationLabel", { org })}
-          </p>
         </CardHeader>
         <CardContent>
           {session_expired && (
@@ -669,6 +668,7 @@ function LoginPage() {
               </div>
               <Button
                 type="submit"
+                variant="brand"
                 className="w-full"
                 disabled={isLoading || (!showRecovery && twoFACode.length !== 6)}
                 data-testid="2fa-login-verify"
@@ -816,7 +816,7 @@ function LoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="test@test.com"
+                    placeholder="you@acme.com"
                     autoComplete={passkeysEnabled ? "username webauthn" : "username"}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -854,6 +854,7 @@ function LoginPage() {
 
                 <Button
                   type="submit"
+                  variant="brand"
                   className="w-full"
                   disabled={isLoading}
                   data-testid="login-submit"
@@ -883,8 +884,8 @@ function LoginPage() {
                   !promotePasskey && (
                     <Button
                       type="button"
-                      variant="outline"
-                      className="w-full"
+                      variant="ghost"
+                      className="w-full text-muted-foreground"
                       onClick={handlePasskeyLogin}
                       disabled={isLoading}
                       data-testid="passkey-login-button"
@@ -899,10 +900,10 @@ function LoginPage() {
                   wants it, a returning customer must not trip over it — and
                   rendered only when the instance actually offers one. */}
               {demoAvailable && (
-                <div className="mt-4 border-t pt-4">
+                <div className="mt-4 rounded-lg bg-muted/50 p-3">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     className="w-full"
                     onClick={() => void enterDemo()}
                     disabled={isLoading}
@@ -911,7 +912,7 @@ function LoginPage() {
                     <PlayCircle className="mr-2 h-4 w-4" />
                     {t("demo.tryLiveDemo")}
                   </Button>
-                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                  <p className="mt-1 text-center text-xs text-muted-foreground">
                     {t("demo.loginHint")}
                   </p>
                 </div>
@@ -932,39 +933,41 @@ function LoginPage() {
             </div>
           )}
 
-          {versionData && (
-            <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground">
-              <a
-                href={marketingSiteUrl(versionData.deploymentMode)}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="login-brand-link"
-                className="underline-offset-4 hover:underline"
-              >
-                SolidPing
-              </a>{" "}
-              <a
-                href={CHANGELOG_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="login-version"
-                className="underline-offset-4 hover:underline"
-              >
-                v{versionData.version || "unknown"}
-              </a>
-              {(versionData.runMode === "demo" ||
-                versionData.runMode === "test") && (
-                <span
-                  className="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                  data-testid="login-runmode"
-                >
-                  {versionData.runMode}
-                </span>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Version line under the card rather than inside it: one divider fewer. */}
+      {versionData && (
+        <div className="mt-4 text-center text-xs text-muted-foreground">
+          <a
+            href={marketingSiteUrl(versionData.deploymentMode)}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="login-brand-link"
+            className="underline-offset-4 hover:underline"
+          >
+            SolidPing
+          </a>{" "}
+          <a
+            href={CHANGELOG_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="login-version"
+            className="underline-offset-4 hover:underline"
+          >
+            v{versionData.version || "unknown"}
+          </a>
+          {(versionData.runMode === "demo" ||
+            versionData.runMode === "test") && (
+            <span
+              className="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+              data-testid="login-runmode"
+            >
+              {versionData.runMode}
+            </span>
+          )}
+        </div>
+      )}
     </AuthSplitLayout>
   );
 }

@@ -117,6 +117,7 @@ import {
 import { slugify } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDemoEditCheck } from "@/lib/demo";
+import { statusStyle } from "@/lib/status-style";
 import { CHECKS_LIST_POLL_MS, useLiveSubscription } from "@/contexts/LiveEventsContext";
 
 // The checks index can bucket its rows by check group (server-side entity,
@@ -351,6 +352,13 @@ function computeHostSectionStatus(checks: Check[]): {
   return { status: "created", counts };
 }
 
+// A group/host section is an elevated card whose header is a tinted band with
+// a status-coloured accent on its left edge, so it reads as a container
+// heading rather than as another row of the table it wraps.
+const SECTION_CARD_CLASS = "overflow-hidden rounded-xl border bg-card shadow-card";
+const SECTION_HEADER_CLASS =
+  "relative flex items-center justify-between gap-2 pl-5 pr-4 py-3 cursor-pointer bg-muted hover:bg-muted/70 transition-colors flex-wrap";
+
 // Presentational: a by-host bucket. No group entity backs it (no edit link,
 // no move up/down, no escalation indicator) — just the hostname, member
 // count, and the client-computed rollup status/summary, reusing the same
@@ -387,9 +395,9 @@ function HostSection({
   const toggleCollapsed = () => setManualOverride(!collapsed);
 
   return (
-    <div className="border rounded-lg" data-testid="host-section">
+    <div className={SECTION_CARD_CLASS} data-testid="host-section">
       <div
-        className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 flex-wrap"
+        className={SECTION_HEADER_CLASS}
         onClick={toggleCollapsed}
         role="button"
         tabIndex={0}
@@ -402,6 +410,10 @@ function HostSection({
         }}
         data-testid="host-section-header"
       >
+        <span
+          aria-hidden
+          className={`absolute inset-y-0 left-0 w-1 ${statusStyle(status).color}`}
+        />
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <span className="inline-flex shrink-0">
             {collapsed ? (
@@ -411,7 +423,7 @@ function HostSection({
             )}
           </span>
           <span
-            className={`font-semibold truncate ${isNoHost ? "text-muted-foreground italic" : ""}`}
+            className={`text-base font-semibold truncate ${isNoHost ? "text-muted-foreground italic" : ""}`}
             data-testid="host-section-name"
           >
             {isNoHost ? t("noHostBucket") : hostKey}
@@ -550,7 +562,7 @@ function CheckRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="hidden md:table-cell text-muted-foreground font-mono text-xs max-w-[280px] truncate">
+      <TableCell className="hidden md:table-cell text-muted-foreground font-mono text-xs max-w-0 truncate">
         {renderTarget()}
       </TableCell>
       <TableCell className="hidden md:table-cell">
@@ -661,9 +673,9 @@ function ChecksTable({
     <Table>
       <TableHeader className="bg-muted/30">
         <TableRow>
-          <TableHead>{t("table.name")}</TableHead>
+          <TableHead className="w-[40%]">{t("table.name")}</TableHead>
           <TableHead className="hidden sm:table-cell">{t("table.type")}</TableHead>
-          <TableHead className="hidden md:table-cell">{t("table.target")}</TableHead>
+          <TableHead className="hidden md:table-cell w-[25%]">{t("table.target")}</TableHead>
           <TableHead className="hidden md:table-cell">{t("table.status")}</TableHead>
           <TableHead>{t("table.response")}</TableHead>
           <TableHead className="w-[50px]" />
@@ -773,9 +785,9 @@ function CheckGroupSection({
     : formatMemberSummary(group.memberStatusCounts, t);
 
   return (
-    <div className="border rounded-lg" data-testid="group-section">
+    <div className={SECTION_CARD_CLASS} data-testid="group-section">
       <div
-        className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 flex-wrap"
+        className={SECTION_HEADER_CLASS}
         onClick={toggleCollapsed}
         role="button"
         tabIndex={0}
@@ -788,6 +800,10 @@ function CheckGroupSection({
         }}
         data-testid="group-header"
       >
+        <span
+          aria-hidden
+          className={`absolute inset-y-0 left-0 w-1 ${statusStyle(group.status).color}`}
+        />
         <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -806,7 +822,7 @@ function CheckGroupSection({
               {collapsed ? t("menu.expandGroup") : t("menu.collapseGroup")}
             </TooltipContent>
           </Tooltip>
-          <span className="font-semibold truncate" data-testid="group-name">{group.name}</span>
+          <span className="text-base font-semibold truncate" data-testid="group-name">{group.name}</span>
           <span data-testid="group-status-badge">
             <StatusBadge status={group.status} />
           </span>
