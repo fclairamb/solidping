@@ -181,6 +181,23 @@ stall — the dashboard, status pages and badges stop claiming it is healthy.
 - Disabled checks, internal checks and checks inside an active maintenance
   window never go stale. A result arriving during a window still clears it.
 
+## Region outages
+
+When a SolidPing region loses every worker for more than 5 minutes, it is
+reported **offline**. It is our outage, not your target's, so it never opens an
+incident on your checks.
+
+- Every owner and admin of an organization with a check that runs **only**
+  from that region gets one email listing those checks, and a `region.offline`
+  event. A second email and a `region.recovered` event follow when the region
+  is back. Nothing is sent in between.
+- A check that also runs from another region keeps running from there. No email
+  is sent for it.
+- The check page and the checks list show a banner while the region is
+  offline, and the check form marks it before you pin a check to it.
+- `GET /api/v1/orgs/{org}/regions` reports `status` (`online` or `offline`) and
+  `offlineSince` for each cloud region.
+
 ## Thresholds
 
 Configure thresholds per check to control when incidents are created:

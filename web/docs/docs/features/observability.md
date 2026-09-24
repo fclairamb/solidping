@@ -30,6 +30,10 @@ scrape_configs:
 
 Metrics cover check execution, worker health, job scheduling, and application performance.
 
+#### Region liveness metrics
+
+`solidping_workers_active{region}` is the number of live workers serving each cloud region, and `solidping_region_dark{region}` is `1` while a region has checks assigned and no live worker, `0` otherwise. Both are refreshed every minute and exist even when the platform watchdog is disabled. An alert on `solidping_region_dark == 1` catches a dark region within about 6 minutes of its last worker heartbeat.
+
 #### Database query metrics
 
 `solidping_db_query_duration_seconds` observes SQL query latency, labeled by `operation` (`SELECT`, `INSERT`, ...), `backend` (`postgres`/`sqlite`), `status` (`ok`/`error`) and `callsite` — the code path that issued the query (e.g. `uptimebar.bucket_availability`, `results.list`), or `unlabelled` when the calling package hasn't been annotated. Only a small, fixed set of hot read paths currently set `callsite`, so the label's value set stays bounded; it will never contain raw SQL text or request-specific data.

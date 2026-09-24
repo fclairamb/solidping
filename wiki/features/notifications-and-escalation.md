@@ -679,7 +679,7 @@ are not gated by incident state.
 | Incident created | `solidping_incidents_total{organization,check_type}` (counter) | incident service |
 | Incident open/resolved | `solidping_incidents_active` (gauge ↑↓) | incident service |
 | Worker fleet | `solidping_worker_free_runners`, `solidping_worker_jobs_claimed_total` | heartbeat / claim paths |
-| Region liveness | `solidping_workers_active{region}` (gauge, cloud regions only) | platform watchdog region pass, from `RegionHealth`; absent while the watchdog is disabled |
+| Region liveness | `solidping_workers_active{region}`, `solidping_region_dark{region}` (gauges, cloud regions only) | per-minute region sweep (spec 2026-09-25-03), from `RegionHealth`; always on |
 
 There is no per-check status gauge: `solidping_check_up`,
 `solidping_check_status_streak` and `solidping_checks_configured` were
