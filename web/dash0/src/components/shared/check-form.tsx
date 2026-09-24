@@ -1669,7 +1669,18 @@ export function CheckForm({
                       count={autoRegionCount}
                       maxCount={maxAutoRegionCount}
                       onCountChange={setRegionCount}
-                      onChoose={() => setPlacement("pinned")}
+                      onChoose={() => {
+                        // Seed the pinned picker with where the check runs (edit)
+                        // or the org's defaults (create), unless something is
+                        // already picked. The region list can arrive after the
+                        // first render, so the initial state may still be empty.
+                        if (selectedRegions.length === 0) {
+                          setSelectedRegions(
+                            (initialData?.regions?.length ? initialData.regions : defaultRegions) ?? [],
+                          );
+                        }
+                        setPlacement("pinned");
+                      }}
                       currentRegions={
                         mode === "edit" && initialData?.placement === "auto"
                           ? (initialData.regions ?? []).map((slug) => regionDisplayLabel(availableRegions, slug))

@@ -312,6 +312,9 @@ test.describe("SSH tunnel UX gaps", () => {
     // Edit the dependent and add the private region the bastion doesn't cover.
     await page.goto(`orgs/test/checks/${dependent.uid}/edit`);
     await page.waitForLoadState("networkidle");
+    // Created with no regions, the dependent is placed automatically (spec
+    // 2026-09-25-06): pinning it is what exposes the region checkboxes.
+    await choosePinnedRegions(page);
     await page.getByTestId(`region-option-@${regionSlug}`).click();
 
     // The live validation rejects it, inline on BOTH the regions field and the
