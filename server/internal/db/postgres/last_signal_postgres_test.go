@@ -168,6 +168,35 @@ func TestGetLastSignalForChecks_Postgres(t *testing.T) {
 		r.NotContains(signals, check.UID, "a check with only worker-written rows has no signal")
 	})
 
+	t.Run("SkipsOrphanedEvaluationRows", func(t *testing.T) {
+		// Spec 2026-09-25-04: results.worker_uid is ON DELETE SET NULL, so an
+		// evaluation whose worker row was deleted is worker-less. Its
+		// `evaluation: true` marker still keeps it out of the signal lookup.
+		r := require.New(t)
+
+		check := models.NewCheck(org.UID, "orphan-eval", "heartbeat")
+		r.NoError(s.CreateCheck(ctx, check))
+
+		beat := seedSignalRowPG(t, s, ctx, org.UID, check.UID, models.ResultStatusUp, base, nil)
+
+		orphan := seedSignalRowPG(t, s, ctx, org.UID, check.UID,
+			models.ResultStatusDown, base.Add(time.Minute), nil)
+		orphan.Output = models.JSONMap{"message": "Heartbeat overdue", "evaluation": true}
+		_, err := s.db.NewUpdate().Model(orphan).Column("output").WherePK().Exec(ctx)
+		r.NoError(err)
+
+		signals, err := s.GetLastSignalForChecks(ctx, org.UID, []string{check.UID})
+		r.NoError(err)
+		r.Equal(beat.UID, signals[check.UID].UID, "an orphaned evaluation row must not read as a signal")
+
+		later := seedSignalRowPG(t, s, ctx, org.UID, check.UID,
+			models.ResultStatusUp, base.Add(2*time.Minute), nil)
+
+		signals, err = s.GetLastSignalForChecks(ctx, org.UID, []string{check.UID})
+		r.NoError(err)
+		r.Equal(later.UID, signals[check.UID].UID, "positive control: an unmarked worker-less row is a signal")
+	})
+
 	t.Run("OneEntryPerRequestedCheckAndOrgScoped", func(t *testing.T) {
 		r := require.New(t)
 

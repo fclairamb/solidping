@@ -214,3 +214,43 @@ func TestGetLastSignalForChecks_OneEntryPerRequestedCheck(t *testing.T) {
 	r.NotNil(empty)
 	r.Empty(empty)
 }
+
+// TestGetLastSignalForChecksSkipsOrphanedEvaluations pins the second half of
+// the result marker (spec 2026-09-25-04): an evaluation row whose worker row
+// was deleted has worker_uid NULL (ON DELETE SET NULL), and must still never
+// be read back as a signal. `output.evaluation = true` is what says so.
+func TestGetLastSignalForChecksSkipsOrphanedEvaluations(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	s, ctx := newSignalTestService(t)
+
+	org := models.NewOrganization("orphan-eval-org", "")
+	r.NoError(s.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "orphan-eval", "heartbeat")
+	r.NoError(s.CreateCheck(ctx, check))
+
+	base := time.Now().Add(time.Hour)
+	beat := seedSignalRow(t, s, ctx, org.UID, check.UID, models.ResultStatusUp, base, nil)
+	beat.Output = models.JSONMap{"message": "Heartbeat received"}
+	_, err := s.DB().NewUpdate().Model(beat).Column("output").WherePK().Exec(ctx)
+	r.NoError(err)
+
+	// Newer, worker-less, and marked: an orphaned evaluation.
+	orphan := seedSignalRow(t, s, ctx, org.UID, check.UID, models.ResultStatusDown, base.Add(time.Minute), nil)
+	orphan.Output = models.JSONMap{"message": "Heartbeat overdue", "evaluation": true}
+	_, err = s.DB().NewUpdate().Model(orphan).Column("output").WherePK().Exec(ctx)
+	r.NoError(err)
+
+	signals, err := s.GetLastSignalForChecks(ctx, org.UID, []string{check.UID})
+	r.NoError(err)
+	r.Equal(beat.UID, signals[check.UID].UID, "an orphaned evaluation row must not read as a signal")
+
+	// Positive control: a newer worker-less row WITHOUT the marker is a signal.
+	later := seedSignalRow(t, s, ctx, org.UID, check.UID, models.ResultStatusUp, base.Add(2*time.Minute), nil)
+
+	signals, err = s.GetLastSignalForChecks(ctx, org.UID, []string{check.UID})
+	r.NoError(err)
+	r.Equal(later.UID, signals[check.UID].UID)
+}
