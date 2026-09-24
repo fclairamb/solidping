@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uptrace/bun"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -697,6 +700,9 @@ func (s *Service) LaneLoad(ctx context.Context) ([]WorkerLaneLoad, error) {
 		Join("JOIN checks AS c ON c.uid = cj.check_uid").
 		Where("c.enabled = ?", true).
 		Where("c.deleted_at IS NULL").
+		// Passive jobs are never offered to a check worker: the jobs node
+		// evaluates them (spec 2026-09-25-04).
+		Where("c.type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
 		Scan(ctx, &jobs); err != nil {
 		return nil, fmt.Errorf("list check jobs: %w", err)
 	}
