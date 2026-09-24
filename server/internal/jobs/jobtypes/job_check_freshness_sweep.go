@@ -45,10 +45,11 @@ type CheckFreshnessSweepJobRun struct {
 // that package without an import cycle (see services.FreshnessSweeper).
 func (r *CheckFreshnessSweepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	return periodicSweep{
-		jobType:    jobdef.JobTypeCheckFreshnessSweep,
-		interval:   r.config.interval(checkFreshnessSweepInterval),
-		what:       "check freshness",
-		logMessage: "Moved silent checks to stale",
+		jobType:         jobdef.JobTypeCheckFreshnessSweep,
+		defaultInterval: checkFreshnessSweepInterval,
+		config:          r.config,
+		what:            "check freshness",
+		logMessage:      "Moved silent checks to stale",
 		run: func(ctx context.Context, jctx *jobdef.JobContext) (int, bool, error) {
 			if jctx.Services == nil || jctx.Services.Freshness == nil {
 				return 0, false, nil

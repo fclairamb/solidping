@@ -47,10 +47,11 @@ type SLOBurnEvalJobRun struct {
 // without an import cycle (see services.SLOBurnEvaluator).
 func (r *SLOBurnEvalJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	return periodicSweep{
-		jobType:    jobdef.JobTypeSLOBurnEval,
-		interval:   r.config.interval(sloBurnEvalInterval),
-		what:       "slo burn rates",
-		logMessage: "Evaluated SLO burn-rate policies",
+		jobType:         jobdef.JobTypeSLOBurnEval,
+		defaultInterval: sloBurnEvalInterval,
+		config:          r.config,
+		what:            "slo burn rates",
+		logMessage:      "Evaluated SLO burn-rate policies",
 		run: func(ctx context.Context, jctx *jobdef.JobContext) (int, bool, error) {
 			if jctx.Services == nil || jctx.Services.SLOBurn == nil {
 				return 0, false, nil

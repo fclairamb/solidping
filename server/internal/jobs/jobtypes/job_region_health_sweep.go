@@ -48,10 +48,11 @@ type RegionHealthSweepJobRun struct {
 // depend on it.
 func (r *RegionHealthSweepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	return periodicSweep{
-		jobType:    jobdef.JobTypeRegionHealthSweep,
-		interval:   r.config.interval(regionHealthSweepInterval),
-		what:       "region health",
-		logMessage: "Region sweep recorded transitions",
+		jobType:         jobdef.JobTypeRegionHealthSweep,
+		defaultInterval: regionHealthSweepInterval,
+		config:          r.config,
+		what:            "region health",
+		logMessage:      "Region sweep recorded transitions",
 		run: func(ctx context.Context, jctx *jobdef.JobContext) (int, bool, error) {
 			reporter := regionChecksServiceFor(jctx)
 			if reporter == nil {
