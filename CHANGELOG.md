@@ -27,6 +27,25 @@
 * **cli:** **every `sp` binary now ships with a gzip twin, cutting the download from ~99 MB to ~31 MB.** The bare-binary naming kept download URLs stable, but bare is also uncompressed — and `sp` links the server's whole checker registry (k8s, Oracle, JS, gRPC, …), so every release asked a metered or slow connection for ~99 MB. Each release now also publishes `sp_linux_amd64.gz` and friends — the same version-free names with `.gz` appended, listed in `sp-checksums.txt` like the rest — so `releases/latest/download/sp_linux_amd64.gz` is the same stable contract at a third of the size; decompress with `gunzip` and the bare files remain the canonical, unpinned URLs. The install docs show the `.gz` route
 
 
+## [0.32.0](https://github.com/fclairamb/solidping/compare/v0.31.1...v0.32.0) (2026-09-24)
+
+
+### Features
+
+* **cli:** publish gzip-compressed sp binaries alongside the bare ones ([#424](https://github.com/fclairamb/solidping/issues/424)) ([aa6a29a](https://github.com/fclairamb/solidping/commit/aa6a29a825d12fc4f24257fcca953dae52c99fe9))
+* degraded detection, faster status pages, smaller sp binary ([#429](https://github.com/fclairamb/solidping/issues/429)) ([8147bf7](https://github.com/fclairamb/solidping/commit/8147bf7e8b78ceda7f0df0c897b5673fb9f8e5b0))
+* RDP authenticated logon, SSO password reset, config-as-code degraded detection, electric blue identity ([#431](https://github.com/fclairamb/solidping/issues/431)) ([5196877](https://github.com/fclairamb/solidping/commit/51968770bb99cd5038128d17d691409a18384ebf))
+
+
+### Bug Fixes
+
+* **deps:** update github.com/chromedp/cdproto digest to a19bff2 ([#428](https://github.com/fclairamb/solidping/issues/428)) ([d3c84e9](https://github.com/fclairamb/solidping/commit/d3c84e9c1f68cc682959012db4b98513f41bd723))
+* **deps:** update go dependencies (non-major) ([#430](https://github.com/fclairamb/solidping/issues/430)) ([89370c3](https://github.com/fclairamb/solidping/commit/89370c36cb6055fd52d04de6b1652eb0416f8913))
+* **deps:** update go dependencies (non-major) ([#433](https://github.com/fclairamb/solidping/issues/433)) ([c823aee](https://github.com/fclairamb/solidping/commit/c823aee60d6c52e0dad1a47ae8ee69c29a61c3db))
+* **deps:** update module github.com/aws/aws-sdk-go-v2/service/s3 to v1.113.3 ([#432](https://github.com/fclairamb/solidping/issues/432)) ([269eccc](https://github.com/fclairamb/solidping/commit/269eccc84fc74e5b13718adc7cc55f4bc60a2483))
+* **deps:** update module github.com/ibm/sarama to v1.61.0 ([#421](https://github.com/fclairamb/solidping/issues/421)) ([4a2c021](https://github.com/fclairamb/solidping/commit/4a2c021ae1ca5685e4bfcdcf24af8df1914c93bf))
+* **deps:** update module github.com/posthog/posthog-go to v1.26.0 ([#427](https://github.com/fclairamb/solidping/issues/427)) ([ced291c](https://github.com/fclairamb/solidping/commit/ced291c9decaf6a381e303a8e1a1cb2ea86ce8a9))
+
 ## [0.31.1](https://github.com/fclairamb/solidping/compare/v0.31.0...v0.31.1) (2026-09-22)
 
 
