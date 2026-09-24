@@ -11275,11 +11275,26 @@ components:
           description: >
             Probe-ratio availability (successfulChecks / totalChecks × 100).
             Null when totalChecks == 0 — no data is not 100%.
+        coverage:
+          type: number
+          nullable: true
+          description: >
+            Share of the monitored time that was actually measured: received
+            probes ÷ expected probes, where expected = monitoredSeconds / period
+            × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour
+            window reads 0.67. Null only when nothing was expected.
+        unmeasuredSeconds:
+          type: integer
+          format: int64
+          description: >
+            The part of monitoredSeconds nobody measured: (1 − coverage) ×
+            monitoredSeconds. Neither uptime nor downtime.
         downtimeSeconds:
           type: integer
           format: int64
           description: >
-            Probe-time downtime: (1 − availabilityPct/100) × monitoredSeconds.
+            Probe-time downtime over MEASURED time only:
+            (1 − availabilityPct/100) × monitoredSeconds × coverage.
         incidents:
           $ref: "#/components/schemas/PeriodIncidents"
 
@@ -14762,6 +14777,9 @@ components:
         budgetConsumedSeconds:
           type: integer
           format: int64
+          description: >-
+            Spent over MEASURED time only: failure ratio × elapsedSeconds ×
+            dataCoverage (when known).
         budgetRemainingSeconds:
           type: integer
           format: int64
@@ -14769,6 +14787,14 @@ components:
         excludedMaintenanceSeconds:
           type: integer
           format: int64
+        dataCoverage:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            Received ÷ expected probes over the elapsed window (expected =
+            elapsed / period × max(1, regions) per check), clamped to [0, 1].
+            A low value means the attainment describes only part of the window.
         burnRate:
           type: number
           format: double

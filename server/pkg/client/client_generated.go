@@ -3219,7 +3219,10 @@ type AvailabilityPeriod struct {
 	// AvailabilityPct Probe-ratio availability (successfulChecks / totalChecks × 100). Null when totalChecks == 0 — no data is not 100%.
 	AvailabilityPct *float32 `json:"availabilityPct,omitempty"`
 
-	// DowntimeSeconds Probe-time downtime: (1 − availabilityPct/100) × monitoredSeconds.
+	// Coverage Share of the monitored time that was actually measured: received probes ÷ expected probes, where expected = monitoredSeconds / period × max(1, regions), clamped to [0, 1]. An 8-hour gap in a 24-hour window reads 0.67. Null only when nothing was expected.
+	Coverage *float32 `json:"coverage,omitempty"`
+
+	// DowntimeSeconds Probe-time downtime over MEASURED time only: (1 − availabilityPct/100) × monitoredSeconds × coverage.
 	DowntimeSeconds *int64 `json:"downtimeSeconds,omitempty"`
 
 	// HasData False when the window has no countable probes (then availabilityPct is null).
@@ -3244,6 +3247,9 @@ type AvailabilityPeriod struct {
 
 	// TotalChecks Total countable probes in the window.
 	TotalChecks *int `json:"totalChecks,omitempty"`
+
+	// UnmeasuredSeconds The part of monitoredSeconds nobody measured: (1 − coverage) × monitoredSeconds. Neither uptime nor downtime.
+	UnmeasuredSeconds *int64 `json:"unmeasuredSeconds,omitempty"`
 
 	// WindowEnd End of the resolved window (exclusive) — always "now".
 	WindowEnd *time.Time `json:"windowEnd,omitempty"`
@@ -6493,8 +6499,10 @@ type SLOStatusResponse struct {
 // SLOStatusRow defines model for SLOStatusRow.
 type SLOStatusRow struct {
 	// AttainmentPct null when the window carries no countable probe. No data is NOT 100% — the same rule the availability API follows.
-	AttainmentPct         *float64 `json:"attainmentPct,omitempty"`
-	BudgetConsumedSeconds *int64   `json:"budgetConsumedSeconds,omitempty"`
+	AttainmentPct *float64 `json:"attainmentPct,omitempty"`
+
+	// BudgetConsumedSeconds Spent over MEASURED time only: failure ratio × elapsedSeconds × dataCoverage (when known).
+	BudgetConsumedSeconds *int64 `json:"budgetConsumedSeconds,omitempty"`
 
 	// BudgetRemainingSeconds Negative when the budget is overspent.
 	BudgetRemainingSeconds *int64 `json:"budgetRemainingSeconds,omitempty"`
@@ -6502,6 +6510,9 @@ type SLOStatusRow struct {
 
 	// BurnRate Observed error rate divided by allowed error rate.
 	BurnRate *float64 `json:"burnRate,omitempty"`
+
+	// DataCoverage Received ÷ expected probes over the elapsed window (expected = elapsed / period × max(1, regions) per check), clamped to [0, 1]. A low value means the attainment describes only part of the window.
+	DataCoverage *float64 `json:"dataCoverage,omitempty"`
 
 	// ElapsedSeconds The part of monitoredSeconds already elapsed; the consumption basis.
 	ElapsedSeconds             *int64 `json:"elapsedSeconds,omitempty"`
