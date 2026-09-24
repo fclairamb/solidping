@@ -76,7 +76,12 @@ test.describe("Public status page — stale (No data) status badge", () => {
   test("a stale component reads 'No data, last checked HH:MM', never a normal status label", async ({
     page,
   }) => {
-    const lastResultAt = isoMinutesAgo(20);
+    // 2 minutes, not 20: this is a mocked API response (no real staleness
+    // sweep to satisfy), and a small offset keeps `lastResultAt` on today's
+    // calendar date even when the test runs in the 00:00-00:20 window, which
+    // otherwise makes `formatLastChecked` prepend a date and desync this
+    // regex (a wall-clock landmine this repo has hit before).
+    const lastResultAt = isoMinutesAgo(2);
     await mockStatusPage(page, lastResultAt);
 
     await page.goto(`${BASE}${STATUS_BASE}/${ORG}/${SLUG}`);
