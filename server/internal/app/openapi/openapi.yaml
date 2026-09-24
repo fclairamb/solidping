@@ -15292,6 +15292,21 @@ components:
           description: True for an org-private location served by deported agents.
         capabilities:
           $ref: "#/components/schemas/RegionCapabilities"
+        status:
+          type: string
+          enum: [online, offline]
+          description: >
+            Cloud regions on `GET /api/v1/orgs/{org}/regions` only. `offline`
+            while the per-minute region sweep holds the region dark: checks are
+            assigned to it and no worker is live, so a check pinned only there
+            is not running. Absent on private regions (the org's own agent
+            reports on those) and on the public `GET /api/v1/regions`.
+        offlineSince:
+          type: string
+          format: date-time
+          description: >
+            Present when `status` is `offline`: the last time a worker of the
+            region was seen, which is when it actually stopped.
 
     OrgRegionListResponse:
       type: object
