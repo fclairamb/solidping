@@ -5,7 +5,7 @@
 
 ### Bug Fixes
 
-* **docker:** copy the vendored grdp module before go mod download ([#437](https://github.com/fclairamb/solidping/issues/437)) ([90f32ac](https://github.com/fclairamb/solidping/commit/90f32ace923e657f962093ba8e52c079b832a6d9))
+* **docker:** **v0.32.0 shipped without its Docker images; this release publishes them.** The v0.32.0 server image (`ghcr.io/fclairamb/solidping`) and `sp` image (`ghcr.io/fclairamb/solidping/sp`) both failed to build: the RDP client added in that release is vendored as a local Go module, and the Dockerfiles downloaded dependencies before copying it in, so `go mod download` stopped with `third_party/grdp/go.mod: no such file or directory`. The release binaries and `sp` downloads were published normally, but `latest` still pointed at v0.31.1, so anyone running the image did not get v0.32.0. v0.32.1 contains exactly the v0.32.0 features plus this fix. The Docker images were only ever built from a release tag, so no pull request exercised them; the dependency layer of both Dockerfiles is now built on every pull request, which makes this kind of break fail before release instead of after ([#437](https://github.com/fclairamb/solidping/issues/437)) ([90f32ac](https://github.com/fclairamb/solidping/commit/90f32ace923e657f962093ba8e52c079b832a6d9))
 
 ## [0.32.0](https://github.com/fclairamb/solidping/compare/v0.31.1...v0.32.0) (2026-09-24)
 
