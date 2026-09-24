@@ -670,7 +670,6 @@ function LoginPage() {
               </div>
               <Button
                 type="submit"
-                variant="brand"
                 className="w-full"
                 disabled={isLoading || (!showRecovery && twoFACode.length !== 6)}
                 data-testid="2fa-login-verify"
@@ -856,7 +855,6 @@ function LoginPage() {
 
                 <Button
                   type="submit"
-                  variant="brand"
                   className="w-full"
                   disabled={isLoading}
                   data-testid="login-submit"
