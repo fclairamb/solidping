@@ -84,6 +84,14 @@ change.
 error rather than a silent preference, because the loser would be dead config
 that still looks meaningful.
 
+## Region placement
+
+An automatically placed check exports as `placement: auto` with its
+`regionCount` and `regionPool`, and no `regions` (they are the scheduler's
+current choice, not part of the document). `placement: auto` with no `regions`
+switches an existing pinned check to automatic placement; an explicit `regions`
+list pins a check. See [Region placement](./region-placement.md).
+
 ## What `secrets: stripped` means
 
 Every export carries `secrets: stripped`, and it is a promise about two sets of
