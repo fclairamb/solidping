@@ -80,6 +80,41 @@ test.describe("Region placement", () => {
     });
   });
 
+  // TestUpdateToAutoRejectsPrivateRegion's frontend twin: a genuinely
+  // single-region install (no mocking — the test server really only knows
+  // "default") hides the region picker entirely (check-form.tsx's
+  // `showRegions`). A new check must still come out `auto`, N=1 — not
+  // `pinned` — so it is reassignable the moment a second region joins,
+  // matching A3's "N = the number available" default.
+  test("a new check on a genuinely single-region install is auto, not pinned", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    await page.goto("orgs/test/checks/new?checkType=http");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // The picker never renders: there is nothing to choose between.
+    await expect(page.getByTestId("check-regions-picker")).toHaveCount(0);
+
+    const name = `E2E Single Region Auto ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(name);
+    await page.getByTestId("check-url-input").fill("https://example.com/single-region-auto");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+
+    const uid = page.url().split("/checks/")[1].split(/[/?#]/)[0];
+    const stored = await getCheck(page, token, uid);
+    expect(stored.placement).toBe("auto");
+    expect(stored.regionCount).toBe(1);
+    expect(stored.regions).toEqual(["default"]);
+
+    await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  });
+
   test("a check created with explicit regions stays pinned", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);

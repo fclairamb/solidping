@@ -1171,12 +1171,25 @@ export function CheckForm({
         // Don't send config for passive edits — the token is managed by the backend
         ...(isPassiveCheckType(type) && mode === "edit" ? {} : { config }),
         // Automatic placement sends the count and lets the server choose the
-        // regions; pinned sends the explicit list (spec 2026-09-25-06).
+        // regions; pinned sends the explicit list (spec 2026-09-25-06). When
+        // the picker is hidden (fewer than two eligible regions), a NEW check
+        // still asks for automatic placement explicitly: omitting the field
+        // here used to rely on the server's own create-time default, which is
+        // only auto when the org's own default regions aren't private — on a
+        // single-region install that happened to line up, but silently, and
+        // left the check one write path away from staying pinned forever
+        // instead of reassignable the moment a second region joins (A3's "N =
+        // the number available" case). maxAutoRegionCount is already exactly
+        // that count (1 on a true single-region install). Editing an
+        // already-hidden picker still omits the field: PATCH semantics are
+        // "unchanged", same as every other hidden field in this form.
         ...(showRegions
           ? isAutoPlacement
             ? { placement: "auto" as const, regionCount: autoRegionCount }
             : { placement: "pinned" as const, regions: selectedRegions }
-          : {}),
+          : mode === "create" && !isPassiveCheckType(type)
+            ? { placement: "auto" as const, regionCount: maxAutoRegionCount }
+            : {}),
         // Mirrors the checkGroupUid/escalationPolicyUid PATCH idiom: a
         // duration string sets the override, "" clears it back to automatic
         // on edit, and the key is omitted (untouched) whenever the field
