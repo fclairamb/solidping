@@ -216,38 +216,16 @@ func (s *Service) RegionHealthWithJobs(ctx context.Context) (*RegionHealthReport
 		return nil, nil, err
 	}
 
-	liveCutoff := now.Add(-regions.WorkerLivenessWindow)
-
-	rows := make([]RegionHealthRow, 0, len(universe))
-	ghostCount := 0
-
-	for i := range universe {
-		key := universe[i]
-
-		row := RegionHealthRow{
-			Slug:              key.slug,
-			Declared:          key.orgUID == "" && declared[key.slug],
-			ChecksReferencing: checksReferencing[key],
-			Jobs:              jobStats[key].jobs,
-			JobsOverdue:       jobStats[key].overdue,
-			OldestOverdueAt:   jobStats[key].oldestOverdueAt,
-		}
-
-		if key.orgUID == "" {
-			row.LiveWorkers, row.LastWorkerSeenAt = workerCoverageForSlug(workers, key.slug, liveCutoff)
-		} else {
-			row.LiveWorkers, row.LastWorkerSeenAt = agentCoverageForKey(agents, key, liveCutoff)
-			row.Organization = orgSlugOrUID(orgSlugs, key.orgUID)
-		}
-
-		row.Ghost = (row.Jobs > 0 || row.ChecksReferencing > 0) && row.LiveWorkers == 0
-
-		if row.Ghost {
-			ghostCount++
-		}
-
-		rows = append(rows, row)
-	}
+	rows, ghostCount := buildRegionHealthRows(&regionHealthInputs{
+		universe:          universe,
+		declared:          declared,
+		checksReferencing: checksReferencing,
+		jobStats:          jobStats,
+		workers:           workers,
+		agents:            agents,
+		orgSlugs:          orgSlugs,
+		liveCutoff:        now.Add(-regions.WorkerLivenessWindow),
+	})
 
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Slug != rows[j].Slug {
@@ -284,6 +262,55 @@ func regionJobs(rows []checkJobRegionRow) []RegionJob {
 	}
 
 	return out
+}
+
+// regionHealthInputs is everything the per-region row aggregation reads.
+type regionHealthInputs struct {
+	universe          []regionKey
+	declared          map[string]bool
+	checksReferencing map[regionKey]int
+	jobStats          map[regionKey]regionJobStats
+	workers           []*models.Worker
+	agents            []orgAgentRow
+	orgSlugs          map[string]string
+	liveCutoff        time.Time
+}
+
+// buildRegionHealthRows folds the scans into one row per region key, and
+// counts the ghosts.
+func buildRegionHealthRows(inputs *regionHealthInputs) ([]RegionHealthRow, int) {
+	rows := make([]RegionHealthRow, 0, len(inputs.universe))
+	ghostCount := 0
+
+	for i := range inputs.universe {
+		key := inputs.universe[i]
+
+		row := RegionHealthRow{
+			Slug:              key.slug,
+			Declared:          key.orgUID == "" && inputs.declared[key.slug],
+			ChecksReferencing: inputs.checksReferencing[key],
+			Jobs:              inputs.jobStats[key].jobs,
+			JobsOverdue:       inputs.jobStats[key].overdue,
+			OldestOverdueAt:   inputs.jobStats[key].oldestOverdueAt,
+		}
+
+		if key.orgUID == "" {
+			row.LiveWorkers, row.LastWorkerSeenAt = workerCoverageForSlug(inputs.workers, key.slug, inputs.liveCutoff)
+		} else {
+			row.LiveWorkers, row.LastWorkerSeenAt = agentCoverageForKey(inputs.agents, key, inputs.liveCutoff)
+			row.Organization = orgSlugOrUID(inputs.orgSlugs, key.orgUID)
+		}
+
+		row.Ghost = (row.Jobs > 0 || row.ChecksReferencing > 0) && row.LiveWorkers == 0
+
+		if row.Ghost {
+			ghostCount++
+		}
+
+		rows = append(rows, row)
+	}
+
+	return rows, ghostCount
 }
 
 // orgSlugOrUID names a private row's org by slug. When the owning org row is

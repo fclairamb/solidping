@@ -214,22 +214,26 @@ func DarkRegionFingerprint(region string) string {
 //
 //   - no marker: nobody told the operator yet — write it (exactly the shape
 //     Reconcile writes for a notified anomaly) and deliver;
-//   - a marker already notified at this severity or above: the other side
-//     already told the operator — stay quiet;
-//   - a marker notified at a LOWER severity: an escalation (stalled → dark)
-//     is news, so update the notified severity and deliver.
+//   - a marker, and escalation false: the operator already heard about this
+//     outage (from the digest, which grades severity on its own scale) — stay
+//     quiet;
+//   - a marker, escalation true (the caller's own stalled → dark), notified at
+//     a LOWER severity: that is news, so update the notified severity and
+//     deliver.
 //
 // Only call it when there is someone to deliver to: a marker written for a
 // notification that never went out would suppress the real one later.
 func ClaimNotification(
-	ctx context.Context, dbService db.Service, fingerprint string, severity Severity, headline string, now time.Time,
+	ctx context.Context, dbService db.Service, fingerprint string,
+	severity Severity, headline string, now time.Time, escalation bool,
 ) (bool, error) {
 	previous, err := dbService.GetStateEntry(ctx, nil, StateKeyPrefix+fingerprint)
 	if err != nil {
 		return false, fmt.Errorf("read watchdog state entry %s: %w", fingerprint, err)
 	}
 
-	if previous != nil && severity <= ParseSeverity(readString(previous, stateFieldNotifiedSevRaw)) {
+	if previous != nil &&
+		(!escalation || severity <= ParseSeverity(readString(previous, stateFieldNotifiedSevRaw))) {
 		return false, nil
 	}
 

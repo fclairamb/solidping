@@ -2,10 +2,10 @@ package regionsweep
 
 import (
 	"context"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/regionoutage"
-	"time"
 )
 
 // sweepRun carries one sweep's inputs through its side effects.

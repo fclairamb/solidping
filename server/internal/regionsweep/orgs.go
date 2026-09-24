@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -43,12 +44,12 @@ const (
 
 // sweptCheck is the narrow projection of a check the org notice needs.
 type sweptCheck struct {
-	UID             string `bun:"uid"`
-	OrganizationUID string `bun:"organization_uid"`
-	Name            string `bun:"name"`
-	Slug            string `bun:"slug"`
-	Internal        bool   `bun:"internal"`
-	Enabled         bool   `bun:"enabled"`
+	UID             string  `bun:"uid"`
+	OrganizationUID string  `bun:"organization_uid"`
+	Name            *string `bun:"name"`
+	Slug            *string `bun:"slug"`
+	Internal        bool    `bun:"internal"`
+	Enabled         bool    `bun:"enabled"`
 }
 
 // orgImpact is what one dark region does to one org.
@@ -128,7 +129,7 @@ func (r *sweepRun) newClassifier(ctx context.Context) (*classifier, error) {
 	}
 
 	if hasPrivate {
-		if err := cls.loadOrgSlugs(ctx, r); err != nil {
+		if err := cls.loadOrgSlugs(ctx, r.deps.DB); err != nil {
 			return nil, err
 		}
 	}
@@ -140,7 +141,7 @@ func (r *sweepRun) newClassifier(ctx context.Context) (*classifier, error) {
 
 // loadOrgSlugs resolves every job's org to its slug, the name RegionHealth
 // keys private rows by.
-func (c *classifier) loadOrgSlugs(ctx context.Context, r *sweepRun) error {
+func (c *classifier) loadOrgSlugs(ctx context.Context, dbService db.Service) error {
 	uids := make(map[string]bool)
 	for _, orgUID := range c.orgByCheck {
 		uids[orgUID] = true
@@ -160,7 +161,7 @@ func (c *classifier) loadOrgSlugs(ctx context.Context, r *sweepRun) error {
 		Slug string `bun:"slug"`
 	}
 
-	if err := r.deps.DB.DB().NewSelect().
+	if err := dbService.DB().NewSelect().
 		TableExpr("organizations").
 		ColumnExpr("uid, slug").
 		Where("uid IN (?)", bun.List(list)).
@@ -260,7 +261,7 @@ func (r *sweepRun) impacts(ctx context.Context, region string) ([]orgImpact, err
 
 	for _, impact := range byOrg {
 		sort.Slice(impact.blind, func(i, j int) bool {
-			return strings.ToLower(impact.blind[i].Name) < strings.ToLower(impact.blind[j].Name)
+			return strings.ToLower(checkName(&impact.blind[i])) < strings.ToLower(checkName(&impact.blind[j]))
 		})
 		out = append(out, *impact)
 	}
@@ -498,22 +499,26 @@ func (r *sweepRun) regionDisplayName(ctx context.Context, slug string) string {
 
 // checkName is how a check reads in a notice.
 func checkName(check *sweptCheck) string {
-	if check.Name != "" {
-		return check.Name
+	if check.Name != nil && *check.Name != "" {
+		return *check.Name
 	}
 
-	return check.Slug
+	if check.Slug != nil && *check.Slug != "" {
+		return *check.Slug
+	}
+
+	return check.UID
 }
 
 // humanDuration renders an outage length at a glance: "7h52m", "12m".
-func humanDuration(d time.Duration) string {
-	if d < time.Minute {
-		return d.Round(time.Second).String()
+func humanDuration(duration time.Duration) string {
+	if duration < time.Minute {
+		return duration.Round(time.Second).String()
 	}
 
-	d = d.Round(time.Minute)
-	hours := int(d / time.Hour)
-	minutes := int((d % time.Hour) / time.Minute)
+	duration = duration.Round(time.Minute)
+	hours := int(duration / time.Hour)
+	minutes := int((duration % time.Hour) / time.Minute)
 
 	switch {
 	case hours >= 24:

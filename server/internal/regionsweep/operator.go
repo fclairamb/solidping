@@ -42,7 +42,12 @@ func (r *sweepRun) notifyOperatorDark(
 			"POST /api/v1/system/regions/migrate {\"from\":%q,\"to\":\"<live-region>\"}.", state.slug, state.slug),
 	}, "\n\n")
 
-	return r.deliverOperator(ctx, state.slug, watchdog.SeverityCritical, headline,
+	// Escalating from our own stalled phase is news even if the operator
+	// heard about the stall; anything else already on the ledger came from
+	// the digest and covers this outage.
+	escalation := state.marker != nil && state.marker.Phase == regionoutage.PhaseStalled
+
+	return r.deliverOperator(ctx, state.slug, watchdog.SeverityCritical, escalation, headline,
 		subjectPrefix+"Region "+state.slug+" is dark", body)
 }
 
@@ -66,7 +71,7 @@ func (r *sweepRun) notifyOperatorStalled(
 		"Inspect: GET /api/v1/system/regions/health, then the workers' logs.",
 	}, "\n\n")
 
-	return r.deliverOperator(ctx, state.slug, watchdog.SeverityWarning, headline,
+	return r.deliverOperator(ctx, state.slug, watchdog.SeverityWarning, false, headline,
 		subjectPrefix+"Region "+state.slug+" is stalled", body)
 }
 
@@ -104,7 +109,8 @@ func (r *sweepRun) notifyOperatorRecovered(
 // to, the severity passes the watchdog's bar, and the shared marker says
 // nobody told the operator already.
 func (r *sweepRun) deliverOperator(
-	ctx context.Context, region string, severity watchdog.Severity, headline, subject, body string,
+	ctx context.Context, region string, severity watchdog.Severity, escalation bool,
+	headline, subject, body string,
 ) bool {
 	if len(r.operators.recipients) == 0 {
 		// Nobody to tell (watchdog disabled or no recipients). The transition
@@ -119,7 +125,7 @@ func (r *sweepRun) deliverOperator(
 	}
 
 	claimed, err := watchdog.ClaimNotification(ctx, r.deps.DB,
-		watchdog.DarkRegionFingerprint(region), severity, headline, r.now)
+		watchdog.DarkRegionFingerprint(region), severity, headline, r.now, escalation)
 	if err != nil {
 		r.deps.Logger.ErrorContext(ctx, "Region sweep could not read the shared anomaly marker; notifying anyway",
 			"region", region, "error", err)
