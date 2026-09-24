@@ -615,24 +615,38 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	resultStatus := models.ResultStatus(*result.Status)
 
 	wasStale, done, err := s.freshnessAndMaintenance(ctx, check, result, resultStatus)
+
+	// The region's own reading (spec 2026-09-25-10) is recorded after the
+	// prelude, whose live-row read supplies the check's CURRENT regions, and
+	// before the maintenance return: it is an observation, not an incident
+	// decision.
+	s.recordRegionState(ctx, check, result, resultStatus)
+
 	if done {
 		return err
 	}
 
-	// Determine if this is a success, failure, or warning.
-	isSuccess := resultStatus == models.ResultStatusUp
-	isFailure := resultStatus == models.ResultStatusDown ||
-		resultStatus == models.ResultStatusTimeout ||
-		resultStatus == models.ResultStatusError
+	// Determine if this is a success, failure, or warning — from the result
+	// itself (legacy mode, which every check with one region or a quorum of
+	// all its regions stays in), or from the quorum over the check's current
+	// regions (spec 2026-09-25-10). See resultSignal.
+	//
 	// Warning is "up, but something to report": display-only and incident-
 	// neutral (modeled on CheckStatusValidating). It updates the visible
 	// status and the up<->warning streak edges, but never arms the incident
-	// clocks and never opens/resolves an incident.
-	isWarning := resultStatus == models.ResultStatusWarning
+	// clocks and never opens/resolves an incident. The REGIONAL warning is
+	// not that: it is a success for the clocks and the incident, only shown
+	// as warning (sig.regional).
+	sig, sigErr := s.deriveSignal(ctx, check, result, resultStatus)
+	if sigErr != nil {
+		return sigErr
+	}
 
-	if !isSuccess && !isFailure && !isWarning {
+	if !sig.known() {
 		return nil // Skip initial or unknown statuses
 	}
+
+	isSuccess, isFailure, isWarning := sig.isSuccess, sig.isFailure, sig.isWarning
 
 	// Look up any active incident first — we need it to decide between
 	// `down` (incident open or threshold crossed) and `validating` (failures
@@ -649,11 +663,9 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	// downstream is a pure function and must not grow a DB dependency. The
 	// same decision drives the visible status and the incident open, so the
 	// check can never render `down` with no incident behind it.
-	holdConfirmation := s.holdForValidatingAncestor(ctx, check, isFailure, activeIncident, now)
+	holdConfirmation := s.holdForValidatingAncestor(ctx, check, isFailure && sig.openable, activeIncident, now)
 
-	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
-		check, isSuccess, isFailure, isWarning, activeIncident, holdConfirmation, now,
-	)
+	newStatus, newStreak, statusChangedAt := deriveCheckStatus(check, sig, activeIncident, holdConfirmation, now)
 	statusChanged := check.Status != newStatus
 
 	// Warning is clock-neutral: it never arms or clears the confirmation /
@@ -693,7 +705,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return nil
 	}
 
-	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident, holdConfirmation)
+	return s.routeCheckResultWithIncident(ctx, check, result, sig, activeIncident, holdConfirmation)
 }
 
 // freshnessAndMaintenance is ProcessCheckResult's prelude: freshness first,
@@ -1026,15 +1038,15 @@ func applyClocks(check *models.Check, clocks models.IncidentClockUpdate, _ time.
 // failure lifecycle: streak keeps growing across the boundary and
 // statusChangedAt is not bumped. Only the up<->failing edge bumps it.
 func deriveCheckStatus(
-	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
+	check *models.Check, sig resultSignal, activeIncident *models.Incident,
 	holdConfirmation bool, now time.Time,
 ) (models.CheckStatus, int, *time.Time) {
 	prevWasFailure := check.Status == models.CheckStatusDown ||
 		check.Status == models.CheckStatusValidating
 
-	newStreak, statusChangedAt := deriveStreakAndChange(check, isSuccess, isFailure, isWarning, prevWasFailure, now)
+	newStreak, statusChangedAt := deriveStreakAndChange(check, sig, prevWasFailure, now)
 
-	newStatus := pickStatus(check, isSuccess, isFailure, isWarning, activeIncident, holdConfirmation, now)
+	newStatus := pickStatus(check, sig, activeIncident, holdConfirmation, now)
 
 	// validating <-> down do not bump statusChangedAt: both are sub-states
 	// of "the check is failing right now". Warning is not a failure sub-state,
@@ -1054,12 +1066,16 @@ func deriveCheckStatus(
 // A continuing same-state run (up->up, warning->warning, or failing->failing)
 // grows the streak; any other transition resets it to 1 and bumps the change
 // timestamp.
+//
+// A regional issue (spec 2026-09-25-10) is shown as warning, so its streak
+// runs on the warning side; in legacy mode sig.regional is always false and
+// the rule is exactly the per-result one.
 func deriveStreakAndChange(
-	check *models.Check, isSuccess, isFailure, isWarning, prevWasFailure bool, now time.Time,
+	check *models.Check, sig resultSignal, prevWasFailure bool, now time.Time,
 ) (int, *time.Time) {
-	if (isSuccess && check.Status == models.CheckStatusUp) ||
-		(isWarning && check.Status == models.CheckStatusWarning) ||
-		(isFailure && prevWasFailure) {
+	if (sig.isSuccess && !sig.regional && check.Status == models.CheckStatusUp) ||
+		((sig.isWarning || sig.regional) && check.Status == models.CheckStatusWarning) ||
+		(sig.isFailure && prevWasFailure) {
 		return check.StatusStreak + 1, nil
 	}
 	t := now
@@ -1079,23 +1095,33 @@ func deriveStreakAndChange(
 // while handleFailure declines to open an incident would render a check as
 // down with nothing behind it. validating <-> down never bumps
 // statusChangedAt, so the hold costs no status churn either.
+//
+// Two quorum-mode inputs (spec 2026-09-25-10), both inert in legacy mode:
+// sig.regional shows a regional issue as warning (fewer than the quorum of
+// regions failing), and a quorum failure only flips to `down` on a result
+// that itself failed (sig.openable) — the same result that opens the
+// incident, so `down` never shows without one. In legacy mode openable ==
+// isFailure, so the condition is the per-result one.
 func pickStatus(
-	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
+	check *models.Check, sig resultSignal, activeIncident *models.Incident,
 	holdConfirmation bool, now time.Time,
 ) models.CheckStatus {
-	if isSuccess {
+	if sig.regional {
+		return models.CheckStatusWarning
+	}
+	if sig.isSuccess {
 		return models.CheckStatusUp
 	}
 	// Warning reflects the latest live signal regardless of incident state: it
 	// counts as up and never resolves an incident, but the visible status
 	// shows what the checker just reported ("up, but something to report").
-	if isWarning {
+	if sig.isWarning {
 		return models.CheckStatusWarning
 	}
 	if activeIncident != nil {
 		return models.CheckStatusDown
 	}
-	if isFailure && !holdConfirmation && confirmationElapsedDerive(check, now) {
+	if sig.isFailure && sig.openable && !holdConfirmation && confirmationElapsedDerive(check, now) {
 		return models.CheckStatusDown
 	}
 
@@ -1128,11 +1154,20 @@ func confirmationElapsedDerive(check *models.Check, now time.Time) bool {
 // organizational and display concept, never an incident-identity one. The
 // consolidated "N/M checks down" view is rebuilt at read time (dash0) and at
 // the publication layer (status pages) instead of being baked into the row.
+//
+// In quorum mode a failure signal carried by a result that itself passed
+// (sig.openable false: a healthy region reporting while the quorum is
+// failing) opens nothing and adds nothing to failure_count — the failing
+// regions' own results do that. In legacy mode openable == isFailure.
 func (s *Service) routeCheckResultWithIncident(
-	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
+	ctx context.Context, check *models.Check, result *models.Result, sig resultSignal,
 	incident *models.Incident, holdConfirmation bool,
 ) error {
-	if isFailure {
+	if sig.isFailure {
+		if !sig.openable {
+			return nil
+		}
+
 		return s.handleFailure(ctx, check, result, incident, holdConfirmation)
 	}
 

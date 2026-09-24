@@ -2058,6 +2058,14 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 		query = query.Set("region_pool = ?", string(poolJSON))
 	}
 
+	// Multi-region quorum (spec 2026-09-25-10).
+	switch {
+	case update.ClearFailQuorum:
+		query = query.Set("fail_quorum = NULL")
+	case update.FailQuorum != nil:
+		query = query.Set("fail_quorum = ?", *update.FailQuorum)
+	}
+
 	switch {
 	case update.ClearRegionSpread:
 		query = query.Set("region_spread = NULL")

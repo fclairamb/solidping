@@ -802,6 +802,19 @@ type Service interface {
 	// result of one check (raw retention bounds how far back it can see).
 	ListLastRealResultPerRegion(ctx context.Context, orgUID, checkUID string) ([]models.RegionLastResult, error)
 
+	// Multi-region quorum (spec 2026-09-25-10)
+	//
+	// UpsertCheckRegionState records a region's newest real reading. Guarded:
+	// a reading older than the stored one never overwrites it (results from
+	// different regions can be processed out of order). StatusSince is kept
+	// while the region stays on the same side (failing or passing) and moves
+	// to the new reading's time when it crosses over.
+	UpsertCheckRegionState(ctx context.Context, state *models.CheckRegionState) error
+	// ListCheckRegionStates returns every stored per-region reading of one
+	// check, including regions the check no longer runs in (callers filter to
+	// the current regions; see regionquorum.Evaluate).
+	ListCheckRegionStates(ctx context.Context, checkUID string) ([]models.CheckRegionState, error)
+
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)

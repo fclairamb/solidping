@@ -3,6 +3,25 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: multi-region-quorum
+--
+-- The per-region readings and the quorum setting go; every check falls back
+-- to the per-result state machine, which is what the previous schema ran.
+-- ==========================================================================
+
+drop table if exists check_region_states;
+
+--bun:split
+
+alter table checks drop constraint if exists checks_fail_quorum_valid;
+
+--bun:split
+
+alter table checks drop column if exists fail_quorum;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: drop-degraded-dry-run
 --
 -- The column comes back empty (the stamps are not recoverable) and the sweep

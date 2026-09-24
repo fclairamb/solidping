@@ -2161,6 +2161,14 @@ func applyPlacementPg(query *bun.UpdateQuery, update *models.CheckUpdate) *bun.U
 		query = query.Set("region_pool = ?", pgdialect.Array(*update.RegionPool))
 	}
 
+	// Multi-region quorum (spec 2026-09-25-10).
+	switch {
+	case update.ClearFailQuorum:
+		query = query.Set("fail_quorum = NULL")
+	case update.FailQuorum != nil:
+		query = query.Set("fail_quorum = ?", *update.FailQuorum)
+	}
+
 	return query
 }
 

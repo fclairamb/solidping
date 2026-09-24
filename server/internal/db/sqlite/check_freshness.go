@@ -39,6 +39,7 @@ func (s *Service) readCheckLiveState(ctx context.Context, checkUID string) (*mod
 	err := s.db.NewSelect().
 		TableExpr("checks").
 		ColumnExpr("status, status_streak, status_changed_at, first_failure_at, first_success_since_failure_at").
+		ColumnExpr("regions, fail_quorum").
 		Where("uid = ?", checkUID).
 		Where("deleted_at IS NULL").
 		Scan(ctx, &state)
@@ -159,4 +160,52 @@ func (s *Service) ListLastRealResultPerRegion(
 	}
 
 	return rows, nil
+}
+
+// upsertCheckRegionStateSQL is shared by both engines: ON CONFLICT … DO UPDATE
+// with `excluded` is the same on Postgres and SQLite. The right-hand sides of
+// SET read the OLD row, which is what lets status_since compare the stored
+// side with the incoming one. Failing = down (4), timeout (5), error (6),
+// mirroring models.ResultStatus.IsFailure.
+const upsertCheckRegionStateSQL = `
+INSERT INTO check_region_states
+  (check_uid, region, organization_uid, status, status_since, last_result_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (check_uid, region) DO UPDATE SET
+  status_since = CASE
+    WHEN (check_region_states.status IN (4, 5, 6)) = (excluded.status IN (4, 5, 6))
+      THEN check_region_states.status_since
+    ELSE excluded.status_since
+  END,
+  status = excluded.status,
+  last_result_at = excluded.last_result_at,
+  updated_at = excluded.updated_at
+WHERE check_region_states.last_result_at <= excluded.last_result_at`
+
+// UpsertCheckRegionState records a region's newest real reading (spec
+// 2026-09-25-10). See db.Service for the contract.
+func (s *Service) UpsertCheckRegionState(ctx context.Context, state *models.CheckRegionState) error {
+	if _, err := s.db.ExecContext(ctx, upsertCheckRegionStateSQL,
+		state.CheckUID, state.Region, state.OrganizationUID, int(state.Status),
+		state.StatusSince.UTC(), state.LastResultAt.UTC(), state.UpdatedAt.UTC(),
+	); err != nil {
+		return fmt.Errorf("upsert check region state: %w", err)
+	}
+
+	return nil
+}
+
+// ListCheckRegionStates returns every stored per-region reading of a check.
+func (s *Service) ListCheckRegionStates(ctx context.Context, checkUID string) ([]models.CheckRegionState, error) {
+	var states []models.CheckRegionState
+
+	if err := s.db.NewSelect().
+		Model(&states).
+		Where("check_uid = ?", checkUID).
+		OrderExpr("region").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("list check region states: %w", err)
+	}
+
+	return states, nil
 }

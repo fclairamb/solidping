@@ -1129,6 +1129,14 @@ func (m *mockDBService) ListLastRealResultPerRegion(
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpsertCheckRegionState(_ context.Context, _ *models.CheckRegionState) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckRegionStates(_ context.Context, _ string) ([]models.CheckRegionState, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateSeverity(_ context.Context, _ *models.Severity) error {
 	panic("not implemented")
 }

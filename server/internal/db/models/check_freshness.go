@@ -16,6 +16,12 @@ type CheckLiveState struct {
 	StatusChangedAt            *time.Time  `bun:"status_changed_at"`
 	FirstFailureAt             *time.Time  `bun:"first_failure_at"`
 	FirstSuccessSinceFailureAt *time.Time  `bun:"first_success_since_failure_at"`
+	// Regions and FailQuorum are what the multi-region quorum evaluates
+	// against (spec 2026-09-25-10). Re-read for the same reason as the rest:
+	// an automatic re-placement can rewrite checks.regions between the claim
+	// and the result, and quorum must count the CURRENT regions only.
+	Regions    []string `bun:"regions,type:text[],array"`
+	FailQuorum *string  `bun:"fail_quorum"`
 }
 
 // Apply copies the live state onto an in-memory check.
@@ -25,6 +31,8 @@ func (s *CheckLiveState) Apply(check *Check) {
 	check.StatusChangedAt = s.StatusChangedAt
 	check.FirstFailureAt = s.FirstFailureAt
 	check.FirstSuccessSinceFailureAt = s.FirstSuccessSinceFailureAt
+	check.Regions = s.Regions
+	check.FailQuorum = s.FailQuorum
 }
 
 // RegionLastResult is the newest real result of one check in one region

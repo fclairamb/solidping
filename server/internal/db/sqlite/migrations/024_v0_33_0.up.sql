@@ -19,6 +19,9 @@
 --   SECTION: drop-degraded-dry-run
 --                              checks.degraded_would_fire_at goes, the degraded
 --                              sweep reads only degraded_enabled checks
+--   SECTION: multi-region-quorum
+--                              checks.fail_quorum and the per-(check, region)
+--                              reading table check_region_states
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -209,3 +212,38 @@ update incidents
       where c.uid = incidents.check_uid
         and c.degraded_enabled = 0
    );
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: multi-region-quorum  (spec 2026-09-25-10)
+--
+-- See the Postgres twin for the rationale: checks.fail_quorum (NULL = the
+-- default quorum) and the per-(check, region) newest reading the quorum
+-- evaluates.
+-- ==========================================================================
+
+alter table checks add column fail_quorum text
+  check (
+    fail_quorum is null
+    or fail_quorum in ('all', 'majority')
+    or (
+      length(fail_quorum) between 1 and 3
+      and fail_quorum glob '[1-9]*'
+      and fail_quorum not glob '*[^0-9]*'
+      and cast(fail_quorum as integer) <= 100
+    )
+  );
+
+--bun:split
+
+create table if not exists check_region_states (
+  check_uid         text not null references checks(uid) on delete cascade, -- The check
+  region            text not null, -- Region slug the reading came from
+  organization_uid  text not null references organizations(uid) on delete cascade, -- Owning organization
+  status            integer not null, -- Result status of the newest real result (3 up, 4 down, 5 timeout, 6 error, 8 warning)
+  status_since      text not null, -- When the region entered its current side (failing or passing)
+  last_result_at    text not null, -- Execution time of the newest real result
+  updated_at        text not null default (datetime('now')),
+  primary key (check_uid, region)
+);

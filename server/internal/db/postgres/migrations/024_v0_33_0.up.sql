@@ -17,6 +17,9 @@
 --   SECTION: drop-degraded-dry-run
 --                              checks.degraded_would_fire_at goes, the degraded
 --                              sweep reads only degraded_enabled checks
+--   SECTION: multi-region-quorum
+--                              checks.fail_quorum and the per-(check, region)
+--                              reading table check_region_states
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -297,3 +300,70 @@ update incidents i
       where c.uid = i.check_uid
         and not c.degraded_enabled
    );
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: multi-region-quorum  (spec 2026-09-25-10)
+--
+-- A multi-region check went through one state machine that ignored the
+-- region: any passing result cleared the confirmation clock, so one failing
+-- region never opened an incident and was never surfaced either.
+--
+--   checks.fail_quorum    how many regions must be failing for the check to be
+--                         down: 'all', 'majority' or a positive integer. NULL =
+--                         the default (all for 1-2 regions, majority for 3+),
+--                         which keeps every existing check's behavior.
+--   check_region_states   the newest real reading per (check, region), written
+--                         by the incident pipeline for checks with 2+ regions.
+--                         Only rows whose region is in the check's CURRENT
+--                         regions count; a row left behind by an automatic
+--                         re-placement is inert and never needs pruning.
+-- ==========================================================================
+
+alter table checks add column if not exists fail_quorum text;
+
+--bun:split
+
+alter table checks drop constraint if exists checks_fail_quorum_valid;
+
+--bun:split
+
+alter table checks add constraint checks_fail_quorum_valid check (
+  fail_quorum is null
+  or fail_quorum in ('all', 'majority')
+  or (fail_quorum ~ '^[1-9][0-9]{0,2}$' and fail_quorum::integer <= 100)
+);
+
+--bun:split
+
+comment on column checks.fail_quorum is
+  'Multi-region quorum: how many of the check''s regions must be failing (for the confirmation period) before it is down. all | majority | a positive integer; NULL = all for 1-2 regions, majority for 3+. Spec 2026-09-25-10.';
+
+--bun:split
+
+create table if not exists check_region_states (
+  check_uid         uuid not null references checks(uid) on delete cascade,
+  region            text not null,
+  organization_uid  uuid not null references organizations(uid) on delete cascade,
+  status            smallint not null,
+  status_since      timestamptz not null,
+  last_result_at    timestamptz not null,
+  updated_at        timestamptz not null default now(),
+  primary key (check_uid, region)
+);
+
+--bun:split
+
+comment on table check_region_states is
+  'Newest real reading per (check, region) for checks with 2+ regions, read by the multi-region quorum. Rows for a region the check no longer runs in are ignored, not pruned. Spec 2026-09-25-10.';
+
+--bun:split
+
+comment on column check_region_states.status is
+  'Result status of the region''s newest real result (3 up, 4 down, 5 timeout, 6 error, 8 warning).';
+
+--bun:split
+
+comment on column check_region_states.status_since is
+  'When the region entered its current side (failing or passing). Display only.';

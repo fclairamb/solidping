@@ -130,13 +130,16 @@ func (c *Check) JobRegions() []string {
 // file that names a region on a heartbeat keeps applying (spec 2026-09-25-04).
 //
 // A passive check is also never auto-placed (spec 2026-09-25-06): it has no
-// region to place, so its placement is always pinned with no count or pool.
+// region to place, so its placement is always pinned with no count or pool,
+// and it has no multi-region quorum either (spec 2026-09-25-10).
 func (c *Check) NormalizePassiveRegions() {
 	if c.IsPassive() {
 		c.Regions = []string{}
 		c.Placement = PlacementPinned
 		c.RegionCount = nil
 		c.RegionPool = nil
+		// No region, no quorum (spec 2026-09-25-10).
+		c.FailQuorum = nil
 	}
 }
 
@@ -254,7 +257,12 @@ type Check struct {
 	RegionCount *int `bun:"region_count"`
 	// RegionPool restricts an AUTO check's candidates to these cloud slugs;
 	// nil or empty means any cloud region. Nil for a pinned check.
-	RegionPool []string           `bun:"region_pool,type:text[],array,nullzero"`
+	RegionPool []string `bun:"region_pool,type:text[],array,nullzero"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "all",
+	// "majority" or a positive integer. Nil is the default (all for 1-2
+	// regions, majority for 3+). See the regionquorum package.
+	FailQuorum *string            `bun:"fail_quorum"`
 	Enabled    bool               `bun:"enabled,notnull"`
 	Internal   bool               `bun:"internal,notnull"`
 	Period     timeutils.Duration `bun:"period,notnull"`
@@ -751,9 +759,13 @@ type CheckUpdate struct {
 	ClearRegionCount bool
 	RegionPool       *[]string
 	ClearRegionPool  bool
-	Enabled          *bool
-	Internal         *bool
-	Period           *timeutils.Duration
+	// FailQuorum sets checks.fail_quorum; ClearFailQuorum resets it to NULL
+	// (the default quorum). Spec 2026-09-25-10.
+	FailQuorum      *string
+	ClearFailQuorum bool
+	Enabled         *bool
+	Internal        *bool
+	Period          *timeutils.Duration
 	// RegionSpread sets the inter-region offset override; ClearRegionSpread
 	// resets it to NULL (revert to the period/region_count default).
 	RegionSpread      *timeutils.Duration
