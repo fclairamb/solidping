@@ -28,6 +28,8 @@ var spNameLiteral = regexp.MustCompile(`^SP_[A-Z0-9_]+$`)
 // sourceScanExcludedDirs are directories under the server module root that are
 // not server env readers, so a bare SP_* string literal found there proves
 // nothing about what the running server recognizes.
+//
+//nolint:gochecknoglobals // test lookup table
 var sourceScanExcludedDirs = map[string]string{
 	// This package's own allowlists are exactly what the scan checks against;
 	// scanning them is circular (every literal here is definitionally
@@ -47,6 +49,8 @@ var sourceScanExcludedDirs = map[string]string{
 // deliberately NOT server config, so they must never be added to the runtime
 // allowlist (that would defeat the "unrecognized = ignored" check for a real
 // operator typo). Each entry documents why.
+//
+//nolint:gochecknoglobals // test allowlist
 var sourceScanExceptions = map[string]string{
 	// CI-only switch that turns a skipped Postgres test into a failure; read
 	// exclusively from internal/testsupport, which is imported only from
