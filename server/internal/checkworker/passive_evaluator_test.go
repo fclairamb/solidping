@@ -449,6 +449,64 @@ func TestPassiveEvaluatorPingInsideGraceIsUpWithNoIncident(t *testing.T) {
 	r.Zero(env.incidentCount(t, check.UID), "no incident at any point")
 }
 
+// TestPassiveEvaluatorGraceDoesNotReopenAfterSignalRollsUp is the raw-row
+// rollup half of §3: a heartbeat's ONE real signal was rolled up and its raw
+// row deleted (aggregation.retention_raw, default 24h) while the check is
+// still younger than the 2-period grace window — a real scenario for a
+// heartbeat whose period is at or beyond that retention.
+//
+// LastSignals then reads back nil, exactly as if no signal had ever arrived.
+// Grace must NOT reopen on that: the ping already happened, and
+// check.LastResultAt (written by incidents.ProcessCheckResult off the ping,
+// never rolled up) still proves it. The evaluation must run the normal rule
+// now, not wait out a second grace window.
+//
+// PRE-FIX this test FAILS: inFirstSignalGrace looks at the now-nil lastSignal
+// alone, finds the check still under 2 periods old, and grants a second
+// grace — no row is written and the check is left exactly as if it had never
+// been pinged, one full period later than it should have gone Down.
+func TestPassiveEvaluatorGraceDoesNotReopenAfterSignalRollsUp(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	env, ctx := newPassiveEvalEnv(t)
+	evaluator := env.evaluator(t, "jobs-node-a")
+
+	check, _ := env.passiveCheck(t, checkerdef.CheckTypeHeartbeat)
+	period := time.Duration(check.Period)
+	token, _ := check.Config["token"].(string)
+
+	// One real ping through the heartbeat ingest: writes the raw signal row
+	// and, via ProcessCheckResult, check.last_result_at.
+	beats := heartbeat.NewService(env.db, nil, nil, nil, 0)
+	r.NoError(beats.ReceiveHeartbeat(ctx, env.org.Slug, *check.Slug, token, "", "", 0, "test", "", "POST", nil))
+	r.Equal(models.CheckStatusUp, env.check(t, check.UID).Status)
+	r.NotNil(env.check(t, check.UID).LastResultAt, "the ping durably records that a signal arrived")
+
+	// Simulate the aggregation job rolling that raw row up and deleting it:
+	// the only trace of the ping in `results` is gone, but last_result_at
+	// survives on the check row.
+	_, err := env.db.DB().NewDelete().
+		Model((*models.Result)(nil)).
+		Where("check_uid = ?", check.UID).
+		Where("worker_uid IS NULL").
+		Where("status = ?", int(models.ResultStatusUp)).
+		Exec(ctx)
+	r.NoError(err)
+
+	// Still well inside the 2-period grace window by age alone.
+	env.age(t, check, 2*period-5*time.Second)
+
+	_, _, err = evaluator.RunOnce(ctx)
+	r.NoError(err)
+
+	rows := env.evaluations(t, check.UID)
+	r.Len(rows, 1, "the normal rule runs now: grace does not reopen on a rolled-up signal")
+	r.Equal(int(models.ResultStatusDown), *rows[0].Status)
+	r.NotEqual(models.CheckStatusCreated, env.check(t, check.UID).Status,
+		"the check must not fall back to the first-signal grace state")
+}
+
 // TestPassiveBootRepairThenOneEvaluation is the migration's end state: a
 // passive check still carrying regions and regional jobs (what the 024
 // migration and the boot repair exist to fix) is healed by the startup

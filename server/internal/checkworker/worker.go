@@ -1715,8 +1715,23 @@ const passiveFirstSignalGracePeriods = 2
 // passiveFirstSignalGracePeriods periods. Once any signal has arrived the
 // normal rules apply, whatever the check's age. A nil check (not attached to
 // the job) gets no grace.
+//
+// "No signal on record" is NOT just "no raw signal row": raw rows are rolled
+// up and deleted after their retention window (aggregation.retention_raw,
+// default 24h), so a heartbeat with a period at or beyond that window can
+// have its one and only signal's raw row disappear while the check is still
+// younger than the grace window. Reading lastSignal alone would then
+// re-open the grace it already used, delaying the Down transition by up to
+// one more period. check.LastResultAt is denormalized specifically to
+// survive rollup (it is written by incidents.ProcessCheckResult for every
+// real result, including the ingest's own beat, and is never rolled up), so
+// it is the durable half of "has a signal ever arrived".
 func inFirstSignalGrace(check *models.Check, lastSignal *models.Result, period time.Duration, now time.Time) bool {
-	if lastSignal != nil || check == nil || period <= 0 {
+	if check == nil || period <= 0 {
+		return false
+	}
+
+	if lastSignal != nil || check.LastResultAt != nil {
 		return false
 	}
 
