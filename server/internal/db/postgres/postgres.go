@@ -1613,6 +1613,11 @@ func (s *Service) UpdateWorkerHeartbeat(
 // Check operations
 
 func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
+	// A passive check never stores a region (spec 2026-09-25-04). Done here
+	// as well as in the checks service so the raw-DB creators (samples, demo,
+	// test API) cannot write one either.
+	check.NormalizePassiveRegions()
+
 	// Insert check and create corresponding check_job(s) in a transaction
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Insert the check
@@ -1654,8 +1659,11 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error {
 	now := time.Now()
 	basePeriod := time.Duration(check.Period)
+	// JobRegions, not Regions: a passive check owns exactly one NULL-region
+	// job, which only the jobs node claims (spec 2026-09-25-04).
+	jobRegions := check.JobRegions()
 
-	if len(check.Regions) == 0 {
+	if len(jobRegions) == 0 {
 		// No regions: create a single job without region
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
@@ -1678,10 +1686,10 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 	// "scheduled_at <= now" — fires a fast first result; the worker re-levels
 	// every region onto its deterministic phase from the first release, see
 	// reconcile_test.go's scope note).
-	n := len(check.Regions)
+	n := len(jobRegions)
 	spread := scheduling.RegionSpread(basePeriod, n, check.RegionSpreadDuration())
 
-	for i, region := range check.Regions {
+	for i, region := range jobRegions {
 		scheduledAt := now.Add(spread * time.Duration(i))
 		regionCopy := region
 
@@ -2994,7 +3002,7 @@ func (s *Service) GetLastResultForChecks(
 //   - SIGNAL rows, written at ingest by handlers/heartbeat's recordBeat and
 //     handlers/emailcheck — neither constructor sets worker_uid or region;
 //   - EVALUATION rows, written every period by
-//     checkworker.executePassiveJob through DirectBackend.SubmitResult, which
+//     the jobs node's checkworker.PassiveEvaluator through DirectBackend.SubmitResult, which
 //     always stamps worker_uid.
 //
 // The evaluator asks "when did the last beat land?". Answering it with the
@@ -3005,6 +3013,15 @@ func (s *Service) GetLastResultForChecks(
 // reports the previous evaluation's timestamp, and the stale-run branch
 // (elapsed > 2×period on a Running row) can never be reached because each
 // evaluation re-anchors the Running timestamp on itself.
+//
+// A second predicate, on `output.evaluation`, backs the first up (spec
+// 2026-09-25-04). Evaluations are written by the jobs node's
+// checkworker.PassiveEvaluator, whose own workers row stamps worker_uid, but
+// results.worker_uid is ON DELETE SET NULL: an evaluation whose worker row
+// was deleted used to read back as a signal. Every evaluation row declares
+// itself with `evaluation: true` and no ingest path ever writes it, so the
+// pair holds even for those orphans. It is applied as the index is walked,
+// like the worker_uid one.
 //
 // `created` is excluded for the same reason as in lastResult: CreateCheck's
 // one-time "Check created" marker has no worker_uid either, and "the check
@@ -3045,6 +3062,7 @@ const lastSignalForChecksQuery = `
 			AND res.period_type = 'raw'
 			AND res.worker_uid IS NULL
 			AND (res.status IS NULL OR res.status != ?)
+			AND NOT coalesce(res.output @> '{"evaluation": true}'::jsonb, false)
 		ORDER BY res.period_start DESC
 		LIMIT 1
 	) AS r

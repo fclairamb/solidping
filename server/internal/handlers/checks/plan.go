@@ -162,7 +162,7 @@ func (s *Service) planCreateCheck(
 	// 2026-07-16-02) keys off the check's private regions, and the tunnel
 	// region rules (spec 2026-07-18-07) are validated against the resolved
 	// set, not the raw request.
-	resolvedRegions, err := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+	resolvedRegions, err := s.resolveRegionsForType(ctx, req.Type, req.Regions, org.UID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve regions: %w", err)
 	}
@@ -391,10 +391,10 @@ func (s *Service) planUpdateCheck(
 		return periodErr
 	}
 
-	regionsForCheck := existing.Regions
+	regionsForCheck := existing.JobRegions()
 
 	if len(req.Regions) > 0 {
-		resolved, regErr := s.regions.ResolveRegionsForCheck(ctx, req.Regions, org.UID)
+		resolved, regErr := s.resolveRegionsForType(ctx, existing.Type, req.Regions, org.UID)
 		if regErr != nil {
 			return fmt.Errorf("failed to resolve regions: %w", regErr)
 		}

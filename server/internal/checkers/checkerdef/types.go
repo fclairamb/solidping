@@ -255,6 +255,15 @@ func (t CheckType) IsPassive() bool {
 	return t == CheckTypeHeartbeat || t == CheckTypeEmail
 }
 
+// PassiveCheckTypes returns every passive check type, as the strings stored in
+// checks.type / check_jobs.type. It exists for SQL `IN (...)` predicates (the
+// claim queries that keep passive jobs away from check workers and agents, and
+// the jobs-node claim that is their only reader — spec 2026-09-25-04) and must
+// agree with IsPassive; a test pins that.
+func PassiveCheckTypes() []string {
+	return []string{string(CheckTypeHeartbeat), string(CheckTypeEmail)}
+}
+
 // Common output and config map keys used across checker implementations.
 const (
 	OutputKeyError      = "error"

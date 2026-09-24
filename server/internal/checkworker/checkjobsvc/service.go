@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
@@ -84,6 +85,25 @@ type Service interface {
 		checkUID string,
 		limit int,
 		maxAhead time.Duration,
+	) ([]*models.CheckJob, time.Duration, error)
+
+	// ClaimPassiveJobs claims due passive (heartbeat, email) jobs for the jobs
+	// node's passive evaluator — their ONLY claimer (spec 2026-09-25-04). Every
+	// other claim (cloud workers, their express path, org and system agents)
+	// excludes passive types, so a dead region can no longer silence a
+	// dead-man's switch and an agent can no longer turn its evaluation into an
+	// error.
+	//
+	// Scope: region IS NULL and a passive type, due now (no claim-ahead — the
+	// evaluator does not sleep in-slot), unleased or lease expired. Rows are
+	// locked FOR UPDATE SKIP LOCKED on Postgres and leased with the normal
+	// lease (scheduled_at + period + 30s) inside one transaction, so two jobs
+	// nodes can never evaluate the same tick twice. The second return is the
+	// usual next-eligible hint over the same scope.
+	ClaimPassiveJobs(
+		ctx context.Context,
+		workerUID string,
+		limit int,
 	) ([]*models.CheckJob, time.Duration, error)
 
 	// ReleaseLease releases the lease and reschedules the job for next execution.
@@ -363,7 +383,35 @@ func (s AgentScope) apply(query *bun.SelectQuery) *bun.SelectQuery {
 		query = query.Where("organization_uid = ?", s.OrgUID)
 	}
 
-	return query.Where("region = ?", s.Region)
+	return excludePassiveTypes(query.Where("region = ?", s.Region))
+}
+
+// excludePassiveTypes keeps passive (heartbeat, email) jobs out of every check
+// worker and agent claim (spec 2026-09-25-04). They are evaluated on the jobs
+// node only (ClaimPassiveJobs). Two failures motivated it:
+//
+//   - an agent cannot evaluate them (it has no database), so an agent that won
+//     a passive job submitted an Error result every period and opened an
+//     incident;
+//   - a job pinned to a region died with that region, silencing the very
+//     dead-man's switch whose job is to report that something stopped.
+//
+// Applied on the claim itself, not only at job creation, so a regional
+// passive row that escaped the migration still never reaches a worker. A NULL
+// type (never written today) stays claimable: `NULL NOT IN (...)` is NULL.
+func excludePassiveTypes(query *bun.SelectQuery) *bun.SelectQuery {
+	return query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+		return q.
+			WhereOr("type IS NULL").
+			WhereOr("type NOT IN (?)", bun.List(checkerdef.PassiveCheckTypes()))
+	})
+}
+
+// applyPassiveScope is the jobs-node claim scope: region-less passive jobs.
+func applyPassiveScope(query *bun.SelectQuery) *bun.SelectQuery {
+	return query.
+		Where("region IS NULL").
+		Where("type IN (?)", bun.List(checkerdef.PassiveCheckTypes()))
 }
 
 // privateRegionPrefix mirrors regions.PrivateRegionPrefix. It is duplicated as a
@@ -386,6 +434,9 @@ const privateRegionPrefix = "@"
 //   - within what remains, a NULL region means "any region" and a non-NULL one
 //     prefix-matches the worker (SP_REGION=eu-fr-paris claims region=eu-fr).
 func applyCloudRegionScope(query *bun.SelectQuery, region *string) *bun.SelectQuery {
+	// Passive jobs belong to the jobs node, never to a region's workers.
+	query = excludePassiveTypes(query)
+
 	query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 		return q.
 			WhereOr("region IS NULL").
@@ -462,6 +513,77 @@ func (s *serviceImpl) ClaimJobsForAgent(
 		// ordering rationale as ClaimJobs).
 		var hintErr error
 		nextIn, hintErr = s.nextEligibleIn(ctx, tx, now, maxAhead, agentScope)
+
+		return hintErr
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nextIn, nil
+		}
+
+		return nil, 0, err
+	}
+
+	return jobs, nextIn, nil
+}
+
+// passiveClaimMaxAhead is the passive evaluator's claim-ahead window: none. It
+// claims what is due and evaluates it at once; there is no probe to line up
+// with a phase-locked tick, so nothing gains from parking a claimed row.
+const passiveClaimMaxAhead = time.Duration(0)
+
+// ClaimPassiveJobs claims due passive jobs for the jobs node. See the
+// interface doc.
+func (s *serviceImpl) ClaimPassiveJobs(
+	ctx context.Context,
+	workerUID string,
+	limit int,
+) ([]*models.CheckJob, time.Duration, error) {
+	if limit <= 0 {
+		return nil, 0, nil
+	}
+
+	var jobs []*models.CheckJob
+	var nextIn time.Duration
+
+	now := time.Now()
+
+	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		jobs = nil
+		nextIn = 0
+
+		query := applyPassiveScope(tx.NewSelect().Model(&jobs)).
+			Where("scheduled_at <= ?", now).
+			WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+				return q.
+					WhereOr("lease_expires_at IS NULL").
+					WhereOr("lease_expires_at < ?", now)
+			}).
+			Order("scheduled_at ASC").
+			Limit(limit)
+
+		if isPostgres {
+			query = query.For("UPDATE SKIP LOCKED")
+		}
+
+		if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+
+		if len(jobs) > 0 {
+			if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+				return err
+			}
+
+			if err := attachChecks(ctx, tx, jobs); err != nil {
+				return err
+			}
+		}
+
+		var hintErr error
+		nextIn, hintErr = s.nextEligibleIn(ctx, tx, now, passiveClaimMaxAhead, applyPassiveScope)
 
 		return hintErr
 	})

@@ -1530,6 +1530,11 @@ func (s *Service) UpdateWorkerHeartbeat(
 // Check operations
 
 func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
+	// A passive check never stores a region (spec 2026-09-25-04). Done here
+	// as well as in the checks service so the raw-DB creators (samples, demo,
+	// test API) cannot write one either.
+	check.NormalizePassiveRegions()
+
 	// Insert check and create corresponding check_job(s) in a transaction
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// Insert the check
@@ -1569,8 +1574,11 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error {
 	now := time.Now()
 	basePeriod := time.Duration(check.Period)
+	// JobRegions, not Regions: a passive check owns exactly one NULL-region
+	// job, which only the jobs node claims (spec 2026-09-25-04).
+	jobRegions := check.JobRegions()
 
-	if len(check.Regions) == 0 {
+	if len(jobRegions) == 0 {
 		// No regions: create a single job without region
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
@@ -1591,10 +1599,10 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 	// 2026-07-20-05 — no more basePeriod×n split). Stagger the first tick by
 	// the inter-region spread; region 0 stays at now so the check-created
 	// express path fires a fast first result (see the postgres twin).
-	n := len(check.Regions)
+	n := len(jobRegions)
 	spread := scheduling.RegionSpread(basePeriod, n, check.RegionSpreadDuration())
 
-	for i, region := range check.Regions {
+	for i, region := range jobRegions {
 		scheduledAt := now.Add(spread * time.Duration(i))
 		regionCopy := region
 
@@ -2907,7 +2915,7 @@ func (s *Service) GetLastResultForChecks(
 // (handlers/heartbeat recordBeat, handlers/emailcheck) never set worker_uid,
 // while the passive evaluator's own rows always do via
 // DirectBackend.SubmitResult. Reading "the newest raw row of any origin" made
-// checkworker.executePassiveJob re-anchor on its own previous output, turning
+// checkworker.PassiveEvaluator re-anchor on its own previous output, turning
 // overdue detection into a per-tick coin flip on claim jitter, reporting the
 // previous evaluation's timestamp as lastSignalAt, and making the stale-run
 // (2×period) branch unreachable.
@@ -2940,6 +2948,9 @@ const lastSignalForChecksQuery = `
 				AND r2.period_type = 'raw'
 				AND r2.worker_uid IS NULL
 				AND (r2.status IS NULL OR r2.status != ?)
+				AND (CASE WHEN r2.output IS NOT NULL AND json_valid(r2.output)
+					THEN coalesce(json_extract(r2.output, '$.evaluation'), 0)
+					ELSE 0 END) != 1
 			ORDER BY r2.period_start DESC
 			LIMIT 1
 		) AS uid

@@ -386,7 +386,10 @@ type Service interface {
 	// was renamed, so no worker's prefix match can ever claim it again), or a
 	// declared region has no job at all. The symmetric sibling of
 	// ListChecksWithStaleJobPeriods, feeding the same startup reconcile
-	// (spec 2026-08-24-08).
+	// (spec 2026-08-24-08). A passive check (heartbeat, email) is judged
+	// against its own layout instead — exactly one NULL-region job — and is
+	// returned when it owns a regional job or has no NULL-region job
+	// (spec 2026-09-25-04).
 	ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.Check, error)
 	// ListChecksReferencingRegion returns every non-deleted check that names
 	// the region slug in `checks.regions` OR owns a check_jobs row carrying it,
@@ -563,7 +566,7 @@ type Service interface {
 	// The two must both exist and must not be collapsed (spec 2026-09-02-03).
 	// `lastResult` in the API means "the newest row of any origin", which is
 	// right for "when was this check last evaluated". The passive evaluator
-	// (checkworker.executePassiveJob) needs the opposite: it writes a raw row
+	// (checkworker.PassiveEvaluator, spec 2026-09-25-04) needs the opposite: it writes a raw row
 	// of its own every period, so reading the newest row of any origin makes
 	// it re-anchor on its own predecessor — overdue detection then becomes a
 	// per-tick coin flip on scheduling jitter, `lastSignalAt` drifts onto the

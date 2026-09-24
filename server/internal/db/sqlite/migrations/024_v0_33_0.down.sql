@@ -3,6 +3,14 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: passive-checks-no-regions
+--
+-- Nothing to undo: the up section is a data normalization (passive checks
+-- lose their regions and keep one NULL-region job), which the previous schema
+-- accepts as is.
+-- ==========================================================================
+
+-- ==========================================================================
 -- SECTION: check-freshness
 -- ==========================================================================
 

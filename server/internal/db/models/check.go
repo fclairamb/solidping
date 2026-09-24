@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -65,6 +66,35 @@ func StaleThreshold(period time.Duration) time.Duration {
 	}
 
 	return threshold
+}
+
+// IsPassive reports whether the check is passive (heartbeat, email): driven by
+// an inbound signal, evaluated on the jobs node, never inside a region (spec
+// 2026-09-25-04).
+func (c *Check) IsPassive() bool {
+	return checkerdef.CheckType(c.Type).IsPassive()
+}
+
+// JobRegions is the region set the check's jobs are materialized for. A
+// passive check has none, whatever its row says: it makes no outbound request,
+// so a region adds nothing but a place for its evaluator to die (spec
+// 2026-09-25-04). Every materialization point (createCheckJobs on both
+// engines, reconcileCheckJobs) reads this rather than Regions.
+func (c *Check) JobRegions() []string {
+	if c.IsPassive() {
+		return nil
+	}
+
+	return c.Regions
+}
+
+// NormalizePassiveRegions empties Regions on a passive check. An explicit list
+// is accepted and dropped rather than rejected, so an existing config-as-code
+// file that names a region on a heartbeat keeps applying (spec 2026-09-25-04).
+func (c *Check) NormalizePassiveRegions() {
+	if c.IsPassive() {
+		c.Regions = []string{}
+	}
 }
 
 // StaleThreshold is the check's own staleness threshold.

@@ -220,6 +220,39 @@ func NewCheckWorker(
 	svc *services.Registry,
 	checkJobSvc checkjobsvc.Service,
 ) *CheckWorker {
+	incidentSvc, attachmentSvc := newInProcessIncidentService(dbService, cfg, svc)
+
+	// Path diagnostics (spec 2026-08-21-10), same argument as the screenshots
+	// (see newInProcessIncidentService): this is the process that ran the
+	// probe, so this is the only process whose route to the target is the one
+	// that just failed.
+	//
+	// The local-worker test is unconditionally true here BY CONSTRUCTION, not
+	// by luck: this incident service is reachable only through the
+	// DirectBackend below, whose single caller is this worker. Every result it
+	// ever sees was produced a few milliseconds ago, in this process.
+	traceDispatcher := tracediag.New(cfg.Checkers.TraceroutePolicy(), attachmentSvc, slog.Default())
+	traceDispatcher.SetLocalWorkerResolver(tracediag.LocalWorkerFunc(func(string) bool { return true }))
+	incidentSvc.SetTraceRequester(traceDispatcher)
+
+	directBackend := backend.NewDirectBackend(
+		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
+	)
+
+	worker := newCheckWorker(cfg, directBackend)
+	worker.dbService = dbService
+	worker.services = svc
+
+	return worker
+}
+
+// newInProcessIncidentService builds the incident service a result written in
+// THIS process goes through: the check worker's, and the jobs node's passive
+// evaluator's (spec 2026-09-25-04). Returns the attachment store too, which
+// the check worker's trace dispatcher also writes to.
+func newInProcessIncidentService(
+	dbService db.Service, cfg *config.Config, svc *services.Registry,
+) (*incidents.Service, *attachments.Service) {
 	incidentSvc := incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime)
 	incidentSvc.SetDefaultCheckTimeout(cfg.Server.Scheduling.CheckTimeout())
 
@@ -246,27 +279,7 @@ func NewCheckWorker(
 	attachmentSvc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
 	incidentSvc.SetAttachmentStore(attachmentSvc)
 
-	// Path diagnostics (spec 2026-08-21-10), same argument as the screenshots
-	// above: this is the process that ran the probe, so this is the only
-	// process whose route to the target is the one that just failed.
-	//
-	// The local-worker test is unconditionally true here BY CONSTRUCTION, not
-	// by luck: this incident service is reachable only through the
-	// DirectBackend below, whose single caller is this worker. Every result it
-	// ever sees was produced a few milliseconds ago, in this process.
-	traceDispatcher := tracediag.New(cfg.Checkers.TraceroutePolicy(), attachmentSvc, slog.Default())
-	traceDispatcher.SetLocalWorkerResolver(tracediag.LocalWorkerFunc(func(string) bool { return true }))
-	incidentSvc.SetTraceRequester(traceDispatcher)
-
-	directBackend := backend.NewDirectBackend(
-		dbService, checkJobSvc, incidentSvc, svc.EventNotifier, svc.Credentials,
-	)
-
-	worker := newCheckWorker(cfg, directBackend)
-	worker.dbService = dbService
-	worker.services = svc
-
-	return worker
+	return incidentSvc, attachmentSvc
 }
 
 // NewAgentCheckWorker creates a check runner for agent mode: no database, no
@@ -1688,31 +1701,81 @@ func passiveEvaluation(
 	return status, output
 }
 
-// executePassiveJob handles passive check jobs (heartbeat, email).
-// Instead of making a network request, it inspects whether a recent inbound
-// signal landed within the check's period.
-func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
+// passiveFirstSignalGracePeriods is how long, in periods after created_at, a
+// passive check that has NEVER received a signal stays `created` instead of
+// going Down (spec 2026-09-25-04 §3). Reporting "No heartbeat received" at the
+// first evaluation paged for a sender that was being deployed minutes later;
+// two periods leave room for that, and a sender that is never set up still
+// alerts right after. Deliberately under the freshness threshold (3 × period),
+// so the grace can never read as stale.
+const passiveFirstSignalGracePeriods = 2
+
+// inFirstSignalGrace reports whether a passive evaluation is still inside the
+// first-signal grace: no signal on record at all, and the check younger than
+// passiveFirstSignalGracePeriods periods. Once any signal has arrived the
+// normal rules apply, whatever the check's age. A nil check (not attached to
+// the job) gets no grace.
+func inFirstSignalGrace(check *models.Check, lastSignal *models.Result, period time.Duration, now time.Time) bool {
+	if lastSignal != nil || check == nil || period <= 0 {
+		return false
+	}
+
+	return now.Before(check.CreatedAt.Add(passiveFirstSignalGracePeriods * period))
+}
+
+// passiveVerdict is the evaluation of one passive job, shared by the jobs
+// node's PassiveEvaluator (the only production path, spec 2026-09-25-04) and
+// CheckWorker's defensive passive branch. It reads the newest INBOUND SIGNAL
+// and returns the row to write. grace=true means "inside the first-signal
+// grace: write nothing, just move the schedule on".
+//
+// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
+// self-referential: every evaluation writes a raw row of its own, so from the
+// second tick after a beat onwards the evaluator read its own predecessor.
+// `elapsed` then measured the gap between two consecutive evaluations (≈
+// period ± claim jitter) rather than the gap since the beat, which made the
+// overdue branch a per-tick coin flip, reported the previous evaluation's
+// timestamp as lastSignalAt, and made the stale-run branch unreachable.
+func passiveVerdict(
+	ctx context.Context, be backend.WorkerBackend, checkJob *models.CheckJob, now time.Time,
+) (checkerdef.Status, map[string]any, bool, error) {
 	period := time.Duration(checkJob.Period)
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
-	// Get the latest INBOUND SIGNAL for this check — the last heartbeat POST
-	// or incoming email, never one of this evaluation's own previous rows.
-	//
-	// Reading "the newest raw row" here (the pre-2026-09-02-03 behavior) was
-	// self-referential: every evaluation writes a raw row of its own through
-	// SubmitResult, so from the second tick after a beat onwards the evaluator
-	// read its own predecessor. `elapsed` then measured the gap between two
-	// consecutive evaluations (≈ period ± claim jitter) rather than the gap
-	// since the beat, which made the overdue branch below a per-tick coin
-	// flip, reported the previous evaluation's timestamp as lastSignalAt, and
-	// made the stale-run branch unreachable — each Running evaluation
-	// re-anchored runStarted on itself.
-	lastSignals, err := r.backend.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
+	lastSignals, err := be.LastSignals(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
-		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last signal: %w", err))
+		return 0, nil, false, fmt.Errorf("failed to get last signal: %w", err)
 	}
 
-	status, output := passiveEvaluation(noun, period, lastSignals[checkJob.CheckUID])
+	lastSignal := lastSignals[checkJob.CheckUID]
+
+	if inFirstSignalGrace(checkJob.Check, lastSignal, period, now) {
+		return 0, nil, true, nil
+	}
+
+	status, output := passiveEvaluation(noun, period, lastSignal)
+
+	return status, output, false, nil
+}
+
+// executePassiveJob handles a passive job that reached a CHECK WORKER.
+//
+// Defensive only. Since spec 2026-09-25-04 no production claim routes a
+// passive job here: every cloud and agent claim excludes passive types, and
+// the jobs node's PassiveEvaluator is their only claimer. The branch stays so
+// a passive row that somehow reached a worker is still evaluated correctly
+// rather than handed to a checker that makes an outbound request.
+func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
+	status, output, grace, err := passiveVerdict(ctx, r.backend, checkJob, time.Now())
+	if err != nil {
+		return r.saveErrorResult(ctx, checkJob, err)
+	}
+
+	if grace {
+		// Nothing to write: the check stays `created`. The rate-limit release
+		// is the backend's only "release without a result" call.
+		return r.backend.DeferRateLimited(ctx, checkJob, r.getWorker().UID, r.calculateNextScheduledAt(checkJob))
+	}
 
 	result := checkerdef.Result{
 		Status:   status,

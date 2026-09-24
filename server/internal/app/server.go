@@ -3739,6 +3739,11 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		}
 	}()
 
+	// Passive checks (heartbeat, email) are evaluated here, on the jobs node,
+	// and nowhere else (spec 2026-09-25-04): a dead region or an agent can no
+	// longer silence or break them.
+	s.startPassiveEvaluator(ctx)
+
 	// Start the queue-depth sampler that publishes solidping_jobs_queue_depth.
 	sampler := jobworker.NewQueueDepthSampler(s.jobSvc)
 
@@ -3747,6 +3752,20 @@ func (s *Server) startJobWorker(ctx context.Context) {
 		defer s.workersWg.Done()
 		if err := sampler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.ErrorContext(ctx, "Job queue-depth sampler error", "error", err)
+		}
+	}()
+}
+
+// startPassiveEvaluator starts the jobs node's passive-check evaluator, the
+// only claimer of heartbeat/email jobs (spec 2026-09-25-04).
+func (s *Server) startPassiveEvaluator(ctx context.Context) {
+	evaluator := checkworker.NewPassiveEvaluator(s.dbService, s.config, s.services, s.services.CheckJobs)
+
+	s.workersWg.Add(1)
+	go func() {
+		defer s.workersWg.Done()
+		if err := evaluator.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.ErrorContext(ctx, "Passive evaluator error", "error", err)
 		}
 	}()
 }

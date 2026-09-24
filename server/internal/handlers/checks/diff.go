@@ -306,7 +306,14 @@ func (s *Service) diffCheck(
 		// "@org/location" spelling down to the stored, canonical "@location" —
 		// the single biggest source of the 183 false "changes" this spec
 		// exists to remove.
-		if resolved, err := s.regions.ResolveRegionsForCheck(ctx, desired.Regions, org.UID); err == nil {
+		// A passive check resolves to no regions at all (spec 2026-09-25-04),
+		// so a file naming a region on a heartbeat diffs as unchanged.
+		checkType := desired.Type
+		if checkType == "" {
+			checkType = current.Type
+		}
+
+		if resolved, err := s.resolveRegionsForType(ctx, checkType, desired.Regions, org.UID); err == nil {
 			add(fieldRegions, joinSortedRegions(current.Regions), joinSortedRegions(resolved))
 		}
 	}

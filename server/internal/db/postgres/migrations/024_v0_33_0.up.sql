@@ -5,6 +5,9 @@
 --
 --   SECTION: check-freshness   checks.last_result_at, its backfill and the
 --                              freshness-sweep index
+--   SECTION: passive-checks-no-regions
+--                              heartbeat/email checks lose their regions and
+--                              keep one NULL-region job
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -65,3 +68,65 @@ create index if not exists idx_checks_freshness
 -- The column comment written in 001 predates every status after `down`.
 comment on column checks.status is
   'Current derived check status: 1=created, 3=up, 4=down, 5=validating, 7=degraded (aggregated only), 8=warning, 10=stale (no recent real result).';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: passive-checks-no-regions  (spec 2026-09-25-04)
+--
+-- Passive checks (heartbeat, email) make no outbound request, so a region
+-- added nothing but a place for their evaluator to die: a dark region
+-- silenced every dead-man's switch pinned to it, and a region served by an
+-- agent turned every evaluation into an error and an incident. They are now
+-- evaluated on the jobs node from ONE job with a NULL region.
+--
+-- The type list mirrors checkerdef.PassiveCheckTypes().
+--
+-- The surviving job is converted rather than inserted so its scheduled_at
+-- and plan weight carry over. Anything this leaves behind (a passive check
+-- with no job at all) is healed by the boot repair
+-- (ListChecksWithStaleJobRegions), which runs after migrations at every start.
+-- ==========================================================================
+
+update checks
+   set regions = '{}'
+ where type in ('heartbeat', 'email')
+   and coalesce(array_length(regions, 1), 0) > 0;
+
+--bun:split
+
+-- A passive check that already owns its NULL-region job loses every regional
+-- one.
+delete from check_jobs cj
+ where cj.type in ('heartbeat', 'email')
+   and cj.region is not null
+   and exists (
+     select 1 from check_jobs n
+      where n.check_uid = cj.check_uid
+        and n.region is null
+   );
+
+--bun:split
+
+-- Otherwise keep exactly one regional job per check (the lowest uid)...
+delete from check_jobs cj
+ where cj.type in ('heartbeat', 'email')
+   and cj.region is not null
+   and cj.uid::text <> (
+     select min(k.uid::text) from check_jobs k
+      where k.check_uid = cj.check_uid
+        and k.region is not null
+   );
+
+--bun:split
+
+-- ...and turn it into the NULL-region job, lease cleared so the jobs node can
+-- claim it on its next pass.
+update check_jobs
+   set region = null,
+       lease_worker_uid = null,
+       lease_expires_at = null,
+       lease_starts = 0,
+       updated_at = now()
+ where type in ('heartbeat', 'email')
+   and region is not null;

@@ -1976,7 +1976,7 @@ func (s *Service) UpdateCheck(
 	// Resolve a region patch BEFORE the config handling so credential sealing
 	// sees the regions the check will have after this PATCH.
 	if req.Regions != nil {
-		resolvedRegions, regErr := s.regions.ResolveRegionsForCheck(ctx, *req.Regions, org.UID)
+		resolvedRegions, regErr := s.resolveRegionsForType(ctx, check.Type, *req.Regions, org.UID)
 		if regErr != nil {
 			return CheckResponse{}, fmt.Errorf("failed to resolve regions: %w", regErr)
 		}
@@ -3015,8 +3015,14 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check, r
 	// agree on the same region ordering for the phase formula to level
 	// correctly. RegionIndex re-sorting this already-sorted slice internally
 	// is a cheap no-op, not a mismatch.
-	targetRegions := make([]string, len(check.Regions))
-	copy(targetRegions, check.Regions)
+	//
+	// JobRegions, not Regions: a passive check (heartbeat, email) always owns
+	// exactly one NULL-region job, evaluated on the jobs node, whatever its
+	// row says (spec 2026-09-25-04). Reading Regions here is what let the boot
+	// repair recreate regional passive jobs at every start.
+	jobRegions := check.JobRegions()
+	targetRegions := make([]string, len(jobRegions))
+	copy(targetRegions, jobRegions)
 	sort.Strings(targetRegions)
 
 	basePeriod := time.Duration(check.Period)
