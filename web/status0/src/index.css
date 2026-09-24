@@ -34,6 +34,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-gradient-foreground: var(--gradient-foreground);
   --color-primary: var(--primary);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
@@ -60,48 +61,64 @@
   --shadow-primary-hover: 0 12px 24px -6px
       color-mix(in oklab, var(--primary) 22%, transparent),
     0 6px 12px -6px color-mix(in oklab, var(--primary) 14%, transparent);
+  /* The 1px inner top highlight of the gradient buttons (subscribe, unlock),
+     same as dash0's default Button: a lit top edge on the saturated fill.
+     Consumed as inset-shadow-highlight, which composes with shadow-primary. */
+  --inset-shadow-highlight: inset 0 1px 0 rgb(255 255 255 / 0.22);
 }
 
 :root {
-  /* Primary: Blue for monitoring/status theme */
-  --primary: oklch(0.55 0.18 250);
-  --primary-foreground: oklch(0.98 0.01 250);
+  /* Electric identity (spec 2026-09-24-04): values mirror
+     web/dash0/src/index.css, keep them in sync. Duplicated on purpose (there
+     is no shared token package), and pinned by src/theme-tokens.test.ts.
+
+     Customer theming: every token here is declared on a plain `:root` (and
+     `.dark` below), never on `:root.dark`, `html`, inside a layer or with
+     !important. The operator's custom stylesheet is a <style> rendered later
+     in the document, so an equally specific `:root { --x: … }` of theirs
+     wins. Keep it that way, or every customer theme silently loses. */
+
+  /* Primary: electric blue. Buttons (under the gradient), links, the
+     maintenance state, the focus ring and the response-time chart. */
+  --primary: oklch(0.55 0.22 262);
+  --primary-foreground: oklch(0.99 0 0);
 
   /* Brand: crimson/magenta — solidping.io identity. Status0 uses
      --brand more generously than dash0 (header bar, marketing
-     hyperlinks) since subscribers don't read it as an ops console. */
+     hyperlinks) since subscribers don't read it as an ops console.
+     Unchanged by the electric identity: the logo stays crimson. */
   --brand: oklch(0.58 0.22 5);
   --brand-foreground: oklch(0.98 0.01 5);
   --brand-muted: oklch(0.92 0.05 5);
 
-  /* Accent: Refined subtle blue */
-  --accent: oklch(0.93 0.025 250);
-  --accent-foreground: oklch(0.25 0.08 250);
+  /* Accent: pale electric wash (hover / highlight surface) */
+  --accent: oklch(0.95 0.03 255);
+  --accent-foreground: oklch(0.42 0.18 262);
 
-  /* Background: crisp modern slate-neutral wash */
-  --background: oklch(0.978 0.005 250);
-  --foreground: oklch(0.18 0.02 250);
+  /* Background: blue-tinted near-white page */
+  --background: oklch(0.98 0.006 250);
+  --foreground: oklch(0.18 0.03 258);
 
   /* Card: pure elevated white surface with crisp contrast */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 250);
+  --card-foreground: oklch(0.18 0.03 258);
 
   /* Popover: same elevated pure white */
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 250);
+  --popover-foreground: oklch(0.18 0.03 258);
 
   /* Secondary */
-  --secondary: oklch(0.95 0.01 250);
-  --secondary-foreground: oklch(0.25 0.04 250);
+  --secondary: oklch(0.962 0.01 255);
+  --secondary-foreground: oklch(0.26 0.04 258);
 
-  /* Muted: Clean neutral gray */
-  --muted: oklch(0.95 0.01 250);
-  --muted-foreground: oklch(0.48 0.02 250);
+  /* Muted: blue-tinted neutral */
+  --muted: oklch(0.962 0.01 255);
+  --muted-foreground: oklch(0.5 0.03 255);
 
-  /* Border: Clean crisp border */
-  --border: oklch(0.91 0.009 250);
-  --input: oklch(0.91 0.009 250);
-  --ring: oklch(0.55 0.18 250);
+  /* Border: hairline; --input is the (stronger) BORDER of form controls */
+  --border: oklch(0.915 0.012 255);
+  --input: oklch(0.87 0.015 255);
+  --ring: oklch(0.55 0.22 262);
 
   /* Destructive: Red */
   --destructive: oklch(0.6 0.22 25);
@@ -121,45 +138,62 @@
   --status-neutral-foreground: oklch(0.48 0.02 250);
 
   /* Chart colors */
-  --chart-1: oklch(0.55 0.18 250);
+  --chart-1: oklch(0.55 0.22 262);
   --chart-2: oklch(0.65 0.2 145);
   --chart-3: oklch(0.75 0.18 85);
   --chart-4: oklch(0.6 0.22 25);
-  --chart-5: oklch(0.6 0.14 280);
+  --chart-5: oklch(0.55 0.2 285);
+
+  /* The one gradient a status page carries: the fill of its two buttons
+     (subscribe, unlock). No page glow, no hero or accent gradient — the page
+     belongs to the customer, so the identity shows as polish, not as
+     SolidPing decoration. Identical in both themes. Its stops are dark
+     enough for white labels (>= 4.4:1 at every stop). */
+  --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
+  /* The label on --primary-gradient. Pure white rather than 0.99: the start
+     stop clips to #007bce, where 0.99 gives 4.31:1 and pure white 4.44:1. */
+  --gradient-foreground: oklch(1 0 0);
 
   --radius: 0.625rem;
 }
 
 /* Dark mode */
 .dark {
-  --primary: oklch(0.65 0.16 250);
-  --primary-foreground: oklch(0.15 0.02 250);
+  /* Electric identity: values mirror web/dash0/src/index.css, keep them in
+     sync (pinned by src/theme-tokens.test.ts). Plain `.dark`, never
+     `:root.dark`: a customer's `.dark { … }` block must keep winning.
+
+     A LIGHT electric blue: text-primary (links, the maintenance state) reads
+     ~8:1 on the dark page. The gradient carries the saturated blue on the
+     buttons; a solid bg-primary fill keeps dark text (--primary-foreground). */
+  --primary: oklch(0.72 0.15 252);
+  --primary-foreground: oklch(0.16 0.03 262);
 
   --brand: oklch(0.65 0.2 5);
   --brand-foreground: oklch(0.15 0.02 5);
   --brand-muted: oklch(0.3 0.08 5);
 
-  --accent: oklch(0.3 0.05 250);
-  --accent-foreground: oklch(0.95 0.015 250);
+  --accent: oklch(0.3 0.07 260);
+  --accent-foreground: oklch(0.92 0.05 255);
 
-  --background: oklch(0.14 0.015 250);
-  --foreground: oklch(0.95 0.01 250);
+  --background: oklch(0.145 0.02 262);
+  --foreground: oklch(0.96 0.01 255);
 
-  --card: oklch(0.18 0.02 250);
-  --card-foreground: oklch(0.95 0.01 250);
+  --card: oklch(0.185 0.026 262);
+  --card-foreground: oklch(0.96 0.01 255);
 
-  --popover: oklch(0.18 0.02 250);
-  --popover-foreground: oklch(0.95 0.01 250);
+  --popover: oklch(0.185 0.026 262);
+  --popover-foreground: oklch(0.96 0.01 255);
 
-  --secondary: oklch(0.25 0.03 250);
+  --secondary: oklch(0.225 0.03 262);
   --secondary-foreground: oklch(0.95 0.01 250);
 
-  --muted: oklch(0.22 0.025 250);
-  --muted-foreground: oklch(0.65 0.02 250);
+  --muted: oklch(0.225 0.03 262);
+  --muted-foreground: oklch(0.7 0.03 255);
 
-  --border: oklch(0.28 0.03 250);
-  --input: oklch(0.28 0.03 250);
-  --ring: oklch(0.65 0.16 250);
+  --border: oklch(0.28 0.035 262);
+  --input: oklch(0.33 0.04 262);
+  --ring: oklch(0.72 0.15 252);
 
   --destructive: oklch(0.65 0.2 25);
 
@@ -172,11 +206,15 @@
   --status-neutral: oklch(0.45 0.02 250);
   --status-neutral-foreground: oklch(0.7 0.02 250);
 
-  --chart-1: oklch(0.65 0.16 250);
+  --chart-1: oklch(0.72 0.15 252);
   --chart-2: oklch(0.7 0.18 145);
   --chart-3: oklch(0.8 0.16 85);
   --chart-4: oklch(0.65 0.2 25);
-  --chart-5: oklch(0.65 0.12 280);
+  --chart-5: oklch(0.65 0.17 285);
+
+  /* Same gradient as light. */
+  --primary-gradient: linear-gradient(135deg, oklch(0.56 0.17 242) 0%, oklch(0.53 0.22 262) 50%, oklch(0.48 0.23 276) 100%);
+  --gradient-foreground: oklch(1 0 0);
 }
 
 @layer base {
@@ -187,6 +225,16 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* The button fill (subscribe, unlock). Sets background-IMAGE only: pair it
+   with the flat bg-primary underneath, so the button still reads blue if the
+   gradient ever fails to paint. It reads var(--primary-gradient), so an
+   operator's `:root { --primary-gradient: … }` re-themes it. Same utility as
+   dash0's. background-origin: border-box sizes the image to the border box. */
+@utility bg-primary-gradient {
+  background-image: var(--primary-gradient);
+  background-origin: border-box;
 }
 
 /* ---------------------------------------------------------------------------

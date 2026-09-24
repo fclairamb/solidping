@@ -4,6 +4,7 @@ import { Lock } from "lucide-react";
 import { useUnlockStatusPage } from "@/api/hooks";
 import { Logo } from "@/components/ui/logo";
 import { ApiError } from "@/api/client";
+import { PRIMARY_BUTTON_CLASSES } from "@/lib/primary-button";
 
 /**
  * The unlock screen for a password-protected status page (spec 2026-08-21-07).
@@ -94,7 +95,7 @@ export function UnlockForm({
             type="submit"
             disabled={unlock.isPending || password.length === 0}
             data-testid="status-page-unlock-submit"
-            className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            className={`${PRIMARY_BUTTON_CLASSES} w-full px-3`}
           >
             {unlock.isPending ? t("unlockSubmitting") : t("unlockSubmit")}
           </button>
