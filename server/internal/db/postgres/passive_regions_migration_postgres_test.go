@@ -29,9 +29,18 @@ func passiveRegionsSection(t *testing.T) []string {
 	idx := strings.Index(string(content), banner)
 	require.GreaterOrEqual(t, idx, 0, "the section banner must be present")
 
+	section := string(content)[idx:]
+	// The section ends where the next one begins (sections are appended to
+	// the consolidated file; spec 2026-09-25-06 added one after this).
+	if next := strings.Index(section[len(banner):], "\n-- SECTION: "); next >= 0 {
+		section = section[:len(banner)+next]
+		// Drop the trailing `-- ====` rule of the next section's banner box
+		// along with it: comment lines are filtered below anyway.
+	}
+
 	var statements []string
 
-	for _, chunk := range strings.Split(string(content)[idx:], "--bun:split") {
+	for _, chunk := range strings.Split(section, "--bun:split") {
 		var kept []string
 
 		for _, line := range strings.Split(chunk, "\n") {
