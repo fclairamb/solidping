@@ -324,7 +324,9 @@ function IntegrationDetailPage() {
       <PageHeader
         icon={integrationIconComponent(integration.type)}
         title={integration.name}
-        iconClassName="bg-transparent"
+        // A provider logo keeps its own colors on the neutral tile, never
+        // on the brand gradient.
+        tone="neutral"
         docsHref="/docs/configuration/notifications"
         actions={
           <>
