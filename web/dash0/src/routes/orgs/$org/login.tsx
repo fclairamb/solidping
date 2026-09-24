@@ -608,7 +608,9 @@ function LoginPage() {
     : providers;
 
   return (
-    <AuthSplitLayout>
+    // The card already shows the wordmark, so the layout must not repeat it
+    // above the card on a phone.
+    <AuthSplitLayout mobileWordmark={false}>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
         {/* Compact header: the wordmark says SolidPing, the title says where
             you are signing in, so the form starts above the fold on a phone. */}

@@ -337,3 +337,34 @@ describe("always-dark sidebar tokens", () => {
     );
   });
 });
+
+// Spec 2026-09-24-03: the auth screens' aurora panel sits on the sidebar navy
+// and its accent is a token, not a hardcoded crimson.
+describe("aurora tokens", () => {
+  it("declares the aurora colors on :root only (identical in both themes)", () => {
+    expect(light["aurora-accent"]).toBe("oklch(0.85 0.12 220)");
+    expect(light["aurora-cyan"]).toBe("oklch(0.7 0.15 225)");
+    expect(dark["aurora-accent"]).toBeUndefined();
+    expect(dark["aurora-cyan"]).toBeUndefined();
+    expect(rootDark["aurora-accent"]).toBeUndefined();
+  });
+
+  it("keeps the accent readable on every stop of the navy, in both themes", () => {
+    const accent = parseOklch(light["aurora-accent"]);
+    const stops = [
+      ...gradientStops(light["sidebar-gradient"]),
+      ...gradientStops(rootDark["sidebar-gradient"]),
+    ];
+    expect(stops).toHaveLength(4);
+    for (const stop of stops) {
+      // It colors a word of the 30px headline AND the small feature checks
+      // (non-text), so hold it to the normal-text 4.5:1 bar anyway.
+      expect(contrast(accent, stop)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("exposes the aurora colors to Tailwind", () => {
+    expect(css).toContain("--color-aurora-accent: var(--aurora-accent);");
+    expect(css).toContain("--color-aurora-cyan: var(--aurora-cyan);");
+  });
+});

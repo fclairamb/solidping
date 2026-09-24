@@ -19,6 +19,8 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
   --color-sidebar: var(--sidebar);
+  --color-aurora-cyan: var(--aurora-cyan);
+  --color-aurora-accent: var(--aurora-accent);
   --color-status-ok: var(--status-ok);
   --color-status-ok-foreground: var(--status-ok-foreground);
   --color-status-warning: var(--status-warning);
@@ -157,6 +159,15 @@
   --sidebar-active: linear-gradient(90deg, oklch(0.62 0.2 245 / 0.38), oklch(0.62 0.2 245 / 0.06));
   --sidebar-border: oklch(0.27 0.05 262);
   --sidebar-ring: oklch(0.72 0.15 252);
+
+  /* Aurora panel (spec 2026-09-24-03): the always-dark marketing surface of
+     the auth screens, sitting on the sidebar navy. Declared on :root only, so
+     both themes inherit the same values (the panel is dark in both).
+     --aurora-cyan is the top-left glow blob and the start of the wash;
+     --aurora-accent is the luminous cyan of the headline's highlighted word
+     and the feature check icons, readable on the navy. */
+  --aurora-cyan: oklch(0.7 0.15 225);
+  --aurora-accent: oklch(0.85 0.12 220);
 
   /* Destructive: Red */
   --destructive: oklch(0.6 0.22 25);

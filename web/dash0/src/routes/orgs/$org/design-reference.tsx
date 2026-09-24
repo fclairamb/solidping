@@ -5795,7 +5795,7 @@ function ElevationSection() {
     <Section
       id="elevation"
       title="Elevation, aurora & glass"
-      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant (shadow-primary under a 1px inset top highlight, inset-shadow-highlight, on the primary gradient) and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+      description="Depth tokens that add polish without adding a new color, already baked into Button's default variant (shadow-primary under a 1px inset top highlight, inset-shadow-highlight, on the primary gradient) and Card — reach for the utilities only when styling a bespoke surface. Two families: the action shadows (--shadow-primary / --shadow-destructive) tint with their own hue via color-mix and so track the theme automatically, while --shadow-card is a fixed neutral slate for ambient lift. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, 404, the no-org welcome) — never operator data views. The aurora sits on the sidebar navy (--sidebar-gradient) and glows cyan (--aurora-cyan), primary blue and indigo-violet (chart-5), with no crimson: the logo is its only warm spot. Its highlighted text and icons use --aurora-accent."
     >
       <div className="space-y-2">
         <h3 className="text-sm font-medium">
@@ -5823,21 +5823,63 @@ function ElevationSection() {
         <h3 className="text-sm font-medium">Aurora panel + glass card</h3>
         <ExampleRow
           preview={
-            <AuroraPanel className="h-52 w-full rounded-xl">
-              <div className="flex h-full items-center justify-center p-6">
-                <div className="glass space-y-1 rounded-2xl p-5">
-                  <p className="text-sm font-semibold text-white">
-                    Glass on aurora
+            <AuroraPanel className="h-64 w-full rounded-xl p-6">
+              <Logo size={24} variant="wordmark" className="text-white" />
+              <div className="flex flex-1 items-center justify-center">
+                <div className="glass max-w-xs space-y-3 rounded-2xl p-5">
+                  <p className="text-lg font-bold leading-tight text-white">
+                    Glass on{" "}
+                    <span className="text-aurora-accent">aurora</span>
                   </p>
                   <p className="text-xs text-white/70">
                     white/8 fill · blur 12 · white/18 border
+                  </p>
+                  <p className="flex items-center gap-2 text-xs text-white/90">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-aurora-accent" />
+                    Feature line, check in --aurora-accent
                   </p>
                 </div>
               </div>
             </AuroraPanel>
           }
-          importLine={`import { AuroraPanel } from "@/components/ui/aurora-panel";\n\n// Marketing surfaces only. Always dark; renders white text. The \`glass\`\n// utility (index.css) is the frosted card that sits on top.\n<AuroraPanel className="min-h-screen p-12">\n  <div className="glass rounded-3xl p-8">…</div>\n</AuroraPanel>\n\n// Auth pages: don't hand-roll the panel — wrap your card in AuthSplitLayout,\n// which renders this aurora + the marketing copy + the theme toggle.\nimport { AuthSplitLayout } from "@/components/layout/auth-split-layout";`}
+          importLine={`import { AuroraPanel } from "@/components/ui/aurora-panel";
+
+// Marketing surfaces only. Always dark (the sidebar navy) in both themes;
+// renders white text. The \`glass\` utility (index.css) is the frosted card
+// that sits on top. Highlight a word or an icon with text-aurora-accent —
+// never a hardcoded oklch, never crimson (the logo is the only warm spot).
+<AuroraPanel className="min-h-screen p-12">
+  <div className="glass rounded-3xl p-8">
+    <h2>Monitor <span className="text-aurora-accent">everything</span></h2>
+  </div>
+</AuroraPanel>
+
+// Auth pages: don't hand-roll the panel — wrap your card in AuthSplitLayout,
+// which renders this aurora (lg+), the page glow behind the card and the
+// wordmark above it (below lg), the marketing copy and the theme toggle.
+// Pass mobileWordmark={false} only when your card already shows the wordmark.
+import { AuthSplitLayout } from "@/components/layout/auth-split-layout";`}
         />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Aurora tokens (identical in both themes)</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="dark rounded-md text-foreground">
+            <Swatch
+              varName="--aurora-accent"
+              label="aurora-accent"
+              description="Luminous cyan: the headline's highlighted word and the feature checks, on the navy"
+            />
+          </div>
+          <div className="dark rounded-md text-foreground">
+            <Swatch
+              varName="--aurora-cyan"
+              label="aurora-cyan"
+              description="The cyan glow blob (40%) and the start of the cyan-to-indigo wash (25%)"
+            />
+          </div>
+        </div>
       </div>
     </Section>
   );
