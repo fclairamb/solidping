@@ -164,6 +164,14 @@ type serviceImpl struct {
 	// rt publishes coalesced org-scoped `jobs` dashboard hints on job
 	// lifecycle changes. Nil-safe: nil when realtime is disabled.
 	rt *realtime.Publisher
+
+	// claimAttempted, when set, is called at the start of every claimNextJob
+	// attempt. Nil in production (zero overhead, zero behavior change); the
+	// internal test package uses it to deterministically count GetJobWait's
+	// claim attempts and prove the retry loop is floor-bounded rather than
+	// spinning when a due job keeps losing the race to another runner (spec
+	// 2026-09-25-07 item 2/test 4).
+	claimAttempted func()
 }
 
 // NewService creates a new job service. rt may be nil (realtime disabled):
@@ -571,17 +579,37 @@ func (s *serviceImpl) CancelJob(ctx context.Context, uid string) error {
 	return nil
 }
 
+// getJobWaitFallback bounds how long GetJobWait ever sleeps: it handles missed
+// job.created signals and, now that the wait is otherwise timed off the
+// earliest pending job, a database error while computing that timer.
+const getJobWaitFallback = 5 * time.Minute
+
+// getJobWaitMinWait floors the computed wait so a due job that's held by
+// another runner (Postgres FOR UPDATE SKIP LOCKED) — which makes claimNextJob
+// return ErrNoRows with a due scheduled_at, i.e. a non-positive computed
+// delay — can't spin the loop at CPU speed (spec 2026-09-25-07 item 2).
+const getJobWaitMinWait = 250 * time.Millisecond
+
 // GetJobWait waits for and claims the next available job. It subscribes to
 // job.created events via the EventNotifier so new-job insertions wake the
 // runner within milliseconds on both SQLite (LocalEventNotifier channels)
-// and Postgres (LISTEN/NOTIFY). A 5-minute fallback ticker handles missed
-// signals and jobs whose scheduled_at passed without a signal.
+// and Postgres (LISTEN/NOTIFY).
 //
-// Only sql.ErrNoRows means "no work": every other error is returned to the
-// caller unchanged and unwrapped-through, which is what lets the runner
-// classify it (internal/db/dbfault) and treat a structural fault as terminal.
-// Deciding here would be wrong — the same error means "back off" to one caller
-// and "stop the process" to another (spec 2026-08-12-05).
+// After a no-rows claim, the wait is timed off the earliest pending job's
+// scheduled_at (nextPendingWait) rather than a fixed ticker, so a job created
+// with a future scheduled_at is picked up close to when it becomes due instead
+// of waiting for the next unrelated job.created notification or a fixed
+// fallback tick — previously up to getJobWaitFallback late (spec
+// 2026-09-25-07). The wait is recomputed on every loop iteration, so a
+// job.created wake-up (which always re-enters the loop) picks up any new,
+// earlier-due job automatically. getJobWaitFallback still bounds the wait when
+// there is no pending job, or the lookup itself fails.
+//
+// Only sql.ErrNoRows means "no work": every other error from claimNextJob is
+// returned to the caller unchanged and unwrapped-through, which is what lets
+// the runner classify it (internal/db/dbfault) and treat a structural fault as
+// terminal. Deciding here would be wrong — the same error means "back off" to
+// one caller and "stop the process" to another (spec 2026-08-12-05).
 func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 	wakeup := s.notifier.Listen(eventTypeJobCreated)
 	// GetJobWait subscribes on every call (job runners loop over it), so it MUST
@@ -589,9 +617,6 @@ func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 	// job, the notifier's forward loop slows linearly, and on Postgres the
 	// LISTEN/NOTIFY pipeline eventually wedges and silences the realtime WS.
 	defer s.notifier.Unlisten(eventTypeJobCreated, wakeup)
-
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
 
 	for {
 		job, err := s.claimNextJob(ctx)
@@ -603,14 +628,67 @@ func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 			return nil, err
 		}
 
+		wait := s.nextPendingWait(ctx)
+
+		timer := time.NewTimer(wait)
+
 		select {
 		case <-ctx.Done():
+			timer.Stop()
+
 			return nil, ctx.Err()
 		case <-wakeup:
-			// Wake-up signal from CreateJob — try to claim immediately.
-		case <-ticker.C:
-			// Fallback poll: handles missed signals and past-due jobs.
+			// Wake-up signal from CreateJob — try to claim immediately. May be
+			// for a job due later than the one we were already waiting on;
+			// the next loop iteration recomputes the wait either way.
+			timer.Stop()
+		case <-timer.C:
+			// Either the earliest pending job is now due, or the
+			// getJobWaitFallback cap elapsed with nothing pending — try to
+			// claim either way.
 		}
+	}
+}
+
+// nextPendingWait computes how long GetJobWait should sleep before its next
+// claim attempt: the time until the earliest still-future pending job
+// (scheduled_at > now), floored at getJobWaitMinWait and capped at
+// getJobWaitFallback. With no pending job, or on a lookup error, it returns
+// getJobWaitFallback so a transient failure degrades to the old fixed-poll
+// behavior instead of spinning or blocking forever.
+func (s *serviceImpl) nextPendingWait(ctx context.Context) time.Duration {
+	var earliest models.Job
+
+	// ORDER BY scheduled_at ASC LIMIT 1 (rather than a MIN(scheduled_at)
+	// aggregate) reuses the model's normal per-dialect time scanning, the
+	// same path claimNextJob already relies on — a raw scalar scan of an
+	// aggregate expression doesn't go through that conversion and fails on
+	// SQLite, which stores datetimes as text. It hits the same partial index
+	// idx_jobs_queue (scheduled_at, status) WHERE deleted_at IS NULL AND
+	// status = 'pending' on both Postgres and SQLite either way, so this is
+	// an index-only lookup, not a table scan (spec 2026-09-25-07 item 3).
+	err := s.db.NewSelect().
+		Model(&earliest).
+		Column("scheduled_at").
+		Where("status = ?", models.JobStatusPending).
+		Where("deleted_at IS NULL").
+		Where("scheduled_at > ?", time.Now()).
+		Order("scheduled_at ASC").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return getJobWaitFallback
+	}
+
+	wait := time.Until(earliest.ScheduledAt)
+
+	switch {
+	case wait > getJobWaitFallback:
+		return getJobWaitFallback
+	case wait < getJobWaitMinWait:
+		return getJobWaitMinWait
+	default:
+		return wait
 	}
 }
 
@@ -618,6 +696,10 @@ func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
 // Uses SELECT FOR UPDATE SKIP LOCKED on PostgreSQL for efficiency.
 // Uses optimistic locking on SQLite (no FOR UPDATE support).
 func (s *serviceImpl) claimNextJob(ctx context.Context) (*models.Job, error) {
+	if s.claimAttempted != nil {
+		s.claimAttempted()
+	}
+
 	var job models.Job
 
 	// Check if database is PostgreSQL (supports FOR UPDATE SKIP LOCKED)
