@@ -139,3 +139,61 @@ visible, so make it overridable:
 - Screenshots of a status page (all operational, one degraded, one in
   maintenance) in both themes, with and without a custom stylesheet, in the
   PR.
+
+## Implementation Plan
+
+1. **Tokens** (`web/status0/src/index.css`). In `:root` and `.dark`, copy
+   dash0's shipped values for the neutrals (`--background`, `--foreground`,
+   `--card(-foreground)`, `--popover(-foreground)`, `--secondary(-foreground)`,
+   `--muted(-foreground)`, `--accent(-foreground)`, `--border`, `--input`),
+   `--primary`, `--primary-foreground`, `--ring`, `--chart-1`, `--chart-5`,
+   plus `--primary-gradient` and `--gradient-foreground`. `--control` is not
+   ported: nothing in status0 reads it. Untouched: `--brand*`, `--status-*`
+   (including status0's own `--status-neutral*`), `--destructive`,
+   `--chart-2..4`, `--radius`. Both blocks open with "values mirror
+   web/dash0/src/index.css, keep them in sync". Add
+   `--color-gradient-foreground` and `--inset-shadow-highlight` to
+   `@theme inline`, and the `bg-primary-gradient` utility. No page glow, no
+   hero or accent gradient.
+2. **Customer theming keeps precedence.** Every token stays declared on plain
+   `:root` / `.dark` (never `:root.dark`, `html`, a layer or `!important`), so
+   the operator `<style>` rendered later in the document still wins on equal
+   specificity. The button reads only variables (`--primary-gradient`,
+   `--primary`, `--gradient-foreground`, shadows mixed from `--primary`), so an
+   operator override re-themes it completely.
+3. **Buttons.** Subscribe and unlock: `bg-primary bg-primary-gradient
+   text-gradient-foreground inset-shadow-highlight shadow-primary
+   hover:brightness-105 hover:shadow-primary-hover
+   motion-safe:hover:-translate-y-px`, the same recipe as the dash0 default
+   button. Nothing else gets a gradient.
+4. **Docs and starter template.** `status-pages.md` variable table gets
+   `--primary`, `--primary-foreground`, `--primary-gradient`, plus
+   `--gradient-foreground` (the button label: without it an operator with a
+   light brand color could not make the label readable, since
+   `--primary-foreground` has to stay dark on the dark theme's light-blue
+   badge fill), and a note that a stylesheet already setting `--primary`
+   should now set `--primary-gradient` too. dash0's `STARTER_TEMPLATE` gets
+   the same lines commented out, and its default neutrals move to the new hex
+   values (light `#f5f9fc` / `#09121f` / `#dee3eb`, dark `#060a13` /
+   `#edf2f9` / `#0c131e` / `#1f293a`). `--brand: #e11d63` stays.
+5. **Hardcoded colors.** `theme-color` metas become `#f5f9fc` (light) and
+   `#060a13` (dark); manifest `theme_color` and `background_color` become
+   `#f5f9fc`. The TV shell uses `bg-background text-foreground` inside its
+   `.dark` wrapper (the dark tokens). The embed widget's neutrals move to
+   `#ffffff` / `#09121f` / `#dee3eb` (light) and `#0c131e` / `#edf2f9` /
+   `#1f293a` (dark), and its maintenance dot to `#1e64ef`. `status-style.ts`
+   TV surfaces are left alone.
+6. **Tests.**
+   - status0 unit (`bun test ./src`): the ported tokens equal dash0's in both
+     themes; documented variables are declared only on `:root` / `.dark`;
+     theme-color, manifest, widget and TV shell carry no old-palette value;
+     docs and starter template list the new variables.
+   - status0 e2e `electric-identity.spec.ts`: default tokens reach the page;
+     subscribe and unlock paint the gradient and are the only elements that
+     do; a stylesheet overriding every previously documented variable
+     resolves to the operator's values in light and dark (also run against
+     the pre-change build as the "before"); a stylesheet setting the new
+     variables re-themes the button; `hideBranding` + logo still shows no
+     SolidPing mark and no "Powered by".
+   - dash0 e2e `status-page-appearance.spec.ts`: the starter template lists
+     the new variables.
