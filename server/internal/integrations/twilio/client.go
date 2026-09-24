@@ -125,7 +125,7 @@ func NewClient(accountSID, authToken string) *Client {
 // Intended for tests that point the client at an httptest fake server.
 func NewClientWithBaseURL(accountSID, authToken, baseURL string) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: DefaultTimeout},
+		httpClient: newHTTPClient(DefaultTimeout),
 		accountSID: accountSID,
 		authToken:  authToken,
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -227,7 +227,7 @@ func VerifyCredentials(ctx context.Context, accountSID, authToken, baseURL strin
 
 	req.SetBasicAuth(accountSID, authToken)
 
-	client := &http.Client{Timeout: DefaultTimeout}
+	client := newHTTPClient(DefaultTimeout)
 
 	resp, err := client.Do(req)
 	if err != nil {

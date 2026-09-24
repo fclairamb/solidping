@@ -85,7 +85,22 @@ RUN bun run build
 # natively on the build host, and cross-compiles the OUTPUT binary for
 # TARGETOS/TARGETARCH via the CGO_ENABLED=0 build below (no QEMU emulation
 # needed for the compiler, unlike a CGO build would require).
-FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS backend-builder
+#
+# The dependency layer is its own stage so CI can build it on every PR
+# (`docker build --target backend-deps .`); the image itself is only built on
+# tags. Every local `replace` target in server/go.mod needs its go.mod/go.sum
+# copied here, or `go mod download` fails before the source is copied in.
+FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS backend-deps
+
+WORKDIR /build
+
+COPY server/go.mod server/go.sum ./server/
+COPY server/third_party/grdp/go.mod server/third_party/grdp/go.sum ./server/third_party/grdp/
+
+WORKDIR /build/server
+RUN go mod download
+
+FROM backend-deps AS backend-builder
 
 # Build arguments for version information
 ARG VERSION=dev
@@ -96,15 +111,6 @@ ARG GIT_TIME=unknown
 # image (e.g. "linux" / "arm64"), independent of the build host.
 ARG TARGETOS
 ARG TARGETARCH
-
-WORKDIR /build
-
-# Copy go module files
-COPY server/go.mod server/go.sum ./server/
-
-# Download dependencies
-WORKDIR /build/server
-RUN go mod download
 
 # Copy backend source
 COPY server/ ./

@@ -17,21 +17,29 @@
 # runner, which is both minutes slower and needs a QEMU setup step in CI. The
 # stage already cross-compiles properly via TARGETOS/TARGETARCH below, so
 # emulating it buys nothing.
-FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS builder
+#
+# The dependency layer is its own stage so CI can build it on every PR
+# (`docker build -f Dockerfile.sp --target deps .`); the image itself is only
+# built on tags. Every local `replace` target in server/go.mod needs its
+# go.mod/go.sum copied here.
+FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie AS deps
+
+WORKDIR /build
+
+COPY server/go.mod server/go.sum ./server/
+COPY server/third_party/grdp/go.mod server/third_party/grdp/go.sum ./server/third_party/grdp/
+
+WORKDIR /build/server
+
+RUN go mod download
+
+FROM deps AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG GIT_TIME=unknown
 ARG TARGETOS
 ARG TARGETARCH
-
-WORKDIR /build
-
-COPY server/go.mod server/go.sum ./server/
-
-WORKDIR /build/server
-
-RUN go mod download
 
 COPY server/ ./
 
