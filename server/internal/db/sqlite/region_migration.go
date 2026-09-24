@@ -109,7 +109,7 @@ func (s *Service) ListChecksWithStaleJobRegions(ctx context.Context) ([]*models.
 		Where("c.deleted_at IS NULL").
 		Where("c.enabled = ?", true).
 		Where("c.type IN (?)", bun.List(checkerdef.PassiveCheckTypes())).
-		Where("(EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NOT NULL)" +
+		Where("(EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NOT NULL)"+
 			" OR NOT EXISTS (SELECT 1 FROM check_jobs cj WHERE cj.check_uid = c.uid AND cj.region IS NULL))").
 		Scan(ctx, &passive); err != nil {
 		return nil, fmt.Errorf("list passive checks with regional jobs: %w", err)

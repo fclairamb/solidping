@@ -28,6 +28,7 @@ import (
 // passiveEvalEnv is one in-memory database plus the services every evaluator
 // in a test shares.
 type passiveEvalEnv struct {
+	ctx context.Context //nolint:containedctx // the test's own context, shared by its helpers
 	db  *sqlite.Service
 	svc *services.Registry
 	org *models.Organization
@@ -53,13 +54,15 @@ func newPassiveEvalEnv(t *testing.T) (*passiveEvalEnv, context.Context) {
 	org := models.NewOrganization("passive-eval-org", "")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 
-	return &passiveEvalEnv{db: dbSvc, svc: registry, org: org}, ctx
+	return &passiveEvalEnv{ctx: ctx, db: dbSvc, svc: registry, org: org}, ctx
 }
 
 // evaluator builds and registers one jobs node's evaluator. nodeName is its
 // SP_NODE_NAME, so two evaluators in one test are two jobs nodes.
-func (env *passiveEvalEnv) evaluator(t *testing.T, ctx context.Context, nodeName string) *PassiveEvaluator {
+func (env *passiveEvalEnv) evaluator(t *testing.T, nodeName string) *PassiveEvaluator {
 	t.Helper()
+
+	ctx := env.ctx
 
 	cfg := &config.Config{Node: config.NodeConfig{Name: nodeName}}
 	evaluator := NewPassiveEvaluator(env.db, cfg, env.svc, env.svc.CheckJobs)
@@ -71,9 +74,11 @@ func (env *passiveEvalEnv) evaluator(t *testing.T, ctx context.Context, nodeName
 // passiveCheck creates a passive check the way the API would store it, with a
 // region list that must be dropped, and returns it with its one job.
 func (env *passiveEvalEnv) passiveCheck(
-	t *testing.T, ctx context.Context, checkType checkerdef.CheckType,
+	t *testing.T, checkType checkerdef.CheckType,
 ) (*models.Check, *models.CheckJob) {
 	t.Helper()
+
+	ctx := env.ctx
 
 	check := models.NewCheck(env.org.UID, "passive-"+uuid.New().String()[:8], string(checkType))
 	check.Config = models.JSONMap{"token": "tok-" + uuid.NewString()}
@@ -90,19 +95,23 @@ func (env *passiveEvalEnv) passiveCheck(
 
 // age backdates a check's creation (past the first-signal grace) and makes
 // its job due now.
-func (env *passiveEvalEnv) age(t *testing.T, ctx context.Context, check *models.Check, by time.Duration) {
+func (env *passiveEvalEnv) age(t *testing.T, check *models.Check, by time.Duration) {
 	t.Helper()
+
+	ctx := env.ctx
 
 	createdAt := time.Now().Add(-by)
 	_, err := env.db.DB().NewUpdate().Model((*models.Check)(nil)).
 		Set("created_at = ?", createdAt).Where("uid = ?", check.UID).Exec(ctx)
 	require.NoError(t, err)
 
-	env.makeDue(t, ctx, check)
+	env.makeDue(t, check)
 }
 
-func (env *passiveEvalEnv) makeDue(t *testing.T, ctx context.Context, check *models.Check) {
+func (env *passiveEvalEnv) makeDue(t *testing.T, check *models.Check) {
 	t.Helper()
+
+	ctx := env.ctx
 
 	due := time.Now().Add(-time.Second)
 	_, err := env.db.DB().NewUpdate().Model((*models.CheckJob)(nil)).
@@ -116,9 +125,11 @@ func (env *passiveEvalEnv) makeDue(t *testing.T, ctx context.Context, check *mod
 // signal inserts an inbound signal row (what the heartbeat/email ingest
 // writes: no worker, no region).
 func (env *passiveEvalEnv) signal(
-	t *testing.T, ctx context.Context, check *models.Check, status models.ResultStatus, at time.Time,
+	t *testing.T, check *models.Check, status models.ResultStatus, at time.Time,
 ) *models.Result {
 	t.Helper()
+
+	ctx := env.ctx
 
 	row := models.NewResult(env.org.UID, check.UID, status, 0)
 	row.PeriodStart = at
@@ -129,8 +140,10 @@ func (env *passiveEvalEnv) signal(
 }
 
 // evaluations returns the evaluation rows written for a check, oldest first.
-func (env *passiveEvalEnv) evaluations(t *testing.T, ctx context.Context, checkUID string) []*models.Result {
+func (env *passiveEvalEnv) evaluations(t *testing.T, checkUID string) []*models.Result {
 	t.Helper()
+
+	ctx := env.ctx
 
 	var rows []*models.Result
 	require.NoError(t, env.db.DB().NewSelect().Model(&rows).
@@ -142,8 +155,10 @@ func (env *passiveEvalEnv) evaluations(t *testing.T, ctx context.Context, checkU
 	return rows
 }
 
-func (env *passiveEvalEnv) check(t *testing.T, ctx context.Context, checkUID string) *models.Check {
+func (env *passiveEvalEnv) check(t *testing.T, checkUID string) *models.Check {
 	t.Helper()
+
+	ctx := env.ctx
 
 	check, err := env.db.GetCheck(ctx, env.org.UID, checkUID)
 	require.NoError(t, err)
@@ -151,8 +166,10 @@ func (env *passiveEvalEnv) check(t *testing.T, ctx context.Context, checkUID str
 	return check
 }
 
-func (env *passiveEvalEnv) incidentCount(t *testing.T, ctx context.Context, checkUID string) int {
+func (env *passiveEvalEnv) incidentCount(t *testing.T, checkUID string) int {
 	t.Helper()
+
+	ctx := env.ctx
 
 	count, err := env.db.DB().NewSelect().Model((*models.Incident)(nil)).
 		Where("check_uid = ?", checkUID).Count(ctx)
@@ -161,8 +178,10 @@ func (env *passiveEvalEnv) incidentCount(t *testing.T, ctx context.Context, chec
 	return count
 }
 
-func (env *passiveEvalEnv) job(t *testing.T, ctx context.Context, checkUID string) *models.CheckJob {
+func (env *passiveEvalEnv) job(t *testing.T, checkUID string) *models.CheckJob {
 	t.Helper()
+
+	ctx := env.ctx
 
 	jobs, err := env.db.ListCheckJobsByCheckUID(ctx, checkUID)
 	require.NoError(t, err)
@@ -184,19 +203,19 @@ func TestPassiveEvaluatorOverdueGoesDownWithoutAnyCheckWorker(t *testing.T) {
 			r := require.New(t)
 
 			env, ctx := newPassiveEvalEnv(t)
-			evaluator := env.evaluator(t, ctx, "jobs-node-a")
+			evaluator := env.evaluator(t, "jobs-node-a")
 
-			check, _ := env.passiveCheck(t, ctx, checkType)
+			check, _ := env.passiveCheck(t, checkType)
 			r.Empty(check.Regions, "the region list was dropped")
 
-			env.age(t, ctx, check, time.Hour)
-			beat := env.signal(t, ctx, check, models.ResultStatusUp, time.Now().Add(-3*time.Minute))
+			env.age(t, check, time.Hour)
+			beat := env.signal(t, check, models.ResultStatusUp, time.Now().Add(-3*time.Minute))
 
 			evaluated, _, err := evaluator.RunOnce(ctx)
 			r.NoError(err)
 			r.Equal(1, evaluated)
 
-			rows := env.evaluations(t, ctx, check.UID)
+			rows := env.evaluations(t, check.UID)
 			r.Len(rows, 1)
 
 			row := rows[0]
@@ -207,13 +226,13 @@ func TestPassiveEvaluatorOverdueGoesDownWithoutAnyCheckWorker(t *testing.T) {
 			r.Nil(row.Region, "an evaluation ran nowhere: no region")
 			r.Equal(evaluator.worker.Load().UID, *row.WorkerUID, "written by the jobs node's own workers row")
 
-			refreshed := env.check(t, ctx, check.UID)
+			refreshed := env.check(t, check.UID)
 			r.NotEqual(models.CheckStatusUp, refreshed.Status)
 			r.NotEqual(models.CheckStatusCreated, refreshed.Status)
 			r.NotNil(refreshed.LastResultAt, "a real evaluation advances last_result_at like any result")
 
 			// The lease is released onto the next tick.
-			job := env.job(t, ctx, check.UID)
+			job := env.job(t, check.UID)
 			r.Nil(job.LeaseWorkerUID)
 			r.True(job.ScheduledAt.After(time.Now()))
 		})
@@ -226,19 +245,19 @@ func TestPassiveEvaluatorOnTimeIsUp(t *testing.T) {
 	r := require.New(t)
 
 	env, ctx := newPassiveEvalEnv(t)
-	evaluator := env.evaluator(t, ctx, "jobs-node-a")
+	evaluator := env.evaluator(t, "jobs-node-a")
 
-	check, _ := env.passiveCheck(t, ctx, checkerdef.CheckTypeHeartbeat)
-	env.age(t, ctx, check, time.Hour)
-	env.signal(t, ctx, check, models.ResultStatusUp, time.Now().Add(-10*time.Second))
+	check, _ := env.passiveCheck(t, checkerdef.CheckTypeHeartbeat)
+	env.age(t, check, time.Hour)
+	env.signal(t, check, models.ResultStatusUp, time.Now().Add(-10*time.Second))
 
 	_, _, err := evaluator.RunOnce(ctx)
 	r.NoError(err)
 
-	rows := env.evaluations(t, ctx, check.UID)
+	rows := env.evaluations(t, check.UID)
 	r.Len(rows, 1)
 	r.Equal(int(models.ResultStatusUp), *rows[0].Status)
-	r.Equal(models.CheckStatusUp, env.check(t, ctx, check.UID).Status)
+	r.Equal(models.CheckStatusUp, env.check(t, check.UID).Status)
 }
 
 // TestPassiveEvaluatorTwoJobsNodesOneEvaluationPerTick: two jobs nodes claim
@@ -250,8 +269,8 @@ func TestPassiveEvaluatorTwoJobsNodesOneEvaluationPerTick(t *testing.T) {
 
 	env, ctx := newPassiveEvalEnv(t)
 	nodes := []*PassiveEvaluator{
-		env.evaluator(t, ctx, "jobs-node-a"),
-		env.evaluator(t, ctx, "jobs-node-b"),
+		env.evaluator(t, "jobs-node-a"),
+		env.evaluator(t, "jobs-node-b"),
 	}
 	r.NotEqual(nodes[0].worker.Load().UID, nodes[1].worker.Load().UID, "two nodes, two workers rows")
 
@@ -269,8 +288,8 @@ func TestPassiveEvaluatorTwoJobsNodesOneEvaluationPerTick(t *testing.T) {
 			checkType = checkerdef.CheckTypeEmail
 		}
 
-		check, _ := env.passiveCheck(t, ctx, checkType)
-		env.age(t, ctx, check, time.Hour)
+		check, _ := env.passiveCheck(t, checkType)
+		env.age(t, check, time.Hour)
 		created = append(created, check)
 	}
 
@@ -295,13 +314,13 @@ func TestPassiveEvaluatorTwoJobsNodesOneEvaluationPerTick(t *testing.T) {
 	runAll()
 
 	for _, check := range created {
-		r.Lenf(env.evaluations(t, ctx, check.UID), 1, "check %s must be evaluated exactly once", check.UID)
+		r.Lenf(env.evaluations(t, check.UID), 1, "check %s must be evaluated exactly once", check.UID)
 	}
 
 	runAll()
 
 	for _, check := range created {
-		r.Lenf(env.evaluations(t, ctx, check.UID), 1, "no second evaluation inside the same period")
+		r.Lenf(env.evaluations(t, check.UID), 1, "no second evaluation inside the same period")
 	}
 }
 
@@ -313,20 +332,20 @@ func TestPassiveEvaluatorNeverReadsItsOwnRows(t *testing.T) {
 	r := require.New(t)
 
 	env, ctx := newPassiveEvalEnv(t)
-	evaluator := env.evaluator(t, ctx, "jobs-node-a")
+	evaluator := env.evaluator(t, "jobs-node-a")
 
-	check, _ := env.passiveCheck(t, ctx, checkerdef.CheckTypeHeartbeat)
-	env.age(t, ctx, check, time.Hour)
-	beat := env.signal(t, ctx, check, models.ResultStatusUp, time.Now().Add(-5*time.Minute))
+	check, _ := env.passiveCheck(t, checkerdef.CheckTypeHeartbeat)
+	env.age(t, check, time.Hour)
+	beat := env.signal(t, check, models.ResultStatusUp, time.Now().Add(-5*time.Minute))
 
 	for range 3 {
-		env.makeDue(t, ctx, check)
+		env.makeDue(t, check)
 
 		_, _, err := evaluator.RunOnce(ctx)
 		r.NoError(err)
 	}
 
-	rows := env.evaluations(t, ctx, check.UID)
+	rows := env.evaluations(t, check.UID)
 	r.Len(rows, 3)
 
 	for _, row := range rows {
@@ -359,39 +378,39 @@ func TestPassiveEvaluatorFirstSignalGrace(t *testing.T) {
 	r := require.New(t)
 
 	env, ctx := newPassiveEvalEnv(t)
-	evaluator := env.evaluator(t, ctx, "jobs-node-a")
+	evaluator := env.evaluator(t, "jobs-node-a")
 
-	check, _ := env.passiveCheck(t, ctx, checkerdef.CheckTypeHeartbeat)
+	check, _ := env.passiveCheck(t, checkerdef.CheckTypeHeartbeat)
 	period := time.Duration(check.Period)
 
 	// Inside the grace: at creation, and just before the two periods are up.
 	for _, age := range []time.Duration{0, 2*period - 5*time.Second} {
-		env.age(t, ctx, check, age)
+		env.age(t, check, age)
 
 		evaluated, _, err := evaluator.RunOnce(ctx)
 		r.NoError(err)
 		r.Equal(1, evaluated, "the job is claimed")
 
-		r.Empty(env.evaluations(t, ctx, check.UID), "no row is written inside the grace")
-		r.Equal(models.CheckStatusCreated, env.check(t, ctx, check.UID).Status)
-		r.Zero(env.incidentCount(t, ctx, check.UID))
+		r.Empty(env.evaluations(t, check.UID), "no row is written inside the grace")
+		r.Equal(models.CheckStatusCreated, env.check(t, check.UID).Status)
+		r.Zero(env.incidentCount(t, check.UID))
 
-		job := env.job(t, ctx, check.UID)
+		job := env.job(t, check.UID)
 		r.Nil(job.LeaseWorkerUID, "the lease is released")
 		r.True(job.ScheduledAt.After(time.Now()), "onto the next tick")
 	}
 
 	// Past the grace: Down, as before this spec.
-	env.age(t, ctx, check, 2*period+5*time.Second)
+	env.age(t, check, 2*period+5*time.Second)
 
 	_, _, err := evaluator.RunOnce(ctx)
 	r.NoError(err)
 
-	rows := env.evaluations(t, ctx, check.UID)
+	rows := env.evaluations(t, check.UID)
 	r.Len(rows, 1)
 	r.Equal(int(models.ResultStatusDown), *rows[0].Status)
 	r.Equal("No heartbeat received", rows[0].Output[outputKeyMessage])
-	r.NotEqual(models.CheckStatusCreated, env.check(t, ctx, check.UID).Status)
+	r.NotEqual(models.CheckStatusCreated, env.check(t, check.UID).Status)
 }
 
 // TestPassiveEvaluatorPingInsideGraceIsUpWithNoIncident: one real ping inside
@@ -402,32 +421,32 @@ func TestPassiveEvaluatorPingInsideGraceIsUpWithNoIncident(t *testing.T) {
 	r := require.New(t)
 
 	env, ctx := newPassiveEvalEnv(t)
-	evaluator := env.evaluator(t, ctx, "jobs-node-a")
+	evaluator := env.evaluator(t, "jobs-node-a")
 
-	check, _ := env.passiveCheck(t, ctx, checkerdef.CheckTypeHeartbeat)
+	check, _ := env.passiveCheck(t, checkerdef.CheckTypeHeartbeat)
 	token, _ := check.Config["token"].(string)
 
 	// First tick: inside the grace, nothing happens.
-	env.makeDue(t, ctx, check)
+	env.makeDue(t, check)
 	_, _, err := evaluator.RunOnce(ctx)
 	r.NoError(err)
-	r.Equal(models.CheckStatusCreated, env.check(t, ctx, check.UID).Status)
+	r.Equal(models.CheckStatusCreated, env.check(t, check.UID).Status)
 
 	// A real ping through the heartbeat ingest.
 	beats := heartbeat.NewService(env.db, nil, nil, nil, 0)
 	r.NoError(beats.ReceiveHeartbeat(ctx, env.org.Slug, *check.Slug, token, "", "", 0, "test", "", "POST", nil))
-	r.Equal(models.CheckStatusUp, env.check(t, ctx, check.UID).Status, "the ping itself makes the check Up")
+	r.Equal(models.CheckStatusUp, env.check(t, check.UID).Status, "the ping itself makes the check Up")
 
 	// The next evaluation, still inside the grace window, confirms it.
-	env.makeDue(t, ctx, check)
+	env.makeDue(t, check)
 	_, _, err = evaluator.RunOnce(ctx)
 	r.NoError(err)
 
-	rows := env.evaluations(t, ctx, check.UID)
+	rows := env.evaluations(t, check.UID)
 	r.Len(rows, 1, "a signal ends the grace: the evaluation is written")
 	r.Equal(int(models.ResultStatusUp), *rows[0].Status)
-	r.Equal(models.CheckStatusUp, env.check(t, ctx, check.UID).Status)
-	r.Zero(env.incidentCount(t, ctx, check.UID), "no incident at any point")
+	r.Equal(models.CheckStatusUp, env.check(t, check.UID).Status)
+	r.Zero(env.incidentCount(t, check.UID), "no incident at any point")
 }
 
 // TestPassiveBootRepairThenOneEvaluation is the migration's end state: a
@@ -440,9 +459,9 @@ func TestPassiveBootRepairThenOneEvaluation(t *testing.T) {
 	r := require.New(t)
 
 	env, ctx := newPassiveEvalEnv(t)
-	evaluator := env.evaluator(t, ctx, "jobs-node-a")
+	evaluator := env.evaluator(t, "jobs-node-a")
 
-	check, job := env.passiveCheck(t, ctx, checkerdef.CheckTypeHeartbeat)
+	check, job := env.passiveCheck(t, checkerdef.CheckTypeHeartbeat)
 
 	// Recreate the legacy shape: regions on the row, one job per region, no
 	// NULL-region job.
@@ -465,22 +484,22 @@ func TestPassiveBootRepairThenOneEvaluation(t *testing.T) {
 	r.NoError(err)
 	r.Equal(1, reconciled)
 
-	healed := env.job(t, ctx, check.UID)
+	healed := env.job(t, check.UID)
 	r.Nil(healed.Region, "the boot repair leaves exactly one NULL-region job")
 
 	reconciled, err = checksSvc.ReconcileStaleJobSchedules(ctx)
 	r.NoError(err)
 	r.Zero(reconciled, "a second boot repair finds nothing and recreates no regional job")
-	r.Nil(env.job(t, ctx, check.UID).Region)
+	r.Nil(env.job(t, check.UID).Region)
 
-	env.age(t, ctx, check, time.Hour)
+	env.age(t, check, time.Hour)
 
 	for range 3 {
 		_, _, err = evaluator.RunOnce(ctx)
 		r.NoError(err)
 	}
 
-	r.Len(env.evaluations(t, ctx, check.UID), 1, "evaluated exactly once for the tick")
+	r.Len(env.evaluations(t, check.UID), 1, "evaluated exactly once for the tick")
 }
 
 func TestPassiveWorkerSlugFitsTheColumnRule(t *testing.T) {

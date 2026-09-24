@@ -259,7 +259,7 @@ func (e *PassiveEvaluator) RunOnce(ctx context.Context) (int, time.Duration, err
 
 	for i, job := range jobs {
 		if ctx.Err() != nil {
-			e.releaseUnevaluated(jobs[i:], worker.UID)
+			e.releaseUnevaluated(ctx, jobs[i:], worker.UID)
 
 			return len(jobs), nextIn, ctx.Err()
 		}
@@ -313,10 +313,10 @@ func (e *PassiveEvaluator) evaluate(ctx context.Context, job *models.CheckJob, w
 
 // releaseUnevaluated hands claimed jobs back at their current schedule, so the
 // next pass (on this node after a restart, or on another one) evaluates them
-// at once instead of waiting out the lease. Runs on a fresh context: the
-// caller's is canceled.
-func (e *PassiveEvaluator) releaseUnevaluated(jobs []*models.CheckJob, workerUID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), passiveEvalReleaseTimeout)
+// at once instead of waiting out the lease. Runs detached from the caller's
+// context, which is canceled by the time it is called.
+func (e *PassiveEvaluator) releaseUnevaluated(ctx context.Context, jobs []*models.CheckJob, workerUID string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), passiveEvalReleaseTimeout)
 	defer cancel()
 
 	for _, job := range jobs {
