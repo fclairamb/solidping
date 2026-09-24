@@ -1183,5 +1183,18 @@
     "title": "Noch keine Check-Gruppen",
     "description": "Eine Gruppe fasst zusammengehörige Checks in einem exklusiven Behälter zusammen — sie steuert Eskalation, Incident-Korrelation und Statusseiten-Zusammenfassungen. Legen Sie eine über die Schaltfläche Neue Gruppe oben an."
   },
-  "wouldHaveFiredFilter": "Hätte ausgelöst"
+  "wouldHaveFiredFilter": "Hätte ausgelöst",
+  "regionOutage": {
+    "blindTitle": "Region {{regions}} offline seit {{time}}: dieser Check läuft nicht",
+    "reducedTitle": "Region {{regions}} offline seit {{time}}: läuft in {{live}} von {{total}} Regionen",
+    "detail": "SolidPing hat alle Worker in dieser Region verloren. Das Team ist informiert, und die Ergebnisse kommen von selbst zurück, sobald sie wieder da ist.",
+    "listTitle": "Region {{regions}} offline seit {{time}}",
+    "listBlind_one": "{{count}} Check läuft nur in dieser Region und läuft gerade nicht: {{names}}",
+    "listBlind_other": "{{count}} Checks laufen nur in dieser Region und laufen gerade nicht: {{names}}",
+    "listReduced_one": "{{count}} Check läuft in seinen anderen Regionen weiter.",
+    "listReduced_other": "{{count}} Checks laufen in ihren anderen Regionen weiter.",
+    "andMore": "{{names}} und {{count}} weitere",
+    "formWarning": "{{regions}} ist gerade offline. Ein Check, der nur dort läuft, läuft erst wieder, wenn sie zurück ist.",
+    "offlineBadge": "Offline"
+  }
 }

@@ -107,6 +107,10 @@ import {
 } from "@/components/ui/sidebar";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
+import {
+  CheckRegionOutageBanner,
+  ChecksRegionOutageBanner,
+} from "@/components/shared/region-outage-banner";
 import { DependencyWarningHint } from "@/components/checks/dependency-warnings";
 import {
   DependencyEmptyRow,
@@ -131,7 +135,7 @@ import {
   sloStateBadgeClass,
 } from "@/lib/slo-format";
 import { BudgetBurndownChart } from "@/components/slos/budget-burndown-chart";
-import type { Check as CheckModel, SloBurndown } from "@/api/hooks";
+import type { Check as CheckModel, RegionDefinition, SloBurndown } from "@/api/hooks";
 import { AgentVersionCell } from "@/components/shared/agent-version";
 import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { ServerVersionIndicator } from "@/components/layout/server-version-indicator";
@@ -4372,6 +4376,19 @@ import {
   );
 }
 
+// Sample regions for the region outage banner: one offline since 13:41 UTC
+// today, one online.
+const DESIGN_REFERENCE_REGIONS: RegionDefinition[] = [
+  { slug: "paris", emoji: "🇫🇷", name: "Paris", status: "online" },
+  {
+    slug: "lauterbourg",
+    emoji: "🇫🇷",
+    name: "Lauterbourg",
+    status: "offline",
+    offlineSince: `${new Date().toISOString().slice(0, 10)}T13:41:00Z`,
+  },
+];
+
 function FeedbackSection() {
   const { org } = Route.useParams();
 
@@ -4487,6 +4504,43 @@ function FeedbackSection() {
             </div>
           }
           importLine={`import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";`}
+        />
+
+        <h3 className="text-sm font-medium">Region outage banner</h3>
+        <p className="text-sm text-muted-foreground">
+          A SolidPing region the server holds as offline (spec 2026-09-25-03):
+          jobs assigned and no live worker. On a check page it is{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">destructive</code>{" "}
+          when every region of the check is offline (the check is not running
+          at all, so its &ldquo;No data&rdquo; is our outage, not the target&apos;s) and an
+          amber{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          when some regions still run it. The checks list mounts the summary
+          form, which names the checks that stopped. Both render nothing when
+          no region is offline.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <CheckRegionOutageBanner
+                check={{ regions: ["lauterbourg"] }}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+              <CheckRegionOutageBanner
+                check={{ regions: ["lauterbourg", "paris"] }}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+              <ChecksRegionOutageBanner
+                org={org}
+                checks={[
+                  { uid: "11111111-1111-1111-1111-111111111111", name: "API", regions: ["lauterbourg"] },
+                  { uid: "22222222-2222-2222-2222-222222222222", name: "Website", regions: ["lauterbourg", "paris"] },
+                ]}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+            </div>
+          }
+          importLine={`import { CheckRegionOutageBanner, ChecksRegionOutageBanner } from "@/components/shared/region-outage-banner";`}
         />
 
         <h3 className="text-sm font-medium">Dependency warnings</h3>

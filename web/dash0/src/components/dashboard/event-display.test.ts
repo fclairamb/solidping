@@ -211,6 +211,11 @@ describe("EVENT_TYPE_REGISTRY pins the binding emoji per event type", () => {
     // the demotion alert is delivered as an audit event plus operator email,
     // not through a chat integration, so dash0 owns the pairing outright.
     ["statuspage.custom_domain.demoted", "🌐"],
+    // Region outage notices (spec 2026-09-25-03). Delivered as an audit event
+    // plus an email to owners/admins, never through a chat integration, so
+    // dash0 owns the pairing outright.
+    ["region.offline", "📴"],
+    ["region.recovered", "📶"],
     // Security audit trail (spec 2026-08-21-09). Same ownership story again:
     // no backend chat integration hand-authors a message for an auth event, so
     // dash0 owns the pairing outright. The five are pinned because they must

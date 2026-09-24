@@ -56,6 +56,7 @@ import { regionDisplayLabel, sortRegionSlugs } from "@/lib/region-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { CollapsibleCode } from "@/components/shared/copyable-code";
+import { CheckRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Label } from "@/components/ui/label";
 import {
@@ -1424,6 +1425,11 @@ function CheckDetailPage() {
           location's active agents. Re-saving the credentials (Edit, above) is
           the only fix — the server cannot re-seal what it cannot read. */}
       <NeedsResealAlert needsReseal={check.needsReseal} />
+
+      {/* Region outage (spec 2026-09-25-03): a region this check runs from is
+          offline. Blind (every region down) means the check is not running at
+          all — the "No data" status is our outage, not the target's. */}
+      <CheckRegionOutageBanner check={check} regions={regionsData?.regions} />
 
       {/* Degraded dry-run banner (spec 2026-09-22-03). Degraded detection ships
           OFF for every check that predates it — upgrading must never start

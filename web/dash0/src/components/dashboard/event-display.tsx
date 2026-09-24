@@ -24,6 +24,8 @@ import {
   Undo2,
   UserCheck,
   Users,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -92,6 +94,12 @@ export const EVENT_TYPE_REGISTRY: Record<string, { emoji: string; tone: string }
   // so the row is recognisable as "your domain" rather than as another
   // publication event — the tone, not the emoji, carries the severity.
   "statuspage.custom_domain.demoted": { emoji: "🌐", tone: TONE_DESTRUCTIVE },
+  // A SolidPing region went dark and some of this org's checks are not running
+  // anywhere, then came back (spec 2026-09-25-03). Destructive / emerald like
+  // an incident opening and resolving, but with a signal emoji rather than an
+  // outage dot: it is OUR outage, not the org's target going down.
+  "region.offline": { emoji: "📴", tone: TONE_DESTRUCTIVE },
+  "region.recovered": { emoji: "📶", tone: TONE_EMERALD },
   // Security audit trail (spec 2026-08-21-09). Only the auth family gets an
   // explicit identity: these are the rows an operator scans a security review
   // for, and they must be told apart at a glance from the configuration
@@ -331,6 +339,8 @@ export const EVENT_TYPE_MARKS: Record<string, EventMark> = {
   "statuspage.incident.resolved": { icon: CircleCheck, tone: MARK_SUCCESS },
   "statuspage.subscriber.disabled": { icon: BellOff, tone: MARK_DANGER },
   "statuspage.custom_domain.demoted": { icon: Globe, tone: MARK_DANGER },
+  "region.offline": { icon: WifiOff, tone: MARK_DANGER, loud: true },
+  "region.recovered": { icon: Wifi, tone: MARK_SUCCESS },
   "auth.login_succeeded": { icon: LogIn, tone: MARK_QUIET },
   "auth.login_failed": { icon: ShieldX, tone: MARK_DANGER },
   "auth.logout": { icon: LogOut, tone: MARK_QUIET },

@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import {
   useInfiniteChecks,
+  useRegions,
   useDeleteCheck,
   useCheckGroups,
   useCreateCheckGroup,
@@ -52,6 +53,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
 import { CheckRateLimitBanner } from "@/components/shared/check-rate-limit-banner";
+import { ChecksRegionOutageBanner } from "@/components/shared/region-outage-banner";
 import { StalePublicationsBanner } from "@/components/shared/stale-publications-banner";
 import {
   Table,
@@ -1288,6 +1290,12 @@ function ChecksIndexPage() {
     return { checksByGroup: byGroup, ungroupedChecks: ungrouped, checksByUid: byUid };
   }, [checksData]);
 
+  // Region outage banner (spec 2026-09-25-03): which loaded checks run from a
+  // region the server holds as offline. react-query dedupes useRegions with
+  // every other page that reads it.
+  const { data: regionsData } = useRegions(org);
+  const loadedChecks = useMemo(() => Array.from(checksByUid.values()), [checksByUid]);
+
   // Host-mode bucketing (spec 2026-08-01-04): every loaded check bucketed by
   // its derived targetHost, section order following first-appearance in the
   // sort=targetHost stream (already host-ascending, so sections fill top to
@@ -1612,6 +1620,12 @@ function ChecksIndexPage() {
         (spec 2026-09-02-05).
       */}
       <StalePublicationsBanner org={org} stale={stalePublications} />
+
+      {/*
+        A dark region explains every "No data" row it strands, so it sits with
+        the other page-level causes, above the filters (spec 2026-09-25-03).
+      */}
+      <ChecksRegionOutageBanner org={org} checks={loadedChecks} regions={regionsData?.regions} />
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-sm">

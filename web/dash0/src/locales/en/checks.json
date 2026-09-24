@@ -1183,5 +1183,18 @@
     "title": "No check groups yet",
     "description": "A group gathers related checks into one exclusive bucket — it drives escalation, incident correlation and status-page rollups. Create one with the New group button above."
   },
-  "wouldHaveFiredFilter": "Would have fired"
+  "wouldHaveFiredFilter": "Would have fired",
+  "regionOutage": {
+    "blindTitle": "Region {{regions}} offline since {{time}}: this check is not running",
+    "reducedTitle": "Region {{regions}} offline since {{time}}: running from {{live}} of {{total}} regions",
+    "detail": "SolidPing lost every worker in this region. The team has been alerted, and results resume on their own once it is back.",
+    "listTitle": "Region {{regions}} offline since {{time}}",
+    "listBlind_one": "{{count}} check runs only from it and is not running: {{names}}",
+    "listBlind_other": "{{count}} checks run only from it and are not running: {{names}}",
+    "listReduced_one": "{{count}} check keeps running from its other regions.",
+    "listReduced_other": "{{count}} checks keep running from their other regions.",
+    "andMore": "{{names}} and {{count}} more",
+    "formWarning": "{{regions}} is offline right now. A check that runs only from it will not run until it is back.",
+    "offlineBadge": "Offline"
+  }
 }

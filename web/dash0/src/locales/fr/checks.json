@@ -1183,5 +1183,18 @@
     "title": "Aucun groupe de checks",
     "description": "Un groupe rassemble des checks liés dans un ensemble exclusif : il pilote l'escalade, la corrélation d'incidents et les agrégations de page de statut. Créez-en un avec le bouton Nouveau groupe ci-dessus."
   },
-  "wouldHaveFiredFilter": "Aurait été signalé"
+  "wouldHaveFiredFilter": "Aurait été signalé",
+  "regionOutage": {
+    "blindTitle": "Région {{regions}} hors ligne depuis {{time}} : ce check ne s'exécute pas",
+    "reducedTitle": "Région {{regions}} hors ligne depuis {{time}} : exécuté depuis {{live}} régions sur {{total}}",
+    "detail": "SolidPing a perdu tous ses workers dans cette région. L'équipe est prévenue, et les résultats reprendront d'eux-mêmes à son retour.",
+    "listTitle": "Région {{regions}} hors ligne depuis {{time}}",
+    "listBlind_one": "{{count}} check ne s'exécute que depuis cette région et est à l'arrêt : {{names}}",
+    "listBlind_other": "{{count}} checks ne s'exécutent que depuis cette région et sont à l'arrêt : {{names}}",
+    "listReduced_one": "{{count}} check continue depuis ses autres régions.",
+    "listReduced_other": "{{count}} checks continuent depuis leurs autres régions.",
+    "andMore": "{{names}} et {{count}} autres",
+    "formWarning": "{{regions}} est hors ligne. Un check qui ne s'exécute que depuis cette région ne tournera pas avant son retour.",
+    "offlineBadge": "Hors ligne"
+  }
 }

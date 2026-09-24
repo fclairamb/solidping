@@ -1183,5 +1183,18 @@
     "title": "Aún no hay grupos de checks",
     "description": "Un grupo reúne checks relacionados en un contenedor exclusivo: dirige el escalado, la correlación de incidencias y los resúmenes de la página de estado. Crea uno con el botón Nuevo grupo de arriba."
   },
-  "wouldHaveFiredFilter": "Se habría activado"
+  "wouldHaveFiredFilter": "Se habría activado",
+  "regionOutage": {
+    "blindTitle": "Región {{regions}} fuera de línea desde las {{time}}: este check no se está ejecutando",
+    "reducedTitle": "Región {{regions}} fuera de línea desde las {{time}}: se ejecuta desde {{live}} de {{total}} regiones",
+    "detail": "SolidPing perdió todos sus workers en esta región. El equipo está avisado y los resultados volverán solos cuando la región regrese.",
+    "listTitle": "Región {{regions}} fuera de línea desde las {{time}}",
+    "listBlind_one": "{{count}} check solo se ejecuta desde esta región y está detenido: {{names}}",
+    "listBlind_other": "{{count}} checks solo se ejecutan desde esta región y están detenidos: {{names}}",
+    "listReduced_one": "{{count}} check sigue ejecutándose desde sus otras regiones.",
+    "listReduced_other": "{{count}} checks siguen ejecutándose desde sus otras regiones.",
+    "andMore": "{{names}} y {{count}} más",
+    "formWarning": "{{regions}} está fuera de línea. Un check que solo se ejecuta desde ella no correrá hasta que vuelva.",
+    "offlineBadge": "Fuera de línea"
+  }
 }

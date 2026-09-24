@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, WifiOff } from "lucide-react";
 import {
   useCheckValidationResult,
   getFieldError,
@@ -21,6 +21,7 @@ import {
   BrowserCapabilityIcon,
   browserCapability,
 } from "@/components/shared/browser-capability";
+import { isRegionOffline, offlineRegionNames } from "@/lib/region-outage";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import {
   calculateReopenCooldownSeconds,
@@ -872,6 +873,14 @@ export function CheckForm({
   // (a single region has nothing to stagger against) — mirrors the existing
   // regions-hint visibility gate below.
   const hasMultiRegionSpread = showRegions && selectedRegions.length > 1;
+
+  const selectedOfflineRegions = useMemo(
+    () =>
+      (availableRegions ?? []).filter(
+        (region) => selectedRegions.includes(region.slug) && isRegionOffline(region),
+      ),
+    [availableRegions, selectedRegions],
+  );
   const hasRegionSpreadInput = regionSpreadValue.trim() !== "";
   const regionSpreadSeconds = hasRegionSpreadInput
     ? Math.round(Number(regionSpreadValue) * regionSpreadUnitSeconds[regionSpreadUnit])
@@ -1616,6 +1625,15 @@ export function CheckForm({
                                 {t("form.privateRegionBadge")}
                               </Badge>
                             )}
+                            {isRegionOffline(region) && (
+                              <Badge
+                                variant="destructive"
+                                className="text-[10px]"
+                                data-testid={`region-offline-${region.slug}`}
+                              >
+                                {t("regionOutage.offlineBadge")}
+                              </Badge>
+                            )}
                             {/* Icon-only so it stays quiet next to the IPv6
                                 text badge — a second text badge would crowd
                                 the picker. Always meaningful for a browser
@@ -1643,6 +1661,19 @@ export function CheckForm({
                     })}
                   </div>
                   <p className="text-xs text-muted-foreground">{t("form.selectRegionsHint")}</p>
+                  {/* Warn before someone pins a check to a region the
+                      server holds as offline (spec 2026-09-25-03). Advisory:
+                      the region may be back by the time the check is saved. */}
+                  {selectedOfflineRegions.length > 0 && (
+                    <Alert variant="warning" className="mt-2" data-testid="check-regions-offline-warning">
+                      <WifiOff />
+                      <AlertDescription>
+                        {t("regionOutage.formWarning", {
+                          regions: offlineRegionNames(selectedOfflineRegions),
+                        })}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   {/* Advisory only (spec 2026-08-19-03): a browser check whose
                       selected regions report no headless Chrome. Never blocks
                       submit — the advertised value lags by a heartbeat, and

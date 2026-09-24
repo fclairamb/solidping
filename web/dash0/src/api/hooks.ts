@@ -278,6 +278,12 @@ export interface RegionDefinition {
    * three-state ("yes" / "no" / "unknown"). Omitted entirely by older servers;
    * an absent map means "unknown", never "no" (spec 2026-08-15-11). */
   capabilities?: Record<string, string>;
+  /** Cloud regions only (spec 2026-09-25-03): `offline` while the server's
+   * region sweep holds the region dark — jobs assigned, no live worker. Absent
+   * on private regions and on older servers; absent means running. */
+  status?: "online" | "offline";
+  /** When an offline region's last worker was seen. */
+  offlineSince?: string;
 }
 
 export interface CreateCheckRequest {

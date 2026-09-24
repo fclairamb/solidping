@@ -40,6 +40,8 @@
     "statuspage.incident.resolved": "Auf Statusseite behoben",
     "statuspage.subscriber.disabled": "Statusseiten-Abonnement deaktiviert",
     "statuspage.custom_domain.demoted": "Eigene Domain deaktiviert",
+    "region.offline": "Region offline",
+    "region.recovered": "Region wieder online",
     "status_update.created": "Statusupdate veröffentlicht",
     "status_update.updated": "Statusupdate bearbeitet",
     "status_update.deleted": "Statusupdate entfernt",
