@@ -138,21 +138,6 @@ func (c *RDPChecker) executeAuthenticated(
 ) *checkerdef.Result {
 	output["authenticated"] = true
 
-	// The concurrency cap lives here, around the whole session, and its wait
-	// counts against the check's own timeout — an execution that never gets a
-	// slot reports a timeout rather than queueing invisibly (the same rule as
-	// the browser slots).
-	release, acquired := acquireRDPSlot(ctx)
-	if !acquired {
-		output[checkerdef.OutputKeyError] =
-			"timed out waiting for a free RDP slot (at most 4 RDP logons run at a time on one worker)"
-
-		return &checkerdef.Result{
-			Status: checkerdef.StatusTimeout, Duration: time.Since(start), Metrics: metrics, Output: output,
-		}
-	}
-	defer release()
-
 	var conn net.Conn
 	if c.preDialedConn != nil {
 		var err error
@@ -176,6 +161,11 @@ func (c *RDPChecker) executeAuthenticated(
 			return errorResult(ctx, err, start, metrics, output, fmt.Sprintf("connection failed: %v", err))
 		}
 	}
+
+	// The concurrency cap lives in openRDPSession, around the whole session,
+	// and its wait counts against the check's own timeout — an execution that
+	// never gets a slot reports a timeout rather than queueing invisibly (the
+	// same rule as the browser slots). authErrorResult maps that verdict.
 
 	outcome, err := c.runAuthSession(ctx, cfg, conn)
 	if err != nil {
@@ -212,7 +202,7 @@ func (c *RDPChecker) runAuthSession(ctx context.Context, cfg *RDPConfig, conn ne
 		return c.authSession(ctx, cfg, conn)
 	}
 
-	session, err := openRDPSession(ctx, cfg, conn)
+	session, err := openRDPSession(ctx, cfg, 0, 0, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +210,7 @@ func (c *RDPChecker) runAuthSession(ctx context.Context, cfg *RDPConfig, conn ne
 	outcome := &authRunOutcome{endSession: cfg.EndSession}
 
 	if cfg.Screenshot {
-		if shot, shotErr := session.screenshotPNG(); shotErr != nil {
+		if shot, shotErr := session.ScreenshotPNG(); shotErr != nil {
 			// A capture failure is detail, not a verdict: the logon itself
 			// worked. The browser capture follows the same rule.
 			outcome.logoffErr = nil
@@ -245,15 +235,24 @@ func (c *RDPChecker) runAuthSession(ctx context.Context, cfg *RDPConfig, conn ne
 }
 
 // authErrorResult renders an authenticated-run failure with its distinct
-// machine code in the output.
+// machine code in the output. A slot timeout is NOT a target verdict: it maps
+// to a timeout verdict like the browser slot timeout does.
 func authErrorResult(
 	ctx context.Context, err error, start time.Time, metrics, output map[string]any,
 ) *checkerdef.Result {
-	var authErr *errAuthFailure
+	if errors.Is(err, ErrSlotTimeout) {
+		output[checkerdef.OutputKeyError] = err.Error()
+
+		return &checkerdef.Result{
+			Status: checkerdef.StatusTimeout, Duration: time.Since(start), Metrics: metrics, Output: output,
+		}
+	}
+
+	var authErr *ErrAuthFailure
 
 	var reason authFailure
 	if errors.As(err, &authErr) {
-		reason = authErr.reason
+		reason = authErr.Reason
 		output["failure_code"] = string(reason)
 	}
 

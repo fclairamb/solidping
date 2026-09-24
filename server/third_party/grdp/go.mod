@@ -1,6 +1,6 @@
 module github.com/fclairamb/solidping/server/third_party/grdp
 
-go 1.26.3
+go 1.26.0
 
 require (
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40

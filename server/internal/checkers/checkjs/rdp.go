@@ -244,16 +244,16 @@ func (r *jsRuntime) newRDPObject(session checkrdp.RDPSession) *goja.Object {
 		}
 
 		return r.rdpAction(func(execCtx context.Context) (map[string]any, error) {
-			timeout := time.Duration(timeoutMs) * time.Millisecond
-
-			ctx, cancel, err := r.callContext(map[string]any{"timeout": timeout})
+			// The raw millisecond number goes through callContext like every
+			// other per-call timeout option: a clamp, never a widening.
+			ctx, cancel, err := r.callContext(map[string]any{"timeout": timeoutMs})
 			if err != nil {
 				return nil, err
 			}
 
 			defer cancel()
 
-			if waitErr := session.WaitForChange(ctx, timeout); waitErr != nil {
+			if waitErr := session.WaitForChange(ctx, time.Duration(timeoutMs)*time.Millisecond); waitErr != nil {
 				return nil, waitErr
 			}
 
