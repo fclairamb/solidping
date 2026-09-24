@@ -168,7 +168,7 @@
   "slos": "SLO",
   "reportSchedules": "Rapports de dispo.",
   "audit": "Audit",
-  "parameters": "Paramètres",
+  "parameters": "Variables",
   "groups": {
     "monitoring": "Supervision",
     "alerting": "Alertes",

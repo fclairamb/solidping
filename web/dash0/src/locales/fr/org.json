@@ -394,17 +394,17 @@
     "toast": "Vous n'avez pas accès à {{requested}} — voici {{shown}} à la place."
   },
   "parameters": {
-    "title": "Paramètres",
+    "title": "Variables",
     "subtitle": "Des valeurs que vos checks référencent via ${param:CLE} au lieu de les committer dans un fichier.",
-    "add": "Ajouter un paramètre",
-    "addTitle": "Ajouter un paramètre",
+    "add": "Ajouter une variable",
+    "addTitle": "Ajouter une variable",
     "addDescription": "Choisissez une clé, puis référencez-la dans n'importe quelle chaîne de configuration via ${param:CLE}.",
     "rotate": "Renouveler",
-    "rotateTitle": "Renouveler le paramètre",
+    "rotateTitle": "Renouveler la variable",
     "rotateDescription": "La clé ne change pas : tous les checks qui la référencent continuent de fonctionner.",
     "created": "{{key}} créé",
     "rotated": "{{key}} renouvelé",
-    "saveFailed": "Impossible d'enregistrer le paramètre",
+    "saveFailed": "Impossible d'enregistrer la variable",
     "writeOnly": "Écriture seule",
     "keyInvalid": "Les clés sont en minuscules et commencent par une lettre : a-z, 0-9, point, tiret, souligné.",
     "secretLabel": "Secret",
@@ -416,14 +416,14 @@
       "updated": "Mis à jour"
     },
     "empty": {
-      "title": "Aucun paramètre",
-      "description": "Ajoutez-en un, puis référencez-le dans une configuration de check via ${param:CLE}."
+      "title": "Aucune variable",
+      "description": "Ajoutez-en une, puis référencez-la dans une configuration de check via ${param:CLE}."
     },
     "delete": {
-      "title": "Supprimer ce paramètre ?",
+      "title": "Supprimer cette variable ?",
       "description": "Tout check référençant ${param:{{key}}} échouera avec une référence de secret non résolue à sa prochaine exécution.",
-      "deleted": "Paramètre supprimé",
-      "failed": "Impossible de supprimer le paramètre"
+      "deleted": "Variable supprimée",
+      "failed": "Impossible de supprimer la variable"
     }
   }
 }

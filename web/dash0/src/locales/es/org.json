@@ -394,17 +394,17 @@
     "toast": "No tienes acceso a {{requested}}: se muestra {{shown}} en su lugar."
   },
   "parameters": {
-    "title": "Parámetros",
+    "title": "Variables",
     "subtitle": "Valores que tus checks referencian como ${param:CLAVE} en vez de confirmarlos en un archivo.",
-    "add": "Añadir parámetro",
-    "addTitle": "Añadir un parámetro",
+    "add": "Añadir variable",
+    "addTitle": "Añadir una variable",
     "addDescription": "Elige una clave y refiérela desde cualquier cadena de configuración como ${param:CLAVE}.",
     "rotate": "Rotar",
-    "rotateTitle": "Rotar parámetro",
+    "rotateTitle": "Rotar variable",
     "rotateDescription": "La clave no cambia, así que todos los checks que la referencian siguen funcionando.",
     "created": "{{key}} creado",
     "rotated": "{{key}} rotado",
-    "saveFailed": "No se pudo guardar el parámetro",
+    "saveFailed": "No se pudo guardar la variable",
     "writeOnly": "Solo escritura",
     "keyInvalid": "Las claves van en minúsculas y empiezan por una letra: a-z, 0-9, punto, guion, guion bajo.",
     "secretLabel": "Secreto",
@@ -416,14 +416,14 @@
       "updated": "Actualizado"
     },
     "empty": {
-      "title": "Todavía no hay parámetros",
-      "description": "Añade uno y refiérelo desde la configuración de un check como ${param:CLAVE}."
+      "title": "Todavía no hay variables",
+      "description": "Añade una y refiérela desde la configuración de un check como ${param:CLAVE}."
     },
     "delete": {
-      "title": "¿Eliminar este parámetro?",
+      "title": "¿Eliminar esta variable?",
       "description": "Cualquier check que referencie ${param:{{key}}} fallará con una referencia de secreto sin resolver en su próxima ejecución.",
-      "deleted": "Parámetro eliminado",
-      "failed": "No se pudo eliminar el parámetro"
+      "deleted": "Variable eliminada",
+      "failed": "No se pudo eliminar la variable"
     }
   }
 }

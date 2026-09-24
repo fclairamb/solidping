@@ -119,7 +119,7 @@ config:
 ```
 
 The reference is what is stored and what comes back out; the value is resolved
-when the check runs. Manage those values under **Organization → Parameters** or
+when the check runs. Manage those values under **Organization → Variables** or
 with `sp params set`.
 
 ## Validating in CI

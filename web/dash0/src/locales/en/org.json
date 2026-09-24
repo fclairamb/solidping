@@ -394,17 +394,17 @@
     "toast": "You don't have access to {{requested}} — showing {{shown}} instead."
   },
   "parameters": {
-    "title": "Parameters",
+    "title": "Variables",
     "subtitle": "Values your checks reference as ${param:KEY} instead of committing them to a file.",
-    "add": "Add parameter",
-    "addTitle": "Add a parameter",
+    "add": "Add variable",
+    "addTitle": "Add a variable",
     "addDescription": "Pick a key, then reference it from any check config string as ${param:KEY}.",
     "rotate": "Rotate",
-    "rotateTitle": "Rotate parameter",
+    "rotateTitle": "Rotate variable",
     "rotateDescription": "The key does not change, so every check that references it keeps working.",
     "created": "Created {{key}}",
     "rotated": "Rotated {{key}}",
-    "saveFailed": "Could not save the parameter",
+    "saveFailed": "Could not save the variable",
     "writeOnly": "Write-only",
     "keyInvalid": "Keys are lowercase and start with a letter: a-z, 0-9, dot, dash, underscore.",
     "secretLabel": "Secret",
@@ -416,14 +416,14 @@
       "updated": "Updated"
     },
     "empty": {
-      "title": "No parameters yet",
+      "title": "No variables yet",
       "description": "Add one, then reference it from a check config as ${param:KEY}."
     },
     "delete": {
-      "title": "Delete this parameter?",
+      "title": "Delete this variable?",
       "description": "Any check referencing ${param:{{key}}} will fail with an unresolved secret reference at its next run.",
-      "deleted": "Parameter deleted",
-      "failed": "Could not delete the parameter"
+      "deleted": "Variable deleted",
+      "failed": "Could not delete the variable"
     }
   }
 }
