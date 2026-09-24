@@ -24,6 +24,8 @@
   "today": "Heute",
   "uptime": "Verfügbarkeit",
   "noData": "Keine Daten",
+  "noDataLastChecked": "Keine Daten, zuletzt geprüft {{time}}",
+  "measuredCoverage": "{{pct}} % des Zeitraums gemessen",
   "responseTime": "Antwortzeit",
   "unknownRegion": "Unbekannte Region",
   "switchToDarkMode": "Zum dunklen Modus wechseln",

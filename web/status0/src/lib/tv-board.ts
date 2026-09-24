@@ -369,6 +369,10 @@ function resourceRank(status: string): number {
     case "up":
     case "operational":
       return 0;
+    case "stale":
+      // "No data" (spec 2026-09-25-02): nobody is measuring it, so it is named
+      // — never passed off as fine — but beneath a real failure.
+      return 1;
     default:
       // "abandoned", "unknown", and any status the server grows later. Worth
       // naming — the board is not green and this resource is not claiming to

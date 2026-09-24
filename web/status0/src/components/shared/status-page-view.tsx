@@ -42,6 +42,16 @@ function getStatusLabelKey(status: string) {
   return statusStyle(status).labelKey;
 }
 
+/** "13:41" for today, "24 Sep 13:41" otherwise — the wall-clock time a
+ * visitor compares against their own. */
+function formatLastChecked(iso: string, locale: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  if (date.toDateString() === now.toDateString()) return time;
+  return `${date.toLocaleDateString(locale, { day: "numeric", month: "short" })} ${time}`;
+}
+
 /**
  * Marks a subtree as "never machine-translate this".
  *
@@ -131,7 +141,7 @@ function ResourceCard({
   historyDays,
   affectedSeverities,
 }: ResourceCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const name = resource.publicName || resource.check?.name || t("unknown");
   const incidentSeverity = affectedSeverities.get(name);
   const isAffected = incidentSeverity !== undefined;
@@ -210,9 +220,17 @@ function ResourceCard({
             <Badge
               variant={getStatusBadgeVariant(status)}
               data-testid="resource-status-badge"
+              data-status={status}
               {...NO_TRANSLATE}
             >
-              {t(getStatusLabelKey(status))}
+              {/* A stale component says when it was last measured: "No
+                  data, last checked 13:41" — never "operational" (spec
+                  2026-09-25-02). */}
+              {status === "stale" && resource.check?.lastResultAt
+                ? t("noDataLastChecked", {
+                    time: formatLastChecked(resource.check.lastResultAt, i18n.language),
+                  })
+                : t(getStatusLabelKey(status))}
             </Badge>
           )}
         </div>

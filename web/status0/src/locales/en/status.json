@@ -24,6 +24,8 @@
   "today": "Today",
   "uptime": "uptime",
   "noData": "No data",
+  "noDataLastChecked": "No data, last checked {{time}}",
+  "measuredCoverage": "Measured {{pct}}% of the period",
   "responseTime": "Response Time",
   "unknownRegion": "Unknown region",
   "switchToDarkMode": "Switch to dark mode",
