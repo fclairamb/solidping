@@ -625,7 +625,8 @@
       "longestIncident": "Longest incident",
       "avgIncident": "Avg. incident",
       "none": "none",
-      "monitored": "{{days}}d monitored"
+      "monitored": "{{days}}d monitored",
+      "unmeasured": "{{duration}} unmeasured"
     },
     "checkDetails": "Check Details",
     "pendingFirstRun": "Pending first run…",
@@ -730,6 +731,7 @@
       "windowAvailability": "{{pct}} availability",
       "noData": "No data",
       "probes": "{{up}} / {{total}} probes up",
+      "coverage": "Measured {{pct}}% of the interval",
       "status": {
         "up": "Up",
         "degraded": "Degraded",

@@ -33,6 +33,7 @@
   "detail": {
     "currentWindow": "Aktueller Zeitraum",
     "attainment": "Erreichung",
+    "lowCoverage": "{{pct}} % des Zeitraums gemessen",
     "target": "Zielwert",
     "budgetTotal": "Budget",
     "budgetConsumed": "Verbraucht",

@@ -72,6 +72,7 @@ import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboard
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { KpiTile } from "@/components/shared/kpi-tile";
 import { PageHeader } from "@/components/shared/page-header";
+import { statusStyle } from "@/lib/status-style";
 import { StatusBadge } from "@/components/shared/status-badge";
 
 const CHECK_POLL_MS = 30_000;
@@ -860,7 +861,9 @@ function ChecksGlanceList({
                                 ? "bg-emerald-500"
                                 : status === "warning"
                                   ? "bg-amber-500"
-                                  : "bg-destructive"
+                                  : status === "stale"
+                                    ? statusStyle(status).color
+                                    : "bg-destructive"
                           }`}
                         />
                       </span>

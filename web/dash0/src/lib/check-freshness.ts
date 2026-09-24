@@ -63,3 +63,37 @@ export function formatClockTime(iso: string, locale?: string, now: Date = new Da
   const day = date.toLocaleDateString(locale, { day: "numeric", month: "short" });
   return `${day} ${time}`;
 }
+
+/** Coverage below this is worth saying out loud in a tooltip: probes are never
+ * perfectly regular, so a few percent short is jitter, not a gap. */
+export const LOW_BUCKET_COVERAGE = 0.9;
+
+/**
+ * How much of one availability bucket was actually measured, as a whole
+ * percentage: probes received ÷ probes expected, where expected is the
+ * bucket's elapsed length (clamped to the check's creation and to now) times
+ * `probesPerSecond` = max(1, regions) / period (spec 2026-09-25-02). Kept out
+ * of the server's size-capped bucket struct on purpose — the client already
+ * knows the period and the regions. null when nothing was expected.
+ */
+export function bucketCoveragePct(
+  cell: { periodStart: string; periodEnd: string; totalChecks: number },
+  probesPerSecond: number | undefined,
+  options: { now?: number; measuredFrom?: string } = {},
+): number | null {
+  if (!probesPerSecond || probesPerSecond <= 0) return null;
+  const now = options.now ?? Date.now();
+  let start = new Date(cell.periodStart).getTime();
+  const end = Math.min(new Date(cell.periodEnd).getTime(), now);
+  if (options.measuredFrom) start = Math.max(start, new Date(options.measuredFrom).getTime());
+  const seconds = (end - start) / 1000;
+  if (!(seconds > 0)) return null;
+  const expected = seconds * probesPerSecond;
+  return Math.round(Math.min(1, cell.totalChecks / expected) * 100);
+}
+
+/** max(1, regions) / period — how many results a check should produce per second. */
+export function probesPerSecond(periodMs: number | undefined, regionCount: number | undefined): number | undefined {
+  if (!periodMs || periodMs <= 0) return undefined;
+  return Math.max(1, regionCount ?? 0) / (periodMs / 1000);
+}

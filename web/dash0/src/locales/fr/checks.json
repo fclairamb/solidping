@@ -625,7 +625,8 @@
       "longestIncident": "Incident le plus long",
       "avgIncident": "Incident moyen",
       "none": "aucun",
-      "monitored": "{{days}} j surveillés"
+      "monitored": "{{days}} j surveillés",
+      "unmeasured": "{{duration}} non mesurées"
     },
     "checkDetails": "Détails du contrôle",
     "pendingFirstRun": "Première exécution en cours…",
@@ -730,6 +731,7 @@
       "windowAvailability": "{{pct}} de disponibilité",
       "noData": "Aucune donnée",
       "probes": "{{up}} / {{total}} sondes OK",
+      "coverage": "Mesuré sur {{pct}} % de l’intervalle",
       "status": {
         "up": "OK",
         "degraded": "Dégradé",

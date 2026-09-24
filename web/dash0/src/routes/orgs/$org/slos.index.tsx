@@ -34,6 +34,7 @@ import {
   formatAttainment,
   formatBudgetSeconds,
   formatTarget,
+  lowCoveragePct,
   sloBudgetBarClass,
   sloStateBadgeClass,
 } from "@/lib/slo-format";
@@ -52,6 +53,7 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
 
   const current = status?.current;
   const attainment = formatAttainment(current?.attainmentPct ?? null);
+  const lowCoverage = lowCoveragePct(current?.dataCoverage);
   const state = current?.state ?? "unknown";
 
   return (
@@ -86,8 +88,18 @@ function SloRow({ slo, org, onDelete }: { slo: Slo; org: string; onDelete: (slo:
         {isLoading ? (
           <Skeleton className="h-4 w-16" />
         ) : (
-          // Null attainment renders as an em dash. It is NOT 100%.
-          (attainment ?? <span className="text-muted-foreground">{t("detail.noData")}</span>)
+          <>
+            {/* Null attainment renders as an em dash. It is NOT 100%. */}
+            {attainment ?? <span className="text-muted-foreground">{t("detail.noData")}</span>}
+            {lowCoverage !== null && (
+              <div
+                className="text-xs text-amber-600 dark:text-amber-400"
+                data-testid="slo-row-low-coverage"
+              >
+                {t("detail.lowCoverage", { pct: lowCoverage })}
+              </div>
+            )}
+          </>
         )}
       </TableCell>
       <TableCell className="hidden min-w-[9rem] md:table-cell">

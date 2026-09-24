@@ -26,6 +26,8 @@ interface Check {
   uid: string;
   name: string;
   slug: string;
+  /** The derived check status; "stale" is "No data" (spec 2026-09-25-02). */
+  status?: string;
   lastResult?: LastResult;
   latency_ms?: number;
   last_check_at?: string;
@@ -45,6 +47,9 @@ async function fetchChecks(org: string): Promise<ChecksResponse> {
 }
 
 function getCheckStatus(check: Check): "ok" | "warning" | "error" | "unknown" {
+  // A stale check's newest raw row is history, not a reading (spec
+  // 2026-09-25-02): never let it read "ok".
+  if (check.status === "stale") return "unknown";
   if (!check.lastResult) return "unknown";
   const raw = check.lastResult.status;
   if (raw === "up") return "ok";

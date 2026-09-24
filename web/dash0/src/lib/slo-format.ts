@@ -121,3 +121,22 @@ export function formatWindowSeconds(seconds: number): string {
   const minutes = Math.max(1, Math.round(seconds / 60));
   return `${minutes}m`;
 }
+
+/**
+ * Coverage below this reads as "low" next to an SLO percentage: probes are
+ * never perfectly regular, so a few percent short is jitter, not a gap.
+ */
+export const LOW_DATA_COVERAGE = 0.9;
+
+/**
+ * The share of the window that was actually measured, as a whole percentage,
+ * when it is low enough to say so next to the attainment (spec 2026-09-25-02);
+ * null otherwise. An SLO computed over two thirds of a month must not read
+ * like a full month.
+ */
+export function lowCoveragePct(coverage: number | null | undefined): number | null {
+  if (coverage === null || coverage === undefined || coverage >= LOW_DATA_COVERAGE) {
+    return null;
+  }
+  return Math.round(coverage * 100);
+}

@@ -1533,6 +1533,14 @@ export interface CheckAvailabilityPeriod {
   totalChecks: number;
   successfulChecks: number;
   availabilityPct: number | null;
+  /**
+   * Received ÷ expected probes over the monitored time, in [0, 1] (spec
+   * 2026-09-25-02). null when nothing was expected; absent on older servers.
+   */
+  coverage?: number | null;
+  /** The part of monitoredSeconds nobody measured — neither up nor down. */
+  unmeasuredSeconds?: number;
+  /** Probe-time downtime over MEASURED time only. */
   downtimeSeconds: number;
   incidents: CheckAvailabilityIncidents;
 }
@@ -7872,6 +7880,12 @@ export interface SloStatusRow {
   budgetConsumedSeconds: number;
   budgetRemainingSeconds: number;
   excludedMaintenanceSeconds: number;
+  /**
+   * Received ÷ expected probes over the elapsed window, in [0, 1] (spec
+   * 2026-09-25-02). A low value means the attainment describes only part of
+   * the window — the rest was never measured. null/absent when unknown.
+   */
+  dataCoverage?: number | null;
   burnRate: number | null;
   projectedExhaustionAt: string | null;
   state: SloState;

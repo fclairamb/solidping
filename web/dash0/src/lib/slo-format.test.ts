@@ -6,6 +6,7 @@ import {
   formatAttainment,
   formatBudgetSeconds,
   formatTarget,
+  lowCoveragePct,
   sloStateBadgeClass,
 } from "./slo-format";
 
@@ -93,5 +94,19 @@ describe("sloStateBadgeClass", () => {
     ]);
     expect(classes.size).toBe(4);
     expect(sloStateBadgeClass("unknown")).toContain("muted");
+  });
+});
+
+describe("lowCoveragePct", () => {
+  it("says nothing for a (nearly) fully measured window", () => {
+    expect(lowCoveragePct(1)).toBeNull();
+    expect(lowCoveragePct(0.95)).toBeNull();
+    expect(lowCoveragePct(null)).toBeNull();
+    expect(lowCoveragePct(undefined)).toBeNull();
+  });
+
+  it("reports the measured share when a gap left part of the window unmeasured", () => {
+    expect(lowCoveragePct(2 / 3)).toBe(67);
+    expect(lowCoveragePct(0)).toBe(0);
   });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bucketCoveragePct,
   formatClockTime,
   lastRealResultAt,
+  probesPerSecond,
   regionsDisagree,
   splitFreshness,
 } from "@/lib/check-freshness";
@@ -59,5 +61,40 @@ describe("formatClockTime", () => {
     expect(formatClockTime(today, "en-GB", now)).toBe("13:41");
     expect(formatClockTime(yesterday, "en-GB", now)).toContain("13:41");
     expect(formatClockTime(yesterday, "en-GB", now)).toContain("23");
+  });
+});
+
+describe("bucketCoveragePct", () => {
+  const cell = {
+    periodStart: "2026-09-24T00:00:00Z",
+    periodEnd: "2026-09-25T00:00:00Z",
+    totalChecks: 960,
+  };
+  const now = new Date("2026-09-26T00:00:00Z").getTime();
+
+  it("compares received probes to max(1, regions) / period over the bucket", () => {
+    // 1-minute period, one region: 1440 expected, 960 received → 67%.
+    expect(bucketCoveragePct(cell, probesPerSecond(60_000, 1), { now })).toBe(67);
+    // Same count over two regions → a third.
+    expect(bucketCoveragePct(cell, probesPerSecond(60_000, 2), { now })).toBe(33);
+  });
+
+  it("clamps to the check's creation and to now, and caps at 100", () => {
+    expect(
+      bucketCoveragePct(cell, probesPerSecond(60_000, 1), {
+        now,
+        measuredFrom: "2026-09-24T08:00:00Z",
+      }),
+    ).toBe(100);
+    expect(
+      bucketCoveragePct({ ...cell, totalChecks: 10 }, probesPerSecond(60_000, 1), {
+        now: new Date("2026-09-24T00:10:00Z").getTime(),
+      }),
+    ).toBe(100);
+  });
+
+  it("has nothing to say without a period", () => {
+    expect(bucketCoveragePct(cell, undefined, { now })).toBeNull();
+    expect(probesPerSecond(undefined, 3)).toBeUndefined();
   });
 });

@@ -581,7 +581,8 @@
       "longestIncident": "Längster Vorfall",
       "avgIncident": "Durchschn. Vorfall",
       "none": "keiner",
-      "monitored": "{{days}} T überwacht"
+      "monitored": "{{days}} T überwacht",
+      "unmeasured": "{{duration}} nicht gemessen"
     },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",
@@ -686,6 +687,7 @@
       "windowAvailability": "{{pct}} Verfügbarkeit",
       "noData": "Keine Daten",
       "probes": "{{up}} / {{total}} Prüfungen erfolgreich",
+      "coverage": "{{pct}} % des Intervalls gemessen",
       "status": {
         "up": "Aktiv",
         "degraded": "Beeinträchtigt",
