@@ -109,6 +109,7 @@ import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
 import { isEvaluationOutput } from "@/components/checks/evaluation-card";
+import { isPassiveCheckType } from "@/lib/check-scheduling";
 import {
   JsonAssertionResultCard,
   JSON_ASSERTION_RESULT_OUTPUT_KEY,
@@ -918,14 +919,13 @@ function CheckDetailPage() {
   // we also pull `output` and badge the evaluations. Deliberately NOT widened
   // for other types: nothing else in this table needs the payload, and the
   // chart-window query (which fetches far more rows) is untouched.
-  const isPassiveCheckType =
-    check?.type === "heartbeat" || check?.type === "email";
+  const isPassiveCheck = isPassiveCheckType(check?.type);
 
   const { data: results } = useResults(org, {
     checkUid,
     size: 10,
     region: effectiveRegion,
-    with: isPassiveCheckType ? "durationMs,region,output" : "durationMs,region",
+    with: isPassiveCheck ? "durationMs,region,output" : "durationMs,region",
     refetchInterval,
   });
 
@@ -1950,7 +1950,7 @@ function CheckDetailPage() {
                   // always false elsewhere — no other type can be badged by
                   // accident (spec 2026-09-02-04).
                   const isEvaluationRow =
-                    isPassiveCheckType && isEvaluationOutput(result.output);
+                    isPassiveCheck && isEvaluationOutput(result.output);
 
                   return (
                     <TableRow

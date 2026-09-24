@@ -168,10 +168,6 @@ function ResultDetailPage() {
   const isEvaluation = isEvaluationOutput(
     data.output as Record<string, unknown> | undefined,
   );
-  const regionLabel = data.region
-    ? regionDisplayLabel(regionsData?.regions, data.region)
-    : undefined;
-
   // DNSBL zone/code fields get a dedicated DnsblCard below (human-readable
   // status codes), and the send-mode SMTP attribution fields get
   // EmailDeliveryCard; drop both from the raw JSON dump so nothing is shown
@@ -374,7 +370,6 @@ function ResultDetailPage() {
         checkType={check?.type}
         output={data.output as Record<string, unknown> | undefined}
         periodStart={data.periodStart}
-        regionLabel={regionLabel}
       />
 
       {hasCallerInfo && (

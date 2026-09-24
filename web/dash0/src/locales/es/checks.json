@@ -497,10 +497,8 @@
     "evaluation": {
       "badge": "Evaluación",
       "title": "Evaluación del planificador",
-      "explainerHeartbeat": "Esta fila la escribió el worker de comprobaciones {{region}} al evaluar la programación de la comprobación. No es un heartbeat: no llamó nadie en ese momento.",
-      "explainerEmail": "Esta fila la escribió el worker de comprobaciones {{region}} al evaluar la programación de la comprobación. No es un correo: no llegó ningún correo en ese momento.",
-      "explainerNoRegion": "Esta fila la escribió un worker de comprobaciones al evaluar la programación de la comprobación. No es un heartbeat: no llamó nadie en ese momento.",
-      "explainerEmailNoRegion": "Esta fila la escribió un worker de comprobaciones al evaluar la programación de la comprobación. No es un correo: no llegó ningún correo en ese momento.",
+      "explainerHeartbeat": "Evaluado por SolidPing en cada periodo, según la programación de la comprobación. No es un heartbeat: no llamó nadie en ese momento.",
+      "explainerEmail": "Evaluado por SolidPing en cada periodo, según la programación de la comprobación. No es un correo: no llegó ningún correo en ese momento.",
       "lastSignal": "Última señal",
       "before": "{{duration}} antes de esta evaluación",
       "overdueBy": "Retraso de",

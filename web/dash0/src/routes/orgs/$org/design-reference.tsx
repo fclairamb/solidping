@@ -3839,14 +3839,14 @@ function DataDisplaySection() {
         <EvaluationCardExample />
       </div>
       <CodeSnippet
-        code={`import {\n  EvaluationCard,\n  EVALUATION_OUTPUT_KEYS,\n  isEvaluationOutput,\n} from "@/components/checks/evaluation-card";\n\n<EvaluationCard\n  org={org}\n  checkUid={checkUid}\n  checkType={check?.type}\n  output={result.output}\n  periodStart={result.periodStart}\n  regionLabel={regionDisplayLabel(regions, result.region)}\n/>`}
+        code={`import {\n  EvaluationCard,\n  EVALUATION_OUTPUT_KEYS,\n  isEvaluationOutput,\n} from "@/components/checks/evaluation-card";\n\n<EvaluationCard\n  org={org}\n  checkUid={checkUid}\n  checkType={check?.type}\n  output={result.output}\n  periodStart={result.periodStart}\n/>`}
       />
     </Section>
   );
 }
 
 /* A live EvaluationCard on a synthetic evaluation row: an on-time heartbeat
- * evaluated by the eu-west worker 12 s after the beat it read. */
+ * evaluated by SolidPing 12 s after the beat it read. */
 function EvaluationCardExample() {
   return (
     <div className="max-w-xl">
@@ -3855,7 +3855,6 @@ function EvaluationCardExample() {
         checkUid="00000000-0000-7000-8000-00000000cafe"
         checkType="heartbeat"
         periodStart="2026-09-02T12:36:50.000Z"
-        regionLabel="🇪🇺 EU West"
         output={{
           message: "Heartbeat on time",
           evaluation: true,

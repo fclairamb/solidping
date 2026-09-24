@@ -10,7 +10,8 @@ import {
 /**
  * Spec 2026-09-02-04: a heartbeat check writes two kinds of raw row that used
  * to be indistinguishable — the BEAT the caller sent, and the SCHEDULER
- * EVALUATION a checks worker writes every period. Both read "Heartbeat
+ * EVALUATION SolidPing writes every period (on the jobs node since spec
+ * 2026-09-25-04; a regional checks worker before that). Both read "Heartbeat
  * received" with status Up, so opening the evaluation row that lands seconds
  * after a ping showed no Caller card and read as "my ping was not recorded".
  *
@@ -65,48 +66,38 @@ test.describe("Heartbeat evaluation rows are distinguishable from beats", () => 
   test("real flow: the evaluation row is badged and explains itself, the beat is not", async ({
     authenticatedPage,
   }) => {
+    // The evaluation now runs on the jobs node, and a heartbeat with no signal
+    // at all stays `created` for two periods with nothing written (spec
+    // 2026-09-25-04). So the flow is: beat first, then the next evaluation,
+    // which reads that beat. A 10 s period (the global floor) keeps that
+    // evaluation within seconds; the 60 s budget covers the worst case of the
+    // jobs node sweeping between creation and the beat (grace, then the next
+    // tick).
+    test.setTimeout(60_000);
+
     const page = authenticatedPage;
     const token = await getAuthToken(page);
 
-    // A one-hour period means exactly ONE scheduler evaluation can run inside
-    // this test: the one that fires ~1 s after creation. Anything shorter and
-    // the table would fill with evaluations while the test runs, and "exactly
-    // one of each" would be a race.
     const check = await createHeartbeatCheck(
       page,
       token,
       `E2E Evaluation Rows ${Date.now()}`,
       undefined,
-      "01:00:00",
+      "00:00:10",
     );
 
     const readResults = async (): Promise<
-      { uid: string; output?: Record<string, unknown> }[]
+      { uid: string; region?: string | null; output?: Record<string, unknown> }[]
     > => {
       const resp = await page.request.get(
-        `${API_BASE}/api/v1/orgs/test/results?checkUid=${check.uid}&with=output&limit=50`,
+        `${API_BASE}/api/v1/orgs/test/results?checkUid=${check.uid}&with=output,region&limit=50`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const body = await resp.json();
       return body.data ?? [];
     };
 
-    // 1. Wait for the creation-time evaluation row (status down — nothing has
-    //    pinged yet). It lands within ~1 s of check creation.
-    let evaluationRowUid = "";
-    await expect
-      .poll(
-        async () => {
-          const rows = await readResults();
-          const found = rows.find((row) => row.output?.evaluation === true);
-          evaluationRowUid = found?.uid ?? "";
-          return Boolean(found);
-        },
-        { timeout: 30_000, message: "the creation-time evaluation row never appeared" },
-      )
-      .toBe(true);
-
-    // 2. Only THEN send the beat, so the two rows can't be confused by order.
+    // 1. The beat.
     const beat = await page.request.get(
       `${API_BASE}/api/v1/heartbeat/test/${check.uid}?token=${check.hbToken}`,
     );
@@ -123,7 +114,27 @@ test.describe("Heartbeat evaluation rows are distinguishable from beats", () => 
           beatRowUid = found?.uid ?? "";
           return Boolean(found);
         },
-        { timeout: 30_000, message: "the beat row never appeared" },
+        { timeout: 10_000, message: "the beat row never appeared" },
+      )
+      .toBe(true);
+
+    // 2. The evaluation that read it: marked, pointing at the beat, and with
+    //    no region (it ran on the jobs node, not in a region).
+    let evaluationRowUid = "";
+    await expect
+      .poll(
+        async () => {
+          const rows = await readResults();
+          const found = rows.find(
+            (row) =>
+              row.output?.evaluation === true &&
+              row.output?.lastSignalResultUid === beatRowUid,
+          );
+          evaluationRowUid = found?.uid ?? "";
+          if (found) expect(found.region ?? null).toBeNull();
+          return Boolean(found);
+        },
+        { timeout: 40_000, message: "no evaluation of the beat ever appeared" },
       )
       .toBe(true);
 
@@ -131,27 +142,28 @@ test.describe("Heartbeat evaluation rows are distinguishable from beats", () => 
     await page.goto(`orgs/test/checks/${check.uid}`);
     await page.waitForLoadState("networkidle");
 
-    // Exactly one evaluation badge: the beat must NOT be badged.
-    const badges = page.locator('[data-testid^="result-evaluation-badge-"]');
-    await expect(badges).toHaveCount(1);
+    // The evaluation is badged; the beat is not. (A 10 s period can add more
+    // evaluations while the test runs, so no exact count.)
     await expect(
       page.getByTestId(`result-evaluation-badge-${evaluationRowUid}`),
     ).toBeVisible();
+    await expect(
+      page.getByTestId(`result-evaluation-badge-${beatRowUid}`),
+    ).toHaveCount(0);
 
-    // The evaluation row explains itself and offers no Caller card — the beat
-    // it would point at does not exist yet at the moment it was written.
+    // The evaluation row explains itself (evaluated by SolidPing, not by a
+    // regional worker), points at the beat, and offers no Caller card.
     await page.getByTestId(`result-row-${evaluationRowUid}`).click();
     await page.waitForURL(`**/results/${evaluationRowUid}**`, { timeout: 10000 });
-    await expect(page.getByTestId("evaluation-card")).toBeVisible();
-    await expect(page.getByTestId("evaluation-no-signal")).toBeVisible();
+    const card = page.getByTestId("evaluation-card");
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("Evaluated by SolidPing every period");
+    await expect(page.getByTestId("evaluation-last-signal")).toBeVisible();
     await expect(page.getByTestId("caller-card")).toHaveCount(0);
 
     // The beat is the mirror image: a Caller card with the source IP, and no
     // evaluation card or badge anywhere.
-    await page.goBack();
-    await page.waitForURL(`**/checks/${check.uid}**`, { timeout: 10000 });
-    await page.waitForLoadState("networkidle");
-    await page.getByTestId(`result-row-${beatRowUid}`).click();
+    await page.getByTestId("evaluation-open-signal").click();
     await page.waitForURL(`**/results/${beatRowUid}**`, { timeout: 10000 });
     await expect(page.getByTestId("caller-card")).toBeVisible();
     await expect(page.getByTestId("caller-card")).toContainText("Source IP");

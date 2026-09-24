@@ -541,10 +541,8 @@
     "evaluation": {
       "badge": "Évaluation",
       "title": "Évaluation du planificateur",
-      "explainerHeartbeat": "Cette ligne a été écrite par le worker de contrôles {{region}} lorsqu'il a évalué la planification du contrôle. Ce n'est pas un heartbeat — rien n'a appelé à cet instant.",
-      "explainerEmail": "Cette ligne a été écrite par le worker de contrôles {{region}} lorsqu'il a évalué la planification du contrôle. Ce n'est pas un e-mail — aucun e-mail n'est arrivé à cet instant.",
-      "explainerNoRegion": "Cette ligne a été écrite par un worker de contrôles lorsqu'il a évalué la planification du contrôle. Ce n'est pas un heartbeat — rien n'a appelé à cet instant.",
-      "explainerEmailNoRegion": "Cette ligne a été écrite par un worker de contrôles lorsqu'il a évalué la planification du contrôle. Ce n'est pas un e-mail — aucun e-mail n'est arrivé à cet instant.",
+      "explainerHeartbeat": "Évalué par SolidPing à chaque période, d'après la planification du contrôle. Ce n'est pas un heartbeat : rien n'a appelé à cet instant.",
+      "explainerEmail": "Évalué par SolidPing à chaque période, d'après la planification du contrôle. Ce n'est pas un e-mail : aucun e-mail n'est arrivé à cet instant.",
       "lastSignal": "Dernier signal",
       "before": "{{duration}} avant cette évaluation",
       "overdueBy": "En retard de",

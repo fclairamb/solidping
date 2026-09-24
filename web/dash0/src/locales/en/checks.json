@@ -541,10 +541,8 @@
     "evaluation": {
       "badge": "Evaluation",
       "title": "Scheduler evaluation",
-      "explainerHeartbeat": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
-      "explainerEmail": "This row was written by the {{region}} checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
-      "explainerNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not a heartbeat — nothing called in at this time.",
-      "explainerEmailNoRegion": "This row was written by a checks worker when it evaluated the check's schedule. It is not an email — no email arrived at this time.",
+      "explainerHeartbeat": "Evaluated by SolidPing every period, from the check's schedule. It is not a heartbeat: nothing called in at this time.",
+      "explainerEmail": "Evaluated by SolidPing every period, from the check's schedule. It is not an email: no email arrived at this time.",
       "lastSignal": "Last signal",
       "before": "{{duration}} before this evaluation",
       "overdueBy": "Overdue by",

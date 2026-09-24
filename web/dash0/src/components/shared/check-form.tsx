@@ -22,6 +22,7 @@ import {
   browserCapability,
 } from "@/components/shared/browser-capability";
 import { isRegionOffline, offlineRegionNames } from "@/lib/region-outage";
+import { isPassiveCheckType } from "@/lib/check-scheduling";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import {
   calculateReopenCooldownSeconds,
@@ -150,12 +151,6 @@ export const checkTypes: { value: CheckType; label: string; description: string;
   { value: "rdp", label: "RDP", description: "Monitor RDP (Remote Desktop) servers" },
   { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
-
-// isPassiveType reports whether a check type uses the "expected interval"
-// UX (heartbeat / email) rather than the active polling interval.
-function isPassiveType(t: CheckType): boolean {
-  return t === "heartbeat" || t === "email";
-}
 
 export type PeriodUnit = "minutes" | "hours" | "days" | "weeks";
 
@@ -487,7 +482,6 @@ export function CheckForm({
   }, [apiCheckTypes]);
 
   const initialType = (initialData?.type as CheckType) || "http";
-  const showRegions = (availableRegions?.length ?? 0) > 1;
 
 
   // Get period constraints for a given type
@@ -544,6 +538,13 @@ export function CheckForm({
   }
 
   const [type, setType] = useState<CheckType>(initialType);
+
+  // The region picker needs a choice to offer, and a check that can run from a
+  // region at all. A passive check (heartbeat / email) cannot: it makes no
+  // outbound request and is evaluated by SolidPing itself, on the jobs node,
+  // never inside a region (spec 2026-09-25-04). The server drops any region
+  // list sent for one, so the picker is hidden rather than left to lie.
+  const showRegions = (availableRegions?.length ?? 0) > 1 && !isPassiveCheckType(type);
 
   // Whether the selected type can tunnel is server-declared capability metadata
   // — never a hard-coded list here, so a checker gaining tunnel support needs
@@ -862,12 +863,12 @@ export function CheckForm({
   // lines. Active checks have a real cadence (the selected HMS interval); passive
   // checks (heartbeat / email) have no real probe cadence, so we pass 0 and the
   // estimate shows the duration only — never a probe count.
-  const estimateIntervalSeconds = isPassiveType(type) ? 0 : hmsToSeconds(period);
+  const estimateIntervalSeconds = isPassiveCheckType(type) ? 0 : hmsToSeconds(period);
 
   // Effective per-region period for the regions hint: since each selected
   // region runs the check at the FULL period (spec 2026-07-20-05), spell that
   // out so users understand multi-region multiplies coverage, not divides it.
-  const regionPeriodSeconds = hmsToSeconds(isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period);
+  const regionPeriodSeconds = hmsToSeconds(isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period);
 
   // Region Spread is only meaningful once 2+ regions are actually selected
   // (a single region has nothing to stagger against) — mirrors the existing
@@ -949,7 +950,7 @@ export function CheckForm({
   const activeSecretFields = checkTypeInfoMap.get(type)?.secretFields;
   const currentConfig = useMemo(() => {
     const shared: Record<string, unknown> = {};
-    if (!isPassiveType(type) && timeoutSeconds !== "") {
+    if (!isPassiveCheckType(type) && timeoutSeconds !== "") {
       const tv = parseInt(timeoutSeconds, 10);
       if (!isNaN(tv)) shared.timeout = `${tv}s`;
     }
@@ -994,11 +995,12 @@ export function CheckForm({
     {
       type,
       config: currentConfig,
-      regions: selectedRegions,
+      // A passive check has no regions (spec 2026-09-25-04).
+      regions: isPassiveCheckType(type) ? [] : selectedRegions,
       slug,
       // Passive checks have no probe cadence, so their "expected interval" is
       // not a schedule and must not be projected against the rate cap.
-      period: isPassiveType(type) ? undefined : period,
+      period: isPassiveCheckType(type) ? undefined : period,
       enabled,
       // On edit, the check must not collide with its own slug, and the rate
       // projection must replace its stored row rather than add a second one.
@@ -1066,7 +1068,7 @@ export function CheckForm({
     // set; an empty field omits the key entirely so clearing it on edit
     // removes it from config (the server caps at 30s and stays
     // authoritative).
-    if (!isPassiveType(type) && timeoutSeconds !== "") {
+    if (!isPassiveCheckType(type) && timeoutSeconds !== "") {
       const timeoutValue = parseInt(timeoutSeconds, 10);
       if (isNaN(timeoutValue) || timeoutValue < 1 || timeoutValue > 30) {
         setError(t("form.timeoutRangeError"));
@@ -1082,7 +1084,7 @@ export function CheckForm({
     }
 
     // Validate period against constraints
-    const periodSec = hmsToSeconds(isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period);
+    const periodSec = hmsToSeconds(isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period);
     const { minSec, maxSec } = getPeriodConstraints(type);
     if (periodSec < minSec) {
       setError(t("form.minIntervalError", { type, value: secondsToHMS(minSec) }));
@@ -1111,9 +1113,9 @@ export function CheckForm({
         // nothing on create (the check inherits by default).
         escalationPolicyUid:
           escalationPolicyUid || (mode === "edit" ? "" : undefined),
-        period: isPassiveType(type) ? formatPeriod(periodValue, periodUnit) : period,
+        period: isPassiveCheckType(type) ? formatPeriod(periodValue, periodUnit) : period,
         // Don't send config for passive edits — the token is managed by the backend
-        ...(isPassiveType(type) && mode === "edit" ? {} : { config }),
+        ...(isPassiveCheckType(type) && mode === "edit" ? {} : { config }),
         ...(showRegions ? { regions: selectedRegions } : {}),
         // Mirrors the checkGroupUid/escalationPolicyUid PATCH idiom: a
         // duration string sets the override, "" clears it back to automatic
@@ -1534,9 +1536,9 @@ export function CheckForm({
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="period">
-                  {isPassiveType(type) ? t("form.expectedInterval") : t("form.checkInterval")}
+                  {isPassiveCheckType(type) ? t("form.expectedInterval") : t("form.checkInterval")}
                 </Label>
-                {isPassiveType(type) ? (
+                {isPassiveCheckType(type) ? (
                   <div className="flex gap-2">
                     <Input id="period" type="number" min={1} value={periodValue}
                       onChange={(e) => setPeriodValue(parseInt(e.target.value, 10) || 1)}
@@ -1595,7 +1597,7 @@ export function CheckForm({
               </div>
 
               {showRegions && (
-                <div className="space-y-2">
+                <div className="space-y-2" data-testid="check-regions-picker">
                   <Label>{t("form.regions")}</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {orderedRegions.map((region) => {
@@ -2219,7 +2221,7 @@ export function CheckForm({
             </div>
           </CollapsibleSection>
 
-          {!isPassiveType(type) && (
+          {!isPassiveCheckType(type) && (
             <CollapsibleSection
               id="advanced"
               data-testid="section-advanced-trigger"

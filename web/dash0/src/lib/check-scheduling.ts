@@ -32,6 +32,11 @@ export const PERIOD_STEP_SECONDS = [
  * execution budget and can never be the reason an org is throttled. It is
  * therefore excluded from this page entirely — listing it would invite users
  * to slow down checks that cost them nothing.
+ *
+ * This is dash0's ONE definition of "passive" (spec 2026-09-25-04): the check
+ * form (which hides the region picker for these types, since they are
+ * evaluated by SolidPing itself and never run inside a region) and the check
+ * detail page import it rather than keep their own copy.
  */
 export function isPassiveCheckType(type?: string | null): boolean {
   return type === "heartbeat" || type === "email";

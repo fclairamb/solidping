@@ -497,10 +497,8 @@
     "evaluation": {
       "badge": "Auswertung",
       "title": "Auswertung durch den Planer",
-      "explainerHeartbeat": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
-      "explainerEmail": "Diese Zeile wurde vom Prüf-Worker {{region}} geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
-      "explainerNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist kein Heartbeat — zu diesem Zeitpunkt hat sich nichts gemeldet.",
-      "explainerEmailNoRegion": "Diese Zeile wurde von einem Prüf-Worker geschrieben, als er den Zeitplan der Prüfung ausgewertet hat. Sie ist keine E-Mail — zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
+      "explainerHeartbeat": "Von SolidPing in jeder Periode anhand des Zeitplans der Prüfung ausgewertet. Diese Zeile ist kein Heartbeat: Zu diesem Zeitpunkt hat sich nichts gemeldet.",
+      "explainerEmail": "Von SolidPing in jeder Periode anhand des Zeitplans der Prüfung ausgewertet. Diese Zeile ist keine E-Mail: Zu diesem Zeitpunkt ist keine E-Mail eingegangen.",
       "lastSignal": "Letztes Signal",
       "before": "{{duration}} vor dieser Auswertung",
       "overdueBy": "Überfällig seit",
