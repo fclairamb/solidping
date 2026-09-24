@@ -166,6 +166,9 @@
     "escalated": "Escaladé",
     "reopenedRelapse": "Rouvert (rechute n°{{count}})",
     "resolved": "Résolu",
+    "monitoringInterrupted": "Surveillance interrompue",
+    "monitoringInterruptedSince": "Surveillance interrompue depuis {{time}}",
+    "monitoringResumed": "Surveillance reprise",
     "acknowledgedBy": "par {{name}}",
     "acknowledgedByVia": "par {{name}} via {{channel}}",
     "ackChannels": {

@@ -753,7 +753,7 @@ function CommentsCard({
 }
 
 function IncidentDetailPage() {
-  const { t } = useTranslation("incidents");
+  const { t, i18n } = useTranslation("incidents");
   const { t: tEvents } = useTranslation("events");
   const { org, incidentUid } = Route.useParams();
   const navigate = useNavigate();
@@ -1136,6 +1136,41 @@ function IncidentDetailPage() {
                   icon={getEventIcon("incident.reopened")}
                 />
               )}
+              {/* The check stopped producing results while this incident was
+                  open, and came back (spec 2026-09-25-02). The incident stays
+                  open through the gap: no data is not a recovery. */}
+              {(events?.data ?? [])
+                .filter(
+                  (e) =>
+                    e.eventType === "incident.monitoring_interrupted" ||
+                    e.eventType === "incident.monitoring_resumed",
+                )
+                .slice()
+                .sort(
+                  (a, b) =>
+                    new Date(a.createdAt ?? 0).getTime() -
+                    new Date(b.createdAt ?? 0).getTime(),
+                )
+                .map((e) => (
+                  <TimelineItem
+                    key={e.uid}
+                    label={
+                      e.eventType === "incident.monitoring_interrupted" &&
+                      typeof e.payload?.since === "string"
+                        ? t("timeline.monitoringInterruptedSince", {
+                            time: new Date(e.payload.since).toLocaleTimeString(i18n.language, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }),
+                          })
+                        : e.eventType === "incident.monitoring_interrupted"
+                          ? t("timeline.monitoringInterrupted")
+                          : t("timeline.monitoringResumed")
+                    }
+                    timestamp={e.createdAt}
+                    icon={getEventIcon(e.eventType)}
+                  />
+                ))}
               {incident.resolvedAt && (
                 <TimelineItem
                   label={t("timeline.resolved")}
