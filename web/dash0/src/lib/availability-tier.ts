@@ -22,3 +22,18 @@ export function availabilityTier(pct: number | null): AvailabilityTier {
   if (pct >= AVAILABILITY_DEGRADED_PCT) return "degraded";
   return "down";
 }
+
+/**
+ * The tier badge on the dashboard's hero availability tile (spec
+ * 2026-09-24-02): a SOLID white chip, identical in both themes, carrying the
+ * tier's light-theme text color. A pale translucent status badge would lose
+ * its meaning on the gradient. Each text color reads >= 4.5:1 on white at the
+ * badge's 11px (kpi-tile.test.tsx checks it): emerald-700, amber-700, and
+ * red-700 for "down" because the light --destructive is only 4.41:1 on white.
+ */
+export const AVAILABILITY_TIER_HERO_BADGE: Record<AvailabilityTier, string> = {
+  noData: "bg-white text-slate-600",
+  operational: "bg-white text-emerald-700",
+  degraded: "bg-white text-amber-700",
+  down: "bg-white text-red-700",
+};
