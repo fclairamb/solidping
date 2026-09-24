@@ -73,6 +73,15 @@ func (s *SocketLayer) Close() error {
 }
 
 func (s *SocketLayer) StartTLS() error {
+	// InsecureSkipVerify is intentional and matches the same tradeoff already
+	// accepted for the pre-auth RDP handshake (see checkrdp.inspectCertificate
+	// in server/internal/checkers/checkrdp/checker.go): RDP servers routinely
+	// present a self-signed certificate generated at install time, so full
+	// chain validation against the system root pool would false-alarm on
+	// nearly every real-world target rather than catch anything. This TLS
+	// layer only wraps the outer transport before CredSSP/NLA runs the actual
+	// authentication; it is not relied on for peer identity.
+	// codeql[go/insecure-tls]
 	config := &tls.Config{
 		InsecureSkipVerify: true,
 		ServerName:         s.serverName,

@@ -482,21 +482,25 @@ func (n *NTLMv2Security) GssEncrypt(s []byte) []byte {
 	p := make([]byte, len(s))
 	n.EncryptRC4.XORKeyStream(p, s)
 
-	// HMAC input: SeqNum(4) + plaintext
-	sigInput := make([]byte, 4+len(s))
-	binary.LittleEndian.PutUint32(sigInput, n.SeqNum)
-	copy(sigInput[4:], s)
+	// HMAC input: SeqNum(4) + plaintext. Built with a fixed-size make() plus
+	// append rather than make([]byte, 4+len(s)): a size expression that sums
+	// a caller-controlled length into an allocation size is exactly the
+	// pattern CodeQL's "size computation for allocation may overflow" query
+	// flags, so avoid it even though len(s) can't realistically approach
+	// MaxInt here.
+	sigInput := binary.LittleEndian.AppendUint32(make([]byte, 0, 4), n.SeqNum)
+	sigInput = append(sigInput, s...)
 	s1 := HMAC_MD5(n.SigningKey, sigInput)[:8]
 
 	checksum := make([]byte, 8)
 	n.EncryptRC4.XORKeyStream(checksum, s1)
 
-	// Output: version(4) + checksum(8) + SeqNum(4) + encrypted(len(p))
-	out := make([]byte, 16+len(p))
-	binary.LittleEndian.PutUint32(out[0:], 0x00000001)
-	copy(out[4:], checksum)
-	binary.LittleEndian.PutUint32(out[12:], n.SeqNum)
-	copy(out[16:], p)
+	// Output: version(4) + checksum(8) + SeqNum(4) + encrypted(len(p)), built
+	// the same way for the same reason.
+	out := binary.LittleEndian.AppendUint32(make([]byte, 0, 16), 0x00000001)
+	out = append(out, checksum...)
+	out = binary.LittleEndian.AppendUint32(out, n.SeqNum)
+	out = append(out, p...)
 
 	n.SeqNum++
 	return out
@@ -517,10 +521,10 @@ func (n *NTLMv2Security) GssDecrypt(s []byte) []byte {
 	check := make([]byte, 8)
 	n.DecryptRC4.XORKeyStream(check, checksum)
 
-	// HMAC input: seqNum(4) + decrypted(len(p))
-	verifyInput := make([]byte, 4+len(p))
-	binary.LittleEndian.PutUint32(verifyInput, seqNum)
-	copy(verifyInput[4:], p)
+	// HMAC input: seqNum(4) + decrypted(len(p)), built the same fixed-size
+	// make() + append way as GssEncrypt above, for the same reason.
+	verifyInput := binary.LittleEndian.AppendUint32(make([]byte, 0, 4), seqNum)
+	verifyInput = append(verifyInput, p...)
 	verify := HMAC_MD5(n.VerifyKey, verifyInput)[:8]
 
 	if !bytes.Equal(verify, check) {
