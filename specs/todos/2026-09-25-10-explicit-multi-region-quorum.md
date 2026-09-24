@@ -142,3 +142,159 @@ its own new fields — a setting nobody can see or set is not shipped:
   per-region result data where it already exists (`regionFreshness`) rather
   than building a second one, and must account for auto re-placement
   changing a check's region set out from under stored per-region state.
+
+## Implementation Plan
+
+### Core decision: `all` keeps today's per-result state machine, byte for byte
+
+The spec defines `all` as "today's behavior, made explicit", and requires the
+N ≤ 2 default to keep today's incident timing exactly. Today's rule is not a
+set rule ("all regions failing"), it is a per-result one: any passing result
+from any region clears the confirmation clock. A set-based evaluation with
+Q = N would move the clock start (it would start when the last region fails,
+not at the first failure after the last success), so it cannot be
+equivalent.
+
+So the effective quorum Q is resolved against the check's current region
+count N, and:
+
+- **Legacy mode** (N ≤ 1, a passive/regionless check, or Q ≥ N — this is every
+  N ≤ 2 default, `majority` of 2, and an explicit `all`): the result's own
+  status drives `ProcessCheckResult` exactly as today. The code path is the
+  unchanged one; the new inputs it gains (`regional`, `openable`) take values
+  that reduce every expression to its previous form.
+- **Quorum mode** (N ≥ 2 and Q < N): the check's signal is derived from the
+  per-region states, not from the result.
+
+### B1. Per-region state
+
+- New table `check_region_states` (both engines, new `-- SECTION:
+  multi-region-quorum` in the unreleased `024_v0_33_0` up/down):
+  `(check_uid, region)` primary key, `organization_uid`, `status` (the result
+  status of the region's newest real result), `status_since` (when the region
+  entered its current passing/failing side), `last_result_at`, `updated_at`.
+  FKs cascade on check/org delete.
+- Written by `ProcessCheckResult` for every real result that carries a region,
+  on a non-passive check with 2+ regions (single-region checks do not pay the
+  write; they have nothing to agree with). One upsert, guarded so an older
+  result processed late never overwrites a newer one. Written also inside a
+  maintenance window (it is an observation, not an incident decision), after
+  the freshness prelude (`freshnessAndMaintenance`) so the prelude's touch and
+  live-row read stay first. Best-effort: a failed write is logged.
+- The freshness prelude's live-row read (`CheckLiveState`) also returns
+  `regions` and `fail_quorum`, so quorum always evaluates the check's CURRENT
+  regions and setting, never a claim-time snapshot taken before an auto
+  re-placement.
+- **Placement interaction (resolved question):** quorum only counts rows whose
+  region is in the live `checks.regions`. Rows of a region the check left stay
+  in storage and are ignored. A current region with no row yet (just placed)
+  counts as unknown, never failing. Also ignored: a row older than the check's
+  staleness threshold (`max(3 × period, 5 min)`, `models.StaleThreshold`) —
+  a silent region is the freshness feature's business, not evidence of
+  failure, and this is what keeps a row written before the check spent a week
+  in legacy mode from resurfacing.
+- The result being processed always overrides its own region's stored row in
+  the evaluation, so a lost or late upsert cannot make the current result
+  invisible to its own evaluation.
+
+### B2. `failQuorum`
+
+- Column `checks.fail_quorum text NULL` (CHECK: NULL, `all`, `majority` or a
+  positive integer). NULL = default.
+- Pure package `internal/regionquorum`: parse/validate the setting, resolve it
+  (`default` → N for N ≤ 2, majority for N ≥ 3; `majority` → ⌊N/2⌋+1; integer
+  k → min(k, N)), decide the mode, and `Evaluate(regions, states, quorum,
+  now, staleAfter)` → failing / passing / unknown regions. The incident engine,
+  the API's `regionalIssue` block and MCP all use this one function.
+- Wire value (`failQuorum`): `"default" | "all" | "majority" | <integer>`.
+  Decodes a JSON string or number (`2` and `"2"` both work); encodes keywords as
+  strings and a count as a number. Always emitted on a non-passive check.
+  `effectiveFailQuorum` (read-only) is the resolved count for the current
+  regions. Passive checks: the field is accepted and dropped, like regions.
+- Invalid values are a 400 `VALIDATION_ERROR`, code `INVALID_FAIL_QUORUM`,
+  through the shared `requestFieldFindings` (create, validate, upsert, update,
+  the import dry run and plan all agree). An integer larger than the region
+  count is accepted and clamped to N (the region count can change later under
+  auto placement; the clamp is what `effectiveFailQuorum` shows).
+
+### Quorum mode in `ProcessCheckResult`
+
+After the freshness prelude and the maintenance gate, when quorum mode applies
+and the result has a current region:
+
+| failing current regions F | effective signal | visible status |
+|---|---|---|
+| \|F\| ≥ Q | failure (arms/keeps `first_failure_at`, clears the recovery clock) | `validating` → `down` after confirmation |
+| 0 < \|F\| < Q | success for the clocks and the incident (clears the confirmation clock, arms the recovery clock, may resolve) | `warning` — the regional issue |
+| F = ∅ | the result's own status (up / checker warning) | `up` / `warning` |
+
+- An incident opens, and `failure_count` grows, only on a result that itself
+  failed. A passing region's result while the quorum is failing keeps the
+  status `validating` (never `down` without an incident behind it) and does
+  not open anything; a failing region's result opens it within one period.
+- Recovery mirrors the rule: the incident resolves once fewer than Q regions
+  have been failing for the (flap-aware) recovery period — the recovery clock
+  is armed by the first result with |F| < Q and cleared by any result with
+  |F| ≥ Q.
+- A result from a region that is no longer one of the check's regions (an
+  in-flight run after a re-placement) still updates its own row, but the
+  evaluation ignores that row. A result with no region falls back to legacy.
+- The confirmation hold (`holdForValidatingAncestor`) and the rollup code see
+  the same `down`/`validating` semantics as before; `warning` is outside
+  both, as it is today.
+
+### Surfaces
+
+- **Model/DB:** `Check.FailQuorum`, `CheckUpdate.FailQuorum/ClearFailQuorum`,
+  `CheckRegionState`, `db.Service.UpsertCheckRegionState /
+  ListCheckRegionStates` (both engines + the notifications test mock).
+- **API:** `failQuorum` on Create/Update/Upsert/Validate requests and on the
+  check response, `effectiveFailQuorum` on the response; clone copies it.
+  `with=region_freshness` (the detail's existing per-region surface) gains,
+  per region, `status` and `statusSince` from `check_region_states`, and a
+  check-level `regionalIssue {failingRegions, failQuorum, regionCount}` when
+  the check is in quorum mode with some but fewer than Q regions failing.
+- **OpenAPI:** `failQuorum` (oneOf string enum / integer) on `Check`,
+  `CreateCheckRequest`, `UpdateCheckRequest`, `UpsertCheckRequest`,
+  `ValidateCheckRequest`; `effectiveFailQuorum`, `regionalIssue`, the new
+  `RegionFreshness` fields. `pkg/client` is not regenerated (batch
+  convention).
+- **MCP:** `failQuorum` on `create_check` / `update_check`; `diagnose_check`
+  reports a regional issue.
+- **Config-as-code:** export v2 carries `failQuorum` (omitted when default),
+  import/upsert passes it, the plan diff compares it, dry run and apply agree.
+- **dash0:** check detail shows the per-region state (up / failing since …)
+  and a distinct "Regional issue" callout (failing regions, "1 of 3 regions
+  failing, quorum 2") that never reads as `down`, `up` or `stale`; the check
+  form gets a "Failure quorum" select (Default / All regions / Majority /
+  Custom count) defaulting to Default, with the resolved value for the
+  current region count shown next to it; design-reference entry; 4 locales.
+- **status0:** no change (resolved question): a regional issue is a plain
+  `warning` there.
+- **Docs/wiki:** `web/docs` region-placement page gains a quorum section;
+  `wiki/competitors/positioning.md` dated correction updated to say
+  multi-region quorum now ships.
+
+### Tests
+
+- `regionquorum` unit tests: parsing, wire encoding, resolution per N, mode,
+  evaluation (non-current and stale rows ignored, unknown regions).
+- Incident engine (SQLite, plus a Postgres twin of the core scenarios):
+  1. N=3 default: one region failing → `warning`, no incident, for longer
+     than the confirmation period; a second region failing past confirmation
+     → `down` + incident.
+  2. N=4, `failQuorum: 2`: respected.
+  3. Recovery: fewer than Q failing for the recovery period resolves; a
+     relapse to Q inside the window resets the clock.
+  4. Auto re-placement: a failing region swapped out of `checks.regions`
+     does not count; the swapped-in region counts as unknown until it reports.
+  5. N ≤ 2 equivalence: a scripted N=2 timeline (alternating failure/success
+     never opens; continuous failure opens at exactly the confirmation
+     period; one success mid-window resets) produces the same statuses,
+     clocks and incident as the same timeline on a regionless check, and the
+     whole pre-existing incidents suite passes unchanged.
+- API/validation: create/update/validate/upsert accept `"all"`, `"majority"`,
+  `2`, `"2"`, `"default"`; refuse `0`, `"half"`, `true`; response round trip;
+  config-as-code export → plan → apply round trip with no diff.
+- dash0: unit test for the regional-issue helper; Playwright e2e for the form
+  field and the detail's regional-issue rendering.
