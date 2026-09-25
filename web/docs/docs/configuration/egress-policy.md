@@ -49,12 +49,13 @@ A target is refused when it **resolves** to one of these ranges:
 | `169.254.0.0/16` | Link-local, including the `169.254.169.254` cloud metadata endpoint |
 | `fc00::/7` | IPv6 unique local addresses |
 | `fe80::/10`, `fec0::/10` | IPv6 link-local and deprecated site-local |
-| `0.0.0.0/8`, `::` | "This network" and the unspecified address |
+| `0.0.0.0/8`, `::/96` | "This network", the unspecified address and deprecated IPv4-compatible IPv6 (`::a.b.c.d`) |
 | `192.0.0.0/24`, `198.18.0.0/15`, `100::/64` | Protocol assignments, benchmarking, discard |
 | `224.0.0.0/4`, `ff00::/8`, `240.0.0.0/4` | Multicast, reserved and broadcast |
 
-IPv4-mapped IPv6 addresses (`::ffff:10.0.0.1`) and NAT64 addresses
-(`64:ff9b::/96`) are judged by the IPv4 address they carry.
+IPv4-mapped IPv6 addresses (`::ffff:10.0.0.1`), NAT64 addresses
+(`64:ff9b::/96`) and 6to4 addresses (`2002::/16`) are judged by the IPv4
+address they carry.
 
 ## How it works
 
@@ -76,10 +77,14 @@ websockets, sub-checks) all go through the same guard.
 A refused check reports **Error** (not Down) with this message:
 
 ```
-target resolves to a non-public address, denied by egress policy: internal.acme.com (10.0.0.5);
+target resolves to a non-public address, denied by egress policy: internal.acme.com;
 an operator can allow private targets on this worker with SP_EGRESS_ALLOW_PRIVATE=true
 (system parameter egress.allow_private_targets)
 ```
+
+The message names the host you configured, never the address it resolved to:
+on a shared worker that address comes from the worker's internal DNS. The
+resolved address is only written to the server log.
 
 The result also carries `egress_denied: true`. No path trace is ever run
 towards a refused address.
@@ -93,17 +98,65 @@ towards a refused address.
 | js | Every `http`, socket and websocket call, and every sub-check |
 | dns, dnsbl | A custom `nameserver`. The worker's own system resolver is not a target and is not guarded |
 | freebox_line, kubernetes | The box's base URL, the cluster's API server |
-| browser, js `browser.open()` | The navigated URL, checked before Chrome loads it (see limits) |
+| browser, js `browser.open()` | The navigated URL before Chrome loads it, and the address of every response while the page loads (see limits) |
 | Any check with an [SSH tunnel](/features/ssh-tunnels) | The bastion. What the bastion reaches is its own network, not the worker's |
 | domain | Not guarded: it queries the registries' RDAP and WHOIS servers, not a host you choose |
 | heartbeat, email, private_location | Not guarded: passive, they make no outbound connection |
 
 ## Limits
 
-- **Browser checks** use Chrome's own network stack, which cannot be handed the
-  guard. SolidPing checks the URL a check navigates to before Chrome loads it,
-  which stops a check aimed at an internal URL. It does not stop a public page
-  that redirects to, or loads a resource from, a private address.
-- The policy is per process. A SaaS operator who needs a shared worker to reach
-  a private address should run that check from a private-location agent instead
-  of opening the whole worker.
+### Browser checks
+
+Chrome has its own network stack and resolver, so it cannot be handed the
+guard. Under an enforcing policy a browser check (or a script's
+`page.goto()`) gets three layers instead:
+
+1. **Before navigating**, the URL is read the way Chrome reads it. Only
+   `http`/`https` URLs with a host are accepted (`http:127.0.0.1/` is
+   refused). Legacy IPv4 spellings (`2130706433`, `0x7f000001`,
+   `0177.0.0.1`, `127.1`) are judged as the address they mean. A host that
+   resolves to a non-public address is refused, and so is a host that does
+   not resolve at all.
+2. **The approved address is pinned** for Chrome's resolver, so a DNS
+   answer that changes after the check (rebinding) never reaches Chrome.
+   This only happens when SolidPing starts Chrome itself for the check (no
+   `SP_CHECKERS_BROWSER_CDP_URL`). A remote Chrome is shared by every check
+   and its flags are fixed when it starts, so it cannot be pinned per check.
+   A script's `browser.open()` starts Chrome before the script says where it
+   will go, so script navigations are not pinned either.
+3. **While the page loads**, the address Chrome actually connected to is
+   checked for every response and every redirect: the main document,
+   subresources, `fetch`/XHR calls. The first non-public one fails the check
+   with the egress error. Nothing read from the page after that (title,
+   text, `evaluate`, screenshot) reaches the result.
+
+What this still does not stop:
+
+- **The request itself.** Layer 3 sees a response after it arrived. When
+  layers 1 and 2 could not apply (a remote Chrome that got a rebound DNS
+  answer, a redirect or subresource pointing at a private address, a
+  script's own navigation), Chrome has already sent that request. The
+  content never reaches the result, but a request with side effects has
+  happened.
+- **Requests that get no response** (connection refused, timeouts) are not
+  seen by layer 3. Their timing can still tell whether an internal address
+  answers.
+- **WebSocket connections opened by the page** do not report the address
+  they connected to and are not checked.
+
+### Outside the check workers
+
+The policy covers checks executed by the workers. A few calls about the same
+targets run in the API or jobs process and are not guarded yet:
+
+- Kubernetes cluster discovery and connection validation.
+- The Freebox pairing calls made when you connect a box.
+- Notification senders (webhooks and similar).
+
+These are tracked separately.
+
+### Scope
+
+The policy is per process. A SaaS operator who needs a shared worker to reach
+a private address should run that check from a private-location agent instead
+of opening the whole worker.
