@@ -165,6 +165,7 @@ func TestExecuteJob_EgressPolicyGuardsTheSSHBastion(t *testing.T) {
 	require.Equal(t, int(checkerdef.StatusError), *result.Status)
 	require.Equal(t, true, result.Output[checkerdef.OutputKeyTunnelFailed])
 	require.Contains(t, result.Output[checkerdef.OutputKeyError], "denied by egress policy")
+	require.Equal(t, true, result.Output[egress.OutputKeyDenied], "same normalization as any refusal")
 }
 
 // Placement: the guard is built from the config of the process that dials.

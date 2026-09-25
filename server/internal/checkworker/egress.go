@@ -6,6 +6,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
@@ -41,6 +42,26 @@ func (r *CheckWorker) withEgress(ctx context.Context) (context.Context, *egress.
 	ctx = egress.WithGuard(ctx, r.egressGuard)
 
 	return egress.WithRecorder(ctx)
+}
+
+// applyEgressDenial logs and applies the refusal an execution recorded, if
+// any. The resolved address is logged here, server-side only: the user-facing
+// message deliberately never carries it (see egress.DeniedError.Error).
+func (r *CheckWorker) applyEgressDenial(
+	ctx context.Context, checkJob *models.CheckJob, result *checkerdef.Result, denials *egress.Recorder,
+) {
+	denied := denials.Denied()
+	if denied == nil {
+		return
+	}
+
+	r.logger.InfoContext(ctx, "Check target refused by the egress policy",
+		"check_uid", checkJob.CheckUID,
+		"organization_uid", checkJob.OrganizationUID,
+		"host", denied.Host,
+		"resolved_ip", denied.IP.String())
+
+	applyEgressDenial(result, denied)
 }
 
 // applyEgressDenial rewrites the result of an execution the egress policy

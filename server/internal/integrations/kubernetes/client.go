@@ -15,6 +15,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -70,14 +72,7 @@ func ResolveClientset(
 		return nil, err
 	}
 
-	// A `kubernetes` check executing on a worker carries that worker's egress
-	// guard (spec 2026-09-25-19): the API server is a user-chosen target, so
-	// under an enforcing policy every connection to it dials through the
-	// guard (client-go negotiates TLS above Dial). Callers without a guard on
-	// their context (discovery, connection validation) are unchanged.
-	if guard := egress.FromContext(ctx); guard.Enforcing() {
-		restCfg.Dial = guard.DialContext
-	}
+	applyEgressGuard(ctx, restCfg)
 
 	return clientsetFactory(restCfg)
 }
@@ -236,6 +231,27 @@ func buildTokenConfig(
 	}
 
 	return cfg, nil
+}
+
+// applyEgressGuard routes a rest.Config through the egress guard carried by
+// ctx (spec 2026-09-25-19). A `kubernetes` check executing on a worker carries
+// that worker's guard: the API server is a user-chosen target, so under an
+// enforcing policy every connection to it dials through the guard (client-go
+// negotiates TLS above Dial).
+//
+// The proxy is switched off too: client-go otherwise defaults to
+// http.ProxyFromEnvironment, and with HTTPS_PROXY set the only connection the
+// guard would ever see is the one to the proxy, which then reaches the API
+// server on our behalf. Callers without a guard on their context (discovery,
+// connection validation) are unchanged.
+func applyEgressGuard(ctx context.Context, restCfg *rest.Config) {
+	guard := egress.FromContext(ctx)
+	if !guard.Enforcing() {
+		return
+	}
+
+	restCfg.Dial = guard.DialContext
+	restCfg.Proxy = func(*http.Request) (*url.URL, error) { return nil, nil } //nolint:nilnil // nil URL = no proxy
 }
 
 // inClusterConfig is indirected so tests can exercise the InCluster branch of

@@ -86,6 +86,7 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 		checkerdef.CheckTypePostgreSQL: {"host": host, "port": port, "username": "u", "database": "d"},
 		checkerdef.CheckTypeMySQL:      {"host": host, "port": port, "username": "u"},
 		checkerdef.CheckTypeMSSQL:      {"host": host, "port": port, "username": "u", "password": "p"},
+		checkerdef.CheckTypeOracle:     {"host": host, "port": port, "username": "u", "password": "p", "serviceName": "s"},
 		checkerdef.CheckTypeMongoDB:    {"host": host, "port": port, "timeout": "1s"},
 		checkerdef.CheckTypeClickHouse: {"host": host, "port": port},
 		checkerdef.CheckTypePOP3:       {"host": host, "port": port},

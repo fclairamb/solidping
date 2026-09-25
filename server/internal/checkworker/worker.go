@@ -1105,7 +1105,7 @@ func (r *CheckWorker) executeJob(
 		logger.WarnContext(ctx, "Tunnel setup failed; skipping probe",
 			"check_uid", checkJob.CheckUID, "error", tunnelErr)
 
-		return r.saveTunnelFailureResult(ctx, checkJob, tunnelErr, tunnel)
+		return r.saveTunnelFailureResult(ctx, checkJob, tunnelErr, tunnel, egressDenials)
 	}
 
 	if tunnel != nil {
@@ -1168,7 +1168,7 @@ func (r *CheckWorker) executeJob(
 	tunnel.annotate(result)
 
 	// A refused destination wins over whatever the checker made of it.
-	applyEgressDenial(result, egressDenials.Denied())
+	r.applyEgressDenial(ctx, checkJob, result, egressDenials)
 
 	// 5. Save result
 	// Use a fallback context for cleanup operations if the main context is canceled

@@ -94,3 +94,26 @@ return { status: "up" };
 	allowed := runEgressScript(t, egress.New(true), script)
 	r.Equal(checkerdef.StatusUp, allowed.Status, allowed.Output)
 }
+
+// websocket.connect goes through the guard too.
+func TestScriptWebSocketIsRefusedUnderAnEnforcingPolicy(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	server := startWSFixture(t, echoWSFrames)
+
+	script := fmt.Sprintf(`
+var ws = websocket.connect(%q);
+if (!ws.ok) return { status: "down", output: { error: ws.error } };
+ws.close();
+return { status: "up" };
+`, wsURL(server))
+
+	denied := runEgressScript(t, egress.New(false), script)
+	r.Equal(checkerdef.StatusDown, denied.Status)
+	r.Contains(fmt.Sprint(denied.Output["error"]), "denied by egress policy")
+
+	allowed := runEgressScript(t, egress.New(true), script)
+	r.Equal(checkerdef.StatusUp, allowed.Status, allowed.Output)
+}
