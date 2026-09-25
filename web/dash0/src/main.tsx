@@ -15,6 +15,7 @@ import {
 } from "@/lib/oauth-handoff";
 import { captureLandingAttribution } from "@/lib/attribution";
 import { registerServiceWorker } from "@/lib/service-worker";
+import { reactRootErrorOptions } from "@/lib/react-root-error-handling";
 import "@fontsource-variable/inter/index.css";
 import "@fontsource-variable/jetbrains-mono/index.css";
 import "./i18n";
@@ -153,7 +154,9 @@ function App() {
 const container = document.getElementById("root")!;
 type Root = ReturnType<typeof createRoot>;
 const w = window as unknown as { __reactRoot__?: Root };
-const root: Root = w.__reactRoot__ ?? createRoot(container);
+// See lib/react-root-error-handling.ts for why onCaughtError is overridden
+// (and onUncaughtError / onRecoverableError deliberately are not).
+const root: Root = w.__reactRoot__ ?? createRoot(container, reactRootErrorOptions);
 w.__reactRoot__ = root;
 root.render(
   <StrictMode>
