@@ -69,9 +69,19 @@ async function seedOrgLessMember(page: Page): Promise<string> {
 }
 
 test.describe("Org-less session switching into a member org", () => {
-  for (const start of ["org root", "another org's login page"] as const) {
+  for (const start of ["org root", "org root with a stale stored org", "another org's login page"] as const) {
     test(`from the ${start}: switches, renders, and keeps the session`, async ({ page }) => {
       const slug = await seedOrgLessMember(page);
+      if (start === "org root with a stale stored org") {
+        // A slug left in storage by an earlier session, naming the very org
+        // being opened. Trusted, it made the org-less token look already
+        // scoped to that org and the switch never ran; /auth/me must clear it.
+        await page.addInitScript((stale) => {
+          if (!localStorage.getItem("solidping_refresh_token")) {
+            localStorage.setItem("solidping_org", stale);
+          }
+        }, slug);
+      }
 
       const navigations: string[] = [];
       page.on("framenavigated", (frame) => {
@@ -102,7 +112,7 @@ test.describe("Org-less session switching into a member org", () => {
 
       // "another org's login page" is the report's path: the login page sees an
       // authenticated session and sends it to an org it can use.
-      await page.goto(start === "org root" ? `orgs/${slug}` : "orgs/test/login");
+      await page.goto(start === "another org's login page" ? "orgs/test/login" : `orgs/${slug}`);
 
       const switchResponse = await switched;
       expect(switchResponse.status()).toBe(200);

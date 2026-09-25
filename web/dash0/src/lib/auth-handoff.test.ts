@@ -7,6 +7,7 @@ vi.mock("@/api/client", () => ({
 
 import {
   exchangeHandoffCode,
+  handoffLandingState,
   membershipPendingNotice,
   resolveHandoffLanding,
 } from "./auth-handoff";
@@ -104,6 +105,27 @@ describe("a pending login that landed on the user's own org", () => {
     // An org-less session lands on /no-org, which already says it.
     expect(membershipPendingNotice({ membershipPending: "demo" }, "demo")).toBeNull();
     expect(membershipPendingNotice({ organization: own, membershipPending: "acmetech" }, undefined)).toBeNull();
+  });
+});
+
+describe("handoffLandingState", () => {
+  it("has nothing to do before a landing is resolved", () => {
+    expect(handoffLandingState(false, { isAuthenticated: true, isLoading: false })).toBe("none");
+  });
+
+  it("waits while the session is resolving", () => {
+    expect(handoffLandingState(true, { isAuthenticated: false, isLoading: true })).toBe("wait");
+    expect(handoffLandingState(true, { isAuthenticated: true, isLoading: true })).toBe("wait");
+  });
+
+  it("goes once the stored session is authenticated", () => {
+    expect(handoffLandingState(true, { isAuthenticated: true, isLoading: false })).toBe("go");
+  });
+
+  // A session wiped after the exchange (a concurrent validateSession 401)
+  // must not leave "Finishing sign-in…" spinning forever.
+  it("is stranded when the session resolved signed-out", () => {
+    expect(handoffLandingState(true, { isAuthenticated: false, isLoading: false })).toBe("stranded");
   });
 });
 

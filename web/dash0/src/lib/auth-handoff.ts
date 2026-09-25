@@ -78,6 +78,27 @@ export function resolveHandoffLanding(
 }
 
 /**
+ * What the handoff route does with an in-app landing it has resolved:
+ *
+ * - `wait` while the stored session has not rendered yet (the router reads
+ *   auth from its context, so navigating earlier lets the org route see the
+ *   previous, signed-out session), or while it is still resolving;
+ * - `go` once the session is authenticated;
+ * - `stranded` when the session resolved to signed-out after all (e.g. a
+ *   concurrent validateSession wiped it on a 401). Waiting on would spin on
+ *   "Finishing sign-in…" forever, so the route shows its failure card and its
+ *   link back to the login page instead.
+ */
+export function handoffLandingState(
+  hasLanding: boolean,
+  session: { isAuthenticated: boolean; isLoading: boolean },
+): "none" | "wait" | "go" | "stranded" {
+  if (!hasLanding) return "none";
+  if (session.isLoading) return "wait";
+  return session.isAuthenticated ? "go" : "stranded";
+}
+
+/**
  * The "your request to <pending> was sent" notice for a session that did NOT
  * land on /no-org, or null when there is nothing to say.
  *

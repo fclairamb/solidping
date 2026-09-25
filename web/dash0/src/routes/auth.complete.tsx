@@ -11,6 +11,7 @@ import { DASH_BASE } from "@/lib/base-path";
 import {
   exchangeHandoffCode,
   HANDOFF_COMPLETE_PATH,
+  handoffLandingState,
   type HandoffLanding,
   membershipPendingNotice,
   resolveHandoffLanding,
@@ -47,8 +48,11 @@ function AuthCompletePage() {
     Exclude<HandoffLanding, { href: string }> | null
   >(null);
   const firedCodeRef = useRef<string | null>(null);
-  // No code at all (a bookmarked or hand-typed URL) is a failure up front.
-  const failed = !code || exchangeFailed;
+  const landingState = handoffLandingState(landing !== null, { isAuthenticated, isLoading });
+  // No code at all (a bookmarked or hand-typed URL) is a failure up front. So
+  // is a session that was stored and then lost before the landing could be
+  // followed: the page would otherwise spin forever.
+  const failed = !code || exchangeFailed || landingState === "stranded";
 
   useEffect(() => {
     if (!code || firedCodeRef.current === code) return;
@@ -106,13 +110,13 @@ function AuthCompletePage() {
   // fresh sign-in through /orgs/<org>/login (a full reload that also dropped
   // the membership-pending toast; spec 2026-09-25-15).
   useEffect(() => {
-    if (!landing || !isAuthenticated || isLoading) return;
+    if (!landing || landingState !== "go") return;
     if (landing.to === "/no-org") {
       navigate({ to: "/no-org", search: landing.search, replace: true });
     } else {
       navigate({ to: landing.to, params: landing.params, replace: true });
     }
-  }, [landing, isAuthenticated, isLoading, navigate]);
+  }, [landing, landingState, navigate]);
 
   return (
     <AuthSplitLayout>

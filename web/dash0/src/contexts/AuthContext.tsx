@@ -22,6 +22,7 @@ import {
 import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
 import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
 import { disconnectAllLiveSockets } from "@/contexts/LiveEventsContext";
+import { persistSessionOrg, SESSION_ORG_KEY } from "@/lib/session-org";
 
 interface User {
   // Pseudonymous user UUID. Used for the analytics distinct id; never shown.
@@ -229,7 +230,7 @@ interface MeResponse {
   organizations: OrganizationSummary[];
 }
 
-const ORG_KEY = "solidping_org";
+const ORG_KEY = SESSION_ORG_KEY;
 
 function getStoredOrg(): string | null {
   return localStorage.getItem(ORG_KEY);
@@ -326,13 +327,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Update org from server response. An org-less token clears it: a slug
       // left over from an earlier session would read as "already scoped to
       // this org" and skip OrgLayout's switch-org (spec 2026-09-25-15).
-      if (data.organization?.slug) {
-        setStoredOrg(data.organization.slug);
-        setOrg(data.organization.slug);
-      } else {
-        clearStoredOrg();
-        setOrg(null);
-      }
+      setOrg(persistSessionOrg(data.organization));
       setOrgUid(data.organization?.uid ?? null);
       setOrganizations(data.organizations || []);
     } catch (e) {
@@ -396,17 +391,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { loginAction: "", organizations: [], resolvedOrg };
     }
 
-    if (resolvedOrg) {
-      setStoredOrg(resolvedOrg);
-      setOrg(resolvedOrg);
-    } else {
-      // An org-less session (no membership yet, or a federated login the org
-      // refused). Keeping the previous session's slug would make auth.org
-      // claim a scope this token does not have, and OrgLayout would then skip
-      // the switch-org the session needs to use that org (spec 2026-09-25-15).
-      clearStoredOrg();
-      setOrg(null);
-    }
+    // An org-less session (no membership yet, or a federated login the org
+    // refused) clears the stored org rather than keeping the previous
+    // session's slug — see persistSessionOrg (spec 2026-09-25-15).
+    setOrg(persistSessionOrg(data.organization));
     setOrgUid(data.organization?.uid ?? null);
 
     setUser({
