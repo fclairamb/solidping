@@ -103,6 +103,50 @@ towards a refused address.
 | domain | Not guarded: it queries the registries' RDAP and WHOIS servers, not a host you choose |
 | heartbeat, email, private_location | Not guarded: passive, they make no outbound connection |
 
+## Notification senders
+
+A notification integration's URL is chosen the same way a check's target is —
+by an org member — so it is covered by the same policy, evaluated from the
+same `SP_EGRESS_ALLOW_PRIVATE` / `egress.allow_private_targets` configuration.
+The difference is *where* it runs: notification deliveries happen in the API
+or jobs process, not on a check worker, so the policy is built and applied
+there instead.
+
+| Channel | Guarded field |
+|---|---|
+| webhook | `url` |
+| gotify | `server_url` |
+| ntfy | `serverUrl` |
+| matrix | `homeserverUrl` |
+| Google Chat | `webhook_url` |
+| Mattermost | `webhook_url` |
+
+Two checks, for the same reason redirects get a second check on a browser
+check (see limits below):
+
+1. **At save time** (creating or updating the integration), the URL is
+   parsed the way a browser reads a host — including legacy IPv4 spellings
+   (`2130706433`, `0x7f000001`, `127.1`) — and, under an enforcing policy,
+   resolved and rejected if nothing public comes back. This is what turns a
+   bad URL into an immediate `VALIDATION_ERROR` instead of a silent failure
+   the first time an incident fires.
+2. **At delivery time**, the sender dials through the same guarded transport
+   a check worker uses: the host is resolved once, non-public answers are
+   dropped, and the connection goes to the pinned address that was just
+   checked — never to the hostname again, so DNS rebinding between the two
+   checks above cannot slip through. This also catches a row saved before
+   this validation existed, or while the policy allowed private targets and
+   was tightened afterwards.
+
+A refused delivery fails with the same `egress_denied` marker and operator
+message as a refused check, and — for a manual
+`POST /orgs/:org/integrations/:uid/test` — the target receives no request at
+all.
+
+Slack, Discord and Microsoft Teams bot delivery, Telegram, PagerDuty,
+Pushover and Twilio all POST to a fixed vendor host chosen by SolidPing, not
+one an org member supplies, so none of them go through this check.
+
 ## Limits
 
 ### Browser checks
@@ -146,12 +190,13 @@ What this still does not stop:
 
 ### Outside the check workers
 
-The policy covers checks executed by the workers. A few calls about the same
-targets run in the API or jobs process and are not guarded yet:
+The policy covers checks executed by the workers. Notification senders (see
+above) are guarded too, from the same configuration, even though they run in
+the API/jobs process rather than on a worker. A few other calls about the
+same kinds of targets still are not:
 
 - Kubernetes cluster discovery and connection validation.
 - The Freebox pairing calls made when you connect a box.
-- Notification senders (webhooks and similar).
 
 These are tracked separately.
 
