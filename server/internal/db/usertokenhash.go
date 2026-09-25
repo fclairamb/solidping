@@ -68,7 +68,8 @@ func HashPlaintextUserTokens(ctx context.Context, bunDB *bun.DB) (int, error) {
 			return readErr
 		}
 
-		for _, row := range pending {
+		for i := range pending {
+			row := &pending[i]
 			if _, execErr := tx.ExecContext(ctx,
 				"UPDATE user_tokens SET token_hash = ? WHERE uid = ? AND token_hash IS NULL",
 				models.HashUserToken(row.token), row.uid,
@@ -134,14 +135,14 @@ func plaintextUserTokens(ctx context.Context, tx bun.Tx) ([]plaintextUserToken, 
 func userTokensHasColumn(ctx context.Context, bunDB *bun.DB, column string) (bool, error) {
 	var query string
 
-	switch bunDB.Dialect().Name() {
-	case dialect.PG:
+	// Only the two engines this project ships; anything else is refused.
+	if name := bunDB.Dialect().Name(); name == dialect.PG {
 		query = `SELECT count(*) FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = 'user_tokens' AND column_name = ?`
-	case dialect.SQLite:
+	} else if name == dialect.SQLite {
 		query = `SELECT count(*) FROM pragma_table_info('user_tokens') WHERE name = ?`
-	default:
-		return false, fmt.Errorf("%w: %s", errUnsupportedDialect, bunDB.Dialect().Name())
+	} else {
+		return false, fmt.Errorf("%w: %s", errUnsupportedDialect, name)
 	}
 
 	var count int

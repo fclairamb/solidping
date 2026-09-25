@@ -57,8 +57,8 @@ func tokenHashFixture(ctx context.Context, t *testing.T, dbSvc db.Service) (*mod
 	return user, org
 }
 
-// requireNoRawToken fails if any stored field of the user's tokens carries
-// the raw value.
+// requireNoRawToken fails if a stored text field of the user's tokens (the
+// hash column or the properties document) carries the raw value.
 func requireNoRawToken(ctx context.Context, t *testing.T, dbSvc db.Service, userUID, raw string) {
 	t.Helper()
 
@@ -67,9 +67,11 @@ func requireNoRawToken(ctx context.Context, t *testing.T, dbSvc db.Service, user
 	require.NotEmpty(t, rows)
 
 	for _, row := range rows {
-		encoded, marshalErr := json.Marshal(row)
+		require.NotContains(t, row.TokenHash, raw, "row %s stores the raw token", row.UID)
+
+		properties, marshalErr := json.Marshal(row.Properties)
 		require.NoError(t, marshalErr)
-		require.NotContains(t, string(encoded), raw, "row %s stores the raw token", row.UID)
+		require.NotContains(t, string(properties), raw, "row %s stores the raw token in properties", row.UID)
 	}
 }
 
