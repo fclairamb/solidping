@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -86,12 +85,9 @@ func (h *GitLabOAuthHandler) Callback(writer http.ResponseWriter, req *http.Requ
 		return h.handleOAuthError(writer, req, oauthState.RedirectURI, err)
 	}
 
-	// Redirect with tokens. Also set the SPA session cookie so
-	// cookie-authenticated surfaces (the embedded MCP OAuth
-	// authorize/consent flow) work without a login-page refresh bounce.
-	return finishProviderCallback(writer, req,
-		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+	// Hand the session to the dashboard through a single-use code: the
+	// tokens never appear in the redirect URL (spec 2026-09-25-12).
+	return finishProviderCallback(writer, req, h.svc.db, "gitlab", oauthState.RedirectURI, result)
 }
 
 // buildGitLabAuthURL constructs the GitLab authorization URL.
@@ -104,23 +100,6 @@ func (h *GitLabOAuthHandler) buildGitLabAuthURL(state string) string {
 	params.Set("state", state)
 
 	return h.svc.getGitLabBaseURL() + "/oauth/authorize?" + params.Encode()
-}
-
-// buildSuccessRedirect constructs the redirect URL with tokens.
-func (h *GitLabOAuthHandler) buildSuccessRedirect(baseURI string, result *GitLabOAuthResult) string {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("access_token", result.AccessToken)
-	query.Set("refresh_token", result.RefreshToken)
-	query.Set("expires_in", strconv.Itoa(result.ExpiresIn))
-	query.Set("org", result.OrgSlug)
-	parsedURL.RawQuery = query.Encode()
-
-	return parsedURL.String()
 }
 
 // redirectWithError redirects with error parameters.

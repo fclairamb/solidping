@@ -83,21 +83,9 @@ type DiscordTokenResponse struct {
 }
 
 // DiscordOAuthResult contains the result of a successful Discord OAuth flow.
-type DiscordOAuthResult struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int
-	OrgSlug      string
-	UserUID      string
-	// Pending is true when the login succeeded but the org did not admit
-	// the user: no membership was created, a membership request is awaiting
-	// admin approval, and the tokens above are an org-less session.
-	Pending bool
-	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
-	// when the pending outcome opened no membership request at all
-	// (see auth.ProviderLoginResult.PendingOrgSlug).
-	PendingOrgSlug string
-}
+// It is the ProviderOutcome every federated callback hands to
+// finishProviderCallback.
+type DiscordOAuthResult = ProviderOutcome
 
 // DiscordOAuthService handles Discord OAuth authentication logic.
 type DiscordOAuthService struct {

@@ -211,30 +211,31 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 		return nil
 	}
 
-	// The install succeeded but the org did not admit the installing user:
-	// there is no org-scoped session to hand over (and no refresh token for
-	// the exchange payload), so send them to the same request-access surface
-	// every other federated login uses for a pending membership.
+	// Hand the session to the dashboard through a single-use code, like every
+	// other federated login (spec 2026-09-25-12): the tokens never appear in
+	// the redirect URL. When the org did not admit the installing user the
+	// session is org-less and the dashboard lands on its request-access
+	// surface instead of the channel.
 	if result.Pending {
 		slog.InfoContext(req.Context(), "Slack install completed without org membership",
 			"org_slug", result.OrgSlug, "user_uid", result.UserUID)
-		auth.RedirectPendingMembership(writer, req,
-			h.cfg.Server.BaseURL, result.OrgSlug, result.AccessToken, result.ExpiresIn)
-
-		return nil
 	}
 
-	exchangeCode, err := h.svc.IssueExchangeCode(req.Context(), result)
-	if err != nil {
-		slog.ErrorContext(req.Context(), "Failed to issue Slack exchange code", "error", err)
+	outcome := &auth.ProviderOutcome{
+		AccessToken:    result.AccessToken,
+		RefreshToken:   result.RefreshToken,
+		ExpiresIn:      result.ExpiresIn,
+		OrgSlug:        result.OrgSlug,
+		UserUID:        result.UserUID,
+		Pending:        result.Pending,
+		PendingOrgSlug: result.OrgSlug,
+	}
+
+	if err := auth.RedirectWithHandoff(writer, req, h.svc.db,
+		h.cfg.Server.BaseURL, outcome, landingPath(result)); err != nil {
+		slog.ErrorContext(req.Context(), "Failed to hand off the Slack install session", "error", err)
 		h.redirectInstallError(writer, req, "unknown")
-
-		return nil
 	}
-
-	completeURL := h.cfg.Server.BaseURL + config.DashboardBasePath +
-		"/auth/slack/complete?code=" + url.QueryEscape(exchangeCode)
-	http.Redirect(writer, req, completeURL, http.StatusFound)
 
 	return nil
 }

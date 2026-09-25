@@ -123,33 +123,13 @@ func TestHandleOAuthCallback_StateConsumedOnReuse(t *testing.T) {
 	r.ErrorIs(secondErr, ErrInvalidState)
 }
 
-func TestIssueExchangeCode_RoundTripIsSingleUse(t *testing.T) {
+func TestLandingPath(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	ctx, svc := setupSlackService(t)
 
-	result := &OAuthResult{
-		AccessToken:  "access-1",
-		RefreshToken: "refresh-1",
-		OrgSlug:      "acme",
-		UserUID:      "user-uid",
-	}
-
-	code, err := svc.IssueExchangeCode(ctx, result)
-	r.NoError(err)
-	r.NotEmpty(code)
-
-	entry, err := oauthstate.Validate(ctx, svc.db, "slack-exchange", code)
-	r.NoError(err)
-	r.Equal("access-1", entry.Payload["accessToken"])
-	r.Equal("refresh-1", entry.Payload["refreshToken"])
-	r.Equal("acme", entry.Payload["orgSlug"])
-	r.Equal("user-uid", entry.Payload["userUID"])
-
-	// Reuse must fail.
-	_, err = oauthstate.Validate(ctx, svc.db, "slack-exchange", code)
-	r.ErrorIs(err, oauthstate.ErrInvalidState)
+	r.Equal("/d/orgs/acme", landingPath(&OAuthResult{OrgSlug: "acme"}))
+	r.Equal("/d/orgs/acme/integrations/chan-1", landingPath(&OAuthResult{OrgSlug: "acme", ChannelUID: "chan-1"}))
 }
 
 // extractStateParam pulls the CSRF state nonce out of a Slack authorize URL.

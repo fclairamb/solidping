@@ -691,6 +691,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
 	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
 	rootAuth.POST("/passkeys/login/finish", passkeyHandler.LoginFinish)
+	// Federated-login handoff (spec 2026-09-25-12): every provider callback
+	// redirects to /d/auth/complete with a single-use code instead of the
+	// session tokens, and the dashboard redeems it here. Public: the code
+	// (32 random bytes, 60 s, single use) is the credential.
+	rootAuth.POST("/handoff/exchange", authHandler.ExchangeHandoff)
 
 	// OAuth 2.0 Device Authorization Grant, RFC 8628 (spec 2026-08-08-02).
 	// Both endpoints below are public: opening a request grants nothing until
@@ -882,6 +887,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		slackAuth := api.NewGroup("/auth/slack")
 		slackAuth.GET("/login", slackOAuthHandler.Login)
 		slackAuth.GET("/callback", slackOAuthHandler.Callback)
+		// TODO(remove after next release): spec 2026-09-25-12
+		// oauth-callback-one-time-code-exchange. Slack installs now hand off
+		// through /auth/handoff/exchange; this only redeems codes an older
+		// pod minted during the rolling deploy.
 		slackAuth.POST("/exchange", slackOAuthHandler.Exchange)
 	}
 

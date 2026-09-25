@@ -77,17 +77,20 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req *http.Reque
 		return h.handleOAuthError(writer, req, oauthState.RedirectURI, err)
 	}
 
-	// Redirect with tokens. Also set the SPA session cookie so
-	// cookie-authenticated surfaces (the embedded MCP OAuth
-	// authorize/consent flow) work without a login-page refresh bounce.
-	return finishProviderCallback(writer, req,
-		h.buildSuccessRedirect(oauthState.RedirectURI, result),
-		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+	// Hand the session to the dashboard through a single-use code: the
+	// tokens never appear in the redirect URL (spec 2026-09-25-12).
+	return finishProviderCallback(writer, req, h.svc.db, "slack", oauthState.RedirectURI, result)
 }
 
 // Exchange trades a single-use install-callback code for the freshly
 // minted session tokens. The dashboard calls this server-to-server
 // immediately after landing on /d/auth/slack/complete.
+//
+// TODO(remove after next release): spec 2026-09-25-12
+// oauth-callback-one-time-code-exchange. The Slack install callback now hands
+// off through authhandoff and /d/auth/complete like every other federated
+// login; this endpoint only redeems a `slack-exchange` code minted by a pod
+// still running the previous release.
 //
 // POST /api/v1/auth/slack/exchange  body: {"code": "..."}.
 func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req *http.Request) error {
@@ -127,23 +130,6 @@ func (h *SlackOAuthHandler) buildSlackAuthURL(state string) string {
 // getCallbackURL returns the OAuth callback URL for this application.
 func (h *SlackOAuthHandler) getCallbackURL() string {
 	return h.cfg.Server.BaseURL + "/api/v1/auth/slack/callback"
-}
-
-// buildSuccessRedirect constructs the redirect URL with tokens.
-func (h *SlackOAuthHandler) buildSuccessRedirect(baseURI string, result *SlackOAuthResult) string {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		// Fallback to root if parsing fails
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("access_token", result.AccessToken)
-	query.Set("refresh_token", result.RefreshToken)
-	query.Set("org", result.OrgSlug)
-	parsedURL.RawQuery = query.Encode()
-
-	return parsedURL.String()
 }
 
 // redirectWithError redirects with error parameters.

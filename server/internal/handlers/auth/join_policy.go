@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/authhandoff"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/defaults"
 )
@@ -29,14 +31,11 @@ const registrationEmailPatternKey = "registration.email_pattern"
 // behavior (email pattern / membership request).
 const registrationSlackAutoJoinKey = "registration.slack_workspace_auto_join"
 
-// pendingMembershipParam is the query flag the dashboard's no-org page reads
-// to explain why a completed social login did not land in the org.
+// pendingMembershipParam is the query flag naming the org a completed social
+// login was not admitted to. It rides on the handoff redirect, and the
+// dashboard forwards it to its no-org page to explain why the login did not
+// land in the org.
 const pendingMembershipParam = "membershipPending"
-
-// noOrgPath is the dashboard surface a user lands on when they are
-// authenticated but hold no membership — it already renders the
-// "request access / pending request" flow.
-const noOrgPath = config.DashboardBasePath + "/no-org"
 
 // membershipRequestsPath is the dashboard path where org admins review
 // pending membership requests — the target of the "New membership request"
@@ -679,63 +678,142 @@ func (s *Service) ensureMembershipRequestForLogin(
 	return nil
 }
 
-// pendingMembershipRedirect is where a provider callback sends a browser whose
-// login completed without admission: the dashboard's no-org surface (which
-// already renders "request access" and the user's pending requests), carrying
-// the org-less session and an explicit flag naming the org that was refused.
-// Deliberately NOT the org dashboard, and deliberately without an `org` handoff
-// param — there is no org-scoped session to hand off.
-// An EMPTY orgSlug means "do not name an org": no membership request was
-// opened, so the dashboard must not render the "a join request was sent to its
-// admins" alert — there is nothing pending and nobody to wait for.
-func pendingMembershipRedirect(orgSlug, accessToken string, expiresIn int) string {
-	query := url.Values{}
-	query.Set("access_token", accessToken)
-	query.Set("expires_in", strconv.Itoa(expiresIn))
+// handoffCompletePath is the dashboard route that redeems a handoff code
+// (web/dash0/src/routes/auth.complete.tsx). Every federated login ends there.
+const handoffCompletePath = config.DashboardBasePath + "/auth/complete"
 
-	if orgSlug != "" {
-		query.Set(pendingMembershipParam, orgSlug)
+// handoffCodeParam is the query parameter carrying the single-use handoff
+// code. Named `code` on purpose: the dashboard's analytics redaction already
+// scrubs that name from every URL it reports (lib/analytics-redaction.ts).
+const handoffCodeParam = "code"
+
+// handoffRedirect is where a provider callback sends the browser once the
+// session is stored under a handoff code (spec 2026-09-25-12): the dashboard's
+// handoff route, carrying the code and nothing else secret.
+//
+// membershipPending names the org whose admission is pending (see
+// ProviderOutcome.PendingOrgSlug). It is not a secret and rides in the URL so
+// the dashboard can still say "your request was sent" if the exchange fails.
+// Empty means "do not name an org": no request was opened, so the dashboard
+// must not render the "a join request was sent to its admins" alert.
+//
+// The session tokens are never in this URL. Neither is the login's own
+// redirect_uri: it travels inside the sealed handoff payload as returnTo, so
+// this redirect always stays on our own dashboard route.
+func handoffRedirect(code, membershipPending string) string {
+	query := url.Values{}
+	query.Set(handoffCodeParam, code)
+
+	if membershipPending != "" {
+		query.Set(pendingMembershipParam, membershipPending)
 	}
 
-	return noOrgPath + "?" + query.Encode()
+	return handoffCompletePath + "?" + query.Encode()
 }
 
-// RedirectPendingMembership sends a browser whose login completed WITHOUT
-// admission to the shared request-access surface, carrying the org-less
-// session — the same treatment finishProviderCallback gives a pending
-// federated login, exported for callbacks that live outside this package (the
-// Slack app-install callback). baseURL, when set, makes the target absolute;
-// callers that redirect within the same origin can pass "".
-func RedirectPendingMembership(
-	writer http.ResponseWriter, req *http.Request,
-	baseURL, orgSlug, accessToken string, expiresIn int,
-) {
-	setAccessTokenCookie(writer, req, accessToken, expiresIn)
-	http.Redirect(writer, req,
-		baseURL+pendingMembershipRedirect(orgSlug, accessToken, expiresIn),
-		http.StatusFound)
+// ProviderOutcome is what every federated callback knows once the login is
+// done: the session CompleteOrgLogin minted and whether the org admitted the
+// user. It is the input of the shared redirect tail.
+type ProviderOutcome struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresIn    int
+	// OrgSlug is the org the login was completed against.
+	OrgSlug string
+	UserUID string
+	// Pending is true when the org did not admit the user: the tokens above
+	// are then an org-less session (no refresh token).
+	Pending bool
+	// PendingOrgSlug is the org to NAME on the no-org screen — see
+	// ProviderLoginResult.PendingOrgSlug. Meaningless unless Pending is true.
+	PendingOrgSlug string
+}
+
+// handoffSession is the session a handoff code carries for this outcome. A
+// pending outcome's session is org-less whatever org the login targeted.
+func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
+	session := &authhandoff.Session{
+		AccessToken:  o.AccessToken,
+		RefreshToken: o.RefreshToken,
+		ExpiresIn:    o.ExpiresIn,
+		UserUID:      o.UserUID,
+		ReturnTo:     returnTo,
+	}
+
+	if o.Pending {
+		session.MembershipPending = o.PendingOrgSlug
+	} else {
+		session.OrgSlug = o.OrgSlug
+	}
+
+	return session
+}
+
+// RedirectWithHandoff stores the outcome's session under a single-use handoff
+// code and redirects the browser to the dashboard's handoff route with that
+// code — never with a token. It also sets the SPA session cookie, as every
+// federated callback did before (the embedded MCP OAuth consent flow
+// authenticates with it); a pending session is org-less, so that cookie
+// grants nothing org-scoped.
+//
+// It is exported for callbacks that live outside this package (the Slack
+// app-install callback). baseURL, when set, makes the target absolute;
+// callers that redirect within the same origin pass "". returnTo is where the
+// dashboard should land afterwards, subject to its own guards.
+//
+// On error nothing has been written to the response: the caller decides how
+// to report the failure.
+func RedirectWithHandoff(
+	writer http.ResponseWriter, req *http.Request, dbService db.Service,
+	baseURL string, outcome *ProviderOutcome, returnTo string,
+) error {
+	session := outcome.handoffSession(returnTo)
+
+	code, err := authhandoff.Issue(req.Context(), dbService, session)
+	if err != nil {
+		return fmt.Errorf("issue handoff code: %w", err)
+	}
+
+	setAccessTokenCookie(writer, req, outcome.AccessToken, outcome.ExpiresIn)
+	http.Redirect(writer, req, baseURL+handoffRedirect(code, session.MembershipPending), http.StatusFound)
+
+	return nil
 }
 
 // finishProviderCallback is the shared redirect tail of every federated
-// callback handler. It hands the browser either the provider's normal success
-// redirect or — when the org did not admit the user — the pending
-// request-access surface, and sets the SPA session cookie in both cases (the
-// pending session is org-less, so it grants nothing org-scoped).
+// callback handler (google, github, gitlab, microsoft, discord, slack, oidc,
+// saml). Admitted or pending, the browser goes to the dashboard's handoff
+// route with a single-use code; the dashboard redeems it and then lands on
+// returnTo (admitted) or the no-org request-access surface (pending).
 //
-// pendingOrgSlug is the org to NAME on that surface — pass the login result's
-// PendingOrgSlug, not its OrgSlug: an empty value means "a pending session, but
-// no join request and therefore no org to wait on".
+// returnTo is the redirect_uri the login was started with. If the handoff
+// cannot be stored, the browser goes back there with the generic sign-in
+// error, like any other callback failure.
 func finishProviderCallback(
-	writer http.ResponseWriter, req *http.Request,
-	successURL, pendingOrgSlug, accessToken string, expiresIn int, pending bool,
+	writer http.ResponseWriter, req *http.Request, dbService db.Service,
+	provider, returnTo string, outcome *ProviderOutcome,
 ) error {
-	redirectURL := successURL
-	if pending {
-		redirectURL = pendingMembershipRedirect(pendingOrgSlug, accessToken, expiresIn)
+	if err := RedirectWithHandoff(writer, req, dbService, "", outcome, returnTo); err != nil {
+		description := logOAuthFailure(req, provider, err)
+		redirectOAuthError(writer, req, returnTo, OAuthCodeFailed, description)
 	}
 
-	setAccessTokenCookie(writer, req, accessToken, expiresIn)
-	http.Redirect(writer, req, redirectURL, http.StatusFound)
-
 	return nil
+}
+
+// redirectOAuthError sends the browser to baseURI with the OAuth error
+// parameters the dashboard understands. Same shape as the per-provider
+// redirectWithError methods.
+func redirectOAuthError(writer http.ResponseWriter, req *http.Request, baseURI, code, description string) {
+	parsedURL, err := url.Parse(baseURI)
+	if err != nil {
+		parsedURL, _ = url.Parse("/")
+	}
+
+	query := parsedURL.Query()
+	query.Set("error", code)
+	query.Set("error_description", description)
+	parsedURL.RawQuery = query.Encode()
+
+	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
 }

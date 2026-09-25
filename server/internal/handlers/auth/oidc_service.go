@@ -47,21 +47,9 @@ const (
 )
 
 // OIDCOAuthResult contains the result of a successful generic OIDC flow.
-type OIDCOAuthResult struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int
-	OrgSlug      string
-	UserUID      string
-	// Pending is true when the login succeeded but the org did not admit
-	// the user: no membership was created, a membership request is awaiting
-	// admin approval, and the tokens above are an org-less session.
-	Pending bool
-	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
-	// when the pending outcome opened no membership request at all
-	// (see auth.ProviderLoginResult.PendingOrgSlug).
-	PendingOrgSlug string
-}
+// It is the ProviderOutcome every federated callback hands to
+// finishProviderCallback.
+type OIDCOAuthResult = ProviderOutcome
 
 // oidcUserInfo is the set of claims extracted from a validated ID token, per
 // the configured (or default) claim mappings.

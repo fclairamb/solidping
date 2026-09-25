@@ -95,23 +95,9 @@ type OAuthState struct {
 }
 
 // SlackOAuthResult contains the result of a successful Slack OAuth flow.
-type SlackOAuthResult struct {
-	AccessToken  string
-	RefreshToken string
-	// ExpiresIn is the access token's lifetime in seconds, so the callback
-	// can scope the access_token cookie exactly like every other provider.
-	ExpiresIn int
-	OrgSlug   string
-	UserUID   string
-	// Pending is true when the login succeeded but the org did not admit
-	// the user: no membership was created, a membership request is awaiting
-	// admin approval, and the tokens above are an org-less session.
-	Pending bool
-	// PendingOrgSlug is the org to NAME on the no-org screen, or empty
-	// when the pending outcome opened no membership request at all
-	// (see auth.ProviderLoginResult.PendingOrgSlug).
-	PendingOrgSlug string
-}
+// It is the ProviderOutcome every federated callback hands to
+// finishProviderCallback.
+type SlackOAuthResult = ProviderOutcome
 
 // SlackOAuthService handles Slack OAuth authentication logic.
 type SlackOAuthService struct {

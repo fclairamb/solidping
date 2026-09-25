@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -96,12 +95,9 @@ func (h *SAMLHandler) ACS(writer http.ResponseWriter, req *http.Request) error {
 		return h.handleSAMLError(writer, req, state.RedirectURI, err)
 	}
 
-	// Redirect with tokens. Also set the SPA session cookie so
-	// cookie-authenticated surfaces (the embedded MCP OAuth
-	// authorize/consent flow) work without a login-page refresh bounce.
-	return finishProviderCallback(writer, req,
-		h.buildSuccessRedirect(state.RedirectURI, result),
-		result.PendingOrgSlug, result.AccessToken, result.ExpiresIn, result.Pending)
+	// Hand the session to the dashboard through a single-use code: the
+	// tokens never appear in the redirect URL (spec 2026-09-25-12).
+	return finishProviderCallback(writer, req, h.svc.db, "saml", state.RedirectURI, result)
 }
 
 // Metadata serves this SP's own metadata document (entity ID, ACS URL,
@@ -122,23 +118,6 @@ func (h *SAMLHandler) Metadata(writer http.ResponseWriter, req *http.Request) er
 	_, _ = writer.Write(data)
 
 	return nil
-}
-
-// buildSuccessRedirect constructs the redirect URL with tokens.
-func (h *SAMLHandler) buildSuccessRedirect(baseURI string, result *SAMLResult) string {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("access_token", result.AccessToken)
-	query.Set("refresh_token", result.RefreshToken)
-	query.Set("expires_in", strconv.Itoa(result.ExpiresIn))
-	query.Set("org", result.OrgSlug)
-	parsedURL.RawQuery = query.Encode()
-
-	return parsedURL.String()
 }
 
 // redirectWithError redirects with error parameters.
