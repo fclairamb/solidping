@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -89,11 +90,16 @@ type exportCheckV2 struct {
 	// default would either be noise on every document or, worse, silently
 	// re-derive an `off` into an `inherit` on a document where `off` happened
 	// to be the majority.
-	TracerouteOnFailure      string `json:"tracerouteOnFailure,omitempty"`
-	ReopenCooldownMultiplier *int   `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindow           string `json:"flappingWindow,omitempty"`
-	FlapBackoffFactor        *int   `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier    *int   `json:"maxRecoveryMultiplier,omitempty"`
+	TracerouteOnFailure string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is the multi-region quorum (spec 2026-09-25-10): "all",
+	// "majority" or a number; absent is the default. Not part of the defaults
+	// block for the same reason as TracerouteOnFailure: it is set on the few
+	// checks that need it.
+	FailQuorum               *regionquorum.Value `json:"failQuorum,omitempty"`
+	ReopenCooldownMultiplier *int                `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindow           string              `json:"flappingWindow,omitempty"`
+	FlapBackoffFactor        *int                `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int                `json:"maxRecoveryMultiplier,omitempty"`
 	// Degraded detection (spec 2026-09-22-03): DELIBERATELY NOT part of the
 	// defaults block, for the same reason as ReopenCooldownMultiplier above —
 	// each is a per-check pointer that must round-trip as-is (nil stays nil,
@@ -216,6 +222,7 @@ func buildExportDocumentV2(doc *ExportDocument) (*exportDocumentV2, error) {
 			Disabled:                 !check.Enabled,
 			Internal:                 check.Internal,
 			TracerouteOnFailure:      tracerouteWireValue(check.TracerouteOnFailure),
+			FailQuorum:               check.FailQuorum,
 			ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
 			// Raw pointer/bool copies, not modal-defaulted — see the field
 			// comment on exportCheckV2 above.
@@ -339,6 +346,7 @@ func resolveCheckV2(wire *exportCheckV2, defaults *exportDefaultsV2) (ExportChec
 		Enabled:                  !wire.Disabled,
 		Internal:                 wire.Internal,
 		TracerouteOnFailure:      wire.TracerouteOnFailure,
+		FailQuorum:               wire.FailQuorum,
 		ReopenCooldownMultiplier: wire.ReopenCooldownMultiplier,
 		// Direct pass-through, like ReopenCooldownMultiplier above — no
 		// document-default resolution for these (see the field comment on

@@ -282,6 +282,7 @@ func (s *Service) planCreateCheck(
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		FailQuorum:                req.FailQuorum,
 	}); len(findings) > 0 {
 		return nil, findings[0].Err
 	}
@@ -459,6 +460,7 @@ func (s *Service) planUpdateCheck(
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		FailQuorum:                req.FailQuorum,
 	}); len(findings) > 0 {
 		return findings[0].Err
 	}
@@ -602,6 +604,7 @@ func upsertToCreateRequest(slug string, req *UpsertCheckRequest) CreateCheckRequ
 		ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
 		TracerouteOnFailure:       req.TracerouteOnFailure,
+		FailQuorum:                req.FailQuorum,
 		ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,

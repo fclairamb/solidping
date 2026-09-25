@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -170,6 +171,8 @@ type requestFieldValues struct {
 	FlappingWindowSeconds     *int
 	FlapBackoffFactor         *int
 	MaxRecoveryMultiplier     *int
+	// FailQuorum is the multi-region quorum setting (spec 2026-09-25-10).
+	FailQuorum *regionquorum.Value
 
 	// Placement is the placement half of the request (spec 2026-09-25-06).
 	// Nil skips the placement rules (the write paths run them earlier, in
@@ -210,6 +213,7 @@ func requestFieldFindings(values *requestFieldValues) []requestFieldFinding {
 	findings = appendTracerouteFinding(findings, values)
 	findings = appendFlappingFindings(findings, values)
 	findings = appendIncidentPeriodFindings(findings, values)
+	findings = appendFailQuorumFinding(findings, values)
 
 	if values.Placement != nil {
 		findings = append(findings, placementRequestFindings(values.Placement)...)
@@ -595,6 +599,7 @@ func validateRequestFieldFindings(req *ValidateCheckRequest, period time.Duratio
 		FlappingWindowSeconds:     req.FlappingWindowSeconds,
 		FlapBackoffFactor:         req.FlapBackoffFactor,
 		MaxRecoveryMultiplier:     req.MaxRecoveryMultiplier,
+		FailQuorum:                req.FailQuorum,
 		Placement:                 validatePlacementRequest(req),
 	})
 	for i := range fieldFindings {

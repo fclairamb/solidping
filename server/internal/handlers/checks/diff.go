@@ -250,6 +250,14 @@ func (s *Service) diffCheck(
 		traceroutePolicyOrInherit(current.TracerouteOnFailure),
 		traceroutePolicyOrInherit(desired.TracerouteOnFailure))
 
+	// failQuorum (spec 2026-09-25-10): absent is the default, and the import
+	// sends it explicitly, so absent vs a value is a real change. A passive
+	// check drops the setting on write, so a document naming one is not a
+	// diff the upsert could ever close.
+	if !checkerdef.CheckType(desired.Type).IsPassive() {
+		add(fieldFailQuorum, failQuorumOrDefault(current.FailQuorum), failQuorumOrDefault(desired.FailQuorum))
+	}
+
 	if desired.Period != "" {
 		currentSecs, _ := periodStringToSeconds(current.Period)
 		if desiredSecs, err := periodStringToSeconds(desired.Period); err == nil {

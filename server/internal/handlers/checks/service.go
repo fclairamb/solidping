@@ -34,6 +34,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/regionquorum"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
@@ -95,6 +96,11 @@ type ValidateCheckRequest struct {
 	// TracerouteOnFailure is the per-check path-trace policy (spec
 	// 2026-08-21-10): `inherit`, `on` or `off`.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 	// Adaptive resolution / flapping settings (spec 2026-06-30-07).
 	FlappingWindowSeconds *int `json:"flappingWindowSeconds,omitempty"`
 	FlapBackoffFactor     *int `json:"flapBackoffFactor,omitempty"`
@@ -899,7 +905,17 @@ type CheckResponse struct {
 	// RegionFreshness is the per-region newest real result (detail only,
 	// with=region_freshness). A check still reporting from some region is still
 	// being checked; this list is how a silent region shows up anyway.
-	RegionFreshness  []RegionFreshnessResponse `json:"regionFreshness,omitempty"`
+	RegionFreshness []RegionFreshnessResponse `json:"regionFreshness,omitempty"`
+	// FailQuorum is the multi-region quorum setting (spec 2026-09-25-10):
+	// "default", "all", "majority" or a number. EffectiveFailQuorum is what it
+	// resolves to for the check's current regions. Both omitted for a passive
+	// check, which has no regions.
+	FailQuorum          *regionquorum.Value `json:"failQuorum,omitempty"`
+	EffectiveFailQuorum *int                `json:"effectiveFailQuorum,omitempty"`
+	// RegionalIssue is set (detail, with=region_freshness) while some, but
+	// fewer than the quorum, of the check's regions are failing: the check is
+	// `warning` and no incident opens.
+	RegionalIssue    *RegionalIssueResponse    `json:"regionalIssue,omitempty"`
 	LastResult       *LastResultResponse       `json:"lastResult,omitempty"`
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
@@ -983,6 +999,11 @@ type RegionFreshnessResponse struct {
 	// Stale is true when that result is older than the check's threshold (or
 	// missing altogether).
 	Stale bool `json:"stale"`
+	// Status is the region's newest reading ("up", "down", "timeout",
+	// "error", "warning") and StatusSince when it last crossed between failing
+	// and passing (spec 2026-09-25-10). Kept for checks with 2+ regions only.
+	Status      *string    `json:"status,omitempty"`
+	StatusSince *time.Time `json:"statusSince,omitempty"`
 }
 
 // FlapStateResponse surfaces a check's live adaptive-recovery (flapping)
@@ -1459,6 +1480,11 @@ type CreateCheckRequest struct {
 	// (create: inherit); `inherit` is what puts a check that had an explicit
 	// answer back under the org default.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -1612,6 +1638,17 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		// Enum already checked above; ok is always true here.
 		value, _ := parseTraceroutePolicy(*req.TracerouteOnFailure)
 		check.TracerouteOnFailure = value
+	}
+
+	if req.FailQuorum != nil {
+		// Already checked above. A passive check drops it on insert
+		// (models.Check.NormalizePassiveRegions).
+		stored, fqErr := storedFailQuorum(req.FailQuorum)
+		if fqErr != nil {
+			return CheckResponse{}, fqErr
+		}
+
+		check.FailQuorum = stored
 	}
 
 	if req.FlappingWindowSeconds != nil {
@@ -1771,6 +1808,10 @@ func (s *Service) GetCheck(
 		}
 
 		response.RegionFreshness = freshness
+
+		if statesErr := s.attachRegionStates(ctx, check, &response); statesErr != nil {
+			return CheckResponse{}, statesErr
+		}
 	}
 
 	return response, nil
@@ -1864,6 +1905,11 @@ type UpdateCheckRequest struct {
 	// (create: inherit); `inherit` is what puts a check that had an explicit
 	// answer back under the org default.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 
 	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -1918,6 +1964,11 @@ type UpsertCheckRequest struct {
 	// TracerouteOnFailure is the per-check path-trace policy: `inherit`, `on`
 	// or `off`. nil leaves it unchanged.
 	TracerouteOnFailure *string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is how many of the check's regions must be failing, for the
+	// confirmation period, before it is down (spec 2026-09-25-10): "default",
+	// "all", "majority" or a whole number (a JSON number or string). Absent
+	// leaves it unchanged (create: default).
+	FailQuorum *regionquorum.Value `json:"failQuorum,omitempty"`
 
 	// Adaptive resolution / flapping settings. nil leaves the value untouched
 	// (create → system default; update → unchanged).
@@ -2115,6 +2166,10 @@ func (s *Service) UpdateCheck(
 		// explicit on/off and never moved back.
 		update.TracerouteOnFailure = value
 		update.ClearTracerouteOnFailure = value == nil
+	}
+
+	if fqErr := applyFailQuorumUpdate(&update, check, req.FailQuorum); fqErr != nil {
+		return CheckResponse{}, fqErr
 	}
 
 	if req.ReopenCooldownMultiplier != nil {
@@ -2336,6 +2391,7 @@ func (s *Service) UpsertCheck(
 			ConfirmationPeriodSeconds: req.ConfirmationPeriodSeconds,
 			RecoveryPeriodSeconds:     req.RecoveryPeriodSeconds,
 			TracerouteOnFailure:       req.TracerouteOnFailure,
+			FailQuorum:                req.FailQuorum,
 			ReopenCooldownMultiplier:  req.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     req.FlappingWindowSeconds,
 			FlapBackoffFactor:         req.FlapBackoffFactor,
@@ -3346,7 +3402,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 	// stripSecretKeysForExport.
 	publicConfig, privateKeys := redactSecretConfig(check, privateKeys)
 
-	return CheckResponse{
+	response := CheckResponse{
 		UID:                       check.UID,
 		Name:                      check.Name,
 		Slug:                      check.Slug,
@@ -3386,6 +3442,10 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		SlowThresholdMs:           check.EffectiveSlowThresholdMs(),
 		DegradedEnabled:           check.DegradedEnabled,
 	}
+
+	failQuorumResponse(check, &response)
+
+	return response
 }
 
 // buildFlapStateResponse computes the check's live flapState block (spec
@@ -3620,11 +3680,15 @@ type ExportCheck struct {
 	// dropped it would resolve back to the org default — which is ON. An
 	// explicit opt-out quietly becoming an opt-in on restore, with no diff to
 	// notice, is the worst direction this field could fail in.
-	TracerouteOnFailure      string `json:"tracerouteOnFailure,omitempty"`
-	ReopenCooldownMultiplier *int   `json:"reopenCooldownMultiplier,omitempty"`
-	FlappingWindowSeconds    *int   `json:"flappingWindowSeconds,omitempty"`
-	FlapBackoffFactor        *int   `json:"flapBackoffFactor,omitempty"`
-	MaxRecoveryMultiplier    *int   `json:"maxRecoveryMultiplier,omitempty"`
+	TracerouteOnFailure string `json:"tracerouteOnFailure,omitempty"`
+	// FailQuorum is the multi-region quorum (spec 2026-09-25-10); absent is
+	// the default. Like TracerouteOnFailure, absent is imported as an explicit
+	// "default", so a re-import resets a check that was taken off it.
+	FailQuorum               *regionquorum.Value `json:"failQuorum,omitempty"`
+	ReopenCooldownMultiplier *int                `json:"reopenCooldownMultiplier,omitempty"`
+	FlappingWindowSeconds    *int                `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int                `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int                `json:"maxRecoveryMultiplier,omitempty"`
 	// Degraded detection (spec 2026-09-22-03): the raw per-check columns, NOT
 	// the resolved Effective*() values.
 	//
@@ -3884,6 +3948,7 @@ func projectChecksToExport(
 			EscalationThreshold:       intPtr(check.EscalationThreshold),
 			RecoveryPeriodSeconds:     intPtr(check.RecoveryPeriodSeconds),
 			TracerouteOnFailure:       renderTraceroutePolicy(check.TracerouteOnFailure),
+			FailQuorum:                exportedFailQuorum(check),
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
 			FlappingWindowSeconds:     intPtr(check.FlappingWindowSeconds),
 			FlapBackoffFactor:         intPtr(check.FlapBackoffFactor),
@@ -4638,6 +4703,7 @@ func buildImportUpsertRequest(exportedCheck *ExportCheck, checkGroupUID *string)
 	}
 
 	upsertReq.TracerouteOnFailure = importedTraceroutePolicy(exportedCheck.TracerouteOnFailure)
+	upsertReq.FailQuorum = importedFailQuorum(exportedCheck.FailQuorum)
 
 	if exportedCheck.Placement != "" {
 		placement := exportedCheck.Placement
@@ -4863,6 +4929,7 @@ func (s *Service) cloneBuildCheck(
 	clone.DegradedSlowWindow = source.DegradedSlowWindow
 	clone.SlowThresholdMs = source.SlowThresholdMs
 	clone.DegradedEnabled = source.DegradedEnabled
+	clone.FailQuorum = source.FailQuorum
 	clone.FlapBackoffFactor = source.FlapBackoffFactor
 	clone.MaxRecoveryMultiplier = source.MaxRecoveryMultiplier
 	clone.EscalationPolicyUID = source.EscalationPolicyUID

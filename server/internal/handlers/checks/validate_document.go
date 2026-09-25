@@ -96,6 +96,7 @@ func DocumentIssueCodes() []string {
 		CodeInvalidLabel,
 		CodeRegionFormat,
 		CodeInvalidPlacement,
+		CodeInvalidFailQuorum,
 		CodeInvalidDependsOn,
 		CodeDependencyCycle,
 		CodeUnresolvedSecretRef,
@@ -614,6 +615,14 @@ func validateCheckFormats(where string, check *ExportCheck) []DocumentIssue {
 			issues = append(issues, DocumentIssue{
 				Where: where, Field: fieldRegions, Code: CodeRegionFormat,
 				Message: fmt.Sprintf("region %q must be a slug or \"@private-location\"", region),
+			})
+		}
+	}
+
+	if check.FailQuorum != nil {
+		if _, err := check.FailQuorum.Setting(); err != nil {
+			issues = append(issues, DocumentIssue{
+				Where: where, Field: fieldFailQuorum, Code: CodeInvalidFailQuorum, Message: err.Error(),
 			})
 		}
 	}
