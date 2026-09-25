@@ -55,7 +55,7 @@ func TestCheckTypesRefuseLoopbackTargetsUnderAnEnforcingPolicy(t *testing.T) {
 	}))
 	t.Cleanup(httpServer.Close)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 

@@ -57,7 +57,7 @@ func TestOutboundSeamEnforces(t *testing.T) {
 	ctx := denyCtx(t)
 	r.True(checkerdef.EgressEnforcing(ctx))
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
 	t.Cleanup(func() { _ = ln.Close() })
 

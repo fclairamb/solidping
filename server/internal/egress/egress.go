@@ -125,8 +125,8 @@ func mustPrefixes(cidrs ...string) []netip.Prefix {
 // diagnostics.
 func NonPublicRanges() []string {
 	out := make([]string, 0, len(nonPublicPrefixes))
-	for _, p := range nonPublicPrefixes {
-		out = append(out, p.String())
+	for i := range nonPublicPrefixes {
+		out = append(out, nonPublicPrefixes[i].String())
 	}
 
 	return out
@@ -153,8 +153,8 @@ func isNonPublicAddr(addr netip.Addr) bool {
 	}
 
 	if addr.Is6() {
-		for _, p := range nat64Prefixes {
-			if p.Contains(addr) {
+		for i := range nat64Prefixes {
+			if nat64Prefixes[i].Contains(addr) {
 				raw := addr.As16()
 
 				return isNonPublicAddr(netip.AddrFrom4([4]byte{raw[12], raw[13], raw[14], raw[15]}))
@@ -162,8 +162,8 @@ func isNonPublicAddr(addr netip.Addr) bool {
 		}
 	}
 
-	for _, p := range nonPublicPrefixes {
-		if p.Contains(addr) {
+	for i := range nonPublicPrefixes {
+		if nonPublicPrefixes[i].Contains(addr) {
 			return true
 		}
 	}
@@ -202,7 +202,7 @@ type Guard struct {
 // New builds a guard. allowPrivate=true is the self-hosted / private-agent
 // posture (no filtering at all); false refuses every non-public destination.
 func New(allowPrivate bool, opts ...Option) *Guard {
-	g := &Guard{
+	guard := &Guard{
 		allowPrivate: allowPrivate,
 		lookup:       net.DefaultResolver.LookupIPAddr,
 		classify:     IsNonPublic,
@@ -210,10 +210,10 @@ func New(allowPrivate bool, opts ...Option) *Guard {
 	}
 
 	for _, opt := range opts {
-		opt(g)
+		opt(guard)
 	}
 
-	return g
+	return guard
 }
 
 // Enforcing reports whether the guard refuses non-public destinations. False
@@ -248,7 +248,7 @@ func (g *Guard) CheckHostIP(host string, ip net.IP) error {
 		return nil
 	}
 
-	return g.denied(context.Background(), host, ip)
+	return &DeniedError{Host: host, IP: ip}
 }
 
 // CheckAddr is CheckHostIP recording the refusal on ctx's Recorder, for
@@ -301,16 +301,18 @@ func (g *Guard) Resolve(ctx context.Context, host string) ([]net.IP, error) {
 
 	var refused net.IP
 
-	for _, a := range addrs {
-		if g.Enforcing() && g.isNonPublic(a.IP) {
+	for i := range addrs {
+		ip := addrs[i].IP
+
+		if g.Enforcing() && g.isNonPublic(ip) {
 			if refused == nil {
-				refused = a.IP
+				refused = ip
 			}
 
 			continue
 		}
 
-		out = append(out, a.IP)
+		out = append(out, ip)
 	}
 
 	if len(out) == 0 && refused != nil {
@@ -382,7 +384,7 @@ func (g *Guard) DialContextWith(
 	}
 
 	dialer := *base
-	dialer.Control = g.controlFor(ctx, host, base.Control)
+	dialer.Control = g.controlFor(recorderFrom(ctx), host, base.Control)
 
 	var lastErr error
 
@@ -406,22 +408,22 @@ func (g *Guard) DialContextWith(
 // libraries that accept a *net.Dialer but resolve names themselves: the hook
 // sees the literal address of every connect(2), after any resolution.
 func (g *Guard) ControlContext(ctx context.Context) func(string, string, syscall.RawConn) error {
-	return g.controlFor(ctx, "", nil)
+	return g.controlFor(recorderFrom(ctx), "", nil)
 }
 
 // Control is a net.Dialer.Control hook refusing a connect(2) towards a
 // non-public address when the guard is enforcing. It sees the literal address
 // the kernel is about to connect to, after every resolution — the backstop for
 // any path that resolved on its own.
-func (g *Guard) Control(network, address string, c syscall.RawConn) error {
-	return g.controlFor(context.Background(), "", nil)(network, address, c)
+func (g *Guard) Control(network, address string, rawConn syscall.RawConn) error {
+	return g.controlFor(nil, "", nil)(network, address, rawConn)
 }
 
 func (g *Guard) controlFor(
-	ctx context.Context, host string,
+	rec *Recorder, host string,
 	next func(string, string, syscall.RawConn) error,
 ) func(string, string, syscall.RawConn) error {
-	return func(network, address string, c syscall.RawConn) error {
+	return func(network, address string, rawConn syscall.RawConn) error {
 		if g.Enforcing() {
 			ipStr, _, err := net.SplitHostPort(address)
 			if err != nil {
@@ -435,12 +437,15 @@ func (g *Guard) controlFor(
 					name = ipStr
 				}
 
-				return g.denied(ctx, name, ip)
+				denied := &DeniedError{Host: name, IP: ip}
+				rec.record(denied)
+
+				return denied
 			}
 		}
 
 		if next != nil {
-			return next(network, address, c)
+			return next(network, address, rawConn)
 		}
 
 		return nil
@@ -549,19 +554,28 @@ func RecordDenial(ctx context.Context, err error) {
 }
 
 func record(ctx context.Context, err *DeniedError) {
+	recorderFrom(ctx).record(err)
+}
+
+func recorderFrom(ctx context.Context) *Recorder {
 	if ctx == nil {
+		return nil
+	}
+
+	rec, _ := ctx.Value(recorderCtxKey{}).(*Recorder)
+
+	return rec
+}
+
+func (r *Recorder) record(err *DeniedError) {
+	if r == nil {
 		return
 	}
 
-	rec, ok := ctx.Value(recorderCtxKey{}).(*Recorder)
-	if !ok || rec == nil {
-		return
-	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	rec.mu.Lock()
-	defer rec.mu.Unlock()
-
-	if rec.first == nil {
-		rec.first = err
+	if r.first == nil {
+		r.first = err
 	}
 }

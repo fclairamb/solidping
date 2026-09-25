@@ -114,7 +114,8 @@ func assertEgressDeniedThenAllowed(t *testing.T, ctx context.Context, dbSvc db.S
 	denied := runEgressHTTPJob(t, ctx, runner, dbSvc, egress.New(false), server.URL)
 	r.NotNil(denied.Status)
 	r.Equal(int(checkerdef.StatusError), *denied.Status, "output: %v", denied.Output)
-	r.Contains(denied.Output[checkerdef.OutputKeyError], "target resolves to a non-public address, denied by egress policy")
+	r.Contains(denied.Output[checkerdef.OutputKeyError],
+		"target resolves to a non-public address, denied by egress policy")
 	r.Contains(denied.Output[checkerdef.OutputKeyError], egress.EnvAllowPrivate)
 	r.Equal(true, denied.Output[egress.OutputKeyDenied])
 	r.NotContains(denied.Output, "body")

@@ -123,6 +123,7 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	// leaves. Pinging the worker's internal network is a mapping oracle
 	// (which hosts exist, how far) even without a response body.
 	if egressErr := checkerdef.CheckEgressIP(ctx, cfg.Host, ip); egressErr != nil {
+		//nolint:nilerr // Returning result with error details, not nil error
 		return &checkerdef.Result{
 			Status: checkerdef.StatusError,
 			Output: map[string]any{

@@ -682,14 +682,14 @@ func applyEgressEnv(cfg *EgressConfig) {
 		return
 	}
 
-	v, err := strconv.ParseBool(raw)
+	allow, err := strconv.ParseBool(raw)
 	if err != nil {
 		slog.Warn("Ignoring unparseable "+EnvEgressAllowPrivate, "value", raw, "error", err)
 
 		return
 	}
 
-	cfg.AllowPrivateTargets = &v
+	cfg.AllowPrivateTargets = &allow
 }
 
 // EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory

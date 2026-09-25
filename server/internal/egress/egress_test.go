@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -169,7 +168,7 @@ func TestResolveRefusesAHostnameResolvingPrivate(t *testing.T) {
 func listenLoopback(t *testing.T) (net.Listener, *atomic.Int32) {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 
@@ -341,8 +340,9 @@ func TestHTTPTransport(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	deny := egress.New(false)
-	r.Same(deny.HTTPTransport(), deny.HTTPTransport())
-	r.Nil(deny.HTTPTransport().Proxy, "a proxy would connect on our behalf, out of the guard's sight")
+	first, second := deny.HTTPTransport(), deny.HTTPTransport()
+	r.Same(first, second, "one shared transport, so connection pooling survives")
+	r.Nil(first.Proxy, "a proxy would connect on our behalf, out of the guard's sight")
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
 	r.NoError(err)
@@ -350,7 +350,7 @@ func TestHTTPTransport(t *testing.T) {
 	resp, err := (&http.Client{Transport: deny.HTTPTransport()}).Do(req) //nolint:bodyclose // errors, no body
 	r.ErrorIs(err, egress.ErrDenied)
 	r.Nil(resp)
-	r.False(strings.Contains(err.Error(), "secret-internal-body"))
+	r.NotContains(err.Error(), "secret-internal-body")
 
 	allowResp, err := (&http.Client{Transport: egress.New(true).HTTPTransport()}).Do(req)
 	r.NoError(err)

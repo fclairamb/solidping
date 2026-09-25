@@ -124,8 +124,8 @@ func guardedFamilyDialContext(
 				)
 			}
 
-			if err := guard.CheckAddr(ctx, host, ip); err != nil {
-				return nil, err
+			if denyErr := guard.CheckAddr(ctx, host, ip); denyErr != nil {
+				return nil, denyErr
 			}
 
 			return baseDialer.DialContext(ctx, network, addr)
@@ -141,8 +141,8 @@ func guardedFamilyDialContext(
 			return nil, err
 		}
 
-		if err := guard.CheckAddr(ctx, host, ip); err != nil {
-			return nil, err
+		if denyErr := guard.CheckAddr(ctx, host, ip); denyErr != nil {
+			return nil, denyErr
 		}
 
 		return baseDialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))

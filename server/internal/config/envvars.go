@@ -90,8 +90,11 @@ func envNameForKoanfPath(path string) (string, bool) {
 // config.Load — TestManualReaderEnvVarsBind spot-checks that these names bind.
 func manualReaderEnvVars() []string {
 	out := append(manualReaderServerEnvVars(), manualReaderPlatformEnvVars()...)
+	out = append(out, manualReaderHeartbeatEnvVars()...)
 
-	return append(out, manualReaderHeartbeatEnvVars()...)
+	// applyEgressEnv: egress.allow_private_targets is snake_case, so koanf's
+	// env loader can never reach it.
+	return append(out, EnvEgressAllowPrivate)
 }
 
 // manualReaderHeartbeatEnvVars covers applyHeartbeatEnv. EVERY key in
@@ -172,8 +175,6 @@ func manualReaderServerEnvVars() []string {
 		"SP_REALTIME_PING_INTERVAL",
 		"SP_REALTIME_MAX_CONNECTIONS",
 		"SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION",
-		// applyEgressEnv — egress.allow_private_targets is snake_case.
-		EnvEgressAllowPrivate,
 		// applyAgentEnv
 		"SP_AGENT_SERVER_URL",
 		"SP_AGENT_ENROLLMENT_TOKEN",
