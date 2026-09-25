@@ -191,6 +191,9 @@ type Guard struct {
 	allowPrivate bool
 	lookup       LookupFunc
 	base         net.Dialer
+	// classify is IsNonPublic in production; the package's own tests swap it
+	// to exercise the pinned dial against a loopback listener.
+	classify func(net.IP) bool
 
 	transportOnce sync.Once
 	transport     *http.Transport
@@ -202,6 +205,7 @@ func New(allowPrivate bool, opts ...Option) *Guard {
 	g := &Guard{
 		allowPrivate: allowPrivate,
 		lookup:       net.DefaultResolver.LookupIPAddr,
+		classify:     IsNonPublic,
 		base:         net.Dialer{Timeout: defaultDialTimeout, KeepAlive: defaultDialKeepAlive},
 	}
 
@@ -223,6 +227,14 @@ func (g *Guard) AllowsPrivate() bool {
 	return !g.Enforcing()
 }
 
+func (g *Guard) isNonPublic(ip net.IP) bool {
+	if g == nil || g.classify == nil {
+		return IsNonPublic(ip)
+	}
+
+	return g.classify(ip)
+}
+
 // CheckIP returns a *DeniedError when the guard is enforcing and ip is
 // non-public, nil otherwise.
 func (g *Guard) CheckIP(ip net.IP) error {
@@ -232,7 +244,7 @@ func (g *Guard) CheckIP(ip net.IP) error {
 // CheckHostIP is CheckIP naming the host the address was resolved from, so
 // the error tells the user which name led to the refusal.
 func (g *Guard) CheckHostIP(host string, ip net.IP) error {
-	if !g.Enforcing() || !IsNonPublic(ip) {
+	if !g.Enforcing() || !g.isNonPublic(ip) {
 		return nil
 	}
 
@@ -242,7 +254,7 @@ func (g *Guard) CheckHostIP(host string, ip net.IP) error {
 // CheckAddr is CheckHostIP recording the refusal on ctx's Recorder, for
 // callers that validate an address themselves before handing it to a library.
 func (g *Guard) CheckAddr(ctx context.Context, host string, ip net.IP) error {
-	if !g.Enforcing() || !IsNonPublic(ip) {
+	if !g.Enforcing() || !g.isNonPublic(ip) {
 		return nil
 	}
 
@@ -268,7 +280,7 @@ func (g *Guard) Resolve(ctx context.Context, host string) ([]net.IP, error) {
 	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
 
 	if ip := net.ParseIP(host); ip != nil {
-		if g.Enforcing() && IsNonPublic(ip) {
+		if g.Enforcing() && g.isNonPublic(ip) {
 			return nil, g.denied(ctx, host, ip)
 		}
 
@@ -290,7 +302,7 @@ func (g *Guard) Resolve(ctx context.Context, host string) ([]net.IP, error) {
 	var refused net.IP
 
 	for _, a := range addrs {
-		if g.Enforcing() && IsNonPublic(a.IP) {
+		if g.Enforcing() && g.isNonPublic(a.IP) {
 			if refused == nil {
 				refused = a.IP
 			}
@@ -417,7 +429,7 @@ func (g *Guard) controlFor(
 			}
 
 			ip := net.ParseIP(ipStr)
-			if IsNonPublic(ip) {
+			if g.isNonPublic(ip) {
 				name := host
 				if name == "" {
 					name = ipStr
