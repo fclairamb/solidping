@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/twilio"
@@ -512,6 +513,16 @@ func validateConnectionType(connType models.ConnectionType, settings models.JSON
 func (s *Service) checkCreateTypeConstraints(
 	ctx context.Context, connType models.ConnectionType, settings models.JSONMap,
 ) error {
+	// A bad or non-public sender URL (webhook/gotify/ntfy/matrix/googlechat/
+	// mattermost) must never reach storage — see validateSenderURLSettings.
+	// Runs for every type; it is a no-op for types outside
+	// senderURLSettingsKey (Slack/Teams-bot bot delivery, Twilio, PagerDuty,
+	// Pushover, …, which POST to a fixed vendor host, never a URL the caller
+	// supplies).
+	if err := s.validateSenderURLSettings(ctx, connType, settings); err != nil {
+		return err
+	}
+
 	switch connType { //nolint:exhaustive // only Slack/Teams-bot/Twilio have creation-time constraints.
 	case models.ConnectionTypeSlack:
 		// Slack channels can only be created by the OAuth install flow (which
@@ -529,6 +540,66 @@ func (s *Service) checkCreateTypeConstraints(
 	default:
 		return nil
 	}
+}
+
+// senderURLSettingsKey names, for each connection type whose sender POSTs to
+// a URL the org member configures, which Settings key holds it (spec
+// 2026-09-25-20). Slack/Discord bot delivery, Telegram, PagerDuty, Pushover
+// and Twilio all POST to a fixed vendor host and are deliberately absent —
+// there is no caller-supplied URL to validate.
+//
+//nolint:gochecknoglobals // constant lookup table
+var senderURLSettingsKey = map[models.ConnectionType]string{
+	models.ConnectionTypeWebhook:    "url",
+	models.ConnectionTypeGotify:     "server_url",
+	models.ConnectionTypeNtfy:       "serverUrl",
+	models.ConnectionTypeMatrix:     "homeserverUrl",
+	models.ConnectionTypeGoogleChat: "webhook_url",
+	models.ConnectionTypeMattermost: "webhook_url",
+}
+
+// validateSenderURLSettings validates the target URL of a notification sender
+// connection at create/update time (spec 2026-09-25-20), so a bad or
+// non-public URL never reaches storage — the same check
+// notifications.ValidateSenderURL runs again, defensively, inside the sender
+// itself right before delivery.
+//
+// A no-op for any type outside senderURLSettingsKey. ntfy defaults its server
+// URL to https://ntfy.sh when the key is absent — that absence is valid, not
+// a validation failure — and every listed sender already errors on an empty
+// URL at send time, so an empty/missing value here is left for the sender to
+// reject, not duplicated as a second error path here.
+func (s *Service) validateSenderURLSettings(
+	ctx context.Context, connType models.ConnectionType, settings models.JSONMap,
+) error {
+	key, ok := senderURLSettingsKey[connType]
+	if !ok {
+		return nil
+	}
+
+	raw, _ := settings[key].(string)
+	if raw == "" {
+		return nil
+	}
+
+	if err := notifications.ValidateSenderURL(ctx, s.egressGuard(), raw); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidSettings, err)
+	}
+
+	return nil
+}
+
+// egressGuard returns the process's outbound-connection policy for
+// notification sender URLs (services.Registry.EgressGuard), or nil — "no
+// policy", every syntactically valid http(s) URL passes — when this Service
+// was built without a registry, the construction unit tests use
+// (NewService(db, creds, nil, nil)).
+func (s *Service) egressGuard() *egress.Guard {
+	if s.registry == nil {
+		return nil
+	}
+
+	return s.registry.EgressGuard
 }
 
 // validateTwilioSettings enforces the Twilio connection's settings invariants:
@@ -814,6 +885,12 @@ func (s *Service) applyUpdateSettings(
 		if vErr := s.verifyTwilioOnUpdate(ctx, existing, merged); vErr != nil {
 			return vErr
 		}
+	}
+
+	// Same rule as creation: a PATCH that leaves (or newly sets) a non-public
+	// sender URL on the merged settings is rejected before it is persisted.
+	if vErr := s.validateSenderURLSettings(ctx, conn.Type, models.JSONMap(merged)); vErr != nil {
+		return vErr
 	}
 
 	if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
