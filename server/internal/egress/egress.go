@@ -192,6 +192,45 @@ func WithLookup(lookup LookupFunc) Option {
 	return func(g *Guard) { g.lookup = lookup }
 }
 
+// WithPublicOverride is a TEST-ONLY Option that treats the given IPs as
+// public regardless of IsNonPublic, layered on top of whatever classifier the
+// guard already has.
+//
+// It exists for exactly one shape of test: proving that a redirect's SECOND
+// hop is re-checked at dial time even though both hops necessarily run on
+// loopback (a test cannot reach a real public address). A second real IPv4
+// loopback address (127.0.0.2) is not portably bindable — macOS refuses it —
+// so tests instead stand the "public" hop up on the IPv6 loopback address
+// (::1, bindable everywhere) and use this option to have the guard treat
+// exactly that address as public, while every other address — including the
+// IPv4 loopback the "internal" hop actually uses — is judged exactly as
+// production would. See checkhttp's and checkjs's redirect egress tests.
+//
+// Production code must never call this: it does not relax the policy, it
+// narrows the classifier of ONE guard instance a test built for itself.
+func WithPublicOverride(ips ...net.IP) Option {
+	overridden := make(map[string]bool, len(ips))
+	for _, ip := range ips {
+		overridden[ip.String()] = true
+	}
+
+	return func(g *Guard) {
+		base := g.classify
+
+		g.classify = func(ip net.IP) bool {
+			if overridden[ip.String()] {
+				return false
+			}
+
+			if base != nil {
+				return base(ip)
+			}
+
+			return IsNonPublic(ip)
+		}
+	}
+}
+
 // Guard enforces the egress policy on one process's outbound connections.
 //
 // A nil *Guard is valid and allows everything, so callers that were never

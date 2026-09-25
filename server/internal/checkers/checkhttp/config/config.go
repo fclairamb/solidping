@@ -37,6 +37,20 @@ const (
 	// basicAuthSeparator separates the username from the password in a
 	// configKeyBasicAuth value (RFC 7617).
 	basicAuthSeparator = ":"
+
+	// RedirectHostPolicyAny is the default `redirectHostPolicy`: every hop is
+	// followed regardless of host, exactly today's behavior. It is the
+	// implicit value — GetConfig never writes it — kept as a named constant
+	// only so a caller can write it explicitly without guessing the spelling.
+	RedirectHostPolicyAny = "any"
+
+	// RedirectHostPolicySameHost refuses any redirect hop whose URL host
+	// differs from the PREVIOUS hop's (spec 2026-09-25-21). Useful for a check
+	// that monitors one specific endpoint and must not silently follow a
+	// bounce to a different host — including, on a shared worker, a bounce
+	// engineered to land on an internal address the egress guard would
+	// otherwise be the only thing refusing.
+	RedirectHostPolicySameHost = "same-host"
 )
 
 // MatchStatusCode checks if the actual status code matches any of the given patterns.
@@ -129,6 +143,14 @@ type HTTPConfig struct {
 	// redirect response, so this must stay a pointer for the same reason as
 	// VerifySsl.
 	FollowRedirects *bool `json:"followRedirects,omitempty"`
+
+	// RedirectHostPolicy gates which redirect hops are followed once
+	// FollowRedirects has already said yes. "" and RedirectHostPolicyAny both
+	// mean "follow anything" (today's behavior); RedirectHostPolicySameHost
+	// refuses a hop whose host differs from the previous one. Validated in
+	// ValidateSpec — an unknown value is a config error, not a silent
+	// fallback to "any".
+	RedirectHostPolicy string `json:"redirectHostPolicy,omitempty"`
 
 	// CaptureFailureResponse opts this check into capturing what the probe
 	// actually received when the check FAILS — status line, redacted response
@@ -367,6 +389,18 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		c.FollowRedirects = &b
 	}
 
+	// Extract RedirectHostPolicy (optional). Canonical key is camelCase; the
+	// snake_case alias is accepted so a config-as-code manifest written in the
+	// repo's older style still parses. Value validity (any/same-host) is
+	// checked in ValidateSpec, not here — FromMap only checks shape.
+	if v, key, ok := resolveKey(configMap, "redirectHostPolicy", "redirect_host_policy"); ok {
+		s, ok := v.(string)
+		if !ok {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
+		c.RedirectHostPolicy = s
+	}
+
 	// Extract CaptureFailureResponse (optional). Canonical key is the
 	// snake_case one; the camelCase spelling is accepted so a config written
 	// by the frontend's usual convention still parses.
@@ -545,6 +579,10 @@ func (c *HTTPConfig) addToggleConfig(cfg map[string]any) {
 		cfg["followRedirects"] = false
 	}
 
+	if c.RedirectHostPolicy != "" && c.RedirectHostPolicy != RedirectHostPolicyAny {
+		cfg["redirectHostPolicy"] = c.RedirectHostPolicy
+	}
+
 	if c.CaptureFailureResponse {
 		cfg["capture_failure_response"] = true
 	}
@@ -560,6 +598,12 @@ func (c *HTTPConfig) SkipTLSVerify() bool {
 // response instead of following it. Defaults to false (follow) when unset.
 func (c *HTTPConfig) SkipRedirects() bool {
 	return c.FollowRedirects != nil && !*c.FollowRedirects
+}
+
+// SameHostRedirectsOnly reports whether a followed redirect must stay on the
+// same host as the previous hop. Defaults to false ("any") when unset.
+func (c *HTTPConfig) SameHostRedirectsOnly() bool {
+	return c.RedirectHostPolicy == RedirectHostPolicySameHost
 }
 
 // SecretFields declares which top-level config keys carry secrets and must
