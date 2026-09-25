@@ -108,7 +108,7 @@ func failingHTTPClient() *http.Client {
 	})}
 }
 
-var errProviderDown = errors.New("provider down") //nolint:gochecknoglobals // test sentinel
+var errProviderDown = errors.New("provider down")
 
 // failingSlackOAuthURL is a Slack token endpoint that refuses every code.
 func failingSlackOAuthURL(t *testing.T) string {
@@ -264,7 +264,8 @@ func runGoogleCallback(t *testing.T, opts callbackOpts) callbackRun {
 
 	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
 	handler := NewGoogleOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/google/login?org="+org.Slug, returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/google/login?org=" + org.Slug
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
 	})
 
@@ -327,7 +328,8 @@ func runGitHubCallback(t *testing.T, opts callbackOpts) callbackRun {
 
 	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
 	handler := NewGitHubOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/github/login?org="+org.Slug, returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/github/login?org=" + org.Slug
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
 	})
 
@@ -367,7 +369,8 @@ func runGitLabCallback(t *testing.T, opts callbackOpts) callbackRun {
 
 	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
 	handler := NewGitLabOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/gitlab/login?org="+org.Slug, returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/gitlab/login?org=" + org.Slug
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
 	})
 
@@ -409,7 +412,8 @@ func runMicrosoftCallback(t *testing.T, opts callbackOpts) callbackRun {
 
 	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
 	handler := NewMicrosoftOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/microsoft/login?org="+org.Slug, returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/microsoft/login?org=" + org.Slug
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
 	})
 
@@ -435,7 +439,8 @@ func runDiscordCallback(t *testing.T, opts callbackOpts) callbackRun {
 	// Discord's redirect_uri defaults to "/"; any value round-trips as-is.
 	returnTo := opts.returnTo("/d/orgs/anything")
 	handler := NewDiscordOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/discord/login", returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/discord/login"
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(t.Context(), returnTo)
 	})
 
@@ -457,7 +462,8 @@ func runSlackCallback(t *testing.T, opts callbackOpts) callbackRun {
 
 	returnTo := opts.returnTo("/d/orgs/anything")
 	handler := NewSlackOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/slack/login", returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/slack/login"
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(ctx, returnTo)
 	})
 
@@ -480,7 +486,8 @@ func runOIDCCallback(t *testing.T, opts callbackOpts) callbackRun {
 
 	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
 	handler := NewOIDCOAuthHandler(svc, svc.cfg)
-	state := mintState(t, opts, handler.Login, "/api/v1/auth/oidc/login?org="+org.Slug, returnTo, func() (string, error) {
+	loginPath := "/api/v1/auth/oidc/login?org=" + org.Slug
+	state := mintState(t, opts, handler.Login, loginPath, returnTo, func() (string, error) {
 		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
 	})
 

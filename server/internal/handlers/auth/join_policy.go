@@ -926,7 +926,7 @@ func finishProviderCallback(
 // ends here.
 //
 // baseURI is normally already sanitized by the caller (against the login's
-// org); this is the last line of defence, so anything that is not a
+// org); this is the last line of defense, so anything that is not a
 // same-origin relative path goes to "/" instead of being echoed.
 func redirectOAuthError(writer http.ResponseWriter, req *http.Request, baseURI, code, description string) {
 	if !isSafePostLoginRedirect(baseURI) {

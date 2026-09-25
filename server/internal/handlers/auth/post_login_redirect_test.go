@@ -268,11 +268,17 @@ func TestProviderCallbackErrorsRefuseForeignRedirectURI(t *testing.T) {
 func TestPendingHandoffRefusesForeignReturnTo(t *testing.T) {
 	t.Parallel()
 
-	tails := map[string]func(rec *httptest.ResponseRecorder, req *http.Request, svc *Service, outcome *ProviderOutcome) error{
-		"finishProviderCallback": func(rec *httptest.ResponseRecorder, req *http.Request, svc *Service, outcome *ProviderOutcome) error {
+	type tailFunc func(rec *httptest.ResponseRecorder, req *http.Request, svc *Service, outcome *ProviderOutcome) error
+
+	tails := map[string]tailFunc{
+		"finishProviderCallback": func(
+			rec *httptest.ResponseRecorder, req *http.Request, svc *Service, outcome *ProviderOutcome,
+		) error {
 			return finishProviderCallback(rec, req, svc.db, "google", attackerRedirectURI, outcome)
 		},
-		"RedirectWithHandoff": func(rec *httptest.ResponseRecorder, req *http.Request, svc *Service, outcome *ProviderOutcome) error {
+		"RedirectWithHandoff": func(
+			rec *httptest.ResponseRecorder, req *http.Request, svc *Service, outcome *ProviderOutcome,
+		) error {
 			return RedirectWithHandoff(rec, req, svc.db, "https://solidping.acme.com", outcome, attackerRedirectURI)
 		},
 	}
@@ -346,7 +352,7 @@ func TestFinishProviderCallbackStorageFailureRefusesForeignReturnTo(t *testing.T
 	r.Equal(OAuthCodeFailed, location.Query().Get("error"))
 }
 
-// TestRedirectOAuthErrorRefusesForeignBase is the last line of defence every
+// TestRedirectOAuthErrorRefusesForeignBase is the last line of defense every
 // provider's redirectWithError ends in.
 func TestRedirectOAuthErrorRefusesForeignBase(t *testing.T) {
 	t.Parallel()

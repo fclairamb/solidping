@@ -15,13 +15,15 @@ import (
 // Dashboard deep links are short, but the MCP consent bounce carries a whole
 // /api/v1/oauth/authorize request (client_id, the client's redirect_uri, PKCE
 // challenge, state, resource, scope) URL-encoded inside the login page's
-// returnTo — web/dash0 lib/login-destination.ts buildOAuthLoginUrl. A real one
-// runs from about 500 to well over 600 characters, so a deep-link-sized cap
-// (512) would silently drop every SSO sign-in started from an MCP client.
+// returnTo — web/dash0 lib/login-destination.ts buildOAuthLoginUrl. With a
+// CLI's short loopback callback it is already ~430 characters, and the MCP
+// client picks its own callback URL and state with no length bound, so a
+// deep-link-sized cap (512) would silently drop SSO sign-ins started from
+// hosted MCP clients.
 const maxPostLoginRedirectLen = 2048
 
 // rejectedRedirectLogLen is how much of a rejected redirect_uri the WARN log
-// keeps: enough to recognise a misconfigured deep link, not a free-form sink.
+// keeps: enough to recognize a misconfigured deep link, not a free-form sink.
 const rejectedRedirectLogLen = 128
 
 // isSafePostLoginRedirect reports whether raw may be used as the destination of
