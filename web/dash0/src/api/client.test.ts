@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, getToken, handleResponse, setSession } from "./client";
+import {
+  ApiError,
+  apiFetch,
+  getRefreshToken,
+  getToken,
+  handleResponse,
+  setLoggingOut,
+  setSession,
+} from "./client";
 import i18n from "@/i18n";
 import frOrg from "@/locales/fr/org.json";
 import enOrg from "@/locales/en/org.json";
@@ -247,5 +255,119 @@ describe("handleResponse — DEMO_READ_ONLY", () => {
 
     expect(toast.info).toHaveBeenCalledTimes(1);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// AuthContext's logout() sets `loggingOut` before revoking the session, so
+// apiFetch's reactive 401 -> refresh-and-retry path is suppressed for
+// background requests racing the logout POST (spec 2026-09-25-14). But the
+// logout POST itself is what revokes the session server-side, and queued
+// spec 2026-09-25-24 (backend deletes the session on logout) depends on that
+// POST actually reaching the server authenticated. If the user's access
+// token had already expired before they clicked "Sign out" — idle past the
+// access-token lifetime, a common case — the POST itself 401s, and a blanket
+// suppression would mean it's never retried: the local logout looks
+// successful (tokens cleared, redirected to login) while the server-side
+// session/refresh token is silently never revoked. `allowRefreshDuringLogout`
+// carves out exactly that one call.
+describe("apiFetch — logout POST still refreshes despite loggingOut", () => {
+  let store: Record<string, string>;
+
+  beforeEach(() => {
+    store = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    // Module-level state (see client.ts's `loggingOut`) — never let a test
+    // that forgot to reach the finally leave it stuck true for later tests
+    // in this file.
+    setLoggingOut(false);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it(
+    "refreshes and retries the logout POST itself when the access token has " +
+      "already expired (positive control — this is exactly what " +
+      "allowRefreshDuringLogout exists to fix)",
+    async () => {
+      setSession("expired-access-token", "valid-refresh-token", 3600);
+
+      const calls: Array<{ url: string; auth: string | null; body: unknown }> = [];
+      const fetchSpy = vi.fn(async (url: string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        calls.push({
+          url,
+          auth: headers.get("Authorization"),
+          body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+        });
+
+        if (url === "/api/v1/auth/refresh") {
+          return new Response(
+            JSON.stringify({ accessToken: "new-access-token", expiresIn: 3600 }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        }
+
+        // /api/v1/auth/logout: 401 on the stale token, 204 once retried with
+        // the freshly refreshed one.
+        if (headers.get("Authorization") === "Bearer expired-access-token") {
+          return new Response(null, { status: 401 });
+        }
+        return new Response(null, { status: 204 });
+      });
+      vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
+
+      setLoggingOut(true);
+      await expect(
+        apiFetch("/api/v1/auth/logout", {
+          method: "POST",
+          allowRefreshDuringLogout: true,
+        })
+      ).resolves.toBeUndefined();
+
+      // Stale-token attempt, then the refresh, then the retry — in that order.
+      expect(calls.map((c) => c.url)).toEqual([
+        "/api/v1/auth/logout",
+        "/api/v1/auth/refresh",
+        "/api/v1/auth/logout",
+      ]);
+      expect(calls[0].auth).toBe("Bearer expired-access-token");
+      expect(calls[1].body).toEqual({ refreshToken: "valid-refresh-token" });
+      expect(calls[2].auth).toBe("Bearer new-access-token");
+      // The refreshed session is left in place — the retried POST succeeded,
+      // so nothing here should have cleared it.
+      expect(getToken()).toBe("new-access-token");
+      expect(getRefreshToken()).toBe("valid-refresh-token");
+    }
+  );
+
+  it("does NOT refresh, retry, or log for an ordinary request that 401s while loggingOut is set (no allowRefreshDuringLogout)", async () => {
+    setSession("expired-access-token", "valid-refresh-token", 3600);
+    const consoleErrorSpy = vi.spyOn(console, "error");
+
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
+
+    setLoggingOut(true);
+    await expect(
+      apiFetch("/api/v1/orgs/acme/checks", { suppress401Redirect: true })
+    ).rejects.toMatchObject({ status: 401 });
+
+    // Exactly the one (failed) request — no refresh attempt was made, so
+    // there was nothing for token-refresh.ts's escalate() to log either.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });
