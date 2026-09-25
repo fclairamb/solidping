@@ -1,0 +1,103 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const apiFetchMock = vi.fn();
+vi.mock("@/api/client", () => ({
+  apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+}));
+
+import { exchangeHandoffCode, resolveHandoffLanding } from "./auth-handoff";
+import { DASH_BASE } from "@/lib/base-path";
+
+const BASE = DASH_BASE;
+const acme = { uid: "org-uid", slug: "acme" };
+
+describe("resolveHandoffLanding", () => {
+  it("keeps an in-app deep link in the session's org", () => {
+    expect(
+      resolveHandoffLanding(
+        { organization: acme, returnTo: `${BASE}/orgs/acme/checks?status=down` },
+        undefined,
+        BASE,
+      ),
+    ).toEqual({ href: `${BASE}/orgs/acme/checks?status=down` });
+  });
+
+  it("lands on the org root when there is no returnTo", () => {
+    expect(resolveHandoffLanding({ organization: acme }, undefined, BASE)).toEqual({
+      to: "/orgs/$org",
+      params: { org: "acme" },
+    });
+  });
+
+  it("never follows a returnTo into another org or off-site", () => {
+    for (const returnTo of [
+      `${BASE}/orgs/other/checks`,
+      "https://evil.example/d/orgs/acme",
+      "//evil.example/d/orgs/acme",
+      "/", // Discord's default redirect_uri
+    ]) {
+      expect(resolveHandoffLanding({ organization: acme, returnTo }, undefined, BASE)).toEqual({
+        to: "/orgs/$org",
+        params: { org: "acme" },
+      });
+    }
+  });
+
+  it("resumes the MCP consent flow through the login page", () => {
+    const returnTo = `${BASE}/orgs/acme/login?returnTo=${encodeURIComponent("/api/v1/oauth/authorize?client_id=x")}`;
+    expect(resolveHandoffLanding({ organization: acme, returnTo }, undefined, BASE)).toEqual({
+      href: returnTo,
+    });
+  });
+
+  it("sends an org-less session to /no-org, naming the pending org", () => {
+    expect(
+      resolveHandoffLanding({ membershipPending: "acme", returnTo: `${BASE}/orgs/acme` }, undefined, BASE),
+    ).toEqual({ to: "/no-org", search: { membershipPending: "acme" } });
+  });
+
+  it("falls back to the URL's membershipPending, and names nothing without one", () => {
+    expect(resolveHandoffLanding({}, "acme", BASE)).toEqual({
+      to: "/no-org",
+      search: { membershipPending: "acme" },
+    });
+    expect(resolveHandoffLanding({}, undefined, BASE)).toEqual({
+      to: "/no-org",
+      search: { membershipPending: undefined },
+    });
+  });
+});
+
+describe("exchangeHandoffCode", () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it("posts the code once, unauthenticated, even when asked twice", async () => {
+    const response = { accessToken: "at", user: { uid: "u", email: "e", role: "user" } };
+    apiFetchMock.mockResolvedValue(response);
+
+    const [first, second] = await Promise.all([
+      exchangeHandoffCode("code-once"),
+      exchangeHandoffCode("code-once"),
+    ]);
+
+    expect(first).toBe(response);
+    expect(second).toBe(response);
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock).toHaveBeenCalledWith("/api/v1/auth/handoff/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code: "code-once" }),
+      skipAuth: true,
+    });
+  });
+
+  it("keeps different codes apart", async () => {
+    apiFetchMock.mockResolvedValue({});
+
+    await exchangeHandoffCode("code-a");
+    await exchangeHandoffCode("code-b");
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(2);
+  });
+});
