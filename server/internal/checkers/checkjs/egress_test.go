@@ -69,7 +69,7 @@ func ipv6LoopbackServer(t *testing.T, handler http.Handler) *httptest.Server {
 
 	server := httptest.NewUnstartedServer(handler)
 
-	ln, err := net.Listen("tcp", "[::1]:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "[::1]:0")
 	require.NoError(t, err)
 
 	_ = server.Listener.Close()

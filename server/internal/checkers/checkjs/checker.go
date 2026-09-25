@@ -748,23 +748,12 @@ func (r *jsRuntime) parseHTTPOptions(opts map[string]any) (httpOptions, error) {
 		parsed.maxRedirects = clampRedirects(int(maxRedirects))
 	}
 
-	// redirectHostPolicy (optional). An unknown value is rejected rather than
-	// silently treated as "any" — same reasoning as checkhttp's ValidateSpec,
-	// just checked at call time since a script's options are never validated
-	// offline.
-	if policy, ok := opts["redirectHostPolicy"]; ok {
-		policyStr, ok := policy.(string)
-		if !ok {
-			return parsed, errInvalidRedirectHostPolicy
-		}
-
-		switch policyStr {
-		case "", redirectHostPolicyAny, redirectHostPolicySameHost:
-			parsed.redirectHostPolicy = policyStr
-		default:
-			return parsed, errInvalidRedirectHostPolicy
-		}
+	redirectHostPolicy, err := parseRedirectHostPolicy(opts["redirectHostPolicy"])
+	if err != nil {
+		return parsed, err
 	}
+
+	parsed.redirectHostPolicy = redirectHostPolicy
 
 	timeout, err := optionTimeout(opts["timeout"])
 	if err != nil {
@@ -778,6 +767,30 @@ func (r *jsRuntime) parseHTTPOptions(opts map[string]any) (httpOptions, error) {
 	}
 
 	return parsed, nil
+}
+
+// parseRedirectHostPolicy reads the `redirectHostPolicy` option value.
+// Absent (nil) yields "" (the default, "any"); a non-string or an unknown
+// string is rejected rather than silently treated as "any" — same reasoning
+// as checkhttp's ValidateSpec, just checked at call time since a script's
+// options are never validated offline. Pulled out of parseHTTPOptions to keep
+// that function under the complexity linter's cap.
+func parseRedirectHostPolicy(raw any) (string, error) {
+	if raw == nil {
+		return "", nil
+	}
+
+	policyStr, ok := raw.(string)
+	if !ok {
+		return "", errInvalidRedirectHostPolicy
+	}
+
+	switch policyStr {
+	case "", redirectHostPolicyAny, redirectHostPolicySameHost:
+		return policyStr, nil
+	default:
+		return "", errInvalidRedirectHostPolicy
+	}
 }
 
 // clampRedirects keeps maxRedirects inside [0, maxRedirectsCap].

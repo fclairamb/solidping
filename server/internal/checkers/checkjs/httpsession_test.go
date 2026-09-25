@@ -191,7 +191,7 @@ return { status: "up", output: { err: resp.error || "", code: resp.statusCode ||
 `)
 
 		r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
-		r.Equal("", result.Output["err"])
+		r.Empty(result.Output["err"])
 		r.EqualValues(200, result.Output["code"], "a same-host redirect must still be followed")
 	})
 
