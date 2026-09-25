@@ -565,6 +565,30 @@ func deviceConsentRateLimitConfig(base config.RateLimitConfig) config.RateLimitC
 	}
 }
 
+// reportRequestsPerMinute is the per-IP allowance for POST /api/mgmt/report
+// (spec 2026-09-25-26). The endpoint is deliberately anonymous (no auth, no
+// org required) and sits outside limitedPrefix (it's under /api/mgmt, not
+// /api/v1/), so without a dedicated limiter it has no rate limit at all —
+// repeated multipart posts could fill storage and spam the wired GitHub repo
+// token indefinitely. Submitting an in-app bug report is a human action, not
+// a polling client, so this is deliberately much stricter than the general
+// per-IP budget.
+const reportRequestsPerMinute = 5
+
+// reportRateLimitConfig derives the /api/mgmt/report limiter from the
+// server's own, keeping deployment-specific knobs (trusted proxy hops) while
+// collapsing the allowance. Burst is a little above one minute's allowance so
+// a user who double-submits (e.g. retries after a slow upload) isn't
+// immediately punished. RateQueue is left at zero so an over-eager caller is
+// rejected outright (429) rather than parked in a waiting room.
+func reportRateLimitConfig(base config.RateLimitConfig) config.RateLimitConfig {
+	return config.RateLimitConfig{
+		RequestsPerMinute: reportRequestsPerMinute,
+		Burst:             10,
+		TrustedProxies:    base.TrustedProxies,
+	}
+}
+
 // fakeAPIRequestsPerMinute bounds the public /fake self-test fixture (spec
 // 2026-08-23-07). Unlike the dashboard, /fake has no legitimate
 // high-frequency caller pattern — a check pointed at it polls at most every
@@ -2256,7 +2280,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
 	mgmt.GET("/limits", s.getLimits)
-	mgmt.POST("/report", feedbackHandler.SubmitReport)
+	// POST /report is anonymous (no auth, no org required) and outside
+	// limitedPrefix, so it gets its own dedicated, much stricter limiter
+	// rather than riding on the unlimited /api/mgmt traffic assumption (spec
+	// 2026-09-25-26) — see reportRateLimitConfig. RateLimitRoute (not
+	// RateLimit) because the route itself is the scope here, not a path
+	// prefix.
+	reportLimiter := middleware.NewRateLimiter(reportRateLimitConfig(s.config.Server.RateLimiting), ctx)
+	mgmtReport := mainGroup.NewGroup("/api/mgmt").Use(reportLimiter.RateLimitRoute)
+	mgmtReport.POST("/report", feedbackHandler.SubmitReport)
 
 	// Memory snapshot (super-admin only): runtime memstats, process RSS,
 	// suspect-subsystem sizes and build cgo/SQLite-driver facts. Gated because
