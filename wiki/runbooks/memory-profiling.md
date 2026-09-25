@@ -9,11 +9,15 @@ separately, since they are different processes with different memory shapes:
 
 The standing surfaces this relies on (all shipped):
 
-- **Prometheus** (`/metrics`, gated by `SP_PROMETHEUS_ENABLED`, default on) — Go
+- **Prometheus** (`/metrics`, gated by `SP_PROMETHEUS_ENABLED` and by
+  `SP_METRICS_SCRAPE_TOKEN` — unset means 404, spec 2026-09-25-25) — Go
   runtime + process collectors (`go_memstats_*`, `process_resident_memory_bytes`,
   `go_goroutines`, `go_gc_*`) plus the subsystem gauges
   `solidping_dek_cache_entries`, `solidping_ratelimit_entries`,
-  `solidping_event_listeners`, `solidping_runtime_goroutines`.
+  `solidping_event_listeners`, `solidping_runtime_goroutines`. A manual
+  `curl`/soak against a local `make dev`/`make bench-*` server needs
+  `-H "Authorization: Bearer $SP_METRICS_SCRAPE_TOKEN"` (the bench Makefile
+  targets set `SP_METRICS_SCRAPE_TOKEN`/`BENCH_METRICS_TOKEN` for you).
 - **`GET /api/mgmt/memory`** (super-admin) — a JSON snapshot of memstats and
   the `runtime/metrics` memory classes, the `/proc` RSS breakdown (anon / file /
   shmem split, `VmHWM`, threads, `smaps_rollup` Pss), the container's own cgroup
