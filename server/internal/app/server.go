@@ -2409,18 +2409,9 @@ func initSentry(cfg config.SentryConfig) error {
 		Release:          "solidping-server@" + version.Version,
 		TracesSampleRate: cfg.TracesSampleRate,
 		Debug:            cfg.Debug,
-		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
-			if event.Request == nil {
-				return event
-			}
-			// Scrub sensitive headers
-			for key := range event.Request.Headers {
-				if key == "Authorization" || key == "Cookie" {
-					event.Request.Headers[key] = "[FILTERED]"
-				}
-			}
-			return event
-		},
+		// Filters credential headers and redacts credential query params
+		// (the federated-login handoff code among them) — see sentry_scrub.go.
+		BeforeSend: scrubSentryEvent,
 	})
 	if err != nil {
 		return fmt.Errorf("sentry init: %w", err)
