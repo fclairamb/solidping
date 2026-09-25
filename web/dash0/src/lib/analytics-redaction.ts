@@ -19,6 +19,9 @@
  *   posthog-js calls it for every recorded network entry (navigation entry
  *   included) and also for the rrweb Meta `href` and replay `$url_changed` /
  *   `$pageview` custom events, so one hook covers every URL replay stores.
+ *   It does NOT look at page content: a credential rendered as text on the
+ *   page (a new PAT, a heartbeat URL, a TOTP secret) is still in the DOM
+ *   snapshot.
  * - {@link redactCredentialsBeforeSend}: the first `before_send` hook. Applies
  *   the same filter to the URL-shaped event properties.
  *
@@ -60,27 +63,6 @@ export const CREDENTIAL_PATH_SEGMENTS: readonly string[] = [
   "invite",
   "confirm-registration",
 ];
-
-/**
- * JSON body keys whose value is a credential, compared lowercased with `_`
- * and `-` removed (so `accessToken`, `access_token` and `access-token` all
- * match). Only matters if network body capture is ever turned on in the
- * PostHog project. `code` is deliberately absent: it is also the API error
- * shape's machine code (`"code": "VALIDATION_ERROR"`).
- */
-const CREDENTIAL_BODY_KEYS = new Set([
-  "accesstoken",
-  "refreshtoken",
-  "token",
-  "temptoken",
-  "idtoken",
-  "password",
-  "newpassword",
-  "currentpassword",
-  "oldpassword",
-  "secret",
-  "clientsecret",
-]);
 
 /** Captured headers dropped outright. Compared lowercased. */
 const CREDENTIAL_HEADERS = new Set([
@@ -181,45 +163,6 @@ export function redactUrl(url: string): string {
   return out;
 }
 
-function redactJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactJsonValue);
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = CREDENTIAL_BODY_KEYS.has(key.toLowerCase().replace(/[_-]/g, ""))
-        ? REDACTED
-        : redactJsonValue(v);
-    }
-    return out;
-  }
-  return value;
-}
-
-/**
- * Redacts credentials in a captured request/response body: credential-named
- * keys in a JSON body, credential params in a form-encoded one. Anything else
- * is returned unchanged.
- */
-export function redactBody(body: string | null | undefined): string | null | undefined {
-  if (typeof body !== "string" || body === "") return body;
-
-  const trimmed = body.trimStart();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      const parsed: unknown = JSON.parse(body);
-      const redacted = JSON.stringify(redactJsonValue(parsed));
-      // Keep the original bytes (formatting included) when nothing matched.
-      return redacted === JSON.stringify(parsed) ? body : redacted;
-    } catch {
-      return body;
-    }
-  }
-  if (/^[^\s=&]+=[^\s]*$/.test(body)) {
-    return redactParamString(body);
-  }
-  return body;
-}
-
 function redactHeaders(
   headers: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
@@ -248,7 +191,13 @@ export interface CapturedRequestLike {
 /**
  * `session_recording.maskCapturedNetworkRequestFn`. Always returns the
  * request (returning null would silently drop the entry from the replay),
- * with its URL, credential headers and credential body fields redacted.
+ * with its URL redacted, credential headers dropped and any body removed.
+ *
+ * Header and body capture are pinned off client-side in `initAnalytics`
+ * (`recordHeaders: false`, `recordBody: false`, which posthog-js honours over
+ * the project settings). The header/body handling below is a second layer,
+ * not a licence to turn capture back on: enabling body capture needs a real
+ * body scrubber first.
  */
 export function redactCapturedNetworkRequest<T extends CapturedRequestLike>(request: T): T {
   if (!request || typeof request !== "object") return request;
@@ -258,8 +207,13 @@ export function redactCapturedNetworkRequest<T extends CapturedRequestLike>(requ
   if (typeof out.url === "string") out.url = redactUrl(out.url);
   if (out.requestHeaders) out.requestHeaders = redactHeaders(out.requestHeaders);
   if (out.responseHeaders) out.responseHeaders = redactHeaders(out.responseHeaders);
-  if ("requestBody" in out) out.requestBody = redactBody(out.requestBody);
-  if ("responseBody" in out) out.responseBody = redactBody(out.responseBody);
+  // Bodies fail closed. Supplying maskCapturedNetworkRequestFn turns OFF
+  // posthog-js's built-in body scrubber (scrubPayloads), and a key-name
+  // filter here would miss things like `recoveryCodes`, `signingSecret` or a
+  // heartbeat URL inside a JSON value. initAnalytics pins recordBody: false,
+  // so nothing should arrive here; if a body ever does, it is dropped.
+  if ("requestBody" in out) out.requestBody = undefined;
+  if ("responseBody" in out) out.responseBody = undefined;
   return out as T;
 }
 

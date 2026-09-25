@@ -20,10 +20,11 @@
  * more than the analytics are worth.
  *
  * That decision is about UI content. It never covered credentials: session
- * tokens, one-time codes and single-use links in URLs, captured headers and
- * captured bodies are replaced with `REDACTED` by the hooks in
- * `./analytics-redaction` (spec 2026-09-25-11), wired in `initAnalytics`
- * below. The distinct id is still pseudonymous
+ * tokens, one-time codes and single-use links in URLs are replaced with
+ * `REDACTED` by the hooks in `./analytics-redaction` (spec 2026-09-25-11),
+ * and network header/body capture is pinned off, both wired in
+ * `initAnalytics` below. Credentials rendered as page text are NOT masked.
+ * The distinct id is still pseudonymous
  * and built from UUIDs only (see `distinctId` below) — it must match
  * `analytics.DistinctID` in `server/internal/analytics/analytics.go` exactly
  * so browser sessions and server-side events stitch together.
@@ -203,6 +204,12 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           // replay Meta `href` through this hook. See ./analytics-redaction.
           session_recording: {
             maskCapturedNetworkRequestFn: redactCapturedNetworkRequest,
+            // Pinned off whatever the PostHog project says (a client-side
+            // `false` wins over remote config). Supplying the mask fn above
+            // disables posthog-js's own body scrubber, so bodies and headers
+            // must never be recorded unless a real scrubber is added first.
+            recordHeaders: false,
+            recordBody: false,
           },
           // Same filter on URL-shaped event properties, so a clean
           // `$current_url` does not depend on main.tsx running first. An
