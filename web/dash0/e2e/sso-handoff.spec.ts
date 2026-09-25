@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 import { test, expect, type Page } from "@playwright/test";
-import { API_BASE, DASH_BASE, escapeRegExp, fetchAuthCapabilities } from "./fixtures";
+import { API_BASE, DASH_BASE, escapeRegExp, fetchAuthCapabilities, uniqueStamp } from "./fixtures";
 
 /**
  * Spec 2026-09-25-12: a federated login never puts the session in a URL.
@@ -19,8 +19,8 @@ import { API_BASE, DASH_BASE, escapeRegExp, fetchAuthCapabilities } from "./fixt
  *   SP_OIDC_CLIENT_ID=e2e-client  SP_OIDC_CLIENT_SECRET=e2e-secret
  *
  * and E2E_FAKE_OIDC_PORT is set for the test run. CI does this on its side-car
- * server (.github/workflows/ci.yml). Elsewhere that test skips with a reason;
- * the other two run against any server.
+ * server (.github/workflows/ci.yml). Elsewhere the two OIDC tests skip with a
+ * reason; the other two run against any server.
  */
 
 const FAKE_OIDC_PORT = process.env.E2E_FAKE_OIDC_PORT
@@ -45,12 +45,21 @@ function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
 }
 
+/** Who the fake identity provider signs in. */
+interface FakeIdentity {
+  sub: string;
+  email: string;
+}
+
+/** The seeded test-mode user, a member of org `test`. */
+const TEST_MEMBER: FakeIdentity = { sub: "e2e-oidc-test-user", email: "test@test.com" };
+
 /**
  * Just enough of an OpenID provider for the server's go-oidc connector:
  * discovery, an authorize endpoint that approves immediately, a token endpoint
- * returning an RS256 ID token for the test user, and the JWKS to verify it.
+ * returning an RS256 ID token for `identity()`, and the JWKS to verify it.
  */
-function startFakeOIDCProvider(port: number): Promise<Server> {
+function startFakeOIDCProvider(port: number, identity: () => FakeIdentity): Promise<Server> {
   const issuer = `http://127.0.0.1:${port}`;
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = { ...publicKey.export({ format: "jwk" }), kid: "e2e-key", alg: "RS256", use: "sig" };
@@ -62,8 +71,8 @@ function startFakeOIDCProvider(port: number): Promise<Server> {
       JSON.stringify({
         iss: issuer,
         aud: FAKE_OIDC_CLIENT_ID,
-        sub: "e2e-oidc-test-user",
-        email: "test@test.com",
+        sub: identity().sub,
+        email: identity().email,
         email_verified: true,
         name: "Test User",
         iat: now,
@@ -128,25 +137,29 @@ function startFakeOIDCProvider(port: number): Promise<Server> {
 test.describe("Federated login handoff", () => {
   test.describe("OIDC round trip", () => {
     let idp: Server | undefined;
+    let identity: FakeIdentity = TEST_MEMBER;
 
     test.beforeAll(async () => {
       if (!FAKE_OIDC_PORT) return;
       const { providers } = await fetchAuthCapabilities(API_BASE);
       if (!providers.some((p) => p.type === "oidc")) return;
-      idp = await startFakeOIDCProvider(FAKE_OIDC_PORT);
+      idp = await startFakeOIDCProvider(FAKE_OIDC_PORT, () => identity);
     });
 
     test.afterAll(async () => {
       await new Promise<void>((resolve) => (idp ? idp.close(() => resolve()) : resolve()));
     });
 
-    test("lands on the dashboard signed in, with no token in any URL", async ({ page }) => {
+    test.beforeEach(() => {
       test.skip(
         !idp,
         "requires a server started with SP_OIDC_ISSUER_URL pointing at the fake IdP " +
           "and E2E_FAKE_OIDC_PORT set — see file header",
       );
+      identity = TEST_MEMBER;
+    });
 
+    test("lands on the dashboard signed in, with no token in any URL", async ({ page }) => {
       const urls = recordNavigations(page);
       const returnTo = `${DASH_BASE}/orgs/test/checks`;
 
@@ -174,6 +187,35 @@ test.describe("Federated login handoff", () => {
       for (const u of urls) {
         expect(u).not.toContain(stored.token as string);
         expect(u).not.toContain(stored.refresh as string);
+      }
+    });
+
+    test("an account the org does not admit lands on /no-org with an org-less session", async ({
+      page,
+    }) => {
+      const stamp = uniqueStamp();
+      identity = { sub: `e2e-outsider-${stamp}`, email: `outsider-${stamp}@elsewhere.example` };
+      const urls = recordNavigations(page);
+
+      await page.goto(
+        `${API_BASE}/api/v1/auth/oidc/login?org=test&redirect_uri=${encodeURIComponent(`${DASH_BASE}/orgs/test`)}`,
+      );
+
+      await page.waitForURL(/\/d\/no-org\?membershipPending=test$/, { timeout: 20000 });
+
+      const stored = await page.evaluate(() => ({
+        token: localStorage.getItem("solidping_session_token"),
+        refresh: localStorage.getItem("solidping_refresh_token"),
+      }));
+      expect(stored.token).toBeTruthy();
+      expect(stored.refresh, "an org-less session has no refresh token").toBeNull();
+
+      expect(urls.some((u) => /\/d\/auth\/complete\?code=[^&]+&membershipPending=test/.test(u))).toBe(
+        true,
+      );
+      expect(urls.filter((u) => TOKEN_PARAM.test(u))).toEqual([]);
+      for (const u of urls) {
+        expect(u).not.toContain(stored.token as string);
       }
     });
   });
