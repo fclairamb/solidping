@@ -240,6 +240,18 @@ type Service interface {
 	// PurgeExpiredDeviceAuthRequests removes rows whose human never showed up.
 	PurgeExpiredDeviceAuthRequests(ctx context.Context, before time.Time) (int64, error)
 
+	// Auth handoff codes (spec 2026-09-25-12): the single-use codes that hand a
+	// federated login's session to the dashboard. Keyed by the code's SHA-256,
+	// never by the code itself.
+	CreateAuthHandoffCode(ctx context.Context, code *models.AuthHandoffCode) error
+	// ConsumeAuthHandoffCode deletes the row and returns it in ONE statement,
+	// so two concurrent exchanges of the same code cannot both win. It returns
+	// sql.ErrNoRows when no row matches. It does NOT check expiry: the caller
+	// does, on the row it now owns.
+	ConsumeAuthHandoffCode(ctx context.Context, codeHash string) (*models.AuthHandoffCode, error)
+	// DeleteExpiredAuthHandoffCodes removes codes that expired before `before`.
+	DeleteExpiredAuthHandoffCodes(ctx context.Context, before time.Time) (int64, error)
+
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
 	GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error)

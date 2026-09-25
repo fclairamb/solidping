@@ -3,6 +3,17 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: auth-handoff-codes
+--
+-- Outstanding handoff codes are dropped; a login mid-handoff has to start
+-- again.
+-- ==========================================================================
+
+drop table if exists auth_handoff_codes;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: multi-region-quorum
 --
 -- The per-region readings and the quorum setting go; every check falls back

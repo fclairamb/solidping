@@ -60,6 +60,7 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		log.InfoContext(ctx, "No expired state entries to delete")
 	}
 
+	sweepExpiredAuthHandoffCodes(ctx, jctx)
 	sweepOrphanIncidentAttachments(ctx, jctx)
 
 	// Schedule next run in 2 hours
@@ -76,6 +77,23 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	return nil
+}
+
+// sweepExpiredAuthHandoffCodes deletes federated-login handoff codes past
+// their 60-second lifetime (spec 2026-09-25-12). A redeemed code is already
+// gone; this reaps the ones nobody came back for. Best-effort like the
+// attachment sweep: a failure here must not stop the rest of the job.
+func sweepExpiredAuthHandoffCodes(ctx context.Context, jctx *jobdef.JobContext) {
+	count, err := jctx.DBService.DeleteExpiredAuthHandoffCodes(ctx, time.Now())
+	if err != nil {
+		jctx.Logger.WarnContext(ctx, "Failed to delete expired auth handoff codes", "error", err)
+
+		return
+	}
+
+	if count > 0 {
+		jctx.Logger.InfoContext(ctx, "Deleted expired auth handoff codes", "count", count)
+	}
 }
 
 // attachmentOrphanGrace is how long an attachment must have existed before the

@@ -843,6 +843,18 @@ func (m *mockDBService) PurgeExpiredDeviceAuthRequests(_ context.Context, _ time
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateAuthHandoffCode(_ context.Context, _ *models.AuthHandoffCode) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ConsumeAuthHandoffCode(_ context.Context, _ string) (*models.AuthHandoffCode, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteExpiredAuthHandoffCodes(_ context.Context, _ time.Time) (int64, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateUserPasskey(_ context.Context, _ *models.UserPasskey) error {
 	panic("not implemented")
 }

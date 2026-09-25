@@ -22,6 +22,9 @@
 --   SECTION: multi-region-quorum
 --                              checks.fail_quorum and the per-(check, region)
 --                              reading table check_region_states
+--   SECTION: auth-handoff-codes
+--                              single-use codes that hand a federated login's
+--                              session to the dashboard (auth_handoff_codes)
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -247,3 +250,27 @@ create table if not exists check_region_states (
   updated_at        text not null default (datetime('now')),
   primary key (check_uid, region)
 );
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: auth-handoff-codes  (spec 2026-09-25-12)
+--
+-- See the Postgres twin for the rationale: single-use handoff codes that
+-- replace the session tokens a federated login used to put in the redirect
+-- URL. Only the SHA-256 of the code is stored, and the payload is sealed
+-- under a key derived from the code.
+-- ==========================================================================
+
+create table if not exists auth_handoff_codes (
+  code_hash         text primary key, -- Hex SHA-256 of the code; the code itself is never stored
+  user_uid          text not null references users(uid) on delete cascade, -- User the session was minted for
+  organization_uid  text references organizations(uid) on delete cascade, -- Org of the session; NULL for an org-less session
+  payload           text not null, -- Session, AES-256-GCM sealed under a key derived from the code
+  expires_at        text not null,
+  created_at        text not null default (datetime('now'))
+);
+
+--bun:split
+
+create index if not exists auth_handoff_codes_expires_at_idx on auth_handoff_codes (expires_at);

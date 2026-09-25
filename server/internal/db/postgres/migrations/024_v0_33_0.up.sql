@@ -20,6 +20,9 @@
 --   SECTION: multi-region-quorum
 --                              checks.fail_quorum and the per-(check, region)
 --                              reading table check_region_states
+--   SECTION: auth-handoff-codes
+--                              single-use codes that hand a federated login's
+--                              session to the dashboard (auth_handoff_codes)
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -367,3 +370,53 @@ comment on column check_region_states.status is
 
 comment on column check_region_states.status_since is
   'When the region entered its current side (failing or passing). Display only.';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: auth-handoff-codes  (spec 2026-09-25-12)
+--
+-- A federated login (Google, GitHub, OIDC, SAML, ...) used to redirect the
+-- browser to the dashboard with access_token / refresh_token in the query
+-- string, where they reached browser history, Referer headers, proxy logs and
+-- session replay. The callback now stores the minted session under a random,
+-- single-use, 60-second handoff code and redirects with that code only; the
+-- dashboard trades it once via POST /api/v1/auth/handoff/exchange.
+--
+--   code_hash         hex SHA-256 of the code. The code itself is never
+--                     stored, so a row cannot be redeemed from a dump.
+--   payload           the session, AES-256-GCM sealed under a key derived
+--                     from the code (not from the hash): a dump yields no
+--                     token either.
+--   user_uid /        who the session was minted for; the row goes with the
+--   organization_uid  user or org. organization_uid is NULL for an org-less
+--                     (pending membership) session.
+-- ==========================================================================
+
+create table if not exists auth_handoff_codes (
+  code_hash         text primary key,
+  user_uid          uuid not null references users(uid) on delete cascade,
+  organization_uid  uuid references organizations(uid) on delete cascade,
+  payload           text not null,
+  expires_at        timestamptz not null,
+  created_at        timestamptz not null default now()
+);
+
+--bun:split
+
+create index if not exists auth_handoff_codes_expires_at_idx on auth_handoff_codes (expires_at);
+
+--bun:split
+
+comment on table auth_handoff_codes is
+  'Single-use, short-lived codes handing a federated login''s session to the dashboard (POST /api/v1/auth/handoff/exchange). Deleted on first use; expired rows are swept by the state-cleanup job. Spec 2026-09-25-12.';
+
+--bun:split
+
+comment on column auth_handoff_codes.code_hash is
+  'Hex SHA-256 of the code. The code itself is never stored.';
+
+--bun:split
+
+comment on column auth_handoff_codes.payload is
+  'The session (tokens, return path), AES-256-GCM sealed under a key derived from the code. Unreadable without the code.';
