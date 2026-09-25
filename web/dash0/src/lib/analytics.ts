@@ -11,17 +11,25 @@
  * no request to any PostHog host. There is deliberately no `<script>` tag in
  * `index.html`.
  *
- * # No field obfuscation
+ * # No field obfuscation, but no credentials either
  *
  * Autocapture, session replay and event properties are all captured in the
- * clear — no text masking, no input masking, no URL/path scrubbing. A masked
+ * clear — no text masking, no input masking, no URL templating. A masked
  * or scrubbed event stream is not readable: reconstructing what a session
  * actually did from a redacted `elements_chain` or a templated pathname costs
- * more than the analytics are worth. The distinct id is still pseudonymous
+ * more than the analytics are worth.
+ *
+ * That decision is about UI content. It never covered credentials: session
+ * tokens, one-time codes and single-use links in URLs, captured headers and
+ * captured bodies are replaced with `REDACTED` by the hooks in
+ * `./analytics-redaction` (spec 2026-09-25-11), wired in `initAnalytics`
+ * below. The distinct id is still pseudonymous
  * and built from UUIDs only (see `distinctId` below) — it must match
  * `analytics.DistinctID` in `server/internal/analytics/analytics.go` exactly
  * so browser sessions and server-side events stitch together.
  */
+
+import { redactCapturedNetworkRequest, redactCredentialsBeforeSend } from "./analytics-redaction";
 
 /** Browser-safe PostHog settings, as returned by GET /api/v1/config. */
 export interface PostHogPublicConfig {
@@ -188,6 +196,19 @@ export async function initAnalytics(config: PublicConfig | null | undefined): Pr
           // records layout, cursor, scroll, typed values and clicked text
           // as-is.
           disable_session_recording: false,
+          // ...except credentials. The replay network plugin records the
+          // document's navigation entry with its ORIGINAL URL, so the OAuth
+          // handoff's `?access_token=…&refresh_token=…` reached PostHog even
+          // though main.tsx strips it before we load. posthog-js also runs the
+          // replay Meta `href` through this hook. See ./analytics-redaction.
+          session_recording: {
+            maskCapturedNetworkRequestFn: redactCapturedNetworkRequest,
+          },
+          // Same filter on URL-shaped event properties, so a clean
+          // `$current_url` does not depend on main.tsx running first. An
+          // array on purpose: other hooks (e.g. error-noise filtering) go
+          // AFTER the redaction, so they only ever see redacted data.
+          before_send: [redactCredentialsBeforeSend],
           // Only create person profiles for users we explicitly identify.
           person_profiles: "identified_only",
         };
