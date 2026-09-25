@@ -35,8 +35,8 @@ func (s *GoogleChatSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 	}
 
 	guard := egressGuardFrom(jctx)
-	if err := ValidateSenderURL(ctx, guard, settings.WebhookURL); err != nil {
-		return err
+	if urlErr := ValidateSenderURL(ctx, guard, settings.WebhookURL); urlErr != nil {
+		return urlErr
 	}
 
 	url := s.buildURL(settings, payload.Incident.UID)

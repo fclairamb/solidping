@@ -41,7 +41,7 @@ var ErrSenderURLInvalid = errors.New("url must be a public http(s) endpoint")
 func ValidateSenderURL(ctx context.Context, guard *egress.Guard, rawURL string) error {
 	parsed, err := neturl.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrSenderURLInvalid, err)
+		return fmt.Errorf("%w: %w", ErrSenderURLInvalid, err)
 	}
 
 	switch strings.ToLower(parsed.Scheme) {
@@ -64,7 +64,7 @@ func ValidateSenderURL(ctx context.Context, guard *egress.Guard, rawURL string) 
 	// none of them slip through as an apparent, unresolvable "domain name".
 	ip, err := egress.ParseURLHost(host)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrSenderURLInvalid, err)
+		return fmt.Errorf("%w: %w", ErrSenderURLInvalid, err)
 	}
 
 	if ip != nil {

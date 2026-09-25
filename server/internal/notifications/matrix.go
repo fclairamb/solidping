@@ -58,8 +58,8 @@ func (s *MatrixSender) Send(ctx context.Context, jctx *jobdef.JobContext, payloa
 	}
 
 	guard := egressGuardFrom(jctx)
-	if err := ValidateSenderURL(ctx, guard, settings.HomeserverURL); err != nil {
-		return err
+	if urlErr := ValidateSenderURL(ctx, guard, settings.HomeserverURL); urlErr != nil {
+		return urlErr
 	}
 
 	client := httpclientpool.NewGuardedClient(matrixTimeout, guard)

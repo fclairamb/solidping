@@ -2,7 +2,6 @@ package notifications
 
 import (
 	"context"
-	"errors"
 	"net"
 	"testing"
 
@@ -76,7 +75,6 @@ func TestValidateSenderURL(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -131,5 +129,5 @@ func TestValidateSenderURL_UnresolvableHostnameDoesNotFailClosed(t *testing.T) {
 
 	err := ValidateSenderURL(context.Background(), guard, "http://does-not-exist.invalid/hook")
 	r.NoError(err)
-	r.False(errors.Is(err, ErrSenderURLInvalid))
+	r.NotErrorIs(err, ErrSenderURLInvalid)
 }

@@ -37,8 +37,8 @@ func (s *NtfySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload 
 	}
 
 	guard := egressGuardFrom(jctx)
-	if err := ValidateSenderURL(ctx, guard, settings.ServerURL); err != nil {
-		return err
+	if urlErr := ValidateSenderURL(ctx, guard, settings.ServerURL); urlErr != nil {
+		return urlErr
 	}
 
 	url := strings.TrimRight(settings.ServerURL, "/") + "/" + settings.Topic

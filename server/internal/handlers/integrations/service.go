@@ -583,7 +583,7 @@ func (s *Service) validateSenderURLSettings(
 	}
 
 	if err := notifications.ValidateSenderURL(ctx, s.egressGuard(), raw); err != nil {
-		return fmt.Errorf("%w: %s", ErrInvalidSettings, err)
+		return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
 	}
 
 	return nil

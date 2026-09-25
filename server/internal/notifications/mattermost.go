@@ -54,8 +54,8 @@ func (s *MattermostSender) Send(ctx context.Context, jctx *jobdef.JobContext, pa
 	}
 
 	guard := egressGuardFrom(jctx)
-	if err := ValidateSenderURL(ctx, guard, settings.WebhookURL); err != nil {
-		return err
+	if urlErr := ValidateSenderURL(ctx, guard, settings.WebhookURL); urlErr != nil {
+		return urlErr
 	}
 
 	msg := s.buildMessage(settings, payload)
