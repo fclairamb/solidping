@@ -11,6 +11,7 @@ import { DASH_BASE } from "@/lib/base-path";
 import {
   exchangeHandoffCode,
   HANDOFF_COMPLETE_PATH,
+  type HandoffLanding,
   membershipPendingNotice,
   resolveHandoffLanding,
 } from "@/lib/auth-handoff";
@@ -38,8 +39,13 @@ function AuthCompletePage() {
   const { t } = useTranslation("auth");
   const { code, membershipPending } = Route.useSearch();
   const navigate = useNavigate();
-  const { applyLoginResponse } = useAuth();
+  const { applyLoginResponse, isAuthenticated, isLoading } = useAuth();
   const [exchangeFailed, setExchangeFailed] = useState(false);
+  // The in-app landing, once the exchanged session is stored. Followed from an
+  // effect below, not straight from the exchange: see there.
+  const [landing, setLanding] = useState<
+    Exclude<HandoffLanding, { href: string }> | null
+  >(null);
   const firedCodeRef = useRef<string | null>(null);
   // No code at all (a bookmarked or hand-typed URL) is a failure up front.
   const failed = !code || exchangeFailed;
@@ -73,25 +79,40 @@ function AuthCompletePage() {
         // path, so say it here (spec 2026-09-25-15).
         const notice = membershipPendingNotice(data, membershipPending);
         if (notice) {
-          toast.info(t("authComplete.membershipPendingToast", notice));
+          // Longer than the default: it explains why the user is not where
+          // they asked to go, and the dashboard is still loading under it.
+          toast.info(t("authComplete.membershipPendingToast", notice), { duration: 10_000 });
         }
 
-        const landing = resolveHandoffLanding(data, membershipPending, DASH_BASE);
-        if ("href" in landing) {
+        const resolved = resolveHandoffLanding(data, membershipPending, DASH_BASE);
+        if ("href" in resolved) {
           // An in-app deep path (or the MCP consent bounce through the login
           // page) outside this router's param shapes: a full navigation, as
           // the login page does.
-          window.location.replace(landing.href);
-        } else if (landing.to === "/no-org") {
-          navigate({ to: "/no-org", search: landing.search, replace: true });
+          window.location.replace(resolved.href);
         } else {
-          navigate({ to: landing.to, params: landing.params, replace: true });
+          setLanding(resolved);
         }
       } catch {
         setExchangeFailed(true);
       }
     })();
-  }, [code, membershipPending, applyLoginResponse, navigate, t]);
+  }, [code, membershipPending, applyLoginResponse, t]);
+
+  // An in-app landing waits until the stored session has been rendered. The
+  // router reads auth from its context, which only catches up when the app
+  // re-renders; navigating in the same tick as applyLoginResponse let the org
+  // route's beforeLoad see the previous, signed-out session and bounce the
+  // fresh sign-in through /orgs/<org>/login (a full reload that also dropped
+  // the membership-pending toast; spec 2026-09-25-15).
+  useEffect(() => {
+    if (!landing || !isAuthenticated || isLoading) return;
+    if (landing.to === "/no-org") {
+      navigate({ to: "/no-org", search: landing.search, replace: true });
+    } else {
+      navigate({ to: landing.to, params: landing.params, replace: true });
+    }
+  }, [landing, isAuthenticated, isLoading, navigate]);
 
   return (
     <AuthSplitLayout>

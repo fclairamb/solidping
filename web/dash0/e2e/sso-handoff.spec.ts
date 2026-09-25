@@ -51,6 +51,40 @@ interface FakeIdentity {
   email: string;
 }
 
+/**
+ * Provisions a REAL ordinary member of a fresh `acc-*` org who is NOT a member
+ * of `test` (the seeded `test@test.com` is a superadmin, which never takes the
+ * paths under test). Same recipe as accessible-org-redirect.spec.ts: the
+ * test-only user-seed endpoint, a real login, then POST /api/v1/orgs.
+ *
+ * @returns the member's email and the slug of its single org.
+ */
+async function seedMemberOfOwnOrg(page: Page, stamp: string): Promise<{ email: string; slug: string }> {
+  const email = `sso-member-${stamp}@elsewhere.example`;
+  const password = "Strong-Pass-123!";
+
+  const created = await page.request.post(`${API_BASE}/api/v1/test/users`, {
+    data: { email, password, name: "SSO Member" },
+  });
+  test.skip(
+    created.status() !== 201,
+    `test user-seed endpoint unavailable (server not in SP_RUNMODE=test?): ${created.status()}`,
+  );
+
+  const login = await page.request.post(`${API_BASE}/api/v1/auth/login`, { data: { email, password } });
+  expect(login.status()).toBe(200);
+  const { accessToken } = (await login.json()) as { accessToken: string };
+
+  const slug = `acc-${stamp}`;
+  const org = await page.request.post(`${API_BASE}/api/v1/orgs`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    data: { name: `SSO Member Org ${stamp}`, slug },
+  });
+  expect(org.status()).toBe(201);
+
+  return { email, slug };
+}
+
 /** The seeded test-mode user, a member of org `test`. */
 const TEST_MEMBER: FakeIdentity = { sub: "e2e-oidc-test-user", email: "test@test.com" };
 
@@ -217,6 +251,70 @@ test.describe("Federated login handoff", () => {
       for (const u of urls) {
         expect(u).not.toContain(stored.token as string);
       }
+    });
+
+    // Spec 2026-09-25-15. The login is started from ANOTHER org's login page
+    // (`test`), which refuses it; the account is a real member of `acc-*`. It
+    // used to get an org-less session, be sent to its own org, 403 there, fail
+    // the socket's refresh (no refresh token) and land on the login page as
+    // "session expired". It now lands on its own org with a full session, and
+    // the join request to `test` is still sent and still named.
+    test.describe("a member of another org", () => {
+      test("lands on their own org with a full session, not 'session expired'", async ({ page }) => {
+        const stamp = uniqueStamp();
+        const member = await seedMemberOfOwnOrg(page, stamp);
+        identity = { sub: `e2e-member-${stamp}`, email: member.email };
+
+        const urls = recordNavigations(page);
+        const consoleErrors: string[] = [];
+        page.on("console", (msg) => {
+          if (msg.type() === "error") consoleErrors.push(msg.text());
+        });
+        const forbidden: string[] = [];
+        page.on("response", (response) => {
+          if (response.status() === 403) forbidden.push(response.url());
+        });
+
+        await page.goto(
+          `${API_BASE}/api/v1/auth/oidc/login?org=test&redirect_uri=${encodeURIComponent(`${DASH_BASE}/orgs/test`)}`,
+        );
+
+        await page.waitForURL(new RegExp(`${escapeRegExp(`${DASH_BASE}/orgs/${member.slug}`)}(/|$)`), {
+          timeout: 20000,
+        });
+
+        // Told why they are not on `test`.
+        await expect(page.getByText(new RegExp(`signed in to ${escapeRegExp(member.slug)}`))).toBeVisible({
+          timeout: 10000,
+        });
+
+        await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 15000 });
+
+        // A full session: the refresh token is what an org-less one lacked.
+        const stored = await page.evaluate(() => ({
+          token: localStorage.getItem("solidping_session_token"),
+          refresh: localStorage.getItem("solidping_refresh_token"),
+        }));
+        expect(stored.token).toBeTruthy();
+        expect(stored.refresh, "a session on the user's own org carries a refresh token").toBeTruthy();
+
+        // Through the handoff, still naming the org that has the request.
+        expect(
+          urls.some((u) => /\/d\/auth\/complete\?code=[^&]+&membershipPending=test/.test(u)),
+        ).toBe(true);
+        expect(urls.filter((u) => TOKEN_PARAM.test(u))).toEqual([]);
+
+        // Settle, then prove the kick-out never started.
+        await page.waitForLoadState("networkidle");
+        expect(urls.filter((u) => u.includes("session_expired=true"))).toEqual([]);
+        // Not even a detour: the fresh session must not be bounced through a
+        // login page (the handoff route used to navigate before the router saw
+        // the stored session).
+        expect(urls.filter((u) => /\/orgs\/[^/?]+\/login/.test(u))).toEqual([]);
+        expect(consoleErrors.filter((m) => m.includes("token refresh failed"))).toEqual([]);
+        expect(forbidden, "no org-scoped request may be refused on the member's own org").toEqual([]);
+        await expect(page).toHaveURL(new RegExp(`${escapeRegExp(`${DASH_BASE}/orgs/${member.slug}`)}(/|$)`));
+      });
     });
   });
 
