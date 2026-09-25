@@ -134,15 +134,23 @@ replay:
   and page URLs (organization slugs and resource UIDs included) are recorded
   as-is, because a masked replay cannot answer where a user got stuck;
 - person profiles are only created for identified users;
-- credentials are always filtered out before anything leaves the page. In
-  every URL (page URLs, referrers, and the URLs of network requests recorded
-  by replay), the values of `access_token`, `refresh_token`, `token`, `code`,
-  `state`, `tempToken` and `id_token` are replaced with `REDACTED`, in the
-  query string and in a param-shaped fragment. The single-use token in
-  `/reset-password/…`, `/invite/…` and `/confirm-registration/…` links is
-  redacted the same way. If network header or body capture is turned on in
-  the PostHog project, `Authorization` and cookie headers are dropped and
-  token and password fields in request and response bodies are redacted.
+- the values of `access_token`, `refresh_token`, `token`, `code`, `state`,
+  `tempToken` and `id_token` are replaced with `REDACTED` in the URLs the
+  dashboard sends: page URLs and referrers on events, and the URLs replay
+  records (the page itself and every network request), in the query string
+  and in a param-shaped fragment. The single-use token in
+  `/reset-password/…`, `/invite/…` and `/confirm-registration/…` URLs is
+  redacted the same way;
+- network request and response headers and bodies are never recorded by
+  replay, whatever the PostHog project settings say.
+
+What this does **not** cover: replay records the page as it is displayed, so a
+credential shown as text on screen (a freshly created API token, a heartbeat
+URL with its `?token=`, an invitation link, a two-factor setup secret) is in
+the recording. Other URL-bearing data that PostHog collects outside events and
+replay URLs (for example heatmap data, the `href` of clicked links in
+autocapture, or the URL nested in web vitals) is not
+filtered either. Treat access to the PostHog project accordingly.
 
 ## What is never sent
 
@@ -159,8 +167,8 @@ The product events listed above (captured by the server) never carry:
 
 The browser autocapture and session replay described above are different:
 they record what is on the page, unmasked, so names, slugs and typed text do
-appear there. Credentials never do: they are redacted before anything is sent,
-as described above.
+appear there, and so does any credential displayed on screen. Only the URL
+filtering described above applies to them.
 
 The `GET /api/v1/config` endpoint that the dashboard reads at boot is
 unauthenticated and returns only non-secret, browser-safe values.
