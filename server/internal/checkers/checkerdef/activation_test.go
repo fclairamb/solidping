@@ -110,19 +110,20 @@ func TestActivationResolver_DockerNoteOnlyInSaaS(t *testing.T) {
 	saas := checkerdef.NewActivationResolver(&config.CheckersConfig{}, config.DeploymentModeSaaS)
 
 	for idx := range selfHosted.ListAllWithStatus(nil) {
-		r.Empty(selfHosted.ListAllWithStatus(nil)[idx].Note)
+		r.Empty(selfHosted.ListAllWithStatus(nil)[idx].Advisory)
 	}
 
 	statuses := saas.ListAllWithStatus(nil)
 	for idx := range statuses {
 		if statuses[idx].Type == checkerdef.CheckTypeDocker {
-			r.True(statuses[idx].Enabled, "docker stays listed and enabled in SaaS — the create gate, not the catalog, enforces the private-location-only rule")
-			r.NotEmpty(statuses[idx].Note)
+			r.True(statuses[idx].Enabled,
+				"docker stays listed and enabled in SaaS — the create gate, not the catalog, enforces the rule")
+			r.NotEmpty(statuses[idx].Advisory)
 
 			continue
 		}
 
-		r.Empty(statuses[idx].Note)
+		r.Empty(statuses[idx].Advisory)
 	}
 }
 

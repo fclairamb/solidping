@@ -17,11 +17,11 @@ type CheckTypeResponse struct {
 	Labels         []string `json:"labels"`
 	Enabled        bool     `json:"enabled"`
 	DisabledReason string   `json:"disabledReason,omitempty"`
-	// Note is an advisory for an enabled type whose availability still
+	// Advisory is a message for an enabled type whose availability still
 	// depends on something the org must satisfy — today, docker in SaaS mode
 	// requiring a private-location placement (spec 2026-09-25-22). Empty when
 	// there is nothing to say.
-	Note                 string `json:"note,omitempty"`
+	Advisory             string `json:"advisory,omitempty"`
 	MinPeriodSeconds     int    `json:"minPeriodSeconds,omitempty"`
 	MaxPeriodSeconds     int    `json:"maxPeriodSeconds,omitempty"`
 	DefaultPeriodSeconds int    `json:"defaultPeriodSeconds,omitempty"`
@@ -174,7 +174,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			Labels:               statuses[idx].Labels,
 			Enabled:              statuses[idx].Enabled,
 			DisabledReason:       statuses[idx].DisabledReason,
-			Note:                 statuses[idx].Note,
+			Advisory:             statuses[idx].Advisory,
 			MinPeriodSeconds:     durationToSeconds(statuses[idx].MinPeriod),
 			MaxPeriodSeconds:     durationToSeconds(statuses[idx].MaxPeriod),
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),

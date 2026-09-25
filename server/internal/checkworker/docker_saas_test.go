@@ -47,7 +47,9 @@ func newDockerGateRunner(t *testing.T, dbSvc db.Service, deploymentMode, nodeRol
 // exists means any run that actually reaches the checker fails for ITS OWN
 // reason (a dial/stat error), which is what lets the assertions below tell
 // "blocked by the SaaS gate" apart from "executed, and failed to connect".
-func runDockerJob(t *testing.T, ctx context.Context, runner *CheckWorker, dbSvc db.Service) *models.Result { //nolint:revive
+func runDockerJob(
+	t *testing.T, ctx context.Context, runner *CheckWorker, dbSvc db.Service, //nolint:revive
+) *models.Result {
 	t.Helper()
 
 	r := require.New(t)
