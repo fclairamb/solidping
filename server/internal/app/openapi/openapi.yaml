@@ -912,6 +912,36 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/auth/handoff/exchange:
+    post:
+      tags: [Authentication]
+      summary: Redeem a federated-login handoff code
+      description: |
+        A federated login (Google, GitHub, GitLab, Microsoft, Discord, Slack,
+        OIDC, SAML) ends with a redirect to `/d/auth/complete?code=...`. The
+        code is single use and expires after 60 seconds; this endpoint trades
+        it for the session the provider callback minted, in the login
+        response shape. An unknown, reused, expired or forged code always
+        gets the same 401 body.
+      operationId: exchangeHandoffCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandoffExchangeRequest"
+      responses:
+        "200":
+          description: Session handed over
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandoffExchangeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /api/v1/auth/me:
     get:
       tags: [Authentication]
@@ -9638,6 +9668,26 @@ components:
           type: string
           enum: ["", orgRedirect, orgChoice, noOrg]
           description: Indicates how the frontend should handle the login result
+
+    HandoffExchangeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: The single-use code from the /d/auth/complete redirect
+
+    HandoffExchangeResponse:
+      allOf:
+        - $ref: "#/components/schemas/LoginResponse"
+        - type: object
+          properties:
+            returnTo:
+              type: string
+              description: Where the login was started from. A hint; the dashboard only follows a same-origin path in the session's org.
+            membershipPending:
+              type: string
+              description: Slug of the org that has not admitted the user yet (org-less session only)
 
     LogoutRequest:
       type: object

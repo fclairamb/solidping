@@ -231,6 +231,19 @@ SP_DISCORD_CLIENT_SECRET=your-discord-client-secret
 2. Create an application and open **OAuth2**
 3. Add redirect URL: `{SP_BASE_URL}/api/v1/auth/discord/callback`
 
+### After the provider sends you back
+
+Whatever the provider, the callback never puts your session in the URL. It
+stores the session server-side under a one-time code and sends the browser to
+`{SP_BASE_URL}/d/auth/complete?code=…`. The dashboard trades that code for the
+session with `POST /api/v1/auth/handoff/exchange`, then continues to the page
+you started from.
+
+The code works once and expires after 60 seconds. Only its SHA-256 is stored.
+So a sign-in URL that ends up in browser history, a proxy log or a screenshot
+cannot be replayed. If you reverse-proxy SolidPing, nothing needs to change:
+`/d/auth/complete` is an ordinary dashboard page.
+
 ## Member roles
 
 Every member of an organization holds one of four roles, ordered
