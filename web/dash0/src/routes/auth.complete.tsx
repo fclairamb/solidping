@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
@@ -10,6 +11,7 @@ import { DASH_BASE } from "@/lib/base-path";
 import {
   exchangeHandoffCode,
   HANDOFF_COMPLETE_PATH,
+  membershipPendingNotice,
   resolveHandoffLanding,
 } from "@/lib/auth-handoff";
 
@@ -66,6 +68,14 @@ function AuthCompletePage() {
         await applyLoginResponse(data);
         if (data.user.mustChangePassword) return;
 
+        // Refused by the org the login started from, but landed on one the
+        // user belongs to: /no-org's request-sent alert never renders on this
+        // path, so say it here (spec 2026-09-25-15).
+        const notice = membershipPendingNotice(data, membershipPending);
+        if (notice) {
+          toast.info(t("authComplete.membershipPendingToast", notice));
+        }
+
         const landing = resolveHandoffLanding(data, membershipPending, DASH_BASE);
         if ("href" in landing) {
           // An in-app deep path (or the MCP consent bounce through the login
@@ -81,7 +91,7 @@ function AuthCompletePage() {
         setExchangeFailed(true);
       }
     })();
-  }, [code, membershipPending, applyLoginResponse, navigate]);
+  }, [code, membershipPending, applyLoginResponse, navigate, t]);
 
   return (
     <AuthSplitLayout>

@@ -5,7 +5,11 @@ vi.mock("@/api/client", () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-import { exchangeHandoffCode, resolveHandoffLanding } from "./auth-handoff";
+import {
+  exchangeHandoffCode,
+  membershipPendingNotice,
+  resolveHandoffLanding,
+} from "./auth-handoff";
 import { DASH_BASE } from "@/lib/base-path";
 
 const BASE = DASH_BASE;
@@ -65,6 +69,41 @@ describe("resolveHandoffLanding", () => {
       to: "/no-org",
       search: { membershipPending: undefined },
     });
+  });
+});
+
+// Spec 2026-09-25-15: refused by the org the login started from, but a member
+// of another one — the session is scoped to that other org.
+describe("a pending login that landed on the user's own org", () => {
+  const own = { uid: "own-uid", slug: "acmetech" };
+
+  it("lands on the user's own org, dropping the refused org's returnTo", () => {
+    expect(
+      resolveHandoffLanding(
+        { organization: own, membershipPending: "demo", returnTo: `${BASE}/orgs/demo` },
+        "demo",
+        BASE,
+      ),
+    ).toEqual({ to: "/orgs/$org", params: { org: "acmetech" } });
+  });
+
+  it("names the pending org and the landing org in the notice", () => {
+    expect(membershipPendingNotice({ organization: own, membershipPending: "demo" }, undefined)).toEqual({
+      pending: "demo",
+      org: "acmetech",
+    });
+    // The URL's flag is the fallback, as for the landing.
+    expect(membershipPendingNotice({ organization: own }, "demo")).toEqual({
+      pending: "demo",
+      org: "acmetech",
+    });
+  });
+
+  it("says nothing without a pending org, for an org-less session, or for the same org", () => {
+    expect(membershipPendingNotice({ organization: own }, undefined)).toBeNull();
+    // An org-less session lands on /no-org, which already says it.
+    expect(membershipPendingNotice({ membershipPending: "demo" }, "demo")).toBeNull();
+    expect(membershipPendingNotice({ organization: own, membershipPending: "acmetech" }, undefined)).toBeNull();
   });
 });
 

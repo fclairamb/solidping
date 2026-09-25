@@ -323,10 +323,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin: data.user.role === "superadmin",
         isDemo: Boolean(data.user.demo),
       });
-      // Update org from server response
+      // Update org from server response. An org-less token clears it: a slug
+      // left over from an earlier session would read as "already scoped to
+      // this org" and skip OrgLayout's switch-org (spec 2026-09-25-15).
       if (data.organization?.slug) {
         setStoredOrg(data.organization.slug);
         setOrg(data.organization.slug);
+      } else {
+        clearStoredOrg();
+        setOrg(null);
       }
       setOrgUid(data.organization?.uid ?? null);
       setOrganizations(data.organizations || []);
@@ -394,6 +399,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (resolvedOrg) {
       setStoredOrg(resolvedOrg);
       setOrg(resolvedOrg);
+    } else {
+      // An org-less session (no membership yet, or a federated login the org
+      // refused). Keeping the previous session's slug would make auth.org
+      // claim a scope this token does not have, and OrgLayout would then skip
+      // the switch-org the session needs to use that org (spec 2026-09-25-15).
+      clearStoredOrg();
+      setOrg(null);
     }
     setOrgUid(data.organization?.uid ?? null);
 

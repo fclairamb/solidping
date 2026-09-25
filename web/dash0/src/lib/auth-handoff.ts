@@ -78,6 +78,27 @@ export function resolveHandoffLanding(
 }
 
 /**
+ * The "your request to <pending> was sent" notice for a session that did NOT
+ * land on /no-org, or null when there is nothing to say.
+ *
+ * A federated login refused by the org it started from still lands a real
+ * member of another org on that org, with a full session (spec 2026-09-25-15).
+ * /no-org is where the request-sent alert normally lives, so on this path the
+ * dashboard has to say it itself: otherwise the user asked for one org, got
+ * another, and was never told why. An org-less session says it on /no-org and
+ * gets no notice here.
+ */
+export function membershipPendingNotice(
+  response: Pick<HandoffExchangeResponse, "organization" | "membershipPending">,
+  membershipPendingFromUrl: string | undefined,
+): { pending: string; org: string } | null {
+  const org = response.organization?.slug;
+  const pending = response.membershipPending || membershipPendingFromUrl || undefined;
+  if (!org || !pending || pending === org) return null;
+  return { pending, org };
+}
+
+/**
  * Exchanges in flight, keyed by code. The code is single use, so a second
  * POST for the same code (React StrictMode runs effects twice in development)
  * would get a 401 and undo a perfectly good sign-in. Every caller for one code

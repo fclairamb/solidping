@@ -67,6 +67,7 @@ import { isOrgPublicRoute } from "@/lib/org-public-routes";
 import { demoFlagFromLocation } from "@/lib/demo";
 import { readCachedDemoOrgSlug } from "@/api/public-config";
 import { pickAccessibleOrg } from "@/lib/accessible-org";
+import { needsOrgSwitch as needsOrgSwitchFor } from "@/lib/org-switch";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -1038,14 +1039,21 @@ function OrgLayout() {
   // the in-flight switch so the effect fires switchOrg at most once per target.
   const [orgSwitchFailed, setOrgSwitchFailed] = useState<string | null>(null);
   const switchingForOrgRef = useRef<string | null>(null);
-  const needsOrgSwitch =
-    auth.isAuthenticated &&
-    !auth.isLoading &&
-    !isLoginPage &&
-    auth.org !== null &&
-    auth.org !== org &&
-    auth.user?.isSuperAdmin !== true &&
-    auth.organizations.some((o) => o.slug === org);
+  //
+  // An org-less session (auth.org === null) counts as "another org" here: a
+  // federated login refused elsewhere must still reach the orgs it belongs to
+  // (spec 2026-09-25-15). See lib/org-switch.ts.
+  const needsOrgSwitch = needsOrgSwitchFor(
+    org,
+    {
+      isAuthenticated: auth.isAuthenticated,
+      isLoading: auth.isLoading,
+      org: auth.org,
+      organizations: auth.organizations,
+      isSuperAdmin: auth.user?.isSuperAdmin === true,
+    },
+    isLoginPage,
+  );
 
   useEffect(() => {
     if (!needsOrgSwitch) {
