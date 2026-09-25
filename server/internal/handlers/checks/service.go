@@ -2103,6 +2103,20 @@ func (s *Service) UpdateCheck(
 	if regionsChanged {
 		check.Regions = placement.regions
 		placement.applyToUpdate(&update)
+
+		// A region-only PATCH (no config in the same request) never reaches
+		// applyConfigUpdate below, so it would otherwise bypass every config
+		// validator including the docker SaaS gate — silently re-pinning an
+		// existing docker check from a private location onto a shared region
+		// with no rejection at write time (spec 2026-09-25-22). The runtime
+		// guard in checkworker.executeJob would still catch it on the next
+		// scheduled run, but a hard reject belongs here, at the PATCH that
+		// causes it.
+		if req.Config == nil {
+			if cfgErr := s.validateDockerDeploymentConfig(check.Type, check.Regions); cfgErr != nil {
+				return CheckResponse{}, cfgErr
+			}
+		}
 	}
 	if req.Config != nil {
 		if cfgErr := s.applyConfigUpdate(ctx, check, *req.Config, &update); cfgErr != nil {
