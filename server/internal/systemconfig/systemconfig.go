@@ -194,6 +194,14 @@ const (
 	KeyPostHogProjectAPIKey  ParameterKey = "posthog.project_api_key"
 	KeyPostHogHost           ParameterKey = "posthog.host"
 	KeyPostHogPersonalAPIKey ParameterKey = "posthog.personal_api_key"
+
+	// KeyEgressAllowPrivateTargets lets this deployment's check workers reach
+	// non-public addresses (spec 2026-09-25-19). Unset means "derived": allowed
+	// on self-hosted and on deported agents, denied on SaaS shared workers —
+	// see config.Config.EgressAllowsPrivateTargets. Applied at startup, so a
+	// change takes effect on the next worker restart. Deported agents have no
+	// database and only ever read SP_EGRESS_ALLOW_PRIVATE.
+	KeyEgressAllowPrivateTargets ParameterKey = "egress.allow_private_targets"
 )
 
 // SP_* environment variable names for the product-analytics parameters,
@@ -751,6 +759,14 @@ func getKnownParameters() []ParameterDefinition {
 				if v, ok := value.(string); ok {
 					cfg.PostHog.PersonalAPIKey = strings.TrimSpace(v)
 				}
+			},
+		},
+		{
+			Key:    KeyEgressAllowPrivateTargets,
+			EnvVar: config.EnvEgressAllowPrivate,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				applyEgressAllowPrivate(cfg, value)
 			},
 		},
 		{
@@ -1368,6 +1384,31 @@ func parseBool(value any, defaultValue bool) bool {
 	default:
 		return defaultValue
 	}
+}
+
+// applyEgressAllowPrivate sets the tri-state egress switch from a parameter
+// or env value. Anything that is not a recognizable boolean leaves the
+// derived default in place: an unparseable value must never flip a SaaS
+// worker open, nor a private agent shut.
+func applyEgressAllowPrivate(cfg *config.Config, value any) {
+	var allow bool
+
+	switch v := value.(type) {
+	case bool:
+		allow = v
+	case string:
+		// parseBool's two defaults agree only on a recognizable boolean.
+		asTrue, asFalse := parseBool(v, true), parseBool(v, false)
+		if asTrue != asFalse {
+			return
+		}
+
+		allow = asTrue
+	default:
+		return
+	}
+
+	cfg.Egress.AllowPrivateTargets = &allow
 }
 
 // Service manages system configuration.

@@ -518,6 +518,7 @@ type Config struct {
 	FileStorage  FileStorageConfig    `koanf:"filestorage"`
 	App          AppConfig            `koanf:"app"`
 	Deployment   DeploymentConfig     `koanf:"deployment"`
+	Egress       EgressConfig         `koanf:"egress"`
 	WebPush      WebPushConfig        `koanf:"webpush"`
 	PostHog      PostHogConfig        `koanf:"posthog"`
 	Entitlements EntitlementsConfig   `koanf:"entitlements"`
@@ -613,6 +614,82 @@ const (
 // startup — unknown values fail fast.
 type DeploymentConfig struct {
 	Mode string `koanf:"mode"`
+}
+
+// EnvEgressAllowPrivate is the operator switch letting this process's check
+// workers reach non-public addresses (loopback, RFC 1918, link-local, cloud
+// metadata, ULA…). Mirrors egress.EnvAllowPrivate; declared here too because
+// config must not import the egress package's dial machinery.
+const EnvEgressAllowPrivate = "SP_EGRESS_ALLOW_PRIVATE"
+
+// EgressConfig is the outbound-connection policy of the check workers running
+// in this process (spec 2026-09-25-19).
+//
+// AllowPrivateTargets is snake_case and therefore unreachable by koanf's env
+// loader; SP_EGRESS_ALLOW_PRIVATE is bound by hand in applyEgressEnv and is
+// also the env override of the egress.allow_private_targets system parameter.
+type EgressConfig struct {
+	// AllowPrivateTargets is TRI-STATE:
+	//
+	//	nil   → derived: allowed on self-hosted and on deported agents
+	//	        (private locations exist to reach private targets), denied on
+	//	        SaaS shared workers
+	//	true  → allowed, whatever the deployment mode
+	//	false → denied, whatever the node role
+	//
+	// Resolve through Config.EgressAllowsPrivateTargets, never this field.
+	AllowPrivateTargets *bool `koanf:"allow_private_targets"`
+}
+
+// EgressAllowsPrivateTargets is the effective egress policy of the check
+// workers in this process: whether a check may connect to a non-public
+// address. It is evaluated where the dial happens — a deported agent answers
+// for itself, a SaaS shared worker for itself — so a check's region placement
+// is what decides which policy applies to it.
+func (c *Config) EgressAllowsPrivateTargets() bool {
+	if c.Egress.AllowPrivateTargets != nil {
+		return *c.Egress.AllowPrivateTargets
+	}
+
+	if roles, err := ParseNodeRoles(c.Node.Role); err == nil && roles.Has(NodeRoleAgent) {
+		return true
+	}
+
+	return c.Deployment.Mode != DeploymentModeSaaS
+}
+
+// EgressPolicySource names where EgressAllowsPrivateTargets got its answer,
+// for the startup log line an operator reads when a check is refused.
+func (c *Config) EgressPolicySource() string {
+	if c.Egress.AllowPrivateTargets != nil {
+		return "explicit (" + EnvEgressAllowPrivate + " / egress.allow_private_targets)"
+	}
+
+	if roles, err := ParseNodeRoles(c.Node.Role); err == nil && roles.Has(NodeRoleAgent) {
+		return "default for a deported agent"
+	}
+
+	return "default for deployment mode " + c.Deployment.Mode
+}
+
+// applyEgressEnv binds SP_EGRESS_ALLOW_PRIVATE. An absent or empty variable
+// leaves the configured / derived value alone ("I did not choose" must never
+// read as "deny" or "allow"); an unparseable one is ignored with a warning
+// rather than silently flipping the policy.
+func applyEgressEnv(cfg *EgressConfig) {
+	raw := strings.TrimSpace(os.Getenv(EnvEgressAllowPrivate))
+	if raw == "" {
+		return
+	}
+
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("Ignoring unparseable "+EnvEgressAllowPrivate, "value", raw, "error", err)
+
+		return
+	}
+
+	cfg.AllowPrivateTargets = &v
 }
 
 // EntitlementsConfig tunes the per-org SMS/voice runaway guard — an in-memory
@@ -1899,6 +1976,7 @@ func Load() (*Config, error) {
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 	applyRealtimeEnv(&cfg.Realtime)
+	applyEgressEnv(&cfg.Egress)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {

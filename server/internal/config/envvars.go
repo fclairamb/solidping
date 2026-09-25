@@ -172,6 +172,8 @@ func manualReaderServerEnvVars() []string {
 		"SP_REALTIME_PING_INTERVAL",
 		"SP_REALTIME_MAX_CONNECTIONS",
 		"SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION",
+		// applyEgressEnv — egress.allow_private_targets is snake_case.
+		EnvEgressAllowPrivate,
 		// applyAgentEnv
 		"SP_AGENT_SERVER_URL",
 		"SP_AGENT_ENROLLMENT_TOKEN",
