@@ -6,6 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   apiFetch,
@@ -16,9 +17,11 @@ import {
   getExpiresAt,
   getExpiresInSeconds,
   redirectToPasswordChange,
+  setLoggingOut,
 } from "@/api/client";
 import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
 import { identifyAnalytics, resetAnalytics } from "@/lib/analytics";
+import { disconnectAllLiveSockets } from "@/contexts/LiveEventsContext";
 
 interface User {
   // Pseudonymous user UUID. Used for the analytics distinct id; never shown.
@@ -241,6 +244,7 @@ function clearStoredOrg(): void {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [org, setOrg] = useState<string | null>(getStoredOrg());
   // Organization UUID, tracked alongside the slug purely so product analytics
@@ -665,6 +669,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = async () => {
+    // Stop everything server-bound BEFORE revoking the session below, not
+    // after: the mounted dashboard's React Query queries keep refetching on
+    // their intervals for the whole duration of the awaited POST, and the
+    // live socket would otherwise try to redial with a token that's about to
+    // be dead. Each of those 401s used to call refreshAccessToken(), find no
+    // refresh token, and log "token refresh failed: no-refresh-token" — 3 to
+    // 4 spurious errors per logout, now also filed to PostHog by spec
+    // 2026-09-25-13's console-error autocapture (spec 2026-09-25-14).
+    setLoggingOut(true);
+    // cancelQueries() cannot abort a fetch that's already left the browser
+    // (nothing here wires its AbortSignal through to apiFetch), so a request
+    // already in flight can still land a 401 after this — that's what the
+    // loggingOut flag above suppresses. This stops the *next* refetch tick
+    // and drops the cache so nothing here reads stale data after logout.
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    // Close the live socket immediately rather than let it notice on its own:
+    // a close-code-triggered reconnect (or the run() loop's own pre-dial
+    // check) would otherwise call refreshWithOutcome() directly — a path
+    // apiFetch's loggingOut flag above doesn't cover — using a refresh token
+    // that's about to be revoked server-side.
+    disconnectAllLiveSockets();
+
     try {
       await apiFetch(`/api/v1/auth/logout`, {
         method: "POST",
@@ -682,6 +709,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // same browser is not stitched onto the previous user. No-op when
       // analytics is off.
       resetAnalytics();
+      setLoggingOut(false);
     }
   };
 
