@@ -130,8 +130,13 @@ func NewHandler(
 		incidentsSvc.SetDefaultCheckTimeout(cfg.Server.Scheduling.CheckTimeout())
 	}
 
+	checksSvc := checks.NewService(dbService, eventNotifier, creds, entSvc)
+	if cfg != nil {
+		checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
+	}
+
 	handler := &Handler{
-		checksSvc:     checks.NewService(dbService, eventNotifier, creds, entSvc),
+		checksSvc:     checksSvc,
 		checkTypesSvc: checkTypesSvc,
 		resultsSvc:    results.NewService(dbService, cfg),
 		incidentsSvc:  incidentsSvc,

@@ -10,11 +10,18 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/configregistry"
+	"github.com/fclairamb/solidping/server/internal/config"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/regionquorum"
+	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
+
+// ErrDockerNotAvailableInSaaS is returned when a docker check is created,
+// updated or imported in SaaS mode without being pinned exclusively to
+// private (agent-hosted) regions.
+var ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
 // Machine codes carried by validate findings (spec 2026-08-26-05). They are
 // the stable half of a finding: messages are prose and get reworded, codes are
@@ -404,7 +411,46 @@ func (s *Service) configValidationErrors(
 		errs = append(errs, err)
 	}
 
+	// docker checks hand whoever executes them the local Docker socket. On a
+	// SaaS shared worker that is any org member reading the host's own
+	// containers; the type is only safe when every job runs on the
+	// customer's own agent (spec 2026-09-25-22).
+	if err := s.validateDockerDeploymentConfig(checkType, checkRegions); err != nil {
+		errs = append(errs, err)
+	}
+
 	return errs
+}
+
+// validateDockerDeploymentConfig rejects a docker check in SaaS mode unless
+// checkRegions resolves to private (agent-hosted) regions only. checkRegions
+// is the CALLER's already-resolved placement (auto placement included), never
+// the raw request, so an auto-placed check — which never resolves onto a
+// private region — is correctly rejected without special-casing placement
+// here. A hard reject, not a warning: the alternative is a local-socket read
+// primitive reachable by any org member. Self-hosted is unaffected — running
+// docker checks against the local daemon is the feature working as intended
+// there.
+func (s *Service) validateDockerDeploymentConfig(checkType string, checkRegions []string) error {
+	if checkerdef.CheckType(checkType) != checkerdef.CheckTypeDocker {
+		return nil
+	}
+
+	if s.deploymentMode != config.DeploymentModeSaaS {
+		return nil
+	}
+
+	if len(checkRegions) == 0 {
+		return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+	}
+
+	for _, region := range checkRegions {
+		if !regions.IsPrivateRegion(region) {
+			return checkerdef.NewConfigError("host", ErrDockerNotAvailableInSaaS.Error())
+		}
+	}
+
+	return nil
 }
 
 // firstConfigValidationError is the write paths' view of

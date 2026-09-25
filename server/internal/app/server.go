@@ -447,6 +447,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// (spec 2026-09-06-02).
 	checksSvc := checks.NewService(
 		dbService, svcList.EventNotifier, credSvc, entitlementsService)
+	checksSvc.SetDeploymentMode(cfg.Deployment.Mode)
 	svcList.Checks = checksSvc
 	svcList.PrivateLocationMonitors = checksSvc
 
@@ -1090,6 +1091,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Check routes (authentication required)
 	checksService := checks.NewService(
 		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
+	checksService.SetDeploymentMode(s.config.Deployment.Mode)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := orgGroup("/orgs/:org/checks")
 	orgChecks.GET("", checksHandler.ListChecks)

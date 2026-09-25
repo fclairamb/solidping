@@ -58,6 +58,14 @@ var (
 	ErrFailedToParseConf  = errors.New("failed to parse config")
 	ErrFailedToFetchCheck = errors.New("failed to fetch check from database")
 	ErrNoCheckType        = errors.New("check job has no type set")
+	// ErrDockerNotAvailableInSaaS is returned when a docker job reaches a SaaS
+	// shared worker (spec 2026-09-25-22). The create/update gate
+	// (checks.Service.validateDockerDeploymentConfig) is meant to keep such a
+	// job from ever being scheduled, but a check created before that gate
+	// shipped, or one whose placement moved off a private region since, must
+	// still be refused here — without ever dialing the socket. Same message
+	// as the create-time gate, so the two read as one rule from either side.
+	ErrDockerNotAvailableInSaaS = errors.New("docker checks are not available on this deployment")
 
 	// ErrCheckerPanic wraps a recovered panic from inside a checker's
 	// Execute call (spec 2026-07-05-05 D2). The runner survives; the panic
@@ -1055,6 +1063,16 @@ func (r *CheckWorker) executeJob(
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrCheckerNotFound, checkType))
 	}
 
+	// docker checks hand whoever executes them the local Docker socket (spec
+	// 2026-09-25-22). Gated on THIS process's role, not the check row: an
+	// agent-mode worker (a customer's own private location) is exactly the
+	// supported way to run docker checks under SaaS and must keep executing
+	// them, while a SaaS shared worker refuses the job outright — no dial, no
+	// socket contacted — before it ever reaches the checker.
+	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeDocker && r.dockerBlockedOnThisWorker() {
+		return r.saveErrorResult(ctx, checkJob, ErrDockerNotAvailableInSaaS)
+	}
+
 	if deferred, rateErr := r.applyRateLimitGate(ctx, logger, checkJob); deferred {
 		return rateErr
 	}
@@ -1488,6 +1506,15 @@ func (r *CheckWorker) resolveResultRegion(checkJob *models.CheckJob) *string {
 	}
 
 	return r.getWorker().Region
+}
+
+// dockerBlockedOnThisWorker reports whether THIS process must refuse a docker
+// job rather than execute it: a SaaS shared worker, never a deported agent
+// (spec 2026-09-25-22). Named function rather than an inline expression
+// because executeJob shadows the `config` package identifier with a local
+// variable of the same name a few lines above the call site.
+func (r *CheckWorker) dockerBlockedOnThisWorker() bool {
+	return !r.config.IsAgentMode() && r.config.Deployment.Mode == config.DeploymentModeSaaS
 }
 
 // saveErrorResult submits an error result (with a plain lease release) when

@@ -602,6 +602,12 @@ type Service struct {
 	// degraded detection is turned off (spec 2026-09-24-08). nil = not wired,
 	// in which case nothing is resolved; see SetDegradedIncidentResolver.
 	degradedResolver DegradedIncidentResolver
+	// deploymentMode gates checker types that hand a shared SaaS worker a
+	// local-machine primitive (spec 2026-09-25-22, docker's local socket).
+	// Zero value "" behaves like self-hosted (no gate) — only tests and paths
+	// that never construct a real config leave it unset; see
+	// SetDeploymentMode.
+	deploymentMode string
 }
 
 // StatusPageReconciler re-materializes the org's selector-driven status page
@@ -619,6 +625,13 @@ type StatusPageReconciler interface {
 // without it, dynamic sections still self-heal on the next page view.
 func (s *Service) SetStatusPageReconciler(reconciler StatusPageReconciler) {
 	s.statusPageReconciler = reconciler
+}
+
+// SetDeploymentMode wires the process's deployment mode (config.Deployment.Mode)
+// so create/update/import can reject checker types that are SaaS-restricted.
+// Optional: an unwired Service (most unit tests) behaves like self-hosted.
+func (s *Service) SetDeploymentMode(mode string) {
+	s.deploymentMode = mode
 }
 
 // reconcileStatusPageSelectors notifies the status page layer that the org's
