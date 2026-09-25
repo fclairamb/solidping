@@ -139,6 +139,63 @@ describe("initAnalytics", () => {
     vi.doUnmock("./posthog-loader");
   });
 
+  // Spec 2026-09-25-11: the replay network plugin recorded the navigation entry
+  // of the OAuth handoff with its original URL, tokens included. initAnalytics
+  // must wire both credential filters, and they must actually filter.
+  it("wires credential redaction into replay network capture and before_send", async () => {
+    let options: Record<string, unknown> | undefined;
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: (_key: string, opts: Record<string, unknown>) => {
+          options = opts;
+        },
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+      },
+    }));
+
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    vi.doUnmock("./posthog-loader");
+
+    // Replay stays on: this is a credentials filter, not a return to masking.
+    expect(options?.disable_session_recording).toBe(false);
+
+    const url = "https://solidping.example/d/orgs/acme?access_token=a&refresh_token=b&org=acme";
+    const leaks = (s: string) => /access_token=a(&|$)/.test(s) || /refresh_token=b(&|$)/.test(s);
+
+    // Positive control: what PostHog received before this fix (no hook, the
+    // entry as recorded) does contain both tokens, so the assertions below
+    // are not vacuous.
+    const navigationEntry = { name: url, entryType: "navigation", initiatorType: "navigation" };
+    expect(leaks(navigationEntry.name)).toBe(true);
+
+    const mask = (options?.session_recording as Record<string, unknown> | undefined)
+      ?.maskCapturedNetworkRequestFn as ((r: typeof navigationEntry) => typeof navigationEntry) | undefined;
+    expect(typeof mask).toBe("function");
+    const masked = mask!(navigationEntry);
+    expect(leaks(masked.name)).toBe(false);
+    expect(masked.name).toContain("org=acme");
+    expect(masked.entryType).toBe("navigation");
+
+    const beforeSend = options?.before_send as
+      | Array<(e: Record<string, unknown> | null) => Record<string, unknown> | null>
+      | undefined;
+    expect(Array.isArray(beforeSend)).toBe(true);
+    const event = {
+      event: "$pageview",
+      properties: { $current_url: url, $referrer: url },
+      $set_once: { $initial_current_url: url, $initial_referrer: url },
+    };
+    expect(leaks(JSON.stringify(event))).toBe(true);
+    const sent = beforeSend!.reduce<Record<string, unknown> | null>((e, fn) => fn(e), event);
+    expect(sent).not.toBeNull();
+    expect(leaks(JSON.stringify(sent))).toBe(false);
+    expect(JSON.stringify(sent)).toContain("org=acme");
+  });
+
   // …and when analytics stays off, that queued identity is discarded, never sent.
   it("discards a queued identify when analytics is off", async () => {
     identifyAnalytics("org-uid", "user-uid");
