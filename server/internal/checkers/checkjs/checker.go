@@ -72,6 +72,16 @@ const (
 	// maxRedirectsCap is both the default and the ceiling for a request's
 	// `maxRedirects` option — the same 10 Go's own client defaults to.
 	maxRedirectsCap = 10
+
+	// redirectHostPolicyAny is the default `redirectHostPolicy` option value:
+	// follow any hop regardless of host, today's behavior.
+	redirectHostPolicyAny = "any"
+	// redirectHostPolicySameHost refuses any redirect hop whose URL host
+	// differs from the PREVIOUS hop's (spec 2026-09-25-21) — the checkjs twin
+	// of checkhttp's HTTPConfig.RedirectHostPolicy, spelled as a per-request
+	// option here because a script's HTTP calls have no check-level config of
+	// their own to carry it.
+	redirectHostPolicySameHost = "same-host"
 )
 
 // jsKeyStatusCode is the response/redirect field carrying an HTTP status.
@@ -82,6 +92,12 @@ var (
 	errInvalidTimeoutOption = errors.New(
 		"invalid timeout: expected a duration string (\"2s\") or a number of milliseconds")
 	errTooManyRedirects = errors.New("stopped after too many redirects")
+	// errRedirectHostMismatch's wording matches checkhttp's
+	// redirectHostMismatchError so the same phrase means the same thing
+	// across both check types.
+	errRedirectHostMismatch      = errors.New("redirect to different host refused")
+	errInvalidRedirectHostPolicy = fmt.Errorf(
+		"redirectHostPolicy must be %q or %q", redirectHostPolicyAny, redirectHostPolicySameHost)
 )
 
 // JSChecker implements the Checker interface for JavaScript checks.
@@ -685,7 +701,10 @@ type httpOptions struct {
 	headers         map[string]string
 	followRedirects bool
 	maxRedirects    int
-	timeout         time.Duration
+	// redirectHostPolicy is "" / redirectHostPolicyAny (follow anything, the
+	// default) or redirectHostPolicySameHost (refuse a cross-host hop).
+	redirectHostPolicy string
+	timeout            time.Duration
 }
 
 // parseHTTPOptions reads the option map, applying the same defaults the http
@@ -727,6 +746,24 @@ func (r *jsRuntime) parseHTTPOptions(opts map[string]any) (httpOptions, error) {
 
 	if maxRedirects, ok := numericOption(opts["maxRedirects"]); ok {
 		parsed.maxRedirects = clampRedirects(int(maxRedirects))
+	}
+
+	// redirectHostPolicy (optional). An unknown value is rejected rather than
+	// silently treated as "any" — same reasoning as checkhttp's ValidateSpec,
+	// just checked at call time since a script's options are never validated
+	// offline.
+	if policy, ok := opts["redirectHostPolicy"]; ok {
+		policyStr, ok := policy.(string)
+		if !ok {
+			return parsed, errInvalidRedirectHostPolicy
+		}
+
+		switch policyStr {
+		case "", redirectHostPolicyAny, redirectHostPolicySameHost:
+			parsed.redirectHostPolicy = policyStr
+		default:
+			return parsed, errInvalidRedirectHostPolicy
+		}
 	}
 
 	timeout, err := optionTimeout(opts["timeout"])
@@ -913,6 +950,19 @@ func redirectPolicy(opts *httpOptions, redirects *[]map[string]any) func(*http.R
 				jsKeyStatusCode: req.Response.StatusCode,
 				"location":      req.Response.Header.Get("Location"),
 			})
+		}
+
+		// redirectHostPolicy: same-host — refuse a hop whose host differs from
+		// the PREVIOUS one. Checked here, before the request is ever built, so
+		// a refused hop never reaches the transport (and therefore never
+		// dials) at all.
+		if opts.redirectHostPolicy == redirectHostPolicySameHost && len(via) > 0 {
+			prevHost := via[len(via)-1].URL.Hostname()
+			nextHost := req.URL.Hostname()
+
+			if prevHost != nextHost {
+				return fmt.Errorf("%w: %s -> %s", errRedirectHostMismatch, prevHost, nextHost)
+			}
 		}
 
 		return nil
