@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,7 +30,101 @@ type callbackRun struct {
 	// orgSlug is the org the login should land in, or "" to accept whatever
 	// the provider resolved (Discord and Slack create their own org).
 	orgSlug string
+	// defaultTo is where this provider lands when the redirect_uri is refused.
+	defaultTo string
 }
+
+// callbackOpts shapes one provider callback run. The zero value is the happy
+// path: a deep link minted straight into the state, a working provider.
+type callbackOpts struct {
+	// redirectURI is the redirect_uri the login carries; "" means the usual
+	// in-app deep link.
+	redirectURI string
+	// viaLogin mints the state through the provider's real Login handler
+	// (which sanitizes redirect_uri) instead of straight through the service
+	// (which stands in for a state an older deploy minted unchecked).
+	viaLogin bool
+	// failExchange makes the provider's token exchange fail, so the callback
+	// takes its error-redirect path.
+	failExchange bool
+}
+
+// returnTo is the redirect_uri this run's login carries.
+func (o callbackOpts) returnTo(deepLink string) string {
+	if o.redirectURI != "" {
+		return o.redirectURI
+	}
+
+	return deepLink
+}
+
+// mintState produces the OAuth state a callback run presents: through the
+// provider's real Login handler when opts.viaLogin, directly otherwise.
+func mintState(
+	t *testing.T, opts callbackOpts, login func(http.ResponseWriter, *http.Request) error,
+	loginPath, returnTo string, direct func() (string, error),
+) string {
+	t.Helper()
+
+	if !opts.viaLogin {
+		state, err := direct()
+		require.NoError(t, err)
+
+		return state
+	}
+
+	return loginStateParam(t, login, loginPath, returnTo, "state")
+}
+
+// loginStateParam drives a provider's Login handler with redirect_uri=returnTo
+// and returns the state parameter (named param) it sent to the provider.
+func loginStateParam(
+	t *testing.T, login func(http.ResponseWriter, *http.Request) error,
+	loginPath, returnTo, param string,
+) string {
+	t.Helper()
+
+	sep := "?"
+	if strings.Contains(loginPath, "?") {
+		sep = "&"
+	}
+
+	rec := serveCallback(t, login, loginPath+sep+"redirect_uri="+url.QueryEscape(returnTo))
+	require.Equal(t, http.StatusFound, rec.Code, rec.Body.String())
+
+	providerURL, err := url.Parse(rec.Header().Get("Location"))
+	require.NoError(t, err)
+
+	state := providerURL.Query().Get(param)
+	require.NotEmpty(t, state, "the login must hand the provider a %s", param)
+
+	return state
+}
+
+// failingHTTPClient is a provider stand-in that is down.
+func failingHTTPClient() *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errProviderDown
+	})}
+}
+
+var errProviderDown = errors.New("provider down") //nolint:gochecknoglobals // test sentinel
+
+// failingSlackOAuthURL is a Slack token endpoint that refuses every code.
+func failingSlackOAuthURL(t *testing.T) string {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"ok": false, "error": "invalid_code"})
+	}))
+	t.Cleanup(server.Close)
+
+	return server.URL
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 // TestProviderCallbacksRedirectWithHandoffCodeOnly drives each provider's real
 // callback handler (state validation, token exchange against an httptest
@@ -39,7 +134,7 @@ type callbackRun struct {
 func TestProviderCallbacksRedirectWithHandoffCodeOnly(t *testing.T) {
 	t.Parallel()
 
-	providers := map[string]func(t *testing.T) callbackRun{
+	providers := map[string]func(t *testing.T, opts callbackOpts) callbackRun{
 		"google":    runGoogleCallback,
 		"github":    runGitHubCallback,
 		"gitlab":    runGitLabCallback,
@@ -54,7 +149,7 @@ func TestProviderCallbacksRedirectWithHandoffCodeOnly(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			assertHandoffRedirect(t, run(t))
+			assertHandoffRedirect(t, run(t, callbackOpts{}))
 		})
 	}
 }
@@ -146,7 +241,7 @@ func writeJSON(w http.ResponseWriter, body any) {
 	_, _ = w.Write(raw)
 }
 
-func runGoogleCallback(t *testing.T) callbackRun {
+func runGoogleCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	svc, ctx := setupGoogleTestService(t)
@@ -167,14 +262,23 @@ func runGoogleCallback(t *testing.T) callbackRun {
 	svc.userInfoURL = server.URL + "/userinfo"
 	svc.httpClient = server.Client()
 
-	returnTo := "/d/orgs/" + org.Slug + "/checks"
-	state, err := svc.GenerateOAuthState(ctx, returnTo, org.Slug)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
+	handler := NewGoogleOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/google/login?org="+org.Slug, returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
+	})
 
-	rec := serveCallback(t, NewGoogleOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.httpClient = failingHTTPClient()
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/google/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug}
+	return callbackRun{
+		rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug,
+		defaultTo: "/d/orgs/" + org.Slug,
+	}
 }
 
 // hostRewriter sends every request to one httptest server, keeping the path:
@@ -193,7 +297,7 @@ func (h hostRewriter) RoundTrip(req *http.Request) (*http.Response, error) {
 	return h.next.RoundTrip(clone)
 }
 
-func runGitHubCallback(t *testing.T) callbackRun {
+func runGitHubCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	svc, ctx := setupGitHubTestService(t)
@@ -221,17 +325,26 @@ func runGitHubCallback(t *testing.T) callbackRun {
 		Transport: hostRewriter{target: target, next: http.DefaultTransport},
 	}
 
-	returnTo := "/d/orgs/" + org.Slug + "/checks"
-	state, err := svc.GenerateOAuthState(ctx, returnTo, org.Slug)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
+	handler := NewGitHubOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/github/login?org="+org.Slug, returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
+	})
 
-	rec := serveCallback(t, NewGitHubOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.httpClient = failingHTTPClient()
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/github/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug}
+	return callbackRun{
+		rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug,
+		defaultTo: "/d/orgs/" + org.Slug,
+	}
 }
 
-func runGitLabCallback(t *testing.T) callbackRun {
+func runGitLabCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	svc, ctx := setupGitLabTestService(t)
@@ -252,17 +365,26 @@ func runGitLabCallback(t *testing.T) callbackRun {
 	svc.cfg.GitLab.BaseURL = server.URL
 	svc.httpClient = server.Client()
 
-	returnTo := "/d/orgs/" + org.Slug + "/checks"
-	state, err := svc.GenerateOAuthState(ctx, returnTo, org.Slug)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
+	handler := NewGitLabOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/gitlab/login?org="+org.Slug, returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
+	})
 
-	rec := serveCallback(t, NewGitLabOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.httpClient = failingHTTPClient()
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/gitlab/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug}
+	return callbackRun{
+		rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug,
+		defaultTo: "/d/orgs/" + org.Slug,
+	}
 }
 
-func runMicrosoftCallback(t *testing.T) callbackRun {
+func runMicrosoftCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	svc, ctx := setupMicrosoftTestService(t)
@@ -285,69 +407,99 @@ func runMicrosoftCallback(t *testing.T) callbackRun {
 	svc.userURL = server.URL + "/me"
 	svc.httpClient = server.Client()
 
-	returnTo := "/d/orgs/" + org.Slug + "/checks"
-	state, err := svc.GenerateOAuthState(ctx, returnTo, org.Slug)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
+	handler := NewMicrosoftOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/microsoft/login?org="+org.Slug, returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
+	})
 
-	rec := serveCallback(t, NewMicrosoftOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.httpClient = failingHTTPClient()
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/microsoft/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug}
+	return callbackRun{
+		rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug,
+		defaultTo: "/d/orgs/" + org.Slug,
+	}
 }
 
-func runDiscordCallback(t *testing.T) callbackRun {
+func runDiscordCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	svc := newDiscordTestService(t, newSQLiteDBService(t))
 	fakeDiscordEndpoints(t, svc, discordTestUser(nextFixture()), nil)
 
 	// Discord's redirect_uri defaults to "/"; any value round-trips as-is.
-	returnTo := "/d/orgs/anything"
-	state, err := svc.GenerateOAuthState(t.Context(), returnTo)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/anything")
+	handler := NewDiscordOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/discord/login", returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(t.Context(), returnTo)
+	})
 
-	rec := serveCallback(t, NewDiscordOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.httpClient = failingHTTPClient()
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/discord/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo}
+	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, defaultTo: "/"}
 }
 
-func runSlackCallback(t *testing.T) callbackRun {
+func runSlackCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	svc, ctx := setupSlackTestService(t)
 	fakeSlackEndpoints(t, svc, "T-HANDOFF", "Acme", "member@acme.com")
 
-	returnTo := "/d/orgs/anything"
-	state, err := svc.GenerateOAuthState(ctx, returnTo)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/anything")
+	handler := NewSlackOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/slack/login", returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(ctx, returnTo)
+	})
 
-	rec := serveCallback(t, NewSlackOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.oauthURL = failingSlackOAuthURL(t)
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/slack/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo}
+	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, defaultTo: "/"}
 }
 
-func runOIDCCallback(t *testing.T) callbackRun {
+func runOIDCCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	idp := newFakeOIDCIdP(t)
 	svc, ctx := setupOIDCTestService(t, idp, nil)
 	org := setupOIDCTestOrg(ctx, t, svc)
 
-	returnTo := "/d/orgs/" + org.Slug + "/checks"
-	state, err := svc.GenerateOAuthState(ctx, returnTo, org.Slug)
-	require.NoError(t, err)
+	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
+	handler := NewOIDCOAuthHandler(svc, svc.cfg)
+	state := mintState(t, opts, handler.Login, "/api/v1/auth/oidc/login?org="+org.Slug, returnTo, func() (string, error) {
+		return svc.GenerateOAuthState(ctx, returnTo, org.Slug)
+	})
 
 	idp.nextIDToken = idp.issueIDToken(t, nil)
 
-	rec := serveCallback(t, NewOIDCOAuthHandler(svc, svc.cfg).Callback,
+	if opts.failExchange {
+		svc.httpClient = failingHTTPClient()
+	}
+
+	rec := serveCallback(t, handler.Callback,
 		"/api/v1/auth/oidc/callback?code=mock&state="+url.QueryEscape(state))
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug}
+	return callbackRun{
+		rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug,
+		defaultTo: "/d/orgs/" + org.Slug,
+	}
 }
 
-func runSAMLCallback(t *testing.T) callbackRun {
+func runSAMLCallback(t *testing.T, opts callbackOpts) callbackRun {
 	t.Helper()
 
 	r := require.New(t)
@@ -355,15 +507,23 @@ func runSAMLCallback(t *testing.T) callbackRun {
 	svc, ctx := setupSAMLTestService(t, idp, nil)
 	org := setupSAMLTestOrg(ctx, t, svc)
 
-	returnTo := "/d/orgs/" + org.Slug + "/checks"
-	redirectURL, err := svc.GenerateAuthnRequest(ctx, returnTo, org.Slug)
-	r.NoError(err)
+	returnTo := opts.returnTo("/d/orgs/" + org.Slug + "/checks")
+	handler := NewSAMLHandler(svc, svc.cfg)
 
-	parsed, err := url.Parse(redirectURL)
-	r.NoError(err)
+	var relayState string
 
-	relayState := parsed.Query().Get("RelayState")
-	r.NotEmpty(relayState)
+	if opts.viaLogin {
+		relayState = loginStateParam(t, handler.Login, "/api/v1/auth/saml/login?org="+org.Slug, returnTo, "RelayState")
+	} else {
+		redirectURL, err := svc.GenerateAuthnRequest(ctx, returnTo, org.Slug)
+		r.NoError(err)
+
+		parsed, err := url.Parse(redirectURL)
+		r.NoError(err)
+
+		relayState = parsed.Query().Get("RelayState")
+		r.NotEmpty(relayState)
+	}
 
 	// Peek (without consuming it — the handler does that) at the request ID
 	// the assertion must answer.
@@ -383,10 +543,17 @@ func runSAMLCallback(t *testing.T) callbackRun {
 		defaultTestSession("member@acme.com", "Member"), time.Now(), svc.acsURL())
 	req.PostForm.Set("RelayState", relayState)
 
-	rec := httptest.NewRecorder()
-	r.NoError(NewSAMLHandler(svc, svc.cfg).ACS(rec, req))
+	if opts.failExchange {
+		req.PostForm.Set("SAMLResponse", "not-a-saml-response")
+	}
 
-	return callbackRun{rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug}
+	rec := httptest.NewRecorder()
+	r.NoError(handler.ACS(rec, req))
+
+	return callbackRun{
+		rec: rec, db: svc.db, returnTo: returnTo, orgSlug: org.Slug,
+		defaultTo: "/d/orgs/" + org.Slug,
+	}
 }
 
 // TestPendingCallbackRedirectsWithHandoffCode covers the org-less outcome of
