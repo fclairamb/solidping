@@ -92,6 +92,10 @@ current choice, not part of the document). `placement: auto` with no `regions`
 switches an existing pinned check to automatic placement; an explicit `regions`
 list pins a check. See [Region placement](./region-placement.md).
 
+`failQuorum` (`all`, `majority` or a number) is exported only when it is not
+the default. A document that leaves it out puts the check back on the default,
+and the plan shows that change.
+
 ## What `secrets: stripped` means
 
 Every export carries `secrets: stripped`, and it is a promise about two sets of

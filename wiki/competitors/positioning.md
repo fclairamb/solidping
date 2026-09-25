@@ -302,11 +302,18 @@ survey that is simultaneously self-hostable at zero cost **and** capable of
 distributed multi-region confirmation; every SaaS competitor caps monitors/seats
 and rents you your own data.
 
-> **Correction (2026-09-25): "multi-region confirmation" is not a stated rule
-> yet.** Today a multi-region check opens an incident only when *every* region
-> fails for the whole confirmation period (any success clears the clock), and a
-> failure seen from one region alone is never surfaced. That is an accidental
-> "all regions agree" rule, not a configurable quorum. The explicit quorum
-> (`failQuorum`, per-region state, a visible "regional issue" warning) is Part B
-> of spec 2026-09-25-06 and has not shipped. Automatic placement and failover
-> (Part A) have. Do not claim quorum-based confirmation until Part B lands.
+> **Correction (2026-09-25): "multi-region confirmation" was not a stated rule
+> until spec 2026-09-25-10.** Before it, a multi-region check opened an incident
+> only when *every* region failed for the whole confirmation period (any success
+> cleared the clock), and a failure seen from one region alone was never
+> surfaced: an accidental "all regions agree" rule.
+>
+> **Update (2026-09-25): multi-region quorum now ships** (spec 2026-09-25-10,
+> Part B of 2026-09-25-06). Each check keeps a per-region state and has a
+> `failQuorum` (default: all regions for 1-2 regions, a majority for 3+; or
+> `all`, `majority`, a number). At least the quorum failing for the
+> confirmation period opens an incident; fewer is a visible "regional issue"
+> warning with the failing regions named, and no incident. Only the check's
+> current regions count, so automatic re-placement cannot leave a phantom
+> failing region behind. The "distributed multi-region confirmation" claim
+> above holds. Automatic placement and failover (Part A) shipped earlier.

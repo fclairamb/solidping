@@ -82,6 +82,37 @@ exception: a check whose regions were exactly the platform's default regions
 (nobody chose them) was switched to automatic placement with the same regions
 and the same region count.
 
+## Confirming across regions (`failQuorum`)
+
+When a check runs from several regions, `failQuorum` says how many of them must
+be failing, for the whole confirmation period, before the check is **down**
+and an incident opens.
+
+| `failQuorum` | Meaning |
+|---|---|
+| `default` | all regions for 1 or 2 regions, a majority for 3 or more |
+| `all` | every region. Any passing region restarts the confirmation, as before |
+| `majority` | more than half: 2 of 3, 3 of 4, 3 of 5 |
+| a number | that many regions (capped at the check's region count) |
+
+With 3 regions and the default (2 of 3):
+
+- one region failing: the check shows **Regional issue** (a `warning`) with
+  the failing region. No incident, no notification.
+- two regions failing for the confirmation period: the check is **down** and
+  an incident opens.
+- recovery works the same way: the incident resolves once fewer than 2 regions
+  have been failing for the recovery period. A region still failing then shows
+  as a regional issue.
+
+Only the check's current regions count. When a check is moved to another
+region, what the old region last reported is ignored, and the new region counts
+once it reports. A region silent for longer than the "No data" threshold
+(3 periods, at least 5 minutes) does not count either.
+
+Checks with 1 or 2 regions keep the exact behavior they always had. On the
+public status page a regional issue shows as a warning, like any other.
+
 ## API and config-as-code
 
 | Field | Meaning |
@@ -90,6 +121,8 @@ and the same region count.
 | `regionCount` | automatic only: how many regions run the check |
 | `regionPool` | automatic only: candidate cloud regions; empty means any |
 | `regions` | where the check runs now: your list when pinned, the current placement when automatic |
+| `failQuorum` | `default`, `all`, `majority` or a number (a JSON string or number) |
+| `effectiveFailQuorum` | read-only: what `failQuorum` resolves to for the current regions |
 
 An automatically placed check exports as `placement: auto` with its
 `regionCount` and `regionPool`, and **no** `regions`: those belong to the
