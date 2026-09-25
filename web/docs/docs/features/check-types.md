@@ -1010,6 +1010,16 @@ Monitor devices via SNMP protocol.
 
 Monitor remote Docker daemon connectivity.
 
+:::note Private locations only on SolidPing Cloud
+On SolidPing Cloud (SaaS), a docker check must run from one of your
+organization's [private locations](./private-locations.md) — an agent inside
+your own network. A shared SolidPing region never runs a docker check: its
+worker would otherwise be handing out its own host's Docker socket to
+whichever org placed the check. Point the check at your private location and
+it works exactly like any other check type there. Self-hosted SolidPing is
+unaffected — monitoring the local daemon is the feature there.
+:::
+
 **URL Format:**
 ```
 docker://hostname:2375
