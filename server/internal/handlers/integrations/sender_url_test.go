@@ -3,6 +3,8 @@ package integrations_test
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -234,4 +236,62 @@ func TestCreateIntegrationHTTP_NonPublicSenderURL(t *testing.T) {
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 	r.Contains(rec.Body.String(), string(base.ErrorCodeValidationError))
+}
+
+// TestTestIntegration_RejectsNonPublicSenderURL covers a row that predates
+// (or was saved under a looser) policy: a webhook is created while the guard
+// allows private targets, the operator then tightens the policy, and
+// POST .../integrations/:uid/test on the now-disallowed URL must fail with a
+// validation error and reach the target zero times — the sender's own
+// defensive ValidateSenderURL call, not CRUD, is what catches this case.
+func TestTestIntegration_RejectsNonPublicSenderURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	var requestsReceived atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestsReceived.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx := t.Context()
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	creds, err := credentials.NewService(newKEK(t), newMemDEKStore())
+	r.NoError(err)
+
+	org := models.NewOrganization("policy-change-org", "Policy Change Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// The same *services.Registry a real process shares between CRUD and
+	// delivery — mutating its EgressGuard field below is exactly what
+	// tightening SP_EGRESS_ALLOW_PRIVATE (or the system parameter) does at
+	// runtime, with no restart.
+	reg := &services.Registry{EgressGuard: egress.New(true)} // permissive at creation time
+	svc := integrations.NewService(dbSvc, creds, reg, &config.Config{})
+
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
+		Type:     "webhook",
+		Name:     "hook",
+		Settings: map[string]any{"url": srv.URL},
+	})
+	r.NoError(err)
+
+	// The operator tightens the policy — same registry a real process would
+	// share between CRUD and delivery, so this is exactly what "the policy
+	// changes under an existing integration" means in practice.
+	reg.EgressGuard = egress.New(false)
+
+	result, testErr := svc.TestIntegration(ctx, org.Slug, created.UID)
+	r.NoError(testErr, "TestIntegration reports failure in the result, not as a Go error")
+	r.False(result.Success)
+	r.NotEmpty(result.Error)
+
+	r.Zero(requestsReceived.Load(), "the target must never receive a request once the policy denies it")
 }
