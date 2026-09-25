@@ -176,6 +176,7 @@ used, so edits made through the API are preserved across restarts.
 |----------|---------|-------------|
 | `SP_CHECKERS_BROWSER_CDP_URL` | - | Remote headless Chrome (CDP) endpoint for [browser checks](/features/check-types#browser), e.g. `ws://browser:9222`. Required in containers — the image ships no browser |
 | `SP_CHECKERS_BROWSER_CHROME_PATH` | - | Local Chrome/Chromium binary used when no CDP URL is set. Empty means "probe the usual names"; nothing is ever downloaded |
+| `SP_EGRESS_ALLOW_PRIVATE` | derived | Let this process's checks reach non-public addresses (loopback, RFC 1918, link-local, cloud metadata…). Unset: allowed on self-hosted and on agents, denied on SaaS shared workers. See [Egress policy](/configuration/egress-policy) |
 
 ### Logging
 

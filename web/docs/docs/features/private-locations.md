@@ -141,6 +141,7 @@ drain.
 | `SP_AGENT_KEYS` | — | Base64 identity JSON for env-only deployments (wins over the file) |
 | `SP_AGENT_NAME` | hostname | Display name shown in the dashboard |
 | `SP_NODE_NAME` | hostname | Pins the worker identity. Without it the worker slug is derived from the (truncated) hostname, so a pod that gets a new name on every restart lands on a new `workers` row each time |
+| `SP_EGRESS_ALLOW_PRIVATE` | `true` on an agent | Whether checks may reach non-public addresses. An agent exists to reach your private network, so it allows them unless you set `false`. See [Egress policy](/configuration/egress-policy) |
 | `SP_AGENT_PRINT_KEYS` | `false` | Prints the agent's **private key material** to stdout — opt-in bootstrap only (honoured on every start); unset it again afterwards |
 
 **Version reporting needs no configuration.** Every agent automatically
