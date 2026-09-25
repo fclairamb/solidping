@@ -759,6 +759,17 @@ jobs:
           SP_AUTH_ACCESS_TOKEN_EXPIRY: "10s"
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
           SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
+          # sso-handoff.spec.ts drives a full OIDC login against a fake
+          # identity provider the spec itself serves on 127.0.0.1:4455
+          # (spec 2026-09-25-12). Discovery is lazy, so the IdP only has to be
+          # up by the time the test clicks through, not at boot.
+          # The provider redirects back to SP_BASE_URL's callback, which must
+          # be this side-car, not the main server on :4000.
+          SP_BASE_URL: "http://localhost:4001"
+          SP_OIDC_ENABLED: "true"
+          SP_OIDC_ISSUER_URL: "http://127.0.0.1:4455"
+          SP_OIDC_CLIENT_ID: "e2e-client"
+          SP_OIDC_CLIENT_SECRET: "e2e-secret"
 
       - name: Wait for side-car server
         run: |
@@ -768,15 +779,16 @@ jobs:
           done
           echo "Side-car server failed to start" && exit 1
 
-      - name: Run session-continuity E2E tests (side-car, short expiry)
+      - name: Run session-continuity and SSO handoff E2E tests (side-car)
         # --reporter=list only: the default html/json reporters write to the
         # same playwright-report/test-results paths as the main run above,
         # and would clobber that report/summary in the uploaded artifact.
-        run: bunx playwright test session-continuity.spec.ts --reporter=list
+        run: bunx playwright test session-continuity.spec.ts sso-handoff.spec.ts --reporter=list
         env:
           CI: "true"
           E2E_BASE_URL: "http://localhost:4001/d/"
           E2E_ACCESS_TOKEN_EXPIRY_SECONDS: "10"
+          E2E_FAKE_OIDC_PORT: "4455"
 
       - name: Surface server log on failure
         if: failure()
