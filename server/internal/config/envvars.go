@@ -144,6 +144,9 @@ func manualReaderServerEnvVars() []string {
 		"SP_LOG_FORMAT",
 		"SP_APP_GITHUB_ISSUES_TOKEN",
 		"SP_APP_GITHUB_REPO",
+		// applyFeedbackEnv — feedback_max_storage_bytes is snake_case, so
+		// koanf's env loader cannot reach it.
+		EnvAppFeedbackMaxStorageBytes,
 		// applyCheckersEnv — both keys have a snake_case segment, so koanf's
 		// env loader cannot reach them (see BrowserCheckerConfig).
 		"SP_CHECKERS_BROWSER_CDP_URL",

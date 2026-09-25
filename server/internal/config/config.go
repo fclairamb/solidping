@@ -909,6 +909,18 @@ type AppConfig struct {
 	// Never read directly from config — call ComputeBugReportEnabled.
 	EnableBugReport bool            `koanf:"-"`
 	GitHub          AppGitHubConfig `koanf:"github"`
+	// FeedbackMaxStorageBytes caps the total bytes of live feedback-report
+	// screenshots (files.Service, filestorage.GroupTypeReports) an org may
+	// have stored at once (spec 2026-09-25-26). The anonymous POST
+	// /api/mgmt/report endpoint has no auth and no other cost signal, so this
+	// is what bounds how much local/S3 storage a single org's inbox can be
+	// made to fill. 0 or negative disables the quota. Snake_case, so it's
+	// unreachable by koanf's env loader — see EnvAppFeedbackMaxStorageBytes /
+	// applyFeedbackEnv — and also overlaid by the
+	// app.feedback_max_storage_bytes system parameter
+	// (systemconfig.KeyFeedbackMaxStorageBytes), read at request time by
+	// feedback.Service so a DB-set value takes effect without a restart.
+	FeedbackMaxStorageBytes int64 `koanf:"feedback_max_storage_bytes"`
 }
 
 // AppGitHubConfig holds the GitHub credentials used for in-app feature integrations
@@ -916,6 +928,31 @@ type AppConfig struct {
 type AppGitHubConfig struct {
 	IssuesToken string `koanf:"issues_token"` // fine-grained PAT, issues:write only
 	Repo        string `koanf:"repo"`         // "owner/name"
+}
+
+// DefaultFeedbackMaxStorageBytes is the built-in per-org feedback-file quota
+// (spec 2026-09-25-26): 100 MB.
+const DefaultFeedbackMaxStorageBytes int64 = 100 * 1024 * 1024
+
+// EnvAppFeedbackMaxStorageBytes is the operator/system-parameter override for
+// AppConfig.FeedbackMaxStorageBytes.
+const EnvAppFeedbackMaxStorageBytes = "SP_APP_FEEDBACK_MAX_STORAGE_BYTES"
+
+// applyFeedbackEnv binds SP_APP_FEEDBACK_MAX_STORAGE_BYTES.
+// feedback_max_storage_bytes is snake_case, so koanf's env loader can never
+// reach it (SP_APP_FEEDBACK_MAX_STORAGE_BYTES would land on
+// app.feedback.max.storage.bytes, not app.feedback_max_storage_bytes). An
+// absent or unparseable variable leaves whatever config.yml /
+// config.local.yml (or the built-in default) already set alone.
+func applyFeedbackEnv(cfg *AppConfig) {
+	v := os.Getenv(EnvAppFeedbackMaxStorageBytes)
+	if v == "" {
+		return
+	}
+
+	if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+		cfg.FeedbackMaxStorageBytes = n
+	}
 }
 
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
@@ -1793,6 +1830,7 @@ func Load() (*Config, error) {
 			GitHub: AppGitHubConfig{
 				Repo: "fclairamb/solidping",
 			},
+			FeedbackMaxStorageBytes: DefaultFeedbackMaxStorageBytes,
 		},
 		Google:    GoogleOAuthConfig{Enabled: false},
 		GitHub:    GitHubOAuthConfig{Enabled: false},
@@ -2043,6 +2081,8 @@ func Load() (*Config, error) {
 	if v := os.Getenv("SP_APP_GITHUB_REPO"); v != "" {
 		cfg.App.GitHub.Repo = v
 	}
+
+	applyFeedbackEnv(&cfg.App)
 
 	cfg.App.EnableBugReport = ComputeBugReportEnabled(&cfg.App.GitHub)
 
