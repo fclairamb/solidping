@@ -235,6 +235,7 @@ next. For a flow that needs cookies across calls, see
 | `headers` | object | — | Request headers, `{name: value}` |
 | `followRedirects` | boolean | `true` | `false` returns the 3xx itself, with `Location` intact, instead of following it |
 | `maxRedirects` | number | `10` | Redirect hops to follow; capped at 10 |
+| `redirectHostPolicy` | string | `"any"` | `"same-host"` refuses any redirect hop whose URL host differs from the previous hop's — `resp.error` reports `redirect to different host refused` and the refused hop is never dialed. An unknown value is an error, not a silent fallback to `"any"` |
 | `timeout` | duration string or number of ms | the check's own timeout | Never longer than the check's own timeout, regardless of what is asked for |
 
 **Response**

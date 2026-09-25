@@ -10050,7 +10050,11 @@ components:
             `type`. HTTP checks additionally accept `verifySsl` (boolean,
             default true — set false to skip TLS certificate verification),
             `followRedirects` (boolean, default true — set false to stop
-            at the first response instead of following redirects) and
+            at the first response instead of following redirects),
+            `redirectHostPolicy` (string, default "any" — "same-host" refuses
+            any followed redirect hop whose host differs from the previous
+            hop's, failing the check instead of following it; an unknown
+            value is a VALIDATION_ERROR) and
             `capture_failure_response` (boolean, default false — when true a
             FAILING execution keeps what the probe received: status line,
             redacted response headers and a 16 KiB-capped body, stored on the

@@ -47,6 +47,10 @@ export interface HttpState {
   // GetConfig style.
   verifySsl: boolean;
   followRedirects: boolean;
+  // Gates which followed redirect hop is allowed: "any" (default, implicit —
+  // never written to config, matching the server's omit-at-default GetConfig)
+  // or "same-host" (refuse a hop whose host differs from the previous one).
+  redirectHostPolicy: "any" | "same-host";
   // Opt-in capture of what the probe received when the check FAILS, kept as
   // incident diagnostics. Defaults to false (off) — unlike the two above, whose
   // default is on — because a response body can contain PII or session
@@ -170,6 +174,13 @@ function fromConfig(config: CheckConfig): HttpState {
   const verifySsl = (config.verifySsl ?? config.verify_ssl) !== false;
   const followRedirects =
     (config.followRedirects ?? config.follow_redirects) !== false;
+  // Any value other than the literal "same-host" (absent, "any", or
+  // malformed) means the default — matching the server's own fallback for an
+  // absent/empty key.
+  const rawRedirectHostPolicy =
+    config.redirectHostPolicy ?? config.redirect_host_policy;
+  const redirectHostPolicy: HttpState["redirectHostPolicy"] =
+    rawRedirectHostPolicy === "same-host" ? "same-host" : "any";
   // Canonical key is snake_case (the server accepts the camelCase alias on
   // read but always re-emits the snake one), so read both and prefer the
   // canonical spelling.
@@ -185,6 +196,7 @@ function fromConfig(config: CheckConfig): HttpState {
     secretHeaders,
     verifySsl,
     followRedirects,
+    redirectHostPolicy,
     captureFailureResponse,
     jsonPathAssertions: seedJsonPathAssertions(config),
     bodyAssertions: seedBodyAssertions(config),
@@ -241,6 +253,11 @@ function toConfig(state: HttpState): {
   // round-trips without ever writing the key.
   if (!state.verifySsl) cfg.verifySsl = false;
   if (!state.followRedirects) cfg.followRedirects = false;
+  // Only the non-default ("same-host") value is ever written, matching the
+  // server's own omit-at-default GetConfig style.
+  if (state.redirectHostPolicy === "same-host") {
+    cfg.redirectHostPolicy = "same-host";
+  }
   // Written only when opted in, under the canonical snake_case key.
   if (state.captureFailureResponse) cfg.capture_failure_response = true;
   // Not a secret field (see HttpState.jsonPathAssertions), so — like
@@ -577,6 +594,43 @@ export function HttpOptionsFields({
           {t("http.followRedirectsOffHelp")}
         </p>
       )}
+      {state.followRedirects && (
+        <div className="space-y-2 pl-1">
+          <Label htmlFor="http-redirect-host-policy">
+            {t("http.redirectHostPolicy")}
+          </Label>
+          <Select
+            value={state.redirectHostPolicy}
+            onValueChange={(value) =>
+              onChange({
+                ...state,
+                redirectHostPolicy: value as HttpState["redirectHostPolicy"],
+              })
+            }
+          >
+            <SelectTrigger
+              id="http-redirect-host-policy"
+              className="w-56"
+              data-testid="check-redirect-host-policy-select"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">
+                {t("http.redirectHostPolicyAny")}
+              </SelectItem>
+              <SelectItem value="same-host">
+                {t("http.redirectHostPolicySameHost")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {state.redirectHostPolicy === "same-host" && (
+            <p className="text-xs text-muted-foreground">
+              {t("http.redirectHostPolicySameHostHelp")}
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Switch
           id="http-capture-failure-response"
@@ -687,6 +741,8 @@ export function httpOptionsSummary(state: HttpState): {
   const parts: string[] = [];
   if (!state.verifySsl) parts.push("TLS verification off");
   if (!state.followRedirects) parts.push("redirects not followed");
+  if (state.followRedirects && state.redirectHostPolicy === "same-host")
+    parts.push("redirects restricted to same host");
   if (state.captureFailureResponse) parts.push("failure response captured");
   if (state.jsonPathAssertions) parts.push("JSON assertions");
   if (state.bodyAssertions) parts.push("body assertions");
@@ -719,6 +775,8 @@ export const httpModule: CheckTypeModule<HttpState> = {
     "verify_ssl",
     "followRedirects",
     "follow_redirects",
+    "redirectHostPolicy",
+    "redirect_host_policy",
     "capture_failure_response",
     "captureFailureResponse",
     "jsonPathAssertions",
