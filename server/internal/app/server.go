@@ -25,7 +25,6 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	k8sclient "k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/analytics"
@@ -2274,7 +2273,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// the fast/slow-lane go/no-go decision (spec 2026-07-01-01).
 	mgmtAdmin.GET("/scheduling/cost-distribution", s.getCostDistribution)
 
-	// Prometheus metrics endpoint
+	// Prometheus metrics endpoint (spec 2026-09-25-25): gated behind a bearer
+	// scrape token read at REQUEST time, never captured here. Registration
+	// only depends on Prometheus.Enabled (a plain koanf/env value, fully
+	// resolved before SetupRoutes runs) — the token itself is a system
+	// parameter that InitializeSystemConfig may have overlaid onto s.config
+	// from the database, by the real boot order (main.go: NewServer ->
+	// Initialize -> InitializeSystemConfig -> SetupRoutes) before this code
+	// even runs, but reading it lazily here is what also lets a DB-only value
+	// applied through a different call order (e.g. in tests) take effect
+	// without a second code path.
 	if s.config.Prometheus.Enabled {
 		prommetrics.Register(prometheus.DefaultRegisterer)
 		s.registerSubsystemMetrics(prometheus.DefaultRegisterer)
@@ -2284,9 +2292,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 			metricsPath = "/metrics"
 		}
 
-		mainGroup.GET(metricsPath, httpx.HTTPHandler(promhttp.Handler()))
+		mainGroup.GET(metricsPath, s.metricsHandler())
 
-		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath)
+		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath,
+			"tokenConfigured", s.config.Prometheus.ScrapeToken != "")
 	}
 
 	// Test/dev fixture routes. Everything registered inside the RunMode=="test"
@@ -3978,6 +3987,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	// overlaid egress.allow_private_targets system parameter (see the comment
 	// on svcList.Clock in NewServer for why this can't happen any earlier).
 	s.installEgressGuard(ctx, cfg)
+
+	// Log the resolved /metrics scrape-token state now that cfg carries the
+	// overlaid metrics.scrape_token system parameter (spec 2026-09-25-25).
+	logMetricsScrapeTokenState(ctx, cfg)
 
 	return nil
 }

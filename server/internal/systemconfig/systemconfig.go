@@ -202,6 +202,16 @@ const (
 	// change takes effect on the next worker restart. Deported agents have no
 	// database and only ever read SP_EGRESS_ALLOW_PRIVATE.
 	KeyEgressAllowPrivateTargets ParameterKey = "egress.allow_private_targets"
+
+	// KeyMetricsScrapeToken is the bearer token gating GET /metrics (spec
+	// 2026-09-25-25). Unset means the endpoint answers 404 to every request —
+	// the same "feature disabled" convention as Prometheus.Enabled=false —
+	// never that it is open. Applied at startup (app.InitializeSystemConfig,
+	// before SetupRoutes in the real boot order); the handler reads
+	// cfg.Prometheus.ScrapeToken at request time rather than capturing it, so
+	// a value set purely through the database still takes effect without a
+	// second code path. See config.EnvMetricsScrapeToken for the env override.
+	KeyMetricsScrapeToken ParameterKey = "metrics.scrape_token"
 )
 
 // SP_* environment variable names for the product-analytics parameters,
@@ -767,6 +777,16 @@ func getKnownParameters() []ParameterDefinition {
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				applyEgressAllowPrivate(cfg, value)
+			},
+		},
+		{
+			Key:    KeyMetricsScrapeToken,
+			EnvVar: config.EnvMetricsScrapeToken,
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Prometheus.ScrapeToken = strings.TrimSpace(v)
+				}
 			},
 		},
 		{

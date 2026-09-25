@@ -260,6 +260,30 @@ type EncryptionConfig struct {
 type PrometheusConfig struct {
 	Enabled bool   `koanf:"enabled"` // Enable the /metrics endpoint
 	Path    string `koanf:"path"`    // Path for the metrics endpoint (default: /metrics)
+	// ScrapeToken gates /metrics behind `Authorization: Bearer <token>` (spec
+	// 2026-09-25-25). Empty means the endpoint answers 404 — same "feature
+	// disabled" convention as Enabled=false — never that it is open. It is
+	// snake_case and therefore unreachable by koanf's env loader;
+	// EnvMetricsScrapeToken is bound by hand in applyMetricsEnv and is also the
+	// env override of the metrics.scrape_token system parameter (see
+	// systemconfig.KeyMetricsScrapeToken).
+	ScrapeToken string `koanf:"scrape_token"`
+}
+
+// EnvMetricsScrapeToken is the operator switch for the Prometheus scrape
+// bearer token. Named metrics.* rather than prometheus.* because it is the
+// operator-facing knob for the /metrics endpoint's access control, not an
+// internal Prometheus client wiring detail.
+const EnvMetricsScrapeToken = "SP_METRICS_SCRAPE_TOKEN"
+
+// applyMetricsEnv binds SP_METRICS_SCRAPE_TOKEN. scrape_token is snake_case,
+// so koanf's env loader can never reach it (SP_METRICS_SCRAPE_TOKEN would
+// land on metrics.scrape.token, not prometheus.scrape_token). An absent
+// variable leaves whatever config.yml / config.local.yml already set alone.
+func applyMetricsEnv(cfg *PrometheusConfig) {
+	if token := os.Getenv(EnvMetricsScrapeToken); token != "" {
+		cfg.ScrapeToken = strings.TrimSpace(token)
+	}
 }
 
 // RealtimeConfig controls the org-scoped live hint WebSocket
@@ -1925,6 +1949,10 @@ func Load() (*Config, error) {
 	// key segments are converted to dots by the env TransformFunc, so they
 	// never reach the koanf `*_per_hour` tags automatically.
 	applyEntitlementsEnv(&cfg.Entitlements)
+
+	// Manually read SP_METRICS_SCRAPE_TOKEN — scrape_token is snake_case, so
+	// koanf's env loader can never reach it.
+	applyMetricsEnv(&cfg.Prometheus)
 
 	// If node region is set, also set the check worker region if not already set
 	if cfg.Node.Region != "" && cfg.Server.CheckWorker.Region == "" {

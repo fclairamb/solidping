@@ -94,7 +94,12 @@ func manualReaderEnvVars() []string {
 
 	// applyEgressEnv: egress.allow_private_targets is snake_case, so koanf's
 	// env loader can never reach it.
-	return append(out, EnvEgressAllowPrivate)
+	out = append(out, EnvEgressAllowPrivate)
+
+	// applyMetricsEnv: scrape_token is snake_case, so koanf's env loader can
+	// never reach it (SP_METRICS_SCRAPE_TOKEN would land on
+	// metrics.scrape.token, not prometheus.scrape_token).
+	return append(out, EnvMetricsScrapeToken)
 }
 
 // manualReaderHeartbeatEnvVars covers applyHeartbeatEnv. EVERY key in
