@@ -7482,6 +7482,33 @@ func (s *Service) DeleteFilesByTopicPrefix(ctx context.Context, orgUID, prefix s
 	return int(rows), nil
 }
 
+// SumFileSizeByGroup returns the total bytes of live files for orgUID whose
+// file_uri contains a "/<group>/" path segment — see filestorage.BuildPath
+// ("<orgUID>/<group>/<fileID>"), which every storage backend's URI embeds
+// verbatim after its own scheme/bucket prefix. organization_uid already
+// scopes the match to this org, so the LIKE only needs to find the group
+// segment, not reconstruct the full path.
+func (s *Service) SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error) {
+	if group == "" {
+		return 0, nil
+	}
+
+	var total sql.NullInt64
+
+	err := s.db.NewSelect().
+		Model((*models.File)(nil)).
+		ColumnExpr("COALESCE(SUM(size), 0)").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("file_uri LIKE ? ESCAPE '\\'", "%/"+escapeLikePrefix(group)+"/%").
+		Scan(ctx, &total)
+	if err != nil {
+		return 0, err
+	}
+
+	return total.Int64, nil
+}
+
 // ListAttachmentsByTopicPrefix returns live attachment rows across all orgs
 // under a topic prefix, older than `before`, capped at limit. Cross-org because
 // its only caller is the GC sweep.

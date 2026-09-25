@@ -1330,6 +1330,13 @@ type Service interface {
 	ListAttachmentsByTopicPrefix(
 		ctx context.Context, prefix string, before time.Time, limit int,
 	) ([]*models.File, error)
+	// SumFileSizeByGroup returns the total bytes of live (non-deleted) files
+	// for orgUID whose storage URI belongs to the given filestorage.GroupType
+	// (passed as a plain string — this package does not import filestorage).
+	// Matches on the "/<group>/" path segment rather than a URI prefix, since
+	// the scheme/bucket portion varies by storage backend (local vs S3). Used
+	// by the feedback-report per-org storage quota (spec 2026-09-25-26).
+	SumFileSizeByGroup(ctx context.Context, orgUID, group string) (int64, error)
 
 	// CheckDependency operations
 	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error
