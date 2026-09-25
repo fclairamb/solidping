@@ -47,6 +47,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	agentsadmin "github.com/fclairamb/solidping/server/internal/handlers/agents"
@@ -308,6 +309,21 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Initialize services
 	svcList := services.NewRegistry()
 	svcList.Clock = clock.Real{}
+
+	// Egress guard for notification sender URLs (spec 2026-09-25-20): the org
+	// member picks the destination, so it is a user-chosen target exactly like
+	// a check target, and shares that guard's policy source
+	// (cfg.EgressAllowsPrivateTargets — explicit override > SaaS deny >
+	// self-hosted allow). Built once here so every sender's guarded HTTP
+	// transport shares one pooled connection cache (egress.Guard.HTTPTransport
+	// memoizes it on the guard instance).
+	svcList.EgressGuard = egress.New(cfg.EgressAllowsPrivateTargets())
+	//nolint:sloglint // startup-only, no request context
+	slog.Info("Egress policy for notification sender URLs",
+		"allow_private_targets", svcList.EgressGuard.AllowsPrivate(),
+		"source", cfg.EgressPolicySource(),
+		"env", egress.EnvAllowPrivate,
+		"parameter", egress.ParamAllowPrivate)
 
 	// Create check notifier based on database type — must be created before the
 	// job service so its LISTEN channel can wake up GetJobWait immediately on

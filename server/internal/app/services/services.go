@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/integrations/sms"
@@ -111,6 +112,16 @@ type Registry struct {
 	// location at startup (spec 2026-09-25-05). Same *checks.Service as Checks,
 	// behind its own narrow interface. Nil-guarded by the startup job.
 	PrivateLocationMonitors PrivateLocationMonitorBackfiller
+
+	// EgressGuard is this process's outbound-connection policy for
+	// destinations a user chose: today, notification sender URLs (spec
+	// 2026-09-25-20), reusing the guard package check workers already dial
+	// through (spec 2026-09-25-19). Built once at startup from
+	// config.Config.EgressAllowsPrivateTargets, so every notification send
+	// shares one pooled, guarded HTTP transport. Nil in tests that build a
+	// bare Registry — every consumer treats nil as "no policy" (allow
+	// everything), matching a nil *egress.Guard's own contract.
+	EgressGuard *egress.Guard
 }
 
 // PrivateLocationMonitorBackfiller is the startup half of the private-location
