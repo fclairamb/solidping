@@ -66,6 +66,13 @@ func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*Handof
 		loginAction = LoginActionNoOrg
 	}
 
+	// The callback only seals same-origin relative paths; a sealed value that
+	// is anything else is dropped, and the dashboard picks its own landing.
+	returnTo := session.ReturnTo
+	if !isSafePostLoginRedirect(returnTo) {
+		returnTo = ""
+	}
+
 	return &HandoffExchangeResponse{
 		LoginResponse: LoginResponse{
 			AccessToken:   session.AccessToken,
@@ -77,7 +84,7 @@ func (s *Service) ExchangeHandoffCode(ctx context.Context, code string) (*Handof
 			Organizations: info.Organizations,
 			LoginAction:   loginAction,
 		},
-		ReturnTo:          session.ReturnTo,
+		ReturnTo:          returnTo,
 		MembershipPending: session.MembershipPending,
 	}, nil
 }

@@ -3,7 +3,6 @@ package auth
 import (
 	"errors"
 	"net/http"
-	"net/url"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -38,10 +37,9 @@ func (h *OIDCOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) 
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	}
 
-	redirectURI := req.URL.Query().Get("redirect_uri")
-	if redirectURI == "" {
-		redirectURI = config.DashboardBasePath + "/orgs/" + orgSlug
-	}
+	// Only a same-origin relative path may ride the state: the attacker mints
+	// the login link, so the state nonce says nothing about this value.
+	redirectURI := sanitizePostLoginRedirect(req.Context(), req.URL.Query().Get("redirect_uri"), orgSlug)
 
 	oauth2Cfg, err := h.svc.oauth2Config(req.Context())
 	if err != nil {
@@ -87,33 +85,28 @@ func (h *OIDCOAuthHandler) Callback(writer http.ResponseWriter, req *http.Reques
 		return h.redirectWithError(writer, req, "/", "INVALID_STATE", "Invalid or expired state")
 	}
 
+	// Re-check the redirect the state carries: a state minted before this
+	// guard existed (rolling upgrade) must not become a redirect vector.
+	returnTo := sanitizePostLoginRedirect(req.Context(), oauthState.RedirectURI, oauthState.OrgSlug)
+
 	// Process OAuth callback
 	result, err := h.svc.HandleCallback(req.Context(), code, oauthState.OrgSlug)
 	if err != nil {
-		return h.handleOAuthError(writer, req, oauthState.RedirectURI, err)
+		return h.handleOAuthError(writer, req, returnTo, err)
 	}
 
 	// Hand the session to the dashboard through a single-use code: the
 	// tokens never appear in the redirect URL (spec 2026-09-25-12).
-	return finishProviderCallback(writer, req, h.svc.db, "oidc", oauthState.RedirectURI, result)
+	return finishProviderCallback(writer, req, h.svc.db, "oidc", returnTo, result)
 }
 
-// redirectWithError redirects with error parameters.
+// redirectWithError redirects with error parameters. The destination goes
+// through redirectOAuthError's same-origin guard.
 func (h *OIDCOAuthHandler) redirectWithError(
 	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("error", code)
-	query.Set("error_description", description)
-	parsedURL.RawQuery = query.Encode()
-
-	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
+	redirectOAuthError(writer, req, baseURI, code, description)
 
 	return nil
 }

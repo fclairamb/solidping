@@ -30,10 +30,10 @@ func NewSlackOAuthHandler(service *SlackOAuthService, cfg *config.Config) *Slack
 // Login initiates the Slack OAuth flow.
 // GET /api/v1/auth/slack/login?redirect_uri=...
 func (h *SlackOAuthHandler) Login(writer http.ResponseWriter, req *http.Request) error {
-	redirectURI := req.URL.Query().Get("redirect_uri")
-	if redirectURI == "" {
-		redirectURI = "/" // Default to root
-	}
+	// Only a same-origin relative path may ride the state: the attacker mints
+	// the login link, so the state nonce says nothing about this value. There
+	// is no org at this point, so the default is "/".
+	redirectURI := sanitizePostLoginRedirect(req.Context(), req.URL.Query().Get("redirect_uri"), "")
 
 	// Generate and store state
 	state, err := h.svc.GenerateOAuthState(req.Context(), redirectURI)
@@ -71,15 +71,19 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req *http.Reque
 		return h.redirectWithError(writer, req, "/", OAuthCodeInvalidState, OAuthDescInvalidState)
 	}
 
+	// Re-check the redirect the state carries: a state minted before this
+	// guard existed (rolling upgrade) must not become a redirect vector.
+	returnTo := sanitizePostLoginRedirect(req.Context(), oauthState.RedirectURI, oauthState.OrgSlug)
+
 	// Process OAuth callback
 	result, err := h.svc.HandleCallback(req.Context(), code)
 	if err != nil {
-		return h.handleOAuthError(writer, req, oauthState.RedirectURI, err)
+		return h.handleOAuthError(writer, req, returnTo, err)
 	}
 
 	// Hand the session to the dashboard through a single-use code: the
 	// tokens never appear in the redirect URL (spec 2026-09-25-12).
-	return finishProviderCallback(writer, req, h.svc.db, "slack", oauthState.RedirectURI, result)
+	return finishProviderCallback(writer, req, h.svc.db, "slack", returnTo, result)
 }
 
 // Exchange trades a single-use install-callback code for the freshly
@@ -132,23 +136,13 @@ func (h *SlackOAuthHandler) getCallbackURL() string {
 	return h.cfg.Server.BaseURL + "/api/v1/auth/slack/callback"
 }
 
-// redirectWithError redirects with error parameters.
+// redirectWithError redirects with error parameters. The destination goes
+// through redirectOAuthError's same-origin guard.
 func (h *SlackOAuthHandler) redirectWithError(
 	writer http.ResponseWriter, req *http.Request,
 	baseURI, code, description string,
 ) error {
-	parsedURL, err := url.Parse(baseURI)
-	if err != nil {
-		// Fallback to root if parsing fails
-		parsedURL, _ = url.Parse("/")
-	}
-
-	query := parsedURL.Query()
-	query.Set("error", code)
-	query.Set("error_description", description)
-	parsedURL.RawQuery = query.Encode()
-
-	http.Redirect(writer, req, parsedURL.String(), http.StatusFound)
+	redirectOAuthError(writer, req, baseURI, code, description)
 
 	return nil
 }

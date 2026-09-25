@@ -873,7 +873,9 @@ func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 // It is exported for callbacks that live outside this package (the Slack
 // app-install callback). baseURL, when set, makes the target absolute;
 // callers that redirect within the same origin pass "". returnTo is where the
-// dashboard should land afterwards, subject to its own guards.
+// dashboard should land afterwards, subject to its own guards; a value that is
+// not a same-origin relative path is replaced by the org's default landing
+// before it is sealed (sanitizePostLoginRedirect), whoever the caller is.
 //
 // On error nothing has been written to the response: the caller decides how
 // to report the failure.
@@ -881,7 +883,7 @@ func RedirectWithHandoff(
 	writer http.ResponseWriter, req *http.Request, dbService db.Service,
 	baseURL string, outcome *ProviderOutcome, returnTo string,
 ) error {
-	session := outcome.handoffSession(returnTo)
+	session := outcome.handoffSession(sanitizePostLoginRedirect(req.Context(), returnTo, outcome.OrgSlug))
 
 	code, err := authhandoff.Issue(req.Context(), dbService, session)
 	if err != nil {
@@ -901,13 +903,16 @@ func RedirectWithHandoff(
 // returnTo (admitted), the user's own org (pending, with a fallback org), or
 // the no-org request-access surface (pending, no membership at all).
 //
-// returnTo is the redirect_uri the login was started with. If the handoff
-// cannot be stored, the browser goes back there with the generic sign-in
-// error, like any other callback failure.
+// returnTo is the redirect_uri the login was started with, already passed
+// through sanitizePostLoginRedirect by the callback. If the handoff cannot be
+// stored, the browser goes back there with the generic sign-in error, like any
+// other callback failure.
 func finishProviderCallback(
 	writer http.ResponseWriter, req *http.Request, dbService db.Service,
 	provider, returnTo string, outcome *ProviderOutcome,
 ) error {
+	returnTo = sanitizePostLoginRedirect(req.Context(), returnTo, outcome.OrgSlug)
+
 	if err := RedirectWithHandoff(writer, req, dbService, "", outcome, returnTo); err != nil {
 		description := logOAuthFailure(req, provider, err)
 		redirectOAuthError(writer, req, returnTo, OAuthCodeFailed, description)
@@ -917,9 +922,17 @@ func finishProviderCallback(
 }
 
 // redirectOAuthError sends the browser to baseURI with the OAuth error
-// parameters the dashboard understands. Same shape as the per-provider
-// redirectWithError methods.
+// parameters the dashboard understands. Every provider's redirectWithError
+// ends here.
+//
+// baseURI is normally already sanitized by the caller (against the login's
+// org); this is the last line of defence, so anything that is not a
+// same-origin relative path goes to "/" instead of being echoed.
 func redirectOAuthError(writer http.ResponseWriter, req *http.Request, baseURI, code, description string) {
+	if !isSafePostLoginRedirect(baseURI) {
+		baseURI = "/"
+	}
+
 	parsedURL, err := url.Parse(baseURI)
 	if err != nil {
 		parsedURL, _ = url.Parse("/")

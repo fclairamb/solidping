@@ -85,10 +85,11 @@ func (h *DiscordOAuthHandler) handleLinkCallback(
 }
 
 // redirectLinked sends the browser back to the page that started the flow, with
-// the success marker the account page acts on.
+// the success marker the account page acts on. Only a same-origin relative path
+// is followed; anything else lands on "/".
 func redirectLinked(writer http.ResponseWriter, req *http.Request, redirectURI string) error {
 	target := redirectURI
-	if target == "" {
+	if !isSafePostLoginRedirect(target) {
 		target = "/"
 	}
 
