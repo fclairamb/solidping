@@ -1113,6 +1113,41 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	return nil
 }
 
+// LogoutSession invalidates the refresh-token session row named by
+// refreshUID, scoped to userUID: a forged or stale RefreshUID can never
+// delete another user's row. This backs the default POST /auth/logout path
+// (spec 2026-09-25-24) — without it, the cookie is cleared but the
+// refresh-token row survives, so anyone holding the refresh token (also
+// returned in the login/logout JSON body) keeps a live sliding session after
+// "logout".
+func (s *Service) LogoutSession(ctx context.Context, userUID, refreshUID string) error {
+	token, err := s.db.GetUserToken(ctx, refreshUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil // Already gone — nothing to do.
+		}
+
+		return err
+	}
+
+	if token.UserUID != userUID || token.Type != models.TokenTypeRefresh {
+		// Not this user's refresh-token row — nothing to delete.
+		return nil
+	}
+
+	if _, err = s.db.DeleteUserToken(ctx, token.UID); err != nil {
+		return err
+	}
+
+	if token.OrganizationUID != nil {
+		audit.Record(auditActorCtx(ctx, token.UserUID, Context{}), s.db, *token.OrganizationUID,
+			models.EventTypeAuthLogout,
+			audit.Target{Type: auditTargetUser, UID: token.UserUID}, nil)
+	}
+
+	return nil
+}
+
 // LogoutUser invalidates all refresh tokens for a user across all orgs.
 func (s *Service) LogoutUser(ctx context.Context, userUID string) (*LogoutResponse, error) {
 	// Verify user exists
