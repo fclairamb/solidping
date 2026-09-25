@@ -136,8 +136,16 @@ func ValidateNavigationURL(rawURL string) error {
 		}
 	}
 
-	if _, err := url.Parse(rawURL); err != nil {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
 		return checkerdef.NewConfigError("url", "invalid URL format")
+	}
+
+	// "http:///127.0.0.1/" parses with an empty host and a path, but Chrome
+	// normalizes it to "http://127.0.0.1/": a hostless URL is never what the
+	// author meant, and it would slip past any host-based rule.
+	if parsed.Hostname() == "" {
+		return checkerdef.NewConfigError("url", "must include a host")
 	}
 
 	return nil

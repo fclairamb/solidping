@@ -229,7 +229,13 @@ func (c *BrowserChecker) runBrowser(
 		return result
 	}
 
-	session, err := openSession(sessionCtx, probeCtx)
+	// Under an enforcing egress policy the main host is pre-flighted here and
+	// its approved address pinned for Chrome's resolver. A refusal is left to
+	// Navigate, which runs the same pre-flight and reports it on the normal
+	// failure path.
+	pin, _ := preflightEgress(probeCtx, cfg.URL)
+
+	session, err := openSessionPinned(sessionCtx, probeCtx, pin)
 	if err != nil {
 		if result, isSlotTimeout := checkersession.SlotTimeoutResult(err, start, metrics, output); isSlotTimeout {
 			return result
@@ -376,16 +382,23 @@ func browserWasAllocated(ctx context.Context) bool {
 // allocator builds the chromedp allocator for the configured backend: a remote
 // one against the long-lived Chrome when a CDP URL is set, the historical exec
 // allocator otherwise.
-func allocator(ctx context.Context, current Settings) (context.Context, context.CancelFunc) {
+func allocator(ctx context.Context, current Settings, pin *hostPin) (context.Context, context.CancelFunc) {
 	if current.Remote() {
 		return chromedp.NewRemoteAllocator(ctx, current.CDPURL)
 	}
 
-	opts := chromedp.DefaultExecAllocatorOptions[:]
+	// Copy before appending: DefaultExecAllocatorOptions is a package-level
+	// array and appending to a full slice of it would write into it.
+	opts := append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...)
 	if current.ChromePath != "" {
-		// Copy before appending: DefaultExecAllocatorOptions is a package-level
-		// array and appending to a full slice of it would write into it.
-		opts = append(append([]chromedp.ExecAllocatorOption{}, opts...), chromedp.ExecPath(current.ChromePath))
+		opts = append(opts, chromedp.ExecPath(current.ChromePath))
+	}
+
+	// Egress pin (spec 2026-09-25-19): this Chrome is started for this check
+	// only, so its resolver can be told the ONE address the pre-flight
+	// approved for the main host — a rebinding answer never reaches it.
+	if pin != nil {
+		opts = append(opts, chromedp.Flag("host-resolver-rules", pin.resolverRule()))
 	}
 
 	return chromedp.NewExecAllocator(ctx, opts...)
