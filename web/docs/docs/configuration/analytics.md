@@ -127,16 +127,22 @@ plus an `orgUid` property carrying the same organization UUID. The dashboard
 uses the identical id scheme, so browser and server events for one session
 stitch together without ever exchanging an identity.
 
-From the browser, PostHog's autocapture is additionally configured
-conservatively:
+From the browser, the dashboard also enables PostHog autocapture and session
+replay:
 
-- input values and element attributes are masked;
-- session recording is disabled;
+- autocapture, replay and URLs are sent unmasked: typed values, clicked text
+  and page URLs (organization slugs and resource UIDs included) are recorded
+  as-is, because a masked replay cannot answer where a user got stuck;
 - person profiles are only created for identified users;
-- every captured URL and pathname is rewritten to a route template before it
-  leaves the page — `/d/orgs/acme/checks/8f0e…` is sent as
-  `/d/orgs/:org/checks/:uid`, and query strings and fragments are dropped —
-  because SolidPing URLs embed organization slugs and resource UIDs.
+- credentials are always filtered out before anything leaves the page. In
+  every URL (page URLs, referrers, and the URLs of network requests recorded
+  by replay), the values of `access_token`, `refresh_token`, `token`, `code`,
+  `state`, `tempToken` and `id_token` are replaced with `REDACTED`, in the
+  query string and in a param-shaped fragment. The single-use token in
+  `/reset-password/…`, `/invite/…` and `/confirm-registration/…` links is
+  redacted the same way. If network header or body capture is turned on in
+  the PostHog project, `Authorization` and cookie headers are dropped and
+  token and password fields in request and response bodies are redacted.
 
 ## What is never sent
 
