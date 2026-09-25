@@ -1,10 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
+  captureException,
+  dedupeAutocapturedBoundaryExceptions,
   distinctId,
+  dropKnownExceptionNoise,
   fetchPublicConfig,
   identifyAnalytics,
   initAnalytics,
   isAnalyticsEnabled,
+  KNOWN_EXCEPTION_NOISE,
   __resetAnalyticsForTests,
 } from "./analytics";
 
@@ -203,6 +207,36 @@ describe("initAnalytics", () => {
     expect(JSON.stringify(sent)).toContain("org=acme");
   });
 
+  // Spec 2026-09-25-13: the Solidping PostHog project had never received a
+  // single $exception event because posthog-js's exception autocapture was
+  // never turned on. Code config must set all three capture_exceptions
+  // flags, not rely on the project's autocapture_exceptions_opt_in toggle.
+  it("turns on exception autocapture: unhandled errors, rejections and console errors", async () => {
+    let options: Record<string, unknown> | undefined;
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: (_key: string, opts: Record<string, unknown>) => {
+          options = opts;
+        },
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        captureException: () => {},
+      },
+    }));
+
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    vi.doUnmock("./posthog-loader");
+
+    expect(options?.capture_exceptions).toEqual({
+      capture_unhandled_errors: true,
+      capture_unhandled_rejections: true,
+      capture_console_errors: true,
+    });
+  });
+
   // …and when analytics stays off, that queued identity is discarded, never sent.
   it("discards a queued identify when analytics is off", async () => {
     identifyAnalytics("org-uid", "user-uid");
@@ -224,6 +258,162 @@ describe("initAnalytics", () => {
 
     expect(identified).toEqual([]);
     vi.doUnmock("./posthog-loader");
+  });
+});
+
+describe("captureException", () => {
+  it("is a pure no-op when analytics was never initialized", () => {
+    expect(() => captureException(new Error("boom"))).not.toThrow();
+  });
+
+  it("forwards to the client once initialized", async () => {
+    const captured: Array<{ error: unknown; properties?: Record<string, unknown> }> = [];
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        captureException: (error: unknown, properties?: Record<string, unknown>) => {
+          captured.push({ error, properties });
+        },
+      },
+    }));
+
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    vi.doUnmock("./posthog-loader");
+
+    const error = new Error("boom");
+    captureException(error, { componentStack: "at Foo" });
+    expect(captured).toEqual([{ error, properties: { componentStack: "at Foo" } }]);
+
+    // No properties supplied: still forwards, with an empty object rather
+    // than undefined (matches captureEvent's contract).
+    captureException(error);
+    expect(captured[1]).toEqual({ error, properties: {} });
+  });
+});
+
+describe("dropKnownExceptionNoise", () => {
+  it("has at least the scanner-noise pattern from the 2026-09-25 investigation", () => {
+    expect(KNOWN_EXCEPTION_NOISE.length).toBeGreaterThan(0);
+  });
+
+  // The exact nightly noise signature: CefSharp-based Microsoft Safe
+  // Links-style email crawlers opening forgot-password/login links.
+  it("drops the scanner-noise $exception event", () => {
+    const event = {
+      event: "$exception",
+      properties: {
+        $exception_list: [
+          {
+            type: "Error",
+            value: "Object Not Found Matching Id:5, MethodName:update, ParamCount:4",
+          },
+        ],
+      },
+    };
+    expect(dropKnownExceptionNoise(event)).toBeNull();
+  });
+
+  // Positive control: a normal application error, which must never be
+  // dropped, so the assertion above is not vacuous.
+  it("passes a normal exception through unchanged", () => {
+    const event = {
+      event: "$exception",
+      properties: {
+        $exception_list: [{ type: "TypeError", value: "x is undefined" }],
+      },
+    };
+    expect(dropKnownExceptionNoise(event)).toEqual(event);
+  });
+
+  it("leaves non-exception events and null alone", () => {
+    const event = { event: "$pageview", properties: {} };
+    expect(dropKnownExceptionNoise(event)).toEqual(event);
+    expect(dropKnownExceptionNoise(null)).toBeNull();
+  });
+});
+
+describe("dedupeAutocapturedBoundaryExceptions", () => {
+  function autocapturedEvent(type: string, value: string) {
+    return {
+      event: "$exception",
+      properties: {
+        $exception_list: [{ type, value, mechanism: { handled: false, type: "generic" } }],
+      },
+    };
+  }
+
+  it("drops the autocaptured duplicate of an error just reported via captureException", async () => {
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        captureException: () => {},
+      },
+    }));
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    vi.doUnmock("./posthog-loader");
+
+    // Mirrors componentDidCatch: captureException runs first, console.error
+    // (and therefore the autocaptured duplicate) right after.
+    captureException(new TypeError("x is undefined"), { componentStack: "at Foo" });
+
+    const autocaptured = autocapturedEvent("TypeError", "x is undefined");
+    expect(dedupeAutocapturedBoundaryExceptions(autocaptured)).toBeNull();
+
+    // Each explicit report only cancels ONE matching duplicate.
+    expect(dedupeAutocapturedBoundaryExceptions(autocapturedEvent("TypeError", "x is undefined"))).toEqual(
+      autocapturedEvent("TypeError", "x is undefined"),
+    );
+  });
+
+  // Positive control: an autocaptured exception that was never explicitly
+  // reported (a real unhandled error, a console.error elsewhere in the app)
+  // must pass through — otherwise real errors go missing.
+  it("passes through an autocaptured exception nothing explicitly reported", () => {
+    const autocaptured = autocapturedEvent("ReferenceError", "foo is not defined");
+    expect(dedupeAutocapturedBoundaryExceptions(autocaptured)).toEqual(autocaptured);
+  });
+
+  it("never touches an explicitly-reported (mechanism.handled: true) exception", async () => {
+    vi.doMock("./posthog-loader", () => ({
+      default: {
+        init: () => {},
+        identify: () => {},
+        reset: () => {},
+        capture: () => {},
+        captureException: () => {},
+      },
+    }));
+    expect(
+      await initAnalytics({ posthog: { enabled: true, projectApiKey: "phc_k" } }),
+    ).toBe(true);
+    vi.doUnmock("./posthog-loader");
+    captureException(new TypeError("x is undefined"));
+
+    const explicit = {
+      event: "$exception",
+      properties: {
+        $exception_list: [
+          { type: "TypeError", value: "x is undefined", mechanism: { handled: true, type: "generic" } },
+        ],
+      },
+    };
+    expect(dedupeAutocapturedBoundaryExceptions(explicit)).toEqual(explicit);
+  });
+
+  it("leaves non-exception events and null alone", () => {
+    const event = { event: "$pageview", properties: {} };
+    expect(dedupeAutocapturedBoundaryExceptions(event)).toEqual(event);
+    expect(dedupeAutocapturedBoundaryExceptions(null)).toBeNull();
   });
 });
 

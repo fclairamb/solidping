@@ -4,6 +4,7 @@ import {
   REDACTED,
   redactCapturedNetworkRequest,
   redactCredentialsBeforeSend,
+  redactCredentialsInText,
   redactUrl,
 } from "./analytics-redaction";
 
@@ -15,6 +16,11 @@ const JWT =
   "eyJzdWIiOiJ1c2VyLXVpZCIsIm9yZyI6ImFjbWUiLCJleHAiOjE3OTAwMDAwMDB9." +
   "Zm9vYmFyLXNpZ25hdHVyZS1ub3QtcmVhbA";
 const REFRESH = "rt_9f3c1a7e5b2d4c6f8a0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a";
+
+// A shorter stand-in credential for the exception/free-text redaction tests
+// below — a real JWT would work identically, this is just easier to read
+// inline in an error message.
+const JWT_PLACEHOLDER = "eyJhbGciOiJIUzI1NiJ9.payload.sig";
 
 // The URL a federated login produced before spec 2026-09-25-12 (and still does
 // when an old pod answers the callback during a rolling deploy), and its
@@ -244,5 +250,152 @@ describe("redactCredentialsBeforeSend", () => {
     expect(redactCredentialsBeforeSend(event)).toEqual(event);
     expect(redactCredentialsBeforeSend(null)).toBeNull();
     expect(redactCredentialsBeforeSend({ event: "x" })).toEqual({ event: "x" });
+  });
+});
+
+describe("redactCredentialsInText", () => {
+  // Positive control: a token-bearing URL embedded in free text (a failed
+  // fetch message, a manual "[auth] token refresh failed: <url>" log) must
+  // be redacted even though the whole string is not itself a URL.
+  it("redacts a credential param embedded in free text", () => {
+    const out = redactCredentialsInText(
+      `[auth] token refresh failed: fetch https://solidping.example/d/auth/complete?code=${JWT_PLACEHOLDER}&org=acme failed`,
+    );
+    expect(out).toBe(
+      `[auth] token refresh failed: fetch https://solidping.example/d/auth/complete?code=${REDACTED}&org=acme failed`,
+    );
+  });
+
+  it("redacts every listed credential param found in text, wherever it sits", () => {
+    for (const param of CREDENTIAL_QUERY_PARAMS) {
+      expect(redactCredentialsInText(`TypeError: bad response for ${param}=abc123 request`)).toBe(
+        `TypeError: bad response for ${param}=${REDACTED} request`,
+      );
+    }
+  });
+
+  it("redacts a single-use path segment embedded in text", () => {
+    const out = redactCredentialsInText(
+      "Failed to load resource: the server responded with a status of 404 () at /d/reset-password/rp_abc123",
+    );
+    expect(out).toBe(
+      `Failed to load resource: the server responded with a status of 404 () at /d/reset-password/${REDACTED}`,
+    );
+  });
+
+  // Negative control: harmless text — including a word that merely CONTAINS
+  // a param name as a substring — is unchanged, byte for byte.
+  it("does not touch harmless text", () => {
+    for (const text of [
+      "TypeError: Cannot read properties of undefined (reading 'map')",
+      "Failed to fetch",
+      "[auth] token refresh failed: network error",
+      "NetworkError when attempting to fetch resource /api/v1/orgs/acme/checks",
+      "tokenize=1 is not a credential param",
+      "",
+    ]) {
+      expect(redactCredentialsInText(text)).toBe(text);
+    }
+  });
+
+  it("passes non-string input through unchanged", () => {
+    // @ts-expect-error exercising the runtime guard for non-string input
+    expect(redactCredentialsInText(null)).toBeNull();
+    // @ts-expect-error exercising the runtime guard for non-string input
+    expect(redactCredentialsInText(undefined)).toBeUndefined();
+  });
+});
+
+describe("redactCredentialsBeforeSend — $exception events", () => {
+  // Positive control: an exception message (as posthog-js's console-error
+  // wrapper would build it from an Error with no dedicated `instanceof
+  // Error` argument — see the module header) that embeds a credential URL.
+  it("redacts a credential URL embedded in $exception_list[].value", () => {
+    const event = {
+      event: "$exception",
+      properties: {
+        $exception_list: [
+          {
+            type: "Error",
+            value: `Failed to fetch: /d/auth/complete?code=${JWT_PLACEHOLDER}&org=acme`,
+            mechanism: { handled: true, type: "generic", synthetic: false },
+          },
+        ],
+        $exception_level: "error",
+      },
+    };
+
+    const out = redactCredentialsBeforeSend(event)!;
+    const list = out.properties!.$exception_list as Array<{ value: string }>;
+    expect(list[0].value).toBe(`Failed to fetch: /d/auth/complete?code=${REDACTED}&org=acme`);
+    expect(JSON.stringify(out)).not.toContain(JWT_PLACEHOLDER);
+    // The input is not mutated.
+    expect((event.properties.$exception_list[0] as { value: string }).value).toContain(
+      JWT_PLACEHOLDER,
+    );
+  });
+
+  it("redacts credential-bearing stack frame filename/abs_path", () => {
+    const event = {
+      event: "$exception",
+      properties: {
+        $exception_list: [
+          {
+            type: "TypeError",
+            value: "x is undefined",
+            stacktrace: {
+              type: "raw",
+              frames: [
+                {
+                  filename: `https://solidping.example/d/auth/complete?code=${JWT_PLACEHOLDER}`,
+                  abs_path: `https://solidping.example/d/reset-password/${JWT_PLACEHOLDER}`,
+                  lineno: 12,
+                  colno: 4,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    const out = redactCredentialsBeforeSend(event)!;
+    const frame = (
+      out.properties!.$exception_list as Array<{
+        stacktrace: { frames: Array<{ filename: string; abs_path: string; lineno: number }> };
+      }>
+    )[0].stacktrace.frames[0];
+    expect(frame.filename).toBe("https://solidping.example/d/auth/complete?code=REDACTED");
+    expect(frame.abs_path).toBe("https://solidping.example/d/reset-password/REDACTED");
+    expect(frame.lineno).toBe(12);
+  });
+
+  // Negative control: a normal exception with no credential anywhere passes
+  // through unchanged, so the assertions above are not vacuous.
+  it("leaves a harmless exception event untouched", () => {
+    const event = {
+      event: "$exception",
+      properties: {
+        $exception_list: [
+          {
+            type: "TypeError",
+            value: "x is undefined",
+            mechanism: { handled: true, type: "generic", synthetic: false },
+            stacktrace: {
+              type: "raw",
+              frames: [{ filename: "https://solidping.example/assets/index-abc.js", lineno: 3 }],
+            },
+          },
+        ],
+        $exception_level: "error",
+      },
+    };
+
+    expect(redactCredentialsBeforeSend(event)).toEqual(event);
+  });
+
+  it("never drops an $exception event", () => {
+    const event = { event: "$exception", properties: { $exception_list: [] } };
+    expect(redactCredentialsBeforeSend(event)).toEqual(event);
   });
 });

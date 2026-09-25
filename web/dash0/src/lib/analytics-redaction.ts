@@ -16,7 +16,7 @@
  * not rotate, so a recorded URL was a session takeover for anyone with read
  * access to the PostHog project.
  *
- * The two hooks wired by `initAnalytics`:
+ * The hooks wired by `initAnalytics`:
  * - {@link redactCapturedNetworkRequest}: `session_recording.maskCapturedNetworkRequestFn`.
  *   posthog-js calls it for every recorded network entry (navigation entry
  *   included) and also for the rrweb Meta `href` and replay `$url_changed` /
@@ -25,14 +25,20 @@
  *   page (a new PAT, a heartbeat URL, a TOTP secret) is still in the DOM
  *   snapshot.
  * - {@link redactCredentialsBeforeSend}: the first `before_send` hook. Applies
- *   the same filter to the URL-shaped event properties.
+ *   the same filter to the URL-shaped event properties AND, since spec
+ *   2026-09-25-13 turned on exception autocapture, to `$exception` events:
+ *   every exception's `value` (the message — free text, may EMBED a
+ *   credential URL rather than BE one, e.g. a failed fetch to
+ *   `/d/auth/complete?code=…`) and every stack frame's `filename` /
+ *   `abs_path`.
  *
  * Composing (spec 2026-09-25-13 and later): `before_send` is an array. Keep
  * `redactCredentialsBeforeSend` FIRST and append other hooks after it, so they
  * only ever see redacted data. To cover a new token-bearing param, add it to
  * {@link CREDENTIAL_QUERY_PARAMS}; for a new single-use link route, add its
  * path segment to {@link CREDENTIAL_PATH_SEGMENTS}. Use {@link redactUrl}
- * directly for any other URL-bearing value.
+ * directly for a value known to BE a URL, or {@link redactCredentialsInText}
+ * for free text that may merely CONTAIN one.
  *
  * Pure module: no posthog-js import (that would drag the package into the main
  * bundle, see posthog-loader.ts), no DOM access.
@@ -165,6 +171,37 @@ export function redactUrl(url: string): string {
   return out;
 }
 
+// Free-text counterpart of `credentialParams`: matches a credential param
+// name as a whole word (so `tempToken=` still matches via its own
+// alternative, but scanning for `token` never fires inside it) followed by
+// `=` and a value, wherever it appears in a string — not just inside a
+// parsed query string.
+const freeTextCredentialParamRe = new RegExp(
+  `\\b(${CREDENTIAL_QUERY_PARAMS.join("|")})=[^&\\s"'<>)\\]]*`,
+  "gi",
+);
+
+/**
+ * Redacts credential-shaped substrings inside free text. Unlike
+ * {@link redactUrl}, this does NOT assume the whole string is a URL — it
+ * finds every occurrence of a credential query param (`access_token=…`) or a
+ * single-use path segment (`/reset-password/…`) anywhere in `text` and
+ * redacts just that value, leaving everything else byte-for-byte.
+ *
+ * For exception messages built from `console.error("...", someError)`,
+ * posthog-js's console wrapper uses the `Error` object itself when one of
+ * the arguments is one (see the module header), so this mostly matters for
+ * messages that embed a URL directly, e.g. `TypeError: Failed to fetch
+ * /d/auth/complete?code=abc123` or `[auth] token refresh failed:
+ * https://…/reset-password/rp_abc123`.
+ */
+export function redactCredentialsInText(text: string): string {
+  if (typeof text !== "string" || text === "") return text;
+  let out = text.replace(credentialPathRe, `$1$2/${REDACTED}`);
+  out = out.replace(freeTextCredentialParamRe, `$1=${REDACTED}`);
+  return out;
+}
+
 function redactHeaders(
   headers: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
@@ -265,14 +302,117 @@ function redactUrlProperties(
 }
 
 /**
+ * Structural subset of a stack frame (`$exception_list[].stacktrace.frames`)
+ * that this hook touches. `filename` and `abs_path` are genuine URLs (the
+ * source file the frame ran from), unlike the exception `value` below.
+ */
+interface StackFrameLike {
+  filename?: unknown;
+  abs_path?: unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * Structural subset of an `Exception` from `$exception_list` (posthog-js /
+ * `@posthog/core`'s error-tracking types).
+ */
+interface ExceptionLike {
+  type?: unknown;
+  value?: unknown;
+  stacktrace?: { frames?: StackFrameLike[]; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
+const STACK_FRAME_URL_KEYS = ["filename", "abs_path"] as const;
+
+function redactStackFrame(frame: StackFrameLike): StackFrameLike {
+  if (!frame || typeof frame !== "object") return frame;
+  let out: StackFrameLike | null = null;
+  for (const key of STACK_FRAME_URL_KEYS) {
+    const value = frame[key];
+    if (typeof value !== "string") continue;
+    const redacted = redactUrl(value);
+    if (redacted !== value) {
+      out ??= { ...frame };
+      out[key] = redacted;
+    }
+  }
+  return out ?? frame;
+}
+
+function redactException(exception: ExceptionLike): ExceptionLike {
+  if (!exception || typeof exception !== "object") return exception;
+
+  let value = exception.value;
+  let valueChanged = false;
+  if (typeof value === "string") {
+    const redacted = redactCredentialsInText(value);
+    if (redacted !== value) {
+      value = redacted;
+      valueChanged = true;
+    }
+  }
+
+  const frames = exception.stacktrace?.frames;
+  let redactedFrames: StackFrameLike[] | undefined;
+  let framesChanged = false;
+  if (Array.isArray(frames)) {
+    redactedFrames = frames.map((frame) => {
+      const out = redactStackFrame(frame);
+      if (out !== frame) framesChanged = true;
+      return out;
+    });
+  }
+
+  if (!valueChanged && !framesChanged) return exception;
+
+  return {
+    ...exception,
+    ...(valueChanged ? { value } : {}),
+    ...(framesChanged && exception.stacktrace
+      ? { stacktrace: { ...exception.stacktrace, frames: redactedFrames } }
+      : {}),
+  };
+}
+
+/**
+ * Redacts every exception's `value` (free text — see
+ * {@link redactCredentialsInText}) and stack frame `filename` / `abs_path`
+ * (genuine URLs — see {@link redactUrl}) in a `$exception_list`. Never
+ * changes the list's length or order.
+ */
+function redactExceptionList(list: unknown): unknown {
+  if (!Array.isArray(list)) return list;
+  let changed = false;
+  const out = list.map((exception: ExceptionLike) => {
+    const redacted = redactException(exception);
+    if (redacted !== exception) changed = true;
+    return redacted;
+  });
+  return changed ? out : list;
+}
+
+/**
  * `before_send` hook: applies {@link redactUrl} to the URL-shaped properties
- * of every event (`properties`, `$set`, `$set_once`). Never drops an event.
- * Keep it first in the `before_send` array (see the module header).
+ * of every event (`properties`, `$set`, `$set_once`), and — since spec
+ * 2026-09-25-13 turned exception autocapture on — redacts `properties.$exception_list`
+ * for `$exception` events (see {@link redactExceptionList}). Never drops an
+ * event. Keep it first in the `before_send` array (see the module header).
  */
 export function redactCredentialsBeforeSend<T extends CaptureResultLike>(event: T | null): T | null {
   if (!event) return event;
   const out: CaptureResultLike = { ...event };
-  if (out.properties) out.properties = redactUrlProperties(out.properties);
+  if (out.properties) {
+    let props = redactUrlProperties(out.properties);
+    if (Array.isArray(props?.$exception_list)) {
+      const redactedList = redactExceptionList(props.$exception_list);
+      if (redactedList !== props.$exception_list) {
+        props = props === out.properties ? { ...props } : props;
+        props.$exception_list = redactedList;
+      }
+    }
+    out.properties = props;
+  }
   if (out.$set) out.$set = redactUrlProperties(out.$set);
   if (out.$set_once) out.$set_once = redactUrlProperties(out.$set_once);
   return out as T;

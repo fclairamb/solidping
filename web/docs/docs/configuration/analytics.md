@@ -127,8 +127,8 @@ plus an `orgUid` property carrying the same organization UUID. The dashboard
 uses the identical id scheme, so browser and server events for one session
 stitch together without ever exchanging an identity.
 
-From the browser, the dashboard also enables PostHog autocapture and session
-replay:
+From the browser, the dashboard also enables PostHog autocapture, session
+replay and error tracking:
 
 - autocapture, replay and URLs are sent unmasked: typed values, clicked text
   and page URLs (organization slugs and resource UIDs included) are recorded
@@ -142,7 +142,19 @@ replay:
   `/reset-password/…`, `/invite/…` and `/confirm-registration/…` URLs is
   redacted the same way;
 - network request and response headers and bodies are never recorded by
-  replay, whatever the PostHog project settings say.
+  replay, whatever the PostHog project settings say;
+- **error events are sent** as PostHog `$exception` events: uncaught
+  exceptions, unhandled promise rejections, `console.error` calls (which is
+  how a React error boundary or a failed background request typically
+  surfaces a bug here), and errors reported explicitly by the app (a crashed
+  page or route carries the component stack / route id). Exception messages
+  and stack traces are unmasked like the rest of autocapture — except for the
+  same URL redaction described above, applied to the exception message and to
+  stack frame filenames, so a message that happens to embed a credential URL
+  (a failed fetch to a token-bearing endpoint, for instance) is filtered the
+  same way. A small, explicitly-listed set of known third-party noise (an
+  email-scanner crash signature seen overnight) is dropped outright rather
+  than sent.
 
 What this does **not** cover: replay records the page as it is displayed, so a
 credential shown as text on screen (a freshly created API token, a heartbeat
