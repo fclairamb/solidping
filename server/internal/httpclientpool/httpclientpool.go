@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // transport is the shared connection pool every client built by NewClient
@@ -55,5 +57,27 @@ func NewClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout:   timeout,
 		Transport: transport,
+	}
+}
+
+// NewGuardedClient is NewClient whose dial path additionally goes through
+// guard: every connection is refused when it would resolve (or, mid-flight,
+// rebind) to a loopback/link-local/private/CGNAT address and guard is
+// enforcing (spec 2026-09-25-20, reusing the check-worker egress guard from
+// spec 2026-09-25-19). guard == nil is "no policy" and returns exactly
+// NewClient(timeout) — the shared pool every unguarded integration call uses.
+//
+// Each distinct *egress.Guard owns its OWN pooled transport
+// (egress.Guard.HTTPTransport memoizes it on the guard instance, not on this
+// package), so callers must reuse one guard instance across calls to keep the
+// connection pool alive — never build a fresh Guard per send.
+func NewGuardedClient(timeout time.Duration, guard *egress.Guard) *http.Client {
+	if guard == nil {
+		return NewClient(timeout)
+	}
+
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: guard.HTTPTransport(),
 	}
 }
