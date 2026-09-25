@@ -141,10 +141,11 @@ token-bearing URL.
    - `redactCapturedNetworkRequest(req)`: the `maskCapturedNetworkRequestFn`.
      Redacts `name` (and `url` if present) with `redactUrl`, drops
      `Authorization`/`Proxy-Authorization`/`Cookie`/`Set-Cookie` from
-     request/response headers, and (only relevant if body capture is ever
-     turned on remotely) redacts credential-named keys in JSON bodies
-     (`accessToken`, `refreshToken`, `token`, `tempToken`, `idToken`,
-     `password`, …) and credential params in form-encoded bodies.
+     request/response headers, and drops any request/response body (fail
+     closed). Audit correction: supplying a mask fn turns OFF posthog-js's
+     built-in `scrubPayloads`, and a key-name filter would miss
+     `recoveryCodes`, `signingSecret` or a heartbeat URL inside a value, so
+     bodies are removed rather than filtered.
    - `redactCredentialsBeforeSend(event)`: the `before_send` hook. Applies
      `redactUrl` to `$current_url`, `$referrer`, `$initial_current_url`,
      `$initial_referrer`, `$session_entry_url`, `$session_entry_referrer`,
@@ -155,13 +156,17 @@ token-bearing URL.
      `initAnalytics` passes `before_send` as an array whose first entry is
      `redactCredentialsBeforeSend`; 13 appends its noise filter after it.
 2. `analytics.ts` `initAnalytics`: pass
-   `session_recording: { maskCapturedNetworkRequestFn: redactCapturedNetworkRequest }`
-   and `before_send: [redactCredentialsBeforeSend]`. Update the "No field
+   `session_recording: { maskCapturedNetworkRequestFn: redactCapturedNetworkRequest, recordHeaders: false, recordBody: false }`
+   (a client-side `false` wins over the PostHog project settings) and
+   `before_send: [redactCredentialsBeforeSend]`. Update the "No field
    obfuscation" header comment: UI content stays unmasked, credentials are
    filtered.
 3. Docs `web/docs/docs/configuration/analytics.md`: the "From the browser"
    section is stale (says replay is disabled and URLs are templated). Rewrite
-   it to match the code and state the credential filter.
+   it to match the code and state exactly what is filtered (URLs; header
+   and body capture pinned off) and what is not (credentials displayed as
+   page text in replay, heatmap data, autocapture link hrefs, web-vitals'
+   nested URL). Page-content masking is out of scope for this spec.
 
 Behavior change other suites might see: a URL-carried `state=` value (e.g. an
 incidents `?state=` filter) now reaches PostHog as `state=REDACTED`, because
@@ -174,11 +179,12 @@ receives.
   plain fragment, relative URLs, no-query URLs untouched; repeated params;
   realistic JWT access token + opaque refresh token; `#access_token=…`
   fragment; `?code=`/`?token=`/`?state=`; nested encoded `returnTo`; path
-  tokens; headers dropped; JSON body keys (`accessToken`, `refreshToken`)
-  redacted while `code: "VALIDATION_ERROR"` survives; before_send over
+  tokens; headers dropped; bodies dropped (credential and harmless alike);
+  before_send over
   `properties`/`$set_once`; negative controls (harmless values unchanged,
   `solidping_org`-style values, `expires_in`, `org=acme`).
-- `analytics.test.ts`: `initAnalytics` passes both hooks; feeding the
+- `analytics.test.ts`: `initAnalytics` passes both hooks and pins
+  `recordBody`/`recordHeaders` to `false`; feeding the
   navigation entry `/d/orgs/acme?access_token=a&refresh_token=b&org=acme`
   through the configured `maskCapturedNetworkRequestFn` yields a URL without
   `a`/`b` and with `org=acme`; same for `$current_url` through `before_send`.
@@ -198,28 +204,82 @@ the provider (`google`, `github`, `gitlab`, `microsoft`, `discord`, `slack`,
 delete (`deleted_at`), which every lookup already honors. Org-less
 (`/no-org`) logins only carry a short-lived access token, nothing to revoke.
 
-```sql
--- 1. Preview (replace <DEPLOY_TIME> with the prod deploy time of this fix, UTC)
-select properties->'created_with'->>'method' as method, count(*)
-from user_tokens
-where type = 'refresh'
-  and deleted_at is null
-  and created_at >= '2026-09-09 00:00:00+00'
-  and created_at <  '<DEPLOY_TIME>'
-  and properties->'created_with'->>'method' in
-      ('oauth','google','github','gitlab','microsoft','discord','slack','oidc','saml')
-group by 1;
+Revoking only the federated rows is not enough. A leaked session can mint
+**derived** sessions: switch-org (`service.go`, `AuthMethodSwitchOrg`) and the
+org-session mint in `org_profile.go` (`AuthMethodOrgSession`) each insert a
+fresh `type = 'refresh'` row whose `created_with` has **no** `method` key. So
+the revoke targets every `type = 'refresh'` row, whatever its method, of every
+user who has a federated row in the exposure window. Derived rows have no upper
+time bound: a leaked token could still have been used to switch org after the
+deploy. Affected users simply sign in again, including any legitimate session
+they opened since.
 
--- 2. Revoke (same predicate)
-update user_tokens
+```sql
+-- Affected users: a federated refresh row created while replay was recording.
+-- Replace <DEPLOY_TIME> with the prod deploy time of this fix (UTC).
+-- 1. Preview: every live session row that step 2 will revoke, by method.
+with affected_users as (
+  select distinct user_uid
+  from user_tokens
+  where type = 'refresh'
+    and created_at >= '2026-09-09 00:00:00+00'
+    and created_at <  '<DEPLOY_TIME>'
+    and properties->'created_with'->>'method' in
+        ('oauth','google','github','gitlab','microsoft','discord','slack','oidc','saml')
+)
+select coalesce(t.properties->'created_with'->>'method', '(derived: no method)') as method,
+       count(*) as sessions,
+       count(distinct t.user_uid) as users
+from user_tokens t
+join affected_users a on a.user_uid = t.user_uid
+where t.type = 'refresh'
+  and t.deleted_at is null
+  and t.created_at >= '2026-09-09 00:00:00+00'
+group by 1
+order by 2 desc;
+
+-- 1b. Review only (NOT revoked by step 2): PATs and MCP OAuth grants the same
+-- users created in the window. A stolen session could have minted either;
+-- check them with the users rather than revoking integrations blindly.
+with affected_users as (
+  select distinct user_uid
+  from user_tokens
+  where type = 'refresh'
+    and created_at >= '2026-09-09 00:00:00+00'
+    and created_at <  '<DEPLOY_TIME>'
+    and properties->'created_with'->>'method' in
+        ('oauth','google','github','gitlab','microsoft','discord','slack','oidc','saml')
+)
+select t.type, t.user_uid, t.uid, t.created_at, t.properties->'created_with' as created_with
+from user_tokens t
+join affected_users a on a.user_uid = t.user_uid
+where t.type in ('pat', 'oauth_refresh')
+  and t.deleted_at is null
+  and t.created_at >= '2026-09-09 00:00:00+00'
+order by t.created_at;
+
+-- 2. Revoke (same predicate as step 1).
+with affected_users as (
+  select distinct user_uid
+  from user_tokens
+  where type = 'refresh'
+    and created_at >= '2026-09-09 00:00:00+00'
+    and created_at <  '<DEPLOY_TIME>'
+    and properties->'created_with'->>'method' in
+        ('oauth','google','github','gitlab','microsoft','discord','slack','oidc','saml')
+)
+update user_tokens t
 set deleted_at = now(), updated_at = now()
-where type = 'refresh'
-  and deleted_at is null
-  and created_at >= '2026-09-09 00:00:00+00'
-  and created_at <  '<DEPLOY_TIME>'
-  and properties->'created_with'->>'method' in
-      ('oauth','google','github','gitlab','microsoft','discord','slack','oidc','saml');
+from affected_users a
+where a.user_uid = t.user_uid
+  and t.type = 'refresh'
+  and t.deleted_at is null
+  and t.created_at >= '2026-09-09 00:00:00+00';
 ```
+
+The `affected_users` CTE deliberately does not filter on `deleted_at`: a
+federated row the user already logged out of still means its token was
+recorded, and a derived session minted from it may still be live.
 
 Affected users are signed out at their next refresh (access tokens expire on
 their own) and sign in again. Then ask the operator whether to delete the
