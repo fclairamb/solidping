@@ -214,21 +214,23 @@ func (h *Handler) OAuthCallback(writer http.ResponseWriter, req *http.Request) e
 	// Hand the session to the dashboard through a single-use code, like every
 	// other federated login (spec 2026-09-25-12): the tokens never appear in
 	// the redirect URL. When the org did not admit the installing user the
-	// session is org-less and the dashboard lands on its request-access
-	// surface instead of the channel.
+	// session is scoped to an org they already belong to (the dashboard lands
+	// there) or, failing that, org-less (the dashboard lands on its
+	// request-access surface) — never on the channel.
 	if result.Pending {
 		slog.InfoContext(req.Context(), "Slack install completed without org membership",
 			"org_slug", result.OrgSlug, "user_uid", result.UserUID)
 	}
 
 	outcome := &auth.ProviderOutcome{
-		AccessToken:    result.AccessToken,
-		RefreshToken:   result.RefreshToken,
-		ExpiresIn:      result.ExpiresIn,
-		OrgSlug:        result.OrgSlug,
-		UserUID:        result.UserUID,
-		Pending:        result.Pending,
-		PendingOrgSlug: result.OrgSlug,
+		AccessToken:     result.AccessToken,
+		RefreshToken:    result.RefreshToken,
+		ExpiresIn:       result.ExpiresIn,
+		OrgSlug:         result.OrgSlug,
+		UserUID:         result.UserUID,
+		Pending:         result.Pending,
+		FallbackOrgSlug: result.FallbackOrgSlug,
+		PendingOrgSlug:  result.OrgSlug,
 	}
 
 	if err := auth.RedirectWithHandoff(writer, req, h.svc.db,

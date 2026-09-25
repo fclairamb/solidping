@@ -57,16 +57,24 @@ const (
 )
 
 // ProviderLoginResult is the outcome of a completed federated login for one
-// organization: either a real org-scoped session, or (Pending) an org-less
-// session plus a membership request awaiting an admin decision.
+// organization: either a real org-scoped session, or (Pending) a membership
+// request awaiting an admin decision plus a session on another org the user
+// already belongs to (FallbackOrgSlug) or, failing that, an org-less one.
 type ProviderLoginResult struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresIn    int
 	// Pending is true when the user authenticated successfully but was NOT
-	// admitted to the org. No org-scoped session exists in that case: the
-	// access token carries an empty org slug and there is no refresh token.
+	// admitted to the org. No session on THAT org exists: the tokens are
+	// scoped to FallbackOrgSlug when set, and are otherwise an org-less
+	// session (empty org slug, no refresh token).
 	Pending bool
+	// FallbackOrgSlug is, for a pending login only, the org the user IS an
+	// admitted member of that the session was minted on instead (spec
+	// 2026-09-25-15). The identity is proven, so a real member signing in from
+	// someone else's login page gets a session they can use rather than an
+	// org-less one. Empty means the user belongs to no org at all.
+	FallbackOrgSlug string
 	// PendingOrgSlug is the org the no-org screen should NAME as "your sign-in
 	// succeeded but this org hasn't admitted you yet". It is the org's slug
 	// whenever a membership request was actually opened, and deliberately EMPTY
@@ -307,9 +315,16 @@ func (s *Service) suppressDefaultOrgJoinRequest(org *models.Organization, opts l
 
 // CompleteOrgLogin is the shared tail of every federated callback: run the
 // admission rules, replay the cross-org auto-join, then mint the session that
-// matches the outcome. A pending outcome yields an org-less access token (no
-// refresh token) so the dashboard can show the request-access surface without
-// ever granting org-scoped API access.
+// matches the outcome.
+//
+// A pending outcome never grants anything on the org that refused the login.
+// The identity is proven, though, so when the user is an admitted member of
+// another org the session is a normal one on that org (refresh token
+// included, FallbackOrgSlug set): a real member who started from someone
+// else's login page must not be handed a session they cannot use (spec
+// 2026-09-25-15). A user with no membership at all gets the org-less access
+// token (no refresh token) that lets the dashboard show the request-access
+// surface without any org-scoped API access.
 func (s *Service) CompleteOrgLogin(
 	ctx context.Context, org *models.Organization, user *models.User, opts ...LoginOption,
 ) (*ProviderLoginResult, error) {
@@ -321,18 +336,29 @@ func (s *Service) CompleteOrgLogin(
 	}
 
 	// Auto-join any *other* org whose pattern matches (unchanged behavior).
+	// It runs before the pending fallback below on purpose: an org this very
+	// login just auto-joined is a membership the session can land on.
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
 
 	if pending {
+		// Name the org only when there is a request an admin can act on.
+		pendingOrgSlug := ""
+		if !s.suppressDefaultOrgJoinRequest(org, resolved) {
+			pendingOrgSlug = org.Slug
+		}
+
+		if result := s.fallbackMemberSession(ctx, user, resolved.method); result != nil {
+			result.PendingOrgSlug = pendingOrgSlug
+
+			return result, nil
+		}
+
 		result, sessionErr := s.pendingSession(ctx, user)
 		if sessionErr != nil {
 			return nil, sessionErr
 		}
 
-		// Name the org only when there is a request an admin can act on.
-		if !s.suppressDefaultOrgJoinRequest(org, resolved) {
-			result.PendingOrgSlug = org.Slug
-		}
+		result.PendingOrgSlug = pendingOrgSlug
 
 		return result, nil
 	}
@@ -356,6 +382,85 @@ func (s *Service) CompleteOrgLogin(
 		RefreshToken: tokens.RefreshToken,
 		ExpiresIn:    tokens.ExpiresIn,
 	}, nil
+}
+
+// fallbackMemberSession mints, for a login the target org refused, a normal
+// org-scoped session on an org the user IS an admitted member of. It returns
+// nil when there is no such org, or when anything goes wrong on the way: the
+// caller then falls back to the org-less session, today's behaviour, and the
+// login never fails because of this.
+func (s *Service) fallbackMemberSession(
+	ctx context.Context, user *models.User, method string,
+) *ProviderLoginResult {
+	member := s.fallbackMemberOrg(ctx, user.UID)
+	if member == nil {
+		return nil
+	}
+
+	tokens, err := s.GenerateTokensForOAuth(ctx, user, member.Organization, string(member.Role), method, Context{})
+	if err != nil {
+		slog.WarnContext(ctx, "could not mint a session on the user's own org after a refused login",
+			"userUID", user.UID, "orgUID", member.OrganizationUID, "error", err)
+
+		return nil
+	}
+
+	return &ProviderLoginResult{
+		AccessToken:     tokens.AccessToken,
+		RefreshToken:    tokens.RefreshToken,
+		ExpiresIn:       tokens.ExpiresIn,
+		Pending:         true,
+		FallbackOrgSlug: member.Organization.Slug,
+	}
+}
+
+// fallbackMemberOrg picks the org a refused federated login lands on instead:
+// the org of the user's most recent refresh token while the user is still a
+// member of it, else the most recently joined membership (ListMembersByUser is
+// ordered created_at DESC). That is resolveDefaultOrg's order, and the one the
+// dashboard's pickAccessibleOrg follows (spec 2026-09-08-01 §3). Unlike
+// resolveDefaultOrg, a refresh-token row never wins on its own: a stale token
+// for an org the user left must not mint a session there. Memberships whose
+// org is gone are skipped. Nil means no usable membership (or a lookup error).
+func (s *Service) fallbackMemberOrg(ctx context.Context, userUID string) *models.OrganizationMember {
+	members, err := s.db.ListMembersByUser(ctx, userUID)
+	if err != nil {
+		slog.WarnContext(ctx, "could not list memberships for a refused login", "userUID", userUID, "error", err)
+
+		return nil
+	}
+
+	usable := make([]*models.OrganizationMember, 0, len(members))
+
+	for _, member := range members {
+		if member.Organization != nil && member.Organization.UID != "" && member.Organization.DeletedAt == nil {
+			usable = append(usable, member)
+		}
+	}
+
+	if len(usable) == 0 {
+		return nil
+	}
+
+	if tokens, tokErr := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh); tokErr == nil {
+		var mostRecent *models.UserToken
+
+		for _, token := range tokens {
+			if token.OrganizationUID != nil && (mostRecent == nil || token.CreatedAt.After(mostRecent.CreatedAt)) {
+				mostRecent = token
+			}
+		}
+
+		if mostRecent != nil {
+			for _, member := range usable {
+				if member.OrganizationUID == *mostRecent.OrganizationUID {
+					return member
+				}
+			}
+		}
+	}
+
+	return usable[0]
 }
 
 // pendingSession mints the org-less session handed to a user who authenticated
@@ -722,15 +827,22 @@ type ProviderOutcome struct {
 	OrgSlug string
 	UserUID string
 	// Pending is true when the org did not admit the user: the tokens above
-	// are then an org-less session (no refresh token).
+	// are then scoped to FallbackOrgSlug, or org-less (no refresh token) when
+	// that is empty.
 	Pending bool
+	// FallbackOrgSlug is the org a pending login's session was minted on
+	// instead — see ProviderLoginResult.FallbackOrgSlug. Meaningless unless
+	// Pending is true.
+	FallbackOrgSlug string
 	// PendingOrgSlug is the org to NAME on the no-org screen — see
 	// ProviderLoginResult.PendingOrgSlug. Meaningless unless Pending is true.
 	PendingOrgSlug string
 }
 
 // handoffSession is the session a handoff code carries for this outcome. A
-// pending outcome's session is org-less whatever org the login targeted.
+// pending outcome's session is never scoped to the org the login targeted: it
+// is scoped to the fallback org the user belongs to, or org-less without one.
+// Either way it still names the pending org.
 func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 	session := &authhandoff.Session{
 		AccessToken:  o.AccessToken,
@@ -742,6 +854,7 @@ func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 
 	if o.Pending {
 		session.MembershipPending = o.PendingOrgSlug
+		session.OrgSlug = o.FallbackOrgSlug
 	} else {
 		session.OrgSlug = o.OrgSlug
 	}
@@ -753,8 +866,9 @@ func (o *ProviderOutcome) handoffSession(returnTo string) *authhandoff.Session {
 // code and redirects the browser to the dashboard's handoff route with that
 // code — never with a token. It also sets the SPA session cookie, as every
 // federated callback did before (the embedded MCP OAuth consent flow
-// authenticates with it); a pending session is org-less, so that cookie
-// grants nothing org-scoped.
+// authenticates with it); a pending session is either org-less or scoped to
+// an org the user already belongs to, so that cookie never grants anything on
+// the org that refused the login.
 //
 // It is exported for callbacks that live outside this package (the Slack
 // app-install callback). baseURL, when set, makes the target absolute;
@@ -784,7 +898,8 @@ func RedirectWithHandoff(
 // callback handler (google, github, gitlab, microsoft, discord, slack, oidc,
 // saml). Admitted or pending, the browser goes to the dashboard's handoff
 // route with a single-use code; the dashboard redeems it and then lands on
-// returnTo (admitted) or the no-org request-access surface (pending).
+// returnTo (admitted), the user's own org (pending, with a fallback org), or
+// the no-org request-access surface (pending, no membership at all).
 //
 // returnTo is the redirect_uri the login was started with. If the handoff
 // cannot be stored, the browser goes back there with the generic sign-in

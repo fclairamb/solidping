@@ -176,7 +176,8 @@ func (s *GitLabOAuthService) HandleCallback(
 
 	// Admission policy + session minting, shared by every connector
 	// (see Service.JoinOrgViaLogin). A user the org does not admit gets
-	// login.Pending and an org-less session instead of a membership.
+	// login.Pending instead of a membership, with a session on an org they
+	// already belong to (login.FallbackOrgSlug) or an org-less one.
 	login, err := s.authService.CompleteOrgLogin(ctx, org, user,
 		WithLoginMethod(signupMethodGitLab), newlyCreatedUserOption(userCreated))
 	if err != nil {
@@ -184,13 +185,14 @@ func (s *GitLabOAuthService) HandleCallback(
 	}
 
 	return &GitLabOAuthResult{
-		AccessToken:    login.AccessToken,
-		RefreshToken:   login.RefreshToken,
-		ExpiresIn:      login.ExpiresIn,
-		OrgSlug:        org.Slug,
-		UserUID:        user.UID,
-		Pending:        login.Pending,
-		PendingOrgSlug: login.PendingOrgSlug,
+		AccessToken:     login.AccessToken,
+		RefreshToken:    login.RefreshToken,
+		ExpiresIn:       login.ExpiresIn,
+		OrgSlug:         org.Slug,
+		UserUID:         user.UID,
+		Pending:         login.Pending,
+		FallbackOrgSlug: login.FallbackOrgSlug,
+		PendingOrgSlug:  login.PendingOrgSlug,
 	}, nil
 }
 

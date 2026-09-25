@@ -85,9 +85,14 @@ type OAuthResult struct {
 	// Pending is true when the install succeeded but the organization did not
 	// admit the installing user (e.g. the org opted out of Slack workspace
 	// auto-join, or it is at its member cap): no membership was created, a
-	// membership request is awaiting approval, and the tokens above are an
-	// org-less session with no refresh token.
+	// membership request is awaiting approval, and the tokens above are
+	// scoped to FallbackOrgSlug, or an org-less session with no refresh token
+	// when that is empty.
 	Pending bool
+	// FallbackOrgSlug is, for a pending install, the org the installing user
+	// already belongs to that the session was minted on instead (spec
+	// 2026-09-25-15). Empty when they belong to none.
+	FallbackOrgSlug string
 }
 
 // installStateKind / installStateTTL govern the bot-install OAuth flow's
@@ -525,14 +530,15 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 	)
 
 	return &OAuthResult{
-		ConnectionUID: connUID,
-		ChannelUID:    resultChannelUID,
-		AccessToken:   login.AccessToken,
-		RefreshToken:  login.RefreshToken,
-		ExpiresIn:     login.ExpiresIn,
-		OrgSlug:       org.Slug,
-		UserUID:       user.UID,
-		Pending:       login.Pending,
+		ConnectionUID:   connUID,
+		ChannelUID:      resultChannelUID,
+		AccessToken:     login.AccessToken,
+		RefreshToken:    login.RefreshToken,
+		ExpiresIn:       login.ExpiresIn,
+		OrgSlug:         org.Slug,
+		UserUID:         user.UID,
+		Pending:         login.Pending,
+		FallbackOrgSlug: login.FallbackOrgSlug,
 	}, nil
 }
 
