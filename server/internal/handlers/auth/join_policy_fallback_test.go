@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,8 +13,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/defaults"
 )
 
 // Spec 2026-09-25-15: a federated login refused by the org it was started from
@@ -348,4 +352,151 @@ func TestPendingFallbackHandoffSessionShape(t *testing.T) {
 	}).handoffSession("/d")
 	r.Empty(orgLess.OrgSlug)
 	r.Equal("demo", orgLess.MembershipPending)
+}
+
+// errFallbackForced is what the forced-failure wrappers below answer with.
+var errFallbackForced = errors.New("forced fallback failure")
+
+// failingMembershipListDB forces the fallback's membership lookup to fail.
+type failingMembershipListDB struct {
+	db.Service
+}
+
+func (f *failingMembershipListDB) ListMembersByUser(
+	_ context.Context, _ string,
+) ([]*models.OrganizationMember, error) {
+	return nil, fmt.Errorf("list members: %w", errFallbackForced)
+}
+
+// failingSessionStoreDB forces the fallback's session minting to fail: the
+// refresh-token row cannot be stored.
+type failingSessionStoreDB struct {
+	db.Service
+}
+
+func (f *failingSessionStoreDB) CreateUserToken(_ context.Context, _ *models.UserToken) error {
+	return fmt.Errorf("create user token: %w", errFallbackForced)
+}
+
+// TestCompleteOrgLoginFallbackFailureDegradesToOrgLess pins the "never fails
+// the login" half of plan item 2: when the fallback cannot be resolved or
+// minted, the refused login still succeeds with today's org-less session,
+// still names the refusing org, and its membership request is still opened.
+func TestCompleteOrgLoginFallbackFailureDegradesToOrgLess(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		wrap func(db.Service) db.Service
+	}{
+		{
+			name: "membership lookup fails",
+			wrap: func(inner db.Service) db.Service { return &failingMembershipListDB{Service: inner} },
+		},
+		{
+			name: "minting the fallback session fails",
+			wrap: func(inner db.Service) db.Service { return &failingSessionStoreDB{Service: inner} },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			svc, dbSvc, ctx := setupAuthTestService(t)
+
+			refusing := joinTestOrg(ctx, t, dbSvc, "demo", true)
+			user := joinTestUser(ctx, t, dbSvc, "alice@elsewhere.example")
+			fallbackMember(ctx, t, dbSvc, user, "acmetech", time.Now().Add(-time.Hour))
+
+			// Only now: the fixtures above must be written for real.
+			svc.db = tt.wrap(dbSvc)
+
+			result, err := svc.CompleteOrgLogin(ctx, refusing, user, WithLoginMethod(signupMethodGoogle))
+			r.NoError(err, "a fallback failure must never fail the login")
+
+			r.True(result.Pending)
+			r.Empty(result.FallbackOrgSlug)
+			r.Empty(result.RefreshToken, "the degraded session is the org-less one")
+			r.Equal("demo", result.PendingOrgSlug, "the refusing org is still named")
+
+			claims, err := svc.ValidateToken(ctx, result.AccessToken)
+			r.NoError(err)
+			r.Empty(claims.OrgSlug)
+
+			request, err := dbSvc.GetMembershipRequestByOrgAndUser(ctx, refusing.UID, user.UID)
+			r.NoError(err)
+			r.Equal(models.MembershipRequestStatusPending, request.Status)
+
+			tokens, err := dbSvc.ListUserTokensByType(ctx, user.UID, models.TokenTypeRefresh)
+			r.NoError(err)
+			r.Empty(tokens, "no half-minted session may be left behind")
+		})
+	}
+}
+
+// TestCompleteOrgLoginSuppressedRequestWithFallback: rule 6's SaaS carve-out
+// (a brand-new account that only met the platform default org) opens no join
+// request and names no org, yet a user who does belong to another org (here,
+// through the cross-org auto-join) still lands there with a full session, and
+// the handoff redirect carries no membershipPending flag.
+func TestCompleteOrgLoginSuppressedRequestWithFallback(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, ctx := setupAuthTestService(t)
+	svc.fullCfg.Deployment.Mode = config.DeploymentModeSaaS
+
+	defaultOrg := joinTestOrg(ctx, t, dbSvc, defaults.Organization, true)
+	autoJoin := joinTestOrg(ctx, t, dbSvc, "acmeauto", true)
+	r.NoError(dbSvc.SetOrgParameter(ctx, autoJoin.UID, registrationEmailPatternKey, `@acme\.com$`, false))
+
+	user := joinTestUser(ctx, t, dbSvc, "newcomer@acme.com")
+
+	login, err := svc.CompleteOrgLogin(ctx, defaultOrg, user,
+		WithLoginMethod(signupMethodGoogle), WithNewlyCreatedUser())
+	r.NoError(err)
+
+	r.True(login.Pending)
+	r.Empty(login.PendingOrgSlug, "rule 6 suppressed the request, so no org may be named")
+	r.Equal("acmeauto", login.FallbackOrgSlug)
+	r.NotEmpty(login.RefreshToken)
+
+	claims, err := svc.ValidateToken(ctx, login.AccessToken)
+	r.NoError(err)
+	r.Equal("acmeauto", claims.OrgSlug)
+
+	request, reqErr := dbSvc.GetMembershipRequestByOrgAndUser(ctx, defaultOrg.UID, user.UID)
+	r.True(reqErr != nil || request == nil, "no join request may be queued against the default org")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v1/auth/google/callback", nil)
+
+	r.NoError(finishProviderCallback(rec, req, dbSvc, "google", "/d/orgs/default", &ProviderOutcome{
+		AccessToken:     login.AccessToken,
+		RefreshToken:    login.RefreshToken,
+		ExpiresIn:       login.ExpiresIn,
+		OrgSlug:         defaultOrg.Slug,
+		UserUID:         user.UID,
+		Pending:         login.Pending,
+		FallbackOrgSlug: login.FallbackOrgSlug,
+		PendingOrgSlug:  login.PendingOrgSlug,
+	}))
+
+	r.Equal(http.StatusFound, rec.Code)
+
+	location, err := url.Parse(rec.Header().Get("Location"))
+	r.NoError(err)
+	r.Equal(handoffCompletePath, location.Path)
+	r.False(location.Query().Has(pendingMembershipParam), "nothing to name, so no flag")
+
+	exchange := postExchange(t, svc, codeBody(t, location.Query().Get(handoffCodeParam)))
+	r.Equal(http.StatusOK, exchange.Code, exchange.Body.String())
+
+	var resp HandoffExchangeResponse
+	r.NoError(json.Unmarshal(exchange.Body.Bytes(), &resp))
+	r.NotNil(resp.Organization)
+	r.Equal("acmeauto", resp.Organization.Slug)
+	r.Empty(resp.MembershipPending)
 }
