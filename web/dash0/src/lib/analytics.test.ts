@@ -163,6 +163,13 @@ describe("initAnalytics", () => {
     // Replay stays on: this is a credentials filter, not a return to masking.
     expect(options?.disable_session_recording).toBe(false);
 
+    // Header and body capture are pinned off client-side, whatever the
+    // PostHog project enables: a mask fn disables posthog-js's own body
+    // scrubber, so a remote toggle must not be able to start recording them.
+    const recording = options?.session_recording as Record<string, unknown> | undefined;
+    expect(recording?.recordBody).toBe(false);
+    expect(recording?.recordHeaders).toBe(false);
+
     const url = "https://solidping.example/d/orgs/acme?access_token=a&refresh_token=b&org=acme";
     const leaks = (s: string) => /access_token=a(&|$)/.test(s) || /refresh_token=b(&|$)/.test(s);
 

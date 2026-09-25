@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CREDENTIAL_QUERY_PARAMS,
   REDACTED,
-  redactBody,
   redactCapturedNetworkRequest,
   redactCredentialsBeforeSend,
   redactUrl,
@@ -180,49 +179,30 @@ describe("redactCapturedNetworkRequest", () => {
     expect(JSON.stringify(out)).not.toContain(JWT);
   });
 
-  it("redacts credentials in captured bodies", () => {
+  // Supplying maskCapturedNetworkRequestFn disables posthog-js's own body
+  // scrubber, and a key-name filter would miss `recoveryCodes`, `signingSecret`
+  // or a heartbeat URL inside a value. So bodies fail closed: any body that
+  // still reaches the hook is dropped, harmless or not.
+  it("drops captured bodies outright", () => {
     const out = redactCapturedNetworkRequest({
       name: "/api/v1/auth/refresh",
       requestBody: JSON.stringify({ refreshToken: REFRESH }),
-      responseBody: JSON.stringify({ accessToken: JWT, refreshToken: REFRESH, expiresIn: 900 }),
+      responseBody: JSON.stringify({
+        accessToken: JWT,
+        recoveryCodes: ["a1b2-c3d4"],
+        signingSecret: "whsec_x",
+        heartbeatUrl: "https://solidping.example/api/v1/heartbeat/acme/h?token=hb_x",
+      }),
     });
-    expect(JSON.stringify(out)).not.toContain(JWT);
-    expect(JSON.stringify(out)).not.toContain(REFRESH);
-    expect(JSON.parse(out.responseBody!)).toEqual({
-      accessToken: REDACTED,
-      refreshToken: REDACTED,
-      expiresIn: 900,
-    });
-  });
-});
+    expect(out.requestBody).toBeUndefined();
+    expect(out.responseBody).toBeUndefined();
+    expect(out.name).toBe("/api/v1/auth/refresh");
 
-describe("redactBody", () => {
-  it("redacts credential keys at any depth, keeps the API error `code`", () => {
-    const body = JSON.stringify({
-      data: [{ uid: "t1", token: "pat_abc" }],
-      login: { email: "alice@acme.com", password: "hunter2", tempToken: "tt" },
-      code: "VALIDATION_ERROR",
+    const harmless = redactCapturedNetworkRequest({
+      name: "/api/v1/orgs/acme/checks",
+      responseBody: '{"data":[]}',
     });
-    expect(JSON.parse(redactBody(body)!)).toEqual({
-      data: [{ uid: "t1", token: REDACTED }],
-      login: { email: "alice@acme.com", password: REDACTED, tempToken: REDACTED },
-      code: "VALIDATION_ERROR",
-    });
-  });
-
-  it("redacts form-encoded credential params", () => {
-    expect(redactBody(`grant_type=refresh_token&refresh_token=${REFRESH}`)).toBe(
-      `grant_type=refresh_token&refresh_token=${REDACTED}`,
-    );
-  });
-
-  it("returns harmless bodies byte for byte", () => {
-    const pretty = '{\n  "name": "My API",\n  "type": "http"\n}';
-    expect(redactBody(pretty)).toBe(pretty);
-    expect(redactBody("plain text, token=nothing here")).toBe("plain text, token=nothing here");
-    expect(redactBody("{not json")).toBe("{not json");
-    expect(redactBody(null)).toBeNull();
-    expect(redactBody(undefined)).toBeUndefined();
+    expect(harmless.responseBody).toBeUndefined();
   });
 });
 
