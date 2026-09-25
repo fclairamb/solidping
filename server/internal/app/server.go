@@ -310,20 +310,15 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList := services.NewRegistry()
 	svcList.Clock = clock.Real{}
 
-	// Egress guard for notification sender URLs (spec 2026-09-25-20): the org
-	// member picks the destination, so it is a user-chosen target exactly like
-	// a check target, and shares that guard's policy source
-	// (cfg.EgressAllowsPrivateTargets — explicit override > SaaS deny >
-	// self-hosted allow). Built once here so every sender's guarded HTTP
-	// transport shares one pooled connection cache (egress.Guard.HTTPTransport
-	// memoizes it on the guard instance).
-	svcList.EgressGuard = egress.New(cfg.EgressAllowsPrivateTargets())
-	//nolint:sloglint // startup-only, no request context
-	slog.Info("Egress policy for notification sender URLs",
-		"allow_private_targets", svcList.EgressGuard.AllowsPrivate(),
-		"source", cfg.EgressPolicySource(),
-		"env", egress.EnvAllowPrivate,
-		"parameter", egress.ParamAllowPrivate)
+	// svcList.EgressGuard (notification sender URLs, spec 2026-09-25-20) is
+	// deliberately NOT built here: cfg.EgressAllowsPrivateTargets reads
+	// cfg.Egress.AllowPrivateTargets, and the DB-stored egress.allow_private_targets
+	// system parameter only overlays that field in InitializeSystemConfig,
+	// which runs AFTER NewServer (see main.go). Building the guard this early
+	// would permanently freeze it at the pre-overlay value — the same mistake
+	// the check worker's own guard avoids by building itself inside Start(),
+	// later still. installEgressGuard (called from InitializeSystemConfig) is
+	// where this is actually built, exactly once, after the overlay has run.
 
 	// Create check notifier based on database type — must be created before the
 	// job service so its LISTEN channel can wake up GetJobWait immediately on
@@ -3977,7 +3972,41 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 		slog.InfoContext(ctx, "JWT secret updated from system config, auth service will use new secret on restart")
 	}
 
+	// Build the notification-sender egress guard now that cfg carries the
+	// overlaid egress.allow_private_targets system parameter (see the comment
+	// on svcList.Clock in NewServer for why this can't happen any earlier).
+	s.installEgressGuard(ctx, cfg)
+
 	return nil
+}
+
+// installEgressGuard builds this process's egress guard for notification
+// sender URLs (spec 2026-09-25-20) and installs it on s.services, exactly
+// once, from cfg AFTER InitializeSystemConfig has overlaid the DB-stored
+// egress.allow_private_targets system parameter onto it — the same
+// "restart to take effect" contract the check worker's own guard has
+// (checkworker.newEgressGuard, built inside Start(), later still).
+//
+// Every consumer (integration CRUD validation, the manual test-notification
+// endpoint, the job runner sending real deliveries) reads
+// s.services.EgressGuard through the same *services.Registry pointer at call
+// time, and every one of them is wired up (SetupRoutes, startJobWorker) AFTER
+// this runs — see main.go's call order: NewServer -> Initialize ->
+// InitializeSystemConfig -> seedStartupData -> SetupRoutes -> Start. A nil
+// s.services here (a test harness that never calls InitializeSystemConfig) is
+// a no-op: it means "no registry to install onto", not "install a nil guard".
+func (s *Server) installEgressGuard(ctx context.Context, cfg *config.Config) {
+	if s.services == nil {
+		return
+	}
+
+	s.services.EgressGuard = egress.New(cfg.EgressAllowsPrivateTargets())
+
+	slog.InfoContext(ctx, "Egress policy for notification sender URLs",
+		"allow_private_targets", s.services.EgressGuard.AllowsPrivate(),
+		"source", cfg.EgressPolicySource(),
+		"env", egress.EnvAllowPrivate,
+		"parameter", egress.ParamAllowPrivate)
 }
 
 // reResolvePasswordPolicy re-resolves the process-wide password-hashing policy
