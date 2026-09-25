@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/httpclientpool"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -153,6 +154,11 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return ErrWebhookURLNotConfigured
 	}
 
+	guard := egressGuardFrom(jctx)
+	if err := ValidateSenderURL(ctx, guard, url); err != nil {
+		return err
+	}
+
 	body, err := json.Marshal(s.buildPayload(payload))
 	if err != nil {
 		return fmt.Errorf("marshaling webhook payload: %w", err)
@@ -180,7 +186,7 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return err
 	}
 
-	return s.sendAndCapture(req, url, body, payload)
+	return s.sendAndCapture(req, url, body, payload, guard)
 }
 
 // webhookHeaders carries the three Standard Webhooks signing header values.
@@ -225,8 +231,10 @@ func buildWebhookRequest(
 // artifacts onto the payload (on both success and failure). The request URL is
 // stripped of its query string and credentials before being recorded; the
 // signing secret and any auth/custom headers are never stored.
-func (s *WebhookSender) sendAndCapture(req *http.Request, url string, body []byte, payload *Payload) error {
-	client := httpclientpool.NewClient(webhookTimeout)
+func (s *WebhookSender) sendAndCapture(
+	req *http.Request, url string, body []byte, payload *Payload, guard *egress.Guard,
+) error {
+	client := httpclientpool.NewGuardedClient(webhookTimeout, guard)
 
 	details := &models.DeliveryDetails{
 		RequestURL:  redactURL(url),

@@ -58,7 +58,7 @@ type gotifyMessage struct {
 }
 
 // Send sends a notification to Gotify.
-func (s *GotifySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
+func (s *GotifySender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := s.parseSettings(payload)
 	if err != nil {
 		return err
@@ -69,6 +69,11 @@ func (s *GotifySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshaling gotify message: %w", err)
+	}
+
+	guard := egressGuardFrom(jctx)
+	if err := ValidateSenderURL(ctx, guard, settings.ServerURL); err != nil {
+		return err
 	}
 
 	url := strings.TrimRight(settings.ServerURL, "/") + "/message"
@@ -85,7 +90,7 @@ func (s *GotifySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", productName)
 
-	client := httpclientpool.NewClient(gotifyTimeout)
+	client := httpclientpool.NewGuardedClient(gotifyTimeout, guard)
 
 	resp, err := client.Do(req)
 	if err != nil {

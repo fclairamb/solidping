@@ -51,13 +51,18 @@ var (
 type MatrixSender struct{}
 
 // Send sends a notification to a Matrix room.
-func (s *MatrixSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
+func (s *MatrixSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := s.parseSettings(payload)
 	if err != nil {
 		return err
 	}
 
-	client := httpclientpool.NewClient(matrixTimeout)
+	guard := egressGuardFrom(jctx)
+	if err := ValidateSenderURL(ctx, guard, settings.HomeserverURL); err != nil {
+		return err
+	}
+
+	client := httpclientpool.NewGuardedClient(matrixTimeout, guard)
 
 	roomID, err := s.resolveRoomID(ctx, client, settings)
 	if err != nil {

@@ -47,9 +47,14 @@ var (
 type MattermostSender struct{}
 
 // Send sends a notification to Mattermost.
-func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
+func (s *MattermostSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	settings, err := s.parseSettings(payload)
 	if err != nil {
+		return err
+	}
+
+	guard := egressGuardFrom(jctx)
+	if err := ValidateSenderURL(ctx, guard, settings.WebhookURL); err != nil {
 		return err
 	}
 
@@ -68,7 +73,7 @@ func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", productName)
 
-	client := httpclientpool.NewClient(mattermostTimeout)
+	client := httpclientpool.NewGuardedClient(mattermostTimeout, guard)
 
 	resp, err := client.Do(req)
 	if err != nil {
