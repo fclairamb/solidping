@@ -368,7 +368,18 @@
       "pinnedHint": "Épinglé : le contrôle s'exécute exactement depuis ces régions et n'est jamais déplacé.",
       "regionCount": "Nombre de régions",
       "current": "S'exécute actuellement depuis {{regions}}"
-    }
+    },
+    "failQuorum": "Régions qui doivent échouer",
+    "failQuorumHelp": "Avec plusieurs régions, combien doivent échouer pendant toute la période de confirmation avant que le check soit en panne et qu'un incident s'ouvre. Moins de régions en échec s'affiche comme un problème régional, sans incident.",
+    "failQuorumDefault": "Par défaut (une majorité à partir de 3 régions, sinon toutes)",
+    "failQuorumAll": "Toutes les régions",
+    "failQuorumMajority": "Une majorité",
+    "failQuorumCount": "Un nombre de régions",
+    "failQuorumCountLabel": "Nombre de régions",
+    "failQuorumResolved": "En panne quand {{quorum}} régions sur {{count}} échouent. Moins, c'est un problème régional.",
+    "failQuorumResolvedAll_one": "En panne quand la région échoue.",
+    "failQuorumResolvedAll_other": "En panne quand les {{count}} régions échouent. Une région qui répond relance la confirmation.",
+    "failQuorumCountError": "Saisissez un nombre entier entre 1 et 100."
   },
   "types": {
     "http": "HTTP",
@@ -763,7 +774,15 @@
         "other": "déplacé"
       },
       "lastResult": "dernier résultat",
-      "noResult": "pas encore de résultat"
+      "noResult": "pas encore de résultat",
+      "quorum": "Un incident s'ouvre quand {{quorum}} régions sur {{count}} échouent",
+      "quorumAll": "Un incident s'ouvre quand les {{count}} régions échouent",
+      "failing": "en échec",
+      "failingSince": "en échec depuis {{time}}"
+    },
+    "regionalIssue": {
+      "title": "Problème régional : échec depuis {{regions}}",
+      "detail": "{{failing}} régions sur {{count}} en échec. Un incident ne s'ouvre que lorsque {{quorum}} régions échouent pendant la période de confirmation."
     }
   },
   "endpoints": {

@@ -23,6 +23,14 @@ import {
 } from "@/components/shared/browser-capability";
 import { isRegionOffline, offlineRegionNames } from "@/lib/region-outage";
 import { isPassiveCheckType } from "@/lib/check-scheduling";
+import {
+  FAIL_QUORUM_MAX,
+  FAIL_QUORUM_MIN,
+  failQuorumMode as parseFailQuorumMode,
+  failQuorumValue,
+  resolveFailQuorum,
+  type FailQuorumMode,
+} from "@/lib/fail-quorum";
 import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import {
   calculateReopenCooldownSeconds,
@@ -57,7 +65,14 @@ import { docsHrefForType } from "@/components/shared/check-type-docs-anchors";
 import { CheckTypeIcon } from "@/components/shared/check-type-identity";
 import { Link } from "@tanstack/react-router";
 import { ApiError } from "@/api/client";
-import type { Check as CheckModel, CheckGroup, CheckPlacement, RegionDefinition, SampleConfig } from "@/api/hooks";
+import type {
+  Check as CheckModel,
+  CheckGroup,
+  CheckPlacement,
+  FailQuorum,
+  RegionDefinition,
+  SampleConfig,
+} from "@/api/hooks";
 import { regionDisplayLabel } from "@/lib/region-label";
 import {
   useChecks,
@@ -397,6 +412,9 @@ export interface CheckFormData {
   regionSpread?: string;
   /** `inherit` | `on` | `off` — the per-check path-trace policy. */
   tracerouteOnFailure?: string;
+  /** Multi-region quorum (spec 2026-09-25-10). Sent only while the field is
+   * shown (2+ regions); "default" puts an edited check back on the default. */
+  failQuorum?: FailQuorum;
   reopenCooldownMultiplier?: number | null;
   flappingWindowSeconds?: number | null;
   flapBackoffFactor?: number | null;
@@ -773,6 +791,14 @@ export function CheckForm({
   const [tracerouteOnFailure, setTracerouteOnFailure] = useState(
     initialData?.tracerouteOnFailure ?? "inherit",
   );
+  // Multi-region quorum (spec 2026-09-25-10): seeded from the stored value,
+  // "default" for a new check, so nobody has to think about it.
+  const [failQuorumModeValue, setFailQuorumModeValue] = useState<FailQuorumMode>(
+    () => parseFailQuorumMode(initialData?.failQuorum).mode,
+  );
+  const [failQuorumCount, setFailQuorumCount] = useState(
+    () => parseFailQuorumMode(initialData?.failQuorum).count,
+  );
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [flappingWindowSeconds, setFlappingWindowSeconds] = useState(initialData?.flappingWindowSeconds?.toString() ?? "");
   const [flapBackoffFactor, setFlapBackoffFactor] = useState(initialData?.flapBackoffFactor?.toString() ?? "");
@@ -921,6 +947,14 @@ export function CheckForm({
   // (a single region has nothing to stagger against) — mirrors the existing
   // regions-hint visibility gate below.
   const hasMultiRegionSpread = showRegions && activeRegionCount > 1;
+
+  // The quorum only means something with 2+ regions (spec 2026-09-25-10), and
+  // is shown on the same condition as the spread. The resolved value mirrors
+  // the server's rule for the regions currently picked.
+  const showFailQuorum = hasMultiRegionSpread;
+  const failQuorumPayload = failQuorumValue(failQuorumModeValue, failQuorumCount);
+  const failQuorumCountError = showFailQuorum && failQuorumModeValue === "count" && failQuorumPayload === undefined;
+  const resolvedFailQuorum = resolveFailQuorum(failQuorumPayload ?? "default", activeRegionCount);
 
   const selectedOfflineRegions = useMemo(
     () =>
@@ -1130,6 +1164,11 @@ export function CheckForm({
       config.timeout = `${timeoutValue}s`;
     }
 
+    if (failQuorumCountError) {
+      setError(t("form.failQuorumCountError"));
+      return;
+    }
+
     // Validate slug format
     if (slugError) {
       setError(slugError);
@@ -1216,6 +1255,9 @@ export function CheckForm({
         // that carries an explicit on/off back under the org default, and an
         // omitted field means "leave unchanged" on PATCH.
         tracerouteOnFailure,
+        // Only while the field is shown (2+ regions). "default" is sent on
+        // edit too: it is how a check taken off the default goes back.
+        ...(showFailQuorum && failQuorumPayload !== undefined ? { failQuorum: failQuorumPayload } : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         ...(flappingWindowSeconds !== "" ? { flappingWindowSeconds: parseInt(flappingWindowSeconds, 10) } : {}),
         ...(flapBackoffFactor !== "" ? { flapBackoffFactor: parseInt(flapBackoffFactor, 10) } : {}),
@@ -1312,7 +1354,8 @@ export function CheckForm({
 
   const incidentCustomized =
     confirmationPeriodSeconds.trim() !== "" ||
-    recoveryPeriodSeconds.trim() !== "";
+    recoveryPeriodSeconds.trim() !== "" ||
+    (showFailQuorum && failQuorumModeValue !== "default");
   const incidentSummary = t("form.summaryIncident", {
     confirm: confirmationPeriodSeconds.trim() || "120",
     recover: recoveryPeriodSeconds.trim() || "120",
@@ -2149,6 +2192,58 @@ export function CheckForm({
                 )}
               </div>
             </div>
+            {showFailQuorum && (
+              <div className="mt-4 space-y-1" data-testid="check-fail-quorum-section">
+                <Label htmlFor="check-fail-quorum" className="text-sm">
+                  {t("form.failQuorum")}
+                </Label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Select
+                    value={failQuorumModeValue}
+                    onValueChange={(value) => setFailQuorumModeValue(value as FailQuorumMode)}
+                  >
+                    <SelectTrigger
+                      id="check-fail-quorum"
+                      className="sm:w-80"
+                      data-testid="check-fail-quorum-select"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">{t("form.failQuorumDefault")}</SelectItem>
+                      <SelectItem value="all">{t("form.failQuorumAll")}</SelectItem>
+                      <SelectItem value="majority">{t("form.failQuorumMajority")}</SelectItem>
+                      <SelectItem value="count">{t("form.failQuorumCount")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {failQuorumModeValue === "count" && (
+                    <Input
+                      type="number"
+                      min={FAIL_QUORUM_MIN}
+                      max={FAIL_QUORUM_MAX}
+                      step={1}
+                      className="sm:w-28"
+                      aria-label={t("form.failQuorumCountLabel")}
+                      data-testid="check-fail-quorum-count"
+                      value={failQuorumCount}
+                      onChange={(e) => setFailQuorumCount(e.target.value)}
+                    />
+                  )}
+                </div>
+                {failQuorumCountError ? (
+                  <p className="text-xs text-destructive" data-testid="check-fail-quorum-error">
+                    {t("form.failQuorumCountError")}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground" data-testid="check-fail-quorum-resolved">
+                    {resolvedFailQuorum >= activeRegionCount
+                      ? t("form.failQuorumResolvedAll", { count: activeRegionCount })
+                      : t("form.failQuorumResolved", { quorum: resolvedFailQuorum, count: activeRegionCount })}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">{t("form.failQuorumHelp")}</p>
+              </div>
+            )}
           </CollapsibleSection>
 
           {/* Degraded detection (spec 2026-09-22-03). A section of its own rather

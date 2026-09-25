@@ -368,7 +368,18 @@
       "pinnedHint": "Fijada: la comprobación se ejecuta exactamente desde estas regiones y nunca se mueve.",
       "regionCount": "Número de regiones",
       "current": "Se ejecuta actualmente desde {{regions}}"
-    }
+    },
+    "failQuorum": "Regiones que deben fallar",
+    "failQuorumHelp": "Con varias regiones, cuántas deben fallar durante todo el período de confirmación antes de que el check esté caído y se abra un incidente. Menos regiones en fallo se muestran como un problema regional, sin incidente.",
+    "failQuorumDefault": "Predeterminado (mayoría a partir de 3 regiones, si no todas)",
+    "failQuorumAll": "Todas las regiones",
+    "failQuorumMajority": "Una mayoría",
+    "failQuorumCount": "Un número de regiones",
+    "failQuorumCountLabel": "Número de regiones",
+    "failQuorumResolved": "Caído cuando fallan {{quorum}} de {{count}} regiones. Menos es un problema regional.",
+    "failQuorumResolvedAll_one": "Caído cuando falla la región.",
+    "failQuorumResolvedAll_other": "Caído cuando fallan las {{count}} regiones. Cualquier región que responde reinicia la confirmación.",
+    "failQuorumCountError": "Introduce un número entero entre 1 y 100."
   },
   "types": {
     "http": "HTTP",
@@ -719,7 +730,15 @@
         "other": "movida"
       },
       "lastResult": "último resultado",
-      "noResult": "aún sin resultado"
+      "noResult": "aún sin resultado",
+      "quorum": "Se abre un incidente cuando fallan {{quorum}} de {{count}} regiones",
+      "quorumAll": "Se abre un incidente cuando fallan las {{count}} regiones",
+      "failing": "en fallo",
+      "failingSince": "en fallo desde {{time}}"
+    },
+    "regionalIssue": {
+      "title": "Problema regional: fallos desde {{regions}}",
+      "detail": "{{failing}} de {{count}} regiones en fallo. Solo se abre un incidente cuando {{quorum}} regiones fallan durante el período de confirmación."
     }
   },
   "endpoints": {

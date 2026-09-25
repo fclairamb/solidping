@@ -105,6 +105,7 @@ import { PublishOnStatusPageDialog } from "@/components/checks/publish-on-status
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
 import { CheckPlacementDetail } from "@/components/checks/check-placement";
+import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { DnsblCard, DNSBL_OUTPUT_KEYS } from "@/components/checks/dnsbl-card";
@@ -1420,6 +1421,11 @@ function CheckDetailPage() {
           offline. Blind (every region down) means the check is not running at
           all — the "No data" status is our outage, not the target's. */}
       <CheckRegionOutageBanner check={check} regions={regionsData?.regions} />
+
+      {/* Regional issue (spec 2026-09-25-10): some, but fewer than the
+          quorum, of the check's regions are failing. The status reads
+          `warning` and no incident opens; this says which regions and why. */}
+      <CheckRegionalIssueBanner check={check} regions={regionsData?.regions} />
 
       {/* Duty-cycle warning (spec 2026-07-01-04 D3): the check's execution
           cost eats >= 50% of a runner slot — nudge toward a longer period. */}

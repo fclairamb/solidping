@@ -368,7 +368,18 @@
       "pinnedHint": "Pinned: the check runs from exactly these regions and is never moved.",
       "regionCount": "Number of regions",
       "current": "Currently running from {{regions}}"
-    }
+    },
+    "failQuorum": "Regions that must fail",
+    "failQuorumHelp": "With several regions, how many must be failing for the whole confirmation period before the check is down and an incident opens. Fewer failing regions show as a regional issue, with no incident.",
+    "failQuorumDefault": "Default (a majority from 3 regions, otherwise all)",
+    "failQuorumAll": "All regions",
+    "failQuorumMajority": "A majority",
+    "failQuorumCount": "A number of regions",
+    "failQuorumCountLabel": "Number of regions",
+    "failQuorumResolved": "Down when {{quorum}} of {{count}} regions fail. Fewer is a regional issue.",
+    "failQuorumResolvedAll_one": "Down when the region fails.",
+    "failQuorumResolvedAll_other": "Down when all {{count}} regions fail. Any passing region restarts the confirmation.",
+    "failQuorumCountError": "Enter a whole number between 1 and 100."
   },
   "types": {
     "http": "HTTP",
@@ -763,7 +774,15 @@
         "other": "moved"
       },
       "lastResult": "last result",
-      "noResult": "no result yet"
+      "noResult": "no result yet",
+      "quorum": "An incident opens when {{quorum}} of {{count}} regions fail",
+      "quorumAll": "An incident opens when all {{count}} regions fail",
+      "failing": "failing",
+      "failingSince": "failing since {{time}}"
+    },
+    "regionalIssue": {
+      "title": "Regional issue: failing from {{regions}}",
+      "detail": "{{failing}} of {{count}} regions failing. An incident opens only when {{quorum}} regions fail for the confirmation period."
     }
   },
   "endpoints": {

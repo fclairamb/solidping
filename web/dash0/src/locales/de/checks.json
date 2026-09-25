@@ -368,7 +368,18 @@
       "pinnedHint": "Fixiert: Die Prüfung läuft genau aus diesen Regionen und wird nie verschoben.",
       "regionCount": "Anzahl der Regionen",
       "current": "Läuft derzeit aus {{regions}}"
-    }
+    },
+    "failQuorum": "Regionen, die ausfallen müssen",
+    "failQuorumHelp": "Bei mehreren Regionen: wie viele während der gesamten Bestätigungszeit fehlschlagen müssen, bevor der Check ausgefallen ist und ein Vorfall eröffnet wird. Weniger fehlschlagende Regionen werden als regionales Problem angezeigt, ohne Vorfall.",
+    "failQuorumDefault": "Standard (Mehrheit ab 3 Regionen, sonst alle)",
+    "failQuorumAll": "Alle Regionen",
+    "failQuorumMajority": "Eine Mehrheit",
+    "failQuorumCount": "Eine Anzahl Regionen",
+    "failQuorumCountLabel": "Anzahl Regionen",
+    "failQuorumResolved": "Ausgefallen, wenn {{quorum}} von {{count}} Regionen fehlschlagen. Weniger ist ein regionales Problem.",
+    "failQuorumResolvedAll_one": "Ausgefallen, wenn die Region fehlschlägt.",
+    "failQuorumResolvedAll_other": "Ausgefallen, wenn alle {{count}} Regionen fehlschlagen. Jede erfolgreiche Region startet die Bestätigung neu.",
+    "failQuorumCountError": "Geben Sie eine ganze Zahl zwischen 1 und 100 ein."
   },
   "types": {
     "http": "HTTP",
@@ -719,7 +730,15 @@
         "other": "verschoben"
       },
       "lastResult": "letztes Ergebnis",
-      "noResult": "noch kein Ergebnis"
+      "noResult": "noch kein Ergebnis",
+      "quorum": "Ein Vorfall wird eröffnet, wenn {{quorum}} von {{count}} Regionen fehlschlagen",
+      "quorumAll": "Ein Vorfall wird eröffnet, wenn alle {{count}} Regionen fehlschlagen",
+      "failing": "fehlerhaft",
+      "failingSince": "fehlerhaft seit {{time}}"
+    },
+    "regionalIssue": {
+      "title": "Regionales Problem: Fehler aus {{regions}}",
+      "detail": "{{failing}} von {{count}} Regionen fehlerhaft. Ein Vorfall wird erst eröffnet, wenn {{quorum}} Regionen während der Bestätigungszeit fehlschlagen."
     }
   },
   "endpoints": {

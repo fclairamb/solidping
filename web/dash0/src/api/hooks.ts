@@ -83,6 +83,31 @@ export interface RegionFreshness {
   lastResultAt: string | null;
   /** True when lastResultAt is older than the check's stale threshold, or missing. */
   stale: boolean;
+  /**
+   * The region's newest reading (spec 2026-09-25-10). Kept for checks with
+   * two or more regions only.
+   */
+  status?: "up" | "warning" | "down" | "timeout" | "error";
+  /** When the region last crossed between failing and passing. */
+  statusSince?: string;
+}
+
+/**
+ * Multi-region quorum (spec 2026-09-25-10): how many of a check's regions
+ * must be failing, for the confirmation period, before it is down. The
+ * default is all regions for 1-2 regions and a majority for 3+.
+ */
+export type FailQuorum = "default" | "all" | "majority" | number;
+
+/**
+ * Present (detail, with=region_freshness) while some, but fewer than the
+ * quorum, of the check's current regions are failing: the check is `warning`
+ * and no incident opens.
+ */
+export interface RegionalIssue {
+  failingRegions: string[];
+  failQuorum: number;
+  regionCount: number;
 }
 
 /**
@@ -237,6 +262,12 @@ export interface Check {
    * silent region shows up while another keeps the check fresh.
    */
   regionFreshness?: RegionFreshness[];
+  /** Multi-region quorum setting; absent on passive checks. */
+  failQuorum?: FailQuorum;
+  /** What failQuorum resolves to for the check's current regions. */
+  effectiveFailQuorum?: number;
+  /** The regional issue, when there is one (detail, with=region_freshness). */
+  regionalIssue?: RegionalIssue;
   lastResult?: {
     uid?: string;
     status?: "up" | "down" | "error" | "timeout" | "created" | "abandoned";
@@ -307,6 +338,8 @@ export interface CreateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
+  failQuorum?: FailQuorum;
   name?: string;
   slug?: string;
   description?: string;
@@ -396,6 +429,8 @@ export interface UpdateCheckRequest {
    * 2026-08-21-10). `inherit` is what puts a check back under the org default;
    * omitting the field leaves it unchanged. */
   tracerouteOnFailure?: string;
+  /** Multi-region quorum (spec 2026-09-25-10); "default" resets it, omit leaves it unchanged. */
+  failQuorum?: FailQuorum;
   name?: string;
   slug?: string;
   description?: string;

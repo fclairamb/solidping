@@ -126,6 +126,7 @@ import { EvaluationCard } from "@/components/checks/evaluation-card";
 import { StatusDot } from "@/components/shared/status-dot";
 import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
 import { CheckPlacementDetail } from "@/components/checks/check-placement";
+import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";
 import { AutoPlacementSummary } from "@/components/shared/check-form";
 import { SupportMessageBubble } from "@/components/support/message-bubble";
 import { Ipv6CapabilityBadge } from "@/components/shared/ipv6-capability";
@@ -2258,6 +2259,44 @@ function ButtonsBadgesSection() {
           importLine={`import { AutoPlacementSummary } from "@/components/shared/check-form";\nimport { CheckPlacementDetail } from "@/components/checks/check-placement";\n\n<CheckPlacementDetail org={org} check={check} regions={regionsData?.regions} />`}
         />
 
+        <h3 className="text-sm font-medium">Regional issue (multi-region quorum)</h3>
+        <p className="text-sm text-muted-foreground">
+          Spec 2026-09-25-10. A check running from several regions is down
+          only when{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            effectiveFailQuorum
+          </code>{" "}
+          of them fail for the confirmation period. Fewer failing regions is a
+          regional issue: the status is a plain amber{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">warning</code>{" "}
+          (status0 shows exactly that, nothing more), and the check page says
+          which regions and why with the amber banner, never the destructive
+          one (no incident is open). The placement block states the rule and
+          marks each failing region in destructive red with the time it
+          started failing. Both read the server&apos;s{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">regionalIssue</code>{" "}
+          and{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            regionFreshness[].status
+          </code>
+          ; the banner renders nothing without a regional issue. The check
+          form&apos;s &ldquo;Regions that must fail&rdquo; select (in Incident
+          tracking, shown from 2 regions) defaults to Default and says what it
+          resolves to for the picked regions.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-md space-y-3">
+              <CheckRegionalIssueBanner
+                check={DESIGN_REF_REGIONAL_CHECK}
+                regions={DESIGN_REFERENCE_REGIONS}
+              />
+              <CheckPlacementDetail org={org} check={DESIGN_REF_REGIONAL_CHECK} />
+            </div>
+          }
+          importLine={`import { CheckRegionalIssueBanner } from "@/components/checks/regional-issue-banner";\nimport { CheckPlacementDetail } from "@/components/checks/check-placement";\n\n<CheckRegionalIssueBanner check={check} regions={regionsData?.regions} />`}
+        />
+
         <h3 className="text-sm font-medium">IPv6 capability badge</h3>
         <p className="text-sm text-muted-foreground">
           What a region's <strong>live</strong> workers report about their IPv6
@@ -3518,6 +3557,31 @@ const DESIGN_REF_AUTO_CHECK: CheckModel = {
   regionFreshness: [
     { region: "paris", lastResultAt: new Date(Date.now() - 40_000).toISOString(), stale: false },
     { region: "gravelines", lastResultAt: new Date(Date.now() - 65_000).toISOString(), stale: false },
+  ],
+};
+
+// A 3-region check with one region failing: below the default quorum (2 of
+// 3), so a regional issue and no incident (spec 2026-09-25-10).
+const DESIGN_REF_REGIONAL_CHECK: CheckModel = {
+  uid: "design-ref-regional",
+  name: "api.example.com",
+  status: "warning",
+  placement: "auto",
+  regionCount: 3,
+  regions: ["paris", "gravelines", "lauterbourg"],
+  failQuorum: "default",
+  effectiveFailQuorum: 2,
+  regionalIssue: { failingRegions: ["lauterbourg"], failQuorum: 2, regionCount: 3 },
+  regionFreshness: [
+    { region: "paris", lastResultAt: new Date(Date.now() - 20_000).toISOString(), stale: false, status: "up" },
+    { region: "gravelines", lastResultAt: new Date(Date.now() - 35_000).toISOString(), stale: false, status: "up" },
+    {
+      region: "lauterbourg",
+      lastResultAt: new Date(Date.now() - 10_000).toISOString(),
+      stale: false,
+      status: "timeout",
+      statusSince: new Date(Date.now() - 14 * 60_000).toISOString(),
+    },
   ],
 };
 
