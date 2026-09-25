@@ -360,8 +360,9 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	// which never runs that code — i.e. exactly where checks execute.
 	//
 	// Sibling construction site: app/server.go's `activationResolver`. Both are
-	// checkerdef.NewActivationResolver(&cfg.Checkers) — the same constructor
-	// over the same pure input — so they cannot diverge; keep them in step.
+	// checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode) —
+	// the same constructor over the same pure input — so they cannot diverge;
+	// keep them in step.
 	//
 	// nil orgDisabled: server-level only. The JS runtime has no org identity,
 	// so per-org overrides are not enforced through this gate (see checkjs).
@@ -369,7 +370,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 	// Agent semantics: an agent reads its OWN checkers.* config, not the
 	// control plane's, so it enforces the configuration of the host it runs on.
 	// An agent left at defaults enables every type.
-	activation := checkerdef.NewActivationResolver(&cfg.Checkers)
+	activation := checkerdef.NewActivationResolver(&cfg.Checkers, cfg.Deployment.Mode)
 	checkjs.TypeEnabled = func(checkType checkerdef.CheckType) bool {
 		return activation.IsTypeEnabled(checkType, nil)
 	}

@@ -991,7 +991,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// cfg.Checkers and installs it as checkjs.TypeEnabled, because this route
 	// setup is never reached by a standalone agent process. Same constructor,
 	// same pure input, so the two cannot diverge — keep them in step.
-	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers)
+	activationResolver := checkerdef.NewActivationResolver(&s.config.Checkers, s.config.Deployment.Mode)
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)

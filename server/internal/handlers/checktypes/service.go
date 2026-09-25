@@ -12,14 +12,19 @@ import (
 
 // CheckTypeResponse is the JSON representation of a check type with its status.
 type CheckTypeResponse struct {
-	Type                 string   `json:"type"`
-	Description          string   `json:"description"`
-	Labels               []string `json:"labels"`
-	Enabled              bool     `json:"enabled"`
-	DisabledReason       string   `json:"disabledReason,omitempty"`
-	MinPeriodSeconds     int      `json:"minPeriodSeconds,omitempty"`
-	MaxPeriodSeconds     int      `json:"maxPeriodSeconds,omitempty"`
-	DefaultPeriodSeconds int      `json:"defaultPeriodSeconds,omitempty"`
+	Type           string   `json:"type"`
+	Description    string   `json:"description"`
+	Labels         []string `json:"labels"`
+	Enabled        bool     `json:"enabled"`
+	DisabledReason string   `json:"disabledReason,omitempty"`
+	// Note is an advisory for an enabled type whose availability still
+	// depends on something the org must satisfy — today, docker in SaaS mode
+	// requiring a private-location placement (spec 2026-09-25-22). Empty when
+	// there is nothing to say.
+	Note                 string `json:"note,omitempty"`
+	MinPeriodSeconds     int    `json:"minPeriodSeconds,omitempty"`
+	MaxPeriodSeconds     int    `json:"maxPeriodSeconds,omitempty"`
+	DefaultPeriodSeconds int    `json:"defaultPeriodSeconds,omitempty"`
 	// SupportsTunnel mirrors CheckTypeMeta.SupportsTunnel: the type can be run
 	// through an SSH check's tunnel (`tunnelCheckUid` in its config). The
 	// dashboard gates its tunnel selector on this flag rather than on a
@@ -169,6 +174,7 @@ func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 			Labels:               statuses[idx].Labels,
 			Enabled:              statuses[idx].Enabled,
 			DisabledReason:       statuses[idx].DisabledReason,
+			Note:                 statuses[idx].Note,
 			MinPeriodSeconds:     durationToSeconds(statuses[idx].MinPeriod),
 			MaxPeriodSeconds:     durationToSeconds(statuses[idx].MaxPeriod),
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),

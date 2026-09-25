@@ -39,7 +39,7 @@ func TestListServerCheckTypesCarriesSecretFields(t *testing.T) {
 
 	r := require.New(t)
 
-	svc := NewService(checkerdef.NewActivationResolver(&config.CheckersConfig{}), "https://example.com")
+	svc := NewService(checkerdef.NewActivationResolver(&config.CheckersConfig{}, ""), "https://example.com")
 	resp := svc.ListServerCheckTypes()
 	r.NotEmpty(resp.Data)
 

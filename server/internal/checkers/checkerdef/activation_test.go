@@ -13,7 +13,7 @@ func TestActivationResolver_DefaultAllEnabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{})
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{}, "")
 	enabled := resolver.ListEnabledTypes(nil)
 
 	r.Len(enabled, len(checkerdef.ListCheckTypeMetas()))
@@ -27,7 +27,7 @@ func TestActivationResolver_ExplicitAllowlist(t *testing.T) {
 
 	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		Enabled: []string{"http", "tcp"},
-	})
+	}, "")
 
 	r.True(resolver.IsTypeEnabled(checkerdef.CheckTypeHTTP, nil))
 	r.True(resolver.IsTypeEnabled(checkerdef.CheckTypeTCP, nil))
@@ -41,7 +41,7 @@ func TestActivationResolver_EnabledLabels(t *testing.T) {
 
 	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		EnabledLabels: []string{"safe"},
-	})
+	}, "")
 
 	r.True(resolver.IsTypeEnabled(checkerdef.CheckTypeHTTP, nil))
 	r.False(resolver.IsTypeEnabled(checkerdef.CheckTypeICMP, nil))
@@ -56,7 +56,7 @@ func TestActivationResolver_DisabledList(t *testing.T) {
 
 	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		Disabled: []string{"docker", "js"},
-	})
+	}, "")
 
 	r.True(resolver.IsTypeEnabled(checkerdef.CheckTypeHTTP, nil))
 	r.False(resolver.IsTypeEnabled(checkerdef.CheckTypeDocker, nil))
@@ -67,7 +67,7 @@ func TestActivationResolver_OrgDisabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{})
+	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{}, "")
 
 	r.True(resolver.IsTypeEnabled(checkerdef.CheckTypeMySQL, nil))
 	r.False(resolver.IsTypeEnabled(checkerdef.CheckTypeMySQL, []string{"mysql"}))
@@ -79,7 +79,7 @@ func TestActivationResolver_ListAllWithStatus(t *testing.T) {
 
 	resolver := checkerdef.NewActivationResolver(&config.CheckersConfig{
 		Disabled: []string{"docker"},
-	})
+	}, "")
 
 	statuses := resolver.ListAllWithStatus([]string{"js"})
 
@@ -99,6 +99,30 @@ func TestActivationResolver_ListAllWithStatus(t *testing.T) {
 			r.True(statuses[idx].Enabled)
 			r.Empty(statuses[idx].DisabledReason)
 		}
+	}
+}
+
+func TestActivationResolver_DockerNoteOnlyInSaaS(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	selfHosted := checkerdef.NewActivationResolver(&config.CheckersConfig{}, config.DeploymentModeSelfHosted)
+	saas := checkerdef.NewActivationResolver(&config.CheckersConfig{}, config.DeploymentModeSaaS)
+
+	for idx := range selfHosted.ListAllWithStatus(nil) {
+		r.Empty(selfHosted.ListAllWithStatus(nil)[idx].Note)
+	}
+
+	statuses := saas.ListAllWithStatus(nil)
+	for idx := range statuses {
+		if statuses[idx].Type == checkerdef.CheckTypeDocker {
+			r.True(statuses[idx].Enabled, "docker stays listed and enabled in SaaS — the create gate, not the catalog, enforces the private-location-only rule")
+			r.NotEmpty(statuses[idx].Note)
+
+			continue
+		}
+
+		r.Empty(statuses[idx].Note)
 	}
 }
 

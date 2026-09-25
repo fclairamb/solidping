@@ -15675,6 +15675,13 @@ components:
           type: boolean
         disabledReason:
           type: string
+        note:
+          type: string
+          description: >-
+            Advisory for an otherwise-enabled type whose availability still
+            depends on something the org must satisfy — e.g. on a SaaS
+            deployment, docker only runs when pinned to one of the org's
+            private locations. Absent when there is nothing to say.
         minPeriodSeconds:
           type: integer
         maxPeriodSeconds:
