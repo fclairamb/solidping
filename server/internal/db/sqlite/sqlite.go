@@ -310,6 +310,12 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return fmt.Errorf("failed to run migrations: %w", migrateErr)
 	}
 
+	// Data half of 024's hash-user-tokens section; idempotent, and must run
+	// before anything reads or writes user_tokens (spec 2026-09-25-23).
+	if _, hashErr := db.HashPlaintextUserTokens(ctx, s.db); hashErr != nil {
+		return hashErr
+	}
+
 	mismatches, err = guard.Reconcile(ctx, s.guardMode)
 	if err != nil {
 		return err
@@ -1083,12 +1089,16 @@ func (s *Service) GetUserToken(ctx context.Context, uid string) (*models.UserTok
 	return token, nil
 }
 
+// GetUserTokenByToken looks a live token up by its raw value. Only the hash
+// is stored (spec 2026-09-25-23), so the presented value is hashed here, the
+// one place every caller goes through: no caller can match a raw value
+// against the column by mistake.
 func (s *Service) GetUserTokenByToken(ctx context.Context, tokenValue string) (*models.UserToken, error) {
 	token := new(models.UserToken)
 
 	err := s.db.NewSelect().
 		Model(token).
-		Where("token = ?", tokenValue).
+		Where("token_hash = ?", models.HashUserToken(tokenValue)).
 		Where("deleted_at IS NULL").
 		Scan(ctx)
 	if err != nil {

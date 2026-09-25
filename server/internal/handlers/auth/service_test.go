@@ -1126,17 +1126,17 @@ func TestResetPassword(t *testing.T) {
 
 		// Seed a refresh token + a PAT for this user.
 		refresh := &models.UserToken{
-			UID:     uuidV7(t),
-			UserUID: user.UID,
-			Type:    models.TokenTypeRefresh,
-			Token:   "r-" + user.UID,
+			UID:       uuidV7(t),
+			UserUID:   user.UID,
+			Type:      models.TokenTypeRefresh,
+			TokenHash: models.HashUserToken("r-" + user.UID),
 		}
 		r.NoError(dbSvc.CreateUserToken(ctx, refresh))
 		pat := &models.UserToken{
-			UID:     uuidV7(t),
-			UserUID: user.UID,
-			Type:    models.TokenTypePAT,
-			Token:   "p-" + user.UID,
+			UID:       uuidV7(t),
+			UserUID:   user.UID,
+			Type:      models.TokenTypePAT,
+			TokenHash: models.HashUserToken("p-" + user.UID),
 		}
 		r.NoError(dbSvc.CreateUserToken(ctx, pat))
 

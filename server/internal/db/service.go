@@ -190,6 +190,9 @@ type Service interface {
 	// UserToken operations
 	CreateUserToken(ctx context.Context, token *models.UserToken) error
 	GetUserToken(ctx context.Context, uid string) (*models.UserToken, error)
+	// GetUserTokenByToken finds a live token by its RAW value: the
+	// implementation hashes it (models.HashUserToken) and matches token_hash,
+	// since the value itself is never stored (spec 2026-09-25-23).
 	GetUserTokenByToken(ctx context.Context, token string) (*models.UserToken, error)
 	ListUserTokens(ctx context.Context, userUID string) ([]*models.UserToken, error)
 	ListUserTokensByType(ctx context.Context, userUID string, tokenType models.TokenType) ([]*models.UserToken, error)

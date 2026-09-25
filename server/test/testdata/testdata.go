@@ -290,6 +290,10 @@ func createTestMembership(
 	return nil
 }
 
+// testPATValue is the well-known test-mode PAT. Only its hash is stored, like
+// every other user token.
+const testPATValue = "test"
+
 func createTestToken(
 	ctx context.Context, dbService db.Service, orgUID, userUID string, now time.Time,
 ) error {
@@ -297,7 +301,7 @@ func createTestToken(
 		UID:             "00000000-0000-0000-0000-000000000003",
 		UserUID:         userUID,
 		OrganizationUID: &orgUID,
-		Token:           "test",
+		TokenHash:       models.HashUserToken(testPATValue),
 		Type:            models.TokenTypePAT,
 		Properties:      make(models.JSONMap),
 		CreatedAt:       now,
@@ -308,7 +312,7 @@ func createTestToken(
 		return fmt.Errorf("failed to create test PAT token: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Created test PAT token", "uid", testToken.UID, "token", testToken.Token)
+	slog.InfoContext(ctx, "Created test PAT token", "uid", testToken.UID, "token", testPATValue)
 
 	return nil
 }

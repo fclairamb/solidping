@@ -153,8 +153,11 @@ type Service struct {
 	support      *support.Service
 	jobsSvc      jobsvc.Service
 	entitlements EntitlementsChecker
-	patCache     map[string]*cachedPATClaims
-	cacheMux     sync.RWMutex
+	// patCache is keyed by models.HashUserToken of the PAT, the same value
+	// stored in user_tokens.token_hash: no plaintext PAT sits in a map key,
+	// and RevokeToken can evict an entry from the row it just read.
+	patCache map[string]*cachedPATClaims
+	cacheMux sync.RWMutex
 }
 
 // EntitlementsChecker is the slice of the entitlements service the auth
@@ -1417,10 +1420,13 @@ func (s *Service) ValidateToken(ctx context.Context, tokenString string) (*Claim
 //
 //nolint:cyclop,funlen
 func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claims, error) {
+	// The cache is keyed by the token's hash, never the token itself.
+	cacheKey := models.HashUserToken(patToken)
+
 	// Check cache first
 	s.cacheMux.RLock()
 
-	if cached, exists := s.patCache[patToken]; exists && time.Now().Before(cached.expiresAt) {
+	if cached, exists := s.patCache[cacheKey]; exists && time.Now().Before(cached.expiresAt) {
 		s.cacheMux.RUnlock()
 
 		return cached.claims, nil
@@ -1513,7 +1519,7 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 
 	// Cache the result for 15 minutes
 	s.cacheMux.Lock()
-	s.patCache[patToken] = &cachedPATClaims{
+	s.patCache[cacheKey] = &cachedPATClaims{
 		claims:    claims,
 		expiresAt: time.Now().Add(patCacheDuration),
 	}
@@ -1945,7 +1951,7 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 	// Invalidate cache if it's a PAT
 	if token.Type == models.TokenTypePAT {
 		s.cacheMux.Lock()
-		delete(s.patCache, token.Token)
+		delete(s.patCache, token.TokenHash)
 		s.cacheMux.Unlock()
 
 		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for

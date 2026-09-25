@@ -3,6 +3,61 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: hash-user-tokens
+--
+-- ⚠️ A DOWNGRADE SIGNS EVERYONE OUT. The stored hashes cannot be turned back
+-- into tokens, so every user_tokens row is deleted: all sessions, PATs and
+-- OAuth refresh grants are revoked. The table is rebuilt in its v0.32 shape
+-- (plaintext `token`, no token_hash), which works whether or not
+-- db.HashPlaintextUserTokens already dropped `token` (SQLite has no
+-- ADD COLUMN IF NOT EXISTS).
+-- ==========================================================================
+
+delete from user_tokens;
+
+--bun:split
+
+drop index if exists user_tokens_token_hash_idx;
+
+--bun:split
+
+create table user_tokens_v0_32 (
+  uid               text primary key,
+  user_uid          text not null references users(uid) on delete cascade, -- Token owner
+  organization_uid  text references organizations(uid) on delete cascade, -- Organization scope for PAT tokens. NULL for global refresh tokens
+  token             text not null, -- Hashed token value
+  type              text not null check (type in ('pat', 'refresh', 'oauth_refresh')), -- Token type: pat, session refresh, or rotating OAuth refresh grant (client_id/scope/resource in properties)
+  properties        text, -- Token metadata (e.g., name, scopes, IP restrictions)
+  expires_at        text, -- Expiration timestamp. NULL means never expires
+  last_active_at    text, -- Last time this token was used for authentication
+  created_at        text not null default (datetime('now')),
+  updated_at        text not null default (datetime('now')),
+  deleted_at        text
+);
+
+--bun:split
+
+drop table user_tokens;
+
+--bun:split
+
+alter table user_tokens_v0_32 rename to user_tokens;
+
+--bun:split
+
+create unique index if not exists user_tokens_token_idx on user_tokens (token) where deleted_at is null;
+
+--bun:split
+
+create index if not exists user_tokens_user_uid_idx on user_tokens (user_uid) where deleted_at is null;
+
+--bun:split
+
+create index if not exists user_tokens_expires_at_idx on user_tokens (expires_at) where deleted_at is null and expires_at is not null;
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: auth-handoff-codes
 --
 -- Outstanding handoff codes are dropped; a login mid-handoff has to start

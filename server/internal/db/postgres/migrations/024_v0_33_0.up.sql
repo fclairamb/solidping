@@ -23,6 +23,10 @@
 --   SECTION: auth-handoff-codes
 --                              single-use codes that hand a federated login's
 --                              session to the dashboard (auth_handoff_codes)
+--   SECTION: hash-user-tokens
+--                              user_tokens.token_hash replaces the plaintext
+--                              user_tokens.token (the rows are hashed, and the
+--                              old column dropped, in Go: see the section)
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -420,3 +424,42 @@ comment on column auth_handoff_codes.code_hash is
 
 comment on column auth_handoff_codes.payload is
   'The session (tokens, return path), AES-256-GCM sealed under a key derived from the code. Unreadable without the code.';
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: hash-user-tokens  (spec 2026-09-25-23)
+--
+-- Session refresh tokens, PATs and OAuth refresh grants were stored as the raw
+-- token in user_tokens.token (whatever the column comment said), so a database
+-- dump yielded live credentials. Only the hex SHA-256 of the value is kept now,
+-- in token_hash; lookups hash the presented token and compare.
+--
+-- This section is the schema half: the new column and its unique index, and
+-- the old unique index goes so `token` can be dropped. The data half runs in
+-- Go, right after the migrator, on every boot: db.HashPlaintextUserTokens
+-- hashes each row whose token_hash is NULL, then drops `token`, in one
+-- transaction. It lives in Go so SQLite and Postgres share one hashing code
+-- path (SQLite has no sha256()). It is idempotent and unambiguous: a row is
+-- hashed exactly when token_hash is set, never judged by the shape of a
+-- string, and once `token` is gone there is nothing left to do.
+--
+-- token_hash stays nullable for parity with SQLite, which cannot add a
+-- NOT NULL column without a default; every insert sets it, and a NULL row
+-- could never be looked up anyway.
+-- ==========================================================================
+
+alter table user_tokens add column if not exists token_hash text;
+
+--bun:split
+
+drop index if exists user_tokens_token_idx;
+
+--bun:split
+
+create unique index if not exists user_tokens_token_hash_idx on user_tokens (token_hash) where deleted_at is null;
+
+--bun:split
+
+comment on column user_tokens.token_hash is
+  'Lowercase hex SHA-256 of the token value. The value itself is never stored (spec 2026-09-25-23).';

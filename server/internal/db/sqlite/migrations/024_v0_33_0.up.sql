@@ -25,6 +25,10 @@
 --   SECTION: auth-handoff-codes
 --                              single-use codes that hand a federated login's
 --                              session to the dashboard (auth_handoff_codes)
+--   SECTION: hash-user-tokens
+--                              user_tokens.token_hash replaces the plaintext
+--                              user_tokens.token (the rows are hashed, and the
+--                              old column dropped, in Go: see the section)
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -274,3 +278,24 @@ create table if not exists auth_handoff_codes (
 --bun:split
 
 create index if not exists auth_handoff_codes_expires_at_idx on auth_handoff_codes (expires_at);
+
+--bun:split
+
+-- ==========================================================================
+-- SECTION: hash-user-tokens  (spec 2026-09-25-23)
+--
+-- See the Postgres twin for the rationale. Schema half only: the new
+-- token_hash column and its unique index, and the old unique index on the
+-- plaintext `token` goes. db.HashPlaintextUserTokens (Go, run right after the
+-- migrator on every boot) hashes the existing rows and drops `token`.
+-- ==========================================================================
+
+alter table user_tokens add column token_hash text; -- Lowercase hex SHA-256 of the token value; the value itself is never stored
+
+--bun:split
+
+drop index if exists user_tokens_token_idx;
+
+--bun:split
+
+create unique index if not exists user_tokens_token_hash_idx on user_tokens (token_hash) where deleted_at is null;

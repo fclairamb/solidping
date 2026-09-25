@@ -3,6 +3,40 @@
 -- 024_v0_33_0.up.sql.
 
 -- ==========================================================================
+-- SECTION: hash-user-tokens
+--
+-- ⚠️ A DOWNGRADE SIGNS EVERYONE OUT. The stored hashes cannot be turned back
+-- into tokens, so every user_tokens row is deleted: all sessions, PATs and
+-- OAuth refresh grants are revoked, and users sign in again and re-create
+-- their PATs. The plaintext `token` column comes back empty. Works whether or
+-- not db.HashPlaintextUserTokens already dropped `token`.
+-- ==========================================================================
+
+delete from user_tokens;
+
+--bun:split
+
+drop index if exists user_tokens_token_hash_idx;
+
+--bun:split
+
+alter table user_tokens drop column if exists token_hash;
+
+--bun:split
+
+alter table user_tokens add column if not exists token text not null;
+
+--bun:split
+
+create unique index if not exists user_tokens_token_idx on user_tokens (token) where deleted_at is null;
+
+--bun:split
+
+comment on column user_tokens.token is 'Hashed token value.';
+
+--bun:split
+
+-- ==========================================================================
 -- SECTION: auth-handoff-codes
 --
 -- Outstanding handoff codes are dropped; a login mid-handoff has to start

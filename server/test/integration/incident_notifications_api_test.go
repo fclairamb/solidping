@@ -192,7 +192,7 @@ func TestListUserNotificationsNonAdminForbidden(t *testing.T) {
 		UID:             "50000000-0000-0000-0000-000000000003",
 		UserUID:         nonAdmin.UID,
 		OrganizationUID: &orgUID,
-		Token:           "pat_nonadmin",
+		TokenHash:       models.HashUserToken("pat_nonadmin"),
 		Type:            models.TokenTypePAT,
 		Properties:      models.JSONMap{"name": "Non-Admin PAT"},
 		CreatedAt:       now, UpdatedAt: now,

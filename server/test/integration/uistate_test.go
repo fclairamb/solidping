@@ -85,7 +85,7 @@ func seedSecondUser(t *testing.T, ts *TestServer) string {
 		UID:             "20000000-0000-0000-0000-000000000003",
 		UserUID:         user.UID,
 		OrganizationUID: &orgUID,
-		Token:           "pat_test_second",
+		TokenHash:       models.HashUserToken("pat_test_second"),
 		Type:            models.TokenTypePAT,
 		Properties:      models.JSONMap{"name": "Second PAT"},
 		CreatedAt:       now, UpdatedAt: now,
