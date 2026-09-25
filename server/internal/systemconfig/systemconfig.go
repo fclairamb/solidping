@@ -212,6 +212,16 @@ const (
 	// a value set purely through the database still takes effect without a
 	// second code path. See config.EnvMetricsScrapeToken for the env override.
 	KeyMetricsScrapeToken ParameterKey = "metrics.scrape_token"
+
+	// KeyFeedbackMaxStorageBytes is the per-org quota on live feedback-report
+	// screenshot bytes (spec 2026-09-25-26). Mirrors
+	// config.AppConfig.FeedbackMaxStorageBytes; see its doc comment. Applied
+	// at startup like the other numeric knobs (InitializeSystemConfig, before
+	// SetupRoutes in the real boot order), but feedback.Service reads
+	// cfg.App.FeedbackMaxStorageBytes at request time rather than capturing
+	// it, so a value set purely through the database still takes effect
+	// without a restart.
+	KeyFeedbackMaxStorageBytes ParameterKey = "app.feedback_max_storage_bytes"
 )
 
 // SP_* environment variable names for the product-analytics parameters,
@@ -786,6 +796,19 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Prometheus.ScrapeToken = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyFeedbackMaxStorageBytes,
+			EnvVar: config.EnvAppFeedbackMaxStorageBytes,
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// Numeric parameters arrive as float64 from encoding/json.
+				if v, ok := value.(float64); ok {
+					cfg.App.FeedbackMaxStorageBytes = int64(v)
+				} else if v, ok := value.(int64); ok {
+					cfg.App.FeedbackMaxStorageBytes = v
 				}
 			},
 		},
