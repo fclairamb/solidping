@@ -296,8 +296,9 @@ See [Product Analytics](/configuration/analytics) for exactly what is and is not
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SP_PROMETHEUS_ENABLED` | `true` | Enable the Prometheus `/metrics` endpoint |
+| `SP_PROMETHEUS_ENABLED` | `true` | Master switch for the Prometheus `/metrics` endpoint |
 | `SP_PROMETHEUS_PATH` | `/metrics` | Metrics endpoint path |
+| `SP_METRICS_SCRAPE_TOKEN` | - | Bearer token required to scrape `/metrics`; unset means 404 (see [Observability](/features/observability#prometheus-metrics)) |
 | `SP_SENTRY_DSN` | - | Sentry DSN for error tracking |
 | `SP_OTEL_ENABLED` | `false` | Enable OpenTelemetry export |
 | `SP_OTEL_ENDPOINT` | - | OTLP collector endpoint |
