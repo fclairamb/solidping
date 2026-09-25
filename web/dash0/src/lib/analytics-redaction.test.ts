@@ -16,8 +16,9 @@ const JWT =
   "Zm9vYmFyLXNpZ25hdHVyZS1ub3QtcmVhbA";
 const REFRESH = "rt_9f3c1a7e5b2d4c6f8a0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f2a4c6e8b0d1f3a";
 
-// The URL the backend's buildSuccessRedirect produces for a federated login,
-// and the org-less variant from pendingMembershipRedirect.
+// The URL a federated login produced before spec 2026-09-25-12 (and still does
+// when an old pod answers the callback during a rolling deploy), and its
+// org-less variant.
 const ORG_REDIRECT = `https://solidping.example/d/orgs/acme?access_token=${JWT}&expires_in=900&org=acme&refresh_token=${REFRESH}`;
 const NO_ORG_REDIRECT = `https://solidping.example/d/no-org?access_token=${JWT}&expires_in=900&membershipPending=acme`;
 
@@ -88,8 +89,13 @@ describe("redactUrl", () => {
     expect(redactUrl("/d/auth/slack/complete?code=4f8a.b9c1&state=nonce123")).toBe(
       `/d/auth/slack/complete?code=${REDACTED}&state=${REDACTED}`,
     );
-    // Spec 2026-09-25-12's one-time handoff code.
+    // Spec 2026-09-25-12's one-time handoff code, in the exact shapes the
+    // provider callbacks redirect to (join_policy.go handoffRedirect).
     expect(redactUrl("/d/auth/complete?code=hc_abc123")).toBe(`/d/auth/complete?code=${REDACTED}`);
+    const handoff = "https://solidping.example/d/auth/complete?code=Zm9vYmFyYmF6cXV4LWJhc2U2NHVybC1jb2RlLTQzY2hhcnM&membershipPending=acme";
+    expect(redactUrl(handoff)).toBe(
+      `https://solidping.example/d/auth/complete?code=${REDACTED}&membershipPending=acme`,
+    );
   });
 
   it("redacts a token-bearing URL nested, percent-encoded, in a harmless param", () => {

@@ -144,8 +144,7 @@ function LoginPage() {
   // /authorize endpoint, force a token refresh first. That endpoint (and the
   // consent screen's native form POST after it) authenticates via the
   // `access_token` COOKIE, not the SPA's localStorage bearer — and the two
-  // routinely diverge: SSO logins hand tokens over in the redirect URL and
-  // never set the cookie, and an idle tab's cookie lapses while the bearer
+  // routinely diverge: an idle tab's cookie lapses while the bearer
   // session keeps refreshing. POST /auth/refresh re-sets the cookie
   // (server-side, alongside the rotated bearer), so refreshing right before
   // the full-page navigation guarantees /authorize sees a session instead of

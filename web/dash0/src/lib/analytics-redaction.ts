@@ -7,8 +7,10 @@
  * tokens, one-time codes and single-use links must never reach PostHog,
  * whatever page they happen to ride on.
  *
- * Why it exists (spec 2026-09-25-11): federated logins land on
- * `/d/orgs/<slug>?access_token=…&refresh_token=…`. main.tsx strips the params
+ * Why it exists (spec 2026-09-25-11): federated logins landed on
+ * `/d/orgs/<slug>?access_token=…&refresh_token=…` (since spec 2026-09-25-12
+ * they land on `/d/auth/complete?code=…` with a single-use code instead, and
+ * the old shape only survives a rolling deploy). main.tsx strips the params
  * with `history.replaceState`, but the replay network plugin records the
  * document's navigation entry, which keeps the original URL. Refresh tokens do
  * not rotate, so a recorded URL was a session takeover for anyone with read

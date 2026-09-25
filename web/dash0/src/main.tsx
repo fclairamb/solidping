@@ -31,14 +31,19 @@ captureLandingAttribution(window.location.search, window.location.pathname);
 // Get base URL from Vite config (empty string means root "/")
 const basepath = import.meta.env.VITE_BASE_URL || "";
 
-// OAuth sign-in handoff. External providers (Slack, GitHub, Google) redirect
-// back to `/orgs/<slug>?access_token=…&refresh_token=…&expires_in=…&org=<slug>`.
-// We persist the full session synchronously here — before the router or any
-// React Query mounts. Doing it later (in a component effect) loses a race:
-// org-scoped queries fire un-authenticated, 401, and apiFetch's global
-// handler redirects to /login before the token is stored, bouncing the user
-// straight back out of the sign-in they just completed. See
-// lib/oauth-handoff.ts for why refresh_token/expires_in must not be dropped.
+// LEGACY OAuth sign-in handoff.
+//
+// TODO(remove after next release): spec 2026-09-25-12
+// oauth-callback-one-time-code-exchange. Provider callbacks no longer put the
+// session in the URL: they redirect to /auth/complete with a single-use code
+// (routes/auth.complete.tsx). This only catches a callback served by a pod
+// still running the previous release during a rolling deploy, which redirects
+// to `/orgs/<slug>?access_token=…&refresh_token=…&expires_in=…&org=<slug>`.
+//
+// It persists that session synchronously, before the router or any React
+// Query mounts (doing it later loses a race: org-scoped queries fire
+// un-authenticated, 401, and bounce the user to /login), then strips the
+// tokens from the URL.
 (() => {
   const handoff = parseOAuthHandoff(window.location.search);
   if (!handoff) return;
