@@ -363,7 +363,9 @@ func createResolver(nameserver string, timeout time.Duration) hostLookuper {
 	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			d := net.Dialer{Timeout: timeout}
+			// A custom nameserver answers to the egress guard (spec
+			// 2026-09-25-19); the system resolver is the worker's own.
+			d := checkerdef.GuardDialerOr(ctx, &net.Dialer{Timeout: timeout})
 
 			return d.DialContext(ctx, "udp", nameserver)
 		},

@@ -839,9 +839,11 @@ func (r *jsRuntime) httpRequest(
 		// connections byte-for-byte as before this feature. When a dialer is
 		// present the transport hands the raw host:port to it — no local
 		// resolution — exactly like the http and prometheus checkers.
-		Transport: checkerdef.BuildHTTPTransport(
-			checkerdef.TunnelDialerFrom(r.execCtx), false, checkerdef.IPVersionFrom(r.execCtx),
-		),
+		//
+		// Under an enforcing egress policy (spec 2026-09-25-19) the transport
+		// dials through the guard instead: a script cannot reach a non-public
+		// address, and the refusal comes back as the request's error.
+		Transport: checkerdef.HTTPTransportFor(r.execCtx, false),
 	}
 
 	if jar != nil {

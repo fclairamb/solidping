@@ -3,6 +3,7 @@ package checka2s
 
 import (
 	"context"
+	"net"
 	"time"
 
 	"github.com/rumblefrog/go-a2s"
@@ -46,7 +47,7 @@ func (c *A2SChecker) Execute(
 		checkerdef.OutputKeyPort: cfg.ResolvePort(),
 	}
 
-	info, queryErr := queryServer(cfg)
+	info, queryErr := queryServer(ctx, cfg)
 	if queryErr != nil {
 		status := checkerdef.StatusDown
 		errMsg := "A2S query failed: " + queryErr.Error()
@@ -68,9 +69,14 @@ func (c *A2SChecker) Execute(
 	return buildResult(cfg, info, start, metrics, output), nil
 }
 
-func queryServer(cfg *A2SConfig) (*a2s.ServerInfo, error) {
+func queryServer(ctx context.Context, cfg *A2SConfig) (*a2s.ServerInfo, error) {
+	target, err := pinTarget(ctx, cfg.ResolveTarget())
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := a2s.NewClient(
-		cfg.ResolveTarget(),
+		target,
 		a2s.SetMaxPacketSize(14000),
 		a2s.TimeoutOption(cfg.ResolveTimeout()),
 	)
@@ -138,4 +144,27 @@ func buildResult(
 
 func durationMs(duration time.Duration) float64 {
 	return float64(duration.Microseconds()) / microsecondsPerMilli
+}
+
+// pinTarget applies the egress guard (spec 2026-09-25-19) to a "host:port"
+// target: go-a2s resolves and dials by itself with no dialer seam, so under an
+// enforcing policy the host is resolved once here, refused when non-public,
+// and handed to the library as the pinned IP literal. A2S has no name-bound
+// handshake, so the literal changes nothing else. Unchanged otherwise.
+func pinTarget(ctx context.Context, target string) (string, error) {
+	if !checkerdef.EgressEnforcing(ctx) {
+		return target, nil
+	}
+
+	host, port, err := net.SplitHostPort(target)
+	if err != nil {
+		return target, nil //nolint:nilerr // a malformed target is the library's to reject, as before
+	}
+
+	pinned, err := checkerdef.PinTargetHost(ctx, host)
+	if err != nil {
+		return "", err
+	}
+
+	return net.JoinHostPort(pinned, port), nil
 }

@@ -187,7 +187,11 @@ func (c *DNSChecker) createResolver(nameserver string, timeout time.Duration) *n
 	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			d := net.Dialer{Timeout: timeout}
+			// A custom nameserver is a user-chosen target: it answers to the
+			// egress guard (spec 2026-09-25-19) riding the lookup context.
+			// The system resolver above is the worker's own and is not.
+			d := checkerdef.GuardDialerOr(ctx, &net.Dialer{Timeout: timeout})
+
 			return d.DialContext(ctx, "udp", nameserver)
 		},
 	}

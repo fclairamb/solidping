@@ -3,6 +3,7 @@ package checkmongodb
 
 import (
 	"context"
+	"net"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -64,6 +65,10 @@ func (c *MongoDBChecker) Execute(
 		clientOpts.SetDialer(dialer)
 
 		tunneled = true
+	} else if checkerdef.EgressEnforcing(ctx) {
+		// Egress guard (spec 2026-09-25-19). The driver layers TLS above this
+		// dialer itself, so only the TCP connect changes.
+		clientOpts.SetDialer(checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout}))
 	}
 
 	client, err := mongo.Connect(clientOpts)

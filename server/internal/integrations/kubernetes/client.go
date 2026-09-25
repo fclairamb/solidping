@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 var (
@@ -67,6 +68,15 @@ func ResolveClientset(
 	restCfg, err := BuildRestConfig(settings, priv)
 	if err != nil {
 		return nil, err
+	}
+
+	// A `kubernetes` check executing on a worker carries that worker's egress
+	// guard (spec 2026-09-25-19): the API server is a user-chosen target, so
+	// under an enforcing policy every connection to it dials through the
+	// guard (client-go negotiates TLS above Dial). Callers without a guard on
+	// their context (discovery, connection validation) are unchanged.
+	if guard := egress.FromContext(ctx); guard.Enforcing() {
+		restCfg.Dial = guard.DialContext
 	}
 
 	return clientsetFactory(restCfg)

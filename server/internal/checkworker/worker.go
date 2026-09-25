@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/dbfault"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/errorreport"
 	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
@@ -199,6 +200,11 @@ type CheckWorker struct {
 	internalCheckUID string // UID of the internal check for this worker
 	defaultOrgUID    string // UID of the default organization
 
+	// egressGuard is the outbound-connection policy of this process's checks
+	// (spec 2026-09-25-19), put on every execution context. Nil allows
+	// everything (tests building a CheckWorker by hand).
+	egressGuard *egress.Guard
+
 	// faults classifies fetch errors and, on a structural one, takes the
 	// process down. Nil is safe (dbfault.Latch has nil-receiver methods), which
 	// is what agent mode and tests rely on: an agent has no database of its
@@ -242,6 +248,10 @@ func NewCheckWorker(
 	worker := newCheckWorker(cfg, directBackend)
 	worker.dbService = dbService
 	worker.services = svc
+
+	// A local trace runs from this process, so it answers to this process's
+	// egress policy: never trace towards an address a check was refused.
+	traceDispatcher.SetEgressGuard(worker.egressGuard)
 
 	return worker
 }
@@ -360,6 +370,7 @@ func newCheckWorker(cfg *config.Config, workerBackend backend.WorkerBackend) *Ch
 		backend:     workerBackend,
 		config:      cfg,
 		logger:      logger,
+		egressGuard: newEgressGuard(cfg, logger),
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		getChecker:  registry.GetChecker,
 		parseConfig: registry.ParseConfig,
@@ -1076,6 +1087,11 @@ func (r *CheckWorker) executeJob(
 	// override across so a per-execution resolver is still honored.
 	execCtx = sshtunnel.CarryResolver(ctx, execCtx)
 
+	// Egress policy (spec 2026-09-25-19): every outbound connection of this
+	// execution — the SSH bastion included — goes through the worker's guard,
+	// and any refusal is recorded so the result reports it uniformly.
+	execCtx, egressDenials := r.withEgress(execCtx)
+
 	// Tunnel-capable checks (`tunnelCheckUid` in config) dial their probe
 	// through an SSH check's connection. A fresh session is established per
 	// execution — the dependency is config-level, not runtime-level — and torn
@@ -1150,6 +1166,9 @@ func (r *CheckWorker) executeJob(
 	// graphs stay about the target rather than about SSH handshakes), and
 	// re-classify a failure the bastion itself caused.
 	tunnel.annotate(result)
+
+	// A refused destination wins over whatever the checker made of it.
+	applyEgressDenial(result, egressDenials.Denied())
 
 	// 5. Save result
 	// Use a fallback context for cleanup operations if the main context is canceled

@@ -392,7 +392,9 @@ func roundTrip(ctx context.Context, cfg *SIPConfig, request string) (string, err
 func roundTripUDP(ctx context.Context, cfg *SIPConfig, request string) (string, error) {
 	target := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 
-	dialer := &net.Dialer{}
+	// Egress guard (spec 2026-09-25-19): resolves once and refuses a
+	// non-public address under an enforcing policy.
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{})
 
 	conn, err := dialer.DialContext(ctx, "udp", target)
 	if err != nil {
@@ -429,7 +431,7 @@ func roundTripUDP(ctx context.Context, cfg *SIPConfig, request string) (string, 
 func roundTripStream(ctx context.Context, cfg *SIPConfig, request string, useTLS bool) (string, error) {
 	target := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 
-	dialer := &net.Dialer{}
+	dialer := checkerdef.GuardDialerOr(ctx, &net.Dialer{})
 
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {

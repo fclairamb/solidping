@@ -6,8 +6,14 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/agents"
+	"github.com/fclairamb/solidping/server/internal/egress"
 	"github.com/fclairamb/solidping/server/internal/nettrace"
 )
+
+// SetEgressGuard installs the agent's egress policy. A trace is an outbound
+// probe from this host like any check, so it answers to the same policy: an
+// agent that refuses private targets never traces towards one either.
+func (b *WSBackend) SetEgressGuard(guard *egress.Guard) { b.egressGuard = guard }
 
 // The agent half of traceroute-on-failure (spec 2026-08-21-10).
 //
@@ -54,6 +60,13 @@ func (b *WSBackend) handleTraceRequest(ctx context.Context, frame *agents.Server
 	if address == nil {
 		b.logger.DebugContext(ctx, "trace request carried no usable address",
 			"address", frame.Trace.Address, "topic", frame.Topic)
+
+		return
+	}
+
+	if err := b.egressGuard.CheckIP(address); err != nil {
+		b.logger.DebugContext(ctx, "path trace refused by the egress policy",
+			"topic", frame.Topic, "error", err)
 
 		return
 	}

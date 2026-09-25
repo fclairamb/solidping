@@ -64,6 +64,21 @@ func buildOptions(ctx context.Context, cfg *ClickHouseConfig) *clickhouse.Option
 		opts.DialContext = func(ctx context.Context, addr string) (net.Conn, error) {
 			return dialer.DialContext(ctx, "tcp", addr)
 		}
+	} else if checkerdef.EgressEnforcing(ctx) {
+		// Egress guard (spec 2026-09-25-19). A custom DialContext replaces the
+		// driver's whole dial, TLS included, so this reproduces the driver's
+		// own default (tls.DialWithDialer / plain dial with DialTimeout) over
+		// a guarded net.Dialer.
+		guarded := checkerdef.GuardedNetDialer(ctx, &net.Dialer{Timeout: timeout})
+		tlsConfig := opts.TLS
+
+		opts.DialContext = func(dialCtx context.Context, addr string) (net.Conn, error) {
+			if tlsConfig != nil {
+				return tls.DialWithDialer(guarded, "tcp", addr, tlsConfig)
+			}
+
+			return guarded.DialContext(dialCtx, "tcp", addr)
+		}
 	}
 
 	return opts

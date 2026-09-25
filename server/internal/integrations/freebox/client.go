@@ -102,6 +102,15 @@ func NewClientWithAppID(baseURL, appID, appToken string) *Client {
 	}
 }
 
+// WithTransport swaps the HTTP transport, keeping the timeout. The
+// freebox_line checker uses it to route its calls through the egress guard
+// (spec 2026-09-25-19). Call it before the client is shared.
+func (c *Client) WithTransport(rt http.RoundTripper) *Client {
+	c.httpClient = &http.Client{Transport: rt, Timeout: c.httpClient.Timeout}
+
+	return c
+}
+
 // Authorize starts a pairing flow. The Freebox LCD will display a
 // pairing prompt; the user must press the right-arrow key within ~30 s.
 //

@@ -3,6 +3,7 @@ package checkbrowser
 import (
 	"context"
 	"errors"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkersession"
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // MaxPayloadBytes caps what a single page read hands back to a caller — the
@@ -312,6 +314,10 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 
 	start := time.Now()
 
+	if err := preflightEgress(ctx, url); err != nil {
+		return NavResult{}, err
+	}
+
 	err := s.run(ctx,
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body"),
@@ -323,6 +329,34 @@ func (s *Session) Navigate(ctx context.Context, url string) (NavResult, error) {
 	}
 
 	return NavResult{URL: location, Title: title, Duration: time.Since(start)}, nil
+}
+
+// preflightEgress refuses a navigation whose host resolves to a non-public
+// address under an enforcing egress policy (spec 2026-09-25-19).
+//
+// This is a PRE-FLIGHT, not the dial-level guard every other checker gets:
+// Chrome has its own network stack and resolver, so it cannot be handed the
+// guard's dialer. It stops the direct case (a check or a script navigating to
+// an internal URL) but not a public page that redirects, loads a subresource
+// from, or rebinds its DNS to a private address after this check. The egress
+// policy docs say so.
+func preflightEgress(ctx context.Context, rawURL string) error {
+	if !checkerdef.EgressEnforcing(ctx) {
+		return nil
+	}
+
+	parsed, err := neturl.Parse(rawURL)
+	if err != nil || parsed.Hostname() == "" {
+		return nil //nolint:nilerr // an unparseable URL is Chrome's to reject, not the policy's
+	}
+
+	// Only a refusal stops the navigation: a name that does not resolve here
+	// is left for Chrome to report in its own words, as before.
+	if _, err := checkerdef.PinTargetHost(ctx, parsed.Hostname()); errors.Is(err, egress.ErrDenied) {
+		return err
+	}
+
+	return nil
 }
 
 // WaitVisible waits for a selector to become visible.

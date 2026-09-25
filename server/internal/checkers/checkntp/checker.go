@@ -97,10 +97,21 @@ func (c *NTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	address := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
 
-	resp, err := queryFromContext(ctx)(address, ntp.QueryOptions{
+	opts := ntp.QueryOptions{
 		Timeout: timeout,
 		Version: version,
-	})
+	}
+
+	// Egress guard (spec 2026-09-25-19): the NTP server is a user-chosen UDP
+	// target. The library's default dialer is left alone unless the policy
+	// is enforcing.
+	if checkerdef.EgressEnforcing(ctx) {
+		opts.Dialer = func(_, remoteAddress string) (net.Conn, error) {
+			return checkerdef.GuardDialerOr(ctx, &net.Dialer{Timeout: timeout}).DialContext(ctx, "udp", remoteAddress)
+		}
+	}
+
+	resp, err := queryFromContext(ctx)(address, opts)
 	if err != nil {
 		return queryErrorResult(ctx, cfg, port, start, err), nil
 	}

@@ -267,8 +267,11 @@ func (c *HTTPChecker) executeRequest(ctx context.Context, config checkerdef.Conf
 	// whichever of DialContext/TLSClientConfig applies gets set on one shared
 	// http.Transport, so client.Transport stays nil only when neither is in
 	// play (preserving DefaultTransport's connection pooling in the common case).
-	dialer := checkerdef.TunnelDialerFrom(ctx)
-	client.Transport = buildTransport(dialer, skipTLSVerify, checkerdef.IPVersionFrom(ctx))
+	//
+	// The egress guard (spec 2026-09-25-19) rides the same transport: under an
+	// enforcing policy every dial — redirect hops included — resolves once,
+	// refuses a non-public address and connects to the pinned IP.
+	client.Transport = checkerdef.HTTPTransportFor(ctx, skipTLSVerify)
 
 	resp, err := client.Do(req)
 	duration := time.Since(start)

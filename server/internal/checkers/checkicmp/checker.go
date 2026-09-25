@@ -118,6 +118,26 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		}, nil
 	}
 
+	// Egress guard (spec 2026-09-25-19). Raw ICMP sockets cannot take a
+	// dialer, so the address picked above is judged here, before any packet
+	// leaves. Pinging the worker's internal network is a mapping oracle
+	// (which hosts exist, how far) even without a response body.
+	if egressErr := checkerdef.CheckEgressIP(ctx, cfg.Host, ip); egressErr != nil {
+		return &checkerdef.Result{
+			Status: checkerdef.StatusError,
+			Output: map[string]any{
+				checkerdef.OutputKeyHost:   cfg.Host,
+				checkerdef.OutputKeyMethod: methodICMP,
+				checkerdef.OutputKeyError:  egressErr.Error(),
+			},
+			Metrics: map[string]any{
+				metricPacketsSent:     0,
+				metricPacketsReceived: 0,
+				metricPacketLossPct:   float64(percentageMultiplier),
+			},
+		}, nil
+	}
+
 	isIPv6 := checkerdef.IPVersionOf(ip) == checkerdef.IPVersionIPv6
 
 	start := time.Now()

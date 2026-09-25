@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/fclairamb/solidping/server/internal/egress"
 )
 
 // familyDialTimeout / familyDialKeepAlive mirror http.DefaultTransport's dialer
@@ -32,9 +34,33 @@ const (
 func BuildHTTPTransport(
 	dialer ContextDialer, skipTLSVerify bool, version IPVersion,
 ) http.RoundTripper {
+	return buildHTTPTransport(dialer, skipTLSVerify, version, nil)
+}
+
+// HTTPTransportFor is BuildHTTPTransport for one execution: it reads the
+// tunnel dialer, the pinned address family AND the egress guard off ctx. Every
+// HTTP-speaking checker goes through it, which is what makes the egress policy
+// a single choke point rather than a per-checker convention.
+//
+// Under an enforcing guard an untunneled check never gets a nil (default)
+// transport: with nothing else to customize it shares the guard's pooled
+// transport, so connection reuse survives; otherwise its private transport
+// dials through the guard.
+func HTTPTransportFor(ctx context.Context, skipTLSVerify bool) http.RoundTripper {
+	return buildHTTPTransport(TunnelDialerFrom(ctx), skipTLSVerify, IPVersionFrom(ctx), egress.FromContext(ctx))
+}
+
+func buildHTTPTransport(
+	dialer ContextDialer, skipTLSVerify bool, version IPVersion, guard *egress.Guard,
+) http.RoundTripper {
 	pinFamily := dialer == nil && version.Explicit()
+	enforce := dialer == nil && guard.Enforcing()
 
 	if dialer == nil && !skipTLSVerify && !pinFamily {
+		if enforce {
+			return guard.HTTPTransport()
+		}
+
 		return nil
 	}
 
@@ -43,8 +69,8 @@ func BuildHTTPTransport(
 	switch {
 	case dialer != nil:
 		transport.DialContext = dialer.DialContext
-	case pinFamily:
-		transport.DialContext = FamilyDialContext(version)
+	case pinFamily || enforce:
+		transport.DialContext = guardedFamilyDialContext(version, guard)
 	}
 
 	if skipTLSVerify {
@@ -65,8 +91,25 @@ func BuildHTTPTransport(
 // case is told apart from the target-has-no-AAAA case. The error travels out
 // through *url.Error, which unwraps, so errors.Is still matches at the top.
 func FamilyDialContext(version IPVersion) func(context.Context, string, string) (net.Conn, error) {
+	return guardedFamilyDialContext(version, nil)
+}
+
+// guardedFamilyDialContext is FamilyDialContext under an egress guard. With
+// the family auto, the guard does the whole job (resolve once, refuse the
+// non-public answers, dial the pinned IP). With a pinned family the family
+// selection stays checkerdef's, and the selected IP is checked before it is
+// dialed — still the pinned address, never the name again.
+func guardedFamilyDialContext(
+	version IPVersion, guard *egress.Guard,
+) func(context.Context, string, string) (net.Conn, error) {
 	baseDialer := &net.Dialer{Timeout: familyDialTimeout, KeepAlive: familyDialKeepAlive}
 	network := version.Network("tcp")
+
+	if !version.Explicit() {
+		return func(ctx context.Context, dialNetwork, addr string) (net.Conn, error) {
+			return guard.DialContextWith(ctx, baseDialer, dialNetwork, addr)
+		}
+	}
 
 	return func(ctx context.Context, _, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
@@ -81,6 +124,10 @@ func FamilyDialContext(version IPVersion) func(context.Context, string, string) 
 				)
 			}
 
+			if err := guard.CheckAddr(ctx, host, ip); err != nil {
+				return nil, err
+			}
+
 			return baseDialer.DialContext(ctx, network, addr)
 		}
 
@@ -91,6 +138,10 @@ func FamilyDialContext(version IPVersion) func(context.Context, string, string) 
 
 		ip, err := SelectIPAddr(host, addrs, version)
 		if err != nil {
+			return nil, err
+		}
+
+		if err := guard.CheckAddr(ctx, host, ip); err != nil {
 			return nil, err
 		}
 

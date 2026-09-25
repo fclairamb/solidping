@@ -138,8 +138,10 @@ func (c *WebSocketChecker) dial(
 	// Tunneled: route the WebSocket handshake's underlying dial through the
 	// bastion. http.Transport hands the raw host:port to DialContext (no local
 	// resolution), so the bastion resolves private names. Untunneled, no custom
-	// client is set and coder/websocket uses its default byte-for-byte.
-	if dialer := checkerdef.TunnelDialerFrom(ctx); dialer != nil {
+	// client is set and coder/websocket uses its default byte-for-byte —
+	// unless the egress policy (spec 2026-09-25-19) is enforcing, in which case
+	// the handshake dials through the guard.
+	if dialer := checkerdef.OutboundDialer(ctx); dialer != nil {
 		transport.DialContext = dialer.DialContext
 		needClient = true
 	}
