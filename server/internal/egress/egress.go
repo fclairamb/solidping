@@ -62,16 +62,16 @@ type DeniedError struct {
 
 // Error tells the user what happened and exactly which knob an operator can
 // flip — the one question every support ticket about it would ask.
+//
+// It names the host the user asked for and NEVER the address it resolved to:
+// on a shared worker that address comes from the worker's internal DNS, and
+// echoing it would turn the refusal itself into an internal-DNS oracle. The
+// resolved IP stays available on the IP field for server-side logs.
 func (e *DeniedError) Error() string {
-	target := e.Host
-	if ip := e.IP.String(); e.IP != nil && ip != e.Host {
-		target = fmt.Sprintf("%s (%s)", e.Host, ip)
-	}
-
 	return fmt.Sprintf(
 		"%s: %s; an operator can allow private targets on this worker with %s=true "+
 			"(system parameter %s)",
-		ErrDenied.Error(), target, EnvAllowPrivate, ParamAllowPrivate,
+		ErrDenied.Error(), e.Host, EnvAllowPrivate, ParamAllowPrivate,
 	)
 }
 
@@ -97,14 +97,18 @@ var nonPublicPrefixes = mustPrefixes(
 	"224.0.0.0/4",    // multicast
 	"240.0.0.0/4",    // reserved, incl. 255.255.255.255 broadcast
 	// IPv6
-	"::/128",    // unspecified
-	"::1/128",   // loopback
+	"::/96",     // unspecified, loopback and the deprecated IPv4-compatible ::a.b.c.d
 	"100::/64",  // discard-only
 	"fc00::/7",  // unique local (ULA)
 	"fe80::/10", // link-local
 	"fec0::/10", // deprecated site-local
 	"ff00::/8",  // multicast
 )
+
+// sixToFourPrefix embeds an IPv4 address in bits 16-47 (RFC 3056).
+//
+//nolint:gochecknoglobals // immutable lookup table
+var sixToFourPrefix = netip.MustParsePrefix("2002::/16")
 
 // nat64Prefixes embed an IPv4 address in their low 32 bits; on a NAT64
 // network they reach that IPv4 address, so they are judged by it.
@@ -153,12 +157,17 @@ func isNonPublicAddr(addr netip.Addr) bool {
 	}
 
 	if addr.Is6() {
+		raw := addr.As16()
+
 		for i := range nat64Prefixes {
 			if nat64Prefixes[i].Contains(addr) {
-				raw := addr.As16()
-
 				return isNonPublicAddr(netip.AddrFrom4([4]byte{raw[12], raw[13], raw[14], raw[15]}))
 			}
+		}
+
+		// 6to4 (2002:V4ADDR::/48) is routed towards its embedded IPv4.
+		if sixToFourPrefix.Contains(addr) {
+			return isNonPublicAddr(netip.AddrFrom4([4]byte{raw[2], raw[3], raw[4], raw[5]}))
 		}
 	}
 

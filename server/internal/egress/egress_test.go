@@ -52,6 +52,8 @@ func TestIsNonPublic(t *testing.T) {
 		"224.0.0.1", "239.255.255.250", "255.255.255.255", "240.0.0.1",
 		"ff02::1",
 		"198.18.0.1", "192.0.0.8",
+		"::7f00:1", "::a00:1", "::8.8.8.8", // deprecated IPv4-compatible, the whole ::/96
+		"2002:7f00:1::1", "2002:a9fe:a9fe::", "2002:a00:1::", // 6to4 of loopback, metadata, RFC 1918
 	}
 	for _, raw := range nonPublic {
 		require.True(t, egress.IsNonPublic(net.ParseIP(raw)), "%s must be non-public", raw)
@@ -63,6 +65,7 @@ func TestIsNonPublic(t *testing.T) {
 		"2606:4700:4700::1111", "2001:4860:4860::8888",
 		"::ffff:8.8.8.8",
 		"64:ff9b::808:808", // NAT64 of 8.8.8.8
+		"2002:808:808::1",  // 6to4 of 8.8.8.8
 	}
 	for _, raw := range public {
 		require.False(t, egress.IsNonPublic(net.ParseIP(raw)), "%s must be public", raw)
@@ -115,7 +118,8 @@ func TestDeniedErrorNamesTheOperatorSwitch(t *testing.T) {
 
 	msg := err.Error()
 	r.Contains(msg, "target resolves to a non-public address, denied by egress policy")
-	r.Contains(msg, "internal.acme.com (10.0.0.5)")
+	r.Contains(msg, "internal.acme.com")
+	r.NotContains(msg, "10.0.0.5", "the resolved internal address would be an internal-DNS oracle")
 	r.Contains(msg, egress.EnvAllowPrivate+"=true")
 	r.Contains(msg, egress.ParamAllowPrivate)
 }
@@ -133,7 +137,12 @@ func TestResolveRefusesAHostnameResolvingPrivate(t *testing.T) {
 
 	_, err := deny.Resolve(t.Context(), "metadata.acme.com")
 	r.ErrorIs(err, egress.ErrDenied)
-	r.Contains(err.Error(), "metadata.acme.com (169.254.169.254)")
+	r.Contains(err.Error(), "metadata.acme.com")
+	r.NotContains(err.Error(), "169.254.169.254")
+
+	var denied *egress.DeniedError
+	r.ErrorAs(err, &denied)
+	r.Equal("169.254.169.254", denied.IP.String(), "kept for server-side logs")
 
 	// Mixed answers: only the public ones survive, in resolver order.
 	mixed := egress.New(false, egress.WithLookup(fixedLookup(&calls, "10.0.0.1", "93.184.216.34", "fd00::1")))
@@ -358,4 +367,59 @@ func TestHTTPTransport(t *testing.T) {
 	defer func() { _ = allowResp.Body.Close() }()
 
 	r.Equal(http.StatusOK, allowResp.StatusCode)
+}
+
+// ParseURLHost reads hosts the way a browser does (WHATWG URL standard).
+func TestParseURLHost(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	ipv4 := map[string]string{
+		"127.0.0.1":           "127.0.0.1",
+		"127.0.0.1.":          "127.0.0.1",
+		"2130706433":          "127.0.0.1",
+		"0x7f000001":          "127.0.0.1",
+		"0X7F000001":          "127.0.0.1",
+		"017700000001":        "127.0.0.1",
+		"0177.0.0.1":          "127.0.0.1",
+		"0x7f.0.0.1":          "127.0.0.1",
+		"127.1":               "127.0.0.1",
+		"127.0.1":             "127.0.0.1",
+		"0x7f.1":              "127.0.0.1",
+		"169.254.43518":       "169.254.169.254",
+		"0xa9fea9fe":          "169.254.169.254",
+		"0":                   "0.0.0.0",
+		"0x":                  "0.0.0.0",
+		"134744072":           "8.8.8.8",
+		"010.0.0.1":           "8.0.0.1",
+		"1.2.3.4":             "1.2.3.4",
+		"[::1]":               "::1",
+		"::ffff:127.0.0.1":    "127.0.0.1",
+		"[fe80::1]":           "fe80::1",
+		"4294967295":          "255.255.255.255",
+		"0xff.0xff.0xffff":    "255.255.255.255",
+		"255.255.255.255.":    "255.255.255.255",
+		"0x00000000000000001": "0.0.0.1",
+	}
+	for host, want := range ipv4 {
+		ip, err := egress.ParseURLHost(host)
+		r.NoError(err, host)
+		r.NotNil(ip, host)
+		r.True(ip.Equal(net.ParseIP(want)), "%s: got %s, want %s", host, ip, want)
+	}
+
+	domains := []string{"acme.com", "www.acme.com.", "1.acme.com", "acme", "0x7f.acme.com", "localhost", "0x1g"}
+	for _, domain := range domains {
+		ip, err := egress.ParseURLHost(domain)
+		r.NoError(err, domain)
+		r.Nil(ip, domain)
+	}
+
+	for _, invalid := range []string{
+		"4294967296", "256.0.0.1", "1.2.3.4.5", "1.2.3.256", "1.2.65536", "09.0.0.1", "acme.08", "::zz",
+	} {
+		_, err := egress.ParseURLHost(invalid)
+		r.ErrorIs(err, egress.ErrInvalidIPv4Host, invalid)
+	}
 }
