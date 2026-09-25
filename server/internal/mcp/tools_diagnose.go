@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -41,7 +42,11 @@ type DiagnoseCheckResult struct {
 	// is trimmed per region, so a dead region would otherwise simply be absent
 	// from it — and absence is the one thing a reader never notices (spec
 	// 2026-09-25-02). Empty when every region is reporting.
-	Freshness            []string                    `json:"freshness,omitempty"`
+	Freshness []string `json:"freshness,omitempty"`
+	// RegionalIssue spells out the check's regional issue (spec
+	// 2026-09-25-10): some, but fewer than the quorum, of its regions failing —
+	// the check reads `warning` and no incident opens. Empty otherwise.
+	RegionalIssue        string                      `json:"regionalIssue,omitempty"`
 	RecentResults        []results.ResultResponse    `json:"recentResults"`
 	ActiveIncident       *incidents.IncidentResponse `json:"activeIncident"`
 	LastResolvedIncident *incidents.IncidentResponse `json:"lastResolvedIncident"`
@@ -137,6 +142,7 @@ func buildDiagnoseResponse(
 	return DiagnoseCheckResult{
 		Check:                *check,
 		Freshness:            describeFreshness(check),
+		RegionalIssue:        describeRegionalIssue(check),
 		RecentResults:        trimResultsPerRegion(recent, perRegion),
 		ActiveIncident:       active,
 		LastResolvedIncident: resolved,
@@ -161,6 +167,20 @@ func trimResultsPerRegion(recent []results.ResultResponse, perRegion int) []resu
 		counts[region]++
 	}
 	return out
+}
+
+// describeRegionalIssue renders the regional-issue block as one sentence.
+func describeRegionalIssue(check *checks.CheckResponse) string {
+	issue := check.RegionalIssue
+	if issue == nil {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"regional issue: failing from %s (%d of %d regions); an incident opens only when %d region(s) "+
+			"fail for the confirmation period",
+		strings.Join(issue.FailingRegions, ", "), len(issue.FailingRegions), issue.RegionCount, issue.FailQuorum,
+	)
 }
 
 // describeFreshness turns the check's per-region freshness into sentences, one

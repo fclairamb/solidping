@@ -175,3 +175,30 @@ func TestCheckDefsExposePlacement(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckDefsExposeFailQuorum: create_check and update_check expose the
+// multi-region quorum (spec 2026-09-25-10), and the argument is read as a
+// string or a number.
+func TestCheckDefsExposeFailQuorum(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	for name, def := range map[string]ToolDefinition{"create": createCheckDef(), "update": updateCheckDef()} {
+		schema, ok := def.InputSchema.(map[string]any)
+		r.True(ok)
+		props, ok := schema["properties"].(map[string]any)
+		r.True(ok)
+		prop, found := props["failQuorum"].(map[string]any)
+		r.Truef(found, "%s exposes failQuorum", name)
+		desc, _ := prop[schemaKeyDescription].(string)
+		r.Contains(desc, "majority")
+		r.Contains(desc, "regional issue")
+	}
+
+	r.Nil(failQuorumArg(map[string]any{}))
+	r.Nil(failQuorumArg(map[string]any{"failQuorum": nil}))
+	r.Equal("majority", string(*failQuorumArg(map[string]any{"failQuorum": "majority"})))
+	r.Equal("2", string(*failQuorumArg(map[string]any{"failQuorum": float64(2)})))
+	r.Equal("2.5", string(*failQuorumArg(map[string]any{"failQuorum": 2.5})))
+}

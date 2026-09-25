@@ -236,3 +236,21 @@ func TestDescribeFreshness(t *testing.T) {
 	r.Equal([]string{"no result from any region since 2026-09-24T13:41:00Z"},
 		describeFreshness(&checks.CheckResponse{Status: "stale", LastResultAt: &lastSeen}))
 }
+
+// The regional issue (spec 2026-09-25-10) is spelled out, and absent when
+// there is none.
+func TestDescribeRegionalIssue(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Empty(describeRegionalIssue(&checks.CheckResponse{Status: "up"}))
+
+	r.Equal("regional issue: failing from tokyo (1 of 3 regions); an incident opens only when 2 region(s) "+
+		"fail for the confirmation period",
+		describeRegionalIssue(&checks.CheckResponse{
+			Status: "warning",
+			RegionalIssue: &checks.RegionalIssueResponse{
+				FailingRegions: []string{"tokyo"}, FailQuorum: 2, RegionCount: 3,
+			},
+		}))
+}
