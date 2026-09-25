@@ -146,7 +146,7 @@ replay:
 
 ## What is never sent
 
-Regardless of configuration, SolidPing never sends:
+The product events listed above (captured by the server) never carry:
 
 - email addresses, user names or avatars;
 - organization names or slugs;
@@ -156,6 +156,11 @@ Regardless of configuration, SolidPing never sends:
   personal API key itself is never exposed by any API;
 - check results, response times, incident contents or notification payloads;
 - any free text you or your users typed.
+
+The browser autocapture and session replay described above are different:
+they record what is on the page, unmasked, so names, slugs and typed text do
+appear there. Credentials never do: they are redacted before anything is sent,
+as described above.
 
 The `GET /api/v1/config` endpoint that the dashboard reads at boot is
 unauthenticated and returns only non-secret, browser-safe values.
