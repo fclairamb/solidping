@@ -92,6 +92,8 @@ func TestMetricsRouteDisabledAlwaysWins404(t *testing.T) {
 //   - an authenticated scrape sees per-org labels intact
 //     (CheckExecutions{organization=...}), per the spec's point 3.
 func TestMetricsRouteDBTokenTakesEffectAndLabelsIntact(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 
 	const token = "db-only-scrape-token"
@@ -100,12 +102,15 @@ func TestMetricsRouteDBTokenTakesEffectAndLabelsIntact(t *testing.T) {
 	r.Contains(logs, "metrics endpoint requires a bearer scrape token")
 
 	// Unauthenticated: 401, the token is configured.
-	resp, err := http.Get(ts.URL + "/metrics") //nolint:noctx,gosec // test-only call, local httptest server
+	unauthReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/metrics", http.NoBody)
+	r.NoError(err)
+
+	resp, err := http.DefaultClient.Do(unauthReq)
 	r.NoError(err)
 	_ = resp.Body.Close()
 	r.Equal(http.StatusUnauthorized, resp.StatusCode)
 
-	// Give the scrape something org-labelled to see.
+	// Give the scrape something org-labeled to see.
 	prommetrics.RecordExecution("http", "up", "eu", "acme", 12.3)
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/metrics", http.NoBody)

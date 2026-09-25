@@ -26,6 +26,8 @@ func TestMetricsScrapeTokenEnvVarBinds(t *testing.T) {
 // leaves whatever config.yml / config.local.yml already set alone, rather than
 // clobbering it with an empty value.
 func TestMetricsScrapeTokenEnvVarEmptyLeavesConfigured(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 
 	cfg := &Config{}

@@ -21,14 +21,14 @@ func TestMetricsHandlerNoTokenReturns404(t *testing.T) {
 	srv := &Server{config: &config.Config{}}
 	handler := srv.metricsHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody)
 	w := httptest.NewRecorder()
 	r.NoError(handler(w, req))
 	r.Equal(http.StatusNotFound, w.Code)
 
 	// Presenting a (wrong) bearer must not change the answer: disabled means
 	// disabled, regardless of what the caller sends.
-	req2 := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody)
 	req2.Header.Set("Authorization", "Bearer whatever")
 	w2 := httptest.NewRecorder()
 	r.NoError(handler(w2, req2))
@@ -62,7 +62,7 @@ func TestMetricsHandlerWrongOrMissingBearerReturns401(t *testing.T) {
 			t.Parallel()
 
 			rr := require.New(t)
-			req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody)
 			if tc.header != "" {
 				req.Header.Set("Authorization", tc.header)
 			}
@@ -88,7 +88,7 @@ func TestMetricsHandlerCorrectBearerReturns200(t *testing.T) {
 	srv := &Server{config: cfg}
 	handler := srv.metricsHandler()
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", http.NoBody)
 	req.Header.Set("Authorization", "Bearer the-real-token")
 	w := httptest.NewRecorder()
 	r.NoError(handler(w, req))
@@ -117,6 +117,8 @@ func TestMetricsBearerMatchesIsCaseInsensitiveScheme(t *testing.T) {
 // enabled-without-token logs the "disabled, set the parameter" INFO line, and
 // enabled-with-token logs the "requires a bearer" INFO line.
 func TestLogMetricsScrapeTokenState(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	ctx := t.Context()
 
