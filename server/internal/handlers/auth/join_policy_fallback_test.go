@@ -348,5 +348,4 @@ func TestPendingFallbackHandoffSessionShape(t *testing.T) {
 	}).handoffSession("/d")
 	r.Empty(orgLess.OrgSlug)
 	r.Equal("demo", orgLess.MembershipPending)
-
 }

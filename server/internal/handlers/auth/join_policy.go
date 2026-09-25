@@ -387,7 +387,7 @@ func (s *Service) CompleteOrgLogin(
 // fallbackMemberSession mints, for a login the target org refused, a normal
 // org-scoped session on an org the user IS an admitted member of. It returns
 // nil when there is no such org, or when anything goes wrong on the way: the
-// caller then falls back to the org-less session, today's behaviour, and the
+// caller then falls back to the org-less session, today's behavior, and the
 // login never fails because of this.
 func (s *Service) fallbackMemberSession(
 	ctx context.Context, user *models.User, method string,
