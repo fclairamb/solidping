@@ -103,3 +103,46 @@ func TestOrgSettingsEmbedOriginsRejectsDirectiveInjection(t *testing.T) {
 	r.NoError(err)
 	r.Equal([]string{"https://ok.acme.com"}, got.StatusPageAllowedEmbedOrigins)
 }
+
+// TestOrgSettingsEmbedOriginsRefusedBeforeAnyWrite pins that an invalid embed
+// origin refuses the WHOLE update: a valid field sent alongside it must not be
+// persisted by a request that answers with a validation error.
+func TestOrgSettingsEmbedOriginsRefusedBeforeAnyWrite(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("embed-atomic", "Embed Atomic")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	pattern := `^[^@]+@acme\.com$`
+	tracing := false
+	origins := []string{"https://acme.com/status"}
+
+	_, err := svc.UpdateOrgSettings(ctx, org.Slug, UpdateOrgSettingsRequest{
+		RegistrationEmailPattern:      &pattern,
+		TracerouteOnFailure:           &tracing,
+		StatusPageAllowedEmbedOrigins: &origins,
+	})
+	r.ErrorIs(err, securityheaders.ErrInvalidEmbedOrigin)
+
+	got, err := svc.GetOrgSettings(ctx, org.Slug)
+	r.NoError(err)
+	r.Empty(got.RegistrationEmailPattern, "the pattern must not have been saved")
+	r.True(got.TracerouteOnFailure, "the traceroute default must not have been saved")
+	r.Empty(got.StatusPageAllowedEmbedOrigins)
+
+	// Positive control: the same valid fields go through without the bad
+	// origin, so the assertions above cannot pass vacuously.
+	_, err = svc.UpdateOrgSettings(ctx, org.Slug, UpdateOrgSettingsRequest{
+		RegistrationEmailPattern: &pattern,
+		TracerouteOnFailure:      &tracing,
+	})
+	r.NoError(err)
+
+	got, err = svc.GetOrgSettings(ctx, org.Slug)
+	r.NoError(err)
+	r.Equal(pattern, got.RegistrationEmailPattern)
+	r.False(got.TracerouteOnFailure)
+}

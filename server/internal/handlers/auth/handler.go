@@ -1140,8 +1140,15 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 
 		if errors.Is(err, securityheaders.ErrInvalidEmbedOrigin) ||
 			errors.Is(err, securityheaders.ErrTooManyEmbedOrigins) {
-			return h.WriteValidationError(writer, "Invalid status page embed origins", []base.ValidationErrorField{
-				{Name: "statusPageAllowedEmbedOrigins", Message: err.Error()},
+			// 400, like this endpoint's other refusals and its OpenAPI
+			// contract, with the field-level shape of a validation error so
+			// the dashboard can show the reason next to the field.
+			return h.WriteJSON(writer, http.StatusBadRequest, base.ValidationError{
+				Title: "Invalid status page embed origins",
+				Code:  string(base.ErrorCodeValidationError),
+				Fields: []base.ValidationErrorField{
+					{Name: "statusPageAllowedEmbedOrigins", Message: err.Error()},
+				},
 			})
 		}
 

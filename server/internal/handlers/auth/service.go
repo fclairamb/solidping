@@ -4002,6 +4002,16 @@ func (s *Service) UpdateOrgSettings(
 		return nil, ErrOrganizationNotFound
 	}
 
+	// Validated BEFORE the first write: a refused embed origin must refuse the
+	// whole PATCH, not land a 400 after the fields above it were saved.
+	var embedOrigins []string
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		embedOrigins, err = securityheaders.NormalizeEmbedOrigins(*req.StatusPageAllowedEmbedOrigins)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if req.RegistrationEmailPattern != nil {
 		if updateErr := s.updateEmailPattern(ctx, org.UID, *req.RegistrationEmailPattern); updateErr != nil {
 			return nil, updateErr
@@ -4029,7 +4039,7 @@ func (s *Service) UpdateOrgSettings(
 	}
 
 	if req.StatusPageAllowedEmbedOrigins != nil {
-		if updateErr := s.updateEmbedOrigins(ctx, org.UID, *req.StatusPageAllowedEmbedOrigins); updateErr != nil {
+		if updateErr := s.updateEmbedOrigins(ctx, org.UID, embedOrigins); updateErr != nil {
 			return nil, updateErr
 		}
 	}
@@ -4074,17 +4084,12 @@ func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
 	return changed
 }
 
-// updateEmbedOrigins validates and stores the status-page embed allowlist. An
-// entry that is not a plain scheme+host origin is refused (wrapping
-// securityheaders.ErrInvalidEmbedOrigin / ErrTooManyEmbedOrigins) rather than
-// stored: the value ends up inside a response header, so a `;` or a stray
-// keyword would be a directive injection. An empty list deletes the row.
-func (s *Service) updateEmbedOrigins(ctx context.Context, orgUID string, entries []string) error {
-	origins, err := securityheaders.NormalizeEmbedOrigins(entries)
-	if err != nil {
-		return err
-	}
-
+// updateEmbedOrigins stores the status-page embed allowlist. origins must
+// already have gone through securityheaders.NormalizeEmbedOrigins (done up
+// front in UpdateOrgSettings): the value ends up inside a response header, so
+// a `;` or a stray keyword would be a directive injection. An empty list
+// deletes the row.
+func (s *Service) updateEmbedOrigins(ctx context.Context, orgUID string, origins []string) error {
 	if len(origins) == 0 {
 		return s.db.DeleteOrgParameter(ctx, orgUID, models.ParamKeyStatusPageAllowedEmbedOrigins)
 	}
