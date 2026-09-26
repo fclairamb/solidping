@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getFieldError } from "@/hooks/use-check-validation";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 
 // ── WebSocket ──
 export interface WebsocketState {
@@ -30,7 +30,7 @@ export const websocketModule: CheckTypeModule<WebsocketState> = {
     if (state.expect) cfg.expect = state.expect;
     const errors: FieldErrors = state.url
       ? []
-      : [{ name: "url", message: "URL is required" }];
+      : [{ name: "url", message: validationMessage("urlRequired") }];
     return { config: cfg, errors };
   },
   Fields: WebsocketFields,
@@ -114,7 +114,7 @@ export const browserModule: CheckTypeModule<BrowserState> = {
     if (state.screenshot) cfg.screenshot = true;
     const errors: FieldErrors = state.url
       ? []
-      : [{ name: "url", message: "URL is required" }];
+      : [{ name: "url", message: validationMessage("urlRequired") }];
     return { config: cfg, errors };
   },
   Fields: BrowserFields,

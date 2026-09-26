@@ -192,7 +192,7 @@
     "jobRunnersGroup": "Tâches en arrière-plan",
     "fastLaneReservedTooHigh": "Doit être inférieur au nombre total de runners de checks.",
     "laneLoadTitle": "Charge actuelle",
-    "laneLoadDescription": "Charge offerte par worker et par voie, calculée côté serveur. Le duty est la somme des cycles d'occupation par check : 100 % ≈ un slot de runner occupé en permanence ; une voie dont le duty dépasse sa capacité prend du retard.",
+    "laneLoadDescription": "Charge offerte par worker et par voie, calculée côté serveur. L'occupation est la somme des cycles d'occupation par check : 100 % ≈ un slot de runner occupé en permanence ; une voie dont l'occupation dépasse sa capacité prend du retard.",
     "laneLoadEmpty": "Aucun worker enregistré pour le moment.",
     "laneFast": "Voie rapide",
     "laneSlow": "Voie lente",
@@ -200,7 +200,7 @@
     "jobsCol": "Tâches",
     "costSumCol": "Σ coût",
     "delaySumCol": "Σ délai",
-    "dutyCol": "Duty",
+    "dutyCol": "Occupation",
     "overloaded": "Surchargé"
   },
   "agents": {
@@ -452,7 +452,7 @@
       "created": "Créé le"
     },
     "flags": {
-      "superAdmin": "Super admin",
+      "superAdmin": "Super-administrateur",
       "twoFactor": "2FA",
       "demo": "Démo",
       "unverified": "Non vérifié",

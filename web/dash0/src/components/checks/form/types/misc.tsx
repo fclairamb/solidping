@@ -22,11 +22,11 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 const hostRequired = (host: string): FieldErrors =>
-  host ? [] : [{ name: "host", message: "Host is required" }];
+  host ? [] : [{ name: "host", message: validationMessage("hostRequired") }];
 
 // ── SSL ──
 export interface SslState {
@@ -365,13 +365,13 @@ function rdpErrors(state: RdpState): FieldErrors {
   const hasUser = Boolean(state.username);
   const hasPass = Boolean(state.password);
   if (hasUser && !hasPass) {
-    errors.push({ name: "password", message: "Password is required when a username is set." });
+    errors.push({ name: "password", message: validationMessage("passwordRequiredWithUsername") });
   }
   if (hasPass && !hasUser) {
-    errors.push({ name: "username", message: "Username is required when a password is set." });
+    errors.push({ name: "username", message: validationMessage("usernameRequiredWithPassword") });
   }
   if (state.screenshot && !(hasUser && hasPass)) {
-    errors.push({ name: "screenshot", message: "Screenshot requires username and password (an authenticated logon)." });
+    errors.push({ name: "screenshot", message: validationMessage("screenshotRequiresCredentials") });
   }
 
   return errors;
@@ -603,17 +603,17 @@ export const sipModule: CheckTypeModule<SipState> = {
     if (state.mode === "options" && state.expectStatus)
       cfg.expect_status = state.expectStatus;
     const errors: FieldErrors = [];
-    if (!state.host) errors.push({ name: "host", message: "Host is required" });
+    if (!state.host) errors.push({ name: "host", message: validationMessage("hostRequired") });
     else if (state.mode === "register") {
       if (!state.username)
         errors.push({
           name: "username",
-          message: "Username is required for register mode",
+          message: validationMessage("usernameRequiredRegister"),
         });
       if (!state.password)
         errors.push({
           name: "password",
-          message: "Password is required for register mode",
+          message: validationMessage("passwordRequiredRegister"),
         });
     }
     return { config: cfg, errors };
@@ -804,7 +804,7 @@ export const jsModule: CheckTypeModule<JsState> = {
     if (state.secretsDirty) cfg.secrets = rowsToMap(state.secrets);
     const errors: FieldErrors = state.script
       ? []
-      : [{ name: "script", message: "Script is required" }];
+      : [{ name: "script", message: validationMessage("scriptRequired") }];
     return { config: cfg, errors };
   },
   Fields: JsFields,
@@ -899,7 +899,7 @@ export const sleepModule: CheckTypeModule<SleepState> = {
     if (state.status && state.status !== "up") cfg.status = state.status;
     const errors: FieldErrors = state.sleepMs
       ? []
-      : [{ name: "sleep_ms", message: "Sleep duration is required" }];
+      : [{ name: "sleep_ms", message: validationMessage("sleepDurationRequired") }];
     return { config: cfg, errors };
   },
   Fields: SleepFields,
@@ -1045,7 +1045,7 @@ export const privateLocationModule: CheckTypeModule<PrivateLocationState> = {
   fromConfig: (config) => ({ region: getConfigField(config, "region") }),
   toConfig: (state) => ({
     config: { region: state.region },
-    errors: state.region ? [] : [{ name: "region", message: "Region is required" }],
+    errors: state.region ? [] : [{ name: "region", message: validationMessage("regionRequired") }],
   }),
   Fields: PrivateLocationFields,
 };

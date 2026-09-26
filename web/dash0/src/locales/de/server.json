@@ -192,7 +192,7 @@
     "jobRunnersGroup": "Hintergrundaufgaben",
     "fastLaneReservedTooHigh": "Muss kleiner sein als die Gesamtzahl der Check-Runner.",
     "laneLoadTitle": "Aktuelle Last",
-    "laneLoadDescription": "Serverseitig berechnete angebotene Last pro Worker und Lane. Duty ist die Summe der Auslastungszyklen pro Check: 100 % ≈ ein dauerhaft belegter Runner-Slot; eine Lane, deren Duty ihre Slot-Kapazität übersteigt, gerät in Rückstand.",
+    "laneLoadDescription": "Serverseitig berechnete angebotene Last pro Worker und Lane. Die Auslastung ist die Summe der Auslastungszyklen pro Check: 100 % ≈ ein dauerhaft belegter Runner-Slot; eine Lane, deren Auslastung ihre Slot-Kapazität übersteigt, gerät in Rückstand.",
     "laneLoadEmpty": "Noch keine Worker registriert.",
     "laneFast": "Fast Lane",
     "laneSlow": "Slow Lane",
@@ -200,7 +200,7 @@
     "jobsCol": "Aufträge",
     "costSumCol": "Σ Kosten",
     "delaySumCol": "Σ Verzögerung",
-    "dutyCol": "Duty",
+    "dutyCol": "Auslastung",
     "overloaded": "Überlastet"
   },
   "agents": {

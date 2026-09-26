@@ -6,7 +6,9 @@ import {
   iconToneClassName,
 } from "@/components/shared/check-type-identity";
 import { checkTypeDocsAnchors } from "@/components/shared/check-type-docs-anchors";
-import { checkTypes } from "@/components/shared/check-form";
+import { buildIntervalOptions, checkTypes } from "@/components/shared/check-form";
+import { translateIntervalLabel } from "@/components/shared/interval-label";
+import enChecks from "@/locales/en/checks.json";
 import type { CheckType } from "@/components/checks/form/types/common";
 
 // ALL_CHECK_TYPES is the drift guard for the `CheckType` union itself: a
@@ -199,5 +201,31 @@ describe("check-form's type picker labels match the canonical identity", () => {
   it("actually compared a non-trivial number of shared types", () => {
     const shared = checkTypes.filter((ct) => CHECK_TYPE_IDENTITY[ct.value]);
     expect(shared.length).toBeGreaterThan(30);
+  });
+});
+
+describe("check-form's type picker is translated (spec 2026-09-26-01)", () => {
+  // The picker renders checks:types.<type> / types.<type>Description, falling
+  // back to the English literal. The literal must equal the en key so English
+  // does not change and a type added without keys fails here, not in fr.
+  const enTypes = enChecks.types as Record<string, string>;
+
+  it.each(checkTypes)("$value has en label and description keys matching the literal", (ct) => {
+    expect(enTypes[ct.value]).toBe(ct.label);
+    expect(enTypes[`${ct.value}Description`]).toBe(ct.description);
+  });
+});
+
+describe("translateIntervalLabel", () => {
+  const fake = (key: string, options: { count: number }) => `${key}:${options.count}`;
+
+  it("maps every buildIntervalOptions label to a pluralized intervalUnits key", () => {
+    for (const opt of buildIntervalOptions(0, 0)) {
+      expect(translateIntervalLabel(opt.label, fake)).toMatch(/^intervalUnits\.(second|minute|hour|day|week):\d+$/);
+    }
+  });
+
+  it("returns an unrecognized label unchanged", () => {
+    expect(translateIntervalLabel("5m (custom)", fake)).toBe("5m (custom)");
   });
 });

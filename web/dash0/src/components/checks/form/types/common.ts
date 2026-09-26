@@ -6,6 +6,17 @@
 // into a config + client-side required-field errors (the SINGLE source for both
 // the live preview and the submitted payload), and `Fields` renders the inputs.
 import type { FieldError } from "@/hooks/use-check-validation";
+import i18n from "@/i18n";
+
+/**
+ * A check-form validation message in the UI language (checks:validation.<key>,
+ * spec 2026-09-26-01). The validators are pure `toConfig` functions outside
+ * React, so they read the shared i18n instance instead of a hook — the same
+ * pattern as api/client.ts.
+ */
+export function validationMessage(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(`checks:validation.${key}`, options ?? {});
+}
 
 export type CheckType =
   | "http"

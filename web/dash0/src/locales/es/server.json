@@ -192,7 +192,7 @@
     "jobRunnersGroup": "Tareas en segundo plano",
     "fastLaneReservedTooHigh": "Debe ser menor que el total de runners de checks.",
     "laneLoadTitle": "Carga actual",
-    "laneLoadDescription": "Carga ofrecida por worker y carril, calculada en el servidor. El duty es la suma de los ciclos de ocupación por check: 100 % ≈ un slot de runner ocupado permanentemente; un carril cuyo duty supera su capacidad va con retraso.",
+    "laneLoadDescription": "Carga ofrecida por worker y carril, calculada en el servidor. La ocupación es la suma de los ciclos de ocupación por check: 100 % ≈ un slot de runner ocupado permanentemente; un carril cuya ocupación supera su capacidad va con retraso.",
     "laneLoadEmpty": "Aún no hay workers registrados.",
     "laneFast": "Carril rápido",
     "laneSlow": "Carril lento",
@@ -200,7 +200,7 @@
     "jobsCol": "Tareas",
     "costSumCol": "Σ coste",
     "delaySumCol": "Σ retraso",
-    "dutyCol": "Duty",
+    "dutyCol": "Ocupación",
     "overloaded": "Sobrecargado"
   },
   "agents": {

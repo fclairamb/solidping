@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { filterCheckTypesForDemo, isDemoReadOnlyError } from "@/lib/demo";
 import { DemoReadOnlyNote } from "@/components/shared/demo-read-only-note";
 import { useTranslation } from "react-i18next";
+import { translateIntervalLabel } from "./interval-label";
 import { AlertTriangle, ArrowLeft, Loader2, ChevronsUpDown, Check, FolderPlus, Search, Shuffle, WifiOff } from "lucide-react";
 import {
   useCheckValidationResult,
@@ -483,8 +484,21 @@ export function CheckForm({
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
   const { data: apiCheckTypes } = useCheckTypes(org);
   const { user } = useAuth();
+  // The picker renders (and searches) each type's label and description in the
+  // UI language, from checks:types.<type> / types.<type>Description. The
+  // English literals in `checkTypes` stay the source of truth for those keys
+  // (check-type-identity.test.ts pins them to en/checks.json) and the fallback.
+  const localizedCheckTypes = useMemo(
+    () =>
+      checkTypes.map((ct) => ({
+        ...ct,
+        label: t(`types.${ct.value}`, { defaultValue: ct.label }),
+        description: t(`types.${ct.value}Description`, { defaultValue: ct.description }),
+      })),
+    [t],
+  );
   const availableCheckTypes = useMemo(() => {
-    const creatable = checkTypes.filter((ct) => !ct.systemCreated);
+    const creatable = localizedCheckTypes.filter((ct) => !ct.systemCreated);
     const base =
       !apiCheckTypes || apiCheckTypes.length === 0
         ? creatable
@@ -501,7 +515,7 @@ export function CheckForm({
       user?.isDemo,
       base.map((ct) => ({ ...ct, type: ct.value })),
     );
-  }, [apiCheckTypes, user?.isDemo]);
+  }, [apiCheckTypes, user?.isDemo, localizedCheckTypes]);
 
   // Build a lookup map for API check type info (for period constraints & samples)
   const checkTypeInfoMap = useMemo(() => {
@@ -886,7 +900,10 @@ export function CheckForm({
   const intervalOptions = useMemo(() => {
     const { minSec, maxSec } = getPeriodConstraints(type, configState);
     return withCustomIntervalOption(
-      buildIntervalOptions(minSec, maxSec),
+      buildIntervalOptions(minSec, maxSec).map((opt) => ({
+        ...opt,
+        label: translateIntervalLabel(opt.label, t),
+      })),
       initialData?.period,
       (hms) =>
         t("form.customPeriod", {
@@ -1309,7 +1326,7 @@ export function CheckForm({
   const submitLabel = isEdit ? t("form.saveChanges") : t("form.createCheck");
   const pendingLabel = isEdit ? t("form.savingEllipsis") : t("form.creating");
 
-  const selectedTypeLabel = checkTypes.find((t) => t.value === type)?.label || type;
+  const selectedTypeLabel = localizedCheckTypes.find((ct) => ct.value === type)?.label || type;
 
   // ── Progressive-disclosure section summaries + open-on-content ──
   const authSummary = authSection

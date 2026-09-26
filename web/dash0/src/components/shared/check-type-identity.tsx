@@ -233,8 +233,13 @@ const CHECK_TYPE_BADGE_BASE = "text-[10px] font-mono font-medium uppercase px-1.
 // getCheckTypeIdentity keeps returning the literal English label, since other
 // call sites may compare against it.
 const TRANSLATABLE_LABEL_KEYS: Record<string, string> = {
+  "A2S Game Server": "types.a2s",
+  Browser: "types.browser",
   Domain: "types.domain",
   Email: "types.email",
+  "Freebox Line": "types.freebox_line",
+  Heartbeat: "types.heartbeat",
+  "Private location": "types.private-location",
   Sleep: "types.sleep",
   Unknown: "status.unknown",
 };

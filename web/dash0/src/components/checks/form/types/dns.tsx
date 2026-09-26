@@ -14,7 +14,7 @@ import { getFieldError } from "@/hooks/use-check-validation";
 import { TokenChipsInput } from "@/components/shared/token-chips-input";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField, splitBlocklists } from "./common";
+import { getConfigField, splitBlocklists, validationMessage } from "./common";
 
 // ── DNS ──
 // The queried domain is bound to the backend `host` key (label stays "Domain").
@@ -81,7 +81,7 @@ export const dnsModule: CheckTypeModule<DnsState> = {
       cfg.record_type = state.recordType;
     const errors: FieldErrors = state.host
       ? []
-      : [{ name: "host", message: "Domain is required" }];
+      : [{ name: "host", message: validationMessage("domainRequired") }];
     // Only the expectation matching the record type is written; the other is
     // dropped so a record-type change never produces the (rejected)
     // both-keys config, or an assertion that can never match.
@@ -92,7 +92,11 @@ export const dnsModule: CheckTypeModule<DnsState> = {
       if (invalid.length > 0) {
         errors.push({
           name: "expected_ips",
-          message: `Not ${state.recordType === "AAAA" ? "IPv6" : "IPv4"} address${invalid.length > 1 ? "es" : ""}: ${invalid.join(", ")}`,
+          message: validationMessage("invalidIp", {
+            count: invalid.length,
+            family: state.recordType === "AAAA" ? "IPv6" : "IPv4",
+            values: invalid.join(", "),
+          }),
         });
       }
     } else {
@@ -271,7 +275,7 @@ export const domainModule: CheckTypeModule<DomainState> = {
     if (state.criticalDays) cfg.criticalDays = parseInt(state.criticalDays, 10);
     const errors: FieldErrors = state.domain
       ? []
-      : [{ name: "domain", message: "Domain is required" }];
+      : [{ name: "domain", message: validationMessage("domainRequired") }];
     return { config: cfg, errors };
   },
   Fields: DomainFields,
@@ -401,7 +405,7 @@ export const dnsblModule: CheckTypeModule<DnsblState> = {
     if (state.nameserver) cfg.nameserver = state.nameserver;
     const errors: FieldErrors = state.target
       ? []
-      : [{ name: "target", message: "Target IP or hostname is required" }];
+      : [{ name: "target", message: validationMessage("targetRequired") }];
     return { config: cfg, errors };
   },
   Fields: DnsblFields,

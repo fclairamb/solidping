@@ -28,7 +28,7 @@ import {
 } from "@/components/checks/json-assertion-editor";
 import type { CheckTypeModule } from "./index";
 import type { CheckConfig, CheckTypeFieldsProps, FieldErrors } from "./common";
-import { getConfigField } from "./common";
+import { getConfigField, validationMessage } from "./common";
 import { useCheckFormFields } from "./context";
 
 export interface HttpState {
@@ -283,7 +283,7 @@ function toConfig(state: HttpState): {
   }
   if (Object.keys(headerMap).length > 0) cfg.headers = headerMap;
   const errors: FieldErrors = [];
-  if (!state.url) errors.push({ name: "url", message: "URL is required" });
+  if (!state.url) errors.push({ name: "url", message: validationMessage("urlRequired") });
   // Invalid chips block save with a field-scoped error, the same mechanism
   // the URL-required check above uses (see check-form.tsx's
   // `serialized.errors` / `blockingErrors`) — the chip itself is also flagged
@@ -293,7 +293,10 @@ function toConfig(state: HttpState): {
   if (invalidCodes.length > 0) {
     errors.push({
       name: "expectedStatusCodes",
-      message: `Invalid status code pattern${invalidCodes.length > 1 ? "s" : ""}: ${invalidCodes.join(", ")} (use an exact code like 200 or a wildcard like 4XX)`,
+      message: validationMessage("invalidStatusCodes", {
+        count: invalidCodes.length,
+        codes: invalidCodes.join(", "),
+      }),
     });
   }
   return { config: cfg, errors };
