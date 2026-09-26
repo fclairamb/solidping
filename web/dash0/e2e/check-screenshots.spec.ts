@@ -179,8 +179,20 @@ test.describe("Check page screenshots", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${DASH_BASE}/orgs/test/checks/${SHOT_CHECK}`);
 
-    await expect(page.getByTestId("check-screenshots-card")).toBeVisible();
-    await expect(page.getByTestId("check-screenshot-image")).toBeVisible();
+    const card = page.getByTestId("check-screenshots-card");
+    await expect(card).toBeVisible();
+
+    // At 375px the card sits below the fold once the check has history; the
+    // image is lazy, so bring the card into view before judging it.
+    await card.scrollIntoViewIfNeeded();
+
+    const img = page.getByTestId("check-screenshot-image");
+    await img.scrollIntoViewIfNeeded();
+    await expect(img).toBeVisible();
+    // Loaded for real, not just a laid-out box.
+    await expect
+      .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
     await expect(page.getByTestId("check-screenshots-capture-now")).toBeVisible();
 
     const hasOverflow = await page.evaluate(
