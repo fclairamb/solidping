@@ -82,6 +82,13 @@ test.describe("Check page screenshots", () => {
     const uid = await createCheck(page, token, {
       name: `E2E screenshots empty ${uniqueStamp()}`,
       type: "browser",
+      // Pinned, not auto: the fixture's single cloud region reports no
+      // `browser` capability (there is no Chrome behind this server), and
+      // automatic placement refuses to place where the check could not run.
+      // A pinned region is never capability-filtered, so placement stays out
+      // of what this spec is about.
+      placement: "pinned",
+      regions: ["default"],
       period: "01:00:00",
       config: { url: "https://acme.com/empty" },
     });
@@ -133,6 +140,9 @@ test.describe("Check page screenshots", () => {
     const uid = await createCheck(page, token, {
       name: `E2E capture now ${uniqueStamp()}`,
       type: "browser",
+      // Pinned for the same reason as the empty-state check above.
+      placement: "pinned",
+      regions: ["default"],
       period: "01:00:00",
       config: { url: "https://acme.com/capture" },
     });
