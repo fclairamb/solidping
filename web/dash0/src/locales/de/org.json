@@ -56,7 +56,14 @@
     },
     "defaultEscalation": "Standard-Eskalationsrichtlinie",
     "defaultEscalationDescription": "Wird auf Checks angewendet, die zu keiner eigenen Richtlinie aufgelöst werden (Check → Gruppe → Organisationsstandard → keine). Nicht festlegen für keinen organisationsweiten Rückfall.",
-    "defaultEscalationNone": "Keine (kein Rückfall)"
+    "defaultEscalationNone": "Keine (kein Rückfall)",
+    "embed": {
+      "title": "Einbettung von Statusseiten",
+      "description": "Standardmäßig kann eine Statusseite nur von SolidPing selbst in einem Frame angezeigt werden (die Vorschau der Darstellung). Legen Sie die Websites fest, die die Statusseiten dieser Organisation in einem iframe einbetten dürfen, etwa ein Intranet oder ein Wanddisplay.",
+      "label": "Erlaubte Einbettungs-Origins",
+      "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
+      "help": "Ein Origin pro Zeile: Schema und Host, optional mit Port oder einem führenden *.-Label. Keine Pfade. Wird als frame-ancestors in der Content-Security-Policy der Seite gesendet und gilt innerhalb einer Minute. Leer lassen, um alle anderen Websites zu blockieren."
+    }
   },
   "usage": {
     "title": "Nutzung",

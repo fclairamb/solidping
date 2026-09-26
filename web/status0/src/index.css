@@ -249,12 +249,14 @@
    operator can override them: the custom stylesheet is rendered as a <style>
    element inside the app root, i.e. LATER in document order, so an equally
    specific `.sp-logo img { … }` rule of theirs wins. Both documented
-   replacement techniques therefore work:
+   replacement techniques therefore work, with an image the page's CSP
+   allows (same origin or a data: URI — img-src blocks external hosts, see
+   internal/securityheaders):
 
-     .sp-logo img { content: url("https://cdn.example/logo.svg"); }
+     .sp-logo img { content: url("data:image/svg+xml;base64,…"); }
 
      .sp-logo img { display: none; }
-     .sp-logo { background: url("https://cdn.example/logo.svg") center /
+     .sp-logo { background: url("data:image/svg+xml;base64,…") center /
                 contain no-repeat; width: 120px; }
 
    `min-width`/`min-height` on the wrapper keep the box from collapsing to zero

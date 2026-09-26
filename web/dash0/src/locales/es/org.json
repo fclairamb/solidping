@@ -56,7 +56,14 @@
     },
     "defaultEscalation": "Política de escalada predeterminada",
     "defaultEscalationDescription": "Se aplica a los checks que no resuelven a ninguna política propia (check → grupo → predeterminado de la organización → ninguna). Déjelo sin definir para no tener respaldo a nivel de organización.",
-    "defaultEscalationNone": "Ninguna (sin respaldo)"
+    "defaultEscalationNone": "Ninguna (sin respaldo)",
+    "embed": {
+      "title": "Inserción de páginas de estado",
+      "description": "De forma predeterminada, una página de estado solo puede mostrarse en un marco dentro del propio SolidPing (la vista previa de la apariencia). Indique los sitios autorizados a insertar las páginas de estado de esta organización en un iframe, como una intranet o una pantalla mural.",
+      "label": "Orígenes autorizados",
+      "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
+      "help": "Un origen por línea: un esquema y un host, opcionalmente con un puerto o una primera etiqueta *. Sin rutas. Se envía como frame-ancestors en la Content-Security-Policy de la página; se aplica en menos de un minuto. Déjelo vacío para bloquear cualquier otro sitio."
+    }
   },
   "usage": {
     "title": "Uso",

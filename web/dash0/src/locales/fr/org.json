@@ -56,7 +56,14 @@
     },
     "defaultEscalation": "Politique d'escalade par défaut",
     "defaultEscalationDescription": "Appliquée aux checks qui ne résolvent à aucune politique propre (check → groupe → défaut de l'organisation → aucune). Laissez non défini pour aucun repli à l'échelle de l'organisation.",
-    "defaultEscalationNone": "Aucune (pas de repli)"
+    "defaultEscalationNone": "Aucune (pas de repli)",
+    "embed": {
+      "title": "Intégration des pages de statut",
+      "description": "Par défaut, une page de statut ne peut être affichée dans un cadre que par SolidPing lui-même (l'aperçu de l'apparence). Listez les sites autorisés à intégrer les pages de statut de cette organisation dans une iframe, comme un intranet ou un écran mural.",
+      "label": "Origines autorisées",
+      "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
+      "help": "Une origine par ligne : un schéma et un hôte, éventuellement avec un port ou un premier libellé *. Pas de chemin. Envoyé dans la directive frame-ancestors de la Content-Security-Policy de la page ; pris en compte en moins d'une minute. Laissez vide pour bloquer tout autre site."
+    }
   },
   "usage": {
     "title": "Utilisation",

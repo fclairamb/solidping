@@ -4,6 +4,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -15,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AlertCircle, Check, Loader2 } from "lucide-react";
-import { ApiError, markOrgDeleted } from "@/api/client";
+import { ApiError, getApiErrorField, markOrgDeleted } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Select,
@@ -59,6 +60,7 @@ function SettingsPage() {
   const updateSessionSettings = useUpdateOrgSettings(org);
   const updateEscalationSettings = useUpdateOrgSettings(org);
   const updateDiagnosticsSettings = useUpdateOrgSettings(org);
+  const updateEmbedSettings = useUpdateOrgSettings(org);
 
   const [defaultPolicyUid, setDefaultPolicyUid] = useState<string>(NO_DEFAULT);
   const [escalationError, setEscalationError] = useState<string | null>(null);
@@ -70,6 +72,11 @@ function SettingsPage() {
   const [tracerouteOnFailure, setTracerouteOnFailure] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [diagnosticsSaved, setDiagnosticsSaved] = useState(false);
+
+  // Status-page embed allowlist, edited as one origin per line.
+  const [embedOrigins, setEmbedOrigins] = useState("");
+  const [embedError, setEmbedError] = useState<string | null>(null);
+  const [embedSaved, setEmbedSaved] = useState(false);
 
   const [emailPattern, setEmailPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +100,7 @@ function SettingsPage() {
       );
       setDefaultPolicyUid(settings.defaultEscalationPolicyUid || NO_DEFAULT);
       setTracerouteOnFailure(settings.tracerouteOnFailure ?? true);
+      setEmbedOrigins((settings.statusPageAllowedEmbedOrigins ?? []).join("\n"));
     }
   }, [settings]);
 
@@ -186,6 +194,32 @@ function SettingsPage() {
       setTracerouteOnFailure(!enabled);
       setDiagnosticsError(
         err instanceof ApiError ? err.message : t("settings.unexpectedError"),
+      );
+    }
+  };
+
+  const handleSaveEmbedOrigins = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmbedError(null);
+    setEmbedSaved(false);
+
+    // One origin per line; commas and spaces are accepted too so a pasted
+    // comma-separated list works. The server validates each entry.
+    const origins = embedOrigins
+      .split(/[\s,]+/)
+      .map((origin) => origin.trim())
+      .filter((origin) => origin !== "");
+
+    try {
+      await updateEmbedSettings.mutateAsync({
+        statusPageAllowedEmbedOrigins: origins,
+      });
+      setEmbedSaved(true);
+      setTimeout(() => setEmbedSaved(false), 3000);
+    } catch (err) {
+      setEmbedError(
+        getApiErrorField(err, "statusPageAllowedEmbedOrigins") ??
+          (err instanceof ApiError ? err.message : t("settings.unexpectedError")),
       );
     }
   };
@@ -541,6 +575,71 @@ function SettingsPage() {
               data-testid="org-traceroute-toggle"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>{t("settings.embed.title")}</CardTitle>
+          <CardDescription>{t("settings.embed.description")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSaveEmbedOrigins} className="space-y-4">
+            {embedError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription data-testid="embed-origins-error">
+                  {embedError}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {embedSaved && (
+              <Alert>
+                <Check className="h-4 w-4" />
+                <AlertDescription>{t("settings.saved")}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="embedOrigins">{t("settings.embed.label")}</Label>
+              <Textarea
+                id="embedOrigins"
+                rows={4}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                placeholder={t("settings.embed.placeholder")}
+                value={embedOrigins}
+                onChange={(e) => {
+                  setEmbedOrigins(e.target.value);
+                  setEmbedError(null);
+                }}
+                disabled={updateEmbedSettings.isPending || isLoading}
+                aria-invalid={embedError != null}
+                className="font-mono"
+                data-testid="embed-origins"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("settings.embed.help")}
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={updateEmbedSettings.isPending || isLoading}
+              data-testid="embed-origins-save"
+            >
+              {updateEmbedSettings.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {tc("saving")}
+                </>
+              ) : (
+                tc("save")
+              )}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

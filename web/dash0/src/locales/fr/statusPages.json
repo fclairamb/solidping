@@ -257,7 +257,7 @@
     "description": "Votre CSS est injecté dans la page publique. Redéfinissez les propriétés CSS ci-dessous pour la retravailler, ou écrivez les règles de votre choix.",
     "cssLabel": "CSS",
     "placeholder": ":root {\n  --brand: #ff5500;\n}",
-    "limitsHint": "64 Ko maximum. @import est interdit ; les url() externes (polices, images) sont autorisées.",
+    "limitsHint": "64 Ko maximum. @import est interdit, et url() ne charge les images et polices que depuis ce site ou des URI data: : les hôtes externes sont bloqués par la politique de sécurité de la page. Téléversez plutôt votre logo dans Personnalisation.",
     "importRejected": "@import est interdit — intégrez les règles directement.",
     "tooLarge": "Trop volumineux : la feuille de style doit faire 64 Ko au maximum.",
     "save": "Enregistrer",

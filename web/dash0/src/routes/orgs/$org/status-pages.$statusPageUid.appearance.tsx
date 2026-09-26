@@ -91,10 +91,13 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
      .sp-version     version line
    --------------------------------------------------------------- */
 
-/* Replace the logo with your own image (Chromium / Safari): */
+/* Replace the logo: the simplest way is to upload it under Branding.
+   url() only loads images and fonts from this site or from data: URIs —
+   the page's security policy blocks external hosts. With a data: URI
+   (Chromium / Safari): */
 /*
 .sp-logo img {
-  content: url("https://cdn.example.com/logo.svg");
+  content: url("data:image/svg+xml;base64,PHN2Zy8+");
 }
 */
 
@@ -102,7 +105,7 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
 /*
 .sp-logo img { display: none; }
 .sp-logo {
-  background: url("https://cdn.example.com/logo.svg") center / contain no-repeat;
+  background: url("data:image/svg+xml;base64,PHN2Zy8+") center / contain no-repeat;
   width: 120px;
   height: 32px;
 }
@@ -115,7 +118,7 @@ const STARTER_TEMPLATE = `/* Status page theme — every rule below is optional.
 */
 
 /* Anything else is fair game too — plain CSS against the live page.
-   @import is not allowed; external url() (fonts, images) is. */
+   @import is not allowed; url() may only point at this site or data:. */
 `;
 
 /**

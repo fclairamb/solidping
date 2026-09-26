@@ -4181,6 +4181,10 @@ export interface OrgSettings {
   // to every check whose own `tracerouteOnFailure` is `inherit`. Always
   // present, and true for an org that never set it.
   tracerouteOnFailure?: boolean;
+  // Origins allowed to frame this org's public status pages (spec
+  // 2026-09-25-28), rendered into the page's CSP frame-ancestors. Always
+  // present; empty means only the SolidPing origin itself may frame them.
+  statusPageAllowedEmbedOrigins?: string[];
 }
 
 export function useOrgSettings(org: string) {
@@ -4200,6 +4204,9 @@ export interface UpdateOrgSettingsRequest {
   defaultEscalationPolicyUid?: string;
   // Org-level default for path-trace-on-failure; omit to leave it untouched.
   tracerouteOnFailure?: boolean;
+  // Replaces the status-page embed allowlist; [] clears it; omit to leave it
+  // untouched. Each entry must be a scheme+host origin.
+  statusPageAllowedEmbedOrigins?: string[];
 }
 
 export function useUpdateOrgSettings(org: string) {
