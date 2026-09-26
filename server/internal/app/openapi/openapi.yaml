@@ -1879,6 +1879,113 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{checkUid}/screenshots:
+    get:
+      tags: [Checks]
+      summary: List a check's latest screenshots
+      description: >-
+        The check's latest page captures, newest first: the screenshots its
+        incidents carry, the captures of failing runs that opened no incident
+        (a validating run, a blip, a regional failure, a run of an outage whose
+        incident already holds its onset capture), and "Capture now" captures.
+        A check keeps at most 5 captures of its own (the oldest is retired on
+        the sixth); incident captures live as long as their incident. Any
+        check type answers — a type that never captures returns an empty list.
+        Operator-only: never exposed on a status page, badge or subscriber
+        payload. Same authorization as reading the check.
+      operationId: listCheckScreenshots
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+          description: How many captures to return (values above 20 are clamped).
+      responses:
+        "200":
+          description: The check's latest screenshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckScreenshotListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/screenshots/capture:
+    post:
+      tags: [Checks]
+      summary: Capture a screenshot now
+      description: >-
+        "Capture now": runs a browser or js check once, on demand, with the
+        screenshot forced whatever the verdict (and whether or not the check's
+        own `screenshot` option is on). The run goes through the check's own
+        scheduling, so it executes where the check executes — one of its
+        regions, on a shared worker or on the organization's private agent —
+        and its result is recorded like any other run. The call returns as
+        soon as the run is scheduled; the capture appears in
+        `GET …/screenshots` (trigger `capture-now`, or `agent-upload` from a
+        private agent) once the run completes. A js check only yields a capture
+        if its script calls `page.screenshot()`. Rate limited to one request
+        per check per minute and 20 per organization per hour; a refusal
+        carries `Retry-After`. Requires write access (viewers get 403).
+      operationId: captureCheckScreenshot
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "202":
+          description: The on-demand run is scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckScreenshotCaptureResponse"
+        "400":
+          description: The check type cannot capture a screenshot (only browser and js can)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The check has no scheduled run (it is disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: >-
+            Rate limited (code `RATE_LIMITED`): one capture per check per
+            minute, 20 per organization per hour. `Retry-After` gives the
+            seconds until the refusing window reopens.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/orgs/{org}/dependencies:
     get:
       tags: [Checks]
@@ -12031,6 +12138,75 @@ components:
           type: string
           description: What caused the capture to be kept.
           enum: [incident-open, incident-reopen, agent-upload]
+
+    CheckScreenshot:
+      type: object
+      description: >-
+        One of a check's screenshots: an incident's capture or a check-scoped
+        one. The bytes are fetched through `downloadUrl`, never inlined.
+      required: [uid, mimeType, size, downloadUrl, capturedAt]
+      properties:
+        uid:
+          type: string
+          format: uuid
+          description: The `files` row uid.
+        mimeType:
+          type: string
+          description: Content type as sniffed at write time (`image/webp` today).
+        size:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+          description: >-
+            RELATIVE, short-lived (1 h) signed URL (`/pub/files/<uid>?exp=…&sig=…`),
+            the same one an incident's attachment carries. Re-signed on every
+            fetch; do not cache it.
+        capturedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the probe took the capture — for a failing run, a moment AFTER
+            failure detection. A private agent's upload carries no capture
+            time, so this is then when the server stored it.
+        region:
+          type: string
+          description: Probing region, stamped server-side.
+        trigger:
+          type: string
+          description: >-
+            Why the capture was kept: it opened (`incident-open`) or reopened
+            (`incident-reopen`) an incident, it is a failing run that opened
+            none (`check-failure`), it was requested (`capture-now`), or it was
+            uploaded by a private agent (`agent-upload`).
+          enum: [incident-open, incident-reopen, check-failure, capture-now, agent-upload]
+        incidentUid:
+          type: string
+          format: uuid
+          description: The incident the capture is attached to. Absent for a check-scoped capture.
+
+    CheckScreenshotListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckScreenshot"
+
+    CheckScreenshotCaptureResponse:
+      type: object
+      required: [requestedAt]
+      properties:
+        region:
+          type: string
+          description: The region the on-demand run executes in.
+        requestedAt:
+          type: string
+          format: date-time
+          description: >-
+            When the request was recorded. The capture that answers it lands
+            in the listing after this instant.
 
     IncidentCheck:
       type: object

@@ -143,6 +143,63 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
+### GET /api/v1/orgs/:org/checks/:checkUid/screenshots
+A check's latest page captures, newest first (spec 2026-09-25-34). Auth:
+required, same as reading the check (viewers included). Operator-only: never on
+a status page, badge or subscriber payload.
+
+Query: `limit` (default 5, clamped to 20; a non-positive or non-numeric value is
+a 422).
+
+Response: `{ "data": [ { uid, mimeType, size, downloadUrl, capturedAt, region?,
+trigger?, incidentUid? } ] }`. `downloadUrl` is the same 1 h signed relative
+`/pub/files/…` URL an incident attachment carries. `capturedAt` falls back to
+the stored time for a private agent's upload (it carries no capture time).
+`incidentUid` is absent for a check-scoped capture.
+
+Sources, both matched on the `files.details->>'checkUid'` key through the
+partial expression index `files_org_check_uid_idx`:
+
+- the check's incidents' screenshots (`incidents/<uid>/screenshot`);
+- the check-scoped captures (`checks/<uid>/screenshot`): failing runs that
+  opened or reopened no incident (trigger `check-failure`: validating runs,
+  blips, regional failures, runs of an outage whose incident already has its
+  onset capture) and "Capture now" runs (trigger `capture-now`). A check keeps
+  the **last 5**; the sixth write retires the oldest, row and blob. Deleting
+  the check reaps them (plus an orphan sweep for the other delete paths).
+
+Any check type answers; a type that never captures returns `{ "data": [] }`.
+
+### POST /api/v1/orgs/:org/checks/:checkUid/screenshots/capture
+"Capture now": run a `browser` or `js` check once on demand, screenshot forced
+whatever the verdict and whatever the check's `screenshot` option (spec
+2026-09-25-34). Auth: required, write access (viewers 403).
+
+It goes through the check's own scheduling: one of its `check_jobs` rows (an
+unleased one first, in region order) gets `capture_requested_at` and is made
+due now, and the express hint (`check.created` notifier channel,
+`{"check_uid"}` payload) makes a worker of that region — a shared worker, or the
+org's private agent — claim it at once. The claim consumes the request; a
+request that lands while the job is leased stays due after the release. The run
+is a real run (its result is recorded and goes through the incident pipeline);
+its capture lands under `checks/<uid>/screenshot`.
+
+Response `202 { region, requestedAt }`. A js check only yields a capture if its
+script calls `page.screenshot()`. An agent predating the feature runs the job
+normally (no forced capture).
+
+| Status | When |
+|---|---|
+| 400 | check type is not `browser` or `js` |
+| 404 | org or check not found |
+| 409 | the check has no scheduled job (disabled) |
+| 429 `RATE_LIMITED` | 1 per check per minute, or 20 per org per hour; `Retry-After` in seconds |
+
+The limits are DB-backed fixed windows (`state_entries`, org-scoped keys
+`capture-now.check.<uid>` and `capture-now.org`), so they hold across API
+replicas. Validation runs first, so a refused request spends no budget, and a
+request the org window refuses does not spend the check's window.
+
 ### GET /api/v1/orgs/:org/checks/:check/results/:uid
 Get one result of a check by uid, with the full payload
 (`output`, `metrics`). Auth: required
