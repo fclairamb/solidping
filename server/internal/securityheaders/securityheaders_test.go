@@ -102,10 +102,8 @@ func TestDashboardPolicy(t *testing.T) {
 	})
 
 	script, _ := directiveOf(headers.CSP, "script-src")
-	r.Equal([]string{
-		"'self'", "'sha256-abc='", "https://solidping.acme.com", "wss://solidping.acme.com",
-		"https://eu.posthog.com",
-	}, script)
+	r.Equal([]string{"'self'", "'sha256-abc='", "https://solidping.acme.com", "https://eu.posthog.com"}, script,
+		"the ws(s) origin belongs to connect-src only")
 
 	connect, _ := directiveOf(headers.CSP, "connect-src")
 	r.Contains(connect, "wss://solidping.acme.com", "the realtime socket must be allowed")

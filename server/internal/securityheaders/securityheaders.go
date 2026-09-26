@@ -333,8 +333,15 @@ func ApplyBaseline(header http.Header) {
 func (b *Builder) Dashboard(params Params) Headers {
 	pol := dashboardPolicy()
 	pol.add(dirScript, params.ScriptHashes...)
-	pol.add(dirScript, params.SelfOrigins...)
 	pol.add(dirConnect, params.SelfOrigins...)
+
+	// Scripts only ever come from the http(s) origin; the ws(s) twin is a
+	// connect-src matter.
+	for _, origin := range params.SelfOrigins {
+		if strings.HasPrefix(origin, schemeHTTP+"://") || strings.HasPrefix(origin, schemeHTTPS+"://") {
+			pol.add(dirScript, origin)
+		}
+	}
 
 	if b != nil {
 		pol.add(dirScript, b.dashboardThirdParty...)
