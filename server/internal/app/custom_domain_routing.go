@@ -113,17 +113,24 @@ type customDomainCacheEntry struct {
 	expiresAt  time.Time
 }
 
-// customDomainCache is a small TTL cache for host -> page resolutions.
+// customDomainCache is a small TTL cache for host -> page resolutions. now is
+// an injectable clock (defaulting to time.Now) so tests can pin or advance
+// time instead of racing the real wall clock: a parent test seeds the cache
+// and its parallel subtests only run once a `-parallel` slot frees up, which
+// under a loaded `go test ./...` can be well past a short TTL (spec
+// 2026-09-25-33).
 type customDomainCache struct {
 	mu      sync.RWMutex
 	entries map[string]customDomainCacheEntry
 	ttl     time.Duration
+	now     func() time.Time
 }
 
 func newCustomDomainCache(ttl time.Duration) *customDomainCache {
 	return &customDomainCache{
 		entries: make(map[string]customDomainCacheEntry),
 		ttl:     ttl,
+		now:     time.Now,
 	}
 }
 
@@ -133,7 +140,7 @@ func (c *customDomainCache) get(host string) (customDomainResolution, bool) {
 	entry, ok := c.entries[host]
 	c.mu.RUnlock()
 
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !ok || c.now().After(entry.expiresAt) {
 		return customDomainResolution{}, false
 	}
 
@@ -142,7 +149,7 @@ func (c *customDomainCache) get(host string) (customDomainResolution, bool) {
 
 func (c *customDomainCache) set(host string, resolution customDomainResolution) {
 	c.mu.Lock()
-	c.entries[host] = customDomainCacheEntry{resolution: resolution, expiresAt: time.Now().Add(c.ttl)}
+	c.entries[host] = customDomainCacheEntry{resolution: resolution, expiresAt: c.now().Add(c.ttl)}
 	c.mu.Unlock()
 }
 
