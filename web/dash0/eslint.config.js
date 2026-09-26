@@ -4,6 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 import noNodeScopeInBrowserCallback from "./eslint-rules/no-node-scope-in-browser-callback.js";
+import noUntranslatedJsxText from "./eslint-rules/no-untranslated-jsx-text.js";
 
 export default tseslint.config(
   { ignores: ["dist"] },
@@ -78,6 +79,47 @@ export default tseslint.config(
     },
     rules: {
       "e2e-local/no-node-scope-in-browser-callback": "error",
+    },
+  },
+  {
+    // Text hardcoded in JSX renders in English for every locale (spec
+    // 2026-09-26-01). design-reference.tsx is excluded: it renders code
+    // samples, not UI copy. The allow list is for names and commands that are
+    // the same in every language; see the rule's header before adding to it.
+    files: ["src/**/*.tsx"],
+    ignores: ["src/routes/orgs/$org/design-reference.tsx", "src/**/*.test.tsx"],
+    plugins: {
+      "i18n-local": {
+        rules: {
+          "no-untranslated-jsx-text": noUntranslatedJsxText,
+        },
+      },
+    },
+    rules: {
+      "i18n-local/no-untranslated-jsx-text": [
+        "error",
+        {
+          allow: [
+            // Brand and product names.
+            "SolidPing",
+            "© SolidPing",
+            "Java",
+            "Bedrock",
+            "Kubernetes",
+            // Protocols and units.
+            "UDP",
+            "TCP",
+            "TLS",
+            "ms",
+            // Commands the user types or runs verbatim.
+            "/invite @solidping",
+            "@SolidPing link",
+            "docker run",
+            "docker compose",
+            "ssh-keyscan host | ssh-keygen -lf -",
+          ],
+        },
+      ],
     },
   }
 );
