@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function TokenChipsInput({
   invalidTitle,
   getRemoveLabel,
 }: TokenChipsInputProps) {
+  const { t } = useTranslation("common");
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -151,7 +153,7 @@ export function TokenChipsInput({
                 removeChip(i);
               }}
               aria-label={
-                getRemoveLabel ? getRemoveLabel(token) : `Remove ${token}`
+                getRemoveLabel ? getRemoveLabel(token) : t("removeItem", { item: token })
               }
               className={cn(
                 // Visually a small 12px X, but padded to a ~24px hit target

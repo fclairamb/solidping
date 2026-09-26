@@ -9,17 +9,21 @@
  * Flagged, when the text holds at least two consecutive letters:
  *   - JSX text children:              <Button>Clear filters</Button>
  *   - string literal children:        <span>{"Needs Action"}</span>
- *   - accessible-name attributes:     aria-label, title, alt, label
+ *   - ternary branches:               <span>{up ? "All Up" : "Needs Action"}</span>
+ *   - template literal text:          <span>{`${n} checks`}</span>
+ *   - accessible-name attributes:     aria-label, title, alt, label (same
+ *     forms: literal, ternary branch, template literal)
  *
  * Not flagged:
  *   - text with no run of letters ("—", "&gt;", "#", "{count}"),
  *   - `placeholder`, which in this app is mostly a sample value
  *     ("example.com", "SELECT 1"). Placeholders that are real prose go through
  *     t() too; web/dash0/CLAUDE.md documents how to sweep them,
- *   - the exact strings in the `allow` option: brand and protocol names and
- *     commands a user types verbatim ("SolidPing", "UDP", "docker run"). Keep
- *     that list short; anything a user reads as a sentence belongs in a locale
- *     file.
+ *   - text made only of the phrases in the `allow` option (whole words), plus
+ *     punctuation and numbers: brand and protocol names, units and commands a
+ *     user types verbatim ("SolidPing", "UDP", "ms", "docker run"), so
+ *     `{`${n} ms`}` passes while "Powered by SolidPing" does not. Keep that
+ *     list short; anything a user reads as a sentence belongs in a locale file.
  */
 const ATTRIBUTES = new Set(["aria-label", "title", "alt", "label"]);
 
@@ -47,31 +51,52 @@ export default {
   },
 
   create(context) {
-    const allow = new Set(context.options[0]?.allow ?? []);
+    // Longest first, so "docker compose" is removed before a shorter phrase
+    // could split it. Each phrase only matches as whole words.
+    const allowPatterns = [...(context.options[0]?.allow ?? [])]
+      .sort((a, b) => b.length - a.length)
+      .map(
+        (phrase) =>
+          new RegExp(`(?<![\\p{L}\\p{N}])${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "gu"),
+      );
 
     function check(node, raw) {
       const text = raw.replace(/\s+/g, " ").trim();
       if (!/\p{L}{2,}/u.test(text)) return;
-      if (allow.has(text)) return;
+      const rest = allowPatterns.reduce((acc, pattern) => acc.replace(pattern, " "), text);
+      if (!/\p{L}{2,}/u.test(rest)) return;
       context.report({ node, messageId: "literal", data: { text: text.slice(0, 60) } });
+    }
+
+    // A rendered expression: a string literal, the static text of a template
+    // literal, or either branch of a (possibly nested) ternary. Anything else
+    // (a t() call, a variable) is not text this rule can judge.
+    function checkExpression(node) {
+      if (!node) return;
+      if (node.type === "Literal") {
+        if (typeof node.value === "string") check(node, node.value);
+      } else if (node.type === "TemplateLiteral") {
+        check(node, node.quasis.map((q) => q.value.cooked ?? "").join(" "));
+      } else if (node.type === "ConditionalExpression") {
+        checkExpression(node.consequent);
+        checkExpression(node.alternate);
+      }
     }
 
     return {
       JSXText(node) {
         check(node, node.value);
       },
-      "JSXElement > JSXExpressionContainer > Literal, JSXFragment > JSXExpressionContainer > Literal"(node) {
-        if (typeof node.value === "string") check(node, node.value);
+      "JSXElement > JSXExpressionContainer, JSXFragment > JSXExpressionContainer"(node) {
+        checkExpression(node.expression);
       },
       JSXAttribute(node) {
         if (node.name.type !== "JSXIdentifier" || !ATTRIBUTES.has(node.name.name) || !node.value) return;
-        const value =
-          node.value.type === "Literal"
-            ? node.value.value
-            : node.value.type === "JSXExpressionContainer" && node.value.expression.type === "Literal"
-              ? node.value.expression.value
-              : undefined;
-        if (typeof value === "string") check(node.value, value);
+        if (node.value.type === "Literal") {
+          if (typeof node.value.value === "string") check(node.value, node.value.value);
+        } else if (node.value.type === "JSXExpressionContainer") {
+          checkExpression(node.value.expression);
+        }
       },
     };
   },

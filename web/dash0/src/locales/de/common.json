@@ -186,5 +186,6 @@
     "escalationConnection": "Eskalationskanal",
     "cycle": "Zyklus {{cycle}}"
   },
-  "customized": "angepasst"
+  "customized": "angepasst",
+  "removeItem": "{{item}} entfernen"
 }

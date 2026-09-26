@@ -186,5 +186,6 @@
     "escalationConnection": "Canal d'escalade",
     "cycle": "cycle {{cycle}}"
   },
-  "customized": "personnalisé"
+  "customized": "personnalisé",
+  "removeItem": "Retirer {{item}}"
 }

@@ -259,6 +259,10 @@ const providers: ProviderConfig[] = [
   },
 ];
 
+// The SAML endpoints an IdP administrator must be given (not UI copy).
+const SAML_METADATA_PATH = "/api/v1/auth/saml/metadata";
+const SAML_ACS_PATH = "/api/v1/auth/saml/acs";
+
 function AuthSettingsPage() {
   const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
@@ -488,11 +492,11 @@ function AuthSettingsPage() {
                     <span className="text-muted-foreground">
                       {t("server:auth.samlMetadataUrlLabel")}:
                     </span>{" "}
-                    <code>{`${window.location.origin}/api/v1/auth/saml/metadata`}</code>
+                    <code>{window.location.origin + SAML_METADATA_PATH}</code>
                   </p>
                   <p>
                     <span className="text-muted-foreground">{t("server:auth.samlAcsUrlLabel")}:</span>{" "}
-                    <code>{`${window.location.origin}/api/v1/auth/saml/acs`}</code>
+                    <code>{window.location.origin + SAML_ACS_PATH}</code>
                   </p>
                 </div>
               )}

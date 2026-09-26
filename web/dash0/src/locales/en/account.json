@@ -247,7 +247,8 @@
       "testSent": "Test notification sent",
       "testFailed": "Failed to send test notification",
       "browserLabel": "Browser",
-      "sendTestNotification": "Send test notification"
+      "sendTestNotification": "Send test notification",
+      "toggleAria": "Toggle {{channel}} notifications"
     },
     "addContact": {
       "emailRequired": "Email address is required",

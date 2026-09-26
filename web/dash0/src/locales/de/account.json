@@ -247,7 +247,8 @@
       "testSent": "Testbenachrichtigung gesendet",
       "testFailed": "Senden der Testbenachrichtigung fehlgeschlagen",
       "browserLabel": "Browser",
-      "sendTestNotification": "Testbenachrichtigung senden"
+      "sendTestNotification": "Testbenachrichtigung senden",
+      "toggleAria": "{{channel}}-Benachrichtigungen ein- oder ausschalten"
     },
     "addContact": {
       "emailRequired": "E-Mail-Adresse ist erforderlich",

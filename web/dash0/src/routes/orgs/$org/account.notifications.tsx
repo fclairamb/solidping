@@ -533,7 +533,7 @@ function RouteRow({
           onCheckedChange={handleToggle}
           disabled={patchRoute.isPending}
           data-testid={`toggle-route-${route.uid}`}
-          aria-label={`Toggle ${contactTypeLabel(route.contact.type)} notifications`}
+          aria-label={t("notifications.route.toggleAria", { channel: contactTypeLabel(route.contact.type) })}
         />
         <Button
           variant="ghost"

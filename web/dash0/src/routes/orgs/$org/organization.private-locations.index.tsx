@@ -404,6 +404,16 @@ function RegionsCard({ org }: { org: string }) {
 
 // TokenRevealDialog shows a freshly minted enrollment token EXACTLY ONCE —
 // the server stores only its hash and can never display it again.
+// The enrollment command shown once a token is minted: a shell command the
+// operator copies verbatim, not UI copy.
+function dockerRunCommand(serverUrl: string, token: string): string {
+  return `docker run -v agent-data:/data \\
+  -e SP_NODE_ROLE=agent \\
+  -e SP_AGENT_SERVER_URL=${serverUrl} \\
+  -e SP_AGENT_ENROLLMENT_TOKEN=${token} \\
+  ghcr.io/fclairamb/solidping:latest`;
+}
+
 function TokenRevealDialog({
   minted,
   onClose,
@@ -453,11 +463,7 @@ function TokenRevealDialog({
               className="max-w-full overflow-x-auto rounded bg-muted p-2 text-xs"
               data-testid="docker-run-command"
             >
-              {`docker run -v agent-data:/data \\
-  -e SP_NODE_ROLE=agent \\
-  -e SP_AGENT_SERVER_URL=${window.location.origin} \\
-  -e SP_AGENT_ENROLLMENT_TOKEN=${minted.token} \\
-  ghcr.io/fclairamb/solidping:latest`}
+              {dockerRunCommand(window.location.origin, minted.token)}
             </pre>
           </div>
         )}

@@ -65,7 +65,8 @@
       "help": "Un origen por línea: un esquema y un host, opcionalmente con un puerto o una primera etiqueta *. Sin rutas. Se envía como frame-ancestors en la Content-Security-Policy de la página; se aplica en menos de un minuto. Déjalo vacío para bloquear cualquier otro sitio."
     },
     "defaultEscalationBlastRadius_one": "{{count}} comprobación hereda actualmente la política predeterminada y empezará a usar esta.",
-    "defaultEscalationBlastRadius_other": "{{count}} comprobaciones heredan actualmente la política predeterminada y empezarán a usar esta."
+    "defaultEscalationBlastRadius_other": "{{count}} comprobaciones heredan actualmente la política predeterminada y empezarán a usar esta.",
+    "defaultEscalationSilent": "silenciosa"
   },
   "usage": {
     "title": "Uso",

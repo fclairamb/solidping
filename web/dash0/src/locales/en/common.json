@@ -186,5 +186,6 @@
     "escalationConnection": "Escalation connection",
     "cycle": "cycle {{cycle}}"
   },
-  "customized": "customized"
+  "customized": "customized",
+  "removeItem": "Remove {{item}}"
 }

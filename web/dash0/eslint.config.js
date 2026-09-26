@@ -110,6 +110,7 @@ export default tseslint.config(
             "UDP",
             "TCP",
             "TLS",
+            "OK",
             "ms",
             // Commands the user types or runs verbatim.
             "/invite @solidping",

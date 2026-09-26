@@ -498,9 +498,9 @@ function SettingsPage() {
                   {(policies ?? []).map((p) => (
                     <SelectItem key={p.uid} value={p.uid}>
                       {p.name}
-                      {(p.stepCount ?? p.steps?.length ?? 0) === 0
-                        ? " — silent"
-                        : ""}
+                      {(p.stepCount ?? p.steps?.length ?? 0) === 0 && (
+                        <> — {t("settings.defaultEscalationSilent")}</>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>

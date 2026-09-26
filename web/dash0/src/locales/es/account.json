@@ -247,7 +247,8 @@
       "testSent": "Notificación de prueba enviada",
       "testFailed": "Error al enviar la notificación de prueba",
       "browserLabel": "Navegador",
-      "sendTestNotification": "Enviar notificación de prueba"
+      "sendTestNotification": "Enviar notificación de prueba",
+      "toggleAria": "Activar o desactivar las notificaciones de {{channel}}"
     },
     "addContact": {
       "emailRequired": "Se requiere la dirección de correo electrónico",

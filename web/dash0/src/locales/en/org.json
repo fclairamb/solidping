@@ -65,7 +65,8 @@
       "help": "One origin per line: a scheme and a host, optionally with a port or a leading *. label. No paths. Sent as the page's Content-Security-Policy frame-ancestors; takes effect within a minute. Leave empty to block every other site."
     },
     "defaultEscalationBlastRadius_one": "{{count}} check currently inherits and will start using this policy.",
-    "defaultEscalationBlastRadius_other": "{{count}} checks currently inherit and will start using this policy."
+    "defaultEscalationBlastRadius_other": "{{count}} checks currently inherit and will start using this policy.",
+    "defaultEscalationSilent": "silent"
   },
   "usage": {
     "title": "Usage",
