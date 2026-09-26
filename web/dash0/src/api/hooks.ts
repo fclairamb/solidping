@@ -1153,11 +1153,6 @@ export function useSwitchToAutoPlacement(org: string) {
   });
 }
 
-/** Regenerates a heartbeat check's ping token (heartbeat checks only — the
- *  backend 400s otherwise). Invalidates every previously issued ping URL
- *  immediately, unlike webhook signing-secret rotation which keeps a grace
- *  window: heartbeat pings are frequent and the operator is expected to
- *  update the sender right away. Returns the updated check. */
 /** One capture in a check's screenshot listing (spec 2026-09-25-34): an
  * incident's screenshot or a check-scoped one. Operator-only evidence. */
 export interface CheckScreenshot {
@@ -1226,6 +1221,11 @@ export function useCaptureCheckScreenshot(org: string, checkUid: string) {
   });
 }
 
+/** Regenerates a heartbeat check's ping token (heartbeat checks only — the
+ *  backend 400s otherwise). Invalidates every previously issued ping URL
+ *  immediately, unlike webhook signing-secret rotation which keeps a grace
+ *  window: heartbeat pings are frequent and the operator is expected to
+ *  update the sender right away. Returns the updated check. */
 export function useRotateHeartbeatToken(org: string, uid: string) {
   const queryClient = useQueryClient();
 
