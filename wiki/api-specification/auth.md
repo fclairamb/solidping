@@ -21,6 +21,14 @@ all optional. It is normalized (unknown keys dropped, values capped at 200
 characters, `clickIdKind` limited to `gclid`/`gbraid`/`wbraid`/`msclkid`) and
 stored on the user at confirmation, never updated afterwards.
 
+**Anti-enumeration (spec 2026-09-25-30):** always answers `200` with the same
+`{ message }` body whether or not the email is already registered. An
+already-registered email creates no pending registration and sends no email —
+this is a deliberate no-op, not a bug — so this endpoint can no longer be used
+to test whether an email has an account. Callers must not key on a distinct
+"email already taken" error; there isn't one here anymore (contrast with
+`request-password-reset` below, which was already uniform-success).
+
 ### POST /api/v1/auth/confirm-registration
 Confirm a registration via email token. Returns access token.
 
