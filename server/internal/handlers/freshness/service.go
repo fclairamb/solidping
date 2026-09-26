@@ -145,10 +145,15 @@ func (s *Service) sweepCheck(ctx context.Context, check *models.Check, now time.
 
 	since := check.FreshnessReference()
 
+	lastResultAt := "never"
+	if check.LastResultAt != nil {
+		lastResultAt = check.LastResultAt.UTC().Format(time.RFC3339)
+	}
+
 	s.logger.InfoContext(ctx, "Check went stale: no real result within its freshness threshold",
 		"checkUid", check.UID,
 		"previousStatus", check.Status.String(),
-		"lastResultAt", check.LastResultAt,
+		"lastResultAt", lastResultAt,
 		"threshold", check.StaleThreshold().String(),
 	)
 
