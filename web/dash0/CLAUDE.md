@@ -224,9 +224,13 @@ rule guard this (spec 2026-09-26-01 for the last two):
   value, a word spelled the same); translate everything else.
 - `i18n-local/no-untranslated-jsx-text` (`eslint-rules/`, RuleTester controls
   next to it, run by `bun run test:unit`): JSX text children, string literal
-  children and `aria-label` / `title` / `alt` / `label` string attributes must
-  go through `t()`. The rule's `allow` list in `eslint.config.js` is for exact
-  brand, protocol and command strings only.
+  children, ternary branches and template-literal text, and the same forms in
+  `aria-label` / `title` / `alt` / `label`, must go through `t()`. The rule's
+  `allow` list in `eslint.config.js` holds whole-word brand, protocol, unit and
+  command phrases only; text made of nothing else passes.
+- Validators outside React (`components/checks/form/types/*.tsx` `toConfig`)
+  use `validationMessage(key)` from `form/types/common.ts`, which reads
+  `checks:validation.<key>` from the shared `@/i18n` instance.
 
 The rule does not look at `placeholder` (mostly sample values like
 `example.com`) or at strings built outside JSX (toast messages, summary lines in
