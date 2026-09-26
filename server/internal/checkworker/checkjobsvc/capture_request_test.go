@@ -83,9 +83,12 @@ func exerciseCaptureRequest(ctx context.Context, t *testing.T, dbSvc db.Service,
 	r.NoError(err)
 	r.Len(claimed, 1, "the request makes the job due at once")
 	r.NotNil(claimed[0].CaptureRequestedAt, "the claimed copy carries the request")
+	r.NotNil(claimed[0].CaptureClaimedAt, "…and knows its lease carries it")
 
 	stored = loadJob(ctx, t, bunDB, job.UID)
 	r.Nil(stored.CaptureRequestedAt, "the claim consumed the request in the row")
+	r.NotNil(stored.CaptureClaimedAt,
+		"the row records that THIS lease carries a request (what the submission trusts)")
 
 	// A second request lands while the job is leased: the release must keep
 	// the job due rather than push it to the next tick.
@@ -95,6 +98,7 @@ func exerciseCaptureRequest(ctx context.Context, t *testing.T, dbSvc db.Service,
 	r.NoError(svc.ReleaseLeaseWithSchedulingState(ctx, job.UID, worker.UID, next, 10, 0, next, 0))
 
 	stored = loadJob(ctx, t, bunDB, job.UID)
+	r.Nil(stored.CaptureClaimedAt, "the release spends the lease's request")
 	r.NotNil(stored.CaptureRequestedAt, "a request that arrived mid-lease survives the release")
 	r.True(stored.ScheduledAt.Before(time.Now().Add(time.Second)),
 		"…and keeps the job due now, not at %s (got %s)", next, stored.ScheduledAt)
@@ -104,7 +108,30 @@ func exerciseCaptureRequest(ctx context.Context, t *testing.T, dbSvc db.Service,
 	r.Len(claimed, 1)
 	r.NotNil(claimed[0].CaptureRequestedAt)
 
-	// Control: releasing an unflagged job schedules it normally.
+	// A rate-limit deferral means the probe never ran: the lease's request
+	// goes back to pending rather than being lost.
+	r.NoError(svc.DeferLeaseRateLimited(ctx, job.UID, worker.UID, next))
+
+	stored = loadJob(ctx, t, bunDB, job.UID)
+	r.NotNil(stored.CaptureRequestedAt, "a deferred run's request is pending again")
+	r.Nil(stored.CaptureClaimedAt)
+
+	r.WithinDuration(next, *stored.ScheduledAt, time.Second,
+		"a deferral is not retried at once (the org is over its rate): it rides the next tick")
+
+	// Pull it back to now and claim it again: the pending request is carried.
+	_, err = bunDB.NewUpdate().Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", time.Now().Add(-time.Second)).
+		Set("effective_scheduled_at = ?", time.Now().Add(-time.Second)).
+		Where("uid = ?", job.UID).Exec(ctx)
+	r.NoError(err)
+
+	claimed, err = svc.ClaimJobsForCheck(ctx, worker.UID, job.Region, check.UID)
+	r.NoError(err)
+	r.Len(claimed, 1)
+	r.NotNil(claimed[0].CaptureRequestedAt)
+
+	// Control: once no request is pending, the release schedules normally.
 	r.NoError(svc.ReleaseLease(ctx, job.UID, worker.UID, next))
 
 	stored = loadJob(ctx, t, bunDB, job.UID)

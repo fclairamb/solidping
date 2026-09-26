@@ -10,6 +10,10 @@
 -- simply ignores.
 -- ==========================================================================
 
+alter table check_jobs drop column if exists capture_claimed_at;
+
+--bun:split
+
 alter table check_jobs drop column if exists capture_requested_at;
 
 --bun:split

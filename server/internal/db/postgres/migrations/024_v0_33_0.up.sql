@@ -30,7 +30,8 @@
 --   SECTION: check-screenshots
 --                              the per-check screenshot listing's index, a
 --                              checkUid backfill on incident screenshots, and
---                              check_jobs.capture_requested_at ("Capture now")
+--                              check_jobs.capture_requested_at /
+--                              capture_claimed_at ("Capture now")
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -496,6 +497,7 @@ update files f
    set details = coalesce(f.details, '{}'::jsonb) || jsonb_build_object('checkUid', i.check_uid::text)
   from incidents i
  where f.topic = 'incidents/' || i.uid::text || '/screenshot'
+   and f.organization_uid = i.organization_uid
    and f.deleted_at is null
    and (f.details is null or f.details->>'checkUid' is null);
 
@@ -511,3 +513,16 @@ alter table check_jobs add column if not exists capture_requested_at timestamptz
 
 comment on column check_jobs.capture_requested_at is
   'Pending on-demand screenshot request ("Capture now", spec 2026-09-25-34); cleared by the claim that runs it.';
+
+--bun:split
+
+-- The request the CURRENT lease carries: the claim moves capture_requested_at
+-- here, the release clears it. It is how the result submission tells a capture
+-- that was really requested from an agent merely claiming `onDemand`: the
+-- marker is honored only when the job's own row says this run carried one.
+alter table check_jobs add column if not exists capture_claimed_at timestamptz;
+
+--bun:split
+
+comment on column check_jobs.capture_claimed_at is
+  'On-demand screenshot request carried by the current lease (moved from capture_requested_at at claim, cleared at release).';

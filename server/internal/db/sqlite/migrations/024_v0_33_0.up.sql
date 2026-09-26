@@ -32,7 +32,8 @@
 --   SECTION: check-screenshots
 --                              the per-check screenshot listing's index, a
 --                              checkUid backfill on incident screenshots, and
---                              check_jobs.capture_requested_at ("Capture now")
+--                              check_jobs.capture_requested_at /
+--                              capture_claimed_at ("Capture now")
 --
 -- ⚠️ A DEV DATABASE THAT ALREADY RAN AN EARLIER DRAFT OF THIS FILE MUST BE
 -- RESET, NEVER REPAIRED. bun keys an applied migration on its numeric prefix
@@ -324,12 +325,20 @@ create index if not exists files_org_check_uid_idx
 update files
    set details = json_set(
          coalesce(details, '{}'), '$.checkUid',
-         (select i.check_uid from incidents i where files.topic = 'incidents/' || i.uid || '/screenshot'))
+         (select i.check_uid from incidents i
+           where files.topic = 'incidents/' || i.uid || '/screenshot'
+             and i.organization_uid = files.organization_uid))
  where deleted_at is null
    and topic like 'incidents/%/screenshot'
    and json_extract(coalesce(details, '{}'), '$.checkUid') is null
-   and exists (select 1 from incidents i where files.topic = 'incidents/' || i.uid || '/screenshot');
+   and exists (select 1 from incidents i
+                where files.topic = 'incidents/' || i.uid || '/screenshot'
+                  and i.organization_uid = files.organization_uid);
 
 --bun:split
 
 alter table check_jobs add column capture_requested_at text; -- Pending on-demand screenshot request ("Capture now"); cleared by the claim that runs it
+
+--bun:split
+
+alter table check_jobs add column capture_claimed_at text; -- On-demand screenshot request carried by the current lease (moved from capture_requested_at at claim, cleared at release)

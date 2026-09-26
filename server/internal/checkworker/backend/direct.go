@@ -229,6 +229,10 @@ func (b *DirectBackend) SubmitResult(
 		return fmt.Errorf("failed to generate result UID: %w", err)
 	}
 
+	// Same rule as the agent path: an OnDemand capture is honored only when
+	// the claimed job carried a "Capture now" request (spec 2026-09-25-34).
+	job.HonorOnDemand(req.Diagnostics)
+
 	status := req.Status
 	duration := req.Duration
 	result := &models.Result{

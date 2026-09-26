@@ -9,6 +9,10 @@
 -- (an ignored extra key in a free-form bag).
 -- ==========================================================================
 
+alter table check_jobs drop column capture_claimed_at;
+
+--bun:split
+
 alter table check_jobs drop column capture_requested_at;
 
 --bun:split

@@ -529,11 +529,14 @@ func screenshotDetails(check *models.Check, result *models.Result, trigger strin
 // ever produces one.
 //
 // THE BOUND IS RETENTION, NOT A TRANSITION. Unlike persistScreenshot this can
-// fire on every run of a flapping check, which is why the store keeps only the
-// check's last five and purges the oldest (attachments.MaxCheckScreenshots).
-// On the agent path the ask is bounded the same way on the server side, and
-// the agent's upload budget for check topics is separate from the incident
-// one, so this can never starve an onset capture.
+// fire on every failing run of a flapping check, which is why the store keeps
+// only the check's last five and purges the oldest
+// (attachments.MaxCheckScreenshots). On the agent path the NUMBER of asks is
+// not bounded — every such run asks — but each upload lands in the same capped
+// topic, and the agent's upload budget for check topics is separate from the
+// incident one, so this can never starve an onset capture. OnDemand is only
+// trusted after the submission path checked it against the job's lease
+// (models.CheckJob.HonorOnDemand).
 //
 // Best-effort like every attachment write: a failure is logged, the result is
 // already processed.
@@ -613,12 +616,22 @@ func resultIsFailure(result *models.Result) bool {
 // requestAgentScreenshot asks the agent that produced this result to upload the
 // capture it advertised (spec 2026-08-21-05).
 //
-// BOUNDING THE ASK IS STRUCTURAL, NOT A COUNTER. This is reached only from
-// persistScreenshot, which is called only from createIncident and
-// reopenIncident. An agent that sets the marker on every single failing result
-// therefore still causes at most ONE request per open and one per reopen — the
-// incident state machine is the bound, so there is no way to talk the server
-// into an unbounded number of uploads by being chatty.
+// FOR THE INCIDENT TOPIC, the ask is bounded by the state machine: this is
+// reached only from persistScreenshot, which is called only from
+// createIncident and reopenIncident, so an agent that marks every failing
+// result still causes at most ONE incident upload request per open and one per
+// reopen.
+//
+// That is NOT the whole story any more (spec 2026-09-25-34): a marker no
+// incident took is asked for under the check-scoped topic by
+// requestAgentCheckScreenshot, on EVERY failing run and every honored OnDemand
+// run. That path has no structural bound on the number of asks. What bounds its
+// cost is the check-scoped retention (the last 5 captures per check, the
+// oldest purged row and blob) and the per-agent upload budget, which is kept
+// per topic entity so check-scoped uploads can never spend an incident's. An
+// OnDemand marker is honored only when the job's lease carried a real "Capture
+// now" request (models.CheckJob.HonorOnDemand), so an agent cannot turn
+// healthy runs into stored captures either.
 //
 // The topic is built HERE, from the incident row the server just wrote. Nothing
 // about it comes from the agent. captureID is echoed verbatim, which is fine:

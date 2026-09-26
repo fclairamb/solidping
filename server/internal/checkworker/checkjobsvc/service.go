@@ -989,13 +989,18 @@ func (s *serviceImpl) updateSingleJobLease(
 		Where("uid = ?", job.UID)
 
 	// A pending "Capture now" request (spec 2026-09-25-34) is CONSUMED by this
-	// claim: the column is cleared in the same transaction as the lease, while
-	// `job` keeps the value it was selected with — that in-memory copy is what
-	// tells the worker to force the capture. Only touched when the selected row
-	// carried one, so a request that lands between the select and this update
-	// on an unflagged row survives for the next claim.
+	// claim: it moves to capture_claimed_at (the request THIS lease carries,
+	// which the result submission checks before honoring an OnDemand marker)
+	// in the same transaction as the lease, while `job` keeps the value it was
+	// selected with — that in-memory copy is what tells the worker to force the
+	// capture. Only touched when the selected row carried one, so a request
+	// that lands between the select and this update on an unflagged row
+	// survives for the next claim. SET reads the pre-update value on both
+	// engines, so the move is one statement.
 	if job.CaptureRequestedAt != nil {
-		update = update.Set("capture_requested_at = NULL")
+		update = update.
+			Set("capture_claimed_at = capture_requested_at").
+			Set("capture_requested_at = NULL")
 	}
 
 	result, err := update.Exec(ctx)
@@ -1021,6 +1026,10 @@ func (s *serviceImpl) updateSingleJobLease(
 	job.LeaseExpiresAt = &leaseExpiresAt
 	job.LeaseStarts++
 	job.UpdatedAt = now
+
+	if job.CaptureRequestedAt != nil {
+		job.CaptureClaimedAt = job.CaptureRequestedAt
+	}
 
 	return nil
 }
@@ -1052,6 +1061,8 @@ func (s *serviceImpl) ReleaseLease(
 		// not keep an effective deadline from a stale (earlier) schedule. The
 		// cost offset is reapplied on the next post-exec write.
 		Set(pendingCaptureOr("effective_scheduled_at"), nextScheduledAt).
+		// The run this lease carried is over: its request is spent.
+		Set("capture_claimed_at = NULL").
 		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
@@ -1090,6 +1101,10 @@ func (s *serviceImpl) DeferLeaseRateLimited(
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // The probe never started; don't count it as a crash
 		Set("scheduled_at = ?", nextScheduledAt).
+		// The probe never ran, so a "Capture now" request this lease carried
+		// goes back to pending instead of being lost (spec 2026-09-25-34).
+		Set("capture_requested_at = COALESCE(capture_requested_at, capture_claimed_at)").
+		Set("capture_claimed_at = NULL").
 		// effective_scheduled_at is deliberately NOT set here. See the doc above.
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
@@ -1121,6 +1136,7 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 		Set("cost_ewma_ms = ?", costEWMAMs).
 		Set("delay_ewma_ms = ?", delayEWMAMs).
 		Set(pendingCaptureOr("effective_scheduled_at"), effectiveScheduledAt).
+		Set("capture_claimed_at = NULL").
 		Set("lane = ?", lane).
 		Set("updated_at = ?", now).
 		Where("uid = ?", jobUID).
