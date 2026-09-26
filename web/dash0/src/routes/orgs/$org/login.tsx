@@ -474,7 +474,16 @@ function LoginPage() {
       setTwoFAState(null);
       routeResult(result);
     } catch (err) {
-      reportError(err);
+      // The per-user attempt throttle (spec
+      // 2026-09-25-29-totp-attempt-throttle) answers with a 429 whose body is
+      // accurate but always in English. The user already proved their
+      // password at this point, so give them a translated, actionable reason
+      // to wait instead of falling through to reportError's raw API string.
+      if (err instanceof ApiError && err.status === 429) {
+        setError(t("twoFactor.tooManyAttempts"));
+      } else {
+        reportError(err);
+      }
     } finally {
       setIsLoading(false);
     }
