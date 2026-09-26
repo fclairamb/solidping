@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/fclairamb/solidping/compare/v0.32.1...v1.0.0) (2026-09-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* multi-region quorum, security hardening, check screenshots and translations ([#439](https://github.com/fclairamb/solidping/issues/439))
+
+### Features
+
+* multi-region quorum, security hardening, check screenshots and translations ([#439](https://github.com/fclairamb/solidping/issues/439)) ([f1cce84](https://github.com/fclairamb/solidping/commit/f1cce843b326bdc30cd07d8dde3c80f165632dc4))
+
 ## [0.32.1](https://github.com/fclairamb/solidping/compare/v0.32.0...v0.32.1) (2026-09-24)
 
 
