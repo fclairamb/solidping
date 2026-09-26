@@ -185,5 +185,6 @@
     "allAdmins": "All admins",
     "escalationConnection": "Escalation connection",
     "cycle": "cycle {{cycle}}"
-  }
+  },
+  "customized": "customized"
 }

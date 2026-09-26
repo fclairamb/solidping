@@ -379,7 +379,16 @@
     "failQuorumResolved": "En panne quand {{quorum}} régions sur {{count}} échouent. Moins, c'est un problème régional.",
     "failQuorumResolvedAll_one": "En panne quand la région échoue.",
     "failQuorumResolvedAll_other": "En panne quand les {{count}} régions échouent. Une région qui répond relance la confirmation.",
-    "failQuorumCountError": "Saisissez un nombre entier entre 1 et 100."
+    "failQuorumCountError": "Saisissez un nombre entier entre 1 et 100.",
+    "recordType": "Type d'enregistrement",
+    "dnsServerOptional": "Serveur DNS (facultatif)",
+    "dnsServerPlaceholder": "8.8.8.8:53 — résolveur système par défaut",
+    "dnsServerHelp": "Résolveur à interroger, au format hôte:port. Laissez vide pour utiliser le résolveur du système.",
+    "lookupMethod": "Méthode de recherche",
+    "lookupMethodAuto": "Auto (RDAP, repli sur WHOIS)",
+    "lookupMethodRdap": "RDAP uniquement",
+    "lookupMethodWhois": "WHOIS uniquement",
+    "lookupMethodHelp": "Auto essaie d'abord RDAP et se replie sur WHOIS en cas d'échec. RDAP uniquement et WHOIS uniquement ne se replient jamais."
   },
   "types": {
     "http": "HTTP",
@@ -815,7 +824,8 @@
       "forbidden": "Vous n'avez pas le droit d'exécuter ce check.",
       "noScheduledRun": "Ce check n'a pas d'exécution planifiée. Activez-le pour prendre une capture.",
       "captureFailed": "La capture n'a pas pu être demandée."
-    }
+    },
+    "uidShort": "uid : {{uid}}..."
   },
   "endpoints": {
     "heartbeat": {
@@ -1054,7 +1064,11 @@
     "sendModeDeliveryDescription": "Cet e-mail a été attribué à la sonde d'un contrôle SMTP en mode envoi.",
     "deliveryLatency": "Latence de livraison :",
     "sentAt": "Envoyé le :",
-    "viewSendingSmtpCheck": "Voir le contrôle SMTP émetteur"
+    "viewSendingSmtpCheck": "Voir le contrôle SMTP émetteur",
+    "deliveryViaTitle": "Contrôle de livraison",
+    "deliveryViaHelp": "Les e-mails de sonde sont adressés à la boîte de réception à jeton de ce contrôle e-mail.",
+    "deliverySources_one": "Reçoit les e-mails de {{count}} contrôle SMTP",
+    "deliverySources_other": "Reçoit les e-mails de {{count}} contrôles SMTP"
   },
   "messaging": {
     "brokers": "Courtiers",
@@ -1110,7 +1124,9 @@
     "rdpEndSessionHelp": "La déconnexion supprime la session du serveur. La déconnexion réseau la laisse tourner jusqu'à ce que la politique d'inactivité du serveur la termine : l'exécution suivante s'y rattache (vérifications plus rapides).",
     "rdpCaveatsHelp": "Chaque exécution authentifiée est une vraie connexion Windows interactive : chargement d'un profil utilisateur, scripts d'ouverture de session et GPO, consommation possible d'une licence RDS, déconnexion possible d'un utilisateur réel sur un serveur à session unique, et une trace 4624/4634 dans le journal de sécurité à chaque exécution. Utilisez un compte de supervision dédié, jamais le compte d'une personne.",
     "privateLocationRegion": "Emplacement privé",
-    "privateLocationHelp": "SolidPing a créé ce check avec l'emplacement. Il surveille les agents de l'emplacement et passe en panne quand aucun n'est connecté. L'emplacement surveillé ne peut pas être changé."
+    "privateLocationHelp": "SolidPing a créé ce check avec l'emplacement. Il surveille les agents de l'emplacement et passe en panne quand aucun n'est connecté. L'emplacement surveillé ne peut pas être changé.",
+    "defaultsToHost": "hôte par défaut",
+    "offPlaceholder": "désactivé"
   },
   "network": {
     "hostKeyFingerprintOptional": "Empreinte de clé d'hôte (optionnel)",
@@ -1189,7 +1205,9 @@
     "memoryThresholdHelp": "Un pourcentage du seuil haut de RabbitMQ (par ex. 80%) ou une taille absolue (par ex. 1.5GiB).",
     "diskWarning": "Avertissement disque libre",
     "diskCritical": "Disque libre critique",
-    "diskThresholdHelp": "Une taille absolue uniquement (par ex. 10GiB) — l'API de management n'expose pas la taille totale du disque, un pourcentage ne peut donc pas être calculé."
+    "diskThresholdHelp": "Une taille absolue uniquement (par ex. 10GiB) — l'API de management n'expose pas la taille totale du disque, un pourcentage ne peut donc pas être calculé.",
+    "memoryWarningPlaceholder": "80% ou 1.5GiB",
+    "memoryCriticalPlaceholder": "90% ou 1.8GiB"
   },
   "snmp": {
     "oid": "OID",
@@ -1210,7 +1228,13 @@
     "noneDirectConnection": "Aucun (connexion directe)",
     "needsHostKeyFingerprint": "nécessite une empreinte de clé d'hôte",
     "notInRegion": "pas dans la région {{region}}",
-    "help": "Faites transiter la cible de ce contrôle par la connexion d'un contrôle SSH, pour atteindre des services derrière un bastion. Le nom d'hôte est résolu par le bastion, donc les noms privés fonctionnent. Le temps d'établissement du tunnel est signalé séparément sous tunnel_setup_ms et exclu du temps de réponse du contrôle."
+    "help": "Faites transiter la cible de ce contrôle par la connexion d'un contrôle SSH, pour atteindre des services derrière un bastion. Le nom d'hôte est résolu par le bastion, donc les noms privés fonctionnent. Le temps d'établissement du tunnel est signalé séparément sous tunnel_setup_ms et exclu du temps de réponse du contrôle.",
+    "viaTitle": "Tunnel SSH",
+    "viaHelp": "Les sondes passent par la connexion de ce contrôle SSH.",
+    "dependentsTitle_one": "Utilisé comme tunnel par {{count}} contrôle",
+    "dependentsTitle_other": "Utilisé comme tunnel par {{count}} contrôles",
+    "dependentsHelp": "Ces contrôles passent par ce bastion. Détachez-les avant de supprimer ce contrôle.",
+    "viaTooltip": "via {{name}}"
   },
   "web": {
     "sendOptional": "Envoyer (optionnel)",
@@ -1281,5 +1305,7 @@
     "switched_one": "{{count}} contrôle passé en placement automatique",
     "switched_other": "{{count}} contrôles passés en placement automatique",
     "failed": "Impossible de passer les contrôles en placement automatique"
-  }
+  },
+  "labelFilterLabel": "Étiquettes :",
+  "clearFilters": "Effacer les filtres"
 }

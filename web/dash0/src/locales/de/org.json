@@ -63,7 +63,9 @@
       "label": "Erlaubte Einbettungs-Origins",
       "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
       "help": "Ein Origin pro Zeile: Schema und Host, optional mit Port oder einem führenden *.-Label. Keine Pfade. Wird als frame-ancestors in der Content-Security-Policy der Seite gesendet und gilt innerhalb einer Minute. Leer lassen, um alle anderen Websites zu blockieren."
-    }
+    },
+    "defaultEscalationBlastRadius_one": "{{count}} Prüfung erbt derzeit die Standardrichtlinie und wird diese Richtlinie verwenden.",
+    "defaultEscalationBlastRadius_other": "{{count}} Prüfungen erben derzeit die Standardrichtlinie und werden diese Richtlinie verwenden."
   },
   "usage": {
     "title": "Nutzung",

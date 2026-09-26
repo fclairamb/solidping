@@ -511,9 +511,9 @@ function SettingsPage() {
                     className="text-xs text-muted-foreground"
                     data-testid="escalation-blast-radius"
                   >
-                    {settings.inheritingCheckCount}{" "}
-                    {settings.inheritingCheckCount === 1 ? "check" : "checks"}{" "}
-                    currently inherit and will start using this policy.
+                    {t("settings.defaultEscalationBlastRadius", {
+                      count: settings.inheritingCheckCount,
+                    })}
                   </p>
                 )}
             </div>

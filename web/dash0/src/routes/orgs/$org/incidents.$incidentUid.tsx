@@ -1973,9 +1973,9 @@ function EscalationTimelineCard({ events }: EscalationTimelineCardProps) {
                   ? new Date(event.createdAt).toLocaleString()
                   : "-"}
               </span>
-              {stepPos !== undefined && <span>· step {stepPos + 1}</span>}
+              {stepPos !== undefined && <span>{t("escalation:timeline.stepSuffix", { step: stepPos + 1 })}</span>}
               {repeatIdx !== undefined && repeatIdx > 0 && (
-                <span>· cycle {repeatIdx + 1}</span>
+                <span>{t("escalation:timeline.cycleSuffix", { cycle: repeatIdx + 1 })}</span>
               )}
               {failed && typeof event.payload?.reason === "string" && (
                 <span className="text-red-500">· {event.payload.reason}</span>

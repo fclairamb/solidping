@@ -204,7 +204,10 @@
     "discordDmEmpty": "Aucun membre de cette organisation n'a encore lié de compte Discord. Chaque membre connecte le sien depuis Compte → Notifications.",
     "discordMappingNobodyLinked": "Personne ici n'a encore lié de compte Discord : les alertes de canal nomment les personnes sans les notifier. Chaque membre connecte son propre compte depuis Compte → Notifications ; resynchronisez ensuite pour les récupérer.",
     "discordDmSearchPlaceholder": "Rechercher des membres…",
-    "discordDmNoneFound": "Aucun membre trouvé"
+    "discordDmNoneFound": "Aucun membre trouvé",
+    "twilioRegionUs1": "US1 (par défaut)",
+    "twilioRegionIe1": "Irlande (ie1)",
+    "twilioRegionAu1": "Australie (au1)"
   },
   "freebox": {
     "name": "Freebox",
@@ -222,7 +225,8 @@
     "pairingDenied": "L'appairage a été refusé sur la Freebox.",
     "pairingFailed": "Impossible de joindre la Freebox. Vérifiez l'URL de base.",
     "paired": "Appairé — connexion prête",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "namePlaceholder": "Freebox du salon"
   },
   "kubernetes": {
     "name": "Kubernetes",

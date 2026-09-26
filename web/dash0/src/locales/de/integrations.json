@@ -204,7 +204,10 @@
     "discordDmEmpty": "Kein Mitglied dieser Organisation hat bisher ein Discord-Konto verknüpft. Jedes Mitglied verbindet sein eigenes unter Konto → Benachrichtigungen.",
     "discordMappingNobodyLinked": "Hier hat noch niemand ein Discord-Konto verknüpft, daher nennen Kanal-Alarme Personen, ohne sie zu benachrichtigen. Jedes Mitglied verbindet sein eigenes Konto unter Konto → Benachrichtigungen; danach neu synchronisieren, um sie zu erfassen.",
     "discordDmSearchPlaceholder": "Mitglieder suchen…",
-    "discordDmNoneFound": "Keine Mitglieder gefunden"
+    "discordDmNoneFound": "Keine Mitglieder gefunden",
+    "twilioRegionUs1": "US1 (Standard)",
+    "twilioRegionIe1": "Irland (ie1)",
+    "twilioRegionAu1": "Australien (au1)"
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -298,7 +301,8 @@
     "pairingFailed": "Die Freebox konnte nicht erreicht werden. Überprüfen Sie die Basis-URL.",
     "pairingTimeout": "Die LCD-Aufforderung der Freebox ist vor der Bestätigung abgelaufen. Versuchen Sie es erneut.",
     "pressArrow": "Gehen Sie zu Ihrer Freebox und drücken Sie innerhalb von 30 Sekunden → auf dem LCD-Display",
-    "waitingApproval": "Warten auf LCD-Bestätigung…"
+    "waitingApproval": "Warten auf LCD-Bestätigung…",
+    "namePlaceholder": "Freebox im Wohnzimmer"
   },
   "notificationDetail": {
     "title": "Benachrichtigung",

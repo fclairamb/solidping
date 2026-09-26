@@ -111,7 +111,7 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="domain">Domain</Label>
+        <Label htmlFor="domain">{t("form.domain")}</Label>
         <Input
           id="domain"
           type="text"
@@ -128,7 +128,7 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="dnsRecordType">Record type</Label>
+        <Label htmlFor="dnsRecordType">{t("form.recordType")}</Label>
         <Select
           value={state.recordType}
           onValueChange={(recordType) => onChange({ ...state, recordType })}
@@ -146,11 +146,11 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="dnsNameserver">DNS server (optional)</Label>
+        <Label htmlFor="dnsNameserver">{t("form.dnsServerOptional")}</Label>
         <Input
           id="dnsNameserver"
           type="text"
-          placeholder="8.8.8.8:53 — defaults to system resolver"
+          placeholder={t("form.dnsServerPlaceholder")}
           value={state.nameserver}
           onChange={(e) => onChange({ ...state, nameserver: e.target.value })}
           className={cn(
@@ -159,8 +159,7 @@ function DnsFields({ state, onChange, errors }: CheckTypeFieldsProps<DnsState>) 
           data-testid="check-dns-nameserver-input"
         />
         <p className="text-xs text-muted-foreground">
-          Resolver to query, in host:port form. Leave blank to use the system
-          resolver.
+          {t("form.dnsServerHelp")}
         </p>
         {getFieldError(errors, "nameserver") && (
           <p className="text-xs text-destructive">
@@ -283,10 +282,11 @@ function DomainFields({
   onChange,
   errors,
 }: CheckTypeFieldsProps<DomainState>) {
+  const { t } = useTranslation("checks");
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor="domain">Domain</Label>
+        <Label htmlFor="domain">{t("form.domain")}</Label>
         <Input
           id="domain"
           type="text"
@@ -304,7 +304,7 @@ function DomainFields({
       </div>
       <div className="flex gap-4">
         <div className="space-y-2 w-40">
-          <Label htmlFor="domainCriticalDays">Critical (days)</Label>
+          <Label htmlFor="domainCriticalDays">{t("form.criticalDaysLabel")}</Label>
           <Input
             id="domainCriticalDays"
             type="number"
@@ -314,11 +314,11 @@ function DomainFields({
             data-testid="check-domain-critical-days-input"
           />
           <p className="text-xs text-muted-foreground">
-            Down (pages) at or below this.
+            {t("form.criticalDaysHelp")}
           </p>
         </div>
         <div className="space-y-2 w-40">
-          <Label htmlFor="domainWarningDays">Warning (days)</Label>
+          <Label htmlFor="domainWarningDays">{t("form.warningDaysLabel")}</Label>
           <Input
             id="domainWarningDays"
             type="number"
@@ -328,7 +328,7 @@ function DomainFields({
             data-testid="check-domain-warning-days-input"
           />
           <p className="text-xs text-muted-foreground">
-            Amber warning (no page) at or below this. Must be ≥ Critical.
+            {t("form.warningDaysHelp")}
           </p>
         </div>
       </div>
@@ -342,9 +342,10 @@ export function DomainAdvancedFields({
   state,
   onChange,
 }: CheckTypeFieldsProps<DomainState>) {
+  const { t } = useTranslation("checks");
   return (
     <div className="space-y-2">
-      <Label htmlFor="domainMethod">Lookup method</Label>
+      <Label htmlFor="domainMethod">{t("form.lookupMethod")}</Label>
       <Select
         value={state.method || "auto"}
         onValueChange={(method) => onChange({ ...state, method })}
@@ -353,14 +354,13 @@ export function DomainAdvancedFields({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="auto">Auto (RDAP, WHOIS fallback)</SelectItem>
-          <SelectItem value="rdap">RDAP only</SelectItem>
-          <SelectItem value="whois">WHOIS only</SelectItem>
+          <SelectItem value="auto">{t("form.lookupMethodAuto")}</SelectItem>
+          <SelectItem value="rdap">{t("form.lookupMethodRdap")}</SelectItem>
+          <SelectItem value="whois">{t("form.lookupMethodWhois")}</SelectItem>
         </SelectContent>
       </Select>
       <p className="text-xs text-muted-foreground">
-        Auto tries RDAP first and falls back to WHOIS on any failure. RDAP
-        only and WHOIS only never fall back.
+        {t("form.lookupMethodHelp")}
       </p>
     </div>
   );

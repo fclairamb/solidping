@@ -204,7 +204,10 @@
     "discordDmEmpty": "No member of this organization has linked a Discord account yet. Each member connects their own under Account → Notifications.",
     "discordMappingNobodyLinked": "Nobody here has linked a Discord account yet, so channel alerts name people without pinging them. Each member connects their own account under Account → Notifications; re-sync afterwards to pick them up.",
     "discordDmSearchPlaceholder": "Search members…",
-    "discordDmNoneFound": "No members found"
+    "discordDmNoneFound": "No members found",
+    "twilioRegionUs1": "US1 (default)",
+    "twilioRegionIe1": "Ireland (ie1)",
+    "twilioRegionAu1": "Australia (au1)"
   },
   "freebox": {
     "name": "Freebox",
@@ -222,7 +225,8 @@
     "pairingDenied": "The pairing was rejected on the Freebox.",
     "pairingFailed": "Could not reach the Freebox. Double-check the base URL.",
     "paired": "Paired — connection ready",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "namePlaceholder": "Living-room Freebox"
   },
   "kubernetes": {
     "name": "Kubernetes",

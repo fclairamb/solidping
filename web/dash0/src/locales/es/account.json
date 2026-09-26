@@ -113,7 +113,8 @@
       "disableTitle": "Desactivar la autenticación de dos factores",
       "disableSubtitle": "Introduce un código de 6 dígitos actual para confirmar.",
       "setupFailed": "No se pudo configurar la autenticación de dos factores. Inténtalo de nuevo.",
-      "disableFailed": "No se pudo desactivar la autenticación de dos factores."
+      "disableFailed": "No se pudo desactivar la autenticación de dos factores.",
+      "qrAlt": "Código QR para tu aplicación de autenticación"
     },
     "loadFailed": "No se pudo cargar tu configuración de seguridad."
   },
@@ -262,7 +263,9 @@
       "phoneNumberLabel": "Número de teléfono",
       "submit": "Añadir",
       "addBrowserTitle": "Añadir navegador",
-      "addBrowserDescription": "Recibe notificaciones como alertas push del navegador en este dispositivo."
+      "addBrowserDescription": "Recibe notificaciones como alertas push del navegador en este dispositivo.",
+      "typeEmail": "Correo electrónico",
+      "typePhone": "Teléfono"
     },
     "page": {
       "loadFailed": "Error al cargar la configuración de notificaciones. Actualiza la página.",

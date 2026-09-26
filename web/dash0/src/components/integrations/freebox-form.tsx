@@ -134,7 +134,7 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
             id="freebox-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Living-room Freebox"
+            placeholder={t("freebox.namePlaceholder")}
             data-testid="freebox-name"
           />
           <p className="text-xs text-muted-foreground">

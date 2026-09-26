@@ -1231,7 +1231,7 @@ function CheckDetailPage() {
                   }}
                   className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  uid: {check.uid.slice(0, 8)}...
+                  {t("detail.uidShort", { uid: check.uid.slice(0, 8) })}
                 </Link>
               </div>
             )}

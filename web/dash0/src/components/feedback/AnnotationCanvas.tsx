@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Annotation } from "./types";
 import type { AnnotationTool } from "./AnnotationToolbar";
@@ -23,6 +24,7 @@ export function AnnotationCanvas({
   annotations,
   onAnnotationsChange,
 }: AnnotationCanvasProps) {
+  const { t } = useTranslation("feedback");
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const [drawing, setDrawing] = useState<Annotation | null>(null);
@@ -112,7 +114,7 @@ export function AnnotationCanvas({
     >
       <img
         src={imageURL}
-        alt="Screenshot"
+        alt={t("screenshot_alt")}
         className="block max-h-64 w-auto rounded border"
         draggable={false}
       />

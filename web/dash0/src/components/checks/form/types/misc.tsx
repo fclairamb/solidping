@@ -114,7 +114,7 @@ function SslFields({ state, onChange, errors }: CheckTypeFieldsProps<SslState>) 
         <Input
           id="serverName"
           type="text"
-          placeholder="defaults to host"
+          placeholder={t("misc.defaultsToHost")}
           value={state.serverName}
           onChange={(e) => onChange({ ...state, serverName: e.target.value })}
           data-testid="check-server-name-input"
@@ -255,7 +255,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
             id="ntpOffsetCritMs"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.offsetCritMs}
             onChange={(e) => onChange({ ...state, offsetCritMs: e.target.value })}
             data-testid="check-ntp-offset-crit-input"
@@ -270,7 +270,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
             id="ntpOffsetWarnMs"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.offsetWarnMs}
             onChange={(e) => onChange({ ...state, offsetWarnMs: e.target.value })}
             data-testid="check-ntp-offset-warn-input"
@@ -287,7 +287,7 @@ function NtpFields({ state, onChange, errors }: CheckTypeFieldsProps<NtpState>) 
           type="number"
           min={1}
           max={15}
-          placeholder="off"
+          placeholder={t("misc.offPlaceholder")}
           value={state.maxStratum}
           onChange={(e) => onChange({ ...state, maxStratum: e.target.value })}
           data-testid="check-ntp-max-stratum-input"
@@ -442,7 +442,7 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             id="rdpCriticalDays"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.criticalDays}
             onChange={(e) => onChange({ ...state, criticalDays: e.target.value })}
             data-testid="check-rdp-critical-days-input"
@@ -457,7 +457,7 @@ function RdpFields({ state, onChange, errors }: CheckTypeFieldsProps<RdpState>) 
             id="rdpWarningDays"
             type="number"
             min={0}
-            placeholder="off"
+            placeholder={t("misc.offPlaceholder")}
             value={state.warningDays}
             onChange={(e) => onChange({ ...state, warningDays: e.target.value })}
             data-testid="check-rdp-warning-days-input"
@@ -687,7 +687,7 @@ function SipFields({ state, onChange }: CheckTypeFieldsProps<SipState>) {
         <Input
           id="domain"
           type="text"
-          placeholder="defaults to host"
+          placeholder={t("misc.defaultsToHost")}
           value={state.domain}
           onChange={(e) => onChange({ ...state, domain: e.target.value })}
           data-testid="check-sip-domain-input"

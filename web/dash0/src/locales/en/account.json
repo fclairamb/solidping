@@ -57,7 +57,8 @@
       "disableTitle": "Disable two-factor authentication",
       "disableSubtitle": "Enter a current 6-digit code to confirm.",
       "setupFailed": "Unable to set up two-factor authentication. Try again.",
-      "disableFailed": "Could not disable two-factor authentication."
+      "disableFailed": "Could not disable two-factor authentication.",
+      "qrAlt": "QR code for your authenticator app"
     },
     "loadFailed": "Could not load your security settings."
   },
@@ -262,7 +263,9 @@
       "phoneNumberLabel": "Phone number",
       "submit": "Add",
       "addBrowserTitle": "Add browser",
-      "addBrowserDescription": "Receive notifications as browser push alerts on this device."
+      "addBrowserDescription": "Receive notifications as browser push alerts on this device.",
+      "typeEmail": "Email",
+      "typePhone": "Phone"
     },
     "page": {
       "loadFailed": "Failed to load notification settings. Please refresh the page.",

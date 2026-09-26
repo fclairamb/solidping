@@ -133,7 +133,7 @@ function NewEscalationPolicyPage() {
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Production paging"
+              placeholder={t("escalation:editor.namePlaceholder")}
             />
           </div>
           <div>

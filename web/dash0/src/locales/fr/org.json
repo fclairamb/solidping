@@ -63,7 +63,9 @@
       "label": "Origines autorisées",
       "placeholder": "https://intranet.acme.com\nhttps://*.acme.com",
       "help": "Une origine par ligne : un schéma et un hôte, éventuellement avec un port ou un premier libellé *. Pas de chemin. Envoyé dans la directive frame-ancestors de la Content-Security-Policy de la page ; pris en compte en moins d'une minute. Laissez vide pour bloquer tout autre site."
-    }
+    },
+    "defaultEscalationBlastRadius_one": "{{count}} contrôle hérite actuellement de la politique par défaut et utilisera celle-ci.",
+    "defaultEscalationBlastRadius_other": "{{count}} contrôles héritent actuellement de la politique par défaut et utiliseront celle-ci."
   },
   "usage": {
     "title": "Utilisation",

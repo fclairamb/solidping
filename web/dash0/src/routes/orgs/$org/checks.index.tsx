@@ -528,7 +528,7 @@ function CheckRow({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                via {bastion ? checkLabel(bastion) : "SSH tunnel"}
+                {t("tunnel.viaTooltip", { name: bastion ? checkLabel(bastion) : t("tunnel.viaTitle") })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -1679,7 +1679,7 @@ function ChecksIndexPage() {
           <span className="hidden sm:inline">{t("common:refresh")}</span>
         </Button>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Labels:</span>
+          <span className="text-sm font-medium text-muted-foreground">{t("labelFilterLabel")}</span>
           <LabelFilter
             org={org}
             value={labelFilters}
@@ -1703,7 +1703,7 @@ function ChecksIndexPage() {
               }
               data-testid="clear-label-filters"
             >
-              Clear filters
+              {t("clearFilters")}
             </Button>
           )}
         </div>

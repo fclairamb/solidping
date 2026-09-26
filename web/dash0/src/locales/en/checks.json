@@ -379,7 +379,16 @@
     "failQuorumResolved": "Down when {{quorum}} of {{count}} regions fail. Fewer is a regional issue.",
     "failQuorumResolvedAll_one": "Down when the region fails.",
     "failQuorumResolvedAll_other": "Down when all {{count}} regions fail. Any passing region restarts the confirmation.",
-    "failQuorumCountError": "Enter a whole number between 1 and 100."
+    "failQuorumCountError": "Enter a whole number between 1 and 100.",
+    "recordType": "Record type",
+    "dnsServerOptional": "DNS server (optional)",
+    "dnsServerPlaceholder": "8.8.8.8:53 — defaults to system resolver",
+    "dnsServerHelp": "Resolver to query, in host:port form. Leave blank to use the system resolver.",
+    "lookupMethod": "Lookup method",
+    "lookupMethodAuto": "Auto (RDAP, WHOIS fallback)",
+    "lookupMethodRdap": "RDAP only",
+    "lookupMethodWhois": "WHOIS only",
+    "lookupMethodHelp": "Auto tries RDAP first and falls back to WHOIS on any failure. RDAP only and WHOIS only never fall back."
   },
   "types": {
     "http": "HTTP",
@@ -815,7 +824,8 @@
       "forbidden": "You do not have permission to run this check.",
       "noScheduledRun": "This check has no scheduled run. Enable it to capture a screenshot.",
       "captureFailed": "The capture could not be requested."
-    }
+    },
+    "uidShort": "uid: {{uid}}..."
   },
   "endpoints": {
     "heartbeat": {
@@ -1054,7 +1064,11 @@
     "sendModeDeliveryDescription": "This email was attributed to a send-mode SMTP check's probe.",
     "deliveryLatency": "Delivery latency:",
     "sentAt": "Sent at:",
-    "viewSendingSmtpCheck": "View sending SMTP check"
+    "viewSendingSmtpCheck": "View sending SMTP check",
+    "deliveryViaTitle": "Delivery check",
+    "deliveryViaHelp": "Probe emails are addressed to this email check's tokenized inbox.",
+    "deliverySources_one": "Delivered to by {{count}} SMTP check",
+    "deliverySources_other": "Delivered to by {{count}} SMTP checks"
   },
   "messaging": {
     "brokers": "Brokers",
@@ -1110,7 +1124,9 @@
     "rdpEndSessionHelp": "Log off removes the session from the server. Disconnect leaves it running until the server's idle policy ends it, so the next run reattaches to it (faster checks).",
     "rdpCaveatsHelp": "Every authenticated run is a real interactive Windows logon: it loads a user profile, runs logon scripts and GPOs, may consume an RDS client access license, can disconnect a real logged-in user on a single-session server, and shows up in the Security event log (4624/4634) every run. Use a dedicated monitoring account, never a person's account — the 15-minute minimum interval enforces the rest.",
     "privateLocationRegion": "Private location",
-    "privateLocationHelp": "SolidPing created this check with the location. It watches the location's agents and goes down when none is connected. The location it watches cannot be changed."
+    "privateLocationHelp": "SolidPing created this check with the location. It watches the location's agents and goes down when none is connected. The location it watches cannot be changed.",
+    "defaultsToHost": "defaults to host",
+    "offPlaceholder": "off"
   },
   "network": {
     "hostKeyFingerprintOptional": "Host key fingerprint (optional)",
@@ -1189,7 +1205,9 @@
     "memoryThresholdHelp": "A percentage of RabbitMQ's high watermark (e.g. 80%) or an absolute size (e.g. 1.5GiB).",
     "diskWarning": "Disk free warning",
     "diskCritical": "Disk free critical",
-    "diskThresholdHelp": "An absolute size only (e.g. 10GiB) — the management API exposes no total disk size, so a percentage cannot be computed."
+    "diskThresholdHelp": "An absolute size only (e.g. 10GiB) — the management API exposes no total disk size, so a percentage cannot be computed.",
+    "memoryWarningPlaceholder": "80% or 1.5GiB",
+    "memoryCriticalPlaceholder": "90% or 1.8GiB"
   },
   "snmp": {
     "oid": "OID",
@@ -1210,7 +1228,13 @@
     "noneDirectConnection": "None (direct connection)",
     "needsHostKeyFingerprint": "needs a host key fingerprint",
     "notInRegion": "not in region {{region}}",
-    "help": "Dial this check's target through an SSH check's connection, to reach services behind a bastion. The hostname is resolved by the bastion, so private names work. Tunnel setup time is reported separately as tunnel_setup_ms and excluded from the check's response time."
+    "help": "Dial this check's target through an SSH check's connection, to reach services behind a bastion. The hostname is resolved by the bastion, so private names work. Tunnel setup time is reported separately as tunnel_setup_ms and excluded from the check's response time.",
+    "viaTitle": "SSH tunnel",
+    "viaHelp": "Probes are dialed through this SSH check's connection.",
+    "dependentsTitle_one": "Used as tunnel by {{count}} check",
+    "dependentsTitle_other": "Used as tunnel by {{count}} checks",
+    "dependentsHelp": "These checks dial through this bastion. Detach them before deleting this check.",
+    "viaTooltip": "via {{name}}"
   },
   "web": {
     "sendOptional": "Send (optional)",
@@ -1281,5 +1305,7 @@
     "switched_one": "{{count}} check switched to automatic placement",
     "switched_other": "{{count}} checks switched to automatic placement",
     "failed": "Could not switch checks to automatic placement"
-  }
+  },
+  "labelFilterLabel": "Labels:",
+  "clearFilters": "Clear filters"
 }

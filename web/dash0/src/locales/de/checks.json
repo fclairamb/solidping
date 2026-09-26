@@ -379,7 +379,16 @@
     "failQuorumResolved": "Ausgefallen, wenn {{quorum}} von {{count}} Regionen fehlschlagen. Weniger ist ein regionales Problem.",
     "failQuorumResolvedAll_one": "Ausgefallen, wenn die Region fehlschlägt.",
     "failQuorumResolvedAll_other": "Ausgefallen, wenn alle {{count}} Regionen fehlschlagen. Jede erfolgreiche Region startet die Bestätigung neu.",
-    "failQuorumCountError": "Geben Sie eine ganze Zahl zwischen 1 und 100 ein."
+    "failQuorumCountError": "Geben Sie eine ganze Zahl zwischen 1 und 100 ein.",
+    "recordType": "Eintragstyp",
+    "dnsServerOptional": "DNS-Server (optional)",
+    "dnsServerPlaceholder": "8.8.8.8:53 — Standard: System-Resolver",
+    "dnsServerHelp": "Abzufragender Resolver im Format Host:Port. Leer lassen, um den System-Resolver zu verwenden.",
+    "lookupMethod": "Abfragemethode",
+    "lookupMethodAuto": "Automatisch (RDAP, WHOIS als Fallback)",
+    "lookupMethodRdap": "Nur RDAP",
+    "lookupMethodWhois": "Nur WHOIS",
+    "lookupMethodHelp": "Automatisch versucht zuerst RDAP und weicht bei jedem Fehler auf WHOIS aus. Nur RDAP und Nur WHOIS weichen nie aus."
   },
   "types": {
     "http": "HTTP",
@@ -771,7 +780,8 @@
       "forbidden": "Sie haben keine Berechtigung, diesen Check auszuführen.",
       "noScheduledRun": "Dieser Check hat keinen geplanten Lauf. Aktivieren Sie ihn, um einen Screenshot aufzunehmen.",
       "captureFailed": "Die Aufnahme konnte nicht angefordert werden."
-    }
+    },
+    "uidShort": "UID: {{uid}}..."
   },
   "endpoints": {
     "heartbeat": {
@@ -1054,7 +1064,11 @@
     "sendModeDeliveryDescription": "Diese E-Mail wurde dem Test einer SMTP-Prüfung im Sendemodus zugeordnet.",
     "deliveryLatency": "Zustellungslatenz:",
     "sentAt": "Gesendet am:",
-    "viewSendingSmtpCheck": "Sendende SMTP-Prüfung anzeigen"
+    "viewSendingSmtpCheck": "Sendende SMTP-Prüfung anzeigen",
+    "deliveryViaTitle": "Zustellungsprüfung",
+    "deliveryViaHelp": "Test-E-Mails werden an den Token-Posteingang dieser E-Mail-Prüfung adressiert.",
+    "deliverySources_one": "Empfängt Zustellungen von {{count}} SMTP-Prüfung",
+    "deliverySources_other": "Empfängt Zustellungen von {{count}} SMTP-Prüfungen"
   },
   "messaging": {
     "brokers": "Broker",
@@ -1110,7 +1124,9 @@
     "rdpEndSessionHelp": "Abmelden entfernt die Sitzung vom Server. Trennen lässt sie laufen, bis die Idle-Richtlinie des Servers sie beendet — der nächste Lauf hängt sich wieder an (schnellere Prüfungen).",
     "rdpCaveatsHelp": "Jede authentifizierte Ausführung ist eine echte interaktive Windows-Anmeldung: Benutzerprofil, Anmeldeskripte und GPOs, möglicher Verbrauch einer RDS-Lizenz, auf Einzelsitzungsservern ein möglicherweise abgemeldeter echter Benutzer, und pro Ausführung ein Eintrag 4624/4634 im Sicherheitsprotokoll. Verwenden Sie ein dediziertes Überwachungskonto, nie das Konto einer Person.",
     "privateLocationRegion": "Privater Standort",
-    "privateLocationHelp": "SolidPing hat diesen Check zusammen mit dem Standort angelegt. Er überwacht die Agenten des Standorts und ist ausgefallen, wenn keiner verbunden ist. Der überwachte Standort kann nicht geändert werden."
+    "privateLocationHelp": "SolidPing hat diesen Check zusammen mit dem Standort angelegt. Er überwacht die Agenten des Standorts und ist ausgefallen, wenn keiner verbunden ist. Der überwachte Standort kann nicht geändert werden.",
+    "defaultsToHost": "Standard: Host",
+    "offPlaceholder": "aus"
   },
   "network": {
     "hostKeyFingerprintOptional": "Host-Schlüssel-Fingerabdruck (optional)",
@@ -1189,7 +1205,9 @@
     "memoryThresholdHelp": "Ein Prozentsatz von RabbitMQs High Watermark (z. B. 80%) oder eine absolute Größe (z. B. 1.5GiB).",
     "diskWarning": "Freier Speicherplatz Warnung",
     "diskCritical": "Freier Speicherplatz kritisch",
-    "diskThresholdHelp": "Nur eine absolute Größe (z. B. 10GiB) — die Management-API liefert keine Gesamtgröße des Datenträgers, ein Prozentsatz kann daher nicht berechnet werden."
+    "diskThresholdHelp": "Nur eine absolute Größe (z. B. 10GiB) — die Management-API liefert keine Gesamtgröße des Datenträgers, ein Prozentsatz kann daher nicht berechnet werden.",
+    "memoryWarningPlaceholder": "80% oder 1.5GiB",
+    "memoryCriticalPlaceholder": "90% oder 1.8GiB"
   },
   "snmp": {
     "oid": "OID",
@@ -1210,7 +1228,13 @@
     "noneDirectConnection": "Keiner (direkte Verbindung)",
     "needsHostKeyFingerprint": "benötigt einen Host-Schlüssel-Fingerabdruck",
     "notInRegion": "nicht in Region {{region}}",
-    "help": "Leiten Sie das Ziel dieser Prüfung über die Verbindung einer SSH-Prüfung, um Dienste hinter einem Bastion zu erreichen. Der Hostname wird vom Bastion aufgelöst, sodass private Namen funktionieren. Die Tunnel-Einrichtungszeit wird separat als tunnel_setup_ms gemeldet und von der Antwortzeit der Prüfung ausgeschlossen."
+    "help": "Leiten Sie das Ziel dieser Prüfung über die Verbindung einer SSH-Prüfung, um Dienste hinter einem Bastion zu erreichen. Der Hostname wird vom Bastion aufgelöst, sodass private Namen funktionieren. Die Tunnel-Einrichtungszeit wird separat als tunnel_setup_ms gemeldet und von der Antwortzeit der Prüfung ausgeschlossen.",
+    "viaTitle": "SSH-Tunnel",
+    "viaHelp": "Die Prüfungen laufen über die Verbindung dieser SSH-Prüfung.",
+    "dependentsTitle_one": "Als Tunnel von {{count}} Prüfung verwendet",
+    "dependentsTitle_other": "Als Tunnel von {{count}} Prüfungen verwendet",
+    "dependentsHelp": "Diese Prüfungen laufen über diesen Bastion-Host. Trennen Sie sie, bevor Sie diese Prüfung löschen.",
+    "viaTooltip": "über {{name}}"
   },
   "web": {
     "sendOptional": "Senden (optional)",
@@ -1281,5 +1305,7 @@
     "switched_one": "{{count}} Prüfung auf automatische Platzierung umgestellt",
     "switched_other": "{{count}} Prüfungen auf automatische Platzierung umgestellt",
     "failed": "Prüfungen konnten nicht auf automatische Platzierung umgestellt werden"
-  }
+  },
+  "labelFilterLabel": "Labels:",
+  "clearFilters": "Filter zurücksetzen"
 }

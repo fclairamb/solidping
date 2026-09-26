@@ -204,7 +204,10 @@
     "discordDmEmpty": "Ningún miembro de esta organización ha vinculado aún una cuenta de Discord. Cada miembro conecta la suya en Cuenta → Notificaciones.",
     "discordMappingNobodyLinked": "Aquí nadie ha vinculado todavía una cuenta de Discord, por lo que las alertas de canal nombran a las personas sin notificarlas. Cada miembro conecta su propia cuenta en Cuenta → Notificaciones; vuelve a sincronizar después para recogerlas.",
     "discordDmSearchPlaceholder": "Buscar miembros…",
-    "discordDmNoneFound": "No se encontraron miembros"
+    "discordDmNoneFound": "No se encontraron miembros",
+    "twilioRegionUs1": "US1 (predeterminada)",
+    "twilioRegionIe1": "Irlanda (ie1)",
+    "twilioRegionAu1": "Australia (au1)"
   },
   "kubernetes": {
     "name": "Kubernetes",
@@ -298,7 +301,8 @@
     "pairingFailed": "No se pudo contactar con la Freebox. Verifique la URL base.",
     "pairingTimeout": "El aviso LCD de la Freebox expiró antes de la aprobación. Inténtelo de nuevo.",
     "pressArrow": "Vaya a su Freebox y pulse → en la pantalla LCD en los próximos 30 segundos",
-    "waitingApproval": "Esperando la aprobación en la pantalla LCD…"
+    "waitingApproval": "Esperando la aprobación en la pantalla LCD…",
+    "namePlaceholder": "Freebox del salón"
   },
   "notificationDetail": {
     "title": "Notificación",

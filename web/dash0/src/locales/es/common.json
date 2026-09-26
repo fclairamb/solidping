@@ -185,5 +185,6 @@
     "allAdmins": "Todos los administradores",
     "escalationConnection": "Canal de escalado",
     "cycle": "ciclo {{cycle}}"
-  }
+  },
+  "customized": "personalizado"
 }

@@ -113,7 +113,8 @@
       "disableTitle": "Zwei-Faktor-Authentifizierung deaktivieren",
       "disableSubtitle": "Geben Sie zur Bestätigung einen aktuellen 6-stelligen Code ein.",
       "setupFailed": "Die Zwei-Faktor-Authentifizierung konnte nicht eingerichtet werden. Bitte erneut versuchen.",
-      "disableFailed": "Zwei-Faktor-Authentifizierung konnte nicht deaktiviert werden."
+      "disableFailed": "Zwei-Faktor-Authentifizierung konnte nicht deaktiviert werden.",
+      "qrAlt": "QR-Code für Ihre Authenticator-App"
     },
     "loadFailed": "Ihre Sicherheitseinstellungen konnten nicht geladen werden."
   },
@@ -262,7 +263,9 @@
       "phoneNumberLabel": "Telefonnummer",
       "submit": "Hinzufügen",
       "addBrowserTitle": "Browser hinzufügen",
-      "addBrowserDescription": "Erhalten Sie Benachrichtigungen als Browser-Push-Warnungen auf diesem Gerät."
+      "addBrowserDescription": "Erhalten Sie Benachrichtigungen als Browser-Push-Warnungen auf diesem Gerät.",
+      "typeEmail": "E-Mail",
+      "typePhone": "Telefon"
     },
     "page": {
       "loadFailed": "Laden der Benachrichtigungseinstellungen fehlgeschlagen. Bitte laden Sie die Seite neu.",

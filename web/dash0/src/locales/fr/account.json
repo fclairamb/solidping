@@ -159,7 +159,8 @@
       "disableTitle": "Désactiver l'authentification à deux facteurs",
       "disableSubtitle": "Saisissez un code à 6 chiffres actuel pour confirmer.",
       "setupFailed": "Impossible de configurer l'authentification à deux facteurs. Réessayez.",
-      "disableFailed": "Impossible de désactiver l'authentification à deux facteurs."
+      "disableFailed": "Impossible de désactiver l'authentification à deux facteurs.",
+      "qrAlt": "QR code pour votre application d'authentification"
     },
     "loadFailed": "Impossible de charger vos paramètres de sécurité."
   },
@@ -262,7 +263,9 @@
       "phoneNumberLabel": "Numéro de téléphone",
       "submit": "Ajouter",
       "addBrowserTitle": "Ajouter un navigateur",
-      "addBrowserDescription": "Recevez les notifications sous forme d'alertes push du navigateur sur cet appareil."
+      "addBrowserDescription": "Recevez les notifications sous forme d'alertes push du navigateur sur cet appareil.",
+      "typeEmail": "E-mail",
+      "typePhone": "Téléphone"
     },
     "page": {
       "loadFailed": "Échec du chargement des paramètres de notification. Veuillez rafraîchir la page.",

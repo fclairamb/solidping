@@ -379,7 +379,16 @@
     "failQuorumResolved": "Caído cuando fallan {{quorum}} de {{count}} regiones. Menos es un problema regional.",
     "failQuorumResolvedAll_one": "Caído cuando falla la región.",
     "failQuorumResolvedAll_other": "Caído cuando fallan las {{count}} regiones. Cualquier región que responde reinicia la confirmación.",
-    "failQuorumCountError": "Introduce un número entero entre 1 y 100."
+    "failQuorumCountError": "Introduce un número entero entre 1 y 100.",
+    "recordType": "Tipo de registro",
+    "dnsServerOptional": "Servidor DNS (opcional)",
+    "dnsServerPlaceholder": "8.8.8.8:53 — por defecto, el resolvedor del sistema",
+    "dnsServerHelp": "Resolvedor que consultar, con el formato host:puerto. Déjalo vacío para usar el resolvedor del sistema.",
+    "lookupMethod": "Método de consulta",
+    "lookupMethodAuto": "Automático (RDAP, WHOIS como alternativa)",
+    "lookupMethodRdap": "Solo RDAP",
+    "lookupMethodWhois": "Solo WHOIS",
+    "lookupMethodHelp": "Automático prueba primero RDAP y recurre a WHOIS ante cualquier fallo. Solo RDAP y Solo WHOIS nunca recurren a la alternativa."
   },
   "types": {
     "http": "HTTP",
@@ -771,7 +780,8 @@
       "forbidden": "No tienes permiso para ejecutar este check.",
       "noScheduledRun": "Este check no tiene ejecuciones programadas. Actívalo para tomar una captura.",
       "captureFailed": "No se pudo solicitar la captura."
-    }
+    },
+    "uidShort": "uid: {{uid}}..."
   },
   "endpoints": {
     "heartbeat": {
@@ -1054,7 +1064,11 @@
     "sendModeDeliveryDescription": "Este correo se atribuyó a la sonda de una comprobación SMTP en modo de envío.",
     "deliveryLatency": "Latencia de entrega:",
     "sentAt": "Enviado a las:",
-    "viewSendingSmtpCheck": "Ver la comprobación SMTP emisora"
+    "viewSendingSmtpCheck": "Ver la comprobación SMTP emisora",
+    "deliveryViaTitle": "Comprobación de entrega",
+    "deliveryViaHelp": "Los correos de sondeo se envían a la bandeja de entrada con token de esta comprobación de correo.",
+    "deliverySources_one": "Recibe entregas de {{count}} comprobación SMTP",
+    "deliverySources_other": "Recibe entregas de {{count}} comprobaciones SMTP"
   },
   "messaging": {
     "brokers": "Brokers",
@@ -1110,7 +1124,9 @@
     "rdpEndSessionHelp": "Cerrar sesión elimina la sesión del servidor. Desconectar la deja en marcha hasta que la política de inactividad del servidor la finalice, de modo que la siguiente ejecución se vuelva a adjuntar (comprobaciones más rápidas).",
     "rdpCaveatsHelp": "Cada ejecución autenticada es una sesión interactiva real de Windows: carga un perfil de usuario, ejecuta scripts de inicio y GPO, puede consumir una licencia RDS, puede desconectar a un usuario real en un servidor de sesión única y aparece en el registro de seguridad (4624/4634) en cada ejecución. Use una cuenta de monitorización dedicada, nunca la cuenta de una persona.",
     "privateLocationRegion": "Ubicación privada",
-    "privateLocationHelp": "SolidPing creó este check junto con la ubicación. Vigila los agentes de la ubicación y cae cuando ninguno está conectado. La ubicación vigilada no se puede cambiar."
+    "privateLocationHelp": "SolidPing creó este check junto con la ubicación. Vigila los agentes de la ubicación y cae cuando ninguno está conectado. La ubicación vigilada no se puede cambiar.",
+    "defaultsToHost": "por defecto, el host",
+    "offPlaceholder": "desactivado"
   },
   "network": {
     "hostKeyFingerprintOptional": "Huella de la clave del host (opcional)",
@@ -1189,7 +1205,9 @@
     "memoryThresholdHelp": "Un porcentaje de la marca de agua alta de RabbitMQ (p. ej. 80%) o un tamaño absoluto (p. ej. 1.5GiB).",
     "diskWarning": "Advertencia de disco libre",
     "diskCritical": "Disco libre crítico",
-    "diskThresholdHelp": "Solo un tamaño absoluto (p. ej. 10GiB) — la API de gestión no expone el tamaño total del disco, por lo que no se puede calcular un porcentaje."
+    "diskThresholdHelp": "Solo un tamaño absoluto (p. ej. 10GiB) — la API de gestión no expone el tamaño total del disco, por lo que no se puede calcular un porcentaje.",
+    "memoryWarningPlaceholder": "80% o 1.5GiB",
+    "memoryCriticalPlaceholder": "90% o 1.8GiB"
   },
   "snmp": {
     "oid": "OID",
@@ -1210,7 +1228,13 @@
     "noneDirectConnection": "Ninguno (conexión directa)",
     "needsHostKeyFingerprint": "necesita una huella de clave de host",
     "notInRegion": "no está en la región {{region}}",
-    "help": "Dirija el destino de esta comprobación a través de la conexión de una comprobación SSH, para alcanzar servicios detrás de un bastión. El nombre de host lo resuelve el bastión, por lo que los nombres privados funcionan. El tiempo de establecimiento del túnel se informa por separado como tunnel_setup_ms y se excluye del tiempo de respuesta de la comprobación."
+    "help": "Dirija el destino de esta comprobación a través de la conexión de una comprobación SSH, para alcanzar servicios detrás de un bastión. El nombre de host lo resuelve el bastión, por lo que los nombres privados funcionan. El tiempo de establecimiento del túnel se informa por separado como tunnel_setup_ms y se excluye del tiempo de respuesta de la comprobación.",
+    "viaTitle": "Túnel SSH",
+    "viaHelp": "Las sondas pasan por la conexión de esta comprobación SSH.",
+    "dependentsTitle_one": "Usado como túnel por {{count}} comprobación",
+    "dependentsTitle_other": "Usado como túnel por {{count}} comprobaciones",
+    "dependentsHelp": "Estas comprobaciones pasan por este bastión. Desvincúlalas antes de eliminar esta comprobación.",
+    "viaTooltip": "a través de {{name}}"
   },
   "web": {
     "sendOptional": "Enviar (opcional)",
@@ -1281,5 +1305,7 @@
     "switched_one": "{{count}} comprobación pasada a ubicación automática",
     "switched_other": "{{count}} comprobaciones pasadas a ubicación automática",
     "failed": "No se pudieron pasar las comprobaciones a ubicación automática"
-  }
+  },
+  "labelFilterLabel": "Etiquetas:",
+  "clearFilters": "Borrar filtros"
 }

@@ -481,11 +481,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 badge={
                   downCount > 0 ? (
                     <span className="text-[11px] font-medium text-destructive bg-destructive/10 px-2 py-0.5 rounded-full animate-pulse">
-                      Needs Action
+                      {t("kpi.badgeNeedsAction")}
                     </span>
                   ) : (
                     <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                      All Up
+                      {t("kpi.badgeAllUp")}
                     </span>
                   )
                 }
@@ -515,11 +515,11 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 badge={
                   incidentsCount > 0 ? (
                     <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                      Active
+                      {t("kpi.badgeActive")}
                     </span>
                   ) : (
                     <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                      Clean
+                      {t("kpi.badgeClean")}
                     </span>
                   )
                 }
@@ -796,7 +796,7 @@ function ChecksGlanceList({
             {t("glance.title")}
           </CardTitle>
           <CardDescription className="text-xs text-muted-foreground mt-0.5">
-            Fleet health preview and live response telemetry
+            {t("glance.description")}
           </CardDescription>
         </div>
         <Button
@@ -806,7 +806,7 @@ function ChecksGlanceList({
           className="text-xs font-medium gap-1 text-primary"
         >
           <Link to="/orgs/$org/checks" params={{ org }}>
-            View all ({totalCount}) <ArrowRight className="h-3 w-3" />
+            {t("glance.viewAll", { count: totalCount })} <ArrowRight className="h-3 w-3" />
           </Link>
         </Button>
       </CardHeader>
@@ -885,7 +885,7 @@ function ChecksGlanceList({
                       ) : (
                         <div className="h-4 w-full rounded bg-muted/40 flex items-center justify-center">
                           <span className="text-[10px] text-muted-foreground/60 font-mono">
-                            24h telemetry active
+                            {t("glance.telemetryPending")}
                           </span>
                         </div>
                       )}
