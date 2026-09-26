@@ -58,8 +58,11 @@ plus:
   and sign-in providers return avatars on their own domains.
 - the request's own `https://` / `wss://` origin, for the live update socket.
 - the PostHog host, when [product analytics](/configuration/analytics) are
-  enabled with an explicit `SP_POSTHOG_HOST`. With the default first-party
-  `/ingest` proxy, analytics need nothing extra.
+  enabled with an explicit `SP_POSTHOG_HOST`. For a PostHog Cloud host
+  (`https://eu.i.posthog.com`, `https://us.i.posthog.com`) the regional
+  assets host (`https://eu-assets.i.posthog.com`, …) is allowed too, since
+  posthog-js loads its recorder and surveys from there. With the default
+  first-party `/ingest` proxy, analytics need nothing extra.
 
 ### Framing
 
