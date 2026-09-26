@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/httpx"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
 // CookieAuthToken is the name of the cookie used for storing the access token.
@@ -1135,6 +1136,13 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req *http.Reques
 				base.ErrorCodeValidationError,
 				"Escalation policy not found in this organization", err,
 			)
+		}
+
+		if errors.Is(err, securityheaders.ErrInvalidEmbedOrigin) ||
+			errors.Is(err, securityheaders.ErrTooManyEmbedOrigins) {
+			return h.WriteValidationError(writer, "Invalid status page embed origins", []base.ValidationErrorField{
+				{Name: "statusPageAllowedEmbedOrigins", Message: err.Error()},
+			})
 		}
 
 		return h.WriteInternalError(writer, req, err)

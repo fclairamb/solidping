@@ -16262,7 +16262,7 @@ components:
 
     OrgSettingsResponse:
       type: object
-      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure]
+      required: [registrationEmailPattern, inheritingCheckCount, tracerouteOnFailure, statusPageAllowedEmbedOrigins]
       properties:
         registrationEmailPattern:
           type: string
@@ -16289,6 +16289,16 @@ components:
             Organization default for path-trace-on-failure. Applies to every
             check whose own `tracerouteOnFailure` is `inherit`. True when the
             organization has never set it.
+        statusPageAllowedEmbedOrigins:
+          type: array
+          items:
+            type: string
+            example: https://intranet.acme.com
+          description: >-
+            Origins allowed to frame this organization's public status pages,
+            rendered into the page's `Content-Security-Policy: frame-ancestors`
+            after `'self'`. Empty when only the SolidPing origin itself may
+            frame them. See the security headers documentation.
 
     UpdateOrgSettingsRequest:
       type: object
@@ -16309,6 +16319,20 @@ components:
           description: >-
             Sets the organization default for path-trace-on-failure. Omit to
             leave unchanged.
+        statusPageAllowedEmbedOrigins:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            example: https://intranet.acme.com
+          description: >-
+            Replaces the list of origins allowed to frame this organization's
+            public status pages. Each entry must be a scheme and host
+            (`https://intranet.acme.com`, optionally with a port, or a leading
+            `*.` wildcard label such as `https://*.acme.com`); paths, queries,
+            a bare `*`, CSP keywords, whitespace and `;` are refused with a
+            `VALIDATION_ERROR`. An empty array clears the list; omit to leave
+            it unchanged. Takes effect within a minute.
 
     # Invitation schemas
     CreateInvitationRequest:

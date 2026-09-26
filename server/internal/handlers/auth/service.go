@@ -30,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/orgslug"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/support"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
@@ -3872,6 +3873,11 @@ type OrgSettingsResponse struct {
 	// "org-level default (on)". A nullable field here would make the settings
 	// page render an unchecked box for an org that is in fact tracing.
 	TracerouteOnFailure bool `json:"tracerouteOnFailure"`
+	// StatusPageAllowedEmbedOrigins lists the scheme+host origins allowed to
+	// frame this org's public status pages (spec 2026-09-25-28). They are
+	// rendered into the status page's `frame-ancestors`, after 'self'. ALWAYS
+	// PRESENT; empty means only the SolidPing origin itself may frame them.
+	StatusPageAllowedEmbedOrigins []string `json:"statusPageAllowedEmbedOrigins"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -3913,13 +3919,37 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		return nil, err
 	}
 
+	embedParam, err := s.db.GetOrgParameter(ctx, org.UID, models.ParamKeyStatusPageAllowedEmbedOrigins)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OrgSettingsResponse{
-		RegistrationEmailPattern:   pattern,
-		SessionMaxDurationSeconds:  sessionMaxDurationSeconds,
-		DefaultEscalationPolicyUID: org.DefaultEscalationPolicyUID,
-		InheritingCheckCount:       inheritingCount,
-		TracerouteOnFailure:        paramBoolDefaultTrue(traceParam),
+		RegistrationEmailPattern:      pattern,
+		SessionMaxDurationSeconds:     sessionMaxDurationSeconds,
+		DefaultEscalationPolicyUID:    org.DefaultEscalationPolicyUID,
+		InheritingCheckCount:          inheritingCount,
+		TracerouteOnFailure:           paramBoolDefaultTrue(traceParam),
+		StatusPageAllowedEmbedOrigins: EmbedOriginsFromParam(embedParam),
 	}, nil
+}
+
+// EmbedOriginsFromParam reads the statuspage.allowed_embed_origins parameter
+// into its validated list. The read path is lenient (an entry that does not
+// validate is dropped, see securityheaders.ParseEmbedOrigins), so a row
+// written behind the API's back can never inject a CSP directive. Never nil,
+// so the JSON field is always an array.
+func EmbedOriginsFromParam(param *models.Parameter) []string {
+	if param == nil {
+		return []string{}
+	}
+
+	raw, ok := param.Value[models.ParameterValueKey].(string)
+	if !ok {
+		return []string{}
+	}
+
+	return securityheaders.ParseEmbedOrigins(raw)
 }
 
 // paramBoolDefaultTrue reads a boolean org parameter whose ABSENCE means true.
@@ -3956,6 +3986,11 @@ type UpdateOrgSettingsRequest struct {
 	// TracerouteOnFailure sets the org-level path-trace default (spec
 	// 2026-08-21-10). Omit to leave it unchanged.
 	TracerouteOnFailure *bool `json:"tracerouteOnFailure"`
+	// StatusPageAllowedEmbedOrigins replaces the status-page embed allowlist
+	// (spec 2026-09-25-28). Each entry must be a scheme+host origin such as
+	// https://intranet.acme.com; an empty array clears it. Omit to leave it
+	// unchanged.
+	StatusPageAllowedEmbedOrigins *[]string `json:"statusPageAllowedEmbedOrigins"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -3993,6 +4028,12 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		if updateErr := s.updateEmbedOrigins(ctx, org.UID, *req.StatusPageAllowedEmbedOrigins); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+
 	if changed := orgSettingsChangedFields(req); len(changed) > 0 {
 		audit.Record(ctx, s.db, org.UID, models.EventTypeOrgSettingsUpdated,
 			audit.Target{Type: "organization", UID: org.UID, Name: org.Slug},
@@ -4026,7 +4067,32 @@ func orgSettingsChangedFields(req UpdateOrgSettingsRequest) []string {
 		changed = append(changed, "traceroute_on_failure")
 	}
 
+	if req.StatusPageAllowedEmbedOrigins != nil {
+		changed = append(changed, "status_page_allowed_embed_origins")
+	}
+
 	return changed
+}
+
+// updateEmbedOrigins validates and stores the status-page embed allowlist. An
+// entry that is not a plain scheme+host origin is refused (wrapping
+// securityheaders.ErrInvalidEmbedOrigin / ErrTooManyEmbedOrigins) rather than
+// stored: the value ends up inside a response header, so a `;` or a stray
+// keyword would be a directive injection. An empty list deletes the row.
+func (s *Service) updateEmbedOrigins(ctx context.Context, orgUID string, entries []string) error {
+	origins, err := securityheaders.NormalizeEmbedOrigins(entries)
+	if err != nil {
+		return err
+	}
+
+	if len(origins) == 0 {
+		return s.db.DeleteOrgParameter(ctx, orgUID, models.ParamKeyStatusPageAllowedEmbedOrigins)
+	}
+
+	return s.db.SetOrgParameter(
+		ctx, orgUID, models.ParamKeyStatusPageAllowedEmbedOrigins,
+		securityheaders.FormatEmbedOrigins(origins), false,
+	)
 }
 
 // updateDefaultEscalationPolicy sets or clears the org's default escalation
