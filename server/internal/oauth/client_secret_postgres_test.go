@@ -113,12 +113,16 @@ func TestTokenEndpointClientSecret_Postgres(t *testing.T) {
 	h := f.tokenHandler()
 
 	t.Run("correct secret issues a token", func(t *testing.T) {
+		t.Parallel()
+
 		code := f.issueCodeFor(t, confClient.ClientID)
 		rec := postToken(t, h, authCodeForm(code, confClient.ClientID, secret), "", "", false)
 		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
 	})
 
 	t.Run("correct secret via Basic issues a token", func(t *testing.T) {
+		t.Parallel()
+
 		code := f.issueCodeFor(t, confClient.ClientID)
 		form := url.Values{}
 		form.Set("grant_type", GrantAuthorizationCode)
@@ -130,18 +134,24 @@ func TestTokenEndpointClientSecret_Postgres(t *testing.T) {
 	})
 
 	t.Run("wrong secret is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		code := f.issueCodeFor(t, confClient.ClientID)
 		rec := postToken(t, h, authCodeForm(code, confClient.ClientID, "wrong-secret"), "", "", false)
 		require.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
 	t.Run("missing secret is rejected", func(t *testing.T) {
+		t.Parallel()
+
 		code := f.issueCodeFor(t, confClient.ClientID)
 		rec := postToken(t, h, authCodeForm(code, confClient.ClientID, ""), "", "", false)
 		require.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
 	t.Run("public client secret is ignored", func(t *testing.T) {
+		t.Parallel()
+
 		code := f.issueCodeFor(t, f.client.ClientID)
 		rec := postToken(t, h, authCodeForm(code, f.client.ClientID, "not-checked"), "", "", false)
 		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())

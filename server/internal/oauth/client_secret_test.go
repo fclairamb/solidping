@@ -110,7 +110,9 @@ func (f oauthFixture) tokenHandler() *Handler {
 
 // postToken sends a form-encoded POST to the token endpoint, optionally with
 // HTTP Basic credentials (client_secret_basic).
-func postToken(t *testing.T, h *Handler, form url.Values, basicUser, basicPass string, useBasic bool) *httptest.ResponseRecorder {
+func postToken(
+	t *testing.T, h *Handler, form url.Values, basicUser, basicPass string, useBasic bool,
+) *httptest.ResponseRecorder {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(

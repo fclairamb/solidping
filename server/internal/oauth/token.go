@@ -106,7 +106,7 @@ func (h *Handler) tokenRefresh(writer http.ResponseWriter, req *http.Request) er
 // (client_secret_post) when both are somehow present — RFC 6749 §2.3.1 says a
 // client uses only one method, and Basic is the one carrying its own implicit
 // client_id, so there is nothing to reconcile against the body's.
-func clientCredentials(req *http.Request) (clientID, clientSecret string) {
+func clientCredentials(req *http.Request) (string, string) {
 	if basicID, basicSecret, ok := req.BasicAuth(); ok {
 		return basicID, basicSecret
 	}
