@@ -62,6 +62,7 @@ func (r *StateCleanupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 
 	sweepExpiredAuthHandoffCodes(ctx, jctx)
 	sweepOrphanIncidentAttachments(ctx, jctx)
+	sweepOrphanCheckAttachments(ctx, jctx)
 
 	// Schedule next run in 2 hours
 	// Skip if services are not available (e.g., in tests without full service setup)
@@ -172,5 +173,65 @@ func sweepOrphanIncidentAttachments(ctx context.Context, jctx *jobdef.JobContext
 
 	if swept > 0 {
 		log.InfoContext(ctx, "Reaped orphan incident attachments", "count", swept)
+	}
+}
+
+// sweepOrphanCheckAttachments is sweepOrphanIncidentAttachments for the
+// check-scoped topic `checks/<uid>/…` (spec 2026-09-25-34): it reaps the
+// captures of a check that no longer exists (soft-deleted or gone).
+//
+// checks.Service.DeleteCheck already reaps them on the normal delete paths;
+// this catches the ones that bypass it (organization deletion, direct database
+// deletes). Same grace, same batch, same "a lookup error is never read as
+// gone" rule.
+func sweepOrphanCheckAttachments(ctx context.Context, jctx *jobdef.JobContext) {
+	log := jctx.Logger
+
+	rows, err := jctx.DBService.ListAttachmentsByTopicPrefix(
+		ctx, attachments.EntityChecks+"/",
+		time.Now().Add(-attachmentOrphanGrace), attachmentSweepBatch,
+	)
+	if err != nil {
+		log.WarnContext(ctx, "Failed to list check attachments for GC", "error", err)
+
+		return
+	}
+
+	swept := 0
+
+	for _, row := range rows {
+		if row.Topic == nil {
+			continue
+		}
+
+		topic, parseErr := attachments.ParseTopic(*row.Topic)
+		if parseErr != nil {
+			continue
+		}
+
+		// Org-scoped by the file's own org: GetCheck excludes soft-deleted
+		// checks, so a deleted check answers ErrNoRows exactly like a missing
+		// one.
+		check, checkErr := jctx.DBService.GetCheck(ctx, row.OrganizationUID, topic.EntityUID)
+		if checkErr == nil && check != nil {
+			continue
+		}
+
+		if !errors.Is(checkErr, sql.ErrNoRows) {
+			continue
+		}
+
+		if delErr := jctx.DBService.DeleteFile(ctx, row.OrganizationUID, row.UID); delErr != nil {
+			log.WarnContext(ctx, "Failed to reap orphan check attachment",
+				"fileUid", row.UID, "error", delErr)
+
+			continue
+		}
+
+		swept++
+	}
+
+	if swept > 0 {
+		log.InfoContext(ctx, "Reaped orphan check attachments", "count", swept)
 	}
 }

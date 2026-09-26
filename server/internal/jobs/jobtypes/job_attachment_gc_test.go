@@ -124,3 +124,49 @@ func TestListAttachmentsByTopicPrefixIgnoresNonAttachments(t *testing.T) {
 	r.Len(rows, 1)
 	r.Equal(old.UID, rows[0].UID)
 }
+
+// TestSweepOrphanCheckAttachments is the check-scoped twin (spec 2026-09-25-34):
+// a capture whose check was deleted is reaped, and a live check's capture, a
+// fresh one, and an incident attachment are all left alone.
+func TestSweepOrphanCheckAttachments(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, dbSvc, org := attachmentGCSetup(t)
+
+	live := models.NewCheck(org.UID, "live", "browser")
+	r.NoError(dbSvc.CreateCheck(ctx, live))
+
+	deleted := models.NewCheck(org.UID, "gone", "browser")
+	r.NoError(dbSvc.CreateCheck(ctx, deleted))
+	r.NoError(dbSvc.DeleteCheck(ctx, deleted.UID))
+
+	oldEnough := attachmentOrphanGrace + time.Hour
+
+	orphan := writeAttachment(ctx, t, dbSvc, org.UID, attachments.CheckScreenshotTopic(deleted.UID), oldEnough)
+	missing := writeAttachment(ctx, t, dbSvc, org.UID,
+		attachments.CheckScreenshotTopic(uuid.New().String()), oldEnough)
+	attached := writeAttachment(ctx, t, dbSvc, org.UID, attachments.CheckScreenshotTopic(live.UID), oldEnough)
+	fresh := writeAttachment(ctx, t, dbSvc, org.UID, attachments.CheckScreenshotTopic(deleted.UID), time.Minute)
+	incident := writeAttachment(ctx, t, dbSvc, org.UID,
+		attachments.IncidentScreenshotTopic(uuid.New().String()), oldEnough)
+
+	sweepOrphanCheckAttachments(ctx, &jobdef.JobContext{DBService: dbSvc, Logger: slog.Default()})
+
+	for name, file := range map[string]*models.File{
+		"deleted check": orphan,
+		"missing check": missing,
+	} {
+		_, err := dbSvc.GetFile(ctx, org.UID, file.UID)
+		r.Error(err, "a capture of a %s must be reaped", name)
+	}
+
+	for name, file := range map[string]*models.File{
+		"live check":            attached,
+		"inside the grace":      fresh,
+		"incident (not theirs)": incident,
+	} {
+		_, err := dbSvc.GetFile(ctx, org.UID, file.UID)
+		r.NoError(err, "%s must survive the check sweep", name)
+	}
+}

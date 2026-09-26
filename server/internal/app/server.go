@@ -62,6 +62,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks/importers"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkscreenshots"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/degradedeval"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -1372,6 +1373,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.POST("/agent/attachments", agentAttachmentsHandler.Upload)
 
 	agentWorkerIncidents.SetAttachmentStore(attachmentsService)
+
+	// A check's screenshots on the check page (spec 2026-09-25-34): the listing
+	// is read-level (viewers see captures like they see incidents), "Capture
+	// now" is a write (orgGroup's RequireOrgWrite refuses viewers) and is rate
+	// limited in the service, per check and per org, across replicas.
+	checkScreenshotsHandler := checkscreenshots.NewHandler(
+		checkscreenshots.NewService(s.dbService, attachmentsService, s.services.EventNotifier, s.services.Clock),
+		s.config,
+	)
+	orgCheckScreenshots := orgGroup("/orgs/:org/checks/:checkUid/screenshots")
+	orgCheckScreenshots.GET("", checkScreenshotsHandler.List)
+	orgCheckScreenshots.POST("/capture", checkScreenshotsHandler.Capture)
 
 	// …and its counterpart for DEPORTED agents (spec 2026-08-21-05): an agent
 	// cannot put image bytes on the JSON socket, so a result that opens or reopens an

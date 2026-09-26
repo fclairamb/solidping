@@ -31,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/attachments"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/notifier"
@@ -2734,6 +2735,14 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	// Delete check
 	if err := s.db.DeleteCheck(ctx, check.UID); err != nil {
 		return fmt.Errorf("failed to delete check: %w", err)
+	}
+
+	// Reap the check-scoped attachments (spec 2026-09-25-34: the captures of
+	// runs that opened no incident, and "Capture now" captures). Best-effort
+	// and after the delete, like every reaper: the check is gone either way,
+	// and the state-cleanup orphan sweep catches whatever this misses.
+	if _, reapErr := s.db.DeleteFilesByTopicPrefix(ctx, org.UID, attachments.CheckTopicPrefix(check.UID)); reapErr != nil {
+		slog.WarnContext(ctx, "Failed to reap check attachments", "checkUid", check.UID, "error", reapErr)
 	}
 
 	// The check just left the in-scope set — bust the stats cache so the

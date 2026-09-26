@@ -888,6 +888,19 @@ func createTestIncidentScreenshot(
 
 	svc := attachments.NewService(files.NewService(dbService, cfg), dbService, cfg)
 
+	// An older check-scoped capture (spec 2026-09-25-34): a failing run that
+	// opened no incident. Written FIRST so the incident's capture is the newest
+	// and the check page's Screenshots card shows it as the latest, with this
+	// one in the strip underneath.
+	if _, err := svc.PutCheckScreenshot(ctx, orgUID, shotCheckUID, png, models.JSONMap{
+		attachments.DetailKeyCapturedAt: now.Add(-time.Hour).UTC().Format(time.RFC3339),
+		attachments.DetailKeyRegion:     "us-east",
+		attachments.DetailKeyCheckUID:   shotCheckUID,
+		attachments.DetailKeyTrigger:    attachments.TriggerCheckFailure,
+	}); err != nil {
+		return fmt.Errorf("failed to write check-scoped screenshot fixture: %w", err)
+	}
+
 	fileUID, err := svc.PutIncidentScreenshot(ctx, orgUID, shotIncidentUID, png, models.JSONMap{
 		attachments.DetailKeyCapturedAt: now.UTC().Format(time.RFC3339),
 		attachments.DetailKeyRegion:     "eu-west",
