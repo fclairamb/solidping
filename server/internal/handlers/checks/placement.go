@@ -211,11 +211,21 @@ func firstPlacementError(req *placementRequest) error {
 // requiredCapabilities is what a region must be able to do to run the check:
 // headless Chrome for a browser check, the pinned address family for an
 // `ipVersion: ipv4|ipv6` target.
+//
+// The family only counts when the pin itself is one this check would accept:
+// config validation runs after placement, so demanding an egress capability
+// for a pin that is about to be rejected (dns, a tunneled check, dnsbl+ipv6)
+// would answer "no cloud region can run this check" instead of the field error
+// the caller can act on.
 func requiredCapabilities(checkType string, config map[string]any) []string {
 	var required []string
 
 	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeBrowser {
 		required = append(required, regions.CapabilityBrowser)
+	}
+
+	if err := validateIPVersionConfig(checkType, config); err != nil {
+		return required
 	}
 
 	switch version, err := checkerdef.IPVersionFromConfig(config); {
@@ -598,12 +608,19 @@ func (s *Service) capRegionCountForRate(
 		return count, 0
 	}
 
+	// One buffer for the whole walk, sized by a constant. The proposal only
+	// ever reads len(Regions), and sizing an allocation from n — which starts
+	// out as the request's regionCount — is exactly what a size scan cannot
+	// prove bounded, however true the bound is (the write paths hold
+	// regionCount to [1, regions.MaxAutoRegionCount]).
+	regionProbe := make([]string, regions.MaxAutoRegionCount)
+
 	for n := count; n >= floor; n-- {
 		projected, err := s.entitlements.ProjectChecksPerMinute(ctx, subject.orgUID, entcore.CheckRateProposal{
 			ExcludeCheckUID: subject.excludeUID,
 			Type:            subject.checkType,
 			Period:          subject.period,
-			Regions:         make([]string, n),
+			Regions:         regionProbe[:min(n, len(regionProbe))],
 			Enabled:         true,
 		})
 		if err != nil || projected.Limit == nil {

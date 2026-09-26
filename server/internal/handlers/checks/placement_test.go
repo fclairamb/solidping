@@ -2,9 +2,11 @@ package checks_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -418,4 +420,61 @@ func TestSwitchToAutoPlacementBulk(t *testing.T) {
 	r.Equal(2, *switched.RegionCount, "same cost")
 	r.Nil(switched.RegionPool)
 	r.ElementsMatch([]string{"paris", "lauterbourg"}, w.jobRegions(t, pinned.UID), "jobs untouched")
+}
+
+// TestCapabilityRefusalIsAutomaticPlacementOnly: an instance whose every
+// region reports "no" for a capability is exactly what a bare CI runner or a
+// single-region self-hosted box looks like, and it must fail in three
+// different ways depending on what the write actually asked for.
+func TestCapabilityRefusalIsAutomaticPlacementOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	// Every declared region has a live worker, so no region reads as
+	// "unknown" — each one gives a real verdict.
+	w := newPlacementWorld(t, 0, "tokyo", "gravelines", "lauterbourg", "paris")
+
+	workers, listErr := w.db.ListLiveWorkers(ctx, time.Now().Add(-regions.WorkerLivenessWindow))
+	r.NoError(listErr)
+	r.Len(workers, 4)
+
+	for _, worker := range workers {
+		r.NoError(w.db.UpdateWorkerHeartbeat(ctx, worker.UID, []string{models.CapabilityIPv4}, ""))
+	}
+
+	browserConfig := map[string]any{"url": "https://acme.com"}
+
+	// 1. Automatic placement of a browser check: refused, nothing eligible.
+	_, err := w.svc.CreateCheck(ctx, w.org.Slug, checks.CreateCheckRequest{
+		Type: "browser", Config: browserConfig,
+	})
+	r.ErrorContains(err, "no cloud region can run this check")
+
+	// 2. The very same check with a pinned region: created. A pinned region
+	// is the operator's explicit list and is never capability-filtered —
+	// the capability is a hint for choosing, not a write gate.
+	pinned := w.create(t, checks.CreateCheckRequest{
+		Type: "browser", Config: browserConfig,
+		Placement: strPtr(models.PlacementPinned), Regions: []string{"tokyo"},
+	})
+	r.Equal(models.PlacementPinned, pinned.Placement)
+	r.Equal([]string{"tokyo"}, pinned.Regions)
+
+	// 3. A pin the check cannot accept at all is answered by config
+	// validation, not by placement: dns has no address-family seam, so
+	// asking placement for IPv6 first would report the regions error
+	// instead of the field error the caller can fix.
+	_, err = w.svc.CreateCheck(ctx, w.org.Slug, checks.CreateCheckRequest{
+		Type: "dns", Config: map[string]any{"host": "example.com", checkerdef.IPVersionConfigKey: "ipv6"},
+	})
+	r.ErrorContains(err, "cannot be pinned")
+
+	// 4. Where the family requirement does apply, the refusal still stands.
+	_, err = w.svc.CreateCheck(ctx, w.org.Slug, checks.CreateCheckRequest{
+		Type:   "http",
+		Config: map[string]any{"url": "https://acme.com", checkerdef.IPVersionConfigKey: "ipv6"},
+	})
+	r.ErrorContains(err, "no cloud region can run this check")
 }
