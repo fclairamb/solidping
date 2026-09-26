@@ -169,7 +169,9 @@ function BrowserFields({
         />
         <p className="text-xs text-muted-foreground">{t("web.keywordHelp")}</p>
       </div>
-      <div className="space-y-2">
+      {/* `id` is the `?section=browser-screenshot` deep-link target the check
+          page's Screenshots card links to (spec 2026-09-25-34). */}
+      <div id="browser-screenshot" className="scroll-mt-20 space-y-2">
         <label className="flex items-center gap-2">
           <Checkbox
             checked={state.screenshot}

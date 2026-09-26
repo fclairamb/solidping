@@ -1158,6 +1158,74 @@ export function useSwitchToAutoPlacement(org: string) {
  *  immediately, unlike webhook signing-secret rotation which keeps a grace
  *  window: heartbeat pings are frequent and the operator is expected to
  *  update the sender right away. Returns the updated check. */
+/** One capture in a check's screenshot listing (spec 2026-09-25-34): an
+ * incident's screenshot or a check-scoped one. Operator-only evidence. */
+export interface CheckScreenshot {
+  uid: string;
+  mimeType: string;
+  size: number;
+  /** Relative signed URL: `/pub/files/<uid>?exp=…&sig=…`, valid 1 h. */
+  downloadUrl: string;
+  /** When the probe took the capture (for a private agent's upload: when the
+   * server stored it). */
+  capturedAt: string;
+  region?: string;
+  trigger?:
+    | "incident-open"
+    | "incident-reopen"
+    | "check-failure"
+    | "capture-now"
+    | "agent-upload";
+  /** The incident the capture belongs to; absent for a check-scoped capture. */
+  incidentUid?: string;
+}
+
+/** Response of POST …/screenshots/capture ("Capture now"). */
+export interface CheckScreenshotCaptureResponse {
+  region?: string;
+  requestedAt: string;
+}
+
+/** How many captures the check card shows (the latest plus the strip). */
+export const CHECK_SCREENSHOTS_LIMIT = 5;
+
+/** The signed download URLs expire after an hour; refetching well inside
+ * that keeps a long-open check page from rendering dead images. */
+const CHECK_SCREENSHOTS_REFRESH_MS = 20 * 60 * 1000;
+
+export function useCheckScreenshots(
+  org: string,
+  checkUid: string,
+  options: { enabled?: boolean; pollMs?: number } = {},
+) {
+  return useQuery({
+    queryKey: ["check-screenshots", org, checkUid],
+    queryFn: async () => {
+      const r = await apiFetch<{ data: CheckScreenshot[] }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/screenshots?limit=${CHECK_SCREENSHOTS_LIMIT}`,
+      );
+      return r.data;
+    },
+    enabled: (options.enabled ?? true) && !!org && !!checkUid,
+    refetchInterval: options.pollMs ?? CHECK_SCREENSHOTS_REFRESH_MS,
+  });
+}
+
+export function useCaptureCheckScreenshot(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<CheckScreenshotCaptureResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/screenshots/capture`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-screenshots", org, checkUid] });
+    },
+  });
+}
+
 export function useRotateHeartbeatToken(org: string, uid: string) {
   const queryClient = useQueryClient();
 

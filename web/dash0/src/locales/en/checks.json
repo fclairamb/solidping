@@ -783,6 +783,38 @@
     "regionalIssue": {
       "title": "Regional issue: failing from {{regions}}",
       "detail": "{{failing}} of {{count}} regions failing. An incident opens only when {{quorum}} regions fail for the confirmation period."
+    },
+    "screenshots": {
+      "title": "Screenshots",
+      "description": "What the probe saw. A capture of a failing run is taken a moment after the check decided the page was unhealthy, from one region.",
+      "alt": "Screenshot of the page captured by this check",
+      "captureNow": "Capture now",
+      "capturing": "Capturing…",
+      "pending": "Running the check once to capture the page. The screenshot appears here when the run completes.",
+      "requested": "Capture requested.",
+      "requestedFrom": "Capture requested from {{region}}.",
+      "captured": "New screenshot captured.",
+      "stillWaiting": "The screenshot has not arrived yet. It will appear here when the run completes.",
+      "empty": "No screenshot yet. Captures are taken when a run fails.",
+      "enableOnFailure": "Turn on screenshots on failure",
+      "jsHint": "A js check captures a screenshot when its script calls page.screenshot().",
+      "older": "Older screenshots",
+      "viewIncident": "View incident",
+      "unknownRegion": "Unknown region",
+      "thumbnailTitle": "{{capturedAt}} from {{region}}",
+      "triggers": {
+        "incidentOpen": "Opened an incident",
+        "incidentReopen": "Reopened an incident",
+        "checkFailure": "Failed run",
+        "captureNow": "Captured on demand",
+        "agentUpload": "From a private location",
+        "unknown": "Capture"
+      },
+      "rateLimited": "Capture now is rate limited. Try again in {{seconds}} s.",
+      "rateLimitedNoDelay": "Capture now is rate limited. Try again in a minute.",
+      "forbidden": "You do not have permission to run this check.",
+      "noScheduledRun": "This check has no scheduled run. Enable it to capture a screenshot.",
+      "captureFailed": "The capture could not be requested."
     }
   },
   "endpoints": {

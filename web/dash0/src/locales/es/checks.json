@@ -739,6 +739,38 @@
     "regionalIssue": {
       "title": "Problema regional: fallos desde {{regions}}",
       "detail": "{{failing}} de {{count}} regiones en fallo. Solo se abre un incidente cuando {{quorum}} regiones fallan durante el período de confirmación."
+    },
+    "screenshots": {
+      "title": "Capturas de pantalla",
+      "description": "Lo que vio la sonda. La captura de una ejecución fallida se toma un momento después de que el check decida que la página falla, desde una sola región.",
+      "alt": "Captura de pantalla de la página tomada por este check",
+      "captureNow": "Capturar ahora",
+      "capturing": "Capturando…",
+      "pending": "Ejecutando el check una vez para capturar la página. La captura aparecerá aquí cuando termine la ejecución.",
+      "requested": "Captura solicitada.",
+      "requestedFrom": "Captura solicitada desde {{region}}.",
+      "captured": "Nueva captura de pantalla recibida.",
+      "stillWaiting": "La captura aún no ha llegado. Aparecerá aquí cuando termine la ejecución.",
+      "empty": "Todavía no hay capturas de pantalla. Las capturas se toman cuando una ejecución falla.",
+      "enableOnFailure": "Activar capturas en caso de fallo",
+      "jsHint": "Un check js toma una captura cuando su script llama a page.screenshot().",
+      "older": "Capturas anteriores",
+      "viewIncident": "Ver incidente",
+      "unknownRegion": "Región desconocida",
+      "thumbnailTitle": "{{capturedAt}} desde {{region}}",
+      "triggers": {
+        "incidentOpen": "Abrió un incidente",
+        "incidentReopen": "Reabrió un incidente",
+        "checkFailure": "Ejecución fallida",
+        "captureNow": "Capturada a petición",
+        "agentUpload": "Desde una ubicación privada",
+        "unknown": "Captura"
+      },
+      "rateLimited": "«Capturar ahora» está limitado. Inténtalo de nuevo en {{seconds}} s.",
+      "rateLimitedNoDelay": "«Capturar ahora» está limitado. Inténtalo de nuevo en un minuto.",
+      "forbidden": "No tienes permiso para ejecutar este check.",
+      "noScheduledRun": "Este check no tiene ejecuciones programadas. Actívalo para tomar una captura.",
+      "captureFailed": "No se pudo solicitar la captura."
     }
   },
   "endpoints": {

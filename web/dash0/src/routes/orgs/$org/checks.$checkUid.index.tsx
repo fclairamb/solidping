@@ -123,6 +123,8 @@ import {
 } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
+import { CheckScreenshotsCard } from "@/components/checks/check-screenshots-card";
+import { checkTypeCanCapture } from "@/lib/check-screenshots";
 
 // The result-output key reporting which address family the probe used, and the
 // config key pinning it. Kept next to each other so the pair can't drift.
@@ -1774,6 +1776,17 @@ function CheckDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {checkTypeCanCapture(check.type) && (
+        <CheckScreenshotsCard
+          org={org}
+          checkUid={checkUid}
+          checkType={check.type ?? ""}
+          screenshotEnabled={
+            check.config?.screenshot === true || check.config?.screenshot === "true"
+          }
+        />
+      )}
 
       {check.type === "ssl" && (
         <SslChainCard

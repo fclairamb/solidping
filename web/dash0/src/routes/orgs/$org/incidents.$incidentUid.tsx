@@ -55,6 +55,7 @@ import { useLiveSubscription } from "@/contexts/LiveEventsContext";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { IncidentPublicationsPanel } from "@/components/incidents/incident-publications-panel";
 import { IncidentTracerouteCard } from "@/components/incidents/traceroute-card";
+import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -1488,22 +1489,11 @@ function IncidentScreenshotCard({ incident }: { incident: IncidentDetail }) {
       <CardContent className="space-y-4">
         {shots.map((shot) => (
           <figure key={shot.uid} className="space-y-2">
-            {/* The image is a link to itself so a full-resolution view is one
-                click away without a lightbox dependency. */}
-            <a
-              href={shot.downloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block overflow-hidden rounded-md border bg-muted"
-            >
-              <img
-                src={shot.downloadUrl}
-                alt={t("detail.screenshot.alt")}
-                loading="lazy"
-                className="h-auto w-full max-w-full"
-                data-testid="incident-screenshot-image"
-              />
-            </a>
+            <ScreenshotImageLink
+              src={shot.downloadUrl}
+              alt={t("detail.screenshot.alt")}
+              imageTestId="incident-screenshot-image"
+            />
             <figcaption
               className="text-xs text-muted-foreground"
               data-testid="incident-screenshot-caption"

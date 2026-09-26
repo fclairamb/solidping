@@ -124,6 +124,7 @@ import { CheckRateMeter } from "@/components/shared/check-rate-meter";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EvaluationCard } from "@/components/checks/evaluation-card";
+import { ScreenshotImageLink } from "@/components/shared/screenshot-image";
 import { StatusDot } from "@/components/shared/status-dot";
 import { RegionFreshnessList, StaleSince } from "@/components/checks/check-freshness";
 import { CheckPlacementDetail } from "@/components/checks/check-placement";
@@ -3948,6 +3949,45 @@ function DataDisplaySection() {
         code={`<TableHead className="w-full">Check</TableHead>\n<TableHead className="whitespace-nowrap">State</TableHead>\n<TableHead className="whitespace-nowrap px-2" />\n\n<TableCell className="w-full max-w-0">\n  <Link to="..." title={name} className="block truncate text-primary hover:underline">\n    {name}\n  </Link>\n</TableCell>\n<TableCell className="whitespace-nowrap">\n  <Badge>{state}</Badge>\n</TableCell>\n<TableCell className="whitespace-nowrap px-2 text-right">\n  <Link to="..." aria-label="Open check" className="inline-flex text-muted-foreground hover:text-foreground">\n    <ArrowUpRight className="h-3.5 w-3.5" />\n  </Link>\n</TableCell>`}
       />
 
+      <div className="space-y-2 pt-2" data-testid="design-ref-screenshot">
+        <h3 className="text-sm font-medium">Screenshot image</h3>
+        <p className="text-sm text-muted-foreground">
+          A stored capture is rendered with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            ScreenshotImageLink
+          </code>
+          : the image is a link to its full-size self, opened in a new tab, so
+          the browser&apos;s own viewer is the lightbox (no dependency). The
+          incident screenshot card and the check page&apos;s Screenshots card
+          both use it, which is what keeps a capture looking the same wherever
+          it appears. Full width for the latest capture; for a thumbnail strip,
+          give the frame an aspect ratio and the image{" "}
+          <code>object-cover object-top</code>, and put the capture time in{" "}
+          <code>title</code>. The <code>src</code> is the signed{" "}
+          <code>downloadUrl</code>, which expires after an hour: re-fetch the
+          listing rather than caching it.
+        </p>
+        <div className="grid max-w-xl gap-3">
+          <ScreenshotImageLink src={DESIGN_REF_SCREENSHOT} alt="Example capture" />
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i}>
+                <ScreenshotImageLink
+                  src={DESIGN_REF_SCREENSHOT}
+                  alt="Example thumbnail"
+                  title="Captured 10:42 from eu-west"
+                  className="aspect-video"
+                  imgClassName="h-full w-full object-cover object-top"
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <CodeSnippet
+        code={`import { ScreenshotImageLink } from "@/components/shared/screenshot-image";\n\n<ScreenshotImageLink src={shot.downloadUrl} alt={t("…alt")} />\n\n// Thumbnail in a strip\n<ScreenshotImageLink\n  src={shot.downloadUrl}\n  alt={t("…alt")}\n  title={capturedAtAndRegion}\n  className="aspect-video"\n  imgClassName="h-full w-full object-cover object-top"\n/>`}
+      />
+
       <div className="space-y-2 pt-2">
         <h3 className="text-sm font-medium">Evaluation card</h3>
         <p className="text-sm text-muted-foreground">
@@ -3976,6 +4016,21 @@ function DataDisplaySection() {
     </Section>
   );
 }
+
+/* A stand-in capture for the Screenshot image example: an inline SVG data URL
+ * (img-src allows data:), so the catalog needs no stored file. */
+const DESIGN_REF_SCREENSHOT =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">' +
+      '<rect width="640" height="360" fill="#f1f5f9"/>' +
+      '<rect width="640" height="48" fill="#1e3a8a"/>' +
+      '<rect x="32" y="88" width="360" height="24" rx="4" fill="#cbd5e1"/>' +
+      '<rect x="32" y="128" width="520" height="14" rx="4" fill="#e2e8f0"/>' +
+      '<rect x="32" y="152" width="480" height="14" rx="4" fill="#e2e8f0"/>' +
+      '<rect x="32" y="200" width="160" height="40" rx="6" fill="#2563eb"/>' +
+      "</svg>",
+  );
 
 /* A live EvaluationCard on a synthetic evaluation row: an on-time heartbeat
  * evaluated by SolidPing 12 s after the beat it read. */

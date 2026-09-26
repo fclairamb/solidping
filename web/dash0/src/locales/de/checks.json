@@ -739,6 +739,38 @@
     "regionalIssue": {
       "title": "Regionales Problem: Fehler aus {{regions}}",
       "detail": "{{failing}} von {{count}} Regionen fehlerhaft. Ein Vorfall wird erst eröffnet, wenn {{quorum}} Regionen während der Bestätigungszeit fehlschlagen."
+    },
+    "screenshots": {
+      "title": "Screenshots",
+      "description": "Was die Probe gesehen hat. Ein Screenshot eines fehlgeschlagenen Laufs entsteht kurz nachdem der Check die Seite als fehlerhaft erkannt hat, aus einer einzigen Region.",
+      "alt": "Screenshot der Seite, aufgenommen von diesem Check",
+      "captureNow": "Jetzt aufnehmen",
+      "capturing": "Wird aufgenommen…",
+      "pending": "Der Check wird einmal ausgeführt, um die Seite aufzunehmen. Der Screenshot erscheint hier, sobald der Lauf abgeschlossen ist.",
+      "requested": "Aufnahme angefordert.",
+      "requestedFrom": "Aufnahme aus {{region}} angefordert.",
+      "captured": "Neuer Screenshot aufgenommen.",
+      "stillWaiting": "Der Screenshot ist noch nicht da. Er erscheint hier, sobald der Lauf abgeschlossen ist.",
+      "empty": "Noch kein Screenshot. Screenshots werden aufgenommen, wenn ein Lauf fehlschlägt.",
+      "enableOnFailure": "Screenshots bei Fehlern aktivieren",
+      "jsHint": "Ein js-Check nimmt einen Screenshot auf, wenn sein Skript page.screenshot() aufruft.",
+      "older": "Ältere Screenshots",
+      "viewIncident": "Vorfall anzeigen",
+      "unknownRegion": "Unbekannte Region",
+      "thumbnailTitle": "{{capturedAt}} aus {{region}}",
+      "triggers": {
+        "incidentOpen": "Hat einen Vorfall eröffnet",
+        "incidentReopen": "Hat einen Vorfall wieder eröffnet",
+        "checkFailure": "Fehlgeschlagener Lauf",
+        "captureNow": "Auf Anfrage aufgenommen",
+        "agentUpload": "Von einem privaten Standort",
+        "unknown": "Aufnahme"
+      },
+      "rateLimited": "„Jetzt aufnehmen“ ist begrenzt. Versuchen Sie es in {{seconds}} s erneut.",
+      "rateLimitedNoDelay": "„Jetzt aufnehmen“ ist begrenzt. Versuchen Sie es in einer Minute erneut.",
+      "forbidden": "Sie haben keine Berechtigung, diesen Check auszuführen.",
+      "noScheduledRun": "Dieser Check hat keinen geplanten Lauf. Aktivieren Sie ihn, um einen Screenshot aufzunehmen.",
+      "captureFailed": "Die Aufnahme konnte nicht angefordert werden."
     }
   },
   "endpoints": {
