@@ -166,7 +166,10 @@ partial expression index `files_org_check_uid_idx`:
   blips, regional failures, runs of an outage whose incident already has its
   onset capture) and "Capture now" runs (trigger `capture-now`). A check keeps
   the **last 5**; the sixth write retires the oldest, row and blob. Deleting
-  the check reaps them (plus an orphan sweep for the other delete paths).
+  the check reaps them, and the state-cleanup orphan sweep covers the other
+  delete paths. The sweep (incident and check attachments alike) selects
+  orphans with an anti-join in SQL, so the attachments of live entities never
+  fill its batch.
 
 Any check type answers; a type that never captures returns `{ "data": [] }`.
 
@@ -196,9 +199,18 @@ normally (no forced capture).
 | 429 `RATE_LIMITED` | 1 per check per minute, or 20 per org per hour; `Retry-After` in seconds |
 
 The limits are DB-backed fixed windows (`state_entries`, org-scoped keys
-`capture-now.check.<uid>` and `capture-now.org`), so they hold across API
-replicas. Validation runs first, so a refused request spends no budget, and a
-request the org window refuses does not spend the check's window.
+`capture-now.check.<uid>` and `capture-now.org`), admitted atomically by
+`db.Service.AdmitFixedWindows`: both counters are read and written under row
+locks in one transaction (Postgres `SELECT … FOR UPDATE`; SQLite's single
+connection), so they hold across API replicas and under concurrent requests.
+Validation runs first, so a refused request spends no budget, and a request the
+org window refuses counts against neither window.
+
+The claim moves the request to `check_jobs.capture_claimed_at` (the request the
+current lease carries; the release clears it, a rate-limit deferral puts it back
+to pending). Both result-submission paths honor a capture's `onDemand` marker
+only when that column is set, so an agent cannot get a healthy run stored as
+`capture-now` by claiming it.
 
 ### GET /api/v1/orgs/:org/checks/:check/results/:uid
 Get one result of a check by uid, with the full payload

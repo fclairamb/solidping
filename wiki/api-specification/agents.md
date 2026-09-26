@@ -77,7 +77,9 @@ server just wrote, never echoed from anything the agent sent. Since spec
 nothing, or an `onDemand` "Capture now" marker on any run) asks for the upload
 under `checks/<uid>/screenshot`, built from the check the server is processing.
 The job frame carries `captureRequestedAt` for a "Capture now" run; the agent
-forces the capture and marks it `onDemand`. `captureId` IS echoed from the agent's marker,
+forces the capture and marks it `onDemand`. The server honors `onDemand` only
+when the job's row says its lease carried a request (`capture_claimed_at`);
+otherwise the marker is dropped before the incident pipeline sees the result. `captureId` IS echoed from the agent's marker,
 which is safe because it names a slot in that agent's own memory.
 
 Best-effort in both directions: no live connection, an evicted capture, or a
