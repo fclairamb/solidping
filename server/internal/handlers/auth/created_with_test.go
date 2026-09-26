@@ -67,21 +67,7 @@ func TestSessionMintingPathsCaptureRequestProvenance(t *testing.T) {
 				})
 				r.NoError(err)
 
-				entries, err := f.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
-				r.NoError(err)
-
-				var token string
-
-				for _, entry := range entries {
-					if entry.Value == nil {
-						continue
-					}
-
-					if got, ok := (*entry.Value)[keyEmail].(string); ok && got == email {
-						token, _ = (*entry.Value)[keyToken].(string)
-					}
-				}
-
+				token := extractRegistrationConfirmToken(t, ctx, f.db, email)
 				r.NotEmpty(token, "precondition: the registration token must have been stored")
 
 				_, err = f.svc.ConfirmRegistration(ctx, token)

@@ -65,6 +65,12 @@ const (
 	keyCreatedWith = "created_with"
 	keyScopes      = "scopes"
 
+	// keyTokenHash is the pending-registration state value key holding
+	// sha256hex(token) — see hashPendingToken. Registration entries never
+	// store the plaintext confirmation token (spec 2026-09-25-30); contrast
+	// with keyToken above, still used plaintext by the invite flow.
+	keyTokenHash = "tokenHash"
+
 	tokenTypeBearer = "Bearer"
 	jwtIssuer       = "solidping"
 	durationLabel24 = "24h"
@@ -2360,16 +2366,41 @@ const (
 	changePasswordWindow         = 15 * time.Minute
 )
 
-// hashResetToken derives the storage key suffix for a plaintext reset
-// token. Inputs are 32 random bytes hex-encoded (256 bits), so plain
-// SHA-256 is sufficient — no salt or stretching needed.
-func hashResetToken(token string) string {
+// hashPendingToken derives the at-rest form of a plaintext single-use
+// token: the password-reset flow uses it as the storage KEY suffix
+// (password_reset:<hash>), and pending email-registration entries use it as
+// a stored VALUE (keyTokenHash) since those entries are keyed by email, not
+// by token (spec 2026-09-25-30). Inputs are 32 random bytes hex-encoded
+// (256 bits), so plain SHA-256 is sufficient — no salt or stretching needed.
+func hashPendingToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 
 	return hex.EncodeToString(sum[:])
 }
 
-// Register creates a pending registration entry and sends a confirmation email.
+// registerSuccessResponse is the response Register returns on every path
+// that isn't a hard rejection (disabled / pattern mismatch / weak password):
+// both a genuinely new signup AND a taken email get this exact value, so the
+// two are byte-identical over the wire (spec 2026-09-25-30, anti-enumeration).
+//
+//nolint:gochecknoglobals // immutable response literal, not mutable state
+var registerSuccessResponse = &RegisterResponse{Message: "Check your email to confirm your account"}
+
+// registerAntiEnumFiller is hashed instead of the real request password when
+// Register's anti-enumeration branch (below) substitutes for an already-taken
+// email. It exists purely to spend roughly the same CPU time as the real
+// passwords.Hash(req.Password) call on the success path, so the two branches'
+// response latency doesn't itself leak which one ran (spec 2026-09-25-30).
+const registerAntiEnumFiller = "solidping-registration-timing-filler-0000"
+
+// Register creates a pending registration entry and sends a confirmation
+// email — unless the email is already registered, in which case it silently
+// no-ops (no pending entry, no email) but still returns registerSuccessResponse,
+// so an anonymous caller cannot use this endpoint to enumerate accounts
+// (spec 2026-09-25-30). ConfirmRegistration keeps its own ErrEmailAlreadyTaken
+// path for the race where an account was created by some OTHER path between
+// Register and confirmation — that caller already proved mailbox ownership by
+// holding the token, so it isn't an enumeration surface.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	// Check if registration is enabled. Read the LIVE value: the
 	// registration_email_pattern is applied by the systemconfig overlay AFTER
@@ -2403,7 +2434,16 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	}
 
 	if existing != nil {
-		return nil, ErrEmailAlreadyTaken
+		// Anti-enumeration: behave exactly like a successful registration
+		// (same response, same 200), minus the side effects a real signup
+		// would have — no pending entry is created and no email is sent.
+		// The dummy hash keeps this branch's timing aligned with the
+		// success path's passwords.Hash(req.Password) call below.
+		if _, err := passwords.Hash(registerAntiEnumFiller); err != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", err)
+		}
+
+		return registerSuccessResponse, nil
 	}
 
 	// Hash password
@@ -2420,9 +2460,13 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Store in state entries
+	// Store in state entries. Only sha256hex(token) is kept — a DB leak
+	// during the 3-day TTL window must not also hand out a usable
+	// confirmation token alongside the pending password hash (spec
+	// 2026-09-25-30). ConfirmRegistration hashes the presented token and
+	// compares it against keyTokenHash for each candidate entry.
 	stateValue := &models.JSONMap{
-		keyToken:       token,
+		keyTokenHash:   hashPendingToken(token),
 		keyEmail:       req.Email,
 		keyName:        req.Name,
 		"passwordHash": hash,
@@ -2448,7 +2492,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
-	return &RegisterResponse{Message: "Check your email to confirm your account"}, nil
+	return registerSuccessResponse, nil
 }
 
 // ConfirmRegistrationRequest contains the confirmation request data.
@@ -2460,7 +2504,13 @@ type ConfirmRegistrationRequest struct {
 //
 //nolint:cyclop,funlen // Registration confirmation requires multiple steps
 func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*LoginResponse, error) {
-	// Search state entries for matching token
+	// Registration entries are keyed by email, not by token, so there is no
+	// direct lookup key to hash into (unlike password reset's
+	// password_reset:<hash> key) — scan and hash-compare per candidate
+	// instead. The plaintext token itself is never stored (spec
+	// 2026-09-25-30), so this is comparing hashes, not the raw values.
+	tokenHash := hashPendingToken(token)
+
 	entries, err := s.db.ListStateEntries(ctx, nil, registrationKeyPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list registration entries: %w", err)
@@ -2473,8 +2523,8 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 			continue
 		}
 
-		entryToken, ok := (*entry.Value)["token"].(string)
-		if ok && entryToken == token {
+		entryHash, ok := (*entry.Value)[keyTokenHash].(string)
+		if ok && entryHash == tokenHash {
 			matchedEntry = entry
 
 			break
@@ -2755,7 +2805,7 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	token := hex.EncodeToString(tokenBytes)
-	tokenHash := hashResetToken(token)
+	tokenHash := hashPendingToken(token)
 
 	// Store at password_reset:<sha256(token)> with userUid only. The
 	// plaintext token never lands on disk; a leaked DB snapshot has no
@@ -2944,7 +2994,7 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 			ErrInvalidCredentials, minPasswordLength)
 	}
 
-	tokenHash := hashResetToken(req.Token)
+	tokenHash := hashPendingToken(req.Token)
 
 	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
 	if err != nil {
