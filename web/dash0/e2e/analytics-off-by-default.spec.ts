@@ -201,6 +201,9 @@ test.describe("product analytics loads once configured", () => {
       })
       .toBeGreaterThan(0);
 
+    // The stored value is "<directive> <blockedURI>": parse the URI and compare
+    // its host, so a violation naming some OTHER host that merely contains the
+    // substring (an attacker-controlled path, say) cannot satisfy this.
     await expect
       .poll(
         async () =>
@@ -208,7 +211,14 @@ test.describe("product analytics loads once configured", () => {
             await page.evaluate(
               () => (window as unknown as { __cspViolations?: string[] }).__cspViolations ?? [],
             )
-          ).filter((v) => v.includes("eu.i.posthog.com")).length,
+          ).filter((violation) => {
+            const blockedURI = violation.slice(violation.indexOf(" ") + 1);
+            try {
+              return new URL(blockedURI).hostname === "eu.i.posthog.com";
+            } catch {
+              return false;
+            }
+          }).length,
         {
           message: "the policy must refuse the unconfigured PostHog host",
           timeout: 20000,

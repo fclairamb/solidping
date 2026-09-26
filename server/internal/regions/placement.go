@@ -21,8 +21,12 @@ const MaxAutoRegionCount = 50
 // capabilities and region health only ever FILTER it, never reorder it, which
 // is what makes placement deterministic.
 func CandidateOrder(orgDefaults, systemDefaults []string, declared []RegionDefinition) []string {
-	out := make([]string, 0, len(orgDefaults)+len(systemDefaults)+len(declared))
-	seen := make(map[string]bool, cap(out))
+	// No capacity hint: this is a region list (a handful of entries), and a
+	// three-way length sum in a make is exactly what a size-overflow scan
+	// cannot prove safe.
+	var out []string
+
+	seen := make(map[string]bool)
 
 	add := func(slug string) {
 		if slug == "" || IsPrivateRegion(slug) || seen[slug] {
@@ -146,7 +150,9 @@ func Place(input *PlacementInput) []string {
 
 	preferred := func(slug string) bool { return !anyHealthy || input.Healthy[slug] }
 
-	out := make([]string, 0, count)
+	// Grown by take below (at most Count times); the capacity is deliberately
+	// not sized from Count, which is a request value here.
+	var out []string
 
 	take := func(slug string) {
 		if len(out) < count && !slices.Contains(out, slug) {

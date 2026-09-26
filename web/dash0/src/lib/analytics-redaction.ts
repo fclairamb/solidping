@@ -83,7 +83,7 @@ const CREDENTIAL_HEADERS = new Set([
 const credentialParams = new Set(CREDENTIAL_QUERY_PARAMS.map((p) => p.toLowerCase()));
 
 const credentialPathRe = new RegExp(
-  `(^|/)(${CREDENTIAL_PATH_SEGMENTS.map((s) => s.replace(/[-]/g, "\\-")).join("|")})/([^/?#]+)`,
+  `(^|/)(${CREDENTIAL_PATH_SEGMENTS.map((s) => s.replace(/[\\-]/g, "\\$&")).join("|")})/([^/?#]+)`,
   "gi",
 );
 

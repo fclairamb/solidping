@@ -1299,7 +1299,7 @@ func mergeFreeboxSettings(
 		return nil, fmt.Errorf("marshal freebox settings: %w", err)
 	}
 
-	out := make(map[string]any, len(asMap)+1)
+	out := make(map[string]any, len(asMap))
 	for k, v := range asMap {
 		out[k] = v
 	}
@@ -1328,7 +1328,7 @@ func (s *Service) persistFreeboxSettings(
 		return fmt.Errorf("marshal freebox settings: %w", err)
 	}
 
-	merged := make(map[string]any, len(pubMap)+1)
+	merged := make(map[string]any, len(pubMap))
 	for k, v := range pubMap {
 		merged[k] = v
 	}
