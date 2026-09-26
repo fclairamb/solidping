@@ -782,15 +782,18 @@ test.describe("Dashboard", () => {
     const feed = page.getByTestId("recent-activity-footer");
     await expect(feed).toBeVisible({ timeout: 10000 });
 
+    // The row also has a "Related" link with its own (differently-sized)
+    // Cpu icon, so scope to EventTypeLabel's own icon via its `size-4` class
+    // rather than matching either Cpu icon in the row.
     const dashboardRow = page.getByRole("row", { name: /Check Created/ });
-    await expect(dashboardRow.locator("svg.lucide-cpu")).toBeVisible();
+    await expect(dashboardRow.locator("svg.lucide-cpu.size-4")).toBeVisible();
 
     // Same mocked /events response backs the Events page's own query.
     await page.goto("orgs/test/events");
     await page.waitForLoadState("networkidle");
 
     const eventsRow = page.getByRole("row", { name: /Check Created/ });
-    await expect(eventsRow.locator("svg.lucide-cpu")).toBeVisible();
+    await expect(eventsRow.locator("svg.lucide-cpu.size-4")).toBeVisible();
   });
 
   // Spec 2026-09-25-32 proposal step 5: the shared table's Actor column hides
