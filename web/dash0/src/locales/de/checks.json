@@ -436,7 +436,7 @@
     "ntpDescription": "NTP-Zeitserver überwachen",
     "rdp": "RDP",
     "rdpDescription": "RDP-Server (Remotedesktop) überwachen",
-    "sleep": "Sleep",
+    "sleep": "Warten",
     "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)",
     "freebox_line": "Freebox-Leitungsqualität",
     "freebox_lineDescription": "xDSL/FTTH-Leitungsqualität über Freebox OS überwachen",
@@ -935,7 +935,7 @@
       "router": "Router",
       "smartphone": "Telefon",
       "tablet": "Tablet",
-      "workstation": "Desktop"
+      "workstation": "Desktop-PC"
     },
     "loading": "Hosts werden geladen…",
     "noHosts": "Keine Hosts auf dieser Freebox sichtbar.",
@@ -1130,7 +1130,7 @@
     "expectModeContains": "Enthält",
     "expectModeRegex": "Entspricht Regex",
     "encoding_text": "Text",
-    "encoding_escaped": "Escaped",
+    "encoding_escaped": "Maskiert",
     "encoding_hex": "Hex",
     "payloadHelp": "Legen Sie eine Erwartung fest, um zu belegen, dass der Dienst antwortet – nicht nur, dass der Port offen ist.",
     "payloadHelpUdp": "Ohne Erwartung erkennt diese Prüfung nur einen nicht erreichbaren Port.",

@@ -436,7 +436,7 @@
     "ntpDescription": "Monitorizar servidores de tiempo NTP",
     "rdp": "RDP",
     "rdpDescription": "Monitorizar servidores RDP (Escritorio remoto)",
-    "sleep": "Sleep",
+    "sleep": "Espera",
     "sleepDescription": "Esperar una duración fija (sintético/pruebas, sin E/S de red)",
     "freebox_line": "Calidad de línea Freebox",
     "freebox_lineDescription": "Supervisar la calidad de línea xDSL/FTTH mediante Freebox OS",
