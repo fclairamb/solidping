@@ -115,7 +115,7 @@ func TestConfirmRegistrationExpiredEntrySameGenericError(t *testing.T) {
 
 	svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
 
-	const knownToken = "expired-registration-token" //nolint:gosec // test fixture value, not a credential
+	const knownToken = "expired-registration-token"
 	hash, err := passwords.Hash("supersecret123")
 	r.NoError(err)
 

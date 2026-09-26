@@ -79,6 +79,53 @@ func operatorNoticeJobs(t *testing.T, server *Server) []jobtypes.OperatorNoticeJ
 	return out
 }
 
+// registrationConfirmTokenFromQueue finds the "registration.html" email job
+// addressed to email and returns the confirmation token embedded in its
+// ConfirmURL (the last path segment) — the only way to recover the plaintext
+// token Register minted now that the pending state entry stores only its
+// SHA-256 hash (spec 2026-09-25-30).
+func registrationConfirmTokenFromQueue(ctx context.Context, t *testing.T, server *Server, email string) string {
+	t.Helper()
+
+	jobs, err := server.dbService.ListJobs(ctx, nil, 0)
+	require.NoError(t, err)
+
+	for _, job := range jobs {
+		if job.Type != string(jobdef.JobTypeEmail) {
+			continue
+		}
+
+		if template, _ := job.Config["template"].(string); template != "registration.html" {
+			continue
+		}
+
+		to, ok := job.Config["to"].([]any)
+		if !ok || len(to) == 0 {
+			continue
+		}
+
+		if recipient, _ := to[0].(string); recipient != email {
+			continue
+		}
+
+		templateData, ok := job.Config["templateData"].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		confirmURL, _ := templateData["ConfirmURL"].(string)
+		if confirmURL == "" {
+			continue
+		}
+
+		parts := strings.Split(confirmURL, "/")
+
+		return parts[len(parts)-1]
+	}
+
+	return ""
+}
+
 // signUp drives a real password registration through the server's own auth
 // service and returns the created user.
 func signUp(ctx context.Context, t *testing.T, server *Server, email string) *models.User {
@@ -91,21 +138,10 @@ func signUp(ctx context.Context, t *testing.T, server *Server, email string) *mo
 	})
 	r.NoError(err)
 
-	entries, err := server.dbService.ListStateEntries(ctx, nil, "")
-	r.NoError(err)
-
-	var token string
-
-	for _, entry := range entries {
-		if entry.Value == nil {
-			continue
-		}
-
-		if got, ok := (*entry.Value)["email"].(string); ok && got == email {
-			token, _ = (*entry.Value)["token"].(string)
-		}
-	}
-
+	// The pending state entry now stores only sha256hex(token) (spec
+	// 2026-09-25-30), so the plaintext token can only be recovered the way a
+	// real caller would get it: from the queued confirmation email.
+	token := registrationConfirmTokenFromQueue(ctx, t, server, email)
 	r.NotEmpty(token, "precondition: the registration token must have been stored")
 
 	// Re-assert THIS server's dispatcher immediately before the account is

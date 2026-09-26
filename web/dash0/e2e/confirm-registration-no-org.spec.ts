@@ -46,23 +46,37 @@ test.describe("Confirm registration with no matching org", () => {
     // "Check your email" success screen renders the address back.
     await expect(page.getByText(email)).toBeVisible({ timeout: 10000 });
 
-    // Fetch the one-shot confirmation token the same way the backend unit
-    // test does (test-mode-only introspection endpoint) instead of a real
-    // mailbox. StateEntry has no json tags, so field names are the bare Go
-    // field names (Key, Value), while Value's own keys are the lowercase
-    // ones the auth service writes ("email", "token" — see
-    // server/internal/handlers/auth/service.go's keyEmail/keyToken).
-    const stateResp = await page.request.get(
-      `${API_BASE}/api/v1/test/state-entries?prefix=email_registration:`,
+    // Fetch the one-shot confirmation token the same way a real user would:
+    // from the confirmation email, not the pending state entry. The entry
+    // only ever stores sha256(token) now (spec 2026-09-25-30), so the
+    // plaintext token can no longer be read back from
+    // /api/v1/test/state-entries — recover it from the queued
+    // "registration.html" email job's ConfirmURL instead (test-mode-only
+    // introspection endpoint, mirrors the backend unit tests'
+    // extractRegistrationConfirmToken helper).
+    const jobsResp = await page.request.get(
+      `${API_BASE}/api/v1/test/jobs?type=email`,
     );
-    expect(stateResp.status()).toBe(200);
-    const { data: entries } = (await stateResp.json()) as {
-      data: Array<{ Value: Record<string, unknown> | null }>;
+    expect(jobsResp.status()).toBe(200);
+    const { data: jobs } = (await jobsResp.json()) as {
+      data: Array<{
+        config: {
+          template?: string;
+          to?: string[];
+          templateData?: { ConfirmURL?: string };
+        };
+      }>;
     };
 
-    const entry = entries.find((e) => e.Value?.email === email);
-    expect(entry, "the registration state entry must exist").toBeTruthy();
-    const token = entry?.Value?.token as string;
+    const job = jobs.find(
+      (j) =>
+        j.config.template === "registration.html" &&
+        j.config.to?.includes(email),
+    );
+    expect(job, "the registration confirmation email must have been queued").toBeTruthy();
+    const confirmURL = job?.config.templateData?.ConfirmURL;
+    expect(confirmURL).toBeTruthy();
+    const token = (confirmURL as string).split("/").pop() as string;
     expect(token).toBeTruthy();
 
     await page.goto(`confirm-registration/${token}`);

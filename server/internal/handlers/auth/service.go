@@ -2439,8 +2439,8 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		// would have — no pending entry is created and no email is sent.
 		// The dummy hash keeps this branch's timing aligned with the
 		// success path's passwords.Hash(req.Password) call below.
-		if _, err := passwords.Hash(registerAntiEnumFiller); err != nil {
-			return nil, fmt.Errorf("failed to hash password: %w", err)
+		if _, hashErr := passwords.Hash(registerAntiEnumFiller); hashErr != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", hashErr)
 		}
 
 		return registerSuccessResponse, nil

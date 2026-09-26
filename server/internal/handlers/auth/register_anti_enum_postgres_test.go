@@ -26,8 +26,6 @@ const portRegisterAntiEnumPG = 15600
 // used because the registration confirmation token is now only recoverable
 // from the queued confirmation email (spec 2026-09-25-30), not from the
 // pending state entry.
-//
-//nolint:paralleltest,tparallel // one embedded PG instance shared by every sub-test
 func newRegisterAntiEnumPostgresService(t *testing.T) (*Service, db.Service) {
 	t.Helper()
 
@@ -177,7 +175,7 @@ func TestRegisterAntiEnumeration_Postgres(t *testing.T) {
 		_, errUnknown := svc.ConfirmRegistration(ctx, "pg-a-token-that-was-never-issued")
 		r.ErrorIs(errUnknown, ErrRegistrationExpired)
 
-		const knownToken = "pg-expired-registration-token" //nolint:gosec // test fixture value, not a credential
+		const knownToken = "pg-expired-registration-token"
 		pwHash, err := passwords.Hash("supersecret123")
 		r.NoError(err)
 
