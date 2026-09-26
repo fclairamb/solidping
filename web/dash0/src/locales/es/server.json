@@ -92,10 +92,10 @@
     "samlMetadataUrlLabel": "URL de metadatos del SP / ID de entidad",
     "samlAcsUrlLabel": "URL ACS (Assertion Consumer Service)",
     "fields": {
-      "clientId": "Client ID",
-      "clientSecret": "Client Secret",
-      "appId": "App ID",
-      "signingSecret": "Signing Secret",
+      "clientId": "ID de cliente",
+      "clientSecret": "Secreto de cliente",
+      "appId": "ID de aplicación",
+      "signingSecret": "Secreto de firma",
       "botToken": "Token del bot",
       "redirectUrl": "URL de redirección",
       "tenantId": "ID de inquilino",
@@ -197,7 +197,7 @@
     "laneFast": "Carril rápido",
     "laneSlow": "Carril lento",
     "laneCol": "Carril",
-    "jobsCol": "Jobs",
+    "jobsCol": "Tareas",
     "costSumCol": "Σ coste",
     "delaySumCol": "Σ retraso",
     "dutyCol": "Duty",
@@ -321,29 +321,29 @@
   },
   "discord": {
     "title": "Discord",
-    "subtitle": "Configure the SolidPing Discord bot: interaction signature verification and the inbound Gateway.",
-    "notEnabledHint": "Discord is disabled on this instance. Enable it under Authentication first.",
+    "subtitle": "Configure el bot de Discord de SolidPing: verificación de la firma de las interacciones y el Gateway entrante.",
+    "notEnabledHint": "Discord está desactivado en esta instancia. Actívelo primero en Autenticación.",
     "bot": {
-      "title": "Discord bot",
-      "description": "The public key verifies Discord's signed interaction requests. The Gateway is a separate outgoing WebSocket that carries everything a human types at the bot.",
-      "publicKeyLabel": "Application public key",
-      "publicKeyHelp": "Copy it from the Discord Developer Portal → your application → General Information. Without it, every interaction is rejected and buttons and slash commands do nothing.",
-      "gatewayEnableLabel": "Enable the Discord Gateway (inbound messages)",
-      "intentHint": "The Gateway needs the privileged MESSAGE_CONTENT intent, enabled under Bot → Privileged Gateway Intents. Discord grants it freely below 100 servers and requires a review above that. Without it the bot connects but every message arrives empty, so thread comments and mention commands silently do nothing.",
-      "restartHint": "Changing these takes effect on the next server restart."
+      "title": "Bot de Discord",
+      "description": "La clave pública verifica las solicitudes de interacción firmadas por Discord. El Gateway es un WebSocket saliente independiente que transporta todo lo que una persona escribe al bot.",
+      "publicKeyLabel": "Clave pública de la aplicación",
+      "publicKeyHelp": "Cópiela desde el Discord Developer Portal → su aplicación → General Information. Sin ella, se rechaza cada interacción y los botones y comandos de barra no hacen nada.",
+      "gatewayEnableLabel": "Activar el Gateway de Discord (mensajes entrantes)",
+      "intentHint": "El Gateway necesita el intent privilegiado MESSAGE_CONTENT, que se activa en Bot → Privileged Gateway Intents. Discord lo concede libremente por debajo de 100 servidores y exige una revisión por encima. Sin él, el bot se conecta pero cada mensaje llega vacío, así que los comentarios de hilo y los comandos por mención no hacen nada sin avisar.",
+      "restartHint": "Estos cambios surten efecto en el próximo reinicio del servidor."
     },
     "status": {
-      "title": "Gateway status",
-      "description": "Live state of the outgoing Discord Gateway connection.",
-      "connection": "Connection",
-      "connected": "Connected",
-      "disconnected": "Disconnected",
-      "guilds_one": "{{count}} server",
-      "guilds_other": "{{count}} servers",
-      "lastConnected": "Last connected",
-      "lastError": "Last error",
-      "noError": "None",
-      "never": "Never"
+      "title": "Estado del Gateway",
+      "description": "Estado en directo de la conexión saliente al Gateway de Discord.",
+      "connection": "Conexión",
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "guilds_one": "{{count}} servidor",
+      "guilds_other": "{{count}} servidores",
+      "lastConnected": "Última conexión",
+      "lastError": "Último error",
+      "noError": "Ninguno",
+      "never": "Nunca"
     }
   },
   "entitlements": {
@@ -444,7 +444,7 @@
     "next": "Siguiente",
     "showing": "Mostrando {{start}}–{{end}} de {{total}}",
     "columns": {
-      "email": "Email",
+      "email": "Correo electrónico",
       "name": "Nombre",
       "organizations": "Organizaciones",
       "flags": "Indicadores",
@@ -452,7 +452,7 @@
       "created": "Creado"
     },
     "flags": {
-      "superAdmin": "Super admin",
+      "superAdmin": "Superadministrador",
       "twoFactor": "2FA",
       "demo": "Demo",
       "unverified": "Sin verificar",
