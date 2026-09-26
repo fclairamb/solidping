@@ -211,6 +211,7 @@
     "description": "Monitor your Freebox line quality and network status",
     "baseUrl": "Freebox base URL",
     "baseUrlHint": "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
+    "baseUrlDisabledInSaaS": "Custom base URLs aren't available on this deployment — pairing always uses the Freebox's default address.",
     "deviceName": "Device label",
     "deviceNameHint": "Shown on the Freebox admin under Authorized apps. Pick something you'll recognise later.",
     "pairButton": "Pair with Freebox",

@@ -284,6 +284,7 @@
   },
   "freebox": {
     "baseUrl": "Freebox-Basis-URL",
+    "baseUrlDisabledInSaaS": "Benutzerdefinierte Basis-URLs sind auf dieser Bereitstellung nicht verfügbar — die Kopplung verwendet immer die Standardadresse der Freebox.",
     "baseUrlHint": "Belassen Sie dies, wenn SolidPing im selben LAN wie die Freebox läuft. Für Fernzugriff verwenden Sie den öffentlichen Hostnamen, den Sie im Freebox-Admin unter Einstellungen → Freebox OS API konfiguriert haben.",
     "cancel": "Abbrechen",
     "description": "Überwachen Sie die Leitungsqualität und den Netzwerkstatus Ihrer Freebox",

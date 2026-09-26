@@ -35,6 +35,14 @@ var (
 	ErrBetterStackAPI = errors.New("the Better Stack API returned an error")
 	// ErrBetterStackUnreachable is returned when the API could not be reached.
 	ErrBetterStackUnreachable = errors.New("the Better Stack API could not be reached")
+	// ErrBetterStackBaseURLNotSupported is returned when the request body
+	// carries a non-empty baseUrl. Better Stack documents exactly one API
+	// host with no alternate instance, so this used to be a GET-anywhere
+	// primitive with the caller's token attached (spec 2026-09-25-31) — it is
+	// rejected outright, before any outbound request, rather than silently
+	// ignored.
+	ErrBetterStackBaseURLNotSupported = errors.New(
+		"baseUrl is no longer supported; the importer always talks to the Better Stack API")
 )
 
 // BetterStackOptions configures the converter. BaseURL is overridable so tests
@@ -86,8 +94,15 @@ func (c *BetterStackConverter) Source() string { return SourceBetterStack }
 // WithBetterStackBaseURL option (tests, self-hosted proxies) still exists as
 // a Go-level construction seam; it is never reachable from an HTTP request
 // body.
+//
+// BaseURL is kept as a field — a *string, not a string — purely so
+// ConvertContext can tell "absent" from "present and empty" and reject a
+// caller that still sends it, with a clear error, instead of silently
+// ignoring what used to be a working parameter. It is decoded and then
+// immediately rejected; it never reaches fetchAll.
 type betterStackRequest struct {
-	Token string `json:"token"`
+	Token   string  `json:"token"`
+	BaseURL *string `json:"baseUrl,omitempty"`
 }
 
 // betterStackPage is one page of a Better Stack collection response.
@@ -152,6 +167,10 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 	var req betterStackRequest
 	if err := json.Unmarshal(input, &req); err != nil {
 		return nil, fmt.Errorf("parse better stack request: %w", err)
+	}
+
+	if req.BaseURL != nil && strings.TrimSpace(*req.BaseURL) != "" {
+		return nil, ErrBetterStackBaseURLNotSupported
 	}
 
 	token := strings.TrimSpace(req.Token)

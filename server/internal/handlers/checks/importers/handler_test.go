@@ -236,6 +236,28 @@ func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	r.NotContains(fmt.Sprintf("%+v", list), testToken)
 }
 
+// TestConvertEndpointBetterStackRejectsBaseURL covers the removed baseUrl
+// override end-to-end through the HTTP handler (spec 2026-09-25-31): a
+// non-empty baseUrl in the request body is a 400 VALIDATION_ERROR, and the
+// fake Better Stack server — which would record any outbound request — sees
+// none.
+func TestConvertEndpointBetterStackRejectsBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	srv := newBetterStackServer(t)
+	harness := newConvertHarness(t, srv.URL)
+
+	body, err := json.Marshal(map[string]string{"token": testToken, "baseUrl": "https://evil.example"})
+	r.NoError(err)
+
+	rec := harness.post(t, "betterstack", false, body)
+	r.Equal(http.StatusBadRequest, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "VALIDATION_ERROR")
+	r.Contains(rec.Body.String(), "baseUrl is no longer supported")
+	r.Empty(srv.paths(), "no outbound request must be made when baseUrl is rejected")
+}
+
 func TestConvertEndpointRejectsUnknownSource(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

@@ -164,6 +164,7 @@ func TestStartFreeboxPairingCreatesChannelWithEncryptedToken(t *testing.T) {
 	r := require.New(t)
 	f := newFreeboxFixture(t)
 	srv := startFakeFreebox(t, "permanent-token-xyz", 17, freebox.StatusPending)
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
@@ -200,6 +201,7 @@ func TestGetFreeboxPairingStatusTransitionsToGranted(t *testing.T) {
 	r := require.New(t)
 	f := newFreeboxFixture(t)
 	srv := startFakeFreebox(t, "permanent-token-xyz", 17, freebox.StatusGranted)
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	// Bootstrap the channel via the start endpoint.
 	rec := f.do(t, http.MethodPost,
@@ -240,6 +242,7 @@ func TestGetFreeboxPairingStatusDeniedKeepsRow(t *testing.T) {
 	r := require.New(t)
 	f := newFreeboxFixture(t)
 	srv := startFakeFreebox(t, "tok", 9, freebox.StatusDenied)
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
@@ -263,6 +266,47 @@ func TestGetFreeboxPairingStatusDeniedKeepsRow(t *testing.T) {
 	conn, err := f.dbSvc.GetChannel(t.Context(), start.ConnectionUID)
 	r.NoError(err)
 	r.Equal(models.FreeboxStatusDenied, conn.Settings["status"])
+}
+
+// TestGetFreeboxPairingStatusRevalidatesStoredBaseURL covers a connection
+// persisted before spec 2026-09-25-31's baseUrl contract existed (or paired
+// under a since-tightened policy): the status endpoint re-validates the
+// stored baseUrl and returns the same clean VALIDATION_ERROR a fresh pairing
+// attempt would get today, instead of actually dialing an address that would
+// now be rejected (here, the cloud metadata address — never where a real
+// Freebox lives).
+func TestGetFreeboxPairingStatusRevalidatesStoredBaseURL(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newFreeboxFixture(t)
+
+	settings := &models.FreeboxSettings{
+		BaseURL: "http://169.254.169.254/",
+		AppID:   freebox.DefaultAppID,
+		Status:  models.FreeboxStatusPairing,
+		TrackID: 7,
+	}
+	settingsMap, err := settings.ToJSONMap()
+	r.NoError(err)
+
+	conn := models.NewIntegration(f.org.UID, models.ConnectionTypeFreebox, "Legacy Freebox")
+	conn.Settings = settingsMap
+	r.NoError(f.dbSvc.CreateChannel(t.Context(), conn))
+
+	rec := f.do(t, http.MethodGet,
+		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair/"+conn.UID+"/status",
+		nil,
+	)
+	r.Equal(http.StatusBadRequest, rec.Code, rec.Body.String())
+	r.Contains(rec.Body.String(), "VALIDATION_ERROR")
+	r.Contains(rec.Body.String(), "baseUrl must be a valid Freebox API endpoint")
+
+	// The row is untouched — no dial was attempted, so status stays exactly
+	// what it was before this poll.
+	reloaded, err := f.dbSvc.GetChannel(t.Context(), conn.UID)
+	r.NoError(err)
+	r.Equal(models.FreeboxStatusPairing, reloaded.Settings["status"])
 }
 
 func TestGetFreeboxPairingStatusRejectsNonFreeboxChannel(t *testing.T) {
@@ -311,6 +355,15 @@ func TestStartFreeboxPairingRejectsInvalidBaseURL(t *testing.T) {
 		"http://mafreebox.freebox.fr:2222", // port outside 80/443/8443
 		"http://203.0.113.10",              // public IP over http
 		"ftp://192.168.1.254",              // bad scheme
+		"http://192.168.1.254:6379",        // weird port, even on a private IP
+		// None of these is where a Freebox lives — accepting them would keep
+		// exactly the internal scan/POST primitive this validator exists to
+		// close.
+		"http://127.0.0.1",        // loopback
+		"http://169.254.169.254/", // cloud metadata
+		"http://[::1]",            // IPv6 loopback
+		"http://0.0.0.0",          // unspecified
+		"http://[fe80::1]",        // IPv6 link-local
 	}
 
 	for _, baseURL := range cases {
@@ -334,6 +387,7 @@ func TestStartFreeboxPairingAcceptsValidBaseURL(t *testing.T) {
 	f := newFreeboxFixture(t)
 
 	srv := startFakeFreebox(t, "app-token", 42, freebox.StatusPending)
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
@@ -355,6 +409,7 @@ func TestStartFreeboxPairingRejectsOverrideInSaaSMode(t *testing.T) {
 	})
 
 	srv := startFakeFreebox(t, "app-token", 42, freebox.StatusPending)
+	f.svc.AllowFreeboxTestBaseURL(srv.URL)
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",

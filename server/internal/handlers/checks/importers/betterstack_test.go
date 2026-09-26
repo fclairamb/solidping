@@ -340,21 +340,43 @@ func TestBetterStackConverterEmptyAccount(t *testing.T) {
 	r.ErrorIs(err, importers.ErrEmptyInput)
 }
 
-// TestBetterStackConverterIgnoresRequestBaseURL covers the removal of the
+// TestBetterStackConverterRejectsRequestBaseURL covers the removal of the
 // caller-supplied baseUrl override (spec 2026-09-25-31): Better Stack
-// documents no alternate API host, so a "baseUrl" field in the request body
-// is now an unrecognized field the JSON decoder silently drops — Convert
-// always talks to the host it was constructed with, never one the request
-// names. Without this, the field would still be a GET-anywhere primitive with
-// the caller's Better Stack token attached.
-func TestBetterStackConverterIgnoresRequestBaseURL(t *testing.T) {
+// documents no alternate API host, so a non-empty "baseUrl" in the request
+// body is rejected outright with a clear, actionable error — never silently
+// ignored, and never fetched from. Without this rejection, the field would
+// still be a GET-anywhere primitive with the caller's Better Stack token
+// attached; silently ignoring it would also surprise a caller who thinks
+// they redirected the fetch when they didn't.
+func TestBetterStackConverterRejectsRequestBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// The converter is constructed against a real, counting fake server so a
+	// bug that fetches anyway is caught by an unexpected non-zero request
+	// count, not just by the returned error.
+	srv := newBetterStackServer(t)
+	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
+
+	body, err := json.Marshal(map[string]string{"token": testToken, "baseUrl": "https://evil.example"})
+	r.NoError(err)
+
+	_, err = conv.Convert(body)
+	r.ErrorIs(err, importers.ErrBetterStackBaseURLNotSupported)
+	r.Empty(srv.paths(), "no outbound request must be made when baseUrl is rejected")
+}
+
+// TestBetterStackConverterAllowsEmptyRequestBaseURL confirms an empty/absent
+// baseUrl (what every real caller sends post spec-2026-09-25-31) is not
+// affected by the rejection above.
+func TestBetterStackConverterAllowsEmptyRequestBaseURL(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
 	srv := newBetterStackServer(t)
 	conv := importers.NewBetterStackConverter(importers.BetterStackOptions{BaseURL: srv.URL})
 
-	body, err := json.Marshal(map[string]string{"token": testToken, "baseUrl": "https://evil.example"})
+	body, err := json.Marshal(map[string]string{"token": testToken, "baseUrl": ""})
 	r.NoError(err)
 
 	result, err := conv.Convert(body)

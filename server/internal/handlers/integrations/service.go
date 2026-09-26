@@ -148,6 +148,14 @@ type Service struct {
 	// identity auto-match. Per-instance seam (see SetSlackIdentityClient) so
 	// parallel tests never race on a shared package-level override.
 	slackIdentityClient SlackIdentityClientFactory
+	// freeboxAllowedTestBaseURLs is a Go-level construction seam — see
+	// AllowFreeboxTestBaseURL — never reachable from an HTTP request body. A
+	// baseUrl exactly matching an entry here skips freebox.ValidateBaseURL
+	// (which would otherwise correctly reject it: an httptest.Server binds a
+	// loopback address, and no real Freebox lives there); every other value
+	// is still held to the real contract. Production traffic never populates
+	// this map.
+	freeboxAllowedTestBaseURLs map[string]bool
 }
 
 // NewService creates a new connections service. registry and cfg may be nil
@@ -639,8 +647,10 @@ func (s *Service) validateFreeboxSettings(connType models.ConnectionType, settin
 func (s *Service) validateFreeboxBaseURL(raw string) error {
 	trimmed := strings.TrimSpace(raw)
 
-	if err := freebox.ValidateBaseURL(trimmed); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+	if !s.freeboxAllowedTestBaseURLs[trimmed] {
+		if err := freebox.ValidateBaseURL(trimmed); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidSettings, err)
+		}
 	}
 
 	overridden := trimmed != "" && trimmed != freebox.DefaultBaseURL
@@ -649,6 +659,27 @@ func (s *Service) validateFreeboxBaseURL(raw string) error {
 	}
 
 	return nil
+}
+
+// AllowFreeboxTestBaseURL registers rawURL as an EXACT baseUrl value this
+// Service accepts without going through freebox.ValidateBaseURL's
+// private-IP/port contract. It is a Go-level construction seam, never
+// reachable from an HTTP request body — the same shape as
+// importers.Handler.WithBetterStackBaseURL — that exists only so a test can
+// stand up a fresh httptest.Server (a loopback host on a random port, which
+// is never where a real Freebox lives and the real contract correctly
+// rejects) and let pairing reach it. Every OTHER value — including any other
+// loopback or special-range address — is still held to the full contract, so
+// this seam cannot be used to smuggle a general bypass. It mutates s in
+// place (unlike the Service's other With* constructors) because tests must
+// register the URL only after starting the fake server, by which point the
+// fixture has already wired this *Service into a Handler/router by pointer.
+func (s *Service) AllowFreeboxTestBaseURL(rawURL string) {
+	if s.freeboxAllowedTestBaseURLs == nil {
+		s.freeboxAllowedTestBaseURLs = map[string]bool{}
+	}
+
+	s.freeboxAllowedTestBaseURLs[strings.TrimSpace(rawURL)] = true
 }
 
 // validateTwilioSettings enforces the Twilio connection's settings invariants:
@@ -1167,6 +1198,16 @@ func (s *Service) CheckFreeboxPairingStatus(
 ) (*FreeboxPairingStatusResponse, error) {
 	conn, settings, err := s.loadPairingChannel(ctx, orgSlug, connectionUID)
 	if err != nil {
+		return nil, err
+	}
+
+	// A row can predate this validator (spec 2026-09-25-31), or be paired
+	// while the policy was different (e.g. a since-tightened SaaS gate) —
+	// re-check the stored baseUrl before ever dialing it, so a URL that would
+	// be rejected today surfaces as the same clean VALIDATION_ERROR a fresh
+	// pairing attempt gets, never a raw fetch error/timeout from actually
+	// connecting to it.
+	if err := s.validateFreeboxBaseURL(settings.BaseURL); err != nil {
 		return nil, err
 	}
 

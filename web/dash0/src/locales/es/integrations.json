@@ -284,6 +284,7 @@
   },
   "freebox": {
     "baseUrl": "URL base de la Freebox",
+    "baseUrlDisabledInSaaS": "Las URL base personalizadas no están disponibles en este despliegue — el emparejamiento siempre usa la dirección predeterminada de la Freebox.",
     "baseUrlHint": "Déjelo como está si SolidPing se ejecuta en la misma LAN que la Freebox. Para acceso remoto, use el nombre de host público configurado en el admin de la Freebox en Ajustes → API de Freebox OS.",
     "cancel": "Cancelar",
     "description": "Supervise la calidad de línea y el estado de red de su Freebox",
