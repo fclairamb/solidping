@@ -56,7 +56,7 @@ func TestBetterStackLongGraceIsClampedNotRejected(t *testing.T) {
 	srv := newBetterStackServer(t)
 	harness := newConvertHarness(t, srv.URL)
 
-	result := decodeConvert(t, harness.post(t, "betterstack", false, betterStackBody(t, "")))
+	result := decodeConvert(t, harness.post(t, "betterstack", false, betterStackBody(t)))
 
 	r.Empty(result.Errors)
 	r.True(warningMentions(result.Warnings, "exceeds SolidPing's 24h maximum"), "%+v", result.Warnings)

@@ -221,7 +221,7 @@ func TestConvertEndpointBetterStackRoundTrip(t *testing.T) {
 	srv := newBetterStackServer(t)
 	harness := newConvertHarness(t, srv.URL)
 
-	body := betterStackBody(t, "")
+	body := betterStackBody(t)
 	result := runSourceRoundTrip(t, harness, "betterstack", body)
 
 	r.Equal("betterstack", result.Manifest)
@@ -266,7 +266,7 @@ func TestConvertEndpointBetterStackBadTokenIsAValidationError(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	harness := newConvertHarness(t, srv.URL)
-	rec := harness.post(t, "betterstack", true, betterStackBody(t, ""))
+	rec := harness.post(t, "betterstack", true, betterStackBody(t))
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 
@@ -286,7 +286,7 @@ func TestConvertEndpointBetterStackUnreachableIsAValidationError(t *testing.T) {
 	srv.Close()
 
 	harness := newConvertHarness(t, baseURL)
-	rec := harness.post(t, "betterstack", true, betterStackBody(t, ""))
+	rec := harness.post(t, "betterstack", true, betterStackBody(t))
 
 	r.Equal(http.StatusBadRequest, rec.Code)
 
@@ -345,7 +345,7 @@ func TestConvertEndpointNeverLogsTheBetterStackToken(t *testing.T) {
 
 	srv := newBetterStackServer(t)
 	harness := newConvertHarness(t, srv.URL)
-	r.Equal(http.StatusOK, harness.post(t, "betterstack", false, betterStackBody(t, "")).Code)
+	r.Equal(http.StatusOK, harness.post(t, "betterstack", false, betterStackBody(t)).Code)
 
 	// …and the failure path, which is the one that formats an error message.
 	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -355,7 +355,7 @@ func TestConvertEndpointNeverLogsTheBetterStackToken(t *testing.T) {
 	t.Cleanup(failing.Close)
 
 	failHarness := newConvertHarness(t, failing.URL)
-	r.Equal(http.StatusBadRequest, failHarness.post(t, "betterstack", true, betterStackBody(t, "")).Code)
+	r.Equal(http.StatusBadRequest, failHarness.post(t, "betterstack", true, betterStackBody(t)).Code)
 
 	r.NotContains(buf.String(), testToken)
 	r.NotContains(buf.String(), "Bearer ")

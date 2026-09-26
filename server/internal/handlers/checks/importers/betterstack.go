@@ -77,9 +77,17 @@ func (c *BetterStackConverter) Source() string { return SourceBetterStack }
 
 // betterStackRequest is the JSON body the convert endpoint accepts for this
 // source. The token is read into memory for the duration of the call only.
+//
+// There used to be a caller-supplied baseUrl override here. Better Stack
+// documents exactly one API host (uptime.betterstack.com) with no alternate
+// instance, so the override was a GET-anywhere primitive with a credential
+// attached and no legitimate use — spec 2026-09-25-31 removed it rather than
+// gate it behind an allowlist of one entry. The handler-level
+// WithBetterStackBaseURL option (tests, self-hosted proxies) still exists as
+// a Go-level construction seam; it is never reachable from an HTTP request
+// body.
 type betterStackRequest struct {
-	Token   string `json:"token"`
-	BaseURL string `json:"baseUrl,omitempty"`
+	Token string `json:"token"`
 }
 
 // betterStackPage is one page of a Better Stack collection response.
@@ -151,17 +159,12 @@ func (c *BetterStackConverter) ConvertContext(ctx context.Context, input []byte)
 		return nil, ErrBetterStackTokenRequired
 	}
 
-	converter := c
-	if base := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/"); base != "" && base != c.baseURL {
-		converter = NewBetterStackConverter(BetterStackOptions{BaseURL: base, Client: c.client})
-	}
-
-	monitors, err := converter.fetchAll(ctx, token, "/api/v2/monitors")
+	monitors, err := c.fetchAll(ctx, token, "/api/v2/monitors")
 	if err != nil {
 		return nil, err
 	}
 
-	heartbeats, err := converter.fetchAll(ctx, token, "/api/v2/heartbeats")
+	heartbeats, err := c.fetchAll(ctx, token, "/api/v2/heartbeats")
 	if err != nil {
 		return nil, err
 	}
