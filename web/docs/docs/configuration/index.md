@@ -61,6 +61,7 @@ the right place.
 | `SP_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
 | `SP_EXIT_WITH_PARENT` | `false` | Shut down when the process that started SolidPing disappears, instead of being reparented to PID 1. For servers spawned by a test harness or a wrapper script; leave off under a normal supervisor |
 | `PORT` | - | Alternative to `SP_SERVER_LISTEN` (for PaaS compatibility) |
+| `SP_HEADERS_CSP_EXTRA_SOURCES` | - | Extra `Content-Security-Policy` sources, as `;`-separated "directive source…" groups (see [Security Headers](/configuration/security-headers#widening-the-policy)) |
 
 ### Custom Domains & TLS
 
@@ -389,6 +390,7 @@ The SolidPing CLI client (`sp`) uses its own configuration:
 - [Notifications](/configuration/notifications) - Email, Slack, Discord, webhooks, and more
 - [Authentication](/configuration/authentication) - OAuth providers, 2FA, and access control
 - [Security & Encryption](/configuration/security) - Credentials encryption at rest
+- [Security Headers](/configuration/security-headers) - Content-Security-Policy, framing and embedding status pages
 - [File Storage](/configuration/file-storage) - Where uploaded blobs (org logos, status-page assets, screenshots) are stored, and the container volume trap
 - [Product Analytics](/configuration/analytics) - Optional PostHog integration, off unless configured
 - [Data Retention](/configuration/data-retention) - How long raw results and summaries are kept, and how to tune it
