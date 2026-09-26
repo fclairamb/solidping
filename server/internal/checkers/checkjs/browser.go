@@ -257,6 +257,14 @@ func (r *jsRuntime) newPageObject() *goja.Object {
 		})
 	})
 
+	// No checkerdef.ExtraBudgeter for JSConfig (spec 2026-09-25-35, which
+	// gave the `browser` check type's OWN automatic post-verdict capture a
+	// worker-granted extra window): this call is explicit, SCRIPT-driven, and
+	// shares r.execCtx with the rest of the script rather than a session kept
+	// alive past a separate probe deadline. A script that wants a shot near
+	// its own timeout must budget for it itself — e.g. a shorter per-call
+	// `timeout` on the blocking action before it (see callContext) — because
+	// there is no automatic after-the-verdict capture window here to starve.
 	_ = page.Set("screenshot", func(_ goja.FunctionCall) goja.Value {
 		return r.pageAction(func(session BrowserSession) (map[string]any, error) {
 			shot, err := session.Screenshot(r.execCtx)
