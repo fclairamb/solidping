@@ -15,6 +15,16 @@ export interface ScreenshotImageLinkProps {
   imageTestId?: string;
 }
 
+/** Placeholder dimensions for a capture whose real size is unknown until it
+ * loads (the listing does not carry it). They only give the browser an aspect
+ * ratio to reserve the box with: with `width: 100%; height: auto`, an <img>
+ * carrying width/height attributes is laid out at that ratio BEFORE it loads
+ * and switches to its intrinsic ratio once it has, so a full-page capture is
+ * never squashed. Without them a lazy image below the fold keeps a 0-height
+ * box, never intersects the viewport, and never loads. */
+const PLACEHOLDER_WIDTH = 1280;
+const PLACEHOLDER_HEIGHT = 800;
+
 /**
  * A captured screenshot as a link to its full-size self (spec 2026-08-21-01,
  * shared since spec 2026-09-25-34). Opening the image in a new tab IS the
@@ -43,6 +53,8 @@ export function ScreenshotImageLink({
       <img
         src={src}
         alt={alt}
+        width={PLACEHOLDER_WIDTH}
+        height={PLACEHOLDER_HEIGHT}
         loading="lazy"
         className={cn("h-auto w-full max-w-full", imgClassName)}
         data-testid={imageTestId}
