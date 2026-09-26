@@ -324,6 +324,16 @@ func (b *Builder) Baseline() Headers {
 	return finish(p, "")
 }
 
+// ApplyBaseline writes the framing-only headers with no operator extras. It
+// is for the server-rendered one-click pages (incident acknowledgement,
+// unsubscribe, subscription confirmation) whose handlers have no Builder:
+// a page with a single confirm button is the textbook clickjacking target.
+func ApplyBaseline(header http.Header) {
+	var builder *Builder
+
+	builder.Baseline().Apply(header)
+}
+
 // Dashboard returns the headers for a dash0 response.
 func (b *Builder) Dashboard(params Params) Headers {
 	p := dashboardPolicy()

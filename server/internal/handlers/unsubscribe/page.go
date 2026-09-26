@@ -3,6 +3,8 @@ package unsubscribe
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 )
 
 // pageStyle mirrors the incidents ack-page stylesheet (handlers/incidents/ack_html.go)
@@ -36,6 +38,7 @@ func writePage(writer http.ResponseWriter, status int, title, body string) {
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
+	securityheaders.ApplyBaseline(writer.Header())
 	writer.WriteHeader(status)
 	_, _ = writer.Write([]byte(page))
 }

@@ -72,6 +72,10 @@ type resolvedCustomDomain struct {
 	// inherits the same who-may-cache-this rule as the API behind it
 	// (spec 2026-08-22-06).
 	Visibility string
+	// EmbedOrigins is the owning org's statuspage.allowed_embed_origins,
+	// resolved with the page and cached with it (spec 2026-09-25-28), so the
+	// shell's frame-ancestors costs no extra query per request.
+	EmbedOrigins []string
 }
 
 // customDomainResolution is what a host resolves to. The three cases are
@@ -165,6 +169,7 @@ func (s *Server) handlerWithCustomDomains(next http.Handler) http.Handler {
 		case resolved.page != nil:
 			s.serveCustomHost(writer, req, resolved.page)
 		case resolved.known:
+			s.applyBaselineHeaders(writer)
 			serveCustomDomainUnavailable(writer, req, host, resolved.reason)
 		default:
 			next.ServeHTTP(writer, req)
@@ -271,11 +276,12 @@ func (s *Server) lookupCustomDomain(ctx context.Context, host string) customDoma
 	}
 
 	return customDomainResolution{page: &resolvedCustomDomain{
-		OrgSlug:     org.Slug,
-		Slug:        statusPage.Slug,
-		Name:        statusPage.Name,
-		Description: statusPage.Description,
-		Visibility:  statusPage.Visibility,
+		OrgSlug:      org.Slug,
+		Slug:         statusPage.Slug,
+		Name:         statusPage.Name,
+		Description:  statusPage.Description,
+		Visibility:   statusPage.Visibility,
+		EmbedOrigins: s.orgEmbedOrigins(ctx, org.UID),
 	}}
 }
 
@@ -515,6 +521,9 @@ func (s *Server) serveStatus0IndexForCustomHost(
 	data = []byte(injectStatus0Meta(string(data), &meta))
 
 	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
+	// On a custom domain the document origin IS the application origin, so
+	// the status-page policy matters here at least as much as on /s/.
+	s.applyStatusPageHeaders(writer, data, page.EmbedOrigins)
 	writer.Header().Set("Content-Type", contentTypeHTML)
 	_, _ = writer.Write(data)
 }

@@ -136,6 +136,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
+	"github.com/fclairamb/solidping/server/internal/securityheaders"
 	"github.com/fclairamb/solidping/server/internal/statuspagecache"
 	"github.com/fclairamb/solidping/server/internal/statuspagekiosk"
 	"github.com/fclairamb/solidping/server/internal/statuspagelock"
@@ -214,9 +215,17 @@ type Server struct {
 	// 2026-09-01-06). Non-nil once SetupRoutes has run, but binds nothing
 	// unless heartbeat.tcp_listen / heartbeat.udp_listen are set.
 	heartbeatPush *heartbeatpush.Server
-	status0FS     fs.FS // overridden in tests; nil means use the real embedded status0Files
-	cancelCtx     context.CancelFunc
-	workersWg     sync.WaitGroup // Tracks workers
+	// securityHeaders renders the per-surface CSP / X-Frame-Options /
+	// Referrer-Policy (spec 2026-09-25-28). Built in SetupRoutes; a nil
+	// builder still renders the shipped defaults, so a test Server that never
+	// ran SetupRoutes serves the same headers minus operator extras.
+	securityHeaders *securityheaders.Builder
+	// embedOrigins caches org slug -> statuspage.allowed_embed_origins for the
+	// status-page shell. Nil-safe (no caching).
+	embedOrigins *embedOriginsCache
+	status0FS    fs.FS // overridden in tests; nil means use the real embedded status0Files
+	cancelCtx    context.CancelFunc
+	workersWg    sync.WaitGroup // Tracks workers
 
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
@@ -516,6 +525,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		authService:       authService,
 		profilerSrv:       profiler.New(&cfg.Profiler),
 		customDomainCache: newCustomDomainCache(customDomainCacheTTL),
+		embedOrigins:      newEmbedOriginsCache(embedOriginsCacheTTL),
 		dbFault:           dbfault.NewLatch(slog.Default()),
 	}
 
@@ -695,6 +705,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// goroutine's setWebhook, or Telegram could end up holding a secret no pod
 	// in the fleet knows. No-op unless Telegram is configured.
 	resolveTelegramSettings(ctx, s.dbService, s.config)
+
+	// Security headers for the HTML surfaces (spec 2026-09-25-28). After
+	// InitializeSystemConfig for the same reason as the analytics client
+	// above: headers.csp_extra_sources and posthog.host may come from the
+	// database.
+	s.setupSecurityHeaders(ctx)
 
 	router := httpx.New()
 	mainGroup := s.buildMainGroup(ctx, router)
@@ -2728,6 +2744,10 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 			writer.Header().Set("Content-Type", contentType)
 		}
 
+		// Framing protection only: the /openapi explorer loads its renderer
+		// from a CDN by design, so a fetch policy would just break it.
+		s.applyBaselineHeaders(writer)
+
 		writer.WriteHeader(http.StatusOK)
 
 		if _, err := writer.Write(fileData); err != nil {
@@ -2852,6 +2872,11 @@ func (s *Server) serveRootLLMsFullTxt(writer http.ResponseWriter, _ *http.Reques
 // (assets, llms.txt), <path>.html (pages and category indexes),
 // <path>/index.html, then the static 404.html.
 func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
+	// Framing protection only (spec 2026-09-25-28): the docs are static,
+	// build-generated pages with Docusaurus's own inline scripts and no user
+	// content, so a fetch policy would buy nothing but a way to break search.
+	s.applyBaselineHeaders(writer)
+
 	clean := strings.Trim(path.Clean("/"+urlPath), "/")
 
 	var candidates []string
@@ -3006,6 +3031,7 @@ func (s *Server) serveAppRoot(writer http.ResponseWriter, req *http.Request) err
 	// on (the legacy web/dash app was retired), so an unmatched path is a
 	// plain 404 rather than the old dashboard rendered under a typo'd URL.
 	writer.Header().Set("Content-Type", contentTypeHTML)
+	s.applyBaselineHeaders(writer)
 	writer.WriteHeader(http.StatusNotFound)
 
 	_, err := io.WriteString(writer, notFoundHTML)
@@ -3284,6 +3310,14 @@ func (s *Server) serveDash0Static(writer http.ResponseWriter, req *http.Request)
 
 	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
 
+	// Every embedded dash0 response carries the dashboard policy (spec
+	// 2026-09-25-28); the shell is what it protects, and the service worker
+	// script inherits it too. The policy reflects the request's own origin,
+	// hence the Vary: a shared cache must not hand an http:// shell's policy
+	// to an https:// visitor.
+	s.applyDashboardHeaders(writer, req)
+	writer.Header().Add("Vary", "X-Forwarded-Proto")
+
 	if err := writeEmbeddedFile(writer, dash0Files, filePath, staticContentType(filePath), http.StatusOK); err != nil {
 		slog.ErrorContext(req.Context(), "Error reading dash0 file", "error", err)
 		http.Error(writer, "File not found", http.StatusNotFound)
@@ -3354,6 +3388,10 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	}
 
 	if !servingIndexFallback {
+		// Assets are not documents, but the policy costs nothing and keeps
+		// "every status0 response has one" a simple invariant to test.
+		s.applyStatusPageHeaders(writer, nil, nil)
+
 		// Hashed assets are streamed rather than copied onto the heap: the
 		// status0 bundle is the large one here, and a per-request copy is
 		// anonymous memory the GC has to chase. See writeEmbeddedFile.
@@ -3392,6 +3430,12 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	if meta, ok := s.status0MetaForPath(req, reqPath); ok {
 		data = []byte(injectStatus0Meta(string(data), &meta))
 	}
+
+	// The status-page policy (spec 2026-09-25-28): first-party fetches only,
+	// so an operator's custom stylesheet cannot url() a third party, and
+	// frame-ancestors widened by the owning org's embed allowlist. Keyed on
+	// the URL's org segment, which the shared cache also keys on.
+	s.applyStatusPageHeaders(writer, data, s.statusPageEmbedOrigins(req.Context(), statusPathOrgSlug(req.URL.Path)))
 
 	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
 	// shell varies on it exactly like the custom-domain one. Hashed assets do
