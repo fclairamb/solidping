@@ -118,7 +118,7 @@ func dashboardThirdPartyOrigins(cfg config.PostHogConfig) []string {
 		return nil
 	}
 
-	origins := make([]string, 0, 2)
+	origins := make([]string, 0, 3)
 
 	for _, raw := range []string{cfg.BrowserAPIHost(), cfg.BrowserUIHost()} {
 		if origin := originOf(raw); origin != "" {
@@ -126,7 +126,36 @@ func dashboardThirdPartyOrigins(cfg config.PostHogConfig) []string {
 		}
 	}
 
+	if assets := postHogCloudAssetsOrigin(originOf(cfg.BrowserAPIHost())); assets != "" {
+		origins = append(origins, assets)
+	}
+
 	return origins
+}
+
+// postHogCloudIngestSuffix is the host suffix of PostHog Cloud's regional
+// ingestion endpoints (eu.i.posthog.com, us.i.posthog.com).
+const postHogCloudIngestSuffix = ".i.posthog.com"
+
+// postHogCloudAssetsOrigin returns the static-assets origin posthog-js loads
+// its lazy bundles from (session recorder, exception autocapture, surveys)
+// when api_host is a PostHog Cloud ingestion host: posthog-js rewrites
+// "<region>.i.posthog.com" to "<region>-assets.i.posthog.com" for /static/.
+// config.DefaultPostHogAssetsHost is the EU instance of the same rule. Any
+// other host (self-hosted PostHog, an external reverse proxy, the first-party
+// /ingest path) serves /static/ itself, so it gets nothing extra.
+func postHogCloudAssetsOrigin(apiOrigin string) string {
+	host, ok := strings.CutPrefix(apiOrigin, "https://")
+	if !ok {
+		return ""
+	}
+
+	region, ok := strings.CutSuffix(host, postHogCloudIngestSuffix)
+	if !ok || region == "" || strings.ContainsAny(region, ".:") || strings.HasSuffix(region, "-assets") {
+		return ""
+	}
+
+	return "https://" + region + "-assets" + postHogCloudIngestSuffix
 }
 
 // originOf returns scheme://host[:port] for an absolute http(s) URL, and ""
@@ -168,13 +197,37 @@ func (s *Server) applyDashboardHeaders(writer http.ResponseWriter, req *http.Req
 	}).Apply(writer.Header())
 }
 
-// applyStatusPageHeaders stamps the status-page policy on a response. shell is
-// the HTML being served (nil for an asset) and embedOrigins the owning org's
-// allowlist (nil when there is none or the org is unknown).
-func (s *Server) applyStatusPageHeaders(writer http.ResponseWriter, shell []byte, embedOrigins []string) {
+// status0ShellScriptHashes hashes the inline scripts of the UNTOUCHED
+// embedded status0 shell, once per Server (status0FS is fixed for its life).
+//
+// Deliberately not the per-request bytes: the served shell is rewritten with
+// page metadata (injectStatus0Meta), and hashing after that rewrite would
+// hash-allow any <script> an injection bug ever smuggled into it. Only what
+// the build emitted is allowed.
+func (s *Server) status0ShellScriptHashes() []string {
+	s.status0HashesOnce.Do(func() {
+		data, err := fs.ReadFile(s.status0FSOrDefault(), status0ShellPath)
+		if err != nil {
+			return
+		}
+
+		s.status0Hashes = securityheaders.InlineScriptHashes(data)
+	})
+
+	return s.status0Hashes
+}
+
+// status0ShellPath is the embedded status0 SPA shell.
+const status0ShellPath = "status0res/index.html"
+
+// applyStatusPageHeaders stamps the status-page policy on a response. shell
+// says whether the response is the SPA shell (which needs its inline-script
+// hashes) rather than an asset, and embedOrigins is the owning org's allowlist
+// (nil when there is none or the org is unknown).
+func (s *Server) applyStatusPageHeaders(writer http.ResponseWriter, shell bool, embedOrigins []string) {
 	var hashes []string
-	if shell != nil {
-		hashes = securityheaders.InlineScriptHashes(shell)
+	if shell {
+		hashes = s.status0ShellScriptHashes()
 	}
 
 	s.securityHeaders.StatusPage(securityheaders.Params{

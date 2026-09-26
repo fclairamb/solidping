@@ -523,7 +523,7 @@ func (s *Server) serveStatus0IndexForCustomHost(
 	statuspagecache.Apply(writer.Header(), page.Visibility, statuspagecache.PageMaxAge)
 	// On a custom domain the document origin IS the application origin, so
 	// the status-page policy matters here at least as much as on /s/.
-	s.applyStatusPageHeaders(writer, data, page.EmbedOrigins)
+	s.applyStatusPageHeaders(writer, true, page.EmbedOrigins)
 	writer.Header().Set("Content-Type", contentTypeHTML)
 	_, _ = writer.Write(data)
 }
