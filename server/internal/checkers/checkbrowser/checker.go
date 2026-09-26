@@ -147,7 +147,7 @@ func (c *BrowserChecker) Execute(
 	// Both descend from the caller's ctx, so a worker shutdown still tears the
 	// whole thing down — nothing here is ever detached from cancellation.
 	sessionBudget := timeout
-	if cfg.Screenshot {
+	if wantsCapture(ctx, cfg) {
 		sessionBudget += screenshotTimeout
 	}
 
@@ -269,7 +269,7 @@ func (c *BrowserChecker) runBrowser(
 func (c *BrowserChecker) captureScreenshot(
 	ctx context.Context, cfg *BrowserConfig, result *checkerdef.Result, session *Session,
 ) {
-	if !cfg.Screenshot || result == nil || !capturableStatus(result.Status) {
+	if result == nil || !shouldCapture(ctx, cfg, result.Status) {
 		return
 	}
 
@@ -326,6 +326,26 @@ func (c *BrowserChecker) captureScreenshot(
 		Format:     shot.Format,
 		CapturedAt: time.Now(),
 	}
+}
+
+// wantsCapture reports whether this execution may take a screenshot at all:
+// the check opted into failure captures, or the run is an on-demand capture
+// (spec 2026-09-25-34). It sizes the session budget before the verdict exists.
+func wantsCapture(ctx context.Context, cfg *BrowserConfig) bool {
+	return cfg.Screenshot || checkerdef.ForcedCapture(ctx)
+}
+
+// shouldCapture is the capture decision once the verdict is known.
+//
+// An on-demand capture ("Capture now") is kept whatever the verdict except
+// StatusError, which from this checker means there was no browser and so no
+// page to photograph. Otherwise the opt-in failure rule applies unchanged.
+func shouldCapture(ctx context.Context, cfg *BrowserConfig, status checkerdef.Status) bool {
+	if checkerdef.ForcedCapture(ctx) {
+		return status != checkerdef.StatusError
+	}
+
+	return cfg.Screenshot && capturableStatus(status)
 }
 
 // capturableStatus reports whether a verdict is worth a screenshot.

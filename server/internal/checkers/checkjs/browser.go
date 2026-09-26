@@ -446,13 +446,18 @@ func (r *jsRuntime) recordScreenshot(shot checkbrowser.Capture) {
 }
 
 // attachScreenshot hangs the recorded capture on a finished result, but only
-// for the verdicts the browser check itself would have kept one for.
+// for the verdicts the browser check itself would have kept one for — or for
+// any verdict on an on-demand run ("Capture now", spec 2026-09-25-34), which
+// exists precisely to see a page that is healthy. The script still decides
+// WHETHER to shoot: a script that never calls page.screenshot() yields nothing,
+// forced or not.
 func (r *jsRuntime) attachScreenshot(result *checkerdef.Result) {
 	if result == nil || r.screenshot.Empty() {
 		return
 	}
 
-	if !checkbrowser.CapturableStatus(result.Status) {
+	forced := r.execCtx != nil && checkerdef.ForcedCapture(r.execCtx)
+	if !forced && !checkbrowser.CapturableStatus(result.Status) {
 		return
 	}
 
