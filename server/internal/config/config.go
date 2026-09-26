@@ -509,51 +509,54 @@ type WebPushConfig struct {
 
 // Config represents the application configuration structure.
 type Config struct {
-	Server       ServerConfig         `koanf:"server"`
-	Database     DatabaseConfig       `koanf:"db"`
-	Auth         AuthConfig           `koanf:"auth"`
-	Encryption   EncryptionConfig     `koanf:"encryption"`
-	Email        EmailConfig          `koanf:"email"`
-	Slack        SlackConfig          `koanf:"slack"`
-	MSTeams      MSTeamsConfig        `koanf:"msteams"`
-	WhatsApp     WhatsAppConfig       `koanf:"whatsapp"`
-	Telegram     TelegramConfig       `koanf:"telegram"`
-	SMS          SMSConfig            `koanf:"sms"`
-	Voice        VoiceConfig          `koanf:"voice"`
-	Google       GoogleOAuthConfig    `koanf:"google"`
-	GitHub       GitHubOAuthConfig    `koanf:"github"`
-	Microsoft    MicrosoftOAuthConfig `koanf:"microsoft"`
-	GitLab       GitLabOAuthConfig    `koanf:"gitlab"`
-	Discord      DiscordOAuthConfig   `koanf:"discord"`
-	OIDC         OIDCOAuthConfig      `koanf:"oidc"`
-	SAML         SAMLConfig           `koanf:"saml"`
-	LDAP         LDAPConfig           `koanf:"ldap"`
-	Node         NodeConfig           `koanf:"node"`
-	Agent        AgentConfig          `koanf:"agent"`
-	Profiler     ProfilerConfig       `koanf:"profiler"`
-	Runtime      RuntimeConfig        `koanf:"runtime"`
-	OTel         OTelConfig           `koanf:"otel"`
-	Sentry       SentryConfig         `koanf:"sentry"`
-	Prometheus   PrometheusConfig     `koanf:"prometheus"`
-	Realtime     RealtimeConfig       `koanf:"realtime"`
-	Checkers     CheckersConfig       `koanf:"checkers"`
-	Aggregation  AggregationConfig    `koanf:"aggregation"`
-	Jobs         JobsConfig           `koanf:"jobs"`
-	FileStorage  FileStorageConfig    `koanf:"filestorage"`
-	App          AppConfig            `koanf:"app"`
-	Deployment   DeploymentConfig     `koanf:"deployment"`
-	Egress       EgressConfig         `koanf:"egress"`
-	WebPush      WebPushConfig        `koanf:"webpush"`
-	PostHog      PostHogConfig        `koanf:"posthog"`
-	Entitlements EntitlementsConfig   `koanf:"entitlements"`
-	Audit        AuditConfig          `koanf:"audit"`
-	ACME         ACMEConfig           `koanf:"acme"`
-	Heartbeat    HeartbeatConfig      `koanf:"heartbeat"`
-	Demo         DemoConfig           `koanf:"demo"`
-	RunMode      string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent    string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel     slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
-	LogFormat    LogFormat            `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
+	Server     ServerConfig         `koanf:"server"`
+	Database   DatabaseConfig       `koanf:"db"`
+	Auth       AuthConfig           `koanf:"auth"`
+	Encryption EncryptionConfig     `koanf:"encryption"`
+	Email      EmailConfig          `koanf:"email"`
+	Slack      SlackConfig          `koanf:"slack"`
+	MSTeams    MSTeamsConfig        `koanf:"msteams"`
+	WhatsApp   WhatsAppConfig       `koanf:"whatsapp"`
+	Telegram   TelegramConfig       `koanf:"telegram"`
+	SMS        SMSConfig            `koanf:"sms"`
+	Voice      VoiceConfig          `koanf:"voice"`
+	Google     GoogleOAuthConfig    `koanf:"google"`
+	GitHub     GitHubOAuthConfig    `koanf:"github"`
+	Microsoft  MicrosoftOAuthConfig `koanf:"microsoft"`
+	GitLab     GitLabOAuthConfig    `koanf:"gitlab"`
+	Discord    DiscordOAuthConfig   `koanf:"discord"`
+	OIDC       OIDCOAuthConfig      `koanf:"oidc"`
+	// OAuth configures the embedded MCP-facing authorization server, distinct
+	// from the login-provider configs above.
+	OAuth        OAuthConfig        `koanf:"oauth"`
+	SAML         SAMLConfig         `koanf:"saml"`
+	LDAP         LDAPConfig         `koanf:"ldap"`
+	Node         NodeConfig         `koanf:"node"`
+	Agent        AgentConfig        `koanf:"agent"`
+	Profiler     ProfilerConfig     `koanf:"profiler"`
+	Runtime      RuntimeConfig      `koanf:"runtime"`
+	OTel         OTelConfig         `koanf:"otel"`
+	Sentry       SentryConfig       `koanf:"sentry"`
+	Prometheus   PrometheusConfig   `koanf:"prometheus"`
+	Realtime     RealtimeConfig     `koanf:"realtime"`
+	Checkers     CheckersConfig     `koanf:"checkers"`
+	Aggregation  AggregationConfig  `koanf:"aggregation"`
+	Jobs         JobsConfig         `koanf:"jobs"`
+	FileStorage  FileStorageConfig  `koanf:"filestorage"`
+	App          AppConfig          `koanf:"app"`
+	Deployment   DeploymentConfig   `koanf:"deployment"`
+	Egress       EgressConfig       `koanf:"egress"`
+	WebPush      WebPushConfig      `koanf:"webpush"`
+	PostHog      PostHogConfig      `koanf:"posthog"`
+	Entitlements EntitlementsConfig `koanf:"entitlements"`
+	Audit        AuditConfig        `koanf:"audit"`
+	ACME         ACMEConfig         `koanf:"acme"`
+	Heartbeat    HeartbeatConfig    `koanf:"heartbeat"`
+	Demo         DemoConfig         `koanf:"demo"`
+	RunMode      string             `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent    string             `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel     slog.Level         `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	LogFormat    LogFormat          `koanf:"-"`         // Logging output format (parsed from SP_LOG_FORMAT env var)
 }
 
 // ACMEConfig turns on in-server TLS: certmagic obtains and renews Let's Encrypt
@@ -735,6 +738,23 @@ type EntitlementsConfig struct {
 	// monthly entitlement for the channel — this guard exists purely to bound a
 	// flapping check or a dispatch loop, hence the higher default.
 	TelegramRunawayPerHour int `koanf:"telegram_runaway_per_hour"`
+}
+
+// OAuthConfig configures the embedded MCP-facing OAuth 2.1 authorization
+// server (internal/oauth) — NOT the login-provider integrations (Google,
+// GitHub, GitLab, Microsoft, Discord, OIDC below), which each have their own
+// dedicated *OAuthConfig type.
+type OAuthConfig struct {
+	// EnforceClientSecret gates RFC 6749 §3.2.1 client authentication at the
+	// token endpoint for confidential clients (spec
+	// 2026-09-25-27-oauth-client-secret-verification.md). Default true: a
+	// confidential client with a missing or wrong secret gets a hard 401. An
+	// operator can set this false as a temporary escape hatch for a
+	// confidential client that was registered before verification existed and
+	// never sends a secret — the failure is then only logged (WARN, once per
+	// client ID per process) and the token is still issued. Public clients are
+	// never affected either way; PKCE is their authentication.
+	EnforceClientSecret bool `koanf:"enforce_client_secret"`
 }
 
 // NodeConfig contains node role configuration.
@@ -1869,8 +1889,11 @@ func Load() (*Config, error) {
 		Sentry:  SentryConfig{TracesSampleRate: 0.0},
 		Discord: DiscordOAuthConfig{Enabled: false},
 		OIDC:    OIDCOAuthConfig{Enabled: false},
-		SAML:    SAMLConfig{Enabled: false},
-		LDAP:    LDAPConfig{Enabled: false},
+		// Enforcing confidential-client secrets is the safe default; see
+		// OAuthConfig.EnforceClientSecret for the escape hatch.
+		OAuth: OAuthConfig{EnforceClientSecret: true},
+		SAML:  SAMLConfig{Enabled: false},
+		LDAP:  LDAPConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",

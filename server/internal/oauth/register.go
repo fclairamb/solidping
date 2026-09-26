@@ -75,6 +75,18 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 		return h.writeRegisterError(writer, ErrInvalidClientMetadata, "unsupported scope requested")
 	}
 
+	// token_endpoint_auth_method must be one of the values advertised in AS
+	// metadata (or empty, defaulting to "none") — anything else is rejected up
+	// front rather than silently treated as confidential, so a typo'd method
+	// never mints a client that gets a secret it never asked for.
+	switch body.TokenEndpointAuthMethod {
+	case "", AuthMethodNone, AuthMethodSecretPost, AuthMethodSecretBasic:
+		// valid
+	default:
+		return h.writeRegisterError(writer, ErrInvalidClientMetadata,
+			"unsupported token_endpoint_auth_method: "+body.TokenEndpointAuthMethod)
+	}
+
 	// Confidential only when the client explicitly opts into a secret-based auth
 	// method. Default (and "none") is a public client — the MCP native case.
 	isPublic := body.TokenEndpointAuthMethod == "" || body.TokenEndpointAuthMethod == AuthMethodNone
@@ -86,9 +98,12 @@ func (h *Handler) Register(writer http.ResponseWriter, req *http.Request) error 
 		return h.WriteInternalError(writer, req, err)
 	}
 
+	// Echo back whichever confidential method was requested (post or basic) —
+	// the token endpoint now verifies the secret through either, so there is no
+	// reason to force every confidential client onto client_secret_post.
 	authMethod := AuthMethodNone
 	if !isPublic {
-		authMethod = AuthMethodSecretPost
+		authMethod = body.TokenEndpointAuthMethod
 	}
 
 	resp := registrationResponse{

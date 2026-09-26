@@ -62,6 +62,12 @@ const (
 	// sliding RefreshTokenExpiry idle window applies).
 	KeySessionMaxDuration ParameterKey = "auth.session_max_duration"
 
+	// KeyOAuthEnforceClientSecret gates RFC 6749 client authentication at the
+	// embedded MCP OAuth authorization server's token endpoint (spec
+	// 2026-09-25-27-oauth-client-secret-verification.md). Default true — see
+	// config.OAuthConfig.EnforceClientSecret for the full behavior.
+	KeyOAuthEnforceClientSecret ParameterKey = "oauth.enforce_client_secret"
+
 	KeyGoogleClientID         ParameterKey = "auth.google.client_id"
 	KeyGoogleClientSecret     ParameterKey = "auth.google.client_secret"
 	KeyGitHubClientID         ParameterKey = "auth.github.client_id"
@@ -512,6 +518,19 @@ func getKnownParameters() []ParameterDefinition {
 				if seconds, ok := parseInt(value); ok && seconds >= 0 {
 					cfg.Auth.SessionMaxDuration = time.Duration(seconds) * time.Second
 				}
+			},
+		},
+		{
+			// Operator escape hatch for spec 2026-09-25-27: default true means
+			// a confidential OAuth client (internal/oauth) that fails
+			// token-endpoint secret verification gets a hard 401. Set false to
+			// log-only (WARN, once per client ID per process) while migrating
+			// a legacy confidential client that never sent a secret.
+			Key:    KeyOAuthEnforceClientSecret,
+			EnvVar: "SP_OAUTH_ENFORCE_CLIENT_SECRET",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.OAuth.EnforceClientSecret = parseBool(value, cfg.OAuth.EnforceClientSecret)
 			},
 		},
 		{
