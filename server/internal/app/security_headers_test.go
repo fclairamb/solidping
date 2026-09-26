@@ -361,7 +361,8 @@ func TestSecurityHeadersThroughTheRealRouter(t *testing.T) {
 	ts := httptest.NewServer(server.Handler())
 	t.Cleanup(ts.Close)
 
-	get := func(path string) *http.Response {
+	// get returns only the headers, so no response body outlives the call.
+	get := func(path string) http.Header {
 		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+path, nil)
 		r.NoError(reqErr)
 
@@ -371,36 +372,37 @@ func TestSecurityHeadersThroughTheRealRouter(t *testing.T) {
 
 		resp, doErr := client.Do(req)
 		r.NoError(doErr)
-		_ = resp.Body.Close()
 
-		return resp
+		defer func() { _ = resp.Body.Close() }()
+
+		return resp.Header
 	}
 
 	// JSON API: no CSP, no XFO, no Referrer-Policy.
 	for _, path := range []string{"/api/mgmt/version", "/api/mgmt/health", "/api/v1/nope"} {
 		resp := get(path)
-		r.Empty(resp.Header.Get(securityheaders.HeaderCSP), path)
-		r.Empty(resp.Header.Get(securityheaders.HeaderFrameOptions), path)
-		r.Empty(resp.Header.Get(securityheaders.HeaderReferrerPolicy), path)
+		r.Empty(resp.Get(securityheaders.HeaderCSP), path)
+		r.Empty(resp.Get(securityheaders.HeaderFrameOptions), path)
+		r.Empty(resp.Get(securityheaders.HeaderReferrerPolicy), path)
 	}
 
 	status := get("/s/embedder/main")
-	statusCSP := status.Header.Get(securityheaders.HeaderCSP)
+	statusCSP := status.Get(securityheaders.HeaderCSP)
 	r.Equal([]string{"'self'", "https://intranet.acme.com"}, cspDirective(t, statusCSP, "frame-ancestors"))
-	r.Empty(status.Header.Get(securityheaders.HeaderFrameOptions))
+	r.Empty(status.Get(securityheaders.HeaderFrameOptions))
 	r.Equal([]string{"'self'", "data:", "https://cdn.acme.com"}, cspDirective(t, statusCSP, "img-src"),
 		"the operator extra applies; the invalid sandbox group is skipped")
 	r.NotContains(statusCSP, "sandbox")
 
 	dash := get("/d/")
-	dashCSP := dash.Header.Get(securityheaders.HeaderCSP)
+	dashCSP := dash.Get(securityheaders.HeaderCSP)
 	r.Contains(cspDirective(t, dashCSP, "script-src"), "'self'")
-	r.Equal("SAMEORIGIN", dash.Header.Get(securityheaders.HeaderFrameOptions))
+	r.Equal("SAMEORIGIN", dash.Get(securityheaders.HeaderFrameOptions))
 
 	docs := get("/docs")
-	r.Equal("SAMEORIGIN", docs.Header.Get(securityheaders.HeaderFrameOptions))
-	r.NotEmpty(docs.Header.Get(securityheaders.HeaderCSP))
+	r.Equal("SAMEORIGIN", docs.Get(securityheaders.HeaderFrameOptions))
+	r.NotEmpty(docs.Get(securityheaders.HeaderCSP))
 
 	openapi := get("/openapi")
-	r.Equal("SAMEORIGIN", openapi.Header.Get(securityheaders.HeaderFrameOptions))
+	r.Equal("SAMEORIGIN", openapi.Get(securityheaders.HeaderFrameOptions))
 }

@@ -170,7 +170,7 @@ func TestParseExtraSourcesRejectsInjection(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	extras, errs := ParseExtraSources(
+	extras, errs := parseExtraSources(
 		"img-src https://ok.acme.com 'nonce-abc' https://bad,acme.com; sandbox allow-scripts; report-uri /x; img-src",
 	)
 
@@ -188,7 +188,7 @@ func TestParseExtraSourcesAcceptsKeywordsSchemesAndHashes(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	extras, errs := ParseExtraSources(
+	extras, errs := parseExtraSources(
 		"SCRIPT-SRC 'unsafe-eval' 'sha256-AbC+/=' https:  ;  font-src *.acme.com:443 https://fonts.acme.com/css/",
 	)
 
@@ -230,10 +230,15 @@ func TestRequestOrigins(t *testing.T) {
 		want  []string
 	}{
 		{name: "plain http", host: "localhost:4000", want: []string{"http://localhost:4000", "ws://localhost:4000"}},
-		{name: "forwarded https", host: "Solidping.Acme.com", proto: "https, http",
-			want: []string{"https://solidping.acme.com", "wss://solidping.acme.com"}},
+		{
+			name: "forwarded https", host: "Solidping.Acme.com", proto: "https, http",
+			want: []string{"https://solidping.acme.com", "wss://solidping.acme.com"},
+		},
 		{name: "tls", host: "acme.com", tls: true, want: []string{"https://acme.com", "wss://acme.com"}},
-		{name: "junk proto ignored", host: "acme.com", proto: "javascript", want: []string{"http://acme.com", "ws://acme.com"}},
+		{
+			name: "junk proto ignored", host: "acme.com", proto: "javascript",
+			want: []string{"http://acme.com", "ws://acme.com"},
+		},
 		{name: "semicolon host not reflected", host: "acme.com;script-src", want: nil},
 		{name: "ipv6 not reflected", host: "[::1]:4000", want: nil},
 	}
@@ -242,7 +247,7 @@ func TestRequestOrigins(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(http.MethodGet, "/d/", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/d/", nil)
 			req.Host = tt.host
 
 			if tt.proto != "" {

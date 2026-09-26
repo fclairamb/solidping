@@ -65,6 +65,12 @@ const (
 	srcHTTP         = "http:"
 )
 
+// URL schemes RequestOrigins understands.
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // Directive names used by the shipped policies.
 const (
 	dirDefault        = "default-src"
@@ -153,17 +159,6 @@ func statusPagePolicy() policy {
 		{dirFormAction, []string{srcSelf}},
 		{dirFrameAncestors, []string{srcSelf}},
 	}
-}
-
-// has reports whether the policy sets the named directive.
-func (p policy) has(name string) bool {
-	for i := range p {
-		if p[i].name == name {
-			return true
-		}
-	}
-
-	return false
 }
 
 // add appends sources to a directive the policy already sets, skipping
@@ -262,7 +257,7 @@ type Params struct {
 // Options configure a Builder.
 type Options struct {
 	// ExtraSources is the raw headers.csp_extra_sources value (see
-	// ParseExtraSources).
+	// parseExtraSources).
 	ExtraSources string
 	// DashboardThirdParty are origins the dashboard legitimately loads code
 	// from and posts to (an operator-configured PostHog host). Added to the
@@ -281,7 +276,7 @@ type Builder struct {
 // so the caller can log them; they never fail the boot, since the shipped
 // policy without them is still a working one.
 func New(opts Options) (*Builder, []error) {
-	extras, errs := ParseExtraSources(opts.ExtraSources)
+	extras, errs := parseExtraSources(opts.ExtraSources)
 
 	thirdParty := make([]string, 0, len(opts.DashboardThirdParty))
 	for _, origin := range opts.DashboardThirdParty {
@@ -294,13 +289,13 @@ func New(opts Options) (*Builder, []error) {
 }
 
 // applyExtras widens p with the operator's extra sources.
-func (b *Builder) applyExtras(p policy) {
+func (b *Builder) applyExtras(pol policy) {
 	if b == nil {
 		return
 	}
 
 	for i := range b.extras {
-		p.add(b.extras[i].name, b.extras[i].sources...)
+		pol.add(b.extras[i].name, b.extras[i].sources...)
 	}
 }
 
@@ -336,38 +331,38 @@ func ApplyBaseline(header http.Header) {
 
 // Dashboard returns the headers for a dash0 response.
 func (b *Builder) Dashboard(params Params) Headers {
-	p := dashboardPolicy()
-	p.add(dirScript, params.ScriptHashes...)
-	p.add(dirScript, params.SelfOrigins...)
-	p.add(dirConnect, params.SelfOrigins...)
+	pol := dashboardPolicy()
+	pol.add(dirScript, params.ScriptHashes...)
+	pol.add(dirScript, params.SelfOrigins...)
+	pol.add(dirConnect, params.SelfOrigins...)
 
 	if b != nil {
-		p.add(dirScript, b.dashboardThirdParty...)
-		p.add(dirConnect, b.dashboardThirdParty...)
+		pol.add(dirScript, b.dashboardThirdParty...)
+		pol.add(dirConnect, b.dashboardThirdParty...)
 	}
 
-	b.applyExtras(p)
+	b.applyExtras(pol)
 
-	return finish(p, "")
+	return finish(pol, "")
 }
 
 // StatusPage returns the headers for a status-page response (status0 on /s/…
 // or on a verified custom domain).
 func (b *Builder) StatusPage(params Params) Headers {
-	p := statusPagePolicy()
-	p.add(dirScript, params.ScriptHashes...)
+	pol := statusPagePolicy()
+	pol.add(dirScript, params.ScriptHashes...)
 
 	for _, origin := range params.EmbedOrigins {
 		// Re-validated here so a value that did not come through
 		// ParseEmbedOrigins can never inject a directive.
 		if normalized, err := ValidateEmbedOrigin(origin); err == nil {
-			p.add(dirFrameAncestors, normalized)
+			pol.add(dirFrameAncestors, normalized)
 		}
 	}
 
-	b.applyExtras(p)
+	b.applyExtras(pol)
 
-	return finish(p, ReferrerNoReferrer)
+	return finish(pol, ReferrerNoReferrer)
 }
 
 // inlineScriptRE matches a <script> element and captures its attributes and
@@ -422,9 +417,9 @@ func RequestOrigins(req *http.Request) []string {
 		return nil
 	}
 
-	scheme := "http"
+	scheme := schemeHTTP
 	if req.TLS != nil {
-		scheme = "https"
+		scheme = schemeHTTPS
 	}
 
 	if proto := req.Header.Get("X-Forwarded-Proto"); proto != "" {
@@ -433,15 +428,15 @@ func RequestOrigins(req *http.Request) []string {
 		}
 
 		switch strings.ToLower(strings.TrimSpace(proto)) {
-		case "https":
-			scheme = "https"
-		case "http":
-			scheme = "http"
+		case schemeHTTPS:
+			scheme = schemeHTTPS
+		case schemeHTTP:
+			scheme = schemeHTTP
 		}
 	}
 
 	wsScheme := "ws"
-	if scheme == "https" {
+	if scheme == schemeHTTPS {
 		wsScheme = "wss"
 	}
 

@@ -40,7 +40,10 @@ var sourceRE = regexp.MustCompile(
 	`^(?:'(?:self|unsafe-inline|unsafe-eval|wasm-unsafe-eval|unsafe-hashes)'` +
 		`|'sha(?:256|384|512)-[A-Za-z0-9+/_-]+={0,2}'` +
 		`|[a-z][a-z0-9+.-]*:` +
-		`|(?:[a-z][a-z0-9+.-]*://)?(?:\*|(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::(?:[0-9]{1,5}|\*))?(?:/[A-Za-z0-9._~%!$&()*+=:@/-]*)?)$`,
+		`|(?:[a-z][a-z0-9+.-]*://)?` + // optional scheme
+		`(?:\*|(?:\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)` + // host, optional *. label
+		`(?::(?:[0-9]{1,5}|\*))?` + // optional port
+		`(?:/[A-Za-z0-9._~%!$&()*+=:@/-]*)?)$`, // optional path
 )
 
 // isSafeSource reports whether a single source expression can be put in a
@@ -49,13 +52,13 @@ func isSafeSource(source string) bool {
 	return sourceRE.MatchString(source)
 }
 
-// ParseExtraSources reads headers.csp_extra_sources: `;`-separated groups,
+// parseExtraSources reads headers.csp_extra_sources: `;`-separated groups,
 // each a directive name followed by one or more sources, e.g.
 //
 //	img-src https://cdn.acme.com; connect-src https://sentry.acme.com
 //
 // Groups that do not parse are skipped and reported; the rest apply.
-func ParseExtraSources(raw string) ([]directive, []error) {
+func parseExtraSources(raw string) ([]directive, []error) {
 	var (
 		out  []directive
 		errs []error
