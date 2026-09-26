@@ -231,6 +231,47 @@ func TestKnownSessionMaxDurationKey(t *testing.T) {
 	r.Equal(3600*time.Second, cfg.Auth.SessionMaxDuration)
 }
 
+// TestKnownOAuthEnforceClientSecretKey pins the oauth.enforce_client_secret
+// parameter (spec 2026-09-25-27-oauth-client-secret-verification.md): its key
+// string, env var, secret classification, and that ApplyFunc round-trips a
+// bool the same way every other boolean parameter does (native bool, and the
+// string forms parseBool accepts).
+func TestKnownOAuthEnforceClientSecretKey(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("oauth.enforce_client_secret", string(KeyOAuthEnforceClientSecret))
+
+	var def ParameterDefinition
+
+	found := false
+
+	for _, d := range getKnownParameters() {
+		if d.Key == KeyOAuthEnforceClientSecret {
+			def, found = d, true
+
+			break
+		}
+	}
+
+	r.True(found, "oauth.enforce_client_secret must be a known parameter")
+	r.NotNil(def.ApplyFunc)
+	r.False(def.Secret)
+	r.Equal("SP_OAUTH_ENFORCE_CLIENT_SECRET", def.EnvVar)
+
+	cfg := &config.Config{OAuth: config.OAuthConfig{EnforceClientSecret: true}}
+	def.ApplyFunc(cfg, false)
+	r.False(cfg.OAuth.EnforceClientSecret)
+	def.ApplyFunc(cfg, "true")
+	r.True(cfg.OAuth.EnforceClientSecret)
+
+	// An unparseable value is treated as unset, leaving the prior value in
+	// place — never silently disabling enforcement.
+	def.ApplyFunc(cfg, "not-a-bool")
+	r.True(cfg.OAuth.EnforceClientSecret)
+}
+
 func TestKnownSchedulingFastLaneReservedKey(t *testing.T) {
 	t.Parallel()
 
